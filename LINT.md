@@ -120,11 +120,16 @@ impl User {
 ### `oneway::too_many_params`
 **Severity:** deny
 
-Functions must have at most 3 parameters (including `&self`/`&mut self`). Use a struct for more.
+Functions must have at most 2 parameters (including `&self`). A function is either:
+- `fn name()` — 0 params
+- `fn name(&self)` — receiver only
+- `fn name(&self, input: T)` — receiver + one input
+
+Anything more should use a struct.
 
 ❌ Bad:
 ```rust
-fn send_email(to: &str, from: &str, subject: &str, body: &str, cc: &[&str]) {
+fn send_email(to: &str, from: &str, subject: &str, body: &str) {
     // ...
 }
 ```
@@ -133,7 +138,6 @@ fn send_email(to: &str, from: &str, subject: &str, body: &str, cc: &[&str]) {
 ```rust
 struct Email {
     body: String,
-    cc: Vec<String>,
     from: String,
     subject: String,
     to: String,
@@ -141,6 +145,26 @@ struct Email {
 
 fn send_email(email: &Email) {
     // ...
+}
+```
+
+❌ Bad:
+```rust
+impl Wallet {
+    fn transfer(&self, to: &Account, amount: Amount, memo: &str) { ... }
+}
+```
+
+✅ Good:
+```rust
+struct Transfer {
+    amount: Amount,
+    memo: Memo,
+    to: AccountId,
+}
+
+impl Wallet {
+    fn transfer(&self, transfer: Transfer) { ... }
 }
 ```
 
@@ -266,49 +290,97 @@ fn divide(a: f64, b: f64) -> Result<f64, DivisionError> {
 }
 ```
 
-## Immutability
+## Control Flow
 
-### `oneway::prefer_immutable`
-**Severity:** warn
+### `oneway::no_loop`
+**Severity:** deny
 
-Prefer immutable bindings. Flag `let mut` when the variable could be refactored to avoid mutation (e.g., using iterators, `map`, `fold` instead of a mutable accumulator).
+Don't use `loop`, `while`, or `for` with manual iteration. Use iterators and functional combinators instead.
 
 ❌ Bad:
 ```rust
-fn sum_positives(numbers: &[i64]) -> i64 {
-    let mut total = 0;
-    for n in numbers {
-        if *n > 0 {
-            total += n;
-        }
+let mut total = 0;
+for item in &items {
+    if item.is_active() {
+        total += item.price();
     }
-    total
 }
 ```
 
 ✅ Good:
 ```rust
-fn sum_positives(numbers: &[i64]) -> i64 {
-    numbers.iter().filter(|n| **n > 0).sum()
-}
+let total: u64 = items
+    .iter()
+    .filter(|item| item.is_active())
+    .map(|item| item.price())
+    .sum();
 ```
-
-### `oneway::no_mut_param`
-**Severity:** warn
-
-Avoid `&mut` parameters when you can return a new value instead. Prefer functional transformation over in-place mutation.
 
 ❌ Bad:
 ```rust
-fn normalize_name(name: &mut String) {
-    *name = name.trim().to_lowercase();
+let mut result = Vec::new();
+let mut i = 0;
+while i < items.len() {
+    result.push(items[i].transform());
+    i += 1;
 }
 ```
 
 ✅ Good:
 ```rust
-fn normalize_name(name: &str) -> String {
-    name.trim().to_lowercase()
+let result: Vec<_> = items.iter().map(|item| item.transform()).collect();
+```
+
+### `oneway::no_if_else`
+**Severity:** warn
+
+Prefer `match` over `if`/`else` chains. Match is more explicit, forces you to handle all cases, and arms can be sorted.
+
+❌ Bad:
+```rust
+fn classify(n: i32) -> &'static str {
+    if n < 0 {
+        "negative"
+    } else if n == 0 {
+        "zero"
+    } else {
+        "positive"
+    }
+}
+```
+
+✅ Good:
+```rust
+fn classify(n: i32) -> &'static str {
+    match n.cmp(&0) {
+        Ordering::Equal => "zero",
+        Ordering::Greater => "positive",
+        Ordering::Less => "negative",
+    }
+}
+```
+
+❌ Bad:
+```rust
+fn describe(user: &User) -> String {
+    if user.is_admin() {
+        format!("Admin: {}", user.name())
+    } else if user.is_moderator() {
+        format!("Mod: {}", user.name())
+    } else {
+        format!("User: {}", user.name())
+    }
+}
+```
+
+✅ Good:
+```rust
+fn describe(user: &User) -> String {
+    match user.role() {
+        Role::Admin => format!("Admin: {}", user.name()),
+        Role::Moderator => format!("Mod: {}", user.name()),
+        Role::User => format!("User: {}", user.name()),
+    }
 }
 ```
 
@@ -423,34 +495,43 @@ let server = ServerConfig {
 };
 ```
 
-### `oneway::no_default_trait`
-**Severity:** warn
+## Naming
 
-Avoid `impl Default` — it hides what values are being set. Be explicit with struct literals.
+### `oneway::type_derived_naming`
+**Severity:** deny
+
+Variable names must be the `snake_case` version of their type name. This eliminates bikeshedding and makes every binding instantly recognizable. When multiple variables of the same type exist, add a descriptive prefix.
 
 ❌ Bad:
 ```rust
-let config = Config {
-    port: 3000,
-    ..Default::default()
-};
+let id = UserId(42);
+let db = Database::connect();
+let u = User::find(id);
 ```
 
 ✅ Good:
 ```rust
-let config = Config {
-    host: Host("127.0.0.1".into()),
-    port: Port(3000),
-    workers: Workers(4),
-};
+let user_id = UserId(42);
+let database = Database::connect();
+let user = User::find(user_id);
 ```
 
-## Naming
+❌ Bad:
+```rust
+let src = AccountId(1);
+let dst = AccountId(2);
+```
+
+✅ Good:
+```rust
+let sender_account_id = AccountId(1);
+let receiver_account_id = AccountId(2);
+```
 
 ### `oneway::inconsistent_naming`
 **Severity:** warn
 
-Variable names should clearly reflect their type. When a variable holds a value of type `UserId`, name it `user_id`, not `id` or `uid` or `x`.
+Function parameter names should match their type. When a parameter is of type `UserId`, name it `user_id`, not `id` or `uid`.
 
 ❌ Bad:
 ```rust
@@ -497,6 +578,152 @@ pub struct ProductId(u64);
 
 ---
 
+## One Way to Write It
+
+### `oneway::no_glob_imports`
+**Severity:** deny
+
+No wildcard imports. Every imported symbol must be named explicitly.
+
+❌ Bad:
+```rust
+use std::collections::*;
+use crate::models::*;
+```
+
+✅ Good:
+```rust
+use std::collections::HashMap;
+use crate::models::User;
+```
+
+### `oneway::sorted_derives`
+**Severity:** deny
+
+`#[derive(...)]` attributes must list traits in alphabetical order.
+
+❌ Bad:
+```rust
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct User {
+    name: Name,
+}
+```
+
+✅ Good:
+```rust
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct User {
+    name: Name,
+}
+```
+
+### `oneway::inline_format_args`
+**Severity:** deny
+
+Use inline variable capture in format strings. Don't pass variables as separate arguments.
+
+❌ Bad:
+```rust
+let message = format!("Hello, {}! You are {} years old.", name, age);
+log::info!("Processing order {} for user {}", order_id, user_id);
+```
+
+✅ Good:
+```rust
+let message = format!("Hello, {name}! You are {age} years old.");
+log::info!("Processing order {order_id} for user {user_id}");
+```
+
+### `oneway::no_turbofish`
+**Severity:** deny
+
+Don't use turbofish syntax (`::<>`). Annotate the binding instead — it's easier to read.
+
+❌ Bad:
+```rust
+let names = users.iter().map(|u| u.name.clone()).collect::<Vec<String>>();
+let parsed = "42".parse::<i32>()?;
+```
+
+✅ Good:
+```rust
+let names: Vec<String> = users.iter().map(|u| u.name.clone()).collect();
+let parsed: i32 = "42".parse()?;
+```
+
+### `oneway::prefer_combinators`
+**Severity:** warn
+
+Use `Option`/`Result` combinators instead of `match` for simple transforms. If you're just mapping, filtering, or providing a default, use the combinator.
+
+❌ Bad:
+```rust
+let display_name = match user.nickname {
+    Some(nick) => nick,
+    None => user.name.clone(),
+};
+
+let upper = match value {
+    Some(s) => Some(s.to_uppercase()),
+    None => None,
+};
+
+let count = match result {
+    Ok(items) => items.len(),
+    Err(_) => 0,
+};
+```
+
+✅ Good:
+```rust
+let display_name = user.nickname
+    .unwrap_or_else(|| user.name.clone());
+
+let upper = value.map(|s| s.to_uppercase());
+
+let count = result
+    .map(|items| items.len())
+    .unwrap_or(0);
+```
+
+### `oneway::one_constructor_name`
+**Severity:** deny
+
+Constructors must be named `new`. Not `create`, `build`, `init`, `make`, `construct`, or `from_*` (except `From` trait impls).
+
+❌ Bad:
+```rust
+impl Server {
+    fn create(config: ServerConfig) -> Self { ... }
+}
+
+impl Database {
+    fn init(url: &str) -> Self { ... }
+}
+
+impl HttpClient {
+    fn build() -> Self { ... }
+}
+```
+
+✅ Good:
+```rust
+impl Server {
+    fn new(config: ServerConfig) -> Self { ... }
+}
+
+impl Database {
+    fn new(url: &str) -> Self { ... }
+}
+
+impl HttpClient {
+    fn new() -> Self { ... }
+}
+```
+
+---
+
 ## Summary
 
 | # | Lint | Severity | One-liner |
@@ -506,21 +733,27 @@ pub struct ProductId(u64);
 | 3 | `unsorted_match_arms` | deny | Match arms sorted, `_` last |
 | 4 | `unsorted_imports` | deny | `use` statements alphabetical |
 | 5 | `unsorted_impl_methods` | deny | Methods in `impl` alphabetical |
-| 6 | `too_many_params` | deny | Max 3 params per function |
+| 6 | `too_many_params` | deny | Max 2 params: self + one input |
 | 7 | `no_nested_functions` | warn | Extract inner functions to module level |
 | 8 | `raw_primitive_field` | warn | Use newtypes for struct fields |
 | 9 | `raw_primitive_param` | warn | Use newtypes for function params |
 | 10 | `no_unwrap` | deny | No `.unwrap()` / `.expect()` outside tests |
 | 11 | `no_panic` | deny | No `panic!` / `todo!` / `unimplemented!` outside tests |
-| 12 | `prefer_immutable` | warn | Avoid `let mut` when functional style works |
-| 13 | `no_mut_param` | warn | Return new values instead of `&mut` params |
-| 14 | `prefer_functional_iteration` | warn | Use `.iter().map().filter()` over `for` + `push` |
+| 12 | `no_loop` | deny | No `loop`/`while`/`for` — use iterators |
+| 13 | `no_if_else` | warn | Use `match` instead of `if`/`else` chains |
+| 14 | `prefer_functional_iteration` | warn | Use `.iter().map().filter()` over manual loops |
 | 15 | `no_explicit_return` | warn | Last expression is the return value |
 | 16 | `no_early_return_in_match` | warn | Let match be the return expression |
 | 17 | `no_builder_pattern` | warn | Use struct literals, not builders |
-| 18 | `no_default_trait` | warn | Be explicit, don't hide values behind `Default` |
-| 19 | `inconsistent_naming` | warn | Variable names should reflect their type |
+| 18 | `type_derived_naming` | deny | Variable name must be snake_case of its type |
+| 19 | `inconsistent_naming` | warn | Param names should match their type |
 | 20 | `one_public_type_per_file` | warn | One primary pub type per file |
+| 21 | `no_glob_imports` | deny | No `use foo::*` — name every import |
+| 22 | `sorted_derives` | deny | `#[derive()]` traits in alphabetical order |
+| 23 | `inline_format_args` | deny | `format!("{x}")` not `format!("{}", x)` |
+| 24 | `no_turbofish` | deny | Annotate the binding, not the call site |
+| 25 | `prefer_combinators` | warn | `.map()` / `.unwrap_or()` over `match` on Option/Result |
+| 26 | `one_constructor_name` | deny | Constructors must be called `new` |
 
 ---
 
