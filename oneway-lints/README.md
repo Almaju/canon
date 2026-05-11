@@ -2,6 +2,39 @@
 
 > Enforce the Oneway philosophy in your Rust codebase. These rules steer code toward consistency, clarity, and the "one way to do it" mindset — without fighting Rust's core design.
 
+## Documentation
+
+### `oneway::no_comments`
+**Severity:** deny
+
+Comments are forbidden — including line (`//`), block (`/* */`), and doc comments (`///`, `//!`, `/** */`, `/*! */`). Code is the documentation. If you feel the need to write one:
+
+- Rename the binding or function to be more descriptive
+- Extract a well-named helper function
+- Use a more precise newtype
+
+❌ Bad:
+```rust
+// Apply 10% discount for premium users
+let price = base * 0.9;
+```
+
+✅ Good:
+```rust
+let discounted_price = apply_premium_discount(base_price);
+```
+
+❌ Bad:
+```rust
+/// The user's account ID.
+pub struct AccountId(u64);
+```
+
+✅ Good:
+```rust
+pub struct AccountId(u64);
+```
+
 ## Sorting
 
 ### `oneway::unsorted_struct_fields`
@@ -754,6 +787,7 @@ impl HttpClient {
 | 24 | `no_turbofish` | deny | Annotate the binding, not the call site |
 | 25 | `prefer_combinators` | warn | `.map()` / `.unwrap_or()` over `match` on Option/Result |
 | 26 | `one_constructor_name` | deny | Constructors must be called `new` |
+| 27 | `no_comments` | deny | No `//`, `/* */`, or doc comments — code is the documentation |
 
 ---
 

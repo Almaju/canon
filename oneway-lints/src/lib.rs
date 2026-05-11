@@ -59,6 +59,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut rustc_lin
     lint_store.register_early_pass(|| Box::new(safety::NoPanic));
 
     // Style
-    lint_store.register_lints(&[style::NO_GLOB_IMPORTS]);
+    lint_store.register_lints(&[style::NO_GLOB_IMPORTS, style::NO_COMMENTS]);
     lint_store.register_early_pass(|| Box::new(style::NoGlobImports));
+    lint_store.register_early_pass(|| Box::new(style::NoComments));
 }
