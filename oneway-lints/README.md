@@ -7,7 +7,7 @@
 ### `oneway::no_comments`
 **Severity:** deny
 
-Comments are forbidden — including line (`//`), block (`/* */`), and doc comments (`///`, `//!`, `/** */`, `/*! */`). Code is the documentation. If you feel the need to write one:
+Non-doc comments are forbidden — line (`//`) and block (`/* */`). Doc comments (`///`, `//!`, `/** */`, `/*! */`) are allowed because they ship to docs.rs and describe a public API contract. If you feel the need to write a narrating comment:
 
 - Rename the binding or function to be more descriptive
 - Extract a well-named helper function
@@ -24,14 +24,9 @@ let price = base * 0.9;
 let discounted_price = apply_premium_discount(base_price);
 ```
 
-❌ Bad:
+✅ Good — doc comment documenting a public API:
 ```rust
-/// The user's account ID.
-pub struct AccountId(u64);
-```
-
-✅ Good:
-```rust
+/// The user's account ID, unique across all tenants.
 pub struct AccountId(u64);
 ```
 
@@ -787,7 +782,7 @@ impl HttpClient {
 | 24 | `no_turbofish` | deny | Annotate the binding, not the call site |
 | 25 | `prefer_combinators` | warn | `.map()` / `.unwrap_or()` over `match` on Option/Result |
 | 26 | `one_constructor_name` | deny | Constructors must be called `new` |
-| 27 | `no_comments` | deny | No `//`, `/* */`, or doc comments — code is the documentation |
+| 27 | `no_comments` | deny | No `//` or `/* */` — only doc comments (`///`, `//!`, `/** */`, `/*! */`) are allowed |
 
 ---
 

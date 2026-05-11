@@ -26,12 +26,14 @@ impl EarlyLintPass for NoGlobImports {
 // ---------------------------------------------------------------------------
 
 declare_lint! {
-    /// **Deny** — comments are forbidden. Code is the documentation. Rename
-    /// the binding, extract a helper, or introduce a more precise newtype
-    /// instead of leaving a comment behind.
+    /// **Deny** — non-doc comments are forbidden. Doc comments (`///`, `//!`,
+    /// `/** */`, `/*! */`) are allowed because they ship to docs.rs and
+    /// describe a public API contract. Regular comments (`//`, `/* */`)
+    /// usually narrate code that should rename, extract, or newtype itself
+    /// into clarity instead.
     pub NO_COMMENTS,
     Deny,
-    "comments are forbidden — code should be self-documenting"
+    "non-doc comments are forbidden — rename, extract, or use a doc comment"
 }
 
 fn is_local_path(path: &std::path::Path) -> bool {
@@ -42,10 +44,10 @@ fn is_local_path(path: &std::path::Path) -> bool {
         && !s.starts_with("<")
 }
 
-/// Scan source text and return byte ranges of every line and block comment.
-/// Carefully skips comments inside string, raw-string, byte-string, and char
-/// literals.  Doc comments (`///`, `//!`, `/** */`, `/*! */`) are reported
-/// the same as regular comments — Oneway forbids all of them.
+/// Scan source text and return byte ranges of every non-doc line and block
+/// comment. Doc comments (`///`, `//!`, `/** */`, `/*! */`) are skipped so
+/// they remain available for docs.rs output. Carefully skips comments inside
+/// string, raw-string, byte-string, and char literals.
 fn find_comments(src: &str) -> Vec<(usize, usize)> {
     let bytes = src.as_bytes();
     let len = bytes.len();
@@ -141,14 +143,27 @@ fn find_comments(src: &str) -> Vec<(usize, usize)> {
             match bytes[i + 1] {
                 b'/' => {
                     let start = i;
+                    let third = bytes.get(i + 2).copied();
+                    let fourth = bytes.get(i + 3).copied();
+                    let is_outer_doc = third == Some(b'/') && fourth != Some(b'/');
+                    let is_inner_doc = third == Some(b'!');
+                    let is_doc = is_outer_doc || is_inner_doc;
                     while i < len && bytes[i] != b'\n' {
                         i += 1;
                     }
-                    out.push((start, i));
+                    if !is_doc {
+                        out.push((start, i));
+                    }
                     continue;
                 }
                 b'*' => {
                     let start = i;
+                    let third = bytes.get(i + 2).copied();
+                    let fourth = bytes.get(i + 3).copied();
+                    let is_outer_doc =
+                        third == Some(b'*') && fourth != Some(b'*') && fourth != Some(b'/');
+                    let is_inner_doc = third == Some(b'!');
+                    let is_doc = is_outer_doc || is_inner_doc;
                     i += 2;
                     let mut depth: u32 = 1;
                     while i + 1 < len && depth > 0 {
@@ -162,7 +177,9 @@ fn find_comments(src: &str) -> Vec<(usize, usize)> {
                             i += 1;
                         }
                     }
-                    out.push((start, i));
+                    if !is_doc {
+                        out.push((start, i));
+                    }
                     continue;
                 }
                 _ => {}
@@ -198,7 +215,7 @@ impl EarlyLintPass for NoComments {
                 );
                 cx.opt_span_lint(NO_COMMENTS, Some(span), |diag| {
                     diag.primary_message(
-                        "comments are forbidden — rename, extract, or introduce a newtype instead",
+                        "non-doc comment — rename, extract, or convert to a doc comment",
                     );
                 });
             }
