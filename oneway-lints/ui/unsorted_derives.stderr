@@ -1,0 +1,10 @@
+error: derive trait `Clone` should come before `Debug` (alphabetical order required)
+  --> $DIR/unsorted_derives.rs:1:1
+   |
+LL | #[derive(Debug, Clone)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[deny(unsorted_derives)]` on by default
+
+error: aborting due to 1 previous error
+

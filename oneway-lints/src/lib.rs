@@ -22,14 +22,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut rustc_lin
         sorting::UNSORTED_STRUCT_FIELDS,
         sorting::UNSORTED_ENUM_VARIANTS,
         sorting::UNSORTED_MATCH_ARMS,
-        sorting::UNSORTED_IMPORTS,
+        sorting::MOD_AFTER_USE,
         sorting::UNSORTED_IMPL_METHODS,
         sorting::UNSORTED_DERIVES,
     ]);
     lint_store.register_early_pass(|| Box::new(sorting::UnsortedStructFields));
     lint_store.register_early_pass(|| Box::new(sorting::UnsortedEnumVariants));
     lint_store.register_early_pass(|| Box::new(sorting::UnsortedMatchArms));
-    lint_store.register_early_pass(|| Box::new(sorting::UnsortedImports));
+    lint_store.register_early_pass(|| Box::new(sorting::ModAfterUse));
     lint_store.register_early_pass(|| Box::new(sorting::UnsortedImplMethods));
     lint_store.register_early_pass(|| Box::new(sorting::UnsortedDerives));
 

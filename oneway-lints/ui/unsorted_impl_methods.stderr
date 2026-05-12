@@ -1,0 +1,12 @@
+error: static method `new` must come before public method `name` (group order: static, public, private)
+  --> $DIR/unsorted_impl_methods.rs:7:5
+   |
+LL | /     pub fn new() -> Self {
+LL | |         Self
+LL | |     }
+   | |_____^
+   |
+   = note: `#[deny(unsorted_impl_methods)]` on by default
+
+error: aborting due to 1 previous error
+

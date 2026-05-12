@@ -1,0 +1,22 @@
+error: comment must declare its purpose — prefix with `WHY:`, `SAFETY:`, `NOTE:`, `HACK:`, `TODO:`, `FIXME:`, `PERF:`, or include a link or `#1234` ticket ref
+  --> $DIR/no_comments.rs:17:1
+   |
+LL | // increment by 1
+   | ^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[deny(no_comments)]` on by default
+
+error: comment must declare its purpose — prefix with `WHY:`, `SAFETY:`, `NOTE:`, `HACK:`, `TODO:`, `FIXME:`, `PERF:`, or include a link or `#1234` ticket ref
+  --> $DIR/no_comments.rs:20:1
+   |
+LL | // safety: lowercase is not allowed
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: comment must declare its purpose — prefix with `WHY:`, `SAFETY:`, `NOTE:`, `HACK:`, `TODO:`, `FIXME:`, `PERF:`, or include a link or `#1234` ticket ref
+  --> $DIR/no_comments.rs:26:1
+   |
+LL | /* this block has no label */
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 3 previous errors
+

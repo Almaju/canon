@@ -1,0 +1,10 @@
+error: enum variant `Blue` should come before `Red` (alphabetical order required)
+  --> $DIR/unsorted_enum_variants.rs:3:5
+   |
+LL |     Blue,
+   |     ^^^^
+   |
+   = note: `#[deny(unsorted_enum_variants)]` on by default
+
+error: aborting due to 1 previous error
+

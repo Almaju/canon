@@ -1,0 +1,1 @@
+/Users/ahanot/Projects/oneway/cargo-oneway/target/debug/cargo-oneway: /Users/ahanot/Projects/oneway/cargo-oneway/src/main.rs /Users/ahanot/Projects/oneway/cargo-oneway/templates/clippy.toml /Users/ahanot/Projects/oneway/cargo-oneway/templates/rustfmt.toml

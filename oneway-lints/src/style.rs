@@ -26,14 +26,15 @@ impl EarlyLintPass for NoGlobImports {
 // ---------------------------------------------------------------------------
 
 declare_lint! {
-    /// **Deny** — non-doc comments are forbidden. Doc comments (`///`, `//!`,
-    /// `/** */`, `/*! */`) are allowed because they ship to docs.rs and
-    /// describe a public API contract. Regular comments (`//`, `/* */`)
-    /// usually narrate code that should rename, extract, or newtype itself
-    /// into clarity instead.
+    /// **Deny** — non-doc comments must declare *why* they exist. Allowed:
+    /// doc comments (`///`, `//!`, `/** */`, `/*! */`), comments starting
+    /// with a label (`WHY:`, `SAFETY:`, `NOTE:`, `HACK:`, `TODO:`, `FIXME:`,
+    /// `PERF:`), and comments containing a link (`http://`, `https://`) or
+    /// ticket reference (`#1234`). Plain narrating comments like
+    /// `// increment by 1` are forbidden — rename or extract instead.
     pub NO_COMMENTS,
     Deny,
-    "non-doc comments are forbidden — rename, extract, or use a doc comment"
+    "non-doc comments must declare their purpose with a label, link, or ticket ref"
 }
 
 fn is_local_path(path: &std::path::Path) -> bool {
@@ -192,6 +193,80 @@ fn find_comments(src: &str) -> Vec<(usize, usize)> {
     out
 }
 
+const ALLOWED_LABELS: &[&str] = &[
+    "FIXME", "HACK", "NOTE", "PERF", "SAFETY", "TODO", "WHY",
+];
+
+/// Returns true if the given line of comment content carries a label, link,
+/// or ticket reference that justifies the comment's existence.
+fn line_is_justified(line: &str) -> bool {
+    let trimmed = line
+        .trim_start_matches(|c: char| c == '/' || c == '*')
+        .trim_start();
+
+    for label in ALLOWED_LABELS {
+        if let Some(rest) = trimmed.strip_prefix(label) {
+            if rest.starts_with(':') {
+                return true;
+            }
+        }
+    }
+
+    if trimmed.contains("http://") || trimmed.contains("https://") {
+        return true;
+    }
+
+    let bytes = trimmed.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'#' && bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// True if `a` (a `//` line comment) and `b` (the next comment) are part of
+/// the same logical comment block: they sit on adjacent lines with only
+/// whitespace before the second `//`.
+fn line_comments_are_consecutive(src: &str, a_end: usize, b_start: usize) -> bool {
+    let bytes = src.as_bytes();
+    if a_end >= b_start || bytes.get(a_end) != Some(&b'\n') {
+        return false;
+    }
+    bytes[a_end + 1..b_start]
+        .iter()
+        .all(|&c| c == b' ' || c == b'\t')
+}
+
+fn is_block_comment(src: &str, lo: usize) -> bool {
+    src.as_bytes().get(lo..lo + 2) == Some(b"/*")
+}
+
+/// Group consecutive `//` line comments into logical comment blocks.
+/// Block comments (`/* */`) are always their own group.
+fn group_comments(src: &str, comments: &[(usize, usize)]) -> Vec<Vec<(usize, usize)>> {
+    let mut groups: Vec<Vec<(usize, usize)>> = Vec::new();
+    for &range in comments {
+        let (lo, _) = range;
+        let block = is_block_comment(src, lo);
+        let extend = !block
+            && groups
+                .last()
+                .and_then(|g| g.last().copied())
+                .is_some_and(|(prev_lo, prev_hi)| {
+                    !is_block_comment(src, prev_lo)
+                        && line_comments_are_consecutive(src, prev_hi, lo)
+                });
+        if extend {
+            groups.last_mut().unwrap().push(range);
+        } else {
+            groups.push(vec![range]);
+        }
+    }
+    groups
+}
+
 pub struct NoComments;
 impl_lint_pass!(NoComments => [NO_COMMENTS]);
 
@@ -208,14 +283,25 @@ impl EarlyLintPass for NoComments {
             }
             let Some(src) = file.src.as_ref() else { continue };
             let base = file.start_pos;
-            for (lo, hi) in find_comments(src) {
+            let comments = find_comments(src);
+            for group in group_comments(src, &comments) {
+                let group_text: String = group
+                    .iter()
+                    .map(|&(lo, hi)| &src[lo..hi])
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if group_text.lines().any(line_is_justified) {
+                    continue;
+                }
+                let (lo, _) = group[0];
+                let (_, hi) = *group.last().unwrap();
                 let span = Span::with_root_ctxt(
                     base + BytePos(lo as u32),
                     base + BytePos(hi as u32),
                 );
                 cx.opt_span_lint(NO_COMMENTS, Some(span), |diag| {
                     diag.primary_message(
-                        "non-doc comment — rename, extract, or convert to a doc comment",
+                        "comment must declare its purpose — prefix with `WHY:`, `SAFETY:`, `NOTE:`, `HACK:`, `TODO:`, `FIXME:`, `PERF:`, or include a link or `#1234` ticket ref",
                     );
                 });
             }

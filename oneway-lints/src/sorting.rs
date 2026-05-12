@@ -26,16 +26,6 @@ fn emit_lint(cx: &EarlyContext<'_>, lint: &'static rustc_lint::Lint, span: Span,
     });
 }
 
-/// Build a sort key from a `UseTree` by joining its path segments.
-fn use_tree_sort_key(tree: &ast::UseTree) -> String {
-    tree.prefix
-        .segments
-        .iter()
-        .map(|s| s.ident.name.to_string())
-        .collect::<Vec<_>>()
-        .join("::")
-}
-
 // ---------------------------------------------------------------------------
 // 1. UNSORTED_STRUCT_FIELDS
 // ---------------------------------------------------------------------------
@@ -134,8 +124,9 @@ impl_lint_pass!(UnsortedMatchArms => [UNSORTED_MATCH_ARMS]);
 
 impl EarlyLintPass for UnsortedMatchArms {
     fn check_expr(&mut self, cx: &EarlyContext<'_>, expr: &ast::Expr) {
-        // ExprKind::Match may have 2 or 3 fields depending on the nightly
-        // version; the trailing `..` handles both.
+        if expr.span.from_expansion() {
+            return;
+        }
         if let ast::ExprKind::Match(_, ref arms, ..) = expr.kind {
             if arms.len() < 2 {
                 return;
@@ -191,96 +182,55 @@ impl EarlyLintPass for UnsortedMatchArms {
 }
 
 // ---------------------------------------------------------------------------
-// 4. UNSORTED_IMPORTS
+// 4. MOD_AFTER_USE
 // ---------------------------------------------------------------------------
 
 declare_lint! {
-    /// **Deny** — `use` statements must be in alphabetical order within each
-    /// group, and items inside braced use trees must also be sorted.
-    pub UNSORTED_IMPORTS,
+    /// **Deny** — every `mod` declaration in a module must appear before any
+    /// `use` statement in that module. `cargo fmt` already orders `use`
+    /// statements alphabetically, but it does not enforce the mod/use split.
+    pub MOD_AFTER_USE,
     Deny,
-    "use statements must be in alphabetical order"
+    "`mod` declarations must precede `use` statements"
 }
 
-pub struct UnsortedImports;
-impl_lint_pass!(UnsortedImports => [UNSORTED_IMPORTS]);
+pub struct ModAfterUse;
+impl_lint_pass!(ModAfterUse => [MOD_AFTER_USE]);
 
-/// Check consecutive `use` items in a list of items and return diagnostics
-/// for any that are out of order.  Generic over the smart-pointer type
-/// wrapping `ast::Item` (works with `Box<Item>`, `P<Item>`, etc.).
-fn check_consecutive_uses<T: std::ops::Deref<Target = ast::Item>>(
+fn check_mod_after_use<T: std::ops::Deref<Target = ast::Item>>(
+    cx: &EarlyContext<'_>,
     items: &[T],
-) -> Vec<(Span, String)> {
-    let mut prev: Option<(String, Span)> = None;
-    let mut diagnostics = Vec::new();
-
+) {
+    let mut seen_use = false;
     for item in items.iter() {
-        if let ast::ItemKind::Use(ref use_tree) = item.kind {
-            let key = use_tree_sort_key(use_tree);
-            if let Some((ref prev_key, _)) = prev {
-                if key < *prev_key {
-                    diagnostics.push((
-                        item.span,
-                        format!(
-                            "import `{key}` should come before `{prev_key}` (alphabetical order required)"
-                        ),
-                    ));
-                }
-            }
-            prev = Some((key, item.span));
-        } else {
-            // A non-use item resets the consecutive group.
-            prev = None;
+        if item.span.from_expansion() {
+            continue;
         }
-    }
-    diagnostics
-}
-
-/// Recursively check that children of braced use trees are sorted
-/// (e.g. `use std::{io, fmt}` should be `use std::{fmt, io}`).
-fn check_use_tree_children(cx: &EarlyContext<'_>, tree: &ast::UseTree) {
-    // UseTreeKind::Nested is a struct variant: Nested { items, span }.
-    if let ast::UseTreeKind::Nested { ref items, .. } = tree.kind {
-        let names: Vec<String> = items.iter().map(|(t, _)| use_tree_sort_key(t)).collect();
-        if names.len() >= 2 {
-            if let Some((idx, prev, curr)) = first_unsorted(&names) {
+        match item.kind {
+            ast::ItemKind::Use(_) => {
+                seen_use = true;
+            }
+            ast::ItemKind::Mod(..) if seen_use => {
                 emit_lint(
                     cx,
-                    UNSORTED_IMPORTS,
-                    items[idx].0.span,
-                    format!(
-                        "import `{curr}` should come before `{prev}` in use group (alphabetical order required)"
-                    ),
+                    MOD_AFTER_USE,
+                    item.span,
+                    "`mod` declaration must come before any `use` statement".to_string(),
                 );
             }
-        }
-        // Recurse into each nested subtree.
-        for (subtree, _) in items.iter() {
-            check_use_tree_children(cx, subtree);
+            _ => {}
         }
     }
 }
 
-impl EarlyLintPass for UnsortedImports {
+impl EarlyLintPass for ModAfterUse {
     fn check_crate(&mut self, cx: &EarlyContext<'_>, krate: &ast::Crate) {
-        // Check ordering of consecutive `use` statements at the crate root.
-        for (span, msg) in check_consecutive_uses(&krate.items) {
-            emit_lint(cx, UNSORTED_IMPORTS, span, msg);
-        }
+        check_mod_after_use(cx, &krate.items);
     }
 
     fn check_item(&mut self, cx: &EarlyContext<'_>, item: &ast::Item) {
-        // Check nested use-tree groups (e.g. `use std::{B, A}`).
-        if let ast::ItemKind::Use(ref use_tree) = item.kind {
-            check_use_tree_children(cx, use_tree);
-        }
-
-        // Check consecutive use statements inside `mod` blocks.
-        // ItemKind::Mod is now Mod(Safety, Ident, ModKind).
         if let ast::ItemKind::Mod(_, _, ast::ModKind::Loaded(ref items, ..)) = item.kind {
-            for (span, msg) in check_consecutive_uses(items) {
-                emit_lint(cx, UNSORTED_IMPORTS, span, msg);
-            }
+            check_mod_after_use(cx, items);
         }
     }
 }
@@ -290,52 +240,111 @@ impl EarlyLintPass for UnsortedImports {
 // ---------------------------------------------------------------------------
 
 declare_lint! {
-    /// **Deny** — methods within an `impl` block must be alphabetically sorted.
+    /// **Deny** — methods within an `impl` block must be grouped as
+    /// (1) constructors / static methods, (2) public methods, (3) private
+    /// methods, and alphabetically sorted within each group.
     pub UNSORTED_IMPL_METHODS,
     Deny,
-    "methods within an impl block must be alphabetically sorted"
+    "impl methods must be grouped (static, public, private) and sorted alphabetically within each group"
 }
 
 pub struct UnsortedImplMethods;
 impl_lint_pass!(UnsortedImplMethods => [UNSORTED_IMPL_METHODS]);
 
-/// Try to extract the function/method name from an `AssocItemKind`.
-/// Returns `Some(name)` for function items, `None` for others.
-fn assoc_fn_name(kind: &ast::AssocItemKind) -> Option<String> {
-    // In this nightly, Item no longer has an `ident` field — the name is
-    // embedded in the kind-specific inner struct.  For functions, the `Fn`
-    // struct (or `AssocItemKind::Fn` tuple) should carry an `ident`.
-    if let ast::AssocItemKind::Fn(ref fn_box) = kind {
-        // ast::Fn may have an `ident` field in this nightly.
-        Some(fn_box.ident.name.to_string())
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum MethodGroup {
+    Static = 0,
+    Public = 1,
+    Private = 2,
+}
+
+impl MethodGroup {
+    fn label(self) -> &'static str {
+        match self {
+            MethodGroup::Static => "static",
+            MethodGroup::Public => "public",
+            MethodGroup::Private => "private",
+        }
+    }
+}
+
+fn classify_fn(fn_box: &ast::Fn, vis: &ast::Visibility) -> MethodGroup {
+    let has_self = fn_box
+        .sig
+        .decl
+        .inputs
+        .first()
+        .is_some_and(|p| p.is_self());
+    if !has_self {
+        MethodGroup::Static
+    } else if matches!(
+        vis.kind,
+        ast::VisibilityKind::Public | ast::VisibilityKind::Restricted { .. }
+    ) {
+        MethodGroup::Public
     } else {
-        None
+        MethodGroup::Private
     }
 }
 
 impl EarlyLintPass for UnsortedImplMethods {
     fn check_item(&mut self, cx: &EarlyContext<'_>, item: &ast::Item) {
         if let ast::ItemKind::Impl(ref impl_block) = item.kind {
-            let methods: Vec<(String, Span)> = impl_block
+            let methods: Vec<(String, MethodGroup, Span)> = impl_block
                 .items
                 .iter()
-                .filter_map(|assoc| assoc_fn_name(&assoc.kind).map(|name| (name, assoc.span)))
+                .filter_map(|assoc| {
+                    if let ast::AssocItemKind::Fn(ref fn_box) = assoc.kind {
+                        let name = fn_box.ident.name.to_string();
+                        let group = classify_fn(fn_box, &assoc.vis);
+                        Some((name, group, assoc.span))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
 
             if methods.len() < 2 {
                 return;
             }
 
-            let names: Vec<String> = methods.iter().map(|(n, _)| n.clone()).collect();
-            if let Some((idx, prev, curr)) = first_unsorted(&names) {
-                emit_lint(
-                    cx,
-                    UNSORTED_IMPL_METHODS,
-                    methods[idx].1,
-                    format!(
-                        "impl method `{curr}` should come before `{prev}` (alphabetical order required)"
-                    ),
-                );
+            for w in methods.windows(2) {
+                let (prev_name, prev_group, _) = &w[0];
+                let (curr_name, curr_group, curr_span) = &w[1];
+                if curr_group < prev_group {
+                    emit_lint(
+                        cx,
+                        UNSORTED_IMPL_METHODS,
+                        *curr_span,
+                        format!(
+                            "{} method `{curr_name}` must come before {} method `{prev_name}` (group order: static, public, private)",
+                            curr_group.label(),
+                            prev_group.label(),
+                        ),
+                    );
+                    return;
+                }
+            }
+
+            for group in [MethodGroup::Static, MethodGroup::Public, MethodGroup::Private] {
+                let in_group: Vec<(String, Span)> = methods
+                    .iter()
+                    .filter(|(_, g, _)| *g == group)
+                    .map(|(n, _, s)| (n.clone(), *s))
+                    .collect();
+                let names: Vec<String> = in_group.iter().map(|(n, _)| n.clone()).collect();
+                if let Some((idx, prev, curr)) = first_unsorted(&names) {
+                    emit_lint(
+                        cx,
+                        UNSORTED_IMPL_METHODS,
+                        in_group[idx].1,
+                        format!(
+                            "{} method `{curr}` should come before `{prev}` (alphabetical within group)",
+                            group.label(),
+                        ),
+                    );
+                    return;
+                }
             }
         }
     }
@@ -356,42 +365,86 @@ declare_lint! {
 pub struct UnsortedDerives;
 impl_lint_pass!(UnsortedDerives => [UNSORTED_DERIVES]);
 
-/// Extract trait names from a `#[derive(Trait1, Trait2, ...)]` source snippet.
-fn extract_derive_names(snippet: &str) -> Vec<String> {
-    let s = snippet.trim();
-    if let Some(start) = s.find('(') {
-        if let Some(end) = s.rfind(')') {
-            let inner = &s[start + 1..end];
-            return inner
-                .split(',')
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-                .collect();
+fn is_local_source_path(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy();
+    !s.contains("/.cargo/")
+        && !s.contains("/.rustup/")
+        && !s.contains("/rustlib/")
+        && !s.starts_with("<")
+}
+
+/// Find every `#[derive(...)]` attribute in `src` and return its
+/// `(open_bracket, close_bracket_inclusive_end)` byte range plus the
+/// inner traits list (raw, untrimmed) for sort-checking.
+fn find_derive_attrs(src: &str) -> Vec<(usize, usize, String)> {
+    let bytes = src.as_bytes();
+    let needle = b"#[derive(";
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + needle.len() <= bytes.len() {
+        if &bytes[i..i + needle.len()] == needle {
+            let start = i;
+            let mut j = i + needle.len();
+            let mut depth: i32 = 1;
+            while j < bytes.len() && depth > 0 {
+                match bytes[j] {
+                    b'(' => depth += 1,
+                    b')' => depth -= 1,
+                    _ => {}
+                }
+                j += 1;
+            }
+            if depth == 0 && j < bytes.len() && bytes[j] == b']' {
+                let inner_start = i + needle.len();
+                let inner_end = j - 1;
+                let inner = &src[inner_start..inner_end];
+                out.push((start, j + 1, inner.to_string()));
+                i = j + 1;
+                continue;
+            }
         }
+        i += 1;
     }
-    Vec::new()
+    out
 }
 
 impl EarlyLintPass for UnsortedDerives {
-    fn check_item(&mut self, cx: &EarlyContext<'_>, item: &ast::Item) {
-        for attr in &item.attrs {
-            if attr.has_name(rustc_span::symbol::sym::derive) {
-                let source_map = cx.sess().source_map();
-                if let Ok(snippet) = source_map.span_to_snippet(attr.span) {
-                    let names = extract_derive_names(&snippet);
-                    if names.len() < 2 {
-                        continue;
-                    }
-                    if let Some((_idx, prev, curr)) = first_unsorted(&names) {
-                        emit_lint(
-                            cx,
-                            UNSORTED_DERIVES,
-                            attr.span,
-                            format!(
-                                "derive trait `{curr}` should come before `{prev}` (alphabetical order required)"
-                            ),
-                        );
-                    }
+    fn check_crate(&mut self, cx: &EarlyContext<'_>, _krate: &ast::Crate) {
+        let source_map = cx.sess().source_map();
+        for file in source_map.files().iter() {
+            let path = match &file.name {
+                rustc_span::FileName::Real(real) => real.local_path_if_available().to_path_buf(),
+                _ => continue,
+            };
+            if !is_local_source_path(&path) {
+                continue;
+            }
+            let Some(src) = file.src.as_ref() else {
+                continue;
+            };
+            let base = file.start_pos;
+            for (lo, hi, inner) in find_derive_attrs(src) {
+                let names: Vec<String> = inner
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if names.len() < 2 {
+                    continue;
+                }
+                if let Some((_idx, prev, curr)) = first_unsorted(&names) {
+                    let span = Span::with_root_ctxt(
+                        base + rustc_span::BytePos(lo as u32),
+                        base + rustc_span::BytePos(hi as u32),
+                    );
+                    emit_lint(
+                        cx,
+                        UNSORTED_DERIVES,
+                        span,
+                        format!(
+                            "derive trait `{curr}` should come before `{prev}` (alphabetical order required)"
+                        ),
+                    );
                 }
             }
         }
