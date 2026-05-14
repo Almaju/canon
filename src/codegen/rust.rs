@@ -9,7 +9,7 @@ fn is_suspending_capability(name: &str) -> bool {
 }
 
 const CAPABILITY_TYPES: &[&str] = &[
-    "Clock", "Filesystem", "HttpClient", "Network", "Random", "Stderr", "Stdin", "Stdout",
+    "Clock", "Filesystem", "HttpClient", "Json", "Network", "Random", "Stderr", "Stdin", "Stdout",
 ];
 
 fn is_capability_type(name: &str) -> bool {
@@ -197,24 +197,17 @@ impl Codegen {
     }
 
     fn emit_type_def(&self, out: &mut String, td: &TypeDef) {
-        if !td.generic_params.is_empty() {
-            let _ = writeln!(
-                out,
-                "// Skipping generic type `{}` for now (TODO).",
-                td.name.name
-            );
-            return;
-        }
-
         if td.name.name == "Bool" && self.bool_declared {
             let _ = writeln!(out, "// Bool is mapped to Rust's `bool` primitive.");
             return;
         }
 
+        let generic_str = render_generic_params(&td.generic_params);
+
         match &td.body {
             TypeExpr::Union { variants, .. } if all_simple_named(variants) => {
                 let _ = writeln!(out, "#[allow(non_camel_case_types, dead_code)]");
-                let _ = writeln!(out, "pub enum {} {{", td.name.name);
+                let _ = writeln!(out, "pub enum {}{} {{", td.name.name, generic_str);
                 for v in variants {
                     if let TypeExpr::Named { name, .. } = v {
                         let _ = writeln!(out, "    {},", name);
@@ -224,7 +217,7 @@ impl Codegen {
             }
             TypeExpr::Product { fields, .. } if all_simple_named(fields) => {
                 let _ = writeln!(out, "#[allow(non_snake_case, dead_code)]");
-                let _ = writeln!(out, "pub struct {} {{", td.name.name);
+                let _ = writeln!(out, "pub struct {}{} {{", td.name.name, generic_str);
                 for f in fields {
                     if let TypeExpr::Named { name, .. } = f {
                         let _ = writeln!(out, "    pub {}: {},", lower_first(name), name);
@@ -234,24 +227,39 @@ impl Codegen {
             }
             TypeExpr::Named { name, generics, .. } => {
                 if let Some(rust_path) = name.strip_prefix("__extern__") {
-                    let _ = writeln!(out, "pub type {} = {};", td.name.name, rust_path);
+                    let _ = writeln!(
+                        out,
+                        "pub type {}{} = {};",
+                        td.name.name, generic_str, rust_path
+                    );
                 } else {
                     let rendered = render_named_type(name, generics);
                     let _ = writeln!(out, "#[allow(dead_code)]");
-                    let _ = writeln!(out, "pub struct {}(pub {});", td.name.name, rendered);
+                    let _ = writeln!(
+                        out,
+                        "pub struct {}{}(pub {});",
+                        td.name.name, generic_str, rendered
+                    );
                 }
             }
             TypeExpr::Repeat { ty, count, .. } => {
                 let _ = writeln!(
                     out,
-                    "pub type {} = [{}; {}];",
+                    "pub type {}{} = [{}; {}];",
                     td.name.name,
+                    generic_str,
                     render_type(ty),
                     count
                 );
             }
             TypeExpr::Spread { ty, .. } => {
-                let _ = writeln!(out, "pub type {} = Vec<{}>;", td.name.name, render_type(ty));
+                let _ = writeln!(
+                    out,
+                    "pub type {}{} = Vec<{}>;",
+                    td.name.name,
+                    generic_str,
+                    render_type(ty)
+                );
             }
             _ => {
                 let _ = writeln!(
@@ -305,7 +313,12 @@ impl Codegen {
             .async_methods
             .contains(&(recv.to_string(), func.name.name.clone()));
         let async_kw = if is_async { "async " } else { "" };
-        let _ = write!(out, "    pub {}fn {}(&self", async_kw, func.name.name);
+        let generic_str = render_generic_params(&func.generic_params);
+        let _ = write!(
+            out,
+            "    pub {}fn {}{}(&self",
+            async_kw, func.name.name, generic_str
+        );
         for (i, param) in func.params.iter().enumerate() {
             let _ = write!(out, ", arg{}: {}", i, render_type(&param.ty));
         }
@@ -394,14 +407,22 @@ impl Codegen {
             Expr::MethodCall {
                 receiver,
                 method,
+                type_args,
                 args,
                 ..
             } => {
-                if let Some(rust) = self.try_emit_builtin_method(receiver, method, args) {
+                if let Some(rust) =
+                    self.try_emit_builtin_method(receiver, method, type_args, args)
+                {
                     out.push_str(&rust);
                 } else {
                     self.emit_expr(out, receiver);
-                    let _ = write!(out, ".{}(", method.name);
+                    let _ = write!(out, ".{}", method.name);
+                    if !type_args.is_empty() {
+                        out.push_str("::");
+                        out.push_str(&render_type_args(type_args));
+                    }
+                    out.push('(');
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
                             out.push_str(", ");
@@ -482,10 +503,11 @@ impl Codegen {
         &self,
         receiver: &Expr,
         method: &Ident,
+        type_args: &[TypeExpr],
         args: &[Expr],
     ) -> Option<String> {
         if let Some(extern_method) = self.lookup_extern_method(receiver, &method.name) {
-            let mut s = self.emit_extern_call(&extern_method.path, receiver, args);
+            let mut s = self.emit_extern_call(&extern_method.path, receiver, type_args, args);
             if extern_method.is_async {
                 s.push_str(".await");
             }
@@ -553,11 +575,22 @@ impl Codegen {
             .cloned()
     }
 
-    fn emit_extern_call(&self, rust_path: &str, receiver: &Expr, args: &[Expr]) -> String {
+    fn emit_extern_call(
+        &self,
+        rust_path: &str,
+        receiver: &Expr,
+        type_args: &[TypeExpr],
+        args: &[Expr],
+    ) -> String {
+        let turbofish = if type_args.is_empty() {
+            String::new()
+        } else {
+            format!("::{}", render_type_args(type_args))
+        };
         if let Some(method) = rust_path.strip_prefix('.') {
             let mut s = String::new();
             self.emit_expr(&mut s, receiver);
-            let _ = write!(s, ".{}(", method);
+            let _ = write!(s, ".{}{}(", method, turbofish);
             for (i, arg) in args.iter().enumerate() {
                 if i > 0 {
                     s.push_str(", ");
@@ -571,9 +604,9 @@ impl Codegen {
         let path = rust_path.trim_end_matches('!');
         let mut s = String::new();
         if is_macro {
-            let _ = write!(s, "{}!(", path);
+            let _ = write!(s, "{}!{}(", path, turbofish);
         } else {
-            let _ = write!(s, "{}(", path);
+            let _ = write!(s, "{}{}(", path, turbofish);
         }
         let receiver_is_capability = is_capability_receiver(receiver);
         let mut first = true;
@@ -653,6 +686,38 @@ fn all_simple_named(items: &[TypeExpr]) -> bool {
     items
         .iter()
         .all(|t| matches!(t, TypeExpr::Named { generics, .. } if generics.is_empty()))
+}
+
+fn render_generic_params(params: &[GenericParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = params
+        .iter()
+        .map(|p| match &p.bound {
+            Some(TypeExpr::Named { name, .. }) => {
+                format!("{}: {}", p.name.name, render_trait_bound(name))
+            }
+            _ => p.name.name.clone(),
+        })
+        .collect();
+    format!("<{}>", parts.join(", "))
+}
+
+fn render_trait_bound(name: &str) -> String {
+    match name {
+        "Deserialize" => "serde::de::DeserializeOwned".to_string(),
+        "Serialize" => "serde::Serialize".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn render_type_args(type_args: &[TypeExpr]) -> String {
+    if type_args.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = type_args.iter().map(render_type).collect();
+    format!("<{}>", parts.join(", "))
 }
 
 fn render_type(ty: &TypeExpr) -> String {
@@ -773,9 +838,12 @@ fn static_type_of_with(
                     return static_type_of_with(&args[0], extern_methods);
                 }
             }
-            // For a Result<T, E>?, the unwrapped type is T (the first generic).
+            // For a Result<T, E>?, the unwrapped type is T.
             if let Expr::MethodCall {
-                receiver, method, ..
+                receiver,
+                method,
+                type_args,
+                ..
             } = &**inner
             {
                 if let Some(em) = extern_methods {
@@ -783,6 +851,12 @@ fn static_type_of_with(
                     if let Some(info) = em.get(&(recv_ty, method.name.clone())) {
                         if let TypeExpr::Named { name, generics, .. } = &info.return_ty {
                             if (name == "Result" || name == "Option") && !generics.is_empty() {
+                                // Prefer the call-site turbofish type if provided.
+                                if !type_args.is_empty() {
+                                    if let TypeExpr::Named { name, .. } = &type_args[0] {
+                                        return name.clone();
+                                    }
+                                }
                                 if let Some(inner_name) = generics[0].simple_name() {
                                     return inner_name.to_string();
                                 }
@@ -869,11 +943,17 @@ fn compute_async_sets(
 }
 
 fn has_suspending_param(params: &[Param]) -> bool {
-    params.iter().any(|p| {
-        p.ty.simple_name()
-            .map(is_suspending_capability)
-            .unwrap_or(false)
-    })
+    params.iter().any(|p| ty_mentions_suspending(&p.ty))
+}
+
+fn ty_mentions_suspending(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Named { name, generics, .. } if generics.is_empty() => {
+            is_suspending_capability(name)
+        }
+        TypeExpr::Product { fields, .. } => fields.iter().any(ty_mentions_suspending),
+        _ => false,
+    }
 }
 
 fn body_calls_async_extern(

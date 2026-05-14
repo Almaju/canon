@@ -1,0 +1,5 @@
+extern Rust("serde_json::Error")
+JsonError
+
+extern Rust("oneway_json_parse")
+Json.parse = <T: Deserialize>(String) -> Result<T, JsonError>

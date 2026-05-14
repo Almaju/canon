@@ -492,6 +492,22 @@ impl Parser {
                     name: method_tok.lexeme.clone(),
                     span: method_tok.span,
                 };
+                let mut type_args = Vec::new();
+                if self.check(TokenKind::ColonColon) {
+                    self.advance();
+                    self.expect(TokenKind::Lt, "expected `<` after `::` in turbofish")?;
+                    if !self.check(TokenKind::Gt) {
+                        loop {
+                            type_args.push(self.parse_type_expr()?);
+                            if self.check(TokenKind::Comma) {
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(TokenKind::Gt, "expected `>` to close turbofish type arguments")?;
+                }
                 self.expect(TokenKind::LParen, "expected `(` after method name")?;
                 let mut args = Vec::new();
                 if !self.check(TokenKind::RParen) {
@@ -510,6 +526,7 @@ impl Parser {
                 expr = Expr::MethodCall {
                     receiver: Box::new(expr),
                     method,
+                    type_args,
                     args,
                     span: span_join(start_span, rparen.span),
                 };

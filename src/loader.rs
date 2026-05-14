@@ -67,6 +67,23 @@ const STDLIB: &[StdlibEntry] = &[
         ],
         rust_prelude: Some(include_str!("../std/http_client.rs")),
     },
+    StdlibEntry {
+        name: "Json",
+        source: include_str!("../std/json.ow"),
+        cargo_deps: &[
+            CargoDep {
+                name: "serde",
+                version: "1",
+                features: &["derive"],
+            },
+            CargoDep {
+                name: "serde_json",
+                version: "1",
+                features: &[],
+            },
+        ],
+        rust_prelude: Some(include_str!("../std/json.rs")),
+    },
 ];
 
 fn stdlib_entry(name: &str) -> Option<&'static StdlibEntry> {

@@ -3,12 +3,12 @@ use crate::error::OnewayError;
 use std::collections::{HashMap, HashSet};
 
 const BUILTIN_TYPES: &[&str] = &[
-    "Clock", "Filesystem", "Float", "Hex", "HttpClient", "Int", "Network", "Noop", "Off", "On",
-    "Random", "Self", "Stderr", "Stdin", "Stdout", "String",
+    "Clock", "Deserialize", "Filesystem", "Float", "Hex", "HttpClient", "Int", "Json", "Network",
+    "Noop", "Off", "On", "Random", "Self", "Serialize", "Stderr", "Stdin", "Stdout", "String",
 ];
 
 const CAPABILITY_TYPES: &[&str] = &[
-    "Clock", "Filesystem", "HttpClient", "Network", "Random", "Stderr", "Stdin", "Stdout",
+    "Clock", "Filesystem", "HttpClient", "Json", "Network", "Random", "Stderr", "Stdin", "Stdout",
 ];
 
 fn is_capability_type(name: &str) -> bool {
@@ -61,40 +61,8 @@ pub fn check(module: &Module) -> Vec<OnewayError> {
 }
 
 fn check_ordering(module: &Module, errors: &mut Vec<OnewayError>) {
-    // Each type def's union variants and product fields must be alphabetical.
-    for item in &module.items {
-        if let Item::TypeDef(td) = item {
-            match &td.body {
-                TypeExpr::Union { variants, .. } => {
-                    let names: Vec<(&str, crate::error::Span)> = variants
-                        .iter()
-                        .filter_map(|v| {
-                            if let TypeExpr::Named { name, span, .. } = v {
-                                Some((name.as_str(), *span))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    check_sorted_named("union variant", &names, errors);
-                }
-                TypeExpr::Product { fields, .. } => {
-                    let names: Vec<(&str, crate::error::Span)> = fields
-                        .iter()
-                        .filter_map(|f| {
-                            if let TypeExpr::Named { name, span, .. } = f {
-                                Some((name.as_str(), *span))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    check_sorted_named("product field", &names, errors);
-                }
-                _ => {}
-            }
-        }
-    }
+    // Union variants and product fields are checked in check_type_expr (covers
+    // every position they appear in, not just top-level TypeDef bodies).
 
     // Methods on the same receiver type must be declared alphabetically.
     let mut methods_per_receiver: HashMap<String, Vec<(String, crate::error::Span)>> =
@@ -344,11 +312,33 @@ fn check_type_expr(
             }
         }
         TypeExpr::Union { variants, .. } => {
+            let names: Vec<(&str, crate::error::Span)> = variants
+                .iter()
+                .filter_map(|v| {
+                    if let TypeExpr::Named { name, span, .. } = v {
+                        Some((name.as_str(), *span))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            check_sorted_named("union variant", &names, errors);
             for v in variants {
                 check_type_expr(v, symbols, generic_scope, errors);
             }
         }
         TypeExpr::Product { fields, .. } => {
+            let names: Vec<(&str, crate::error::Span)> = fields
+                .iter()
+                .filter_map(|f| {
+                    if let TypeExpr::Named { name, span, .. } = f {
+                        Some((name.as_str(), *span))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            check_sorted_named("product field", &names, errors);
             for f in fields {
                 check_type_expr(f, symbols, generic_scope, errors);
             }
@@ -383,11 +373,10 @@ struct ExprScope {
 
 impl ExprScope {
     fn from_function(func: &FunctionDef) -> Self {
-        let mut names: Vec<String> = func
-            .params
-            .iter()
-            .filter_map(|p| p.ty.simple_name().map(|s| s.to_string()))
-            .collect();
+        let mut names: Vec<String> = Vec::new();
+        for p in &func.params {
+            push_param_names(&p.ty, &mut names);
+        }
         if let Some(recv) = &func.receiver {
             names.push(recv.name.clone());
         }
@@ -396,6 +385,20 @@ impl ExprScope {
 
     fn contains(&self, name: &str) -> bool {
         self.names.iter().any(|n| n == name)
+    }
+}
+
+fn push_param_names(ty: &TypeExpr, names: &mut Vec<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } if generics.is_empty() => {
+            names.push(name.clone());
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                push_param_names(f, names);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -492,12 +495,17 @@ fn check_expr(
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             span,
         } => {
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
+            }
+            let empty_generic_scope: HashSet<String> = HashSet::new();
+            for ta in type_args {
+                check_type_expr(ta, symbols, &empty_generic_scope, errors);
             }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             let known = is_known_method(&recv_ty, &method.name, args.len())
@@ -579,9 +587,7 @@ fn check_expr(
                 names: scope.names.clone(),
             };
             for param in params {
-                if let Some(name) = param.ty.simple_name() {
-                    inner_scope.names.push(name.to_string());
-                }
+                push_param_names(&param.ty, &mut inner_scope.names);
             }
             for expr in &body.exprs {
                 check_expr(expr, &inner_scope, symbols, errors);

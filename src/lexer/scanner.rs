@@ -74,7 +74,15 @@ impl<'a> Scanner<'a> {
             b'|' => self.single(TokenKind::Pipe, "|"),
             b'&' => self.single(TokenKind::Amp, "&"),
             b',' => self.single(TokenKind::Comma, ","),
-            b':' => self.single(TokenKind::Colon, ":"),
+            b':' => {
+                if self.peek_byte(1) == Some(b':') {
+                    self.pos += 2;
+                    self.column += 2;
+                    (TokenKind::ColonColon, "::".to_string())
+                } else {
+                    self.single(TokenKind::Colon, ":")
+                }
+            }
             b'?' => self.single(TokenKind::Question, "?"),
             b'*' => self.single(TokenKind::Star, "*"),
             b'=' => {
