@@ -1,8 +1,16 @@
 // Oneway syntax highlighting for mdBook.
 //
-// mdBook ships a small highlight.js bundle. This file registers an extra
-// `oneway` language on top of it and re-highlights any code block tagged
-// with ```oneway` (or ```ow`).
+// mdBook's `book.js` highlights every `<code>` block via
+// `hljs.highlightBlock` immediately on script load, BEFORE additional-js
+// files (like this one) execute. By the time we register the `oneway`
+// language, mdBook has already run hljs over the blocks with the
+// language missing — they end up un-highlighted.
+//
+// The fix: register `oneway`, then re-highlight any block tagged
+// `language-oneway` (or `language-ow`) using `hljs.highlight(name, code)`
+// directly. We replace `innerHTML` ourselves rather than going through
+// `highlightBlock`, which avoids the auto-detection / no-highlight
+// short-circuit hljs 10.x applies to already-processed blocks.
 
 (function () {
     function defineOneway(hljs) {
@@ -12,9 +20,11 @@
             keywords: {
                 keyword: 'match mut use Self impl extern while for',
                 type:
-                    'Bit Bool Byte Bytes Clock Empty Filesystem Float Hex ' +
-                    'Int List Map Network Noop Option Ord Path Random Result ' +
-                    'Self Stderr Stdin Stdout String',
+                    'Bit Bool Byte Bytes Clock Datetime Empty Filesystem ' +
+                    'Float Hex HttpClient HttpServer HttpError InvalidUrl ' +
+                    'IoError Int Json List Map MalformedJson Network Noop ' +
+                    'Option Ord Path Random Result Stderr Stdin Stdout ' +
+                    'String Url',
                 literal:
                     'False True Off On None Some Ok Err ' +
                     'Equal Greater Less Noop',
@@ -36,7 +46,8 @@
                     ]
                 },
                 {
-                    // Trait/type identifiers (PascalCase)
+                    // Trait/type identifiers (PascalCase) — anything not
+                    // already in the keyword/type/literal table.
                     className: 'type',
                     begin: '\\b[A-Z][A-Za-z0-9_]*\\b'
                 },
@@ -46,9 +57,9 @@
                     begin: '\\*[a-z][A-Za-z0-9_]*'
                 },
                 {
-                    // Arrows and propagation
+                    // Arrows + propagation + turbofish + spread
                     className: 'operator',
-                    begin: '(->|=>|\\?|\\.\\.\\.)'
+                    begin: '(->|=>|::<|\\?|\\.\\.\\.)'
                 }
             ]
         };
@@ -58,22 +69,22 @@
         var blocks = document.querySelectorAll(
             'pre code.language-oneway, pre code.language-ow'
         );
-        var highlightFn = hljs.highlightElement || hljs.highlightBlock;
         blocks.forEach(function (block) {
-            // mdBook's loader may have already tagged the block as plain
-            // text. Reset state, then re-run highlighting under `oneway`.
-            block.removeAttribute('data-highlighted');
-            block.classList.remove('hljs');
             var raw = block.textContent;
-            block.textContent = raw;
-            block.classList.add('language-oneway');
-            highlightFn.call(hljs, block);
+            try {
+                var result = hljs.highlight('oneway', raw);
+                block.innerHTML = result.value;
+                block.classList.add('hljs');
+            } catch (err) {
+                // If something goes wrong, leave the block as-is rather
+                // than nuking its content.
+                console.warn('oneway-highlight: failed to highlight block', err);
+            }
         });
     }
 
     function init() {
         if (typeof hljs === 'undefined') {
-            // highlight.js not loaded yet — try again shortly.
             setTimeout(init, 50);
             return;
         }
