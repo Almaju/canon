@@ -167,6 +167,10 @@ impl Codegen {
     fn emit_method(&mut self, out: &mut String, recv: &str, func: &FunctionDef) {
         self.current_receiver = Some(recv.to_string());
         let ret = render_type(&func.return_ty);
+        let pascal = is_pascal_case(&func.name.name);
+        if pascal {
+            let _ = writeln!(out, "    #[allow(non_snake_case)]");
+        }
         let _ = write!(out, "    pub fn {}(&self", func.name.name);
         for (i, param) in func.params.iter().enumerate() {
             let _ = write!(out, ", arg{}: {}", i, render_type(&param.ty));
@@ -357,6 +361,12 @@ fn render_type(ty: &TypeExpr) -> String {
         TypeExpr::Repeat { ty, count, .. } => format!("[{}; {}]", render_type(ty), count),
         TypeExpr::Spread { ty, .. } => format!("Vec<{}>", render_type(ty)),
         TypeExpr::Union { .. } | TypeExpr::Product { .. } => "()".to_string(),
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => {
+            let ps: Vec<String> = params.iter().map(render_type).collect();
+            format!("fn({}) -> {}", ps.join(", "), render_type(return_ty))
+        }
     }
 }
 
@@ -392,4 +402,8 @@ fn is_primitive_constructor(name: &str) -> bool {
 
 fn is_stdlib_variant(name: &str) -> bool {
     matches!(name, "None" | "Some" | "Ok" | "Err")
+}
+
+fn is_pascal_case(name: &str) -> bool {
+    name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
 }

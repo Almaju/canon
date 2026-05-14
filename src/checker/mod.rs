@@ -233,6 +233,24 @@ fn check_type_expr(
         TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
             check_type_expr(ty, symbols, generic_scope, errors);
         }
+        TypeExpr::Function {
+            generic_params,
+            params,
+            return_ty,
+            ..
+        } => {
+            let mut scope = generic_scope.clone();
+            for gp in generic_params {
+                scope.insert(gp.name.name.clone());
+                if let Some(bound) = &gp.bound {
+                    check_type_expr(bound, symbols, &scope, errors);
+                }
+            }
+            for p in params {
+                check_type_expr(p, symbols, &scope, errors);
+            }
+            check_type_expr(return_ty, symbols, &scope, errors);
+        }
     }
 }
 

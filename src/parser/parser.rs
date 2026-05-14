@@ -114,17 +114,41 @@ impl Parser {
         self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
         self.expect(TokenKind::Arrow, "expected `->` before return type")?;
         let return_ty = self.parse_type_expr()?;
-        let body = self.parse_block()?;
+
+        if self.check(TokenKind::LBrace) {
+            let body = self.parse_block()?;
+            let end_span = self.previous_span();
+            return Ok(Item::Function(FunctionDef {
+                receiver,
+                name,
+                generic_params,
+                params,
+                return_ty,
+                body,
+                span: span_join(start_span, end_span),
+            }));
+        }
+
+        if receiver.is_some() {
+            return Err(OnewayError::ParseError {
+                message: "method definition requires a body `{ ... }`".to_string(),
+                span: self.peek().span,
+            });
+        }
 
         let end_span = self.previous_span();
-        Ok(Item::Function(FunctionDef {
-            receiver,
-            name,
+        let func_ty_span = span_join(start_span, end_span);
+        let function_ty = TypeExpr::Function {
             generic_params,
-            params,
-            return_ty,
-            body,
-            span: span_join(start_span, end_span),
+            params: params.into_iter().map(|p| p.ty).collect(),
+            return_ty: Box::new(return_ty),
+            span: func_ty_span,
+        };
+        Ok(Item::TypeDef(TypeDef {
+            name,
+            generic_params: Vec::new(),
+            body: function_ty,
+            span: func_ty_span,
         }))
     }
 

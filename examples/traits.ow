@@ -1,0 +1,17 @@
+Show = () -> String
+
+Greeting = String
+Name = String
+
+Greeting.Show = () -> String {
+    "HELLO!"
+}
+
+Name.Show = () -> String {
+    "Alice"
+}
+
+main = (Stdout) -> Noop {
+    Greeting("hi").Show().print(Stdout)
+    Name("Alice").Show().print(Stdout)
+}

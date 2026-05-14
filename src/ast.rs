@@ -69,6 +69,12 @@ pub enum TypeExpr {
         ty: Box<TypeExpr>,
         span: Span,
     },
+    Function {
+        generic_params: Vec<GenericParam>,
+        params: Vec<TypeExpr>,
+        return_ty: Box<TypeExpr>,
+        span: Span,
+    },
 }
 
 impl TypeExpr {
@@ -79,6 +85,7 @@ impl TypeExpr {
             TypeExpr::Product { span, .. } => *span,
             TypeExpr::Repeat { span, .. } => *span,
             TypeExpr::Spread { span, .. } => *span,
+            TypeExpr::Function { span, .. } => *span,
         }
     }
 
