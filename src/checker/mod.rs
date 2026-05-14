@@ -35,6 +35,7 @@ pub fn check(module: &Module) -> Vec<OnewayError> {
         match item {
             Item::Function(func) => check_function(func, &symbols, &mut errors, &mut main_found),
             Item::TypeDef(td) => check_type_def(td, &symbols, &mut errors),
+            Item::Use(_) => {}
         }
     }
 
@@ -427,6 +428,12 @@ fn check_expr(
         Expr::Try { inner, .. } => {
             check_expr(inner, scope, symbols, errors);
         }
+        Expr::While { cond, body, .. } => {
+            check_expr(cond, scope, symbols, errors);
+            for expr in &body.exprs {
+                check_expr(expr, scope, symbols, errors);
+            }
+        }
     }
 }
 
@@ -487,6 +494,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             }
             "<unknown>".to_string()
         }
+        Expr::While { .. } => "Noop".to_string(),
     }
 }
 

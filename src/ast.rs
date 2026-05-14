@@ -10,6 +10,13 @@ pub struct Module {
 pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
+    Use(UseDecl),
+}
+
+#[derive(Debug, Clone)]
+pub struct UseDecl {
+    pub name: Ident,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +152,11 @@ pub enum Expr {
         inner: Box<Expr>,
         span: Span,
     },
+    While {
+        cond: Box<Expr>,
+        body: Block,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -159,6 +171,7 @@ impl Expr {
             Expr::MethodCall { span, .. } => *span,
             Expr::Match { span, .. } => *span,
             Expr::Try { span, .. } => *span,
+            Expr::While { span, .. } => *span,
         }
     }
 }

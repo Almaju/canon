@@ -6,6 +6,13 @@ pub fn generate(module: &Module) -> String {
     let mut cg = Codegen::from_module(module);
     let mut out = String::new();
 
+    // Pass 0: emit `use` imports (commented for now — module system Phase 12+)
+    for item in &module.items {
+        if let Item::Use(u) = item {
+            let _ = writeln!(out, "// use {}", u.name.name);
+        }
+    }
+
     // Pass 1: emit type definitions
     for item in &module.items {
         if let Item::TypeDef(td) = item {
@@ -59,6 +66,7 @@ struct Codegen {
     variant_of: HashMap<String, String>,
     current_receiver: Option<String>,
     extern_methods: HashMap<(String, String), String>,
+    bool_declared: bool,
 }
 
 impl Codegen {
@@ -93,12 +101,35 @@ impl Codegen {
                         );
                     }
                 }
+                Item::Use(_) => {}
             }
         }
+        let bool_declared = module.items.iter().any(|item| {
+            if let Item::TypeDef(td) = item {
+                if td.name.name == "Bool" {
+                    if let TypeExpr::Union { variants, .. } = &td.body {
+                        let names: Vec<&str> = variants
+                            .iter()
+                            .filter_map(|v| {
+                                if let TypeExpr::Named { name, .. } = v {
+                                    Some(name.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        return names.contains(&"False") && names.contains(&"True");
+                    }
+                }
+            }
+            false
+        });
+
         Self {
             variant_of,
             current_receiver: None,
             extern_methods,
+            bool_declared,
         }
     }
 
@@ -109,6 +140,11 @@ impl Codegen {
                 "// Skipping generic type `{}` for now (TODO).",
                 td.name.name
             );
+            return;
+        }
+
+        if td.name.name == "Bool" && self.bool_declared {
+            let _ = writeln!(out, "// Bool is mapped to Rust's `bool` primitive.");
             return;
         }
 
@@ -308,6 +344,17 @@ impl Codegen {
                 self.emit_expr(out, inner);
                 out.push('?');
             }
+            Expr::While { cond, body, .. } => {
+                out.push_str("while ");
+                self.emit_expr(out, cond);
+                out.push_str(" {\n");
+                for expr in &body.exprs {
+                    out.push_str("        ");
+                    self.emit_expr(out, expr);
+                    out.push_str(";\n");
+                }
+                out.push_str("    }");
+            }
         }
     }
 
@@ -391,6 +438,14 @@ impl Codegen {
                 return "self".to_string();
             }
         }
+        if self.bool_declared {
+            if name == "True" {
+                return "true".to_string();
+            }
+            if name == "False" {
+                return "false".to_string();
+            }
+        }
         if let Some(parent) = self.variant_of.get(name) {
             return format!("{}::{}", parent, name);
         }
@@ -427,6 +482,7 @@ fn render_named_type(name: &str, generics: &[TypeExpr]) -> String {
         "Hex" => "u64".to_string(),
         "Bytes" => "Vec<u8>".to_string(),
         "String" => "String".to_string(),
+        "Bool" => "bool".to_string(),
         other => other.to_string(),
     };
     if generics.is_empty() {
@@ -465,6 +521,8 @@ fn static_type_of(expr: &Expr) -> String {
         Expr::HexLit { .. } => "Hex".to_string(),
         Expr::Constructor { name, .. } => name.name.clone(),
         Expr::Ident(ident) => ident.name.clone(),
-        Expr::MethodCall { .. } | Expr::Match { .. } | Expr::Try { .. } => "<unknown>".to_string(),
+        Expr::MethodCall { .. } | Expr::Match { .. } | Expr::Try { .. } | Expr::While { .. } => {
+            "<unknown>".to_string()
+        }
     }
 }

@@ -32,6 +32,18 @@ impl Parser {
     fn parse_item(&mut self) -> Result<Item> {
         let start_span = self.current_span();
 
+        if self.check(TokenKind::KwUse) {
+            self.advance();
+            let name_tok = self.expect(TokenKind::Ident, "expected module name after `use`")?;
+            return Ok(Item::Use(UseDecl {
+                name: Ident {
+                    name: name_tok.lexeme.clone(),
+                    span: name_tok.span,
+                },
+                span: span_join(start_span, name_tok.span),
+            }));
+        }
+
         let extern_path = if self.check(TokenKind::KwExtern) {
             self.advance();
             let lang_tok = self.expect(TokenKind::Ident, "expected language after `extern`")?;
@@ -492,6 +504,7 @@ impl Parser {
         let tok = self.peek().clone();
         match tok.kind {
             TokenKind::KwMatch => self.parse_match(),
+            TokenKind::KwWhile => self.parse_while(),
             TokenKind::Ident | TokenKind::KwSelf => {
                 self.advance();
                 if self.check(TokenKind::LParen) {
@@ -571,6 +584,17 @@ impl Parser {
                 span: tok.span,
             }),
         }
+    }
+
+    fn parse_while(&mut self) -> Result<Expr> {
+        let kw = self.expect(TokenKind::KwWhile, "expected `while`")?;
+        let cond = self.parse_expr()?;
+        let body = self.parse_block()?;
+        Ok(Expr::While {
+            cond: Box::new(cond),
+            body,
+            span: span_join(kw.span, self.previous_span()),
+        })
     }
 
     fn parse_match(&mut self) -> Result<Expr> {

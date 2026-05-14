@@ -1,0 +1,6 @@
+use Json
+use Math
+
+main = (Stdout) -> Noop {
+    "imports parsed".print(Stdout)
+}

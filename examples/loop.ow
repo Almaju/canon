@@ -1,0 +1,8 @@
+Bool = False | True
+
+main = (Stdout) -> Noop {
+    while False {
+        "looping".print(Stdout)
+    }
+    "done".print(Stdout)
+}
