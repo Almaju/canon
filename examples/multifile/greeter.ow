@@ -1,0 +1,5 @@
+Greeter = String
+
+Greeter.shout = () -> String {
+    "HELLO from greeter"
+}

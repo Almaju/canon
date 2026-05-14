@@ -2,9 +2,11 @@ use oneway::checker;
 use oneway::codegen;
 use oneway::error::OnewayError;
 use oneway::lexer::Scanner;
+use oneway::loader;
 use oneway::parser::Parser;
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::process;
 
 fn main() {
@@ -74,12 +76,22 @@ fn main() {
         return;
     }
 
-    let mut parser = Parser::new(tokens);
-    let module = match parser.parse() {
-        Ok(module) => module,
-        Err(err) => {
-            print_error(file_path, &err);
-            process::exit(1);
+    let module = if mode == "tokens" || mode == "ast" {
+        let mut parser = Parser::new(tokens);
+        match parser.parse() {
+            Ok(m) => m,
+            Err(err) => {
+                print_error(file_path, &err);
+                process::exit(1);
+            }
+        }
+    } else {
+        match loader::load_module(Path::new(file_path)) {
+            Ok(m) => m,
+            Err(err) => {
+                print_error(file_path, &err);
+                process::exit(1);
+            }
         }
     };
 
