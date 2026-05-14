@@ -408,6 +408,19 @@ impl Codegen {
     }
 
     fn emit_extern_call(&self, rust_path: &str, receiver: &Expr, args: &[Expr]) -> String {
+        if let Some(method) = rust_path.strip_prefix('.') {
+            let mut s = String::new();
+            self.emit_expr(&mut s, receiver);
+            let _ = write!(s, ".{}(", method);
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                self.emit_expr(&mut s, arg);
+            }
+            s.push(')');
+            return s;
+        }
         let is_macro = rust_path.ends_with('!');
         let path = rust_path.trim_end_matches('!');
         let mut s = String::new();

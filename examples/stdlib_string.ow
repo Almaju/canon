@@ -1,0 +1,10 @@
+extern Rust(".to_lowercase")
+String.toLower = () -> String
+
+extern Rust(".to_uppercase")
+String.toUpper = () -> String
+
+main = (Stdout) -> Noop {
+    "Hello, World".toUpper().print(Stdout)
+    "GoodBye".toLower().print(Stdout)
+}
