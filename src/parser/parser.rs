@@ -30,35 +30,76 @@ impl Parser {
     }
 
     fn parse_item(&mut self) -> Result<Item> {
-        let func = self.parse_function_def()?;
-        Ok(Item::Function(func))
-    }
-
-    fn parse_function_def(&mut self) -> Result<FunctionDef> {
         let start_span = self.current_span();
-        let first = self.expect(TokenKind::Ident, "expected function or receiver name")?;
+        let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),
             span: first.span,
         };
 
-        let (receiver, name) = if self.check(TokenKind::Dot) {
+        if self.check(TokenKind::Dot) {
             self.advance();
             let name_tok = self.expect(TokenKind::Ident, "expected function name after `.`")?;
-            (
-                Some(first_ident),
-                Ident {
-                    name: name_tok.lexeme.clone(),
-                    span: name_tok.span,
-                },
-            )
+            let name = Ident {
+                name: name_tok.lexeme.clone(),
+                span: name_tok.span,
+            };
+            return self.parse_function_after_name(Some(first_ident), name, start_span);
+        }
+
+        let pre_eq_generics = if self.check(TokenKind::Lt) {
+            self.parse_generic_params()?
         } else {
-            (None, first_ident)
+            Vec::new()
         };
 
-        self.expect(TokenKind::Eq, "expected `=` in function definition")?;
-        self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
+        self.expect(TokenKind::Eq, "expected `=` in top-level definition")?;
 
+        if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
+            if !pre_eq_generics.is_empty() {
+                return Err(OnewayError::ParseError {
+                    message:
+                        "generic parameters on function definitions go after `=`, not before"
+                            .to_string(),
+                    span: first_ident.span,
+                });
+            }
+            return self.parse_function_after_eq(None, first_ident, start_span);
+        }
+
+        let body = self.parse_type_expr()?;
+        let end_span = self.previous_span();
+        Ok(Item::TypeDef(TypeDef {
+            name: first_ident,
+            generic_params: pre_eq_generics,
+            body,
+            span: span_join(start_span, end_span),
+        }))
+    }
+
+    fn parse_function_after_name(
+        &mut self,
+        receiver: Option<Ident>,
+        name: Ident,
+        start_span: Span,
+    ) -> Result<Item> {
+        self.expect(TokenKind::Eq, "expected `=` after function name")?;
+        self.parse_function_after_eq(receiver, name, start_span)
+    }
+
+    fn parse_function_after_eq(
+        &mut self,
+        receiver: Option<Ident>,
+        name: Ident,
+        start_span: Span,
+    ) -> Result<Item> {
+        let generic_params = if self.check(TokenKind::Lt) {
+            self.parse_generic_params()?
+        } else {
+            Vec::new()
+        };
+
+        self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
         let mut params = Vec::new();
         if !self.check(TokenKind::RParen) {
             loop {
@@ -76,14 +117,50 @@ impl Parser {
         let body = self.parse_block()?;
 
         let end_span = self.previous_span();
-        Ok(FunctionDef {
+        Ok(Item::Function(FunctionDef {
             receiver,
             name,
+            generic_params,
             params,
             return_ty,
             body,
             span: span_join(start_span, end_span),
-        })
+        }))
+    }
+
+    fn parse_generic_params(&mut self) -> Result<Vec<GenericParam>> {
+        self.expect(TokenKind::Lt, "expected `<` to begin generic parameters")?;
+        let mut params = Vec::new();
+        if !self.check(TokenKind::Gt) {
+            loop {
+                let start = self.current_span();
+                let name_tok =
+                    self.expect(TokenKind::Ident, "expected generic parameter name")?;
+                let name = Ident {
+                    name: name_tok.lexeme.clone(),
+                    span: name_tok.span,
+                };
+                let bound = if self.check(TokenKind::Colon) {
+                    self.advance();
+                    Some(self.parse_type_expr()?)
+                } else {
+                    None
+                };
+                let end = self.previous_span();
+                params.push(GenericParam {
+                    name,
+                    bound,
+                    span: span_join(start, end),
+                });
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::Gt, "expected `>` to close generic parameters")?;
+        Ok(params)
     }
 
     fn parse_param(&mut self) -> Result<Param> {
@@ -104,10 +181,112 @@ impl Parser {
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr> {
-        let tok = self.expect(TokenKind::Ident, "expected a type name")?;
-        Ok(TypeExpr {
-            name: tok.lexeme.clone(),
-            span: tok.span,
+        self.parse_type_union()
+    }
+
+    fn parse_type_union(&mut self) -> Result<TypeExpr> {
+        let start = self.current_span();
+        let first = self.parse_type_product()?;
+        if !self.check(TokenKind::Pipe) {
+            return Ok(first);
+        }
+        let mut variants = vec![first];
+        while self.check(TokenKind::Pipe) {
+            self.advance();
+            self.skip_newlines();
+            variants.push(self.parse_type_product()?);
+        }
+        let end = self.previous_span();
+        Ok(TypeExpr::Union {
+            variants,
+            span: span_join(start, end),
+        })
+    }
+
+    fn parse_type_product(&mut self) -> Result<TypeExpr> {
+        let start = self.current_span();
+        let first = self.parse_type_spread_or_postfix()?;
+        if !self.check(TokenKind::Amp) {
+            return Ok(first);
+        }
+        let mut fields = vec![first];
+        while self.check(TokenKind::Amp) {
+            self.advance();
+            self.skip_newlines();
+            fields.push(self.parse_type_spread_or_postfix()?);
+        }
+        let end = self.previous_span();
+        Ok(TypeExpr::Product {
+            fields,
+            span: span_join(start, end),
+        })
+    }
+
+    fn parse_type_spread_or_postfix(&mut self) -> Result<TypeExpr> {
+        let start = self.current_span();
+        if self.check(TokenKind::Ellipsis) {
+            self.advance();
+            let ty = self.parse_type_postfix_atom()?;
+            let end = self.previous_span();
+            return Ok(TypeExpr::Spread {
+                ty: Box::new(ty),
+                span: span_join(start, end),
+            });
+        }
+        self.parse_type_postfix_atom()
+    }
+
+    fn parse_type_postfix_atom(&mut self) -> Result<TypeExpr> {
+        let start = self.current_span();
+        let atom = self.parse_type_atom()?;
+        if !self.check(TokenKind::LBracket) {
+            return Ok(atom);
+        }
+        self.advance();
+        let count_tok = self.expect(TokenKind::IntLit, "expected an integer count in `[N]`")?;
+        let count: u64 = count_tok.lexeme.parse().map_err(|_| OnewayError::ParseError {
+            message: format!("invalid integer `{}` in repetition count", count_tok.lexeme),
+            span: count_tok.span,
+        })?;
+        self.expect(TokenKind::RBracket, "expected `]` after repetition count")?;
+        let end = self.previous_span();
+        Ok(TypeExpr::Repeat {
+            ty: Box::new(atom),
+            count,
+            span: span_join(start, end),
+        })
+    }
+
+    fn parse_type_atom(&mut self) -> Result<TypeExpr> {
+        let start = self.current_span();
+        let name_tok = if self.check(TokenKind::KwSelf) {
+            self.advance().clone()
+        } else {
+            self.expect(TokenKind::Ident, "expected a type name")?
+        };
+        let name = name_tok.lexeme.clone();
+
+        let mut generics = Vec::new();
+        if self.check(TokenKind::Lt) {
+            self.advance();
+            if !self.check(TokenKind::Gt) {
+                loop {
+                    generics.push(self.parse_type_expr()?);
+                    if self.check(TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::Gt, "expected `>` to close generic application")?;
+        }
+
+        let end = self.previous_span();
+        Ok(TypeExpr::Named {
+            name,
+            generics,
+            span: span_join(start, end),
         })
     }
 
@@ -168,7 +347,7 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr> {
         let tok = self.peek().clone();
         match tok.kind {
-            TokenKind::Ident => {
+            TokenKind::Ident | TokenKind::KwSelf => {
                 self.advance();
                 Ok(Expr::Ident(Ident {
                     name: tok.lexeme,

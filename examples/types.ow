@@ -1,0 +1,13 @@
+Bit = Off | On
+Birthday = String
+Bool = False | True
+Byte = Bit[8]
+Bytes = ...Byte
+Ord = Equal | Greater | Less
+Username = String
+User = Birthday & Username
+OtherUser = User
+
+main = (Stdout) -> Noop {
+    "type definitions parsed".print(Stdout)
+}

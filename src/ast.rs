@@ -9,12 +9,29 @@ pub struct Module {
 #[derive(Debug, Clone)]
 pub enum Item {
     Function(FunctionDef),
+    TypeDef(TypeDef),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDef {
+    pub name: Ident,
+    pub generic_params: Vec<GenericParam>,
+    pub body: TypeExpr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericParam {
+    pub name: Ident,
+    pub bound: Option<TypeExpr>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub receiver: Option<Ident>,
     pub name: Ident,
+    pub generic_params: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub return_ty: TypeExpr,
     pub body: Block,
@@ -29,9 +46,50 @@ pub struct Param {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeExpr {
-    pub name: String,
-    pub span: Span,
+pub enum TypeExpr {
+    Named {
+        name: String,
+        generics: Vec<TypeExpr>,
+        span: Span,
+    },
+    Union {
+        variants: Vec<TypeExpr>,
+        span: Span,
+    },
+    Product {
+        fields: Vec<TypeExpr>,
+        span: Span,
+    },
+    Repeat {
+        ty: Box<TypeExpr>,
+        count: u64,
+        span: Span,
+    },
+    Spread {
+        ty: Box<TypeExpr>,
+        span: Span,
+    },
+}
+
+impl TypeExpr {
+    pub fn span(&self) -> Span {
+        match self {
+            TypeExpr::Named { span, .. } => *span,
+            TypeExpr::Union { span, .. } => *span,
+            TypeExpr::Product { span, .. } => *span,
+            TypeExpr::Repeat { span, .. } => *span,
+            TypeExpr::Spread { span, .. } => *span,
+        }
+    }
+
+    pub fn simple_name(&self) -> Option<&str> {
+        if let TypeExpr::Named { name, generics, .. } = self {
+            if generics.is_empty() {
+                return Some(name);
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
