@@ -311,6 +311,10 @@ impl Parser {
     fn parse_expr(&mut self) -> Result<Expr> {
         let mut expr = self.parse_primary()?;
         loop {
+            let next = self.peek_past_newlines();
+            if matches!(next, TokenKind::Dot | TokenKind::Question) {
+                self.skip_newlines();
+            }
             if self.check(TokenKind::Dot) {
                 self.advance();
                 let method_tok =
@@ -506,6 +510,18 @@ impl Parser {
     fn skip_newlines(&mut self) {
         while self.check(TokenKind::Newline) {
             self.advance();
+        }
+    }
+
+    fn peek_past_newlines(&self) -> TokenKind {
+        let mut i = self.pos;
+        while i < self.tokens.len() && self.tokens[i].kind == TokenKind::Newline {
+            i += 1;
+        }
+        if i < self.tokens.len() {
+            self.tokens[i].kind
+        } else {
+            TokenKind::Eof
         }
     }
 
