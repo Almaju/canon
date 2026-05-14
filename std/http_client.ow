@@ -1,5 +1,7 @@
+use Url
+
 extern Rust("reqwest::Error")
 HttpError
 
 extern Rust.async("oneway_http_get_text")
-HttpClient.get = (String) -> Result<String, HttpError>
+HttpClient.get = (Url) -> Result<String, HttpError>

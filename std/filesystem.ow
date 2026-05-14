@@ -1,5 +1,7 @@
+use Path
+
 extern Rust("std::io::Error")
 IoError
 
 extern Rust.async("tokio::fs::read_to_string")
-Filesystem.read = (String) -> Result<String, IoError>
+Filesystem.read = (Path) -> Result<String, IoError>

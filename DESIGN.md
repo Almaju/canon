@@ -175,6 +175,37 @@ user = User(Birthday(...) & Username("ahanot"))
 
 `&` is overloaded across the two levels: at the type level it forms a product type, at the value level it forms a product value. The two never appear in the same context.
 
+### Validated Constructors (`Type.Self`)
+
+By default, a type's constructor is total: `T(inner)` always succeeds and returns `T`. For types whose construction can fail — `Url` from a `String`, `Email` from a `String`, parsing in general — the construction belongs in the type system as `Result<T, E>` (or `Option<T>` for "this might just not exist"), the same way "missing" is expressed as `Option<T>`.
+
+A type opts into this by declaring its constructor explicitly, as a method whose name is `Self`:
+
+```
+Url = String
+
+extern Rust("oneway_url_parse")
+Url.Self = (String) -> Result<Url, UrlError>
+```
+
+`Self` is already the alias for the receiver type's name; `Type.Self` is read as "the constructor that produces a `Self`." The convention slots naturally into the existing PascalCase / camelCase rule, alongside trait implementations like `Type.Print`.
+
+**Rules:**
+
+- If a type declares `Type.Self`, that *is* the constructor. The implicit total constructor is replaced.
+- The signature is unconstrained — total (`(String) -> Url`), fallible (`Result<Url, UrlError>`), or optional (`Option<Url>`).
+- Call sites use the ordinary constructor syntax: `Url("https://example.com")`. The expression's type is whatever `Url.Self` returns, so a fallible constructor *forces* `?` (or `match`) at the call site.
+- External callers cannot bypass the constructor. Only methods declared on `Type` itself (in the same file) have access to the type's raw inner representation.
+
+```
+main = (HttpClient & Stdout) -> Result<Noop, HttpError | UrlError> {
+    HttpClient.get(Url("https://example.com")?)?.print(Stdout)
+    Ok(Noop)
+}
+```
+
+This generalizes the same principle the language already applies to absence: if a value can legitimately be invalid, the fallibility belongs in the type, not in a runtime convention.
+
 ## Naming Conventions
 
 - **Types**: `PascalCase`

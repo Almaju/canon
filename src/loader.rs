@@ -84,6 +84,18 @@ const STDLIB: &[StdlibEntry] = &[
         ],
         rust_prelude: Some(include_str!("../std/json.rs")),
     },
+    StdlibEntry {
+        name: "Path",
+        source: include_str!("../std/path.ow"),
+        cargo_deps: &[],
+        rust_prelude: Some(include_str!("../std/path.rs")),
+    },
+    StdlibEntry {
+        name: "Url",
+        source: include_str!("../std/url.ow"),
+        cargo_deps: &[],
+        rust_prelude: Some(include_str!("../std/url.rs")),
+    },
 ];
 
 fn stdlib_entry(name: &str) -> Option<&'static StdlibEntry> {
