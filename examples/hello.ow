@@ -1,17 +1,3 @@
-use io
-
-type Message = String
-type Name = String
-
-struct Greeting {
-  Message,
-  Name,
-}
-
-fn greet(Greeting) -> String {
-  "{message.value}, {name.value}!"
-}
-
-fn main() {
-  Greeting { Message("Hello"), Name("World") }.greet().print()
+main = () -> Noop {
+    Noop
 }

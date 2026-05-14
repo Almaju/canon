@@ -1,3 +1,3 @@
-pub mod rust;
+mod rust;
 
 pub use rust::generate;

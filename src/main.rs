@@ -27,7 +27,6 @@ fn main() {
             "--compile" => mode = "compile",
             s if s.starts_with('-') => {
                 eprintln!("Unknown flag: {}", s);
-                eprintln!("Usage: oneway <file.ow> [--tokens|--ast|--check|--emit-rust|--compile]");
                 process::exit(1);
             }
             s => {
@@ -44,12 +43,10 @@ fn main() {
         Some(p) => p,
         None => {
             eprintln!("Error: no input file provided");
-            eprintln!("Usage: oneway <file.ow> [--tokens|--ast|--check|--emit-rust|--compile]");
             process::exit(1);
         }
     };
 
-    // Read source
     let source = match fs::read_to_string(file_path) {
         Ok(content) => content,
         Err(err) => {
@@ -58,7 +55,6 @@ fn main() {
         }
     };
 
-    // Step 1: Lex
     let mut scanner = Scanner::new(&source);
     let tokens = match scanner.scan_tokens() {
         Ok(tokens) => tokens,
@@ -78,7 +74,6 @@ fn main() {
         return;
     }
 
-    // Step 2: Parse
     let mut parser = Parser::new(tokens);
     let module = match parser.parse() {
         Ok(module) => module,
@@ -93,28 +88,20 @@ fn main() {
         return;
     }
 
-    // Step 3: Check
     let errors = checker::check(&module);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);
         }
-        if mode == "check" {
-            eprintln!("\n{} error(s) found.", errors.len());
-            process::exit(1);
-        }
-        // For other modes, still show errors but continue
-        eprintln!("\nWarning: {} sort-order error(s) found.", errors.len());
-    } else if mode == "check" {
+        eprintln!("\n{} error(s) found.", errors.len());
+        process::exit(1);
+    }
+
+    if mode == "check" {
         println!("All checks passed.");
         return;
     }
 
-    if mode == "check" {
-        return;
-    }
-
-    // Step 4: Generate Rust
     let rust_code = codegen::generate(&module);
 
     if mode == "emit-rust" || mode == "default" {
@@ -123,7 +110,6 @@ fn main() {
     }
 
     if mode == "compile" {
-        // Write to temp file, invoke rustc
         let out_path = file_path.replace(".ow", "");
         let rs_path = format!("{}.rs", out_path);
         if let Err(err) = fs::write(&rs_path, &rust_code) {
@@ -140,7 +126,6 @@ fn main() {
         match status {
             Ok(s) if s.success() => {
                 println!("Compiled to: {}", out_path);
-                // Clean up .rs file
                 let _ = fs::remove_file(&rs_path);
             }
             Ok(s) => {
