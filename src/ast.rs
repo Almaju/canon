@@ -111,6 +111,11 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
+    Match {
+        scrutinee: Box<Expr>,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -119,6 +124,29 @@ impl Expr {
             Expr::Ident(ident) => ident.span,
             Expr::StringLit { span, .. } => *span,
             Expr::MethodCall { span, .. } => *span,
+            Expr::Match { span, .. } => *span,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Variant { name: String, span: Span },
+    Wildcard { span: Span },
+}
+
+impl Pattern {
+    pub fn span(&self) -> Span {
+        match self {
+            Pattern::Variant { span, .. } => *span,
+            Pattern::Wildcard { span, .. } => *span,
         }
     }
 }

@@ -347,6 +347,7 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr> {
         let tok = self.peek().clone();
         match tok.kind {
+            TokenKind::KwMatch => self.parse_match(),
             TokenKind::Ident | TokenKind::KwSelf => {
                 self.advance();
                 Ok(Expr::Ident(Ident {
@@ -365,6 +366,53 @@ impl Parser {
                 message: format!("expected an expression (got {})", tok.kind),
                 span: tok.span,
             }),
+        }
+    }
+
+    fn parse_match(&mut self) -> Result<Expr> {
+        let kw = self.expect(TokenKind::KwMatch, "expected `match`")?;
+        let scrutinee = self.parse_expr()?;
+        self.expect(TokenKind::LBrace, "expected `{` to begin match arms")?;
+        self.skip_newlines();
+
+        let mut arms = Vec::new();
+        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
+            arms.push(self.parse_match_arm()?);
+            if self.check(TokenKind::Comma) {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+        let rbrace = self.expect(TokenKind::RBrace, "expected `}` to close match")?;
+
+        Ok(Expr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+            span: span_join(kw.span, rbrace.span),
+        })
+    }
+
+    fn parse_match_arm(&mut self) -> Result<MatchArm> {
+        let pattern = self.parse_pattern()?;
+        self.expect(TokenKind::FatArrow, "expected `=>` after match pattern")?;
+        let body = self.parse_expr()?;
+        let arm_span = span_join(pattern.span(), body.span());
+        Ok(MatchArm {
+            pattern,
+            body,
+            span: arm_span,
+        })
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern> {
+        let tok = self.expect(TokenKind::Ident, "expected a pattern (variant name or `_`)")?;
+        if tok.lexeme == "_" {
+            Ok(Pattern::Wildcard { span: tok.span })
+        } else {
+            Ok(Pattern::Variant {
+                name: tok.lexeme,
+                span: tok.span,
+            })
         }
     }
 

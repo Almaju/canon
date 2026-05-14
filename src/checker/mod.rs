@@ -243,12 +243,12 @@ fn check_block(
     }
 
     let last = block.exprs.last().unwrap();
-    let last_ty = expr_type_name(last);
+    let last_ty = expr_type_name_in_scope(last, symbols);
     let return_ty_name = match return_ty {
         TypeExpr::Named { name, .. } => name.clone(),
         _ => "<complex>".to_string(),
     };
-    if last_ty != return_ty_name {
+    if last_ty != return_ty_name && last_ty != "<unknown>" {
         errors.push(OnewayError::CheckError {
             message: format!(
                 "function returns `{}` but last expression has type `{}`",
@@ -289,7 +289,7 @@ fn check_expr(
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
             }
-            let recv_ty = expr_type_name(receiver);
+            let recv_ty = expr_type_name_in_scope(receiver, symbols);
             if !is_known_method(&recv_ty, &method.name, args.len()) {
                 errors.push(OnewayError::CheckError {
                     message: format!(
@@ -302,6 +302,38 @@ fn check_expr(
                 });
             }
         }
+        Expr::Match {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            check_expr(scrutinee, scope, symbols, errors);
+            let scrutinee_ty = expr_type_name_in_scope(scrutinee, symbols);
+            for arm in arms {
+                if let Pattern::Variant { name, span: pspan } = &arm.pattern {
+                    let pattern_enum = symbols.variant_of.get(name);
+                    if pattern_enum.map(|s| s.as_str()) != Some(scrutinee_ty.as_str())
+                        && !scrutinee_ty.is_empty()
+                        && scrutinee_ty != "<unknown>"
+                    {
+                        errors.push(OnewayError::CheckError {
+                            message: format!(
+                                "pattern `{}` is not a variant of `{}`",
+                                name, scrutinee_ty
+                            ),
+                            span: *pspan,
+                        });
+                    }
+                }
+                check_expr(&arm.body, scope, symbols, errors);
+            }
+            if arms.is_empty() {
+                errors.push(OnewayError::CheckError {
+                    message: "match expression must have at least one arm".to_string(),
+                    span: *span,
+                });
+            }
+        }
     }
 }
 
@@ -309,16 +341,26 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     matches!((receiver_ty, method, arg_count), ("String", "print", 1))
 }
 
-fn expr_type_name(expr: &Expr) -> String {
+fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
     match expr {
-        Expr::Ident(ident) => ident.name.clone(),
+        Expr::Ident(ident) => {
+            if let Some(parent) = symbols.variant_of.get(&ident.name) {
+                parent.clone()
+            } else {
+                ident.name.clone()
+            }
+        }
         Expr::StringLit { .. } => "String".to_string(),
         Expr::MethodCall {
             receiver, method, ..
         } => {
-            let recv_ty = expr_type_name(receiver);
+            let recv_ty = expr_type_name_in_scope(receiver, symbols);
             method_return_type(&recv_ty, &method.name)
         }
+        Expr::Match { arms, .. } => arms
+            .first()
+            .map(|arm| expr_type_name_in_scope(&arm.body, symbols))
+            .unwrap_or_else(|| "<unknown>".to_string()),
     }
 }
 
