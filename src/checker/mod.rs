@@ -186,6 +186,10 @@ fn check_function(
         }
     }
 
+    if func.extern_rust.is_some() {
+        return;
+    }
+
     let scope = ExprScope::from_function(func);
     check_block(&func.body, &func.return_ty, &scope, symbols, errors);
 }

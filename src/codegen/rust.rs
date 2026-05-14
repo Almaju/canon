@@ -19,6 +19,9 @@ pub fn generate(module: &Module) -> String {
     let mut free_functions: Vec<&FunctionDef> = Vec::new();
     for item in &module.items {
         if let Item::Function(func) = item {
+            if func.extern_rust.is_some() {
+                continue;
+            }
             if let Some(recv) = &func.receiver {
                 methods_by_receiver
                     .entry(recv.name.clone())
@@ -55,22 +58,39 @@ pub fn generate(module: &Module) -> String {
 struct Codegen {
     variant_of: HashMap<String, String>,
     current_receiver: Option<String>,
+    extern_methods: HashMap<(String, String), String>,
 }
 
 impl Codegen {
     fn from_module(module: &Module) -> Self {
         let mut variant_of = HashMap::new();
+        let mut extern_methods = HashMap::new();
         for item in &module.items {
-            if let Item::TypeDef(td) = item {
-                if let TypeExpr::Union { variants, .. } = &td.body {
-                    if variants.iter().all(|t| {
-                        matches!(t, TypeExpr::Named { generics, .. } if generics.is_empty())
-                    }) {
-                        for v in variants {
-                            if let TypeExpr::Named { name, .. } = v {
-                                variant_of.insert(name.clone(), td.name.name.clone());
+            match item {
+                Item::TypeDef(td) => {
+                    if let TypeExpr::Union { variants, .. } = &td.body {
+                        if variants.iter().all(|t| {
+                            matches!(
+                                t,
+                                TypeExpr::Named { generics, .. } if generics.is_empty()
+                            )
+                        }) {
+                            for v in variants {
+                                if let TypeExpr::Named { name, .. } = v {
+                                    variant_of.insert(name.clone(), td.name.name.clone());
+                                }
                             }
                         }
+                    }
+                }
+                Item::Function(func) => {
+                    if let (Some(recv), Some(rust_path)) =
+                        (&func.receiver, &func.extern_rust)
+                    {
+                        extern_methods.insert(
+                            (recv.name.clone(), func.name.name.clone()),
+                            rust_path.clone(),
+                        );
                     }
                 }
             }
@@ -78,6 +98,7 @@ impl Codegen {
         Self {
             variant_of,
             current_receiver: None,
+            extern_methods,
         }
     }
 
@@ -296,6 +317,9 @@ impl Codegen {
         method: &Ident,
         args: &[Expr],
     ) -> Option<String> {
+        if let Some(rust_path) = self.lookup_extern_method(receiver, &method.name) {
+            return Some(self.emit_extern_call(&rust_path, receiver, args));
+        }
         if method.name == "print" && args.len() == 1 {
             let mut s = String::from("println!(\"{}\", ");
             self.emit_expr(&mut s, receiver);
@@ -303,6 +327,31 @@ impl Codegen {
             return Some(s);
         }
         None
+    }
+
+    fn lookup_extern_method(&self, receiver: &Expr, method: &str) -> Option<String> {
+        let recv_ty = static_type_of(receiver);
+        self.extern_methods
+            .get(&(recv_ty, method.to_string()))
+            .cloned()
+    }
+
+    fn emit_extern_call(&self, rust_path: &str, receiver: &Expr, args: &[Expr]) -> String {
+        let is_macro = rust_path.ends_with('!');
+        let path = rust_path.trim_end_matches('!');
+        let mut s = String::new();
+        if is_macro {
+            let _ = write!(s, "{}!(", path);
+        } else {
+            let _ = write!(s, "{}(", path);
+        }
+        self.emit_expr(&mut s, receiver);
+        for arg in args {
+            s.push_str(", ");
+            self.emit_expr(&mut s, arg);
+        }
+        s.push(')');
+        s
     }
 
     fn emit_pattern(&self, out: &mut String, pattern: &Pattern) {
@@ -406,4 +455,16 @@ fn is_stdlib_variant(name: &str) -> bool {
 
 fn is_pascal_case(name: &str) -> bool {
     name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+}
+
+fn static_type_of(expr: &Expr) -> String {
+    match expr {
+        Expr::StringLit { .. } => "String".to_string(),
+        Expr::IntLit { .. } => "Int".to_string(),
+        Expr::FloatLit { .. } => "Float".to_string(),
+        Expr::HexLit { .. } => "Hex".to_string(),
+        Expr::Constructor { name, .. } => name.name.clone(),
+        Expr::Ident(ident) => ident.name.clone(),
+        Expr::MethodCall { .. } | Expr::Match { .. } | Expr::Try { .. } => "<unknown>".to_string(),
+    }
 }

@@ -35,6 +35,7 @@ pub struct FunctionDef {
     pub params: Vec<Param>,
     pub return_ty: TypeExpr,
     pub body: Block,
+    pub extern_rust: Option<String>,
     pub span: Span,
 }
 

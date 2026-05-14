@@ -1,0 +1,6 @@
+extern Rust("std::cmp::min")
+Int.min = (Int) -> Int
+
+main = (Stdout) -> Noop {
+    5.min(3).print(Stdout)
+}

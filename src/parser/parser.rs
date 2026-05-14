@@ -31,11 +31,40 @@ impl Parser {
 
     fn parse_item(&mut self) -> Result<Item> {
         let start_span = self.current_span();
+
+        let extern_path = if self.check(TokenKind::KwExtern) {
+            self.advance();
+            let lang_tok = self.expect(TokenKind::Ident, "expected language after `extern`")?;
+            if lang_tok.lexeme != "Rust" {
+                return Err(OnewayError::ParseError {
+                    message: format!(
+                        "only `extern Rust` is supported (got `extern {}`)",
+                        lang_tok.lexeme
+                    ),
+                    span: lang_tok.span,
+                });
+            }
+            self.expect(TokenKind::LParen, "expected `(` after `extern Rust`")?;
+            let path_tok = self.expect(
+                TokenKind::StringLit,
+                "expected a Rust path string after `extern Rust(`",
+            )?;
+            self.expect(TokenKind::RParen, "expected `)` after Rust path")?;
+            self.skip_newlines();
+            Some(path_tok.lexeme)
+        } else {
+            None
+        };
+
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),
             span: first.span,
         };
+
+        if extern_path.is_some() {
+            return self.parse_extern_item(start_span, first_ident, extern_path.unwrap());
+        }
 
         if self.check(TokenKind::Dot) {
             self.advance();
@@ -87,6 +116,82 @@ impl Parser {
         self.parse_function_after_eq(receiver, name, start_span)
     }
 
+    fn parse_extern_item(
+        &mut self,
+        start_span: Span,
+        first_ident: Ident,
+        extern_path: String,
+    ) -> Result<Item> {
+        if self.check(TokenKind::Dot) {
+            self.advance();
+            let name_tok = self.expect(TokenKind::Ident, "expected method name after `.`")?;
+            let name = Ident {
+                name: name_tok.lexeme.clone(),
+                span: name_tok.span,
+            };
+            self.expect(TokenKind::Eq, "expected `=` after extern method name")?;
+            let generic_params = if self.check(TokenKind::Lt) {
+                self.parse_generic_params()?
+            } else {
+                Vec::new()
+            };
+            self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
+            let mut params = Vec::new();
+            if !self.check(TokenKind::RParen) {
+                loop {
+                    params.push(self.parse_param()?);
+                    if self.check(TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
+            self.expect(TokenKind::Arrow, "expected `->` before return type")?;
+            let return_ty = self.parse_type_expr()?;
+            let end_span = self.previous_span();
+            let empty_body_span = Span::new(end_span.end, end_span.end, end_span.line, end_span.column);
+            return Ok(Item::Function(FunctionDef {
+                receiver: Some(first_ident),
+                name,
+                generic_params,
+                params,
+                return_ty,
+                body: Block {
+                    exprs: Vec::new(),
+                    span: empty_body_span,
+                },
+                extern_rust: Some(extern_path),
+                span: span_join(start_span, end_span),
+            }));
+        }
+
+        if !self.check(TokenKind::Eq) {
+            let end_span = first_ident.span;
+            return Ok(Item::TypeDef(TypeDef {
+                name: first_ident.clone(),
+                generic_params: Vec::new(),
+                body: TypeExpr::Named {
+                    name: format!("__extern__{}", extern_path),
+                    generics: Vec::new(),
+                    span: end_span,
+                },
+                span: span_join(start_span, end_span),
+            }));
+        }
+
+        self.advance();
+        let body = self.parse_type_expr()?;
+        let end_span = self.previous_span();
+        Ok(Item::TypeDef(TypeDef {
+            name: first_ident,
+            generic_params: Vec::new(),
+            body,
+            span: span_join(start_span, end_span),
+        }))
+    }
+
     fn parse_function_after_eq(
         &mut self,
         receiver: Option<Ident>,
@@ -125,6 +230,7 @@ impl Parser {
                 params,
                 return_ty,
                 body,
+                extern_rust: None,
                 span: span_join(start_span, end_span),
             }));
         }
