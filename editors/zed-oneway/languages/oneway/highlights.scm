@@ -1,83 +1,114 @@
-; Function definitions
-(function_declaration
-  name: (identifier) @function)
+; Keywords
+"use" @keyword
+"match" @keyword
+"while" @keyword
+"mut" @keyword
+"extern" @keyword
 
-; Type identifiers (PascalCase)
-(type_identifier) @type
+; Operators
+"=" @operator
+"->" @operator
+"=>" @operator
+"|" @operator
+"&" @operator
+"?" @operator
+"..." @operator
+
+; Punctuation
+[
+  "("
+  ")"
+  "{"
+  "}"
+  "["
+  "]"
+  "<"
+  ">"
+] @punctuation.bracket
+
+[
+  "."
+  ","
+  ":"
+] @punctuation.delimiter
 
 ; Literals
 (integer_literal) @number
 (float_literal) @number
+(hex_literal) @number
 (string_literal) @string
-(boolean_literal) @constant.builtin
 
-; String interpolation
-(interpolation) @embedded
+; Wildcard
+(wildcard_pattern) @variable.special
 
-; Identifiers
-(identifier) @variable
+; --- Definitions ---
 
-; Keywords
-[
-  "fn"
-  "struct"
-  "enum"
-  "contract"
-  "type"
-  "use"
-  "pub"
-  "match"
-  "delegates"
-] @keyword
+; Function definition: receiver (PascalCase) + name (camelCase or PascalCase)
+(function_def receiver: (identifier) @type)
+(function_def name: (identifier) @function)
 
-"Self" @type.builtin
-"true" @constant.builtin
-"false" @constant.builtin
+; Type definition name
+(type_def name: (identifier) @type)
 
-; Operators
-[
-  "+"
-  "-"
-  "*"
-  "/"
-  "%"
-  "="
-  "=="
-  "!="
-  ">"
-  "<"
-  ">="
-  "<="
-  "&&"
-  "||"
-  "!"
-  "->"
-  "=>"
-  "?"
-  "|"
-] @operator
+; Use declaration
+(use_decl name: (identifier) @namespace)
 
-; Punctuation
-[
-  "{"
-  "}"
-  "("
-  ")"
-] @punctuation.bracket
+; Extern clause
+(extern_clause language: (identifier) @type.builtin)
+(extern_clause path: (string_literal) @string.special)
 
-[
-  ","
-  "."
-] @punctuation.delimiter
+; Generic params
+(generic_param name: (identifier) @type.parameter)
 
-; Function calls
-(call_expression
-  function: (identifier) @function.call)
+; Parameters: the type of each param
+(param type: (named_type name: (identifier) @type))
 
-(call_expression
-  function: (dot_expression
-    field: (identifier) @function.method))
+; --- Type expressions ---
 
-; Match
-(match_arm
-  pattern: (identifier) @variable)
+; Names inside type expressions are types
+(named_type name: (identifier) @type)
+
+; --- Expressions ---
+
+; Method calls
+(method_call method: (identifier) @function.method)
+
+; Constructor (capitalized name + parens). For lowercase, treat as function call.
+((constructor name: (identifier) @function.call)
+  (#match? @function.call "^[a-z_]"))
+
+((constructor name: (identifier) @constructor)
+  (#match? @constructor "^[A-Z]"))
+
+; Plain identifier in expression position — distinguish PascalCase vs camelCase
+((identifier_expr (identifier) @type)
+  (#match? @type "^[A-Z]"))
+
+((identifier_expr (identifier) @variable)
+  (#match? @variable "^[a-z_]"))
+
+; Pattern variant names (PascalCase are constructors, lowercase are bindings)
+((variant_pattern name: (identifier) @constructor)
+  (#match? @constructor "^[A-Z]"))
+
+((variant_pattern name: (identifier) @variable)
+  (#match? @variable "^[a-z_]"))
+
+; --- Special names ---
+
+; `Self` is a builtin
+((identifier) @type.builtin
+  (#eq? @type.builtin "Self"))
+
+; Capability types (well-known names)
+((identifier) @type.builtin
+  (#any-of? @type.builtin
+    "Bit" "Byte" "Bytes" "Off" "On"
+    "Int" "Float" "Hex" "String"
+    "Bool" "False" "True"
+    "Ord" "Equal" "Greater" "Less"
+    "Option" "Some" "None"
+    "Result" "Ok" "Err"
+    "Noop"
+    "Clock" "Filesystem" "Network" "Random"
+    "Stderr" "Stdin" "Stdout"))

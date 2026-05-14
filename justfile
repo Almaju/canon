@@ -32,6 +32,18 @@ run file:
     "./${base}"
     rm -f "${rs}" "${base}"
 
+# Run an example by name (e.g. `just example hello`, `just example multifile`)
+example name:
+    #!/usr/bin/env sh
+    set -e
+    for path in "examples/{{name}}.ow" "examples/{{name}}/main.ow"; do
+        if [ -f "$path" ]; then
+            exec just run "$path"
+        fi
+    done
+    echo "No example found at examples/{{name}}.ow or examples/{{name}}/main.ow" >&2
+    exit 1
+
 # Emit generated Rust code for an .ow file
 emit file:
     cargo run --quiet -- --emit-rust {{file}} 2>/dev/null
@@ -56,10 +68,15 @@ compile file:
 examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
-    for f in examples/*.ow; do
-        name=$(basename "$f" .ow)
-        base="examples/${name}"
-        printf "%-20s" "$name"
+    for f in examples/*.ow examples/*/main.ow; do
+        [ -f "$f" ] || continue
+        base="${f%.ow}"
+        if [ "$(basename "$f")" = "main.ow" ]; then
+            label=$(basename "$(dirname "$f")")
+        else
+            label=$(basename "$f" .ow)
+        fi
+        printf "%-20s" "$label"
         if cargo run --quiet -- --compile "$f" 2>/dev/null; then
             output=$("./${base}" 2>&1) && {
                 echo "✓  $output"
@@ -81,9 +98,14 @@ examples: build
 # Emit Rust for all examples
 emit-all: build
     #!/usr/bin/env sh
-    for f in examples/*.ow; do
-        name=$(basename "$f" .ow)
-        echo "=== $name ==="
+    for f in examples/*.ow examples/*/main.ow; do
+        [ -f "$f" ] || continue
+        if [ "$(basename "$f")" = "main.ow" ]; then
+            label=$(basename "$(dirname "$f")")
+        else
+            label=$(basename "$f" .ow)
+        fi
+        echo "=== $label ==="
         cargo run --quiet -- --emit-rust "$f" 2>/dev/null || echo "(failed to emit)"
         echo ""
     done
@@ -91,36 +113,20 @@ emit-all: build
 # Check all examples for sort order
 check-all: build
     #!/usr/bin/env sh
-    for f in examples/*.ow; do
-        name=$(basename "$f" .ow)
-        printf "%-20s" "$name"
+    for f in examples/*.ow examples/*/main.ow; do
+        [ -f "$f" ] || continue
+        if [ "$(basename "$f")" = "main.ow" ]; then
+            label=$(basename "$(dirname "$f")")
+        else
+            label=$(basename "$f" .ow)
+        fi
+        printf "%-20s" "$label"
         if cargo run --quiet -- --check "$f" 2>/dev/null; then
             echo "✓"
         else
             echo "✗"
         fi
     done
-
-# Build the LSP server
-lsp:
-    cargo build --bin oneway-lsp --release
-
-# Install the LSP server to ~/.cargo/bin
-install-lsp: lsp
-    cp target/release/oneway-lsp ~/.cargo/bin/oneway-lsp
-    @echo "Installed oneway-lsp to ~/.cargo/bin/oneway-lsp"
-    @echo ""
-    @echo "Add to Zed settings.json:"
-    @echo '  "lsp": {'
-    @echo '    "oneway-lsp": {'
-    @echo '      "binary": { "path": "oneway-lsp" }'
-    @echo '    }'
-    @echo '  },'
-    @echo '  "languages": {'
-    @echo '    "Oneway": {'
-    @echo '      "language_servers": ["oneway-lsp"]'
-    @echo '    }'
-    @echo '  }'
 
 # Format compiler source
 fmt:
@@ -130,17 +136,8 @@ fmt:
 clippy:
     cargo clippy -- -W warnings
 
-# Run oneway-lints on the compiler codebase
-lint:
-    #!/usr/bin/env sh
-    pushd oneway-lints && cargo build 2>/dev/null && popd
-    TOOLCHAIN=$(pushd oneway-lints && rustup show active-toolchain | cut -d' ' -f1 && popd)
-    LIB="oneway-lints/target/debug/liboneway_lints@${TOOLCHAIN}.dylib"
-    cp "oneway-lints/target/debug/liboneway_lints.dylib" "${LIB}" 2>/dev/null || true
-    DYLINT_LIBRARY_PATH="$(pwd)/oneway-lints/target/debug" cargo dylint --all
-
 # Clean build artifacts + compiled examples
 clean:
+    #!/usr/bin/env sh
     cargo clean
-    rm -f examples/*.rs
-    find examples -maxdepth 1 -type f ! -name '*.ow' -delete
+    find examples -type f \( -name '*.rs' -o -perm -u+x ! -name '*.ow' \) -delete

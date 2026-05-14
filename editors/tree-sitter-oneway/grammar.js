@@ -7,269 +7,183 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
-  conflicts: ($) => [
-    [$._expression, $.struct_literal],
-    [$._expression, $.enum_pattern],
-    [$.function_type, $.union_type],
-    [$.block, $.match_expression],
-  ],
+  conflicts: ($) => [],
 
   rules: {
     source_file: ($) => repeat($._item),
 
-    _item: ($) =>
-      choice(
-        $.use_declaration,
-        $.newtype_declaration,
-        $.struct_declaration,
-        $.enum_declaration,
-        $.contract_declaration,
-        $.function_declaration,
-      ),
+    _item: ($) => choice($.use_decl, $.function_def, $.type_def),
 
-    // Use
-    use_declaration: ($) => seq("use", field("path", $.module_path)),
+    use_decl: ($) => seq("use", field("name", $.identifier)),
 
-    module_path: ($) => seq($.identifier, repeat(seq(".", $.identifier))),
-
-    // Newtype
-    newtype_declaration: ($) =>
+    // extern Rust("path")
+    // Type.method = (params) -> Ret           (extern function declaration, no body)
+    // Type.method = (params) -> Ret { body }  (normal method)
+    // name       = (params) -> Ret { body }   (normal free function)
+    // name       = (params) -> Ret            (trait-shaped — no body)
+    function_def: ($) =>
       seq(
-        optional("pub"),
-        "type",
-        field("name", $.type_identifier),
+        optional(field("extern", $.extern_clause)),
+        optional(seq(field("receiver", $.identifier), ".")),
+        field("name", $.identifier),
         "=",
-        field("type", $._type),
+        optional(field("generics", $.generic_params)),
+        field("params", $.param_list),
+        "->",
+        field("return_type", $._type),
+        optional(field("body", $.block)),
       ),
 
-    // Struct
-    struct_declaration: ($) =>
+    extern_clause: ($) =>
       seq(
-        optional("pub"),
-        "struct",
-        field("name", $.type_identifier),
-        "{",
-        optional(
-          seq(optional($.delegates_clause), commaSep($._type), optional(",")),
-        ),
-        "}",
-      ),
-
-    delegates_clause: ($) => repeat1(seq("delegates", $._type, optional(","))),
-
-    // Enum
-    enum_declaration: ($) =>
-      seq(
-        optional("pub"),
-        "enum",
-        field("name", $.type_identifier),
-        "{",
-        optional(seq(commaSep($.variant), optional(","))),
-        "}",
-      ),
-
-    variant: ($) =>
-      seq(field("name", $.type_identifier), optional(seq("(", $._type, ")"))),
-
-    // Contract
-    contract_declaration: ($) =>
-      seq(
-        optional("pub"),
-        "contract",
-        field("name", $.type_identifier),
-        "{",
-        optional(seq(commaSep($.contract_function), optional(","))),
-        "}",
-      ),
-
-    contract_function: ($) =>
-      seq(
-        "fn",
-        field("name", $.identifier),
+        "extern",
+        field("language", $.identifier),
         "(",
-        optional(commaSep($._type)),
+        field("path", $.string_literal),
         ")",
-        optional(seq("->", $._type)),
       ),
 
-    // Function
-    function_declaration: ($) =>
+    // Name<Gen> = TypeExpr
+    // extern Rust("...") Name = TypeExpr      (extern type alias)
+    type_def: ($) =>
       seq(
-        optional("pub"),
-        "fn",
+        optional(field("extern", $.extern_clause)),
         field("name", $.identifier),
-        "(",
-        optional(commaSep($._type)),
-        ")",
-        optional(seq("->", field("return_type", $._type))),
-        field("body", $.block),
+        optional(field("generics", $.generic_params)),
+        "=",
+        field("body", $._type),
       ),
 
-    // Types
-    _type: ($) =>
-      choice(
-        $.type_identifier,
-        $.generic_type,
-        $.function_type,
-        $.union_type,
-        "Self",
+    generic_params: ($) => seq("<", sep1($.generic_param, ","), ">"),
+
+    generic_param: ($) =>
+      seq(
+        field("name", $.identifier),
+        optional(seq(":", field("bound", $._type))),
       ),
 
-    generic_type: ($) => seq($.type_identifier, "<", commaSep1($._type), ">"),
+    param_list: ($) => seq("(", optional(sep1($.param, ",")), ")"),
 
-    function_type: ($) =>
-      prec(1, seq("fn", "(", optional(commaSep($._type)), ")", "->", $._type)),
+    param: ($) => seq(optional("mut"), field("type", $._type)),
 
-    union_type: ($) => prec.left(seq($._type, "|", $._type)),
+    // Type expressions
+    // Precedence (tightest first per NEW_DESIGN):
+    //   T[N], ...T, T<...>, &, |
+    _type: ($) => $._type_union,
+
+    _type_union: ($) => choice($._type_product, $.union_type),
+
+    union_type: ($) =>
+      prec.left(seq($._type_product, repeat1(seq("|", $._type_product)))),
+
+    _type_product: ($) => choice($._type_spread_or_lower, $.product_type),
+
+    product_type: ($) =>
+      prec.left(
+        seq($._type_spread_or_lower, repeat1(seq("&", $._type_spread_or_lower))),
+      ),
+
+    _type_spread_or_lower: ($) =>
+      choice($._type_repeat_or_lower, $.spread_type),
+
+    spread_type: ($) => seq("...", $._type_repeat_or_lower),
+
+    _type_repeat_or_lower: ($) => choice($._type_atom, $.repeat_type),
+
+    repeat_type: ($) =>
+      seq($._type_atom, "[", field("count", $.integer_literal), "]"),
+
+    _type_atom: ($) => $.named_type,
+
+    named_type: ($) =>
+      seq(
+        field("name", $.identifier),
+        optional(seq("<", field("generics", sep1($._type, ",")), ">")),
+      ),
 
     // Expressions
     block: ($) => seq("{", repeat($._expression), "}"),
 
     _expression: ($) =>
       choice(
+        $.match_expression,
+        $.while_expression,
+        $.try_expression,
+        $.method_call,
+        $.constructor,
+        $.identifier_expr,
         $.integer_literal,
         $.float_literal,
+        $.hex_literal,
         $.string_literal,
-        $.boolean_literal,
-        $.identifier,
-        $.type_identifier,
-        $.binary_expression,
-        $.unary_expression,
-        $.dot_expression,
-        $.call_expression,
-        $.struct_literal,
-        $.match_expression,
-        $.binding,
-        $.try_expression,
-        $.parenthesized_expression,
-        $.block,
       ),
 
-    integer_literal: ($) => /[0-9]+/,
-    float_literal: ($) => /[0-9]+\.[0-9]+/,
+    identifier_expr: ($) => $.identifier,
 
-    string_literal: ($) =>
-      seq(
-        '"',
-        repeat(choice($.interpolation, $.escape_sequence, /[^"\\{]+/)),
-        '"',
-      ),
-
-    interpolation: ($) => seq("{", $.identifier, "}"),
-    escape_sequence: ($) => /\\./,
-
-    boolean_literal: ($) => choice("true", "false"),
-
-    binary_expression: ($) =>
-      choice(
-        ...[
-          ["+", 6],
-          ["-", 6],
-          ["*", 7],
-          ["/", 7],
-          ["%", 7],
-          ["==", 4],
-          ["!=", 4],
-          ["<", 5],
-          [">", 5],
-          ["<=", 5],
-          [">=", 5],
-          ["&&", 3],
-          ["||", 2],
-        ].map(([op, prec_val]) =>
-          prec.left(
-            prec_val,
-            seq(
-              field("left", $._expression),
-              field("operator", op),
-              field("right", $._expression),
-            ),
-          ),
-        ),
-      ),
-
-    unary_expression: ($) =>
-      prec(8, choice(seq("!", $._expression), seq("-", $._expression))),
-
-    dot_expression: ($) =>
-      prec.left(
-        9,
-        seq(field("object", $._expression), ".", field("field", $.identifier)),
-      ),
-
-    call_expression: ($) =>
-      prec.left(
-        9,
+    constructor: ($) =>
+      prec(
+        1,
         seq(
-          field("function", $._expression),
+          field("name", $.identifier),
           "(",
-          optional(field("argument", $._expression)),
+          optional(sep1($._expression, ",")),
           ")",
         ),
       ),
 
-    struct_literal: ($) =>
-      prec(
-        10,
+    method_call: ($) =>
+      prec.left(
+        2,
         seq(
-          field("type", $.type_identifier),
-          "{",
-          optional(seq(commaSep($._expression), optional(","))),
-          "}",
+          field("receiver", $._expression),
+          ".",
+          field("method", $.identifier),
+          "(",
+          optional(sep1($._expression, ",")),
+          ")",
         ),
       ),
+
+    try_expression: ($) =>
+      prec.left(2, seq(field("inner", $._expression), "?")),
 
     match_expression: ($) =>
       seq(
         "match",
-        optional(field("subject", $._expression)),
+        field("scrutinee", $._expression),
         "{",
-        optional(seq(commaSep($.match_arm), optional(","))),
+        optional(seq(sep1($.match_arm, ","), optional(","))),
         "}",
       ),
 
     match_arm: ($) =>
       seq(field("pattern", $._pattern), "=>", field("body", $._expression)),
 
-    _pattern: ($) =>
-      choice(
-        "_",
-        $.integer_literal,
-        $.float_literal,
-        $.string_literal,
-        $.boolean_literal,
-        $.identifier,
-        $.enum_pattern,
-      ),
+    while_expression: ($) =>
+      seq("while", field("cond", $._expression), field("body", $.block)),
 
-    enum_pattern: ($) =>
+    _pattern: ($) => choice($.wildcard_pattern, $.variant_pattern),
+
+    wildcard_pattern: ($) => "_",
+
+    variant_pattern: ($) =>
       seq(
-        $.type_identifier,
-        ".",
-        $.type_identifier,
-        optional(seq("(", $._pattern, ")")),
+        field("name", $.identifier),
+        optional(seq("(", optional(sep1($._pattern, ",")), ")")),
       ),
 
-    binding: ($) =>
-      prec.right(
-        1,
-        seq(field("name", $.identifier), "=", field("value", $._expression)),
-      ),
+    // Literals
+    integer_literal: ($) => /[0-9]+/,
+    float_literal: ($) => /[0-9]+\.[0-9]+/,
+    hex_literal: ($) => /0x[0-9a-fA-F]+/,
+    string_literal: ($) => /"([^"\\\n]|\\.)*"/,
 
-    try_expression: ($) => prec.left(9, seq($._expression, "?")),
-
-    parenthesized_expression: ($) => seq("(", $._expression, ")"),
-
-    // Identifiers
-    identifier: ($) => /[a-z_][a-zA-Z0-9_]*/,
-    type_identifier: ($) => /[A-Z][a-zA-Z0-9_]*/,
+    // Identifier — both camelCase and PascalCase share this lexeme.
+    // Highlight queries use #match? to distinguish types from values.
+    identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
   },
 });
 
-function commaSep(rule) {
-  return optional(commaSep1(rule));
-}
-
-function commaSep1(rule) {
-  return seq(rule, repeat(seq(",", rule)));
+function sep1(rule, separator) {
+  return seq(rule, repeat(seq(separator, rule)));
 }

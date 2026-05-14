@@ -1,701 +1,690 @@
-# Oneway Language Design
+# Oneway
 
-**Version:** v0.2.0 — Draft
+Oneway is a new programming language. The reference implementation transpiles to Rust — Oneway inherits Rust's ownership model and zero-cost abstractions, while presenting a much smaller surface area to the programmer.
 
-> *"There is ONE WAY to do everything."*
+## Guiding Principle: Alphabetical Order Everywhere
 
-Oneway is a maximally opinionated, strict, functional-leaning systems language that compiles to Rust (Phase 1) and later LLVM IR (Phase 2). Every design decision eliminates choice. If there's a best practice, it's the *only* practice. Comments are banned — the code IS the documentation.
+Wherever ordering is discretionary, Oneway requires **alphabetical order**. This is not a style suggestion — it is enforced by the compiler. The rule applies to:
 
----
+- Components of a product type: `User = Birthday & Username`
+- Variants of a union type: `Bool = False | True`
+- Multiple method/trait declarations on a type (declared top-to-bottom alphabetically)
+- Arms of a `match` (in the order of the union's variants — which are themselves alphabetical)
+- Trait composition: `Show = Debug & PrintString`
+- Error unions inside `Result`: `Result<T, IoError | NotFound | PermissionDenied>`
+- Imports: multiple `use` statements at the top of a file
 
-## Table of Contents
+The reasoning: ordering is a constant source of bikeshedding and diff noise. By forcing one canonical order, code reads the same way no matter who wrote it, and reordering is never a meaningful change.
 
-- [Philosophy](#philosophy)
-- [Naming Convention](#naming-convention)
-- [Core Design Principles](#core-design-principles)
-  - [1. Everything Sorted](#1-everything-sorted-alphabetical-compiler-enforced)
-  - [2. Type-Derived Variable Names (No `let`)](#2-type-derived-variable-names-no-let)
-  - [3. Functions Only — No Methods (UFCS)](#3-functions-only--no-methods-ufcs)
-  - [4. Two Parameters Maximum](#4-two-parameters-maximum-receiver--input)
-  - [5. Newtype Enforcement](#5-newtype-enforcement)
-  - [6. Contracts](#6-contracts-replaces-traitsgenericsdyn)
-  - [7. Match Is the Only Control Flow](#7-match-is-the-only-control-flow)
-  - [8. Immutable by Default](#8-immutable-by-default)
-  - [9. Effect Type System](#9-effecta-e-r-type-system)
-  - [10. No Comments](#10-no-comments)
-  - [11. No Lifetime Annotations](#11-no-lifetime-annotations)
-  - [12. No Async Coloring](#12-no-async-coloring)
-  - [13. Composition via Delegation](#13-composition-via-delegation)
-- [Syntax Specification](#syntax-specification)
-  - [No Comments](#no-comments)
-  - [Imports](#imports)
-  - [Newtypes](#newtypes)
-  - [Struct Definitions](#struct-definitions)
-  - [Enum Definitions](#enum-definitions)
-  - [Function Definitions](#function-definitions)
-  - [Contracts](#contracts)
-  - [Match Expressions](#match-expressions)
-  - [String Interpolation](#string-interpolation)
-  - [Chaining (UFCS)](#chaining-ufcs)
-- [Built-in Types](#built-in-types)
-- [Error Handling](#error-handling)
-- [Module System](#module-system)
-- [Formatting](#formatting)
-- [The "One Way" Decision Table](#the-one-way-decision-table)
-- [Compilation](#compilation)
-  - [Phase 1: Oneway → Rust](#phase-1-oneway--rust-transpilation)
-  - [Phase 2: Oneway → LLVM IR](#phase-2-oneway--llvm-ir)
-- [Open Design Questions](#open-design-questions)
+## Core Types
 
----
+The language is built from two primitive types: `Off` and `On` (names TBD). Every other type is composed from these via unions and products.
 
-## Philosophy
+A small set of built-in primitive operations (e.g. arithmetic on `Int`) is supplied by the compiler — these cannot be derived purely from bits, but their *shape* is still described by the type system.
 
-Most languages give you ten ways to do something and leave you to argue about which is best. Oneway gives you one way and lets you get on with your work.
+## Type Composition
 
-- **One syntax** for each concept. No aliases, no shortcuts, no alternatives.
-- **Compiler-enforced style.** No linter debates. No style guides. The compiler *is* the style guide.
-- **Functional-leaning, systems-capable.** Immutable by default, expression-based, but compiles down to efficient native code.
-- **Transparent effects.** Dependencies and errors are tracked in the type system, not hidden behind globals or frameworks.
+### Unions (`|`)
 
----
-
-## Naming Convention
-
-There is ONE WAY to name things. The compiler enforces this — no exceptions.
-
-| Convention | Used For | Examples |
-|------------|----------|----------|
-| **PascalCase** | Types, Contracts, Enums, Enum Variants, Newtypes | `Person`, `TaskId`, `HttpClient` |
-| **camelCase** | Functions, variables, struct fields | `findByName`, `addBalance`, `firstName` |
-
-No `snake_case`. No `SCREAMING_CASE`. No `kebab-case`. One convention per category, enforced at compile time.
-
----
-
-## Core Design Principles
-
-### 1. Everything Sorted (Alphabetical, Compiler-Enforced)
-
-Struct fields, enum variants, function definitions in a module, use imports, match arms, contract functions — **ALL** sorted alphabetically. The compiler rejects unsorted code.
-
-**Module-level ordering:**
-
-1. `use` imports (sorted by path)
-2. Type definitions (contracts, enums, newtypes, structs — mixed together, sorted by name)
-3. Function definitions (sorted by name)
-
-**Match arms:** sorted by pattern text. The `_` wildcard is always last.
-
-**Why?** Eliminates bikeshedding over organization. Makes every file instantly navigable. Diffs are minimal when adding new items.
-
----
-
-### 2. Type-Derived Variable Names (No `let`)
-
-There is no `let` keyword. Variable bindings are automatically derived from the type name by lowercasing the first character:
-
-| Expression | Auto-derived binding |
-|------------|---------------------|
-| `Person { ... }` | `person` |
-| `HttpClient { ... }` | `httpClient` |
-| `TaskId(42)` | `taskId` |
-
-Custom names are allowed **only** when disambiguation is needed:
+A union expresses "this or that":
 
 ```
-admin = Person { Age(30), Name("Admin") }
-guest = Person { Age(25), Name("Guest") }
+Bit = Off | On
 ```
 
-**Compiler rule:** If only one value of a given type is in scope, you **MUST** use the auto-derived name. Custom names are an error when they aren't needed.
+### Products (`&`)
 
----
-
-### 3. Functions Only — No Methods (UFCS)
-
-There are no methods. No `impl` blocks. Only standalone functions.
-
-**Uniform Function Call Syntax (UFCS)** bridges the gap:
-
-| Dot syntax | Equivalent to |
-|------------|---------------|
-| `value.function()` | `function(value)` |
-| `value.function(arg)` | `function(value, arg)` |
-
-**Chaining** works naturally:
+The `&` operator expresses "this and that" — a value of the resulting type has all of its component parts.
 
 ```
-value.f().g().h()
+Byte = Bit & Bit & Bit & Bit & Bit & Bit & Bit & Bit
 ```
 
-is equivalent to:
+> **Note**: `&` is technically a product type operator, not a true type-theoretic intersection. The symbol is reused because it reads naturally as "has-a".
+
+#### Product Members Are Alphabetical
+
+By the global alphabetical-order rule, the components of a product are always written in alphabetical order:
 
 ```
-h(g(f(value)))
+User = Birthday & Username
 ```
 
-The dot syntax is just sugar. There is no dispatch, no vtables, no method resolution order. Functions are functions.
-
----
-
-### 4. Two Parameters Maximum (Receiver + Input)
-
-Functions take **at most TWO** parameters:
-
-- **Param 1** (receiver): what the function acts ON
-- **Param 2** (input): the data being passed
-
-| Params | Definition | Call Styles |
-|--------|-----------|-------------|
-| 0 | `fn now() -> Timestamp` | `now()` |
-| 1 | `fn double(Int) -> Int` | `5.double()` or `double(5)` |
-| 2 | `fn addBalance(Wallet, Amount) -> Wallet` | `wallet.addBalance(amount)` |
-
-Both parameters are auto-bound by their type name (camelCase).
-
-**Destructuring rule:** If the type is a struct, the **first** parameter (receiver) is auto-destructured — its fields are directly in scope. The second parameter is bound as a variable only.
-
-This enables fluent, readable APIs:
+The same applies to construction:
 
 ```
-findByName(Name("Alan"))
-  .assertIsAdmin()?
-  .getWallet()
-  .addBalance(Amount(100))
-  .getBalance()
-  .print()
+User(Birthday(...) & Username(...))
 ```
 
-**Why two?** Most well-designed functions naturally fit this model: a subject and an action, or a container and an element. If you need more data, group it into a struct.
+#### Field Access
 
----
-
-### 5. Newtype Enforcement
-
-Raw primitives (`Int`, `String`, `Float`, `Bool`) should **NOT** appear in function signatures or struct fields. Use newtypes:
+A product's components are accessed by their type name:
 
 ```
-type Age = Int
-type Balance = Int
-type Name = String
-type TaskId = Int
+user.Birthday
+user.Username
 ```
 
-`type X = Y` creates a **distinct type** (not an alias). They are not interchangeable.
-
-| Operation | Syntax |
-|-----------|--------|
-| Construction | `TaskId(42)` |
-| Access inner value | `taskId.value` |
-
-The compiler **warns** when raw primitives are used in struct fields or function parameters. Low-level utility functions are exempt.
-
-**Why?** `fn transfer(Int, Int, Int)` is a bug waiting to happen. `fn transfer(Account, Account, Amount)` is self-documenting and type-safe.
-
----
-
-### 6. Contracts (Replaces Traits/dyn)
-
-One abstraction mechanism: **contracts**. Structural typing (like Go interfaces).
+For repeated components (or anonymous sequences), positional access by 1-based index is used:
 
 ```
-contract Printable {
-  fn toString(Self) -> String,
+byte.1   // first Bit
+byte.2   // second Bit
+```
+
+### Fixed Repetition (`Type[N]`)
+
+For a fixed count of the same type, use `Type[N]`:
+
+```
+Byte = Bit[8]
+```
+
+The `[]` syntax was chosen because `.` is reserved for method calls and field access, and `[]` does not conflict with the `<>` generic syntax.
+
+### Unbounded Repetition (`...Type`)
+
+For unbounded sequences:
+
+```
+Bytes = ...Byte
+```
+
+This pairs naturally with `Bit[8]` as its finite counterpart.
+
+Higher-level types like `Int`, `Float`, and `String` are defined from `Byte`/`Bytes`.
+
+## Generics
+
+Types can be parameterized by other types using angle brackets:
+
+```
+List<T>
+Option<T>
+Result<T, E>
+Map<String, Int>
+```
+
+The chevron syntax does not conflict with `[]` repetition or `&` product.
+
+### Generic Constraints
+
+Constraints on type parameters use `:`, naming a trait the parameter must implement:
+
+```
+List.print = <T: Print>() -> Noop {
+    ...
 }
 ```
 
-Types satisfy contracts **structurally** — if a matching function exists in scope, the type satisfies the contract. No explicit `impl` required.
+## Literals
 
-**No orphan rule.** You can implement contracts on any type from anywhere. If conflicting implementations exist, the compiler errors at the use site, not at the definition site.
-
----
-
-### 7. Match Is the Only Control Flow
-
-There is no `if`, `else`, `for`, `while`, `loop`, or `return`.
-
-**Value-based matching** (pattern matching):
+The language is values-only — there is no `new`, no implicit nullability, no bare keywords like `true` / `false`. Constructors are just regular functions named after the type:
 
 ```
-match shape {
-  Shape.Circle(radius) => "Circle with radius {radius.value}",
-  Shape.Rectangle(data) => "Rectangle",
-  Shape.Triangle(data) => "Triangle",
+Int(123)
+```
+
+For ergonomics, several literal forms are sugar over their constructors:
+
+| Literal        | Desugars to        |
+|----------------|--------------------|
+| `123`          | `Int(123)`         |
+| `1.0`          | `Float(1.0)`       |
+| `"abc"`        | `String(abc)`      |
+| `0xFF0000`     | `Hex(0xFF0000)`    |
+
+String literals exist to avoid the parsing ambiguity of bare `String(...)` with spaces and punctuation. Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
+
+#### No Empty Constructors
+
+`String()`, `Int()`, `User()` — calling any constructor with zero arguments is a compile-time error. The reasoning: if a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
+
+For factory-style construction (e.g. "an empty list"), use an explicit method on the type — `List.empty`, `String.empty`, etc.
+
+### Singleton Types
+
+A type with no underlying composition (e.g. `Noop`, `Off`, `On`) has exactly one value. The value is referenced by writing the type name itself:
+
+```
+main = () -> Noop {
+    Noop
 }
 ```
 
-**Condition-based matching** (replaces if/else):
+`Noop` in return position is the type; `Noop` in expression position is its sole value. No constructor call is needed (and would not work — there is no data to pass).
+
+## Constructor Arguments
+
+Every type `T` has a constructor `T(_)`. The argument is a value matching the type's underlying definition:
+
+| Kind             | Constructor                            | Argument is…                                  |
+|------------------|----------------------------------------|-----------------------------------------------|
+| Primitive        | `Int(123)`, `Float(1.0)`, `String("hi")` | a literal of the corresponding lexical kind   |
+| Hex              | `Hex(0xFF0000)`                        | a hex literal                                  |
+| Product `A & B`  | `T(A(...) & B(...))`                   | a value-level product joined with `&`          |
+| Union `A \| B`   | `T(A(...))` or `T(B(...))`              | a value of any variant                         |
+| Newtype          | `T(inner)`                             | a value of the aliased type                    |
+
+So:
 
 ```
-match {
-  int < 0 => "negative",
-  int == 0 => "zero",
-  _ => "positive",
-}
+red  = Hex(0xFF0000)
+user = User(Birthday(...) & Username("ahanot"))
 ```
 
-**Iteration:** `.map()`, `.filter()`, `.fold()` + recursion (with guaranteed tail-call optimization).
+`&` is overloaded across the two levels: at the type level it forms a product type, at the value level it forms a product value. The two never appear in the same context.
 
-**Returns:** The last expression in a block is the return value. No `return` keyword.
+## Naming Conventions
 
----
+- **Types**: `PascalCase`
+- **Traits**: `PascalCase` (traits are types)
+- **Methods (functions)**: `camelCase`
 
-### 8. Immutable by Default
+The case difference disambiguates trait implementations from regular methods on the same type: `Type.print` is a method, `Type.Print` is the implementation of the `Print` trait.
 
-All bindings are immutable. The `mut` keyword opts into mutation when necessary:
+## File and Module Layout
 
-```
-mut counter = Counter(0)
-```
-
-Mutation is available but discouraged. The functional style — transforming values and returning new ones — is the idiomatic path.
-
----
-
-### 9. Effect<A, E, R> Type System
-
-The unified type for computations that interact with the world:
-
-- **A** = Success type
-- **E** = Error union (inferred from `?` usage)
-- **R** = Requirements / Dependencies (inferred from what services are used)
-
-**Pure functions** — no errors, no dependencies:
-
-```
-fn double(Int) -> Int {
-  int * 2
-}
-```
-
-**Fallible functions** — can fail, no dependencies:
-
-```
-fn parse(String) -> Result<Int> {
-  ...
-}
-```
-
-**Effectful functions** — can fail AND have dependencies:
-
-```
-fn findUser(UserId) -> Effect<User> {
-  logger.info("Finding user {userId.value}")
-  database.query(userId)?
-}
-```
-
-**Signature hierarchy:**
-
-| Signature | Meaning |
-|-----------|---------|
-| `-> Int` | Pure. Cannot fail. No dependencies. |
-| `-> Result<User>` | Can fail. No dependencies. E inferred. |
-| `-> Effect<User>` | Can fail. Has dependencies. E + R inferred. |
-| `-> Effect<User, QueryError, Database>` | Fully explicit. |
-
-**Requirement auto-binding:** If `Database` is in R, then `database` is automatically in scope as a variable. No manual wiring.
-
-**Providing dependencies:**
-
-```
-fn main() {
-  findUser(UserId(42))
-    .provide(PostgresDatabase { Url("postgres://...") })
-    .provide(ConsoleLogger {})
-    .run()
-}
-```
-
-`.run()` is only available when **all** requirements are satisfied (R is empty). The compiler guarantees at compile time that nothing is missing.
-
----
-
-### 10. No Comments
-
-**Comments are not allowed.** The compiler rejects `//`. If code needs explaining, refactor it. The code IS the documentation. Function and type names should be descriptive enough.
-
-There are no line comments, no block comments, no doc-comment variants. If you feel the need to write a comment, that's a signal to:
-
-- Rename the function or type to be more descriptive
-- Extract a well-named helper function
-- Use more precise newtypes
-
----
-
-### 11. No Lifetime Annotations
-
-No `'a`, `'static`, `&'a`. Everything is owned by default. The compiler infers borrowing and cloning when generating Rust code. If it can't determine the best strategy, it clones — emitting a **warning** (not an error) so you can optimize later.
-
----
-
-### 12. No Async Coloring
-
-No `async`, `await`, or `Future`. All functions look synchronous. The runtime uses green threads (like Go). I/O operations automatically yield to the scheduler.
-
-**Why?** Async coloring splits every ecosystem in two. In Oneway, there's one world. A function that reads from disk looks exactly like a function that adds two numbers — the runtime handles the rest.
-
----
-
-### 13. Composition via Delegation
-
-No inheritance. No mixins. Use the `delegates` keyword for struct embedding:
-
-```
-struct Admin {
-  delegates User,
-  List<Permission>,
-}
-```
-
-`Admin` automatically satisfies all contracts that `User` satisfies. `User`'s fields are accessible directly through the `Admin` value: `admin.name`, `admin.email`, etc.
-
----
-
-## Syntax Specification
-
-### No Comments
-
-Comments are not allowed. The compiler rejects `//`. There are no line comments, no block comments, no doc-comment variants. The code is the documentation.
-
----
+- **Files** use `snake_case.ow` names (chosen for git/Linux compatibility).
+- A file's name **must match** the type it declares: `foo.ow` must declare a type named `Foo`.
+- A **module is a folder**. There is no `mod` declaration. Importing `Foo` from a sibling folder is enough.
+- The entry point is `main.ow`; libraries live in `lib.ow`.
 
 ### Imports
 
 ```
-use io
-use math
-use net.http
+use Foo
 ```
 
-Sorted alphabetically. Always at the top of the file.
+This imports `Foo` from the corresponding file/folder. No paths, no aliasing required at the import site.
 
----
+### Visibility
 
-### Newtypes
-
-```
-type Balance = Int
-type Name = String
-type TaskId = Int
-```
-
-Sorted alphabetically alongside other type definitions.
-
----
-
-### Struct Definitions
+Everything is **public by default**. To mark a method as private, prefix it with `*`:
 
 ```
-struct User {
-  Age,
-  Email,
-  Name,
+Type.*helper = () -> Noop {
+    ...
 }
 ```
 
-Fields are types, sorted alphabetically by type name. No field names, no colons. Trailing comma on every field. Field access uses camelCase derived from the type: `user.age`, `user.email`, `user.name`.
+## Type Inference
 
-With delegation:
+There is **no type inference**. Every type must be explicitly written.
+
+Additionally, every declared type must be *used*: if a function returns `Result<T, Err>` but no `Err` ever flows through, this is a compile-time error. Declared types must match inferred shape exactly.
+
+## Implementations
+
+Every function is implemented on a type. The general form is:
 
 ```
-struct Admin {
-  delegates User,
-  List<Permission>,
+Type.functionName = (params) -> ReturnType {
+    ...
 }
 ```
 
----
+### The Entry Point
 
-### Enum Definitions
+`main` is the single exception. It is a top-level free function — not a method on any type — and is the program's entry point. It typically takes the capabilities the program needs:
 
 ```
-enum Color {
-  Blue,
-  Green,
-  Red,
-}
-
-enum Shape {
-  Circle(Radius),
-  Rectangle(RectangleData),
-  Triangle(TriangleData),
+main = (Stdout) -> Noop {
+    "hello".print(Stdout)
 }
 ```
 
-Variants sorted alphabetically. PascalCase variant names. Trailing comma.
+### Referring to the Receiver
 
----
-
-### Function Definitions
+Inside a method body, the receiver value is referenced by **the receiver type's name**:
 
 ```
-fn now() -> Timestamp {
-  ...
-}
-
-fn double(Int) -> Int {
-  int * 2
-}
-
-fn addBalance(Wallet, Amount) -> Wallet {
-  Wallet { Balance(wallet.balance.value + amount.value), wallet.name }
+String.print = (Stdout) -> Noop {
+    Stdout.write(String)    // `String` here is the receiver value
 }
 ```
 
-Functions sorted alphabetically within their module. camelCase names.
-
----
-
-### Contracts
+The `Self` keyword is an alias for the receiver type's name, available everywhere. It is required when the receiver's type name collides with a parameter of the same type:
 
 ```
-contract Comparable {
-  fn compare(Self, Self) -> Int,
-  fn equal(Self, Self) -> Bool,
-}
-
-contract Printable {
-  fn toString(Self) -> String,
+Int.add = (Int) -> Int {
+    ...   // ambiguous: which `Int`?
 }
 ```
 
-Contract function signatures sorted alphabetically. Trailing comma.
+The above is a compile error. Resolve it in one of two ways:
 
----
-
-### Match Expressions
-
-**Value-based** (pattern matching on a subject):
+**(a) Use `Self` for the receiver:**
 
 ```
-fn describe(Shape) -> String {
-  match shape {
-    Shape.Circle(radius) => "Circle with radius {radius.value}",
-    Shape.Rectangle(data) => "Rectangle",
-    Shape.Triangle(data) => "Triangle",
-  }
+Int.add = (Int) -> Int {
+    Self.plus(Int)
 }
 ```
 
-**Condition-based** (replaces if/else — no subject):
+**(b) Introduce a newtype alias for the parameter:**
 
 ```
-fn category(Int) -> String {
-  match {
-    int < 0 => "negative",
-    int == 0 => "zero",
-    _ => "positive",
-  }
+OtherInt = Int
+
+Int.add = (OtherInt) -> Int {
+    Int.plus(OtherInt)
 }
 ```
 
-**Rules:**
-- Arms sorted by pattern text.
-- `_` wildcard always last.
-- Must be exhaustive.
+Both are valid. `Self` is the lighter-weight choice for one-off uses; the alias is the choice when the distinction is meaningful enough to warrant a name.
 
----
-
-### String Interpolation
-
-`"{expr}"` is the ONE way to format strings:
+### Example
 
 ```
-"Hello, {name.value}!"
-"{a} + {b} = {result}"
+String.print = () -> Noop {
+    ...
+}
 ```
 
-No `format!`, no `println!` macros, no string concatenation operators.
+### Declaration Order
 
----
-
-### Chaining (UFCS)
+Multiple methods on the same type must be declared in alphabetical order:
 
 ```
-findByName(Name("Alan"))
-  .assertIsAdmin()?
-  .getWallet()
-  .addBalance(Amount(100))
-  .getBalance()
-  .print()
+User.add    = (...) -> ...
+User.export = (...) -> ...
+User.remove = (...) -> ...
 ```
 
-Every line reads as a verb acting on the result of the previous line.
+This is a compile-time requirement, not a convention.
 
----
+### Optional Parameters via `Option<T>`
 
-## Built-in Types
+There is no special syntax for optional parameters. Optionality is expressed through the type system using `Option<T>`:
 
-| Type | Description |
-|------|-------------|
-| `Int` | 64-bit signed integer |
-| `Float` | 64-bit float |
-| `Bool` | `true` / `false` |
-| `String` | UTF-8 string (ONE string type) |
-| `List<T>` | Ordered collection |
-| `Map<K, V>` | Key-value collection |
-| `Set<T>` | Unique elements |
-| `Option<T>` | Presence or absence |
-| `Result<T, E>` | Success or failure (E inferred if omitted) |
-| `Effect<A, E, R>` | Effectful computation |
+```
+Color = Blue | Green | Red
+Blue  = Hex(0000FF)
+Green = Hex(00FF00)
+Red   = Hex(FF0000)
 
-No `i8`, `i16`, `u32`, `f32`, etc. One integer type. One float type. One string type.
+String.print = (Option<Color>) -> Noop {
+    ...
+}
+```
 
----
+This allows both forms at the call site:
+
+```
+"hello".print()
+"hello".print(Red)
+```
+
+## No Local Bindings
+
+Oneway has **no `let` keyword and no local variables**. This is deliberate.
+
+If you need to manipulate intermediate state, declare a new type for it. Names lie; types don't. Forcing every intermediate value through a named type makes the data flow explicit and the documentation structural.
+
+## Function Bodies
+
+A body is a **newline-separated sequence of expressions**. The last expression is the return value. There are no semicolons.
+
+- `match` is an expression — it can be the final line of a body, or appear as a sub-expression.
+- `while` and `for` are expressions of type `Noop`.
+- Non-final lines whose results are discarded are valid (they exist for side effects or `?` propagation).
+
+```
+User.compare = (OtherUser) -> Ord {
+    User.Birthday.compare(OtherUser.Birthday)
+}
+
+File.readConfig = (Path) -> Result<Config, IoError | ParseError> {
+    File.read(Path)?
+        .parse()?
+        .validate()
+}
+
+Int.classify = () -> Sign {
+    match Int.compare(Int(0)) {
+        Equal   => Zero,
+        Greater => Positive,
+        Less    => Negative,
+    }
+}
+```
+
+Without `let`, the only way to thread a value through multiple operations is method chaining. That is the intended style.
+
+## First-Class Functions
+
+Methods are first-class values. You refer to a method by its qualified name `Type.method` and pass it where a matching trait signature is expected:
+
+```
+Numbers = ...Int
+
+Numbers.doubleAll = () -> Numbers {
+    Numbers.map(Int.double)
+}
+```
+
+### Lambdas
+
+For one-off operations, write a lambda literal with its **full signature**. There is no signature inference.
+
+```
+Numbers.tripleAll = () -> Numbers {
+    Numbers.map((Int) -> Int { Int.mul(Int(3)) })
+}
+```
+
+Lambda syntax mirrors method declaration syntax: `(params) -> ReturnType { body }`. The only difference is the absence of a `Type.name =` prefix.
+
+## Memory Model
+
+Oneway has **no garbage collector**. The reference implementation transpiles to Rust and inherits Rust's ownership and borrowing rules. However, **ownership is invisible to the Oneway programmer**: there are no lifetimes, no `&` / `&mut` sigils at the value level, no explicit `Box` or `Rc`. The transpiler infers all of this from usage.
+
+Rough mapping to Rust:
+
+| Oneway                                  | Transpiled to                                  |
+|-----------------------------------------|-------------------------------------------------|
+| Non-`mut` parameter                     | `T` (moved) or `&T` (borrowed) — transpiler picks |
+| `mut T` parameter                       | `&mut T`                                        |
+| Recursive type (e.g. `Tree`)            | Auto-boxed (`Box<T>`)                           |
+| Shared ownership the transpiler can't otherwise prove | `Rc<T>` / `Arc<T>`                  |
+
+If the transpiler cannot find a valid ownership scheme for a given Oneway program, it is a compile-time error — equivalent to a Rust borrow-checker rejection. The error is surfaced in Oneway terms, not Rust terms.
+
+## Mutability
+
+Values are immutable by default. The `mut` keyword marks a **parameter** as mutable. There are no local variables, so there is nothing else `mut` can apply to.
+
+```
+Counter.add = (mut Counter) -> Noop {
+    ...
+}
+```
+
+`mut T` transpiles directly to `&mut T` in Rust: the caller's value is mutated in place.
+
+## Recursive Types
+
+Recursive type definitions are allowed and **boxed automatically** by the compiler — there is no user-visible `Box<T>`:
+
+```
+Tree   = Branch | Leaf
+Branch = Left & Right & Value
+Left   = Tree
+Right  = Tree
+Value  = Int
+```
+
+Whether the compiler boxes `Left` and `Right` individually or via some other indirection is an implementation choice; it is never spelled out in source.
+
+## Control Flow
+
+### Pattern Matching
+
+There is no `if`/`else`. All branching is via `match` on a union:
+
+```
+match ord {
+    Equal   => ...,
+    Greater => ...,
+    Less    => ...,
+}
+```
+
+Match arms follow the union's variant order, which is itself alphabetical.
+
+Both `Bool` and `Ord` are ordinary union types in the standard library:
+
+```
+Bool = False | True
+Ord  = Equal | Greater | Less
+```
+
+### Loops
+
+Standard imperative loop constructs are available: `while`, `for`, plus higher-order forms on collections (`map`, `fold`, etc.). The exact iteration protocol is TBD.
 
 ## Error Handling
 
-Error handling is Result-based. The `?` operator propagates errors. Error types are auto-unioned by the compiler:
+Errors are values, carried by the standard `Result<T, E>` type. The error slot is a regular type, so it can be a union written inline:
 
 ```
-fn findUser(UserId) -> Result<User> {
-  database.connect()?.query(userId)?.parseUser()
+File.read = (Path) -> Result<Bytes, IoError | NotFound | PermissionDenied> {
+    ...
 }
 ```
 
-**No panics. No unwrap. No exceptions.** If something can fail, it returns a `Result`. The type system tracks every possible failure mode.
+This is more ergonomic than Rust's approach, where each call site typically needs a dedicated error enum.
 
----
+### The `?` Operator
 
-## Module System
+The postfix `?` operator propagates failure. It works on both `Result<T, E>` and `Option<T>`:
 
-File = Module. Directory = Namespace. No `mod` declarations needed.
-
-```
-src/
-  math/
-    arithmetic.ow  → math.arithmetic
-    geometry.ow    → math.geometry
-  main.ow          → entry point
-```
-
-**Visibility:** Private by default. Use `pub` to export:
+- On `Result<T, E>`: short-circuits with the error, otherwise unwraps to `T`.
+- On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```
-pub fn add(Int, Int) -> Int {
-  ...
+Type.functionName = (params) -> ReturnType {
+    Foo.test()?
+    Foo.test2()?
 }
 ```
 
----
+### Option vs Result
 
-## Formatting
+`Option<T>` and `Result<T, Empty>` are structurally similar but **kept distinct**: `None` means "absent", `Err(_)` means "failed". The semantic difference is worth the duplication.
 
-`ow fmt` is THE formatter. There is no configuration. It enforces:
+## Side Effects and Capabilities
 
-- Alphabetical ordering of all sortable constructs
-- 2-space indentation
-- Trailing commas on all list-like items
-- camelCase for functions and fields
-- PascalCase for types
-- One expression per line
+A function's type should not lie about what it does. `String.print = () -> Noop` claims "nothing happens", but writing to stdout is something.
 
-There are no formatter options. No `.editorconfig` overrides. No "but my team prefers..." — the formatter decides, and that's the end of it.
-
----
-
-## The "One Way" Decision Table
-
-| Decision | The ONE Way | Eliminated |
-|----------|-------------|------------|
-| Comments | No comments allowed | `//`, `/* */`, `#`, `--` |
-| Strings | `"double quotes"` | `'single'`, backticks |
-| String formatting | `"{expr}"` interpolation | format!, println!, concat |
-| Number types | `Int` and `Float` | i8/i16/i32/u8/u16/u32/f32/f64 |
-| String types | `String` | &str, OsString, CStr |
-| Abstraction | Contracts (structural) | Traits, interfaces, dyn |
-| Generics | `<T>` angle brackets | `[T]` square brackets |
-| Struct fields | By type (no keys) | `key: Type`, named fields |
-| Control flow | `match` | if/else, for, while, loop, switch |
-| Iteration | Functional (`.map` / `.filter` / `.fold`) | for loops, while loops |
-| Callables | Functions (max 2 params) | Methods, closures, lambdas |
-| Variables | Type-derived binding | let, var, const, auto |
-| Mutability | Immutable default + `mut` | const/let, final/var |
-| Returns | Last expression | return keyword |
-| Error handling | `Result` + `?` + union types | Exceptions, panics, try/catch |
-| Dependencies | `Effect<A, E, R>` requirements | DI frameworks, globals, param passing |
-| Naming | PascalCase types, camelCase rest | snake_case, SCREAMING_CASE |
-| Separators | Newlines | Semicolons |
-| Struct creation | Literal `Type { ... }` | new(), builder, default() |
-| Visibility | Private default + `pub` | public, protected, internal |
-| Lifetimes | None (compiler-inferred) | 'a, 'static, &'a |
-| Async | None (green threads) | async/await, Future |
-| Code reuse | Composition + `delegates` | Inheritance, mixins |
-| Orphan rule | None | Orphan rule, newtype workaround |
-| Memory | Implicit ownership | Manual Rc/Arc, lifetime annotations |
-| Primitives | Newtypes encouraged | Raw Int/String in API signatures |
-
----
-
-## Compilation
-
-### Phase 1: Oneway → Rust (Transpilation)
+Oneway models effects as **capabilities** — values that must be passed in to perform an effect. A function that prints requires a `Stdout` capability:
 
 ```
-Source (.ow) → Lexer → Parser → AST → Checker → Rust Codegen → rustc → Binary
-```
-
-The Rust backend lets Oneway inherit Rust's optimizer, borrow checker, and ecosystem from day one. Ownership and borrowing decisions are made by the Oneway compiler when generating Rust code.
-
-### Phase 2: Oneway → LLVM IR
-
-```
-Source (.ow) → Lexer → Parser → AST → Checker → LLVM IR → Native Binary
-```
-
-Direct compilation to LLVM IR for full control over code generation and to remove the Rust dependency.
-
----
-
-## Open Design Questions
-
-### 1. Higher-Order Functions with the 2-Param Rule
-
-How does `.map(double)` work? The receiver is the list, the input is the function:
-
-```
-list.map(double)   // = map(list, double)
-```
-
-This fits the 2-param model naturally. **Solved.**
-
-### 2. Closures / Anonymous Functions
-
-Allow `{ x => x * 2 }` as anonymous function syntax? Useful for `.map` / `.filter` / `.fold`:
-
-```
-list.map({ x => x * 2 })
-```
-
-Probably yes — one syntax for anonymous functions. Details TBD.
-
-### 3. Generic Type Definitions
-
-Angle bracket syntax for type parameters:
-
-```
-struct Pair<A, B> {
-  A,
-  B,
+String.print = (Stdout) -> Noop {
+    ...
 }
 ```
 
-### 4. Pattern Matching Sort Order for Numbers
+The only place to obtain real-world capabilities is `main.ow`, which receives them and threads them down. A function that does not receive a capability cannot perform the corresponding effect.
 
-Sort as text (lexicographic): `0` < `1` < `10` < `2` < `_`. Simple and unambiguous.
+This requires no new mechanism — capabilities are just types, passed as ordinary arguments — and it makes effects honest at the type level without monads or a separate effect system.
 
-### 5. Standard Library Scope
+## Traits
 
-Always available (no import needed): `Int`, `Float`, `Bool`, `String`, `List`, `Map`, `Set`, `Option`, `Result`, `Effect`, `print()`.
+A trait is a callable type signature. It is declared like a function type:
 
-Everything else requires a `use` import.
+```
+Print = <Error>() -> Result<Noop, Error>
+```
 
-### 6. FFI (Foreign Function Interface)
+Because traits are types, they are written in `PascalCase`.
 
-`extern "C" { ... }` blocks with size-specific types for interop with C libraries.
+### Multi-Method Traits
 
----
+A trait with multiple methods is just a product of single-method traits:
 
-*This is a living document. Updated as the language evolves.*
+```
+Show = Debug & PrintString
+```
+
+### Default Implementations
+
+A trait declaration can carry a default body marked `{ impl }`:
+
+```
+Greet = () -> String { impl }
+```
+
+Implementing types may then either override or inherit the default.
+
+### Implementing a Trait
+
+A trait is implemented on a type by assigning to `Type.TraitName`:
+
+```
+User.Print = () -> Result<Noop, IoError> {
+    ...
+}
+```
+
+This is distinguished from a regular method (`Type.print`) by case alone.
+
+### Using a Trait as a Parameter
+
+A trait can be used directly as a parameter type. The parameter binds the trait implementation, which is then invocable:
+
+```
+Type.needsPrint = (Print) -> Noop {
+    Print()
+}
+```
+
+### `Self`
+
+`Self` always refers to the receiver type's name from inside a method or trait implementation. It is an alias, not a separate identity — `Self` and the type's literal name (`String`, `Int`, …) are interchangeable. The only reason `Self` exists is to disambiguate when a parameter shares the receiver's type. See [Referring to the Receiver](#referring-to-the-receiver).
+
+## Concurrency
+
+There is no async/await, and there is no function coloring. All functions are uniform. The concurrency model follows Go's approach: lightweight tasks and channels.
+
+> **Implementation note**: this is in real tension with the no-GC, transpile-to-Rust target. Rust's idiomatic concurrency is either OS threads (heavyweight) or async/await (introduces coloring). The initial transpiler is expected to map Oneway tasks to OS threads (`std::thread`) and channels to `std::sync::mpsc` or `crossbeam`. Lightweight green threading or invisible async transformation is a future direction.
+
+## Interop With the Host Ecosystem
+
+Oneway does **not** ship its own application-level standard library. Beyond a small core (`Option`, `Result`, `Bool`, `Ord`, primitive numerics, `String`, capability types), all functionality — HTTP, JSON, databases, crypto, regex, logging, async runtime — is delegated to the host language's existing ecosystem (Rust + crates.io).
+
+This is the same strategy used by Kotlin (wraps JVM libraries), ClojureScript (wraps npm), F# (wraps .NET), Crystal (wraps C). Building a new language is hard; building a fresh ecosystem on top is years more work that almost no new language survives.
+
+### `extern Rust` Declarations
+
+A type or method can be declared as backed by a Rust item. The transpiler emits direct calls — no runtime glue, no marshalling.
+
+```
+extern Rust("std::io::stdout")
+Stdout
+
+extern Rust("std::println")
+String.print = (Stdout) -> Noop
+
+extern Rust("axum::Router")
+HttpRouter
+
+extern Rust("axum::Router::route")
+HttpRouter.route = (Handler & Path) -> HttpRouter
+```
+
+### Dependency Manifest
+
+Each Oneway project carries a manifest listing the Rust crates it depends on. The transpiler emits a `Cargo.toml` that mirrors it, and `oneway build` is a thin wrapper around `cargo build`.
+
+```
+[deps]
+axum       = "0.7"
+serde_json = "1"
+sqlx       = "0.7"
+```
+
+### Binding Packages
+
+Idiomatic Oneway code does not call `extern Rust` directly. Instead, the community (and the standard library) publishes **binding packages** — thin Oneway facades over popular Rust crates:
+
+```
+use Http       # wraps axum / reqwest
+use Json       # wraps serde_json
+use Database   # wraps sqlx
+```
+
+A binding package is a few hundred lines of Oneway declarations plus minimal ergonomic glue. Write once, everyone benefits — the same pattern as `ktor` over `okhttp` in Kotlin, or `cljs-http` over `fetch` in ClojureScript.
+
+### What Oneway Ships Itself
+
+The Oneway-owned core is intentionally tiny:
+
+- Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`
+- Numeric and text: `Float`, `Hex`, `Int`, `String`
+- Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`
+- Standard unions: `Bool`, `Ord`
+- Capability types: `Clock`, `Filesystem`, `Network`, `Random`, `Stderr`, `Stdin`, `Stdout`
+
+Everything else is the host ecosystem, accessed through bindings.
+
+### Tradeoffs
+
+- **Error messages may leak Rust types** when crossing the FFI boundary. Unavoidable to some degree; mitigated by good bindings.
+- **Async-flavored crates** are exposed only through blocking facades, preserving the no-coloring rule. Performance-sensitive async work is the main case where this is awkward.
+- **Oneway is permanently coupled to Rust** unless a second backend is later added. A real strategic dependency, accepted in exchange for never shipping a stdlib.
+
+## Disambiguating Same-Typed Parameters
+
+Oneway has no named parameters — types serve as the documentation. When two parameters would share the same type, create a newtype alias.
+
+Newtypes are **distinct but compatible**: a value of the original type can flow into a parameter of the alias, but the two are not interchangeable for disambiguation purposes.
+
+Consider comparing two users by birthday:
+
+```
+User = Birthday & Username
+
+User.compare = (User) -> Ord {
+    User.Birthday.compare(User.Birthday)
+}
+```
+
+This doesn't work — there is no way to tell the two `User` values apart. Introduce a distinct alias for the second one:
+
+```
+User      = Birthday & Username
+OtherUser = User
+
+User.compare = (OtherUser) -> Ord {
+    User.Birthday.compare(OtherUser.Birthday)
+}
+```
+
+This is a deliberate design choice: types lie less than names.
+
+## Strings
+
+A `String` is `...Byte` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
+
+## Comments
+
+There are no comments. Code must speak for itself through types and naming.
+
+## Operator Precedence
+
+### Type-level (tightest first)
+
+1. `T[N]` — postfix repetition
+2. `...T` — prefix spread
+3. `T<...>` — generic application
+4. `&` — product
+5. `|` — union
+
+So `A | B & C[3]` parses as `A | (B & (C[3]))`.
+
+### Expression-level (tightest first)
+
+1. `.` — method call / field access
+2. `()` — function application
+3. `?` — postfix error propagation
+4. `&` — value-level product (only inside a constructor argument)
+
+So `foo.bar()?` is `((foo.bar)())?`.
+
+## Glossary of Operators and Sigils
+
+| Symbol     | Meaning                                  |
+|------------|------------------------------------------|
+| `\|`       | Union                                    |
+| `&`        | Product                                  |
+| `Type[N]`  | Fixed repetition (N copies)              |
+| `...Type`  | Unbounded repetition                     |
+| `<T>`      | Generic parameter                        |
+| `<T: Tr>`  | Generic with trait constraint            |
+| `.`        | Method call / field access               |
+| `?`        | Propagate `Result` / `Option` failure    |
+| `*name`    | Private method (file-local)              |
+| `"..."`    | String literal sugar                     |
+| `mut`      | Mutable binding                          |
