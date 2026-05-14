@@ -1,8 +1,38 @@
 use crate::ast::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
+const SUSPENDING_CAPABILITIES: &[&str] = &["Filesystem", "Network"];
+
+fn is_suspending_capability(name: &str) -> bool {
+    SUSPENDING_CAPABILITIES.contains(&name)
+}
+
+const CAPABILITY_TYPES: &[&str] = &[
+    "Clock", "Filesystem", "Network", "Random", "Stderr", "Stdin", "Stdout",
+];
+
+fn is_capability_type(name: &str) -> bool {
+    CAPABILITY_TYPES.contains(&name)
+}
+
+fn is_capability_receiver(expr: &Expr) -> bool {
+    if let Expr::Ident(ident) = expr {
+        return is_capability_type(&ident.name);
+    }
+    false
+}
+
+pub struct GeneratedRust {
+    pub source: String,
+    pub is_async: bool,
+}
+
 pub fn generate(module: &Module) -> String {
+    generate_with_meta(module).source
+}
+
+pub fn generate_with_meta(module: &Module) -> GeneratedRust {
     let mut cg = Codegen::from_module(module);
     let mut out = String::new();
 
@@ -59,15 +89,27 @@ pub fn generate(module: &Module) -> String {
         out.push('\n');
     }
 
-    out
+    let is_async = cg.async_free_fns.contains("main");
+    GeneratedRust {
+        source: out,
+        is_async,
+    }
 }
 
 struct Codegen {
     variant_of: HashMap<String, String>,
     current_receiver: Option<String>,
-    extern_methods: HashMap<(String, String), String>,
+    extern_methods: HashMap<(String, String), ExternMethod>,
     bool_declared: bool,
+    async_methods: HashSet<(String, String)>,
+    async_free_fns: HashSet<String>,
     lambda_scopes: std::cell::RefCell<Vec<HashMap<String, String>>>,
+}
+
+#[derive(Clone)]
+struct ExternMethod {
+    path: String,
+    is_async: bool,
 }
 
 impl Codegen {
@@ -93,12 +135,15 @@ impl Codegen {
                     }
                 }
                 Item::Function(func) => {
-                    if let (Some(recv), Some(rust_path)) =
+                    if let (Some(recv), Some(extern_decl)) =
                         (&func.receiver, &func.extern_rust)
                     {
                         extern_methods.insert(
                             (recv.name.clone(), func.name.name.clone()),
-                            rust_path.clone(),
+                            ExternMethod {
+                                path: extern_decl.path.clone(),
+                                is_async: extern_decl.is_async,
+                            },
                         );
                     }
                 }
@@ -126,13 +171,27 @@ impl Codegen {
             false
         });
 
+        let (async_methods, async_free_fns) = compute_async_sets(module, &extern_methods);
+
         Self {
             variant_of,
             current_receiver: None,
             extern_methods,
             bool_declared,
+            async_methods,
+            async_free_fns,
             lambda_scopes: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    fn is_async_method(&self, recv_ty: &str, method: &str) -> bool {
+        let key = (recv_ty.to_string(), method.to_string());
+        if let Some(em) = self.extern_methods.get(&key) {
+            if em.is_async {
+                return true;
+            }
+        }
+        self.async_methods.contains(&key)
     }
 
     fn emit_type_def(&self, out: &mut String, td: &TypeDef) {
@@ -172,9 +231,13 @@ impl Codegen {
                 let _ = writeln!(out, "}}");
             }
             TypeExpr::Named { name, generics, .. } => {
-                let rendered = render_named_type(name, generics);
-                let _ = writeln!(out, "#[allow(dead_code)]");
-                let _ = writeln!(out, "pub struct {}(pub {});", td.name.name, rendered);
+                if let Some(rust_path) = name.strip_prefix("__extern__") {
+                    let _ = writeln!(out, "pub type {} = {};", td.name.name, rust_path);
+                } else {
+                    let rendered = render_named_type(name, generics);
+                    let _ = writeln!(out, "#[allow(dead_code)]");
+                    let _ = writeln!(out, "pub struct {}(pub {});", td.name.name, rendered);
+                }
             }
             TypeExpr::Repeat { ty, count, .. } => {
                 let _ = writeln!(
@@ -201,20 +264,26 @@ impl Codegen {
     fn emit_function(&mut self, out: &mut String, func: &FunctionDef) {
         let is_entry = func.receiver.is_none() && func.name.name == "main";
         self.current_receiver = None;
+        let is_async = self.async_free_fns.contains(&func.name.name);
+        let async_kw = if is_async { "async " } else { "" };
         if is_entry {
+            if is_async {
+                out.push_str("#[tokio::main]\n");
+            }
             let ret = render_type(&func.return_ty);
             if ret == "()" {
-                out.push_str("fn main() {\n");
+                let _ = write!(out, "{}fn main() {{\n", async_kw);
                 self.emit_block_body(out, &func.body, true);
             } else {
-                let _ = write!(out, "fn main() -> {} {{\n", ret);
+                let _ = write!(out, "{}fn main() -> {} {{\n", async_kw, ret);
                 self.emit_block_body(out, &func.body, false);
             }
             out.push_str("}\n");
         } else {
             let _ = write!(
                 out,
-                "fn {}() -> {} {{\n",
+                "{}fn {}() -> {} {{\n",
+                async_kw,
                 func.name.name,
                 render_type(&func.return_ty)
             );
@@ -230,7 +299,11 @@ impl Codegen {
         if pascal {
             let _ = writeln!(out, "    #[allow(non_snake_case)]");
         }
-        let _ = write!(out, "    pub fn {}(&self", func.name.name);
+        let is_async = self
+            .async_methods
+            .contains(&(recv.to_string(), func.name.name.clone()));
+        let async_kw = if is_async { "async " } else { "" };
+        let _ = write!(out, "    pub {}fn {}(&self", async_kw, func.name.name);
         for (i, param) in func.params.iter().enumerate() {
             let _ = write!(out, ", arg{}: {}", i, render_type(&param.ty));
         }
@@ -334,6 +407,10 @@ impl Codegen {
                         self.emit_expr(out, arg);
                     }
                     out.push(')');
+                    let recv_ty = static_type_of(receiver);
+                    if self.is_async_method(&recv_ty, &method.name) {
+                        out.push_str(".await");
+                    }
                 }
             }
             Expr::Match {
@@ -405,8 +482,12 @@ impl Codegen {
         method: &Ident,
         args: &[Expr],
     ) -> Option<String> {
-        if let Some(rust_path) = self.lookup_extern_method(receiver, &method.name) {
-            return Some(self.emit_extern_call(&rust_path, receiver, args));
+        if let Some(extern_method) = self.lookup_extern_method(receiver, &method.name) {
+            let mut s = self.emit_extern_call(&extern_method.path, receiver, args);
+            if extern_method.is_async {
+                s.push_str(".await");
+            }
+            return Some(s);
         }
         if method.name == "print" && args.len() == 1 {
             let mut s = String::from("println!(\"{}\", ");
@@ -463,7 +544,7 @@ impl Codegen {
         None
     }
 
-    fn lookup_extern_method(&self, receiver: &Expr, method: &str) -> Option<String> {
+    fn lookup_extern_method(&self, receiver: &Expr, method: &str) -> Option<ExternMethod> {
         let recv_ty = static_type_of(receiver);
         self.extern_methods
             .get(&(recv_ty, method.to_string()))
@@ -492,10 +573,18 @@ impl Codegen {
         } else {
             let _ = write!(s, "{}(", path);
         }
-        self.emit_expr(&mut s, receiver);
+        let receiver_is_capability = is_capability_receiver(receiver);
+        let mut first = true;
+        if !receiver_is_capability {
+            self.emit_expr(&mut s, receiver);
+            first = false;
+        }
         for arg in args {
-            s.push_str(", ");
+            if !first {
+                s.push_str(", ");
+            }
             self.emit_expr(&mut s, arg);
+            first = false;
         }
         s.push(')');
         s
@@ -669,5 +758,200 @@ fn static_type_of(expr: &Expr) -> String {
             "<unknown>".to_string()
         }
         Expr::Match { .. } | Expr::While { .. } | Expr::Lambda { .. } => "<unknown>".to_string(),
+    }
+}
+
+fn compute_async_sets(
+    module: &Module,
+    extern_methods: &HashMap<(String, String), ExternMethod>,
+) -> (HashSet<(String, String)>, HashSet<String>) {
+    let mut method_bodies: HashMap<(String, String), &Block> = HashMap::new();
+    let mut free_bodies: HashMap<String, &Block> = HashMap::new();
+    let mut method_params: HashMap<(String, String), &Vec<Param>> = HashMap::new();
+    let mut free_params: HashMap<String, &Vec<Param>> = HashMap::new();
+
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            if func.extern_rust.is_some() {
+                continue;
+            }
+            if let Some(recv) = &func.receiver {
+                let key = (recv.name.clone(), func.name.name.clone());
+                method_bodies.insert(key.clone(), &func.body);
+                method_params.insert(key, &func.params);
+            } else {
+                free_bodies.insert(func.name.name.clone(), &func.body);
+                free_params.insert(func.name.name.clone(), &func.params);
+            }
+        }
+    }
+
+    let mut async_methods: HashSet<(String, String)> = HashSet::new();
+    let mut async_free_fns: HashSet<String> = HashSet::new();
+
+    for (key, params) in &method_params {
+        if has_suspending_param(params) {
+            async_methods.insert(key.clone());
+        } else if body_calls_async_extern(method_bodies[key], extern_methods) {
+            async_methods.insert(key.clone());
+        }
+    }
+    for (name, params) in &free_params {
+        if has_suspending_param(params) {
+            async_free_fns.insert(name.clone());
+        } else if body_calls_async_extern(free_bodies[name], extern_methods) {
+            async_free_fns.insert(name.clone());
+        }
+    }
+
+    loop {
+        let mut changed = false;
+        for (key, body) in &method_bodies {
+            if async_methods.contains(key) {
+                continue;
+            }
+            if body_calls_async_oneway(body, &async_methods) {
+                async_methods.insert(key.clone());
+                changed = true;
+            }
+        }
+        for (name, body) in &free_bodies {
+            if async_free_fns.contains(name) {
+                continue;
+            }
+            if body_calls_async_oneway(body, &async_methods) {
+                async_free_fns.insert(name.clone());
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    (async_methods, async_free_fns)
+}
+
+fn has_suspending_param(params: &[Param]) -> bool {
+    params.iter().any(|p| {
+        p.ty.simple_name()
+            .map(is_suspending_capability)
+            .unwrap_or(false)
+    })
+}
+
+fn body_calls_async_extern(
+    body: &Block,
+    extern_methods: &HashMap<(String, String), ExternMethod>,
+) -> bool {
+    body.exprs
+        .iter()
+        .any(|e| expr_calls_async_extern(e, extern_methods))
+}
+
+fn expr_calls_async_extern(
+    expr: &Expr,
+    extern_methods: &HashMap<(String, String), ExternMethod>,
+) -> bool {
+    match expr {
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            let recv_ty = static_type_of(receiver);
+            let key = (recv_ty, method.name.clone());
+            if let Some(em) = extern_methods.get(&key) {
+                if em.is_async {
+                    return true;
+                }
+            }
+            if expr_calls_async_extern(receiver, extern_methods) {
+                return true;
+            }
+            args.iter().any(|a| expr_calls_async_extern(a, extern_methods))
+        }
+        Expr::Constructor { args, .. } => args
+            .iter()
+            .any(|a| expr_calls_async_extern(a, extern_methods)),
+        Expr::Match { scrutinee, arms, .. } => {
+            if expr_calls_async_extern(scrutinee, extern_methods) {
+                return true;
+            }
+            arms.iter()
+                .any(|arm| expr_calls_async_extern(&arm.body, extern_methods))
+        }
+        Expr::Try { inner, .. } => expr_calls_async_extern(inner, extern_methods),
+        Expr::While { cond, body, .. } => {
+            if expr_calls_async_extern(cond, extern_methods) {
+                return true;
+            }
+            body.exprs
+                .iter()
+                .any(|e| expr_calls_async_extern(e, extern_methods))
+        }
+        Expr::Lambda { body, .. } => body
+            .exprs
+            .iter()
+            .any(|e| expr_calls_async_extern(e, extern_methods)),
+        _ => false,
+    }
+}
+
+fn body_calls_async_oneway(
+    body: &Block,
+    async_methods: &HashSet<(String, String)>,
+) -> bool {
+    body.exprs
+        .iter()
+        .any(|e| expr_calls_async_oneway(e, async_methods))
+}
+
+fn expr_calls_async_oneway(
+    expr: &Expr,
+    async_methods: &HashSet<(String, String)>,
+) -> bool {
+    match expr {
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            let recv_ty = static_type_of(receiver);
+            let key = (recv_ty, method.name.clone());
+            if async_methods.contains(&key) {
+                return true;
+            }
+            if expr_calls_async_oneway(receiver, async_methods) {
+                return true;
+            }
+            args.iter().any(|a| expr_calls_async_oneway(a, async_methods))
+        }
+        Expr::Constructor { args, .. } => {
+            args.iter().any(|a| expr_calls_async_oneway(a, async_methods))
+        }
+        Expr::Match { scrutinee, arms, .. } => {
+            if expr_calls_async_oneway(scrutinee, async_methods) {
+                return true;
+            }
+            arms.iter()
+                .any(|arm| expr_calls_async_oneway(&arm.body, async_methods))
+        }
+        Expr::Try { inner, .. } => expr_calls_async_oneway(inner, async_methods),
+        Expr::While { cond, body, .. } => {
+            if expr_calls_async_oneway(cond, async_methods) {
+                return true;
+            }
+            body.exprs
+                .iter()
+                .any(|e| expr_calls_async_oneway(e, async_methods))
+        }
+        Expr::Lambda { body, .. } => body
+            .exprs
+            .iter()
+            .any(|e| expr_calls_async_oneway(e, async_methods)),
+        _ => false,
     }
 }

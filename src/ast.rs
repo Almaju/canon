@@ -42,8 +42,14 @@ pub struct FunctionDef {
     pub params: Vec<Param>,
     pub return_ty: TypeExpr,
     pub body: Block,
-    pub extern_rust: Option<String>,
+    pub extern_rust: Option<ExternRust>,
     pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternRust {
+    pub path: String,
+    pub is_async: bool,
 }
 
 #[derive(Debug, Clone)]

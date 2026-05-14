@@ -3,8 +3,17 @@ use crate::error::OnewayError;
 use std::collections::{HashMap, HashSet};
 
 const BUILTIN_TYPES: &[&str] = &[
-    "Float", "Hex", "Int", "Noop", "Off", "On", "Self", "Stderr", "Stdin", "Stdout", "String",
+    "Clock", "Filesystem", "Float", "Hex", "Int", "Network", "Noop", "Off", "On", "Random",
+    "Self", "Stderr", "Stdin", "Stdout", "String",
 ];
+
+const CAPABILITY_TYPES: &[&str] = &[
+    "Clock", "Filesystem", "Network", "Random", "Stderr", "Stdin", "Stdout",
+];
+
+fn is_capability_type(name: &str) -> bool {
+    CAPABILITY_TYPES.contains(&name)
+}
 
 const BUILTIN_GENERIC_TYPES: &[&str] = &["List", "Map", "Option", "Result", "Set"];
 
@@ -312,6 +321,8 @@ fn check_type_expr(
         TypeExpr::Named { name, generics, span } => {
             if name == "Self" {
                 // allowed in method bodies / trait declarations; not validated here
+            } else if name.starts_with("__extern__") {
+                // extern type alias body — the Rust path isn't an Oneway type
             } else if generic_scope.contains(name) {
                 if !generics.is_empty() {
                     errors.push(OnewayError::CheckError {
@@ -432,15 +443,27 @@ fn check_expr(
 ) {
     match expr {
         Expr::Ident(ident) => {
-            let known = symbols.knows_type(&ident.name)
-                || symbols.variant_of.contains_key(&ident.name)
-                || scope.contains(&ident.name)
-                || ident.name == "Self";
-            if !known {
-                errors.push(OnewayError::CheckError {
-                    message: format!("unknown name `{}`", ident.name),
-                    span: ident.span,
-                });
+            if is_capability_type(&ident.name) {
+                if !scope.contains(&ident.name) {
+                    errors.push(OnewayError::CheckError {
+                        message: format!(
+                            "capability `{}` must be received as a parameter — capabilities cannot be conjured",
+                            ident.name
+                        ),
+                        span: ident.span,
+                    });
+                }
+            } else {
+                let known = symbols.knows_type(&ident.name)
+                    || symbols.variant_of.contains_key(&ident.name)
+                    || scope.contains(&ident.name)
+                    || ident.name == "Self";
+                if !known {
+                    errors.push(OnewayError::CheckError {
+                        message: format!("unknown name `{}`", ident.name),
+                        span: ident.span,
+                    });
+                }
             }
         }
         Expr::StringLit { .. } => {}

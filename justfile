@@ -30,7 +30,7 @@ run file:
     rs="${base}.rs"
     cargo run --quiet -- --compile '{{file}}' 2>/dev/null
     "./${base}"
-    rm -f "${rs}" "${base}"
+    rm -rf "${rs}" "${base}" "${base}.cargo"
 
 # Run an example by name (e.g. `just example hello`, `just example multifile`)
 example name:
@@ -85,11 +85,11 @@ examples: build
                 echo "✗  (runtime error)"
                 fail=$((fail + 1))
             }
-            rm -f "${base}" "${base}.rs"
+            rm -rf "${base}" "${base}.rs" "${base}.cargo"
         else
             echo "·  (skip — does not compile yet)"
             skip=$((skip + 1))
-            rm -f "${base}.rs"
+            rm -rf "${base}.rs" "${base}.cargo"
         fi
     done
     echo ""

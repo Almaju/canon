@@ -44,7 +44,7 @@ impl Parser {
             }));
         }
 
-        let extern_path = if self.check(TokenKind::KwExtern) {
+        let extern_decl = if self.check(TokenKind::KwExtern) {
             self.advance();
             let lang_tok = self.expect(TokenKind::Ident, "expected language after `extern`")?;
             if lang_tok.lexeme != "Rust" {
@@ -56,6 +56,22 @@ impl Parser {
                     span: lang_tok.span,
                 });
             }
+            let mut is_async = false;
+            if self.check(TokenKind::Dot) {
+                self.advance();
+                let qualifier_tok =
+                    self.expect(TokenKind::Ident, "expected `async` after `extern Rust.`")?;
+                if qualifier_tok.lexeme != "async" {
+                    return Err(OnewayError::ParseError {
+                        message: format!(
+                            "only `extern Rust.async` is supported (got `extern Rust.{}`)",
+                            qualifier_tok.lexeme
+                        ),
+                        span: qualifier_tok.span,
+                    });
+                }
+                is_async = true;
+            }
             self.expect(TokenKind::LParen, "expected `(` after `extern Rust`")?;
             let path_tok = self.expect(
                 TokenKind::StringLit,
@@ -63,7 +79,10 @@ impl Parser {
             )?;
             self.expect(TokenKind::RParen, "expected `)` after Rust path")?;
             self.skip_newlines();
-            Some(path_tok.lexeme)
+            Some(ExternRust {
+                path: path_tok.lexeme,
+                is_async,
+            })
         } else {
             None
         };
@@ -74,8 +93,8 @@ impl Parser {
             span: first.span,
         };
 
-        if extern_path.is_some() {
-            return self.parse_extern_item(start_span, first_ident, extern_path.unwrap());
+        if let Some(extern_decl) = extern_decl {
+            return self.parse_extern_item(start_span, first_ident, extern_decl);
         }
 
         if self.check(TokenKind::Dot) {
@@ -132,7 +151,7 @@ impl Parser {
         &mut self,
         start_span: Span,
         first_ident: Ident,
-        extern_path: String,
+        extern_decl: ExternRust,
     ) -> Result<Item> {
         if self.check(TokenKind::Dot) {
             self.advance();
@@ -174,9 +193,17 @@ impl Parser {
                     exprs: Vec::new(),
                     span: empty_body_span,
                 },
-                extern_rust: Some(extern_path),
+                extern_rust: Some(extern_decl),
                 span: span_join(start_span, end_span),
             }));
+        }
+
+        if extern_decl.is_async {
+            return Err(OnewayError::ParseError {
+                message: "`extern Rust.async` is only valid on method declarations, not on types"
+                    .to_string(),
+                span: first_ident.span,
+            });
         }
 
         if !self.check(TokenKind::Eq) {
@@ -185,7 +212,7 @@ impl Parser {
                 name: first_ident.clone(),
                 generic_params: Vec::new(),
                 body: TypeExpr::Named {
-                    name: format!("__extern__{}", extern_path),
+                    name: format!("__extern__{}", extern_decl.path),
                     generics: Vec::new(),
                     span: end_span,
                 },

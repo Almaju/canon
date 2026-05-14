@@ -490,6 +490,19 @@ The only place to obtain real-world capabilities is `main.ow`, which receives th
 
 This requires no new mechanism — capabilities are just types, passed as ordinary arguments — and it makes effects honest at the type level without monads or a separate effect system.
 
+### Suspending vs Non-Suspending Capabilities
+
+Capabilities are split into two kinds based on whether their effects can wait on the outside world:
+
+- **Non-suspending**: `Clock`, `Random`, `Stderr`, `Stdin`, `Stdout`. Their methods complete without yielding to a scheduler.
+- **Suspending**: `Filesystem`, `Network`. (Future: `Database`.) Their methods may park the caller while the OS or a remote system responds.
+
+A function compiles to `async fn` in Rust if and only if it transitively requires a suspending capability or calls a `Rust.async` extern. Otherwise it compiles to a plain `fn`. This is invisible at the source level — the programmer writes ordinary methods and ordinary calls — but it is what carries the "color" of a function. The capability parameter is the color; no separate `async` keyword exists.
+
+This is similar in spirit to Haskell's `IO` propagation, but implemented via ordinary capability values rather than a monadic wrapper, and split per-effect rather than collapsed into a single `IO`. A function's signature already had to declare every effect it uses; that signature now also tells the compiler whether to emit async machinery.
+
+The propagation rule is the same as for any other capability: if you call something that needs `Network`, your function must declare `Network` in its parameters. The compiler verifies; it does not infer the signature for you. This matches Oneway's existing no-type-inference rule.
+
 ## Traits
 
 A trait is a callable type signature. It is declared like a function type:
@@ -546,15 +559,21 @@ Type.needsPrint = (Print) -> Noop {
 
 ## Concurrency
 
-There is no async/await, and there is no function coloring. All functions are uniform. The concurrency model follows Go's approach: lightweight tasks and channels.
+Oneway has no `async` keyword and no `.await` at the source level. Functions are uniform: any function may call any function, and the syntax of the call is the same in either case.
 
-> **Implementation note**: this is in real tension with the no-GC, transpile-to-Rust target. Rust's idiomatic concurrency is either OS threads (heavyweight) or async/await (introduces coloring). The initial transpiler is expected to map Oneway tasks to OS threads (`std::thread`) and channels to `std::sync::mpsc` or `crossbeam`. Lightweight green threading or invisible async transformation is a future direction.
+Underneath, the compiler reads the capability set to decide how to emit each function. A function that transitively requires a [suspending capability](#suspending-vs-non-suspending-capabilities) (or calls a `Rust.async` extern) compiles to `async fn` in Rust, with `.await` inserted at every relevant call site. A function that only uses non-suspending capabilities — or none at all — compiles to a plain `fn`. The "color" is real, but it lives in the capability parameter the programmer was already threading through; there is no separate keyword for it.
+
+`main` is compiled to `#[tokio::main] async fn main()` if any reachable function is async; otherwise it stays a plain `fn main()`. Pure-compute programs link no async runtime, pay no per-call state-machine overhead, and produce small binaries — the cost of async is paid only by programs that actually take a suspending capability.
+
+The concurrency model is Go-flavored: lightweight tasks and channels. `Task.spawn` maps to `tokio::spawn` when the program is async-colored and to `std::thread::spawn` otherwise. Channels map to `tokio::sync::mpsc` or `std::sync::mpsc` accordingly. A spawned task's body declares the capabilities it uses, same rule as any other function.
 
 ## Interop With the Host Ecosystem
 
-Oneway does **not** ship its own application-level standard library. Beyond a small core (`Option`, `Result`, `Bool`, `Ord`, primitive numerics, `String`, capability types), all functionality — HTTP, JSON, databases, crypto, regex, logging, async runtime — is delegated to the host language's existing ecosystem (Rust + crates.io).
+Oneway is **batteries-included**. Beyond the small type-system core, Oneway ships opinionated binding packages for the major application domains — HTTP server and client, filesystem, database, JSON, crypto, logging — each wrapping a chosen Rust crate (`axum`, `tokio::fs`, `sqlx`, `serde_json`, etc.). The user gets a single curated import path per domain (`use HttpServer`, `use Filesystem`, `use Database`) without having to evaluate the Rust crate ecosystem.
 
-This is the same strategy used by Kotlin (wraps JVM libraries), ClojureScript (wraps npm), F# (wraps .NET), Crystal (wraps C). Building a new language is hard; building a fresh ecosystem on top is years more work that almost no new language survives.
+The community is free to publish additional bindings, but the headline batteries ship with the language. This is the same pragmatic choice Go made (large stdlib + go.mod) and Python made (`stdlib` + PyPI): a curated default that lets new users be productive in minutes, with an open ecosystem behind it.
+
+Under the hood, every binding is implemented via `extern Rust` declarations — there is no privileged path. Anyone could write the same bindings; Oneway just ships them so users don't have to.
 
 ### `extern Rust` Declarations
 
@@ -574,6 +593,17 @@ extern Rust("axum::Router::route")
 HttpRouter.route = (Handler & Path) -> HttpRouter
 ```
 
+#### Async Extern Items
+
+To bind an `async fn` from Rust, use `extern Rust.async`. The compiler inserts `.await` at every call site, and the calling Oneway function is compiled as `async fn`:
+
+```
+extern Rust.async("axum::serve")
+HttpServer.serve = (HttpRouter & TcpListener) -> Result<Noop, IoError>
+```
+
+A `Rust.async` extern is valid only on a method whose receiver or parameters include a suspending capability — typically `Network` or `Filesystem`. This keeps the capability set honest: async effects must still be reflected in the type, not slipped in through an extern declaration.
+
 ### Dependency Manifest
 
 Each Oneway project carries a manifest listing the Rust crates it depends on. The transpiler emits a `Cargo.toml` that mirrors it, and `oneway build` is a thin wrapper around `cargo build`.
@@ -587,33 +617,43 @@ sqlx       = "0.7"
 
 ### Binding Packages
 
-Idiomatic Oneway code does not call `extern Rust` directly. Instead, the community (and the standard library) publishes **binding packages** — thin Oneway facades over popular Rust crates:
+Idiomatic Oneway code does not call `extern Rust` directly. Instead, it imports from the shipped binding packages:
 
 ```
-use Http       # wraps axum / reqwest
-use Json       # wraps serde_json
-use Database   # wraps sqlx
+use HttpServer    # wraps axum
+use HttpClient    # wraps reqwest
+use Filesystem    # wraps tokio::fs
+use Database      # wraps sqlx
+use Json          # wraps serde_json
 ```
 
-A binding package is a few hundred lines of Oneway declarations plus minimal ergonomic glue. Write once, everyone benefits — the same pattern as `ktor` over `okhttp` in Kotlin, or `cljs-http` over `fetch` in ClojureScript.
+Each binding is a few hundred lines of Oneway declarations plus minimal ergonomic glue, written once and shipped with the language. The community can publish additional or alternative bindings; the shipped set is just the curated default.
 
 ### What Oneway Ships Itself
 
-The Oneway-owned core is intentionally tiny:
+Two layers ship with the language:
+
+**Core** — the small set of language-level primitives, owned by the compiler and not bindable to Rust crates:
 
 - Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
 - Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`
 - Standard unions: `Bool`, `Ord`
-- Capability types: `Clock`, `Filesystem`, `Network`, `Random`, `Stderr`, `Stdin`, `Stdout`
+- Capability types: `Clock`, `Filesystem`, `Network`, `Random`, `Stderr`, `Stdin`, `Stdout` (see [Suspending vs Non-Suspending Capabilities](#suspending-vs-non-suspending-capabilities))
 
-Everything else is the host ecosystem, accessed through bindings.
+**Batteries** — opinionated binding packages over major Rust crates, written in ordinary Oneway with `extern Rust` declarations:
+
+- `HttpServer` (axum), `HttpClient` (reqwest)
+- `Filesystem` (tokio::fs), `Database` (sqlx)
+- `Json` (serde_json), `Crypto` (ring / rustls), `Log` (tracing)
+
+Anything outside these two layers is a third-party binding the community publishes — same mechanism, no privileged path.
 
 ### Tradeoffs
 
 - **Error messages may leak Rust types** when crossing the FFI boundary. Unavoidable to some degree; mitigated by good bindings.
-- **Async-flavored crates** are exposed only through blocking facades, preserving the no-coloring rule. Performance-sensitive async work is the main case where this is awkward.
-- **Oneway is permanently coupled to Rust** unless a second backend is later added. A real strategic dependency, accepted in exchange for never shipping a stdlib.
+- **Async-flavored crates** are bound via `Rust.async` externs and the suspending-capability mechanism, so the no-keyword promise is preserved while still using async crates natively. The cost — tokio in the dep tree, state-machine codegen — is paid only by programs that actually take a suspending capability.
+- **Oneway is permanently coupled to Rust** unless a second backend is later added. A real strategic dependency, accepted in exchange for sharing the entire Rust ecosystem.
 
 ## Disambiguating Same-Typed Parameters
 
