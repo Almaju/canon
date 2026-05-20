@@ -125,6 +125,16 @@ check-all: build
         fi
     done
 
+# Install git hooks (pre-commit)
+install-hooks:
+    git config core.hooksPath githooks
+    @echo "Git hooks installed (using githooks/ directory)"
+
+# Uninstall git hooks
+uninstall-hooks:
+    git config --unset core.hooksPath
+    @echo "Git hooks uninstalled (reverted to default .git/hooks)"
+
 # Format compiler source
 fmt:
     cargo fmt

@@ -1,6 +1,6 @@
 use Json
 
-main = (Json & Stdout) -> Result<Noop, MalformedJson> {
+main = (Json * Stdout) -> Result<Unit, MalformedJson> {
     Json.parse::<List<Int>>("[1, 2, 3, 4, 5]")?.length().print(Stdout)
-    Ok(Noop)
+    Ok(Unit)
 }

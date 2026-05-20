@@ -1,4 +1,4 @@
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     List(1, 2, 3)
         .length()
         .print(Stdout)
@@ -6,8 +6,8 @@ main = (Stdout) -> Noop {
         .map((Int) -> Int { Int.mul(2) })
         .length()
         .print(Stdout)
-    match List(7, 8, 9).first() {
+    List(7, 8, 9).first().(
         None => "empty".print(Stdout),
         Some(_) => "non-empty".print(Stdout),
-    }
+    )
 }

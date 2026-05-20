@@ -1,6 +1,8 @@
-extern Rust("std::cmp::min")
-Int.min = (Int) -> Int
+OtherInt = Int
 
-main = (Stdout) -> Noop {
+extern Rust("std::cmp::min")
+min = (Int * OtherInt) -> Int
+
+main = (Stdout) -> Unit {
     5.min(3).print(Stdout)
 }

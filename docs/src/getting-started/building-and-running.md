@@ -54,7 +54,7 @@ just check path/to/file.ow
 ```
 
 Validates only the sort-order rules (alphabetical ordering of declarations,
-match arms, imports, etc.) without doing the rest of compilation.
+dispatch arms, imports, etc.) without doing the rest of compilation.
 
 ## Tests and Linting
 

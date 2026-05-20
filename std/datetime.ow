@@ -2,4 +2,4 @@ extern Rust("chrono::DateTime<chrono::Utc>")
 Datetime
 
 extern Rust(".to_rfc3339")
-Datetime.toRfc3339 = () -> String
+toRfc3339 = (Datetime) -> String

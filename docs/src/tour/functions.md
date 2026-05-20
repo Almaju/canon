@@ -32,9 +32,8 @@ main = (Stdout) -> Noop {
 A body is a **newline-separated sequence of expressions**. The last
 expression is the return value. There are no semicolons.
 
-- `match` is an expression — it can be the final line of a body or appear
-  as a sub-expression.
-- `while` and `for` are expressions of type `Noop`.
+- Dispatch (`.( )`) is an expression — it can be the final line of a body
+  or appear as a sub-expression.
 - Non-final lines whose results are discarded are valid (they exist for
   side effects or `?` propagation).
 
@@ -135,7 +134,7 @@ Methods are first-class values. Refer to one by its qualified name
 `Type.method` and pass it where a matching trait signature is expected:
 
 ```oneway
-Numbers = ...Int
+Numbers = Int^*
 
 Numbers.doubleAll = () -> Numbers {
     Numbers.map(Int.double)

@@ -1,9 +1,9 @@
 Greeting = String
 
-Greeting.shout = () -> String {
+shout = (Greeting) -> String {
     "HELLO"
 }
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     Greeting("howdy").shout().print(Stdout)
 }

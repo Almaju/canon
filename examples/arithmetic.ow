@@ -1,10 +1,10 @@
-Bool = False | True
+Bool = False + True
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     7.add(35).print(Stdout)
     10.lt(20).print(Stdout)
-    match 5.gt(3) {
+    5.gt(3).(
         False => "no".print(Stdout),
         True => "yes".print(Stdout),
-    }
+    )
 }

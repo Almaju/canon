@@ -92,7 +92,7 @@ total (`(String) -> Url`), fallible (`Result<Url, InvalidUrl>`), or
 optional (`Option<Url>`). Call sites still use the ordinary constructor
 syntax `Url("https://example.com")`, but the expression's type is now
 whatever `Url.Self` returns, so a fallible constructor *forces* `?` (or
-`match`) at the call site:
+dispatch) at the call site:
 
 ```oneway
 HttpClient.get(Url("https://example.com")?)?.print(Stdout)

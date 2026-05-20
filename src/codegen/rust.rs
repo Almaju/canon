@@ -9,7 +9,15 @@ fn is_suspending_capability(name: &str) -> bool {
 }
 
 const CAPABILITY_TYPES: &[&str] = &[
-    "Clock", "Filesystem", "HttpClient", "Json", "Network", "Random", "Stderr", "Stdin", "Stdout",
+    "Clock",
+    "Filesystem",
+    "HttpClient",
+    "Json",
+    "Network",
+    "Random",
+    "Stderr",
+    "Stdin",
+    "Stdout",
 ];
 
 fn is_capability_type(name: &str) -> bool {
@@ -105,6 +113,7 @@ struct Codegen {
     async_free_fns: HashSet<String>,
     types_with_self: HashSet<String>,
     lambda_scopes: std::cell::RefCell<Vec<HashMap<String, String>>>,
+    commutative_methods: HashMap<(String, String), String>,
 }
 
 #[derive(Clone)]
@@ -137,9 +146,7 @@ impl Codegen {
                     }
                 }
                 Item::Function(func) => {
-                    if let (Some(recv), Some(extern_decl)) =
-                        (&func.receiver, &func.extern_rust)
-                    {
+                    if let (Some(recv), Some(extern_decl)) = (&func.receiver, &func.extern_rust) {
                         extern_methods.insert(
                             (recv.name.clone(), func.name.name.clone()),
                             ExternMethod {
@@ -189,6 +196,24 @@ impl Codegen {
             })
             .collect();
 
+        let mut commutative_methods: HashMap<(String, String), String> = HashMap::new();
+        for item in &module.items {
+            if let Item::Function(func) = item {
+                if let Some(recv) = &func.receiver {
+                    if func.name.name != "Self" {
+                        for param in &func.params {
+                            if let Some(param_name) = param.ty.simple_name() {
+                                commutative_methods.insert(
+                                    (param_name.to_string(), func.name.name.clone()),
+                                    recv.name.clone(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
             variant_of,
             current_receiver: None,
@@ -198,6 +223,7 @@ impl Codegen {
             async_free_fns,
             types_with_self,
             lambda_scopes: std::cell::RefCell::new(Vec::new()),
+            commutative_methods,
         }
     }
 
@@ -221,6 +247,7 @@ impl Codegen {
 
         match &td.body {
             TypeExpr::Union { variants, .. } if all_simple_named(variants) => {
+                let _ = writeln!(out, "#[derive(Clone)]");
                 let _ = writeln!(out, "#[allow(non_camel_case_types, dead_code)]");
                 let _ = writeln!(out, "pub enum {}{} {{", td.name.name, generic_str);
                 for v in variants {
@@ -231,6 +258,7 @@ impl Codegen {
                 let _ = writeln!(out, "}}");
             }
             TypeExpr::Product { fields, .. } if all_simple_named(fields) => {
+                let _ = writeln!(out, "#[derive(Clone)]");
                 let _ = writeln!(out, "#[allow(non_snake_case, dead_code)]");
                 let _ = writeln!(out, "pub struct {}{} {{", td.name.name, generic_str);
                 for f in fields {
@@ -254,6 +282,7 @@ impl Codegen {
                     } else {
                         "pub "
                     };
+                    let _ = writeln!(out, "#[derive(Clone)]");
                     let _ = writeln!(out, "#[allow(dead_code)]");
                     let _ = writeln!(
                         out,
@@ -324,6 +353,13 @@ impl Codegen {
 
     fn emit_method(&mut self, out: &mut String, recv: &str, func: &FunctionDef) {
         self.current_receiver = Some(recv.to_string());
+        let mut param_scope = HashMap::new();
+        for (i, param) in func.params.iter().enumerate() {
+            if let Some(name) = param.ty.simple_name() {
+                param_scope.insert(name.to_string(), format!("arg{}", i));
+            }
+        }
+        self.lambda_scopes.borrow_mut().push(param_scope);
         let ret = render_type(&func.return_ty);
         let pascal = is_pascal_case(&func.name.name);
         if pascal {
@@ -335,8 +371,16 @@ impl Codegen {
         let async_kw = if is_async { "async " } else { "" };
         let generic_str = render_generic_params(&func.generic_params);
         let is_self_ctor = func.name.name == "Self";
-        let emitted_name = if is_self_ctor { "r#Self" } else { func.name.name.as_str() };
-        let _ = write!(out, "    pub {}fn {}{}(", async_kw, emitted_name, generic_str);
+        let emitted_name = if is_self_ctor {
+            "r#Self"
+        } else {
+            func.name.name.as_str()
+        };
+        let _ = write!(
+            out,
+            "    pub {}fn {}{}(",
+            async_kw, emitted_name, generic_str
+        );
         let mut first = true;
         if !is_self_ctor {
             out.push_str("&self");
@@ -352,6 +396,7 @@ impl Codegen {
         let _ = write!(out, ") -> {} {{\n", ret);
         self.emit_block_body_indented(out, &func.body, false, 2);
         out.push_str("    }\n");
+        self.lambda_scopes.borrow_mut().pop();
         self.current_receiver = None;
     }
 
@@ -464,28 +509,53 @@ impl Codegen {
                 args,
                 ..
             } => {
-                if let Some(rust) =
-                    self.try_emit_builtin_method(receiver, method, type_args, args)
+                if let Some(rust) = self.try_emit_builtin_method(receiver, method, type_args, args)
                 {
                     out.push_str(&rust);
                 } else {
-                    self.emit_expr(out, receiver);
-                    let _ = write!(out, ".{}", method.name);
-                    if !type_args.is_empty() {
-                        out.push_str("::");
-                        out.push_str(&render_type_args(type_args));
-                    }
-                    out.push('(');
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 {
-                            out.push_str(", ");
-                        }
-                        self.emit_expr(out, arg);
-                    }
-                    out.push(')');
                     let recv_ty = static_type_of_with(receiver, Some(&self.extern_methods));
-                    if self.is_async_method(&recv_ty, &method.name) {
-                        out.push_str(".await");
+                    let canonical = self
+                        .commutative_methods
+                        .get(&(recv_ty.clone(), method.name.clone()))
+                        .cloned();
+                    let needs_swap = canonical
+                        .as_ref()
+                        .map(|c| c != &recv_ty && args.len() == 1)
+                        .unwrap_or(false);
+
+                    if needs_swap {
+                        // Commutative swap: emit args[0].method(receiver)
+                        let canonical_recv = canonical.unwrap();
+                        self.emit_expr(out, &args[0]);
+                        let _ = write!(out, ".{}", method.name);
+                        if !type_args.is_empty() {
+                            out.push_str("::");
+                            out.push_str(&render_type_args(type_args));
+                        }
+                        out.push('(');
+                        self.emit_expr(out, receiver);
+                        out.push(')');
+                        if self.is_async_method(&canonical_recv, &method.name) {
+                            out.push_str(".await");
+                        }
+                    } else {
+                        self.emit_expr(out, receiver);
+                        let _ = write!(out, ".{}", method.name);
+                        if !type_args.is_empty() {
+                            out.push_str("::");
+                            out.push_str(&render_type_args(type_args));
+                        }
+                        out.push('(');
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                out.push_str(", ");
+                            }
+                            self.emit_expr(out, arg);
+                        }
+                        out.push(')');
+                        if self.is_async_method(&recv_ty, &method.name) {
+                            out.push_str(".await");
+                        }
                     }
                 }
             }
@@ -508,17 +578,7 @@ impl Codegen {
                 self.emit_expr(out, inner);
                 out.push('?');
             }
-            Expr::While { cond, body, .. } => {
-                out.push_str("while ");
-                self.emit_expr(out, cond);
-                out.push_str(" {\n");
-                for expr in &body.exprs {
-                    out.push_str("        ");
-                    self.emit_expr(out, expr);
-                    out.push_str(";\n");
-                }
-                out.push_str("    }");
-            }
+
             Expr::Lambda {
                 params,
                 return_ty,
@@ -704,7 +764,7 @@ impl Codegen {
     }
 
     fn rust_value(&self, name: &str) -> String {
-        if name == "Noop" {
+        if name == "Unit" {
             return "()".to_string();
         }
         if name == "Self" {
@@ -717,7 +777,7 @@ impl Codegen {
         }
         if let Some(current) = &self.current_receiver {
             if name == current {
-                return "self".to_string();
+                return "self.clone()".to_string();
             }
         }
         if self.bool_declared {
@@ -791,7 +851,8 @@ fn render_type(ty: &TypeExpr) -> String {
 
 fn render_named_type(name: &str, generics: &[TypeExpr]) -> String {
     let base = match name {
-        "Noop" => "()".to_string(),
+        "Unit" => "()".to_string(),
+        "Never" => "std::convert::Infallible".to_string(),
         "Int" => "i64".to_string(),
         "Float" => "f64".to_string(),
         "Hex" => "u64".to_string(),
@@ -826,7 +887,10 @@ fn is_stdlib_variant(name: &str) -> bool {
 }
 
 fn is_pascal_case(name: &str) -> bool {
-    name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+    name.chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
 }
 
 fn binary_operator_for(method: &str) -> Option<&'static str> {
@@ -866,9 +930,7 @@ fn static_type_of_with(
                 ("List", "map") => Some("List".to_string()),
                 ("List", "length") => Some("Int".to_string()),
                 ("List", "first") => Some("Option".to_string()),
-                ("Int" | "Float", "add" | "sub" | "mul" | "div" | "rem") => {
-                    Some(recv_ty.clone())
-                }
+                ("Int" | "Float", "add" | "sub" | "mul" | "div" | "rem") => Some(recv_ty.clone()),
                 ("Int" | "Float", "eq" | "lt" | "gt" | "lte" | "gte") => Some("Bool".to_string()),
                 ("Bool", "not" | "and" | "or") => Some("Bool".to_string()),
                 ("String", "concat") => Some("String".to_string()),
@@ -921,7 +983,7 @@ fn static_type_of_with(
             }
             "<unknown>".to_string()
         }
-        Expr::Match { .. } | Expr::While { .. } | Expr::Lambda { .. } => "<unknown>".to_string(),
+        Expr::Match { .. } | Expr::Lambda { .. } => "<unknown>".to_string(),
     }
 }
 
@@ -1040,12 +1102,15 @@ fn expr_calls_async_extern(
             if expr_calls_async_extern(receiver, extern_methods) {
                 return true;
             }
-            args.iter().any(|a| expr_calls_async_extern(a, extern_methods))
+            args.iter()
+                .any(|a| expr_calls_async_extern(a, extern_methods))
         }
         Expr::Constructor { args, .. } => args
             .iter()
             .any(|a| expr_calls_async_extern(a, extern_methods)),
-        Expr::Match { scrutinee, arms, .. } => {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
             if expr_calls_async_extern(scrutinee, extern_methods) {
                 return true;
             }
@@ -1053,14 +1118,6 @@ fn expr_calls_async_extern(
                 .any(|arm| expr_calls_async_extern(&arm.body, extern_methods))
         }
         Expr::Try { inner, .. } => expr_calls_async_extern(inner, extern_methods),
-        Expr::While { cond, body, .. } => {
-            if expr_calls_async_extern(cond, extern_methods) {
-                return true;
-            }
-            body.exprs
-                .iter()
-                .any(|e| expr_calls_async_extern(e, extern_methods))
-        }
         Expr::Lambda { body, .. } => body
             .exprs
             .iter()
@@ -1105,7 +1162,9 @@ fn expr_calls_async_oneway(
         Expr::Constructor { args, .. } => args
             .iter()
             .any(|a| expr_calls_async_oneway(a, async_methods, extern_methods)),
-        Expr::Match { scrutinee, arms, .. } => {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
             if expr_calls_async_oneway(scrutinee, async_methods, extern_methods) {
                 return true;
             }
@@ -1113,14 +1172,6 @@ fn expr_calls_async_oneway(
                 .any(|arm| expr_calls_async_oneway(&arm.body, async_methods, extern_methods))
         }
         Expr::Try { inner, .. } => expr_calls_async_oneway(inner, async_methods, extern_methods),
-        Expr::While { cond, body, .. } => {
-            if expr_calls_async_oneway(cond, async_methods, extern_methods) {
-                return true;
-            }
-            body.exprs
-                .iter()
-                .any(|e| expr_calls_async_oneway(e, async_methods, extern_methods))
-        }
         Expr::Lambda { body, .. } => body
             .exprs
             .iter()

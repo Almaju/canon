@@ -2,7 +2,7 @@
 
 Oneway is a new programming language. The reference implementation transpiles to Rust — Oneway inherits Rust's ownership model and zero-cost abstractions, while presenting a much smaller surface area to the programmer.
 
-The guiding rule: wherever ordering is discretionary, the compiler enforces alphabetical order. Components of product types, variants of unions, method declarations, match arms, imports — all alphabetical. Ordering is never a meaningful change.
+The guiding rule: wherever ordering is discretionary, the compiler enforces alphabetical order. Components of product types, variants of unions, function declarations, dispatch arms, imports — all alphabetical. Ordering is never a meaningful change.
 
 See [`DESIGN.md`](DESIGN.md) for the language specification.
 
@@ -11,9 +11,9 @@ See [`DESIGN.md`](DESIGN.md) for the language specification.
 ## What It Looks Like
 
 ```
-Bool = False | True
+Bool = False + True
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })
         .length()
@@ -21,7 +21,7 @@ main = (Stdout) -> Noop {
 }
 ```
 
-Every function is implemented on a type. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is `match` on a union. Effects are passed in as capabilities (`Stdout`, `Filesystem`, …). Imports are file-based — `use Foo` imports the type declared in `foo.ow` from the current module folder.
+Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Effects are passed in as capabilities (`Stdout`, `Filesystem`, …). Imports are file-based — `use Foo` imports the type declared in `foo.ow` from the current module folder.
 
 ---
 
@@ -69,7 +69,7 @@ A first program:
 
 ```sh
 cat > hello.ow <<'EOF'
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     "hello".print(Stdout)
 }
 EOF

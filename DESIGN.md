@@ -6,12 +6,12 @@ Oneway is a new programming language. The reference implementation transpiles to
 
 Wherever ordering is discretionary, Oneway requires **alphabetical order**. This is not a style suggestion — it is enforced by the compiler. The rule applies to:
 
-- Components of a product type: `User = Birthday & Username`
-- Variants of a union type: `Bool = False | True`
-- Multiple method/trait declarations on a type (declared top-to-bottom alphabetically)
-- Arms of a `match` (in the order of the union's variants — which are themselves alphabetical)
-- Trait composition: `Show = Debug & PrintString`
-- Error unions inside `Result`: `Result<T, IoError | NotFound | PermissionDenied>`
+- Components of a product type: `User = Birthday * Username`
+- Variants of a union type: `Bool = False + True`
+- Function declarations within a file (declared top-to-bottom alphabetically)
+- Arms of a dispatch (in the order of the union's variants — which are themselves alphabetical)
+- Trait composition: `Show = Debug * PrintString`
+- Error unions inside `Result`: `Result<T, IoError + NotFound + PermissionDenied>`
 - Imports: multiple `use` statements at the top of a file
 
 The reasoning: ordering is a constant source of bikeshedding and diff noise. By forcing one canonical order, code reads the same way no matter who wrote it, and reordering is never a meaningful change.
@@ -20,40 +20,40 @@ The reasoning: ordering is a constant source of bikeshedding and diff noise. By 
 
 The language is built from two primitive types: `Off` and `On` (names TBD). Every other type is composed from these via unions and products.
 
+Two identity types complete the algebra: `Unit` is the type with exactly one value (the multiplicative identity — `T * Unit ≡ T`), and `Never` is the type with zero values (the additive identity — `T + Never ≡ T`). Together with `+` and `*`, these form a type semiring.
+
 A small set of built-in primitive operations (e.g. arithmetic on `Int`) is supplied by the compiler — these cannot be derived purely from bits, but their *shape* is still described by the type system.
 
 ## Type Composition
 
-### Unions (`|`)
+### Unions (`+`)
 
 A union expresses "this or that":
 
 ```
-Bit = Off | On
+Bit = Off + On
 ```
 
-### Products (`&`)
+### Products (`*`)
 
-The `&` operator expresses "this and that" — a value of the resulting type has all of its component parts.
+The `*` operator expresses "this and that" — a value of the resulting type has all of its component parts.
 
 ```
-Byte = Bit & Bit & Bit & Bit & Bit & Bit & Bit & Bit
+Byte = Bit * Bit * Bit * Bit * Bit * Bit * Bit * Bit
 ```
-
-> **Note**: `&` is technically a product type operator, not a true type-theoretic intersection. The symbol is reused because it reads naturally as "has-a".
 
 #### Product Members Are Alphabetical
 
 By the global alphabetical-order rule, the components of a product are always written in alphabetical order:
 
 ```
-User = Birthday & Username
+User = Birthday * Username
 ```
 
 The same applies to construction:
 
 ```
-User(Birthday(...) & Username(...))
+User(Birthday(...) * Username(...))
 ```
 
 #### Field Access
@@ -72,25 +72,25 @@ byte.1   // first Bit
 byte.2   // second Bit
 ```
 
-### Fixed Repetition (`Type[N]`)
+### Fixed Repetition (`Type^N`)
 
-For a fixed count of the same type, use `Type[N]`:
+For a fixed count of the same type, use `Type^N`:
 
 ```
-Byte = Bit[8]
+Byte = Bit^8
 ```
 
-The `[]` syntax was chosen because `.` is reserved for method calls and field access, and `[]` does not conflict with the `<>` generic syntax.
+Algebraically, `T^N` is the N-fold product `T * T * … * T`. The caret reads as exponentiation, which is exactly what a fixed-size array is.
 
-### Unbounded Repetition (`...Type`)
+### Unbounded Repetition (`Type^*`)
 
 For unbounded sequences:
 
 ```
-Bytes = ...Byte
+Bytes = Byte^*
 ```
 
-This pairs naturally with `Bit[8]` as its finite counterpart.
+`T^*` is the Kleene star — zero or more repetitions of `T`. Together with `^N`, both repetition forms share the same operator and sit naturally in the `+` / `*` / `^` semiring.
 
 Higher-level types like `Int`, `Float`, and `String` are defined from `Byte`/`Bytes`.
 
@@ -105,27 +105,27 @@ Result<T, E>
 Map<String, Int>
 ```
 
-The chevron syntax does not conflict with `[]` repetition or `&` product.
+The chevron syntax does not conflict with `[]` repetition or `*` product.
 
 ### Generic Constraints
 
 Constraints on type parameters use `:`, naming a trait the parameter must implement:
 
 ```
-List.print = <T: Print>() -> Noop {
+print = <T: Print>(List<T>) -> Unit {
     ...
 }
 ```
 
 ### Type Arguments at Call Sites
 
-Where Oneway cannot infer a generic method's type parameters from context, the caller pins them with `::<...>` after the method name (the same "turbofish" form Rust uses):
+Where Oneway cannot infer a generic function's type parameters from context, the caller pins them with `::<...>` after the function name (the same "turbofish" form Rust uses):
 
 ```
-Json.parse::<List<Int>>("[1, 2, 3]")?
+"[1, 2, 3]".parse::<List<Int>>()?
 ```
 
-Reads as: call `Json.parse` with `T = List<Int>`. The `::` separator disambiguates the `<` from a comparison.
+Reads as: call `parse` with `T = List<Int>`. The `::` separator disambiguates the `<` from a comparison.
 
 Turbofish is only required when the surrounding type context is insufficient. A function with an explicit `Result<List<Int>, _>` return type, for instance, lets the compiler infer `T` from the return position without an annotation.
 
@@ -152,19 +152,19 @@ String literals exist to avoid the parsing ambiguity of bare `String(...)` with 
 
 `String()`, `Int()`, `User()` — calling any constructor with zero arguments is a compile-time error. The reasoning: if a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
 
-For factory-style construction (e.g. "an empty list"), use an explicit method on the type — `List.empty`, `String.empty`, etc.
+For factory-style construction (e.g. "an empty list"), use an explicit function — `List.empty`, `String.empty`, etc.
 
 ### Singleton Types
 
-A type with no underlying composition (e.g. `Noop`, `Off`, `On`) has exactly one value. The value is referenced by writing the type name itself:
+A type with no underlying composition (e.g. `Unit`, `Off`, `On`) has exactly one value. The value is referenced by writing the type name itself:
 
 ```
-main = () -> Noop {
-    Noop
+main = () -> Unit {
+    Unit
 }
 ```
 
-`Noop` in return position is the type; `Noop` in expression position is its sole value. No constructor call is needed (and would not work — there is no data to pass).
+`Unit` in return position is the type; `Unit` in expression position is its sole value. No constructor call is needed (and would not work — there is no data to pass).
 
 ## Constructor Arguments
 
@@ -174,49 +174,59 @@ Every type `T` has a constructor `T(_)`. The argument is a value matching the ty
 |------------------|----------------------------------------|-----------------------------------------------|
 | Primitive        | `Int(123)`, `Float(1.0)`, `String("hi")` | a literal of the corresponding lexical kind   |
 | Hex              | `Hex(0xFF0000)`                        | a hex literal                                  |
-| Product `A & B`  | `T(A(...) & B(...))`                   | a value-level product joined with `&`          |
-| Union `A \| B`   | `T(A(...))` or `T(B(...))`              | a value of any variant                         |
+| Product `A * B`  | `T(A(...) * B(...))`                   | a value-level product joined with `*`          |
+| Union `A + B`    | `T(A(...))` or `T(B(...))`              | a value of any variant                         |
 | Newtype          | `T(inner)`                             | a value of the aliased type                    |
 
 So:
 
 ```
 red  = Hex(0xFF0000)
-user = User(Birthday(...) & Username("ahanot"))
+user = User(Birthday(...) * Username("ahanot"))
 ```
 
-`&` is overloaded across the two levels: at the type level it forms a product type, at the value level it forms a product value. The two never appear in the same context.
+`*` is overloaded across the two levels: at the type level it forms a product type, at the value level it forms a product value. The two never appear in the same context.
 
-### Validated Constructors (`Type.Self`)
+### Validated Constructors
 
 By default, a type's constructor is total: `T(inner)` always succeeds and returns `T`. For types whose construction can fail — `Url` from a `String`, `Email` from a `String`, parsing in general — the construction belongs in the type system as `Result<T, E>` (or `Option<T>` for "this might just not exist"), the same way "missing" is expressed as `Option<T>`.
 
-A type opts into this by declaring its constructor explicitly, as a method whose name is `Self`:
+A type opts into this by declaring a constructor with the **same name as the type** — a function whose PascalCase name matches the file's type:
+
+```
+Url = String
+
+Url = (String) -> Result<Url, InvalidUrl> {
+    ...
+}
+```
+
+This follows the same `Name = ...` pattern as everything else. The compiler distinguishes it from the type definition by its shape: it has a function signature and a body. This is exactly how trait implementations work — `Show = (Greeting) -> String { ... }` implements the `Show` trait; `Url = (String) -> Result<Url, InvalidUrl> { ... }` implements the `Url` constructor.
+
+**Rules:**
+
+- If a file declares a constructor, that *is* the constructor. The implicit total constructor is replaced.
+- The signature is unconstrained — total (`(String) -> Url`), fallible (`Result<Url, InvalidUrl>`), or optional (`Option<Url>`).
+- Call sites use the ordinary constructor syntax: `Url("https://example.com")`. The expression's type is whatever the constructor returns, so a fallible constructor *forces* `?` (or `dispatch`) at the call site.
+- External callers cannot bypass the constructor. Only functions declared in the same file have access to the type's raw inner representation.
+
+```
+main = (HttpClient * Stdout) -> Result<Unit, HttpError + InvalidUrl> {
+    HttpClient.get(Url("https://example.com")?)?.print(Stdout)
+    Ok(Unit)
+}
+```
+
+This generalizes the same principle the language already applies to absence: if a value can legitimately be invalid, the fallibility belongs in the type, not in a runtime convention.
+
+With `extern Rust`, the pattern is the same but the body is omitted:
 
 ```
 Url = String
 
 extern Rust("oneway_url_parse")
-Url.Self = (String) -> Result<Url, InvalidUrl>
+Url = (String) -> Result<Url, InvalidUrl>
 ```
-
-`Self` is already the alias for the receiver type's name; `Type.Self` is read as "the constructor that produces a `Self`." The convention slots naturally into the existing PascalCase / camelCase rule, alongside trait implementations like `Type.Print`.
-
-**Rules:**
-
-- If a type declares `Type.Self`, that *is* the constructor. The implicit total constructor is replaced.
-- The signature is unconstrained — total (`(String) -> Url`), fallible (`Result<Url, InvalidUrl>`), or optional (`Option<Url>`).
-- Call sites use the ordinary constructor syntax: `Url("https://example.com")`. The expression's type is whatever `Url.Self` returns, so a fallible constructor *forces* `?` (or `match`) at the call site.
-- External callers cannot bypass the constructor. Only methods declared on `Type` itself (in the same file) have access to the type's raw inner representation.
-
-```
-main = (HttpClient & Stdout) -> Result<Noop, HttpError | InvalidUrl> {
-    HttpClient.get(Url("https://example.com")?)?.print(Stdout)
-    Ok(Noop)
-}
-```
-
-This generalizes the same principle the language already applies to absence: if a value can legitimately be invalid, the fallibility belongs in the type, not in a runtime convention.
 
 #### Error Naming
 
@@ -226,9 +236,9 @@ Errors are types like any other, and they're named *semantically* — by what fa
 
 - **Types**: `PascalCase`
 - **Traits**: `PascalCase` (traits are types)
-- **Methods (functions)**: `camelCase`
+- **Functions**: `camelCase`
 
-The case difference disambiguates trait implementations from regular methods on the same type: `Type.print` is a method, `Type.Print` is the implementation of the `Print` trait.
+The case difference disambiguates trait implementations from regular functions: `print` is a function, `Print` is the implementation of the `Print` trait.
 
 ## File and Module Layout
 
@@ -247,13 +257,9 @@ This imports `Foo` from the corresponding file/folder. No paths, no aliasing req
 
 ### Visibility
 
-Everything is **public by default**. To mark a method as private, prefix it with `*`:
+Everything is **public**. There is no private visibility modifier.
 
-```
-Type.*helper = () -> Noop {
-    ...
-}
-```
+This is deliberate. The language already enforces radical transparency — no comments, no local variables, types as documentation. Hiding functions would cut against that philosophy. The one place encapsulation matters — protecting type invariants — is handled by [validated constructors](#validated-constructors): declaring a constructor replaces the total constructor, so the raw inner representation cannot be bypassed.
 
 ## Type Inference
 
@@ -261,82 +267,101 @@ There is **no type inference**. Every type must be explicitly written.
 
 Additionally, every declared type must be *used*: if a function returns `Result<T, Err>` but no `Err` ever flows through, this is a compile-time error. Declared types must match inferred shape exactly.
 
-## Implementations
+## Functions
 
-Every function is implemented on a type. The general form is:
+A function is declared as:
 
 ```
-Type.functionName = (params) -> ReturnType {
+name = (components) -> ReturnType {
     ...
 }
 ```
 
-### The Entry Point
-
-`main` is the single exception. It is a top-level free function — not a method on any type — and is the program's entry point. It typically takes the capabilities the program needs:
+The components inside the parentheses form a product — the function's input. When a function takes multiple inputs, they are composed with `*`, the same operator that composes product types elsewhere in the language:
 
 ```
-main = (Stdout) -> Noop {
+print = (Stdout * String) -> Unit {
+    Stdout.write(String)
+}
+```
+
+Components follow the same alphabetical-order rule as product members: `(Stdout * String)` is valid because `Stdout` precedes `String`; `(String * Stdout)` would be a compile error.
+
+There are no commas in parameter lists, no positional arguments — only type composition. This is a deliberate unification: a function's input is a product type, described with the same `*` used everywhere else.
+
+### Commutative Calling
+
+At the call site, **any component can appear before the dot**. The remaining components are passed inside the parentheses:
+
+```
+"hello".print(Stdout)
+Stdout.print("hello")
+```
+
+Both calls are equivalent. This follows from the commutativity of `*` in product types — `Stdout * String` and `String * Stdout` describe the same composition. The dot is syntax sugar: it selects which component of the product the caller writes to the left.
+
+For a function with more than two components, the remaining components are passed as a product value:
+
+```
+route = (Handler * HttpRouter * Path) -> HttpRouter { ... }
+
+router.route(Handler(...) * Path("/api"))
+```
+
+This is a genuinely novel feature: in most languages, the receiver is a privileged position — *the* object you're calling the method on. In Oneway, there is no privilege. A function is defined over a composition of types, and the caller enters it through whichever component reads most naturally in context.
+
+### The Entry Point
+
+`main` is the single exception. It takes capabilities as input but has no receiver — it is never called via dot syntax:
+
+```
+main = (Stdout) -> Unit {
     "hello".print(Stdout)
 }
 ```
 
-### Referring to the Receiver
+### Referring to Components
 
-Inside a method body, the receiver value is referenced by **the receiver type's name**:
+Inside a function body, each component is referenced by **its type name**:
 
 ```
-String.print = (Stdout) -> Noop {
-    Stdout.write(String)    // `String` here is the receiver value
+print = (Stdout * String) -> Unit {
+    Stdout.write(String)
 }
 ```
 
-The `Self` keyword is an alias for the receiver type's name, available everywhere. It is required when the receiver's type name collides with a parameter of the same type:
+`String` here is the string value; `Stdout` is the capability value. Each type name binds to the value of that type that was passed in.
+
+### Disambiguation
+
+If two components would share the same type, create a newtype alias. Product members must be distinct types, so `(User * User)` is a compile error:
 
 ```
-Int.add = (Int) -> Int {
-    ...   // ambiguous: which `Int`?
+OtherUser = User
+
+compare = (OtherUser * User) -> Ord {
+    User.Birthday.compare(OtherUser.Birthday)
 }
 ```
 
-The above is a compile error. Resolve it in one of two ways:
-
-**(a) Use `Self` for the receiver:**
-
-```
-Int.add = (Int) -> Int {
-    Self.plus(Int)
-}
-```
-
-**(b) Introduce a newtype alias for the parameter:**
-
-```
-OtherInt = Int
-
-Int.add = (OtherInt) -> Int {
-    Int.plus(OtherInt)
-}
-```
-
-Both are valid. `Self` is the lighter-weight choice for one-off uses; the alias is the choice when the distinction is meaningful enough to warrant a name.
+Because calling is commutative, both `alice.compare(bob)` and `bob.compare(alice)` are valid.
 
 ### Example
 
 ```
-String.print = () -> Noop {
-    ...
+shout = (Greeting) -> String {
+    "HELLO"
 }
 ```
 
 ### Declaration Order
 
-Multiple methods on the same type must be declared in alphabetical order:
+Functions in the same file must be declared in alphabetical order:
 
 ```
-User.add    = (...) -> ...
-User.export = (...) -> ...
-User.remove = (...) -> ...
+add    = (User * ...) -> ...
+export = (User * ...) -> ...
+remove = (User * ...) -> ...
 ```
 
 This is a compile-time requirement, not a convention.
@@ -346,12 +371,12 @@ This is a compile-time requirement, not a convention.
 There is no special syntax for optional parameters. Optionality is expressed through the type system using `Option<T>`:
 
 ```
-Color = Blue | Green | Red
+Color = Blue + Green + Red
 Blue  = Hex(0000FF)
 Green = Hex(00FF00)
 Red   = Hex(FF0000)
 
-String.print = (Option<Color>) -> Noop {
+print = (Option<Color> * String) -> Unit {
     ...
 }
 ```
@@ -373,27 +398,26 @@ If you need to manipulate intermediate state, declare a new type for it. Names l
 
 A body is a **newline-separated sequence of expressions**. The last expression is the return value. There are no semicolons.
 
-- `match` is an expression — it can be the final line of a body, or appear as a sub-expression.
-- `while` and `for` are expressions of type `Noop`.
+- A dispatch `.( )` is an expression — it can be the final line of a body, or appear as a sub-expression.
 - Non-final lines whose results are discarded are valid (they exist for side effects or `?` propagation).
 
 ```
-User.compare = (OtherUser) -> Ord {
+compare = (OtherUser * User) -> Ord {
     User.Birthday.compare(OtherUser.Birthday)
 }
 
-File.readConfig = (Path) -> Result<Config, IoError | ParseError> {
+readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
     File.read(Path)?
         .parse()?
         .validate()
 }
 
-Int.classify = () -> Sign {
-    match Int.compare(Int(0)) {
+classify = (Int) -> Sign {
+    Int.compare(Int(0)).(
         Equal   => Zero,
         Greater => Positive,
         Less    => Negative,
-    }
+    )
 }
 ```
 
@@ -401,12 +425,12 @@ Without `let`, the only way to thread a value through multiple operations is met
 
 ## First-Class Functions
 
-Methods are first-class values. You refer to a method by its qualified name `Type.method` and pass it where a matching trait signature is expected:
+Functions are first-class values. You refer to a function by qualifying it with one of its component types — `Type.function` — and pass it where a matching trait signature is expected:
 
 ```
-Numbers = ...Int
+Numbers = Int^*
 
-Numbers.doubleAll = () -> Numbers {
+doubleAll = (Numbers) -> Numbers {
     Numbers.map(Int.double)
 }
 ```
@@ -416,12 +440,12 @@ Numbers.doubleAll = () -> Numbers {
 For one-off operations, write a lambda literal with its **full signature**. There is no signature inference.
 
 ```
-Numbers.tripleAll = () -> Numbers {
+tripleAll = (Numbers) -> Numbers {
     Numbers.map((Int) -> Int { Int.mul(Int(3)) })
 }
 ```
 
-Lambda syntax mirrors method declaration syntax: `(params) -> ReturnType { body }`. The only difference is the absence of a `Type.name =` prefix.
+Lambda syntax mirrors function declaration syntax: `(components) -> ReturnType { body }`. The only difference is the absence of a `name =` prefix.
 
 ## Memory Model
 
@@ -440,10 +464,10 @@ If the transpiler cannot find a valid ownership scheme for a given Oneway progra
 
 ## Mutability
 
-Values are immutable by default. The `mut` keyword marks a **parameter** as mutable. There are no local variables, so there is nothing else `mut` can apply to.
+Values are immutable by default. The `mut` keyword marks a **component** as mutable. There are no local variables, so there is nothing else `mut` can apply to.
 
 ```
-Counter.add = (mut Counter) -> Noop {
+add = (mut Counter) -> Unit {
     ...
 }
 ```
@@ -455,8 +479,8 @@ Counter.add = (mut Counter) -> Noop {
 Recursive type definitions are allowed and **boxed automatically** by the compiler — there is no user-visible `Box<T>`:
 
 ```
-Tree   = Branch | Leaf
-Branch = Left & Right & Value
+Tree   = Branch + Leaf
+Branch = Left * Right * Value
 Left   = Tree
 Right  = Tree
 Value  = Int
@@ -466,37 +490,45 @@ Whether the compiler boxes `Left` and `Right` individually or via some other ind
 
 ## Control Flow
 
-### Pattern Matching
+### Dispatch
 
-There is no `if`/`else`. All branching is via `match` on a union:
+There is no `if`/`else` or `match` keyword. All branching is via **dispatch** on a union — the value is the receiver, and the arms are the argument:
 
 ```
-match ord {
+ord.(
     Equal   => ...,
     Greater => ...,
     Less    => ...,
-}
+)
 ```
 
-Match arms follow the union's variant order, which is itself alphabetical.
+Dispatch arms follow the union's variant order, which is itself alphabetical.
 
 Both `Bool` and `Ord` are ordinary union types in the standard library:
 
 ```
-Bool = False | True
-Ord  = Equal | Greater | Less
+Bool = False + True
+Ord  = Equal + Greater + Less
 ```
+
+Algebraically, a dispatch on a sum type is isomorphic to a product of functions — one handler per variant:
+
+```
+(A + B + C) -> R  ≅  (A -> R) * (B -> R) * (C -> R)
+```
+
+The `.( )` syntax makes this explicit: no keyword, no special form, just a value applied to its handlers.
 
 ### Loops
 
-Standard imperative loop constructs are available: `while`, `for`, plus higher-order forms on collections (`map`, `fold`, etc.). The exact iteration protocol is TBD.
+There are no loop keywords (`while`, `for`). Iteration is expressed through higher-order methods on collections — `map`, `fold`, `for`, and friends — or through recursion.
 
 ## Error Handling
 
 Errors are values, carried by the standard `Result<T, E>` type. The error slot is a regular type, so it can be a union written inline:
 
 ```
-File.read = (Path) -> Result<Bytes, IoError | NotFound | PermissionDenied> {
+read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
 ```
@@ -511,7 +543,7 @@ The postfix `?` operator propagates failure. It works on both `Result<T, E>` and
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```
-Type.functionName = (params) -> ReturnType {
+functionName = (Foo) -> ReturnType {
     Foo.test()?
     Foo.test2()?
 }
@@ -523,34 +555,34 @@ Type.functionName = (params) -> ReturnType {
 
 ## Side Effects and Capabilities
 
-A function's type should not lie about what it does. `String.print = () -> Noop` claims "nothing happens", but writing to stdout is something.
+A function's type should not lie about what it does. `print = (String) -> Unit` claims "nothing happens", but writing to stdout is something.
 
 Oneway models effects as **capabilities** — values that must be passed in to perform an effect. A function that prints requires a `Stdout` capability:
 
 ```
-String.print = (Stdout) -> Noop {
+print = (Stdout * String) -> Unit {
     ...
 }
 ```
 
 The only place to obtain real-world capabilities is `main.ow`, which receives them and threads them down. A function that does not receive a capability cannot perform the corresponding effect.
 
-This requires no new mechanism — capabilities are just types, passed as ordinary arguments — and it makes effects honest at the type level without monads or a separate effect system.
+This requires no new mechanism — capabilities are just types, composed into the function's input with `*` — and it makes effects honest at the type level without monads or a separate effect system.
 
 ### Multiple Capabilities
 
-A function that needs several capabilities receives them as a single product-typed parameter — the same `&` that composes product types elsewhere in the language:
+A function that needs several capabilities composes them with `*`:
 
 ```
-main = (Filesystem & Stdout) -> Result<Noop, IoError> {
+main = (Filesystem * Stdout) -> Result<Unit, IoError> {
     Filesystem.read(Path("Cargo.toml"))?.print(Stdout)
-    Ok(Noop)
+    Ok(Unit)
 }
 ```
 
-The components are accessed by their type names (`Filesystem`, `Stdout`) just like any other product-field access. The alphabetical-order rule that applies to product members also applies here: `(Filesystem & Stdout)` is valid; `(Stdout & Filesystem)` is a compile error.
+The components are accessed by their type names (`Filesystem`, `Stdout`) just like any other product-field access. The alphabetical-order rule that applies to product members also applies here: `(Filesystem * Stdout)` is valid; `(Stdout * Filesystem)` is a compile error.
 
-The product form, not a comma-separated list, is what reads correctly: `main` takes "the Filesystem capability *and* the Stdout capability" — a conjunction, which is exactly what `&` denotes.
+The product form, not a comma-separated list, is what reads correctly: `main` takes "the Filesystem capability *and* the Stdout capability" — a conjunction, which is exactly what `*` denotes.
 
 ### Suspending vs Non-Suspending Capabilities
 
@@ -559,18 +591,18 @@ Capabilities are split into two kinds based on whether their effects can wait on
 - **Non-suspending**: `Clock`, `Random`, `Stderr`, `Stdin`, `Stdout`. Their methods complete without yielding to a scheduler.
 - **Suspending**: `Filesystem`, `Network`. (Future: `Database`.) Their methods may park the caller while the OS or a remote system responds.
 
-A function compiles to `async fn` in Rust if and only if it transitively requires a suspending capability or calls a `Rust.async` extern. Otherwise it compiles to a plain `fn`. This is invisible at the source level — the programmer writes ordinary methods and ordinary calls — but it is what carries the "color" of a function. The capability parameter is the color; no separate `async` keyword exists.
+A function compiles to `async fn` in Rust if and only if it transitively requires a suspending capability or calls a `Rust.async` extern. Otherwise it compiles to a plain `fn`. This is invisible at the source level — the programmer writes ordinary functions and ordinary calls — but it is what carries the "color" of a function. The capability parameter is the color; no separate `async` keyword exists.
 
 This is similar in spirit to Haskell's `IO` propagation, but implemented via ordinary capability values rather than a monadic wrapper, and split per-effect rather than collapsed into a single `IO`. A function's signature already had to declare every effect it uses; that signature now also tells the compiler whether to emit async machinery.
 
-The propagation rule is the same as for any other capability: if you call something that needs `Network`, your function must declare `Network` in its parameters. The compiler verifies; it does not infer the signature for you. This matches Oneway's existing no-type-inference rule.
+The propagation rule is the same as for any other capability: if you call something that needs `Network`, your function must declare `Network` in its input. The compiler verifies; it does not infer the signature for you. This matches Oneway's existing no-type-inference rule.
 
 ## Traits
 
 A trait is a callable type signature. It is declared like a function type:
 
 ```
-Print = <Error>() -> Result<Noop, Error>
+Print = <Error>() -> Result<Unit, Error>
 ```
 
 Because traits are types, they are written in `PascalCase`.
@@ -580,7 +612,7 @@ Because traits are types, they are written in `PascalCase`.
 A trait with multiple methods is just a product of single-method traits:
 
 ```
-Show = Debug & PrintString
+Show = Debug * PrintString
 ```
 
 ### Default Implementations
@@ -595,29 +627,36 @@ Implementing types may then either override or inherit the default.
 
 ### Implementing a Trait
 
-A trait is implemented on a type by assigning to `Type.TraitName`:
+A trait is implemented for a type by declaring a function with the trait's name (PascalCase) and the implementing type as a component:
 
 ```
-User.Print = () -> Result<Noop, IoError> {
+Print = (User) -> Result<Unit, IoError> {
     ...
 }
 ```
 
-This is distinguished from a regular method (`Type.print`) by case alone.
+This is distinguished from a regular function by case alone: `print` (camelCase) is a regular function, `Print` (PascalCase) is a trait implementation.
+
+Multiple implementations of the same trait for different types:
+
+```
+Show = (Greeting) -> String { "HELLO!" }
+Show = (Name) -> String { "Alice" }
+```
 
 ### Using a Trait as a Parameter
 
-A trait can be used directly as a parameter type. The parameter binds the trait implementation, which is then invocable:
+A trait can be used directly as a component type. The component binds the trait implementation, which is then invocable:
 
 ```
-Type.needsPrint = (Print) -> Noop {
+needsPrint = (Print) -> Unit {
     Print()
 }
 ```
 
 ### `Self`
 
-`Self` always refers to the receiver type's name from inside a method or trait implementation. It is an alias, not a separate identity — `Self` and the type's literal name (`String`, `Int`, …) are interchangeable. The only reason `Self` exists is to disambiguate when a parameter shares the receiver's type. See [Referring to the Receiver](#referring-to-the-receiver).
+There is no `Self` keyword. Inside a function body, components are referenced by their type names directly — every component is explicit in the signature, so there is no ambiguity and no need for an alias.
 
 ## Concurrency
 
@@ -639,20 +678,20 @@ Under the hood, every binding is implemented via `extern Rust` declarations — 
 
 ### `extern Rust` Declarations
 
-A type or method can be declared as backed by a Rust item. The transpiler emits direct calls — no runtime glue, no marshalling.
+A type or function can be declared as backed by a Rust item. The transpiler emits direct calls — no runtime glue, no marshalling.
 
 ```
 extern Rust("std::io::stdout")
 Stdout
 
 extern Rust("std::println")
-String.print = (Stdout) -> Noop
+print = (Stdout * String) -> Unit
 
 extern Rust("axum::Router")
 HttpRouter
 
 extern Rust("axum::Router::route")
-HttpRouter.route = (Handler & Path) -> HttpRouter
+route = (Handler * HttpRouter * Path) -> HttpRouter
 ```
 
 #### Async Extern Items
@@ -661,10 +700,10 @@ To bind an `async fn` from Rust, use `extern Rust.async`. The compiler inserts `
 
 ```
 extern Rust.async("axum::serve")
-HttpServer.serve = (HttpRouter & TcpListener) -> Result<Noop, IoError>
+serve = (HttpRouter * HttpServer * TcpListener) -> Result<Unit, IoError>
 ```
 
-A `Rust.async` extern is valid only on a method whose receiver or parameters include a suspending capability — typically `Network` or `Filesystem`. This keeps the capability set honest: async effects must still be reflected in the type, not slipped in through an extern declaration.
+A `Rust.async` extern is valid only on a function whose components include a suspending capability — typically `Network` or `Filesystem`. This keeps the capability set honest: async effects must still be reflected in the type, not slipped in through an extern declaration.
 
 ### Dependency Manifest
 
@@ -697,7 +736,7 @@ Two layers ship with the language:
 
 **Core** — the small set of language-level primitives, owned by the compiler and not bindable to Rust crates:
 
-- Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`
+- Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`, `Unit`, `Never`
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
 - Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`
 - Standard unions: `Bool`, `Ord`
@@ -719,36 +758,38 @@ Anything outside these two layers is a third-party binding the community publish
 
 ## Disambiguating Same-Typed Parameters
 
-Oneway has no named parameters — types serve as the documentation. When two parameters would share the same type, create a newtype alias.
+Oneway has no named parameters — types serve as the documentation. When two components would share the same type, create a newtype alias.
 
 Newtypes are **distinct but compatible**: a value of the original type can flow into a parameter of the alias, but the two are not interchangeable for disambiguation purposes.
 
 Consider comparing two users by birthday:
 
 ```
-User = Birthday & Username
+User = Birthday * Username
 
-User.compare = (User) -> Ord {
+compare = (User * User) -> Ord {
     User.Birthday.compare(User.Birthday)
 }
 ```
 
-This doesn't work — there is no way to tell the two `User` values apart. Introduce a distinct alias for the second one:
+This doesn't work — product members must be distinct types, so `(User * User)` is a compile error. Introduce a distinct alias:
 
 ```
-User      = Birthday & Username
+User      = Birthday * Username
 OtherUser = User
 
-User.compare = (OtherUser) -> Ord {
+compare = (OtherUser * User) -> Ord {
     User.Birthday.compare(OtherUser.Birthday)
 }
 ```
+
+Because calling is commutative, both `alice.compare(bob)` and `bob.compare(alice)` are valid.
 
 This is a deliberate design choice: types lie less than names.
 
 ## Strings
 
-A `String` is `...Byte` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
+A `String` is `Byte^*` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
 
 ## Comments
 
@@ -758,20 +799,19 @@ There are no comments. Code must speak for itself through types and naming.
 
 ### Type-level (tightest first)
 
-1. `T[N]` — postfix repetition
-2. `...T` — prefix spread
-3. `T<...>` — generic application
-4. `&` — product
-5. `|` — union
+1. `T^N`, `T^*` — postfix repetition / Kleene star
+2. `T<...>` — generic application
+3. `*` — product
+4. `+` — union
 
-So `A | B & C[3]` parses as `A | (B & (C[3]))`.
+So `A + B * C^3` parses as `A + (B * (C^3))`.
 
 ### Expression-level (tightest first)
 
-1. `.` — method call / field access
+1. `.` — function call / field access / dispatch
 2. `()` — function application
 3. `?` — postfix error propagation
-4. `&` — value-level product (only inside a constructor argument)
+4. `*` — value-level product (only inside a constructor argument)
 
 So `foo.bar()?` is `((foo.bar)())?`.
 
@@ -779,14 +819,15 @@ So `foo.bar()?` is `((foo.bar)())?`.
 
 | Symbol     | Meaning                                  |
 |------------|------------------------------------------|
-| `\|`       | Union                                    |
-| `&`        | Product                                  |
-| `Type[N]`  | Fixed repetition (N copies)              |
-| `...Type`  | Unbounded repetition                     |
+| `+`        | Union (sum)                              |
+| `*`        | Product                                  |
+| `T^N`      | Fixed repetition (N copies)              |
+| `T^*`      | Unbounded repetition (Kleene star)       |
 | `<T>`      | Generic parameter                        |
 | `<T: Tr>`  | Generic with trait constraint            |
-| `.`        | Method call / field access               |
+| `.`        | Function call / field access / dispatch  |
+| `.( )`     | Dispatch on a union                      |
 | `?`        | Propagate `Result` / `Option` failure    |
-| `*name`    | Private method (file-local)              |
+
 | `"..."`    | String literal sugar                     |
 | `mut`      | Mutable binding                          |

@@ -3,12 +3,37 @@ use crate::error::OnewayError;
 use std::collections::{HashMap, HashSet};
 
 const BUILTIN_TYPES: &[&str] = &[
-    "Clock", "Deserialize", "Filesystem", "Float", "Hex", "HttpClient", "Int", "Json", "Network",
-    "Noop", "Off", "On", "Random", "Self", "Serialize", "Stderr", "Stdin", "Stdout", "String",
+    "Clock",
+    "Deserialize",
+    "Filesystem",
+    "Float",
+    "Hex",
+    "HttpClient",
+    "Int",
+    "Json",
+    "Network",
+    "Never",
+    "Off",
+    "On",
+    "Random",
+    "Serialize",
+    "Stderr",
+    "Stdin",
+    "Stdout",
+    "String",
+    "Unit",
 ];
 
 const CAPABILITY_TYPES: &[&str] = &[
-    "Clock", "Filesystem", "HttpClient", "Json", "Network", "Random", "Stderr", "Stdin", "Stdout",
+    "Clock",
+    "Filesystem",
+    "HttpClient",
+    "Json",
+    "Network",
+    "Random",
+    "Stderr",
+    "Stdin",
+    "Stdout",
 ];
 
 fn is_capability_type(name: &str) -> bool {
@@ -64,7 +89,7 @@ fn check_ordering(module: &Module, errors: &mut Vec<OnewayError>) {
     // Union variants and product fields are checked in check_type_expr (covers
     // every position they appear in, not just top-level TypeDef bodies).
 
-    // Methods on the same receiver type must be declared alphabetically.
+    // Functions on the same receiver type must be declared alphabetically.
     let mut methods_per_receiver: HashMap<String, Vec<(String, crate::error::Span)>> =
         HashMap::new();
     for item in &module.items {
@@ -78,10 +103,8 @@ fn check_ordering(module: &Module, errors: &mut Vec<OnewayError>) {
         }
     }
     for (_recv, methods) in &methods_per_receiver {
-        let pairs: Vec<(&str, crate::error::Span)> = methods
-            .iter()
-            .map(|(n, s)| (n.as_str(), *s))
-            .collect();
+        let pairs: Vec<(&str, crate::error::Span)> =
+            methods.iter().map(|(n, s)| (n.as_str(), *s)).collect();
         check_sorted_named("method declaration", &pairs, errors);
     }
 
@@ -117,7 +140,11 @@ fn check_ordering(module: &Module, errors: &mut Vec<OnewayError>) {
     check_sorted_named("`use` import", &use_names, errors);
 }
 
-fn check_sorted_named(kind: &str, items: &[(&str, crate::error::Span)], errors: &mut Vec<OnewayError>) {
+fn check_sorted_named(
+    kind: &str,
+    items: &[(&str, crate::error::Span)],
+    errors: &mut Vec<OnewayError>,
+) {
     for window in items.windows(2) {
         let (prev, _) = window[0];
         let (next, span) = window[1];
@@ -135,8 +162,10 @@ fn check_sorted_named(kind: &str, items: &[(&str, crate::error::Span)], errors: 
 
 fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
-    let mut generic_types: HashSet<String> =
-        BUILTIN_GENERIC_TYPES.iter().map(|s| s.to_string()).collect();
+    let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let mut variant_of: HashMap<String, String> = HashMap::new();
 
     variant_of.insert("None".to_string(), "Option".to_string());
@@ -193,9 +222,20 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
                     (recv.name.clone(), func.name.name.clone()),
                     MethodSig {
                         arity: func.params.len(),
-                        return_ty,
+                        return_ty: return_ty.clone(),
                     },
                 );
+                // Register under each param type for commutative calling
+                for param in &func.params {
+                    if let Some(param_name) = param.ty.simple_name() {
+                        methods
+                            .entry((param_name.to_string(), func.name.name.clone()))
+                            .or_insert(MethodSig {
+                                arity: func.params.len(),
+                                return_ty: return_ty.clone(),
+                            });
+                    }
+                }
             }
         }
     }
@@ -232,7 +272,7 @@ fn check_self_constructor_signature(
     if !valid {
         errors.push(OnewayError::CheckError {
             message: format!(
-                "`{}.Self` must return `{}`, `Result<{}, E>`, or `Option<{}>`",
+                "constructor `{}` must return `{}`, `Result<{}, E>`, or `Option<{}>`",
                 receiver_name, receiver_name, receiver_name, receiver_name
             ),
             span: func.return_ty.span(),
@@ -321,7 +361,11 @@ fn check_type_expr(
     errors: &mut Vec<OnewayError>,
 ) {
     match ty {
-        TypeExpr::Named { name, generics, span } => {
+        TypeExpr::Named {
+            name,
+            generics,
+            span,
+        } => {
             if name == "Self" {
                 // allowed in method bodies / trait declarations; not validated here
             } else if name.starts_with("__extern__") {
@@ -570,9 +614,7 @@ fn check_expr(
             let scrutinee_ty = expr_type_name_in_scope(scrutinee, symbols);
             for arm in arms {
                 if let Pattern::Variant {
-                    name,
-                    span: pspan,
-                    ..
+                    name, span: pspan, ..
                 } = &arm.pattern
                 {
                     let pattern_enum = symbols.variant_of.get(name);
@@ -600,12 +642,6 @@ fn check_expr(
         }
         Expr::Try { inner, .. } => {
             check_expr(inner, scope, symbols, errors);
-        }
-        Expr::While { cond, body, .. } => {
-            check_expr(cond, scope, symbols, errors);
-            for expr in &body.exprs {
-                check_expr(expr, scope, symbols, errors);
-            }
         }
         Expr::Lambda {
             params,
@@ -664,7 +700,10 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
         return true;
     }
     if receiver_ty == "List" {
-        if matches!((method, arg_count), ("length", 0) | ("first", 0) | ("map", 1)) {
+        if matches!(
+            (method, arg_count),
+            ("length", 0) | ("first", 0) | ("map", 1)
+        ) {
             return true;
         }
     }
@@ -695,10 +734,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             receiver, method, ..
         } => {
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
-            if let Some(sig) = symbols
-                .methods
-                .get(&(recv_ty.clone(), method.name.clone()))
-            {
+            if let Some(sig) = symbols.methods.get(&(recv_ty.clone(), method.name.clone())) {
                 return sig.return_ty.clone();
             }
             method_return_type(&recv_ty, &method.name)
@@ -715,7 +751,6 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             }
             "<unknown>".to_string()
         }
-        Expr::While { .. } => "Noop".to_string(),
         Expr::Lambda { return_ty, .. } => match return_ty {
             TypeExpr::Named { name, .. } => name.clone(),
             _ => "<unknown>".to_string(),
@@ -729,7 +764,7 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         | ("Int", "print")
         | ("Float", "print")
         | ("Hex", "print")
-        | ("Bool", "print") => "Noop".to_string(),
+        | ("Bool", "print") => "Unit".to_string(),
         ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
         ("Int", "eq" | "lt" | "gt" | "lte" | "gte") => "Bool".to_string(),

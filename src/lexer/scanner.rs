@@ -71,8 +71,7 @@ impl<'a> Scanner<'a> {
             b']' => self.single(TokenKind::RBracket, "]"),
             b'<' => self.single(TokenKind::Lt, "<"),
             b'>' => self.single(TokenKind::Gt, ">"),
-            b'|' => self.single(TokenKind::Pipe, "|"),
-            b'&' => self.single(TokenKind::Amp, "&"),
+            b'+' => self.single(TokenKind::Plus, "+"),
             b',' => self.single(TokenKind::Comma, ","),
             b':' => {
                 if self.peek_byte(1) == Some(b':') {
@@ -85,6 +84,7 @@ impl<'a> Scanner<'a> {
             }
             b'?' => self.single(TokenKind::Question, "?"),
             b'*' => self.single(TokenKind::Star, "*"),
+            b'^' => self.single(TokenKind::Caret, "^"),
             b'=' => {
                 if self.peek_byte(1) == Some(b'>') {
                     self.pos += 2;
@@ -141,14 +141,11 @@ impl<'a> Scanner<'a> {
         }
         let lex = self.source[start_pos..self.pos].to_string();
         let kind = match lex.as_str() {
-            "match" => TokenKind::KwMatch,
             "mut" => TokenKind::KwMut,
             "use" => TokenKind::KwUse,
             "Self" => TokenKind::KwSelf,
             "impl" => TokenKind::KwImpl,
             "extern" => TokenKind::KwExtern,
-            "while" => TokenKind::KwWhile,
-            "for" => TokenKind::KwFor,
             _ => TokenKind::Ident,
         };
         (kind, lex)
@@ -172,7 +169,10 @@ impl<'a> Scanner<'a> {
                     "hex literal requires at least one digit after `0x`",
                 ));
             }
-            return Ok((TokenKind::HexLit, self.source[start_pos..self.pos].to_string()));
+            return Ok((
+                TokenKind::HexLit,
+                self.source[start_pos..self.pos].to_string(),
+            ));
         }
 
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
@@ -195,7 +195,10 @@ impl<'a> Scanner<'a> {
             ));
         }
 
-        Ok((TokenKind::IntLit, self.source[start_pos..self.pos].to_string()))
+        Ok((
+            TokenKind::IntLit,
+            self.source[start_pos..self.pos].to_string(),
+        ))
     }
 
     fn scan_string(&mut self, start_line: u32, start_col: u32) -> Result<(TokenKind, String)> {

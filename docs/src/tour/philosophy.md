@@ -14,7 +14,7 @@ declarations must be in alphabetical order. This applies to:
 - Components of a product type: `User = Birthday & Username`
 - Variants of a union type: `Bool = False | True`
 - Multiple methods on a type (declared top-to-bottom alphabetically)
-- Arms of a `match` (in the order of the union's variants)
+- Arms of a dispatch (in the order of the union's variants)
 - Trait composition: `Show = Debug & PrintString`
 - Error unions inside `Result`: `Result<T, IoError | NotFound>`
 - Multiple `use` statements at the top of a file

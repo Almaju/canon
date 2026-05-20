@@ -1,0 +1,61 @@
+#!/usr/bin/env sh
+#
+# pre-commit hook for oneway
+#
+# Runs before every commit to make sure:
+#   1. cargo test passes
+#   2. all examples compile and run successfully
+#
+# Install with:  just install-hooks
+# Bypass once:   git commit --no-verify
+
+set -e
+
+echo "=== pre-commit: running cargo test ==="
+cargo test --quiet
+echo "✓ tests passed"
+
+echo ""
+echo "=== pre-commit: building and running all examples ==="
+
+fail=0
+
+for f in examples/*.ow examples/*/main.ow; do
+    [ -f "$f" ] || continue
+    base="${f%.ow}"
+    if [ "$(basename "$f")" = "main.ow" ]; then
+        label=$(basename "$(dirname "$f")")
+    else
+        label=$(basename "$f" .ow)
+    fi
+
+    printf "  %-20s" "$label"
+
+    # Compile
+    if ! cargo run --quiet -- build "$f" >/dev/null 2>&1; then
+        echo "✗  (compile error)"
+        fail=$((fail + 1))
+        rm -rf "${base}.rs" "${base}.cargo"
+        continue
+    fi
+
+    # Run
+    if ! output=$("./${base}" 2>&1); then
+        echo "✗  (runtime error)"
+        fail=$((fail + 1))
+    else
+        echo "✓"
+    fi
+
+    rm -rf "${base}" "${base}.rs" "${base}.cargo"
+done
+
+echo ""
+
+if [ "$fail" -gt 0 ]; then
+    echo "✗ ${fail} example(s) failed — commit aborted"
+    echo "  Use 'git commit --no-verify' to bypass this check."
+    exit 1
+fi
+
+echo "✓ all examples passed"

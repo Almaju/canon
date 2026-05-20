@@ -3,15 +3,15 @@ Show = () -> String
 Greeting = String
 Name = String
 
-Greeting.Show = () -> String {
+Show = (Greeting) -> String {
     "HELLO!"
 }
 
-Name.Show = () -> String {
+Show = (Name) -> String {
     "Alice"
 }
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     Greeting("hi").Show().print(Stdout)
     Name("Alice").Show().print(Stdout)
 }

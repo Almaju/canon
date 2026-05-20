@@ -12,13 +12,12 @@ module.exports = grammar({
   rules: {
     source_file: ($) => repeat($._item),
 
-    _item: ($) => choice($.use_decl, $.function_def, $.type_def),
+    _item: ($) =>
+      choice($.use_decl, $.function_def, $.type_def, $.extern_type_decl),
 
     use_decl: ($) => seq("use", field("name", $.identifier)),
 
     // extern Rust("path")
-    // Type.method = (params) -> Ret           (extern function declaration, no body)
-    // Type.method = (params) -> Ret { body }  (normal method)
     // name       = (params) -> Ret { body }   (normal free function)
     // name       = (params) -> Ret            (trait-shaped — no body)
     function_def: ($) =>
@@ -38,6 +37,7 @@ module.exports = grammar({
       seq(
         "extern",
         field("language", $.identifier),
+        optional(seq(".", field("qualifier", $.identifier))),
         "(",
         field("path", $.string_literal),
         ")",
@@ -54,6 +54,10 @@ module.exports = grammar({
         field("body", $._type),
       ),
 
+    // Bare extern type declaration: extern Rust("...") TypeName
+    extern_type_decl: ($) =>
+      seq(field("extern", $.extern_clause), field("name", $.identifier)),
+
     generic_params: ($) => seq("<", sep1($.generic_param, ","), ">"),
 
     generic_param: ($) =>
@@ -66,32 +70,26 @@ module.exports = grammar({
 
     param: ($) => seq(optional("mut"), field("type", $._type)),
 
-    // Type expressions
-    // Precedence (tightest first per NEW_DESIGN):
-    //   T[N], ...T, T<...>, &, |
+    // Type expressions — precedence (tightest first):
+    //   T^N / T^*, T<...>, *, +
     _type: ($) => $._type_union,
 
     _type_union: ($) => choice($._type_product, $.union_type),
 
     union_type: ($) =>
-      prec.left(seq($._type_product, repeat1(seq("|", $._type_product)))),
+      prec.left(seq($._type_product, repeat1(seq("+", $._type_product)))),
 
-    _type_product: ($) => choice($._type_spread_or_lower, $.product_type),
+    _type_product: ($) => choice($._type_postfix, $.product_type),
 
     product_type: ($) =>
-      prec.left(
-        seq($._type_spread_or_lower, repeat1(seq("&", $._type_spread_or_lower))),
-      ),
+      prec.left(seq($._type_postfix, repeat1(seq("*", $._type_postfix)))),
 
-    _type_spread_or_lower: ($) =>
-      choice($._type_repeat_or_lower, $.spread_type),
-
-    spread_type: ($) => seq("...", $._type_repeat_or_lower),
-
-    _type_repeat_or_lower: ($) => choice($._type_atom, $.repeat_type),
+    _type_postfix: ($) => choice($._type_atom, $.repeat_type, $.spread_type),
 
     repeat_type: ($) =>
-      seq($._type_atom, "[", field("count", $.integer_literal), "]"),
+      seq($._type_atom, "^", field("count", $.integer_literal)),
+
+    spread_type: ($) => seq($._type_atom, "^", "*"),
 
     _type_atom: ($) => $.named_type,
 
@@ -106,11 +104,11 @@ module.exports = grammar({
 
     _expression: ($) =>
       choice(
-        $.match_expression,
-        $.while_expression,
+        $.dispatch,
         $.try_expression,
         $.method_call,
         $.constructor,
+        $.lambda,
         $.identifier_expr,
         $.integer_literal,
         $.float_literal,
@@ -138,29 +136,40 @@ module.exports = grammar({
           field("receiver", $._expression),
           ".",
           field("method", $.identifier),
+          optional(seq("::", "<", field("type_args", sep1($._type, ",")), ">")),
           "(",
           optional(sep1($._expression, ",")),
           ")",
         ),
       ),
 
+    // Dispatch: value.( Pattern => expr, ... )
+    dispatch: ($) =>
+      prec.left(
+        2,
+        seq(
+          field("scrutinee", $._expression),
+          ".",
+          "(",
+          optional(seq(sep1($.dispatch_arm, ","), optional(","))),
+          ")",
+        ),
+      ),
+
+    dispatch_arm: ($) =>
+      seq(field("pattern", $._pattern), "=>", field("body", $._expression)),
+
     try_expression: ($) =>
       prec.left(2, seq(field("inner", $._expression), "?")),
 
-    match_expression: ($) =>
+    // Lambda: (Type) -> RetType { body }
+    lambda: ($) =>
       seq(
-        "match",
-        field("scrutinee", $._expression),
-        "{",
-        optional(seq(sep1($.match_arm, ","), optional(","))),
-        "}",
+        field("params", $.param_list),
+        "->",
+        field("return_type", $._type),
+        field("body", $.block),
       ),
-
-    match_arm: ($) =>
-      seq(field("pattern", $._pattern), "=>", field("body", $._expression)),
-
-    while_expression: ($) =>
-      seq("while", field("cond", $._expression), field("body", $.block)),
 
     _pattern: ($) => choice($.wildcard_pattern, $.variant_pattern),
 
@@ -179,7 +188,7 @@ module.exports = grammar({
     string_literal: ($) => /"([^"\\\n]|\\.)*"/,
 
     // Identifier — both camelCase and PascalCase share this lexeme.
-    // Highlight queries use #match? to distinguish types from values.
+    // Highlight queries use #match? to distinguish types vs values.
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
   },
 });

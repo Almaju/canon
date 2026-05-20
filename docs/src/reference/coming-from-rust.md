@@ -18,9 +18,9 @@ the fastest path in.
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |
 | `Option<T>`                                | `Option<T>`                             |
 | `?` operator                               | `?` operator (same semantics)           |
-| `match x { ... }`                          | `match x { ... }`                       |
+| `match x { ... }`                          | `x.( ... )`                             |
 | `let x = ...;`                             | No equivalent — declare a newtype       |
-| `if cond { a } else { b }`                 | `match cond { False => b, True => a }`  |
+| `if cond { a } else { b }`                 | `cond.( False => b, True => a )`        |
 | `pub fn`                                   | Public by default; `*name` is private   |
 | `mod foo;`                                 | No `mod` — `foo.ow` declares `Foo`      |
 | `use crate::foo::Foo;`                     | `use Foo`                               |
@@ -32,7 +32,7 @@ the fastest path in.
 - **Lifetimes and borrow sigils** (`'a`, `&`, `&mut`). Ownership is
   inferred from usage.
 - **Comments.** Use names and types.
-- **`if`/`else`.** Use `match` on `Bool`.
+- **`if`/`else`.** Use dispatch on `Bool`.
 - **`let` and local variables.** Method chaining only; newtype an
   intermediate value if you really need to name it.
 - **Named arguments.** Use newtypes for disambiguation.

@@ -6,7 +6,7 @@ smaller surface area to the programmer.
 
 The guiding rule: **wherever ordering is discretionary, the compiler enforces
 alphabetical order**. Components of product types, variants of unions, method
-declarations, match arms, imports — all alphabetical. Reordering is never a
+declarations, dispatch arms, imports — all alphabetical. Reordering is never a
 meaningful change.
 
 ## What It Looks Like
@@ -27,7 +27,7 @@ A few things to notice:
 - There is **no `let`**, no local variables, no `if`/`else`, no comments.
 - Every function is implemented on a type: `Type.name = (params) -> Ret { ... }`.
 - The exception is `main`, the program's entry point.
-- Branching is `match` on a union.
+- Branching is dispatch on a union (`.( )`).
 - Side effects are passed in as **capabilities** (`Stdout`, `Filesystem`, …).
 - Imports are file-based: `use Foo` imports the type declared in `foo.ow`.
 

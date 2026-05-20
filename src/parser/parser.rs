@@ -1,3 +1,4 @@
+use crate::ast::extract_receiver_from_params;
 use crate::ast::*;
 use crate::error::{OnewayError, Result, Span};
 use crate::lexer::{Token, TokenKind};
@@ -97,12 +98,6 @@ impl Parser {
             return self.parse_extern_item(start_span, first_ident, extern_decl);
         }
 
-        if self.check(TokenKind::Dot) {
-            self.advance();
-            let name = self.parse_method_name("expected function name after `.`")?;
-            return self.parse_function_after_name(Some(first_ident), name, start_span);
-        }
-
         let pre_eq_generics = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
         } else {
@@ -114,9 +109,8 @@ impl Parser {
         if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
             if !pre_eq_generics.is_empty() {
                 return Err(OnewayError::ParseError {
-                    message:
-                        "generic parameters on function definitions go after `=`, not before"
-                            .to_string(),
+                    message: "generic parameters on function definitions go after `=`, not before"
+                        .to_string(),
                     span: first_ident.span,
                 });
             }
@@ -133,26 +127,40 @@ impl Parser {
         }))
     }
 
-    fn parse_function_after_name(
-        &mut self,
-        receiver: Option<Ident>,
-        name: Ident,
-        start_span: Span,
-    ) -> Result<Item> {
-        self.expect(TokenKind::Eq, "expected `=` after function name")?;
-        self.parse_function_after_eq(receiver, name, start_span)
-    }
-
     fn parse_extern_item(
         &mut self,
         start_span: Span,
         first_ident: Ident,
         extern_decl: ExternRust,
     ) -> Result<Item> {
-        if self.check(TokenKind::Dot) {
-            self.advance();
-            let name = self.parse_method_name("expected method name after `.`")?;
-            self.expect(TokenKind::Eq, "expected `=` after extern method name")?;
+        // Check for = (function or type definition)
+        if !self.check(TokenKind::Eq) {
+            // No = → bare type: extern Rust("...") TypeName
+            if extern_decl.is_async {
+                return Err(OnewayError::ParseError {
+                    message:
+                        "`extern Rust.async` is only valid on function declarations, not on types"
+                            .to_string(),
+                    span: first_ident.span,
+                });
+            }
+            let end_span = first_ident.span;
+            return Ok(Item::TypeDef(TypeDef {
+                name: first_ident.clone(),
+                generic_params: Vec::new(),
+                body: TypeExpr::Named {
+                    name: format!("__extern__{}", extern_decl.path),
+                    generics: Vec::new(),
+                    span: end_span,
+                },
+                span: span_join(start_span, end_span),
+            }));
+        }
+
+        self.advance(); // consume =
+
+        // After =, if ( or < → function signature (new syntax)
+        if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
             let generic_params = if self.check(TokenKind::Lt) {
                 self.parse_generic_params()?
             } else {
@@ -174,12 +182,21 @@ impl Parser {
             self.expect(TokenKind::Arrow, "expected `->` before return type")?;
             let return_ty = self.parse_type_expr()?;
             let end_span = self.previous_span();
-            let empty_body_span = Span::new(end_span.end, end_span.end, end_span.line, end_span.column);
+
+            // Extract receiver for camelCase, defer PascalCase to post-parse
+            let (receiver, final_params) = if Self::is_pascal_case_str(&first_ident.name) {
+                (None, params)
+            } else {
+                extract_receiver_from_params(params)
+            };
+
+            let empty_body_span =
+                Span::new(end_span.end, end_span.end, end_span.line, end_span.column);
             return Ok(Item::Function(FunctionDef {
-                receiver: Some(first_ident),
-                name,
+                receiver,
+                name: first_ident,
                 generic_params,
-                params,
+                params: final_params,
                 return_ty,
                 body: Block {
                     exprs: Vec::new(),
@@ -190,29 +207,14 @@ impl Parser {
             }));
         }
 
+        // After =, not a function → type definition
         if extern_decl.is_async {
             return Err(OnewayError::ParseError {
-                message: "`extern Rust.async` is only valid on method declarations, not on types"
+                message: "`extern Rust.async` is only valid on function declarations, not on types"
                     .to_string(),
                 span: first_ident.span,
             });
         }
-
-        if !self.check(TokenKind::Eq) {
-            let end_span = first_ident.span;
-            return Ok(Item::TypeDef(TypeDef {
-                name: first_ident.clone(),
-                generic_params: Vec::new(),
-                body: TypeExpr::Named {
-                    name: format!("__extern__{}", extern_decl.path),
-                    generics: Vec::new(),
-                    span: end_span,
-                },
-                span: span_join(start_span, end_span),
-            }));
-        }
-
-        self.advance();
         let body = self.parse_type_expr()?;
         let end_span = self.previous_span();
         Ok(Item::TypeDef(TypeDef {
@@ -254,11 +256,27 @@ impl Parser {
         if self.check(TokenKind::LBrace) {
             let body = self.parse_block()?;
             let end_span = self.previous_span();
+
+            // New syntax: extract receiver from first param component
+            let (final_receiver, final_params) = if receiver.is_some() {
+                // Old dot syntax — keep as-is
+                (receiver, params)
+            } else if name.name == "main" || params.is_empty() {
+                // main or no-param function: no receiver
+                (None, params)
+            } else if Self::is_pascal_case_str(&name.name) {
+                // PascalCase: defer to post-parse resolve_new_syntax
+                (None, params)
+            } else {
+                // camelCase with params: extract first component as receiver
+                extract_receiver_from_params(params)
+            };
+
             return Ok(Item::Function(FunctionDef {
-                receiver,
+                receiver: final_receiver,
                 name,
                 generic_params,
-                params,
+                params: final_params,
                 return_ty,
                 body,
                 extern_rust: None,
@@ -295,8 +313,7 @@ impl Parser {
         if !self.check(TokenKind::Gt) {
             loop {
                 let start = self.current_span();
-                let name_tok =
-                    self.expect(TokenKind::Ident, "expected generic parameter name")?;
+                let name_tok = self.expect(TokenKind::Ident, "expected generic parameter name")?;
                 let name = Ident {
                     name: name_tok.lexeme.clone(),
                     span: name_tok.span,
@@ -348,11 +365,11 @@ impl Parser {
     fn parse_type_union(&mut self) -> Result<TypeExpr> {
         let start = self.current_span();
         let first = self.parse_type_product()?;
-        if !self.check(TokenKind::Pipe) {
+        if !self.check(TokenKind::Plus) {
             return Ok(first);
         }
         let mut variants = vec![first];
-        while self.check(TokenKind::Pipe) {
+        while self.check(TokenKind::Plus) {
             self.advance();
             self.skip_newlines();
             variants.push(self.parse_type_product()?);
@@ -366,15 +383,15 @@ impl Parser {
 
     fn parse_type_product(&mut self) -> Result<TypeExpr> {
         let start = self.current_span();
-        let first = self.parse_type_spread_or_postfix()?;
-        if !self.check(TokenKind::Amp) {
+        let first = self.parse_type_postfix()?;
+        if !self.check(TokenKind::Star) {
             return Ok(first);
         }
         let mut fields = vec![first];
-        while self.check(TokenKind::Amp) {
+        while self.check(TokenKind::Star) {
             self.advance();
             self.skip_newlines();
-            fields.push(self.parse_type_spread_or_postfix()?);
+            fields.push(self.parse_type_postfix()?);
         }
         let end = self.previous_span();
         Ok(TypeExpr::Product {
@@ -383,33 +400,31 @@ impl Parser {
         })
     }
 
-    fn parse_type_spread_or_postfix(&mut self) -> Result<TypeExpr> {
-        let start = self.current_span();
-        if self.check(TokenKind::Ellipsis) {
-            self.advance();
-            let ty = self.parse_type_postfix_atom()?;
-            let end = self.previous_span();
-            return Ok(TypeExpr::Spread {
-                ty: Box::new(ty),
-                span: span_join(start, end),
-            });
-        }
-        self.parse_type_postfix_atom()
-    }
-
-    fn parse_type_postfix_atom(&mut self) -> Result<TypeExpr> {
+    fn parse_type_postfix(&mut self) -> Result<TypeExpr> {
         let start = self.current_span();
         let atom = self.parse_type_atom()?;
-        if !self.check(TokenKind::LBracket) {
+        if !self.check(TokenKind::Caret) {
             return Ok(atom);
         }
         self.advance();
-        let count_tok = self.expect(TokenKind::IntLit, "expected an integer count in `[N]`")?;
-        let count: u64 = count_tok.lexeme.parse().map_err(|_| OnewayError::ParseError {
-            message: format!("invalid integer `{}` in repetition count", count_tok.lexeme),
-            span: count_tok.span,
-        })?;
-        self.expect(TokenKind::RBracket, "expected `]` after repetition count")?;
+        // ^* means unbounded repetition (Kleene star)
+        if self.check(TokenKind::Star) {
+            self.advance();
+            let end = self.previous_span();
+            return Ok(TypeExpr::Spread {
+                ty: Box::new(atom),
+                span: span_join(start, end),
+            });
+        }
+        // ^N means fixed repetition
+        let count_tok = self.expect(TokenKind::IntLit, "expected `*` or an integer after `^`")?;
+        let count: u64 = count_tok
+            .lexeme
+            .parse()
+            .map_err(|_| OnewayError::ParseError {
+                message: format!("invalid integer `{}` in repetition count", count_tok.lexeme),
+                span: count_tok.span,
+            })?;
         let end = self.previous_span();
         Ok(TypeExpr::Repeat {
             ty: Box::new(atom),
@@ -478,19 +493,57 @@ impl Parser {
             }
             if self.check(TokenKind::Dot) {
                 self.advance();
-                let method_tok =
-                    self.expect(TokenKind::Ident, "expected method name after `.`")?;
-                let method = Ident {
-                    name: method_tok.lexeme.clone(),
-                    span: method_tok.span,
-                };
-                let mut type_args = Vec::new();
-                if self.check(TokenKind::ColonColon) {
+                // Dispatch syntax: value.( arms ) — desugars to match
+                if self.check(TokenKind::LParen) {
                     self.advance();
-                    self.expect(TokenKind::Lt, "expected `<` after `::` in turbofish")?;
-                    if !self.check(TokenKind::Gt) {
+                    self.skip_newlines();
+                    let mut arms = Vec::new();
+                    while !self.check(TokenKind::RParen) && !self.is_at_end() {
+                        arms.push(self.parse_match_arm()?);
+                        if self.check(TokenKind::Comma) {
+                            self.advance();
+                        }
+                        self.skip_newlines();
+                    }
+                    let rparen =
+                        self.expect(TokenKind::RParen, "expected `)` to close dispatch")?;
+                    let start_span = expr.span();
+                    expr = Expr::Match {
+                        scrutinee: Box::new(expr),
+                        arms,
+                        span: span_join(start_span, rparen.span),
+                    };
+                } else {
+                    let method_tok =
+                        self.expect(TokenKind::Ident, "expected method name after `.`")?;
+                    let method = Ident {
+                        name: method_tok.lexeme.clone(),
+                        span: method_tok.span,
+                    };
+                    let mut type_args = Vec::new();
+                    if self.check(TokenKind::ColonColon) {
+                        self.advance();
+                        self.expect(TokenKind::Lt, "expected `<` after `::` in turbofish")?;
+                        if !self.check(TokenKind::Gt) {
+                            loop {
+                                type_args.push(self.parse_type_expr()?);
+                                if self.check(TokenKind::Comma) {
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        self.expect(
+                            TokenKind::Gt,
+                            "expected `>` to close turbofish type arguments",
+                        )?;
+                    }
+                    self.expect(TokenKind::LParen, "expected `(` after method name")?;
+                    let mut args = Vec::new();
+                    if !self.check(TokenKind::RParen) {
                         loop {
-                            type_args.push(self.parse_type_expr()?);
+                            args.push(self.parse_expr()?);
                             if self.check(TokenKind::Comma) {
                                 self.advance();
                             } else {
@@ -498,30 +551,17 @@ impl Parser {
                             }
                         }
                     }
-                    self.expect(TokenKind::Gt, "expected `>` to close turbofish type arguments")?;
+                    let rparen =
+                        self.expect(TokenKind::RParen, "expected `)` to close method call")?;
+                    let start_span = expr.span();
+                    expr = Expr::MethodCall {
+                        receiver: Box::new(expr),
+                        method,
+                        type_args,
+                        args,
+                        span: span_join(start_span, rparen.span),
+                    };
                 }
-                self.expect(TokenKind::LParen, "expected `(` after method name")?;
-                let mut args = Vec::new();
-                if !self.check(TokenKind::RParen) {
-                    loop {
-                        args.push(self.parse_expr()?);
-                        if self.check(TokenKind::Comma) {
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                let rparen =
-                    self.expect(TokenKind::RParen, "expected `)` to close method call")?;
-                let start_span = expr.span();
-                expr = Expr::MethodCall {
-                    receiver: Box::new(expr),
-                    method,
-                    type_args,
-                    args,
-                    span: span_join(start_span, rparen.span),
-                };
             } else if self.check(TokenKind::Question) {
                 let q = self.advance().clone();
                 let start_span = expr.span();
@@ -539,8 +579,6 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr> {
         let tok = self.peek().clone();
         match tok.kind {
-            TokenKind::KwMatch => self.parse_match(),
-            TokenKind::KwWhile => self.parse_while(),
             TokenKind::LParen => self.parse_lambda(),
             TokenKind::Ident | TokenKind::KwSelf => {
                 self.advance();
@@ -605,12 +643,11 @@ impl Parser {
             TokenKind::HexLit => {
                 self.advance();
                 let stripped = tok.lexeme.trim_start_matches("0x");
-                let value = u64::from_str_radix(stripped, 16).map_err(|_| {
-                    OnewayError::ParseError {
+                let value =
+                    u64::from_str_radix(stripped, 16).map_err(|_| OnewayError::ParseError {
                         message: format!("invalid hex literal `{}`", tok.lexeme),
                         span: tok.span,
-                    }
-                })?;
+                    })?;
                 Ok(Expr::HexLit {
                     value,
                     span: tok.span,
@@ -636,8 +673,14 @@ impl Parser {
                 }
             }
         }
-        self.expect(TokenKind::RParen, "expected `)` to close lambda parameter list")?;
-        self.expect(TokenKind::Arrow, "expected `->` after lambda parameter list")?;
+        self.expect(
+            TokenKind::RParen,
+            "expected `)` to close lambda parameter list",
+        )?;
+        self.expect(
+            TokenKind::Arrow,
+            "expected `->` after lambda parameter list",
+        )?;
         let return_ty = self.parse_type_expr()?;
         let body = self.parse_block()?;
         Ok(Expr::Lambda {
@@ -645,40 +688,6 @@ impl Parser {
             return_ty,
             body,
             span: span_join(lparen.span, self.previous_span()),
-        })
-    }
-
-    fn parse_while(&mut self) -> Result<Expr> {
-        let kw = self.expect(TokenKind::KwWhile, "expected `while`")?;
-        let cond = self.parse_expr()?;
-        let body = self.parse_block()?;
-        Ok(Expr::While {
-            cond: Box::new(cond),
-            body,
-            span: span_join(kw.span, self.previous_span()),
-        })
-    }
-
-    fn parse_match(&mut self) -> Result<Expr> {
-        let kw = self.expect(TokenKind::KwMatch, "expected `match`")?;
-        let scrutinee = self.parse_expr()?;
-        self.expect(TokenKind::LBrace, "expected `{` to begin match arms")?;
-        self.skip_newlines();
-
-        let mut arms = Vec::new();
-        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
-            arms.push(self.parse_match_arm()?);
-            if self.check(TokenKind::Comma) {
-                self.advance();
-            }
-            self.skip_newlines();
-        }
-        let rbrace = self.expect(TokenKind::RBrace, "expected `}` to close match")?;
-
-        Ok(Expr::Match {
-            scrutinee: Box::new(scrutinee),
-            arms,
-            span: span_join(kw.span, rbrace.span),
         })
     }
 
@@ -752,22 +761,6 @@ impl Parser {
         &self.tokens[self.pos - 1]
     }
 
-    fn parse_method_name(&mut self, msg: &str) -> Result<Ident> {
-        if self.check(TokenKind::Ident) || self.check(TokenKind::KwSelf) {
-            let tok = self.advance().clone();
-            Ok(Ident {
-                name: tok.lexeme,
-                span: tok.span,
-            })
-        } else {
-            let actual = self.peek().clone();
-            Err(OnewayError::ParseError {
-                message: format!("{} (got {})", msg, actual.kind),
-                span: actual.span,
-            })
-        }
-    }
-
     fn expect(&mut self, kind: TokenKind, msg: &str) -> Result<Token> {
         if self.check(kind) {
             Ok(self.advance().clone())
@@ -794,6 +787,10 @@ impl Parser {
 
     fn current_span(&self) -> Span {
         self.tokens[self.pos].span
+    }
+
+    fn is_pascal_case_str(s: &str) -> bool {
+        s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
     }
 
     fn is_at_end(&self) -> bool {

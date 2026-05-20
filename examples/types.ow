@@ -1,13 +1,13 @@
-Bit = Off | On
+Bit = Off + On
 Birthday = String
-Bool = False | True
-Byte = Bit[8]
-Bytes = ...Byte
-Ord = Equal | Greater | Less
+Bool = False + True
+Byte = Bit^8
+Bytes = Byte^*
+Ord = Equal + Greater + Less
 Username = String
-User = Birthday & Username
+User = Birthday * Username
 OtherUser = User
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     "type definitions parsed".print(Stdout)
 }

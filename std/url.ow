@@ -4,4 +4,4 @@ extern Rust("url::ParseError")
 InvalidUrl
 
 extern Rust("oneway_url_parse")
-Url.Self = (String) -> Result<Url, InvalidUrl>
+Url = (String) -> Result<Url, InvalidUrl>

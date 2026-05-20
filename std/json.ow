@@ -2,4 +2,4 @@ extern Rust("serde_json::Error")
 MalformedJson
 
 extern Rust("oneway_json_parse")
-Json.parse = <T: Deserialize>(String) -> Result<T, MalformedJson>
+parse = <T: Deserialize>(Json * String) -> Result<T, MalformedJson>

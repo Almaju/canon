@@ -1,8 +1,8 @@
-Bool = False | True
+Bool = False + True
 
-main = (Stdout) -> Noop {
-    match True {
+main = (Stdout) -> Unit {
+    True.(
         False => "no".print(Stdout),
         True => "yes".print(Stdout),
-    }
+    )
 }

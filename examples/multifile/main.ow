@@ -1,5 +1,5 @@
 use Greeter
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     Greeter("hi").shout().print(Stdout)
 }

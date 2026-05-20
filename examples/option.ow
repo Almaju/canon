@@ -1,8 +1,8 @@
-main = (Stdout) -> Result<Noop, Noop> {
+main = (Stdout) -> Result<Unit, Unit> {
     Ok(42)?.print(Stdout)
-    match Some(7) {
+    Some(7).(
         None => "absent".print(Stdout),
         Some(_) => "present".print(Stdout),
-    }
-    Ok(Noop)
+    )
+    Ok(Unit)
 }

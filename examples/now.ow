@@ -1,5 +1,5 @@
 use Clock
 
-main = (Clock & Stdout) -> Noop {
+main = (Clock * Stdout) -> Unit {
     Clock.now().toRfc3339().print(Stdout)
 }

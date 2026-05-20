@@ -1,2 +1,3 @@
 (block "{" @indent "}" @outdent)
-(match_expression "{" @indent "}" @outdent)
+(dispatch "(" @indent ")" @outdent)
+(lambda "{" @indent "}" @outdent)

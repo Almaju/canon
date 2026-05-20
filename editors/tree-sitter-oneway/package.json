@@ -34,7 +34,11 @@
   "tree-sitter": [
     {
       "scope": "source.oneway",
-      "injection-regex": "^oneway$"
+      "injection-regex": "^oneway$",
+      "file-types": [
+        "ow"
+      ],
+      "highlights": "queries/highlights.scm"
     }
   ]
 }

@@ -54,7 +54,7 @@ For repeated components or anonymous sequences, use 1-based positional
 indices:
 
 ```oneway
-Byte = Bit[8]
+Byte = Bit^8
 
 byte.1   // first Bit
 byte.2   // second Bit
@@ -75,16 +75,16 @@ storage, but they are different types — which is exactly the point. See
 
 ## Fixed and Unbounded Repetition
 
-For a fixed count of the same type, use `Type[N]`:
+For a fixed count of the same type, use `Type^N`:
 
 ```oneway
-Byte = Bit[8]
+Byte = Bit^8
 ```
 
-For unbounded sequences, use `...Type`:
+For unbounded sequences, use `Type^*`:
 
 ```oneway
-Bytes = ...Byte
+Bytes = Byte^*
 ```
 
 Higher-level types like `Int`, `Float`, and `String` are defined from

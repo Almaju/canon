@@ -1,4 +1,4 @@
-use crate::ast::{Item, Module};
+use crate::ast::{resolve_new_syntax, Item, Module};
 use crate::error::{OnewayError, Result, Span};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
@@ -121,10 +121,12 @@ struct LoadCtx {
 }
 
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
-    let canonical = entry.canonicalize().map_err(|err| OnewayError::CheckError {
-        message: format!("could not resolve `{}`: {}", entry.display(), err),
-        span: Span::default(),
-    })?;
+    let canonical = entry
+        .canonicalize()
+        .map_err(|err| OnewayError::CheckError {
+            message: format!("could not resolve `{}`: {}", entry.display(), err),
+            span: Span::default(),
+        })?;
     let mut ctx = LoadCtx {
         seen: HashSet::new(),
         seen_stdlib: HashSet::new(),
@@ -152,14 +154,19 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
         message: format!("could not read `{}`: {}", path.display(), err),
         span: Span::default(),
     })?;
-    load_source(&source, path.parent().unwrap_or_else(|| Path::new(".")), ctx)
+    load_source(
+        &source,
+        path.parent().unwrap_or_else(|| Path::new(".")),
+        ctx,
+    )
 }
 
 fn load_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
-    let module = parser.parse()?;
+    let mut module = parser.parse()?;
+    resolve_new_syntax(&mut module);
 
     let mut use_items = Vec::new();
     let mut other_items = Vec::new();

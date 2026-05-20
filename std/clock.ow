@@ -1,4 +1,4 @@
 use Datetime
 
 extern Rust("chrono::Utc::now")
-Clock.now = () -> Datetime
+now = (Clock) -> Datetime

@@ -1,6 +1,6 @@
 id = "oneway"
 name = "Oneway"
-version = "0.2.0"
+version = "0.3.0"
 schema_version = 1
 authors = ["Oneway Contributors"]
 description = "Oneway language support for Zed"
@@ -8,4 +8,4 @@ description = "Oneway language support for Zed"
 [grammars.oneway]
 repository = "https://github.com/Almaju/oneway"
 path = "editors/tree-sitter-oneway"
-commit = "8bc3a3773b0d0f3baec79ef0e4a5ebc55887214b"
+commit = "e2c1cd3bcd43f9dc9359d65d26ea605805340566"

@@ -13,7 +13,7 @@ enforces alphabetical order.
 | Trait composition (`Show = A & B`)     | Alphabetical                                |
 | Error union inside `Result<T, E>`      | Alphabetical                                |
 | `use` statements at the top of a file  | Alphabetical                                |
-| Arms of a `match`                      | Order of the union's variants (alphabetical) |
+| Arms of a dispatch                     | Order of the union's variants (alphabetical) |
 
 ## Examples
 
@@ -45,14 +45,14 @@ File.read = (Path) -> Result<Bytes, IoError | NotFound | PermissionDenied> {
 }
 ```
 
-Match arms in variant order:
+Dispatch arms in variant order:
 
 ```oneway
-match ord {
+ord.(
     Equal   => ...,
     Greater => ...,
     Less    => ...,
-}
+)
 ```
 
 ## Checking Without Compiling

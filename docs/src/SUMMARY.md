@@ -14,7 +14,7 @@
 - [Types](./tour/types.md)
 - [Literals](./tour/literals.md)
 - [Functions](./tour/functions.md)
-- [Match](./tour/match.md)
+- [Dispatch](./tour/match.md)
 - [Loops](./tour/loops.md)
 - [Capabilities](./tour/capabilities.md)
 - [Modules](./tour/modules.md)
