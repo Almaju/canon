@@ -12,9 +12,9 @@ meaningful change.
 ## What It Looks Like
 
 ```oneway
-Bool = False | True
+Bool = False + True
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })
         .length()
@@ -25,8 +25,8 @@ main = (Stdout) -> Noop {
 A few things to notice:
 
 - There is **no `let`**, no local variables, no `if`/`else`, no comments.
-- Every function is implemented on a type: `Type.name = (params) -> Ret { ... }`.
-- The exception is `main`, the program's entry point.
+- Functions are declared as `name = (Type) -> Ret { ... }` — any component can be the dot-receiver at the call site.
+- `main` is the program's entry point and takes capabilities as parameters.
 - Branching is dispatch on a union (`.( )`).
 - Side effects are passed in as **capabilities** (`Stdout`, `Filesystem`, …).
 - Imports are file-based: `use Foo` imports the type declared in `foo.ow`.

@@ -83,7 +83,10 @@ oneway run hello.ow
 | Path | Description |
 |------|-------------|
 | [`src/`](src/) | The `oneway` compiler (lexer, parser, checker, codegen) |
+| [`std/`](std/) | Standard library (`.ow` interfaces + Rust FFI) |
+| [`docs/`](docs/) | Documentation site (mdBook) |
 | [`examples/`](examples/) | Example `.ow` programs |
+| [`tests/`](tests/) | Integration tests |
 | [`editors/`](editors/) | Tree-sitter grammar and Zed extension |
 | [`DESIGN.md`](DESIGN.md) | Language specification |
 

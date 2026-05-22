@@ -27,7 +27,7 @@ alphabetical. Every variant must be spelled out:
 ```oneway
 Ord = Equal + Greater + Less
 
-Int.classify = () -> Sign {
+classify = (Int) -> Sign {
     Int.compare(Int(0)).(
         Equal   => Zero,
         Greater => Positive,

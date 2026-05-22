@@ -38,7 +38,7 @@ examples/multifile/
 ```oneway
 Greeter = String
 
-Greeter.shout = () -> String {
+shout = (Greeter) -> String {
     "HELLO from greeter"
 }
 ```
@@ -48,7 +48,7 @@ Greeter.shout = () -> String {
 ```oneway
 use Greeter
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     Greeter("hi").shout().print(Stdout)
 }
 ```
@@ -61,14 +61,4 @@ just example multifile
 
 ## Visibility
 
-Everything is **public by default**. To make a method private to its
-declaring file, prefix it with `*`:
-
-```oneway
-Type.*helper = () -> Noop {
-    ...
-}
-```
-
-There is no `pub` keyword and no per-item visibility annotation beyond
-that single prefix.
+Everything is **public**. There is no private visibility modifier.

@@ -8,20 +8,20 @@ the fastest path in.
 
 | Rust                                       | Oneway                                  |
 |--------------------------------------------|-----------------------------------------|
-| `struct User { birthday: ..., username: ... }` | `User = Birthday & Username`        |
-| `enum Bool { False, True }`                | `Bool = False \| True`                  |
+| `struct User { birthday: ..., username: ... }` | `User = Birthday * Username`        |
+| `enum Bool { False, True }`                | `Bool = False + True`                  |
 | `type Name = String;` (newtype via `struct Name(String);`) | `Name = String`         |
-| `impl User { fn greet(&self) -> String { ... } }` | `User.greet = () -> String { ... }` |
-| `fn main() { ... }`                        | `main = (Stdout) -> Noop { ... }`       |
+| `impl User { fn greet(&self) -> String { ... } }` | `greet = (User) -> String { ... }` |
+| `fn main() { ... }`                        | `main = (Stdout) -> Unit { ... }`       |
 | `trait Show { fn show(&self) -> String; }` | `Show = () -> String`                   |
-| `impl Show for User { ... }`               | `User.Show = () -> String { ... }`      |
+| `impl Show for User { ... }`               | `Show = (User) -> String { ... }`      |
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |
 | `Option<T>`                                | `Option<T>`                             |
 | `?` operator                               | `?` operator (same semantics)           |
 | `match x { ... }`                          | `x.( ... )`                             |
 | `let x = ...;`                             | No equivalent — declare a newtype       |
 | `if cond { a } else { b }`                 | `cond.( False => b, True => a )`        |
-| `pub fn`                                   | Public by default; `*name` is private   |
+| `pub fn`                                   | Everything is public   |
 | `mod foo;`                                 | No `mod` — `foo.ow` declares `Foo`      |
 | `use crate::foo::Foo;`                     | `use Foo`                               |
 | `fn(...) -> T` (function type)             | `(params) -> T` (also a trait declaration) |
@@ -44,7 +44,7 @@ the fastest path in.
 - **Mandatory alphabetical declaration order.** Compiler-enforced.
 - **Effects as capabilities.** Side effects flow through ordinary
   arguments rather than `unsafe`, globals, or library wrappers.
-- **Inline error unions.** `Result<Bytes, IoError | NotFound>` without
+- **Inline error unions.** `Result<Bytes, IoError + NotFound>` without
   declaring a wrapper enum at every call site.
 - **No-comments policy.** The compiler rejects them.
 

@@ -13,8 +13,8 @@ the type's underlying definition:
 |------------------|------------------------------------------|-----------------------------------------------|
 | Primitive        | `Int(123)`, `Float(1.0)`, `String("hi")` | a literal of the corresponding lexical kind   |
 | Hex              | `Hex(0xFF0000)`                          | a hex literal                                 |
-| Product `A & B`  | `T(A(...) & B(...))`                     | a value-level product joined with `&`         |
-| Union `A \| B`   | `T(A(...))` or `T(B(...))`               | a value of any variant                        |
+| Product `A * B`  | `T(A(...) * B(...))`                     | a value-level product joined with `*`         |
+| Union `A + B`    | `T(A(...))` or `T(B(...))`               | a value of any variant                        |
 | Newtype          | `T(inner)`                               | a value of the aliased type                   |
 
 ## Literal Sugar
@@ -38,7 +38,7 @@ A singleton type — one with no underlying composition — has one value,
 referenced by writing the type name:
 
 ```oneway
-Noop      // the sole value of type Noop
+Unit      // the sole value of type Unit
 On        // the sole value of type On
 ```
 
@@ -55,18 +55,18 @@ method like `List.empty` or `String.empty`.
 ## Constructing a Product
 
 The argument to a product's constructor is its components joined with
-value-level `&`:
+value-level `*`:
 
 ```oneway
-user = User(Birthday(...) & Username("ahanot"))
+user = User(Birthday(...) * Username("ahanot"))
 red  = Hex(0xFF0000)
 ```
 
-`&` is overloaded across the two levels: at the type level it forms a
+`*` is overloaded across the two levels: at the type level it forms a
 product type, at the value level it forms a product value. The two never
 appear in the same context.
 
-## Validated Constructors (`Type.Self`)
+## Validated Constructors
 
 By default, a type's constructor is total: `T(inner)` always succeeds and
 returns `T`. For types whose construction can fail — a `Url` parsed from
@@ -74,24 +74,21 @@ a `String`, an `Email` from a `String`, etc. — the fallibility belongs in
 the type system as `Result<T, E>`. Same principle the language already
 applies to "missing": `Option<T>`.
 
-A type opts into this by declaring a method named `Self`:
+A type opts into this by declaring a constructor with the **same name as the type** — a function whose name matches the type it constructs:
 
 ```oneway
 Url = String
 
 extern Rust("oneway_url_parse")
-Url.Self = (String) -> Result<Url, InvalidUrl>
+Url = (String) -> Result<Url, InvalidUrl>
 ```
 
-`Self` is the alias for the receiver type's name; `Type.Self` reads as
-"the constructor that produces a `Self`."
-
-When a type declares `Type.Self`, that *is* the constructor — the
+When a type declares a constructor, that *is* the constructor — the
 implicit total constructor is replaced. The signature is unconstrained:
 total (`(String) -> Url`), fallible (`Result<Url, InvalidUrl>`), or
 optional (`Option<Url>`). Call sites still use the ordinary constructor
 syntax `Url("https://example.com")`, but the expression's type is now
-whatever `Url.Self` returns, so a fallible constructor *forces* `?` (or
+whatever the constructor returns, so a fallible constructor *forces* `?` (or
 dispatch) at the call site:
 
 ```oneway

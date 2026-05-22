@@ -8,11 +8,11 @@ Show = () -> String
 
 Because traits are types, they are written in `PascalCase`. The case
 difference is how the compiler distinguishes a trait implementation
-(`Type.Print`) from a regular method (`Type.print`) on the same type.
+(`Print`) from a regular function (`print`).
 
 ## Implementing a Trait
 
-A trait is implemented on a type by assigning to `Type.TraitName`:
+A trait is implemented for a type by declaring a function with the trait's name and the implementing type as a component:
 
 ```oneway
 Show = () -> String
@@ -20,15 +20,15 @@ Show = () -> String
 Greeting = String
 Name     = String
 
-Greeting.Show = () -> String {
+Show = (Greeting) -> String {
     "HELLO!"
 }
 
-Name.Show = () -> String {
+Show = (Name) -> String {
     "Alice"
 }
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     Greeting("hi").Show().print(Stdout)
     Name("Alice").Show().print(Stdout)
 }
@@ -42,7 +42,7 @@ main = (Stdout) -> Noop {
 A trait with multiple methods is just a product of single-method traits:
 
 ```oneway
-Show = Debug & PrintString
+Show = Debug * PrintString
 ```
 
 ## Default Implementations
@@ -61,7 +61,7 @@ A trait can be used directly as a parameter type. The parameter binds the
 trait implementation, which is then invocable:
 
 ```oneway
-Type.needsPrint = (Print) -> Noop {
+needsPrint = (Print) -> Unit {
     Print()
 }
 ```
@@ -72,7 +72,7 @@ Constraints on generic parameters use `:`, naming a trait the parameter
 must implement:
 
 ```oneway
-List.print = <T: Print>() -> Noop {
+print = <T: Print>(List<T>) -> Unit {
     ...
 }
 ```

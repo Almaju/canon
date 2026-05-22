@@ -4,7 +4,7 @@ Errors are values, carried by the standard `Result<T, E>` type. The error
 slot is a regular type, so it can be a union written inline:
 
 ```oneway
-File.read = (Path) -> Result<Bytes, IoError | NotFound | PermissionDenied> {
+read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
 ```
@@ -22,13 +22,13 @@ The postfix `?` operator propagates failure. It works on both
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```oneway
-main = (Stdout) -> Result<Noop, Noop> {
+main = (Stdout) -> Result<Unit, Unit> {
     Ok(42)?.print(Stdout)
-    match Some(7) {
+    Some(7).(
         None    => "absent".print(Stdout),
         Some(_) => "present".print(Stdout),
-    }
-    Ok(Noop)
+    )
+    Ok(Unit)
 }
 ```
 
@@ -53,7 +53,7 @@ Because `?` is postfix, error-propagating pipelines read top-down,
 left-to-right:
 
 ```oneway
-File.readConfig = (Path) -> Result<Config, IoError | ParseError> {
+readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
     File.read(Path)?
         .parse()?
         .validate()
@@ -66,8 +66,8 @@ failure short-circuits the whole function.
 ## Validated Construction
 
 The same `?` shows up at the construction site for types whose
-[constructor is fallible](literals.md#validated-constructors-typeself).
-A type with a `Type.Self` declaration that returns `Result<Self, E>`
+constructor is fallible](literals.md#validated-constructors).
+A type with a declared constructor that returns `Result<Self, E>`
 forces callers to handle the failure mode:
 
 ```oneway
@@ -78,7 +78,7 @@ Both `?`s here are doing the same job: unwrapping a `Result` at the
 point of use. The first handles `Url` parsing failure (`InvalidUrl`);
 the second handles `HttpClient.get` failure (`HttpError`). The
 function's return type then carries the union:
-`Result<Noop, HttpError | InvalidUrl>`.
+`Result<Unit, HttpError + InvalidUrl>`.
 
 ## Error Naming
 

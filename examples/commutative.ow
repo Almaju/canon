@@ -1,4 +1,5 @@
 Greeting = String
+
 Name = String
 
 greet = (Greeting * Name) -> Greeting {

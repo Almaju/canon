@@ -14,10 +14,12 @@ direct calls — no runtime glue, no marshalling.
 ## Declaring an Extern Method
 
 ```oneway
-extern Rust("std::cmp::min")
-Int.min = (Int) -> Int
+OtherInt = Int
 
-main = (Stdout) -> Noop {
+extern Rust("std::cmp::min")
+min = (Int * OtherInt) -> Int
+
+main = (Stdout) -> Unit {
     5.min(3).print(Stdout)
 }
 ```
@@ -25,17 +27,17 @@ main = (Stdout) -> Noop {
 The string is the fully qualified Rust path. The Oneway signature declares
 how the method is called from Oneway.
 
-A path that begins with `.` indicates a method call on the receiver, not a
+A path that begins with `.` indicates a method call on the first component, not a
 free function:
 
 ```oneway
 extern Rust(".to_lowercase")
-String.toLower = () -> String
+toLower = (String) -> String
 
 extern Rust(".to_uppercase")
-String.toUpper = () -> String
+toUpper = (String) -> String
 
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     "Hello, World".toUpper().print(Stdout)
     "GoodBye".toLower().print(Stdout)
 }
@@ -63,7 +65,7 @@ Async Rust functions are bound with `extern Rust.async`:
 
 ```oneway
 extern Rust.async("tokio::fs::read_to_string")
-Filesystem.read = (Path) -> Result<String, IoError>
+read = (Filesystem * Path) -> Result<String, IoError>
 ```
 
 The compiler inserts `.await` at every call site, and the calling Oneway

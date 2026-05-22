@@ -1,7 +1,6 @@
 # Capabilities
 
-A function's type should not lie about what it does. `String.print = () ->
-Noop` claims "nothing happens", but writing to stdout is something.
+A function's type should not lie about what it does. `print = (Stdout * String) -> Unit` makes it clear that printing requires a capability and a value.
 
 Oneway models effects as **capabilities** — values that must be passed in
 to perform an effect.
@@ -11,7 +10,7 @@ to perform an effect.
 A function that prints requires `Stdout`:
 
 ```oneway
-String.print = (Stdout) -> Noop {
+print = (Stdout * String) -> Unit {
     Stdout.write(String)
 }
 ```
@@ -27,7 +26,7 @@ receives them as parameters and threads them down to anything that needs
 them:
 
 ```oneway
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     "hello".print(Stdout)
 }
 ```
@@ -40,21 +39,21 @@ propagate through the type system: if `f` calls something needing
 ## Multiple Capabilities
 
 A function that needs several capabilities receives them as a single
-product-typed parameter — the same `&` that composes product types
+product-typed parameter — the same `*` that composes product types
 elsewhere in the language:
 
 ```oneway
 use Filesystem
 
-main = (Filesystem & Stdout) -> Result<Noop, IoError> {
+main = (Filesystem * Stdout) -> Result<Unit, IoError> {
     Filesystem.read(Path("Cargo.toml"))?.print(Stdout)
-    Ok(Noop)
+    Ok(Unit)
 }
 ```
 
 The components are accessed by their type names. The alphabetical-order
 rule that applies to product members also applies here:
-`(Filesystem & Stdout)` is valid; `(Stdout & Filesystem)` is a compile
+`(Filesystem * Stdout)` is valid; `(Stdout * Filesystem)` is a compile
 error.
 
 ## Built-In Capabilities

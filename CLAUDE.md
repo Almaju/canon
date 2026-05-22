@@ -10,6 +10,8 @@ See `DESIGN.md` for the full language specification.
 
 | Path | Description |
 |---|---|
+| `.github/` | CI workflows (docs deployment, release pipeline) |
+| `docs/` | mdBook documentation site (`book.toml`, `src/`) |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Lexer — tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | Parser — AST construction (`parser.rs`) |
@@ -22,9 +24,12 @@ See `DESIGN.md` for the full language specification.
 | `src/lib.rs` | Public crate modules |
 | `std/` | Oneway standard library (`.ow` files + Rust FFI `.rs` files) |
 | `examples/` | Example `.ow` programs |
+| `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests |
 | `editors/` | Tree-sitter grammar and Zed extension |
+| `install.sh` | Installer script for prebuilt binaries |
 | `DESIGN.md` | Language specification — the source of truth for language semantics |
+| `README.md` | Project README |
 
 ## Build & dev commands
 
@@ -45,6 +50,11 @@ just examples           # run all examples (reports pass/fail/skip)
 just fmt                # cargo fmt
 just clippy             # cargo clippy -- -W warnings
 just clean              # cargo clean + remove compiled examples
+just compile <file>     # compile .ow file to binary (no run)
+just emit-all           # emit generated Rust for all examples
+just check-all          # check all examples for sort order
+just install-hooks      # install git hooks (pre-commit)
+just uninstall-hooks    # uninstall git hooks
 ```
 
 ## Testing
@@ -70,27 +80,26 @@ just clean              # cargo clean + remove compiled examples
 ## Oneway language quick reference
 
 ```
-# Type definitions
-Bool = False + True              # union
-Point = (Int x) * (Int y)       # product
+Bool = False + True                            # union
+User = Birthday * Username                     # product
 
-# Functions
-add = (Int, Int) -> Int { Int.add(Int) }
-
-# Entry point
-main = (Stdout) -> Unit { "hello".print(Stdout) }
-
-# Dispatch (pattern matching on unions)
-describe = (Bool) -> String {
-    False => "no"
-    True  => "yes"
+greet = (Greeting * Name) -> Greeting {        # function (free, commutative)
+    Greeting
 }
 
-# Lambdas
-List(1, 2, 3).map((Int) -> Int { Int.mul(2) })
+main = (Stdout) -> Unit {                      # entry point
+    "hello".print(Stdout)
+}
+
+True.(                                         # dispatch (branch on union)
+    False => "no".print(Stdout),
+    True  => "yes".print(Stdout),
+)
+
+List(1, 2, 3).map((Int) -> Int { Int.mul(2) }) # lambda
 ```
 
 - No local variables, no `let`, no `if`/`else`, no comments in the language.
 - Capabilities (`Stdout`, `Filesystem`, etc.) are passed explicitly.
-- `use Foo` imports from `foo.ow` in the same module directory.
+- `use Foo` imports from `foo.ow` in the same module directory (or the corresponding folder for modules).
 - See `DESIGN.md` for the complete specification.

@@ -9,8 +9,8 @@ enforces alphabetical order.
 |----------------------------------------|---------------------------------------------|
 | Components of a product type           | Alphabetical                                |
 | Variants of a union type               | Alphabetical                                |
-| Multiple methods on a type             | Alphabetical                                |
-| Trait composition (`Show = A & B`)     | Alphabetical                                |
+| Function declarations in a file        | Alphabetical                                |
+| Trait composition (`Show = A * B`)     | Alphabetical                                |
 | Error union inside `Result<T, E>`      | Alphabetical                                |
 | `use` statements at the top of a file  | Alphabetical                                |
 | Arms of a dispatch                     | Order of the union's variants (alphabetical) |
@@ -20,27 +20,27 @@ enforces alphabetical order.
 A product type:
 
 ```oneway
-User = Birthday & Username
+User = Birthday * Username
 ```
 
 A union type:
 
 ```oneway
-Ord = Equal | Greater | Less
+Ord = Equal + Greater + Less
 ```
 
-Multiple methods on the same type:
+Function declarations in a file:
 
 ```oneway
-User.add    = (...) -> ...
-User.export = (...) -> ...
-User.remove = (...) -> ...
+add    = (User * ...) -> ...
+export = (User * ...) -> ...
+remove = (User * ...) -> ...
 ```
 
 Inline error union:
 
 ```oneway
-File.read = (Path) -> Result<Bytes, IoError | NotFound | PermissionDenied> {
+read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
 ```

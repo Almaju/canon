@@ -11,12 +11,12 @@ you to pick. Oneway picks for you. If there's a best practice, it's the
 The single most pervasive rule. Whenever ordering is discretionary,
 declarations must be in alphabetical order. This applies to:
 
-- Components of a product type: `User = Birthday & Username`
-- Variants of a union type: `Bool = False | True`
+- Components of a product type: `User = Birthday * Username`
+- Variants of a union type: `Bool = False + True`
 - Multiple methods on a type (declared top-to-bottom alphabetically)
 - Arms of a dispatch (in the order of the union's variants)
-- Trait composition: `Show = Debug & PrintString`
-- Error unions inside `Result`: `Result<T, IoError | NotFound>`
+- Trait composition: `Show = Debug * PrintString`
+- Error unions inside `Result`: `Result<T, IoError + NotFound>`
 - Multiple `use` statements at the top of a file
 
 Reordering is never a meaningful change. Diffs that only reshuffle a list
@@ -29,7 +29,7 @@ Oneway has **no local variables, no `let`**, and **no parameter names**.
 The shape of a function is described entirely by its types.
 
 ```oneway
-User.compare = (OtherUser) -> Ord {
+compare = (OtherUser * User) -> Ord {
     User.Birthday.compare(OtherUser.Birthday)
 }
 ```
@@ -40,7 +40,7 @@ the same type, you define a newtype — that newtype becomes the
 documentation:
 
 ```oneway
-User      = Birthday & Username
+User      = Birthday * Username
 OtherUser = User
 ```
 
@@ -54,7 +54,7 @@ the screen, so it requires a `Stdout` capability — passed as an ordinary
 argument from `main`:
 
 ```oneway
-String.print = (Stdout) -> Noop {
+print = (Stdout * String) -> Unit {
     ...
 }
 ```

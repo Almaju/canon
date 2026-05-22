@@ -3,7 +3,7 @@
 Create a file named `hello.ow`:
 
 ```oneway
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
     "hello".print(Stdout)
 }
 ```
@@ -25,20 +25,20 @@ That's the whole program. Let's walk through it.
 ## Line by Line
 
 ```oneway
-main = (Stdout) -> Noop {
+main = (Stdout) -> Unit {
 ```
 
 `main` is the program's entry point. Unlike every other function in Oneway,
 `main` is **not** implemented on a type — it's a top-level binding.
 
-The signature `(Stdout) -> Noop` says: this function takes one parameter
-whose type is `Stdout`, and returns a value of type `Noop`.
+The signature `(Stdout) -> Unit` says: this function takes one parameter
+whose type is `Stdout`, and returns a value of type `Unit`.
 
 - `Stdout` is a **capability**. Real-world capabilities only exist in
   `main`, which receives them and threads them down to anything that needs
   to perform a side effect.
-- `Noop` is a singleton type — a type with exactly one value, named after
-  itself. Returning `Noop` is the language's way of saying "this function
+- `Unit` is a singleton type — a type with exactly one value, named after
+  itself. Returning `Unit` is the language's way of saying "this function
   produces nothing useful".
 
 ```oneway
@@ -50,11 +50,11 @@ whose type is `Stdout`, and returns a value of type `Noop`.
 sequence of expressions separated by newlines; the last one is the return
 value.
 
-`"hello".print(Stdout)` is a method call. The method is defined on
-`String`:
+`"hello".print(Stdout)` is a method call.
+The method `print` takes a `String` and a `Stdout` capability:
 
 ```oneway
-String.print = (Stdout) -> Noop {
+print = (Stdout * String) -> Unit {
     ...
 }
 ```
@@ -71,5 +71,5 @@ Some small experiments to build intuition:
   when `print` is called without it.
 - **Add a comment** (`// hi`). The lexer rejects this — comments are not
   allowed.
-- **Return something other than `Noop`.** The body's last expression must
+- **Return something other than `Unit`.** The body's last expression must
   match the declared return type.

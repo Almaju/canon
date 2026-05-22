@@ -36,7 +36,6 @@ So `foo.bar()?` is `((foo.bar)())?`.
 | `.`         | Method call / field access / dispatch    |
 | `.( )`      | Dispatch on a union (replaces `match`)   |
 | `?`         | Propagate `Result` / `Option` failure    |
-| `*name`     | Private method (file-local)              |
 | `"..."`     | String literal sugar                     |
 | `mut`       | Mutable parameter                        |
 
