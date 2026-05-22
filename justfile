@@ -135,6 +135,18 @@ uninstall-hooks:
     git config --unset core.hooksPath
     @echo "Git hooks uninstalled (reverted to default .git/hooks)"
 
+# Build the Zed extension WASMs (requires Docker for the grammar WASM)
+build-extension:
+    #!/usr/bin/env sh
+    set -e
+    echo "Building grammar WASM (requires Docker)..."
+    cd editors/tree-sitter-oneway && tree-sitter build --wasm
+    cp editors/tree-sitter-oneway/tree-sitter-oneway.wasm editors/zed-oneway/grammars/oneway.wasm
+    echo "Building extension WASM..."
+    cd editors/zed-oneway && cargo build --release --target wasm32-wasip1
+    cp editors/zed-oneway/target/wasm32-wasip1/release/oneway_zed.wasm editors/zed-oneway/extension.wasm
+    echo "Done. Commit editors/zed-oneway/grammars/oneway.wasm and editors/zed-oneway/extension.wasm"
+
 # Format an .ow file
 fmt-ow file:
     cargo run --quiet -- fmt {{file}}
