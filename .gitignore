@@ -9,3 +9,4 @@
 *.rs.bk
 *.o
 examples/*.rs
+examples/*.cargo/
