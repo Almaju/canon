@@ -81,6 +81,10 @@ impl LspServer {
             Some("textDocument/didChange") => self.handle_did_change(msg),
             Some("textDocument/didSave") => self.handle_did_save(msg),
             Some("textDocument/didClose") => self.handle_did_close(msg),
+            // Notifications we receive but don't need to act on.
+            Some("workspace/didChangeConfiguration")
+            | Some("workspace/didChangeWatchedFiles")
+            | Some("$/cancelRequest") => {}
             Some("textDocument/hover") => self.handle_hover(msg, id),
             Some("textDocument/definition") => self.handle_definition(msg, id),
             Some("textDocument/formatting") => self.handle_formatting(msg, id),

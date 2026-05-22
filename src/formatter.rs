@@ -510,7 +510,9 @@ fn emit_base_inline(expr: &Expr) -> String {
             .map(emit_inline)
             .collect::<Vec<_>>()
             .join(" * "),
-        Expr::FieldAccess { receiver, field, .. } => {
+        Expr::FieldAccess {
+            receiver, field, ..
+        } => {
             format!("{}.{}", emit_base_inline(receiver), field.name)
         }
         // MethodCall, Match, Try are handled by chain flattening and should

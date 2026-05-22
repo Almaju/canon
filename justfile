@@ -183,6 +183,12 @@ fmt-check-all: build
 install-lsp:
     cargo install --path . --bin oneway-lsp --force
 
+# Run all CI checks locally (mirrors ci.yml)
+ci:
+    cargo fmt --check
+    cargo clippy -- -D warnings
+    cargo test
+
 # Format compiler source
 fmt:
     cargo fmt

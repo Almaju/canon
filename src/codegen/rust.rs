@@ -263,8 +263,7 @@ impl Codegen {
                         if typedef_index.contains_key(variant_name)
                             && reaches_target(variant_name, union_name, &typedef_index)
                         {
-                            boxed_variants
-                                .insert((union_name.clone(), variant_name.clone()));
+                            boxed_variants.insert((union_name.clone(), variant_name.clone()));
                         }
                     }
                 }
@@ -403,17 +402,17 @@ impl Codegen {
             }
             let ret = render_type(&func.return_ty);
             if ret == "()" {
-                let _ = write!(out, "{}fn main() {{\n", async_kw);
+                let _ = writeln!(out, "{}fn main() {{", async_kw);
                 self.emit_block_body(out, &func.body, true);
             } else {
-                let _ = write!(out, "{}fn main() -> {} {{\n", async_kw, ret);
+                let _ = writeln!(out, "{}fn main() -> {} {{", async_kw, ret);
                 self.emit_block_body(out, &func.body, false);
             }
             out.push_str("}\n");
         } else {
-            let _ = write!(
+            let _ = writeln!(
                 out,
-                "{}fn {}() -> {} {{\n",
+                "{}fn {}() -> {} {{",
                 async_kw,
                 func.name.name,
                 render_type(&func.return_ty)
@@ -475,7 +474,7 @@ impl Codegen {
             }
             first = false;
         }
-        let _ = write!(out, ") -> {} {{\n", ret);
+        let _ = writeln!(out, ") -> {} {{", ret);
         self.emit_block_body_indented(out, &func.body, false, 2);
         out.push_str("    }\n");
         self.lambda_scopes.borrow_mut().pop();
@@ -520,7 +519,7 @@ impl Codegen {
         main_unit: bool,
         indent: usize,
     ) {
-        let pad: String = std::iter::repeat("    ").take(indent).collect();
+        let pad = "    ".repeat(indent);
         let last_idx = block.exprs.len().saturating_sub(1);
         for (i, expr) in block.exprs.iter().enumerate() {
             out.push_str(&pad);
@@ -554,9 +553,7 @@ impl Codegen {
                 // User union variant with its own payload typedef:
                 // emit `Parent::Variant(payload)`, boxing if the variant is
                 // on a structural cycle.
-                if !is_stdlib_variant(&name.name)
-                    && self.known_typedefs.contains(&name.name)
-                {
+                if !is_stdlib_variant(&name.name) && self.known_typedefs.contains(&name.name) {
                     if let Some(parent) = self.variant_of.get(&name.name).cloned() {
                         let boxed = self
                             .boxed_variants
@@ -737,7 +734,9 @@ impl Codegen {
                 }
                 out.push(')');
             }
-            Expr::FieldAccess { receiver, field, .. } => {
+            Expr::FieldAccess {
+                receiver, field, ..
+            } => {
                 self.emit_expr(out, receiver);
                 let _ = write!(out, ".{}", lower_first(&field.name));
             }
@@ -1046,11 +1045,7 @@ fn collect_referenced_types(ty: &TypeExpr, out: &mut Vec<String>) {
 /// True if `target` is transitively reachable from `start` by following
 /// structural Named references through the module's typedefs. The start
 /// node itself is not counted as a reach; we want true cycles.
-fn reaches_target(
-    start: &str,
-    target: &str,
-    typedefs: &HashMap<String, &TypeDef>,
-) -> bool {
+fn reaches_target(start: &str, target: &str, typedefs: &HashMap<String, &TypeDef>) -> bool {
     let mut visited: HashSet<String> = HashSet::new();
     visited.insert(start.to_string());
     let mut stack: Vec<String> = Vec::new();
@@ -1299,16 +1294,16 @@ fn compute_async_sets(
     let mut async_free_fns: HashSet<String> = HashSet::new();
 
     for (key, params) in &method_params {
-        if has_suspending_param(params) {
-            async_methods.insert(key.clone());
-        } else if body_calls_async_extern(method_bodies[key], extern_methods) {
+        if has_suspending_param(params)
+            || body_calls_async_extern(method_bodies[key], extern_methods)
+        {
             async_methods.insert(key.clone());
         }
     }
     for (name, params) in &free_params {
-        if has_suspending_param(params) {
-            async_free_fns.insert(name.clone());
-        } else if body_calls_async_extern(free_bodies[name], extern_methods) {
+        if has_suspending_param(params)
+            || body_calls_async_extern(free_bodies[name], extern_methods)
+        {
             async_free_fns.insert(name.clone());
         }
     }

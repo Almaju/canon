@@ -24,6 +24,7 @@
 
 # Reference
 
+- [Standard Library](./reference/stdlib.md)
 - [Sort Order](./reference/sort-order.md)
 - [Operators](./reference/operators.md)
 - [Coming from Rust](./reference/coming-from-rust.md)

@@ -184,12 +184,12 @@ impl Parser {
             let end_span = self.previous_span();
 
             // Extract receiver for camelCase, defer PascalCase to post-parse
-            let (receiver, recv_mut, final_params) =
-                if Self::is_pascal_case_str(&first_ident.name) {
-                    (None, false, params)
-                } else {
-                    extract_receiver_from_params(params)
-                };
+            let (receiver, recv_mut, final_params) = if Self::is_pascal_case_str(&first_ident.name)
+            {
+                (None, false, params)
+            } else {
+                extract_receiver_from_params(params)
+            };
 
             let empty_body_span =
                 Span::new(end_span.end, end_span.end, end_span.line, end_span.column);

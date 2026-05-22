@@ -31,6 +31,12 @@ jobs:
             os: ubuntu-latest
             linker: aarch64-linux-gnu-gcc
             apt: gcc-aarch64-linux-gnu
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            apt: musl-tools
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            exe: .exe
     steps:
       - uses: actions/checkout@v4
 
@@ -70,10 +76,14 @@ jobs:
           ref="${{ steps.tag.outputs.ref }}"
           name="oneway-${ref}-${{ matrix.target }}"
           mkdir -p "dist/${name}"
-          cp "target/${{ matrix.target }}/release/oneway" "dist/${name}/"
-          cp README.md LICENSE* DESIGN.md "dist/${name}/" 2>/dev/null || true
+          cp "target/${{ matrix.target }}/release/oneway${{ matrix.exe }}" "dist/${name}/"
+          cp README.md LICENSE DESIGN.md "dist/${name}/" 2>/dev/null || true
           tar -czf "dist/${name}.tar.gz" -C dist "${name}"
-          shasum -a 256 "dist/${name}.tar.gz" | awk '{print $1}' > "dist/${name}.tar.gz.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "dist/${name}.tar.gz" | awk '{print $1}'
+          else
+            shasum -a 256 "dist/${name}.tar.gz" | awk '{print $1}'
+          fi > "dist/${name}.tar.gz.sha256"
           echo "archive=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
           echo "sha=dist/${name}.tar.gz.sha256" >> "$GITHUB_OUTPUT"
 

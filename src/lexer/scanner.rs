@@ -180,8 +180,7 @@ impl<'a> Scanner<'a> {
             self.column += 1;
         }
 
-        if self.peek_byte(0) == Some(b'.')
-            && self.peek_byte(1).map_or(false, |b| b.is_ascii_digit())
+        if self.peek_byte(0) == Some(b'.') && self.peek_byte(1).is_some_and(|b| b.is_ascii_digit())
         {
             self.pos += 1;
             self.column += 1;

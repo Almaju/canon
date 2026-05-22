@@ -235,9 +235,7 @@ pub struct Ident {
 /// In the new syntax `name = (A * B * C) -> ...`, A is the receiver and B, C are params.
 /// For a single param `name = (A) -> ...`, A is the receiver with no extra params.
 /// Returns `(receiver_name, receiver_mut, remaining_params)`.
-pub fn extract_receiver_from_params(
-    params: Vec<Param>,
-) -> (Option<Ident>, bool, Vec<Param>) {
+pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool, Vec<Param>) {
     if params.is_empty() {
         return (None, false, params);
     }
