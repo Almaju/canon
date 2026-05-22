@@ -75,13 +75,30 @@ examples: build
         fi
         printf "%-20s" "$label"
         if cargo run --quiet -- build "$f" >/dev/null 2>&1; then
-            output=$("./${base}" 2>&1) && {
+            tmpout=$(mktemp)
+            "./${base}" > "$tmpout" 2>&1 &
+            pid=$!
+            i=0; timed_out=0
+            while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
+                sleep 1; i=$((i + 1))
+            done
+            if kill -0 "$pid" 2>/dev/null; then
+                kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+                timed_out=1
+            else
+                wait "$pid"; rc=$?
+            fi
+            output=$(cat "$tmpout"); rm -f "$tmpout"
+            if [ "$timed_out" -eq 1 ]; then
+                echo "·  (skip — long-running)"
+                skip=$((skip + 1))
+            elif [ "$rc" -eq 0 ]; then
                 echo "✓  $output"
                 pass=$((pass + 1))
-            } || {
+            else
                 echo "✗  (runtime error)"
                 fail=$((fail + 1))
-            }
+            fi
             rm -rf "${base}" "${base}.rs" "${base}.cargo"
         else
             echo "·  (skip — does not compile yet)"

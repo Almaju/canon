@@ -2,7 +2,7 @@ use crate::ast::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-const SUSPENDING_CAPABILITIES: &[&str] = &["Filesystem", "HttpClient", "Network"];
+const SUSPENDING_CAPABILITIES: &[&str] = &["Filesystem", "HttpClient", "HttpServer", "Network"];
 
 fn is_suspending_capability(name: &str) -> bool {
     SUSPENDING_CAPABILITIES.contains(&name)
@@ -12,6 +12,7 @@ const CAPABILITY_TYPES: &[&str] = &[
     "Clock",
     "Filesystem",
     "HttpClient",
+    "HttpServer",
     "Json",
     "Network",
     "Random",

@@ -438,6 +438,38 @@ impl Parser {
 
     fn parse_type_atom(&mut self) -> Result<TypeExpr> {
         let start = self.current_span();
+
+        // Function type: `(Params) -> Ret` or `<T>(Params) -> Ret`
+        if self.check(TokenKind::Lt) || self.check(TokenKind::LParen) {
+            let generic_params = if self.check(TokenKind::Lt) {
+                self.parse_generic_params()?
+            } else {
+                Vec::new()
+            };
+            self.expect(TokenKind::LParen, "expected `(` to begin function type")?;
+            let mut params = Vec::new();
+            if !self.check(TokenKind::RParen) {
+                loop {
+                    params.push(self.parse_type_expr()?);
+                    if self.check(TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::RParen, "expected `)` to close function type")?;
+            self.expect(TokenKind::Arrow, "expected `->` in function type")?;
+            let return_ty = self.parse_type_postfix()?;
+            let end = self.previous_span();
+            return Ok(TypeExpr::Function {
+                generic_params,
+                params,
+                return_ty: Box::new(return_ty),
+                span: span_join(start, end),
+            });
+        }
+
         let name_tok = if self.check(TokenKind::KwSelf) {
             self.advance().clone()
         } else {

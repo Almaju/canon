@@ -1,0 +1,23 @@
+HttpRequest = String
+HttpResponse = String
+
+extern Rust("OnewayHttpRouter")
+HttpRouter
+
+extern Rust("std::io::Error")
+IoError
+
+Port = Int
+RoutePath = String
+
+extern Rust("oneway_http_get_route")
+get = (HttpRouter * RoutePath * (HttpRequest) -> HttpResponse) -> HttpRouter
+
+extern Rust("oneway_http_post_route")
+post = (HttpRouter * RoutePath * (HttpRequest) -> HttpResponse) -> HttpRouter
+
+extern Rust("oneway_http_router_new")
+router = (HttpServer) -> HttpRouter
+
+extern Rust.async("oneway_http_serve")
+serve = (HttpRouter * Port) -> Result<Unit, IoError>

@@ -68,6 +68,23 @@ const STDLIB: &[StdlibEntry] = &[
         rust_prelude: Some(include_str!("../std/http_client.rs")),
     },
     StdlibEntry {
+        name: "HttpServer",
+        source: include_str!("../std/http_server.ow"),
+        cargo_deps: &[
+            CargoDep {
+                name: "axum",
+                version: "0.7",
+                features: &[],
+            },
+            CargoDep {
+                name: "tokio",
+                version: "1",
+                features: &["full"],
+            },
+        ],
+        rust_prelude: Some(include_str!("../std/http_server.rs")),
+    },
+    StdlibEntry {
         name: "Json",
         source: include_str!("../std/json.ow"),
         cargo_deps: &[
