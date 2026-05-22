@@ -47,6 +47,10 @@ pub struct SymbolTable {
     pub generic_types: HashSet<String>,
     pub variant_of: HashMap<String, String>,
     pub methods: HashMap<(String, String), MethodSig>,
+    /// For each product TypeDef `T = A * B * ...`, the names of its
+    /// component types (in declaration order). Used to validate
+    /// `value.Field` access.
+    pub product_fields: HashMap<String, Vec<String>>,
 }
 
 pub struct MethodSig {
@@ -61,6 +65,15 @@ impl SymbolTable {
 }
 
 pub fn check(module: &Module) -> Vec<OnewayError> {
+    check_with_entry(module, 0)
+}
+
+/// Variant of `check` that limits per-file ordering rules (free-function
+/// and type-definition alphabetical order) to items at or after
+/// `entry_items_start`. Items before that index originated from `use`
+/// imports and follow their own ordering — they are not the entry file's
+/// concern.
+pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<OnewayError> {
     let mut errors = Vec::new();
     let symbols = collect_symbols(module, &mut errors);
 
@@ -73,7 +86,7 @@ pub fn check(module: &Module) -> Vec<OnewayError> {
         }
     }
 
-    check_ordering(module, &mut errors);
+    check_ordering(module, entry_items_start, &mut errors);
 
     if !main_found {
         errors.push(OnewayError::CheckError {
@@ -85,7 +98,8 @@ pub fn check(module: &Module) -> Vec<OnewayError> {
     errors
 }
 
-fn check_ordering(module: &Module, errors: &mut Vec<OnewayError>) {
+fn check_ordering(module: &Module, entry_items_start: usize, errors: &mut Vec<OnewayError>) {
+    let entry_items = &module.items[entry_items_start..];
     // Union variants and product fields are checked in check_type_expr (covers
     // every position they appear in, not just top-level TypeDef bodies).
 
@@ -107,6 +121,35 @@ fn check_ordering(module: &Module, errors: &mut Vec<OnewayError>) {
             methods.iter().map(|(n, s)| (n.as_str(), *s)).collect();
         check_sorted_named("method declaration", &pairs, errors);
     }
+
+    // Free functions (no receiver) declared in the entry file must be
+    // alphabetical. Imported items are exempt — they follow their own
+    // file's ordering.
+    let free_funcs: Vec<(&str, crate::error::Span)> = entry_items
+        .iter()
+        .filter_map(|item| {
+            if let Item::Function(func) = item {
+                if func.receiver.is_none() {
+                    return Some((func.name.name.as_str(), func.name.span));
+                }
+            }
+            None
+        })
+        .collect();
+    check_sorted_named("function declaration", &free_funcs, errors);
+
+    // Type definitions in the entry file must be alphabetical.
+    let type_defs: Vec<(&str, crate::error::Span)> = entry_items
+        .iter()
+        .filter_map(|item| {
+            if let Item::TypeDef(td) = item {
+                Some((td.name.name.as_str(), td.name.span))
+            } else {
+                None
+            }
+        })
+        .collect();
+    check_sorted_named("type definition", &type_defs, errors);
 
     // `use` imports must come first and be alphabetical.
     let mut seen_non_use = false;
@@ -200,11 +243,39 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
                 for variant in variants {
                     if let Some(name) = variant.simple_name() {
                         let name_s = name.to_string();
+                        // A variant may also have its own TypeDef (carrying a
+                        // payload). Register `types` only if it isn't already
+                        // there, but always record the variant → union link
+                        // so dispatch patterns and constructor-type lookups
+                        // resolve correctly.
                         if !types.contains(&name_s) && !generic_types.contains(&name_s) {
                             types.insert(name_s.clone());
-                            variant_of.insert(name_s, td.name.name.clone());
                         }
+                        variant_of
+                            .entry(name_s)
+                            .or_insert_with(|| td.name.name.clone());
                     }
+                }
+            }
+        }
+    }
+
+    let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
+    for item in &module.items {
+        if let Item::TypeDef(td) = item {
+            if let TypeExpr::Product { fields, .. } = &td.body {
+                let names: Vec<String> = fields
+                    .iter()
+                    .filter_map(|f| {
+                        if let TypeExpr::Named { name, .. } = f {
+                            Some(name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if !names.is_empty() {
+                    product_fields.insert(td.name.name.clone(), names);
                 }
             }
         }
@@ -245,6 +316,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
         generic_types,
         variant_of,
         methods,
+        product_fields,
     }
 }
 
@@ -587,19 +659,18 @@ fn check_expr(
                 check_type_expr(ta, symbols, &empty_generic_scope, errors);
             }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
-            let known = is_known_method(&recv_ty, &method.name, args.len())
+            let effective_arity = effective_call_arity(args);
+            let known = is_known_method(&recv_ty, &method.name, effective_arity)
                 || symbols
                     .methods
                     .get(&(recv_ty.clone(), method.name.clone()))
-                    .map(|m| m.arity == args.len())
+                    .map(|m| m.arity == effective_arity)
                     .unwrap_or(false);
             if !known {
                 errors.push(OnewayError::CheckError {
                     message: format!(
                         "no method `{}` on type `{}` with {} argument(s)",
-                        method.name,
-                        recv_ty,
-                        args.len()
+                        method.name, recv_ty, effective_arity
                     ),
                     span: *span,
                 });
@@ -643,6 +714,43 @@ fn check_expr(
         Expr::Try { inner, .. } => {
             check_expr(inner, scope, symbols, errors);
         }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                check_expr(f, scope, symbols, errors);
+            }
+        }
+        Expr::FieldAccess {
+            receiver,
+            field,
+            span,
+        } => {
+            check_expr(receiver, scope, symbols, errors);
+            let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            if recv_ty == "<unknown>" {
+                return;
+            }
+            match symbols.product_fields.get(&recv_ty) {
+                Some(fields) if fields.iter().any(|f| f == &field.name) => {}
+                Some(_) => {
+                    errors.push(OnewayError::CheckError {
+                        message: format!(
+                            "type `{}` has no field `{}`",
+                            recv_ty, field.name
+                        ),
+                        span: *span,
+                    });
+                }
+                None => {
+                    errors.push(OnewayError::CheckError {
+                        message: format!(
+                            "field access `.{}` requires a product type — `{}` is not a product",
+                            field.name, recv_ty
+                        ),
+                        span: *span,
+                    });
+                }
+            }
+        }
         Expr::Lambda {
             params,
             return_ty,
@@ -665,6 +773,17 @@ fn check_expr(
             }
         }
     }
+}
+
+/// When the lone arg is a value-level product, flatten it: `m(A * B)` has
+/// arity 2, not 1. Otherwise the arity is just `args.len()`.
+fn effective_call_arity(args: &[Expr]) -> usize {
+    if args.len() == 1 {
+        if let Expr::ProductValue { fields, .. } = &args[0] {
+            return fields.len();
+        }
+    }
+    args.len()
 }
 
 fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
@@ -755,6 +874,8 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             TypeExpr::Named { name, .. } => name.clone(),
             _ => "<unknown>".to_string(),
         },
+        Expr::ProductValue { .. } => "<unknown>".to_string(),
+        Expr::FieldAccess { field, .. } => field.name.clone(),
     }
 }
 

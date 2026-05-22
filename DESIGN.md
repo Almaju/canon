@@ -8,6 +8,7 @@ Wherever ordering is discretionary, Oneway requires **alphabetical order**. This
 
 - Components of a product type: `User = Birthday * Username`
 - Variants of a union type: `Bool = False + True`
+- Type definitions within a file (declared top-to-bottom alphabetically)
 - Function declarations within a file (declared top-to-bottom alphabetically)
 - Arms of a dispatch (in the order of the union's variants — which are themselves alphabetical)
 - Trait composition: `Show = Debug * PrintString`

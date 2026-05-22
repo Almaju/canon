@@ -3,7 +3,12 @@ name = "oneway"
 version = "0.2.0"
 edition = "2021"
 description = "The Oneway programming language compiler"
+default-run = "oneway"
 
 [[bin]]
 name = "oneway"
 path = "src/main.rs"
+
+[[bin]]
+name = "oneway-lsp"
+path = "src/lsp/main.rs"

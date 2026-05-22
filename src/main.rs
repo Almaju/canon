@@ -188,7 +188,7 @@ fn cmd_ast(args: &[String]) {
 fn cmd_check(args: &[String]) {
     let file_path = require_file(args);
     let loaded = load_or_exit(file_path);
-    let errors = checker::check(&loaded.module);
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);
@@ -202,7 +202,7 @@ fn cmd_check(args: &[String]) {
 fn cmd_emit(args: &[String]) {
     let file_path = require_file(args);
     let loaded = load_or_exit(file_path);
-    let errors = checker::check(&loaded.module);
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);
@@ -218,7 +218,7 @@ fn cmd_emit(args: &[String]) {
 fn cmd_build(args: &[String]) {
     let file_path = require_file(args);
     let loaded = load_or_exit(file_path);
-    let errors = checker::check(&loaded.module);
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);
@@ -242,7 +242,7 @@ fn cmd_run(args: &[String]) {
     let program_args: Vec<&str> = args.iter().skip(1).map(|s| s.as_str()).collect();
 
     let loaded = load_or_exit(file_path);
-    let errors = checker::check(&loaded.module);
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);

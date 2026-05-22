@@ -505,6 +505,14 @@ fn emit_base_inline(expr: &Expr) -> String {
                 .join(" ");
             format!("({}) -> {} {{ {} }}", ps, ret, body_str)
         }
+        Expr::ProductValue { fields, .. } => fields
+            .iter()
+            .map(emit_inline)
+            .collect::<Vec<_>>()
+            .join(" * "),
+        Expr::FieldAccess { receiver, field, .. } => {
+            format!("{}.{}", emit_base_inline(receiver), field.name)
+        }
         // MethodCall, Match, Try are handled by chain flattening and should
         // never appear as a Base.  Return empty as a safeguard.
         _ => String::new(),

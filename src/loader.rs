@@ -110,6 +110,10 @@ pub struct LoadResult {
     pub module: Module,
     pub cargo_deps: Vec<&'static CargoDep>,
     pub rust_preludes: Vec<&'static str>,
+    /// Index in `module.items` where items declared in the entry file
+    /// begin. Items before this index were pulled in via `use` and are
+    /// exempt from per-file ordering rules.
+    pub entry_items_start: usize,
 }
 
 struct LoadCtx {
@@ -134,7 +138,13 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         cargo_deps: Vec::new(),
         rust_preludes: Vec::new(),
     };
-    load_into(&canonical, &mut ctx)?;
+    let source = fs::read_to_string(&canonical).map_err(|err| OnewayError::CheckError {
+        message: format!("could not read `{}`: {}", canonical.display(), err),
+        span: Span::default(),
+    })?;
+    ctx.seen.insert(canonical.to_path_buf());
+    let dir = canonical.parent().unwrap_or_else(|| Path::new("."));
+    let entry_items_start = load_entry_source(&source, dir, &mut ctx)?;
     let span = Span::default();
     Ok(LoadResult {
         module: Module {
@@ -143,7 +153,69 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         },
         cargo_deps: ctx.cargo_deps,
         rust_preludes: ctx.rust_preludes,
+        entry_items_start,
     })
+}
+
+/// Same as `load_source`, but returns the index in `ctx.items` where the
+/// entry file's own items begin. Used by the checker to scope per-file
+/// ordering rules to user-authored code.
+fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usize> {
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens()?;
+    let mut parser = Parser::new(tokens);
+    let mut module = parser.parse()?;
+    resolve_new_syntax(&mut module);
+
+    let mut use_items = Vec::new();
+    let mut other_items = Vec::new();
+    for item in module.items {
+        match item {
+            Item::Use(u) => use_items.push(u),
+            other => other_items.push(other),
+        }
+    }
+    for u in use_items {
+        process_use(&u, dir, ctx)?;
+    }
+    let start = ctx.items.len();
+    ctx.items.extend(other_items);
+    Ok(start)
+}
+
+fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
+    let file_name = snake_case(&u.name.name);
+    let candidate = dir.join(format!("{}.ow", file_name));
+    if candidate.exists() {
+        let canonical = candidate
+            .canonicalize()
+            .map_err(|err| OnewayError::CheckError {
+                message: format!("could not resolve `{}`: {}", candidate.display(), err),
+                span: u.span,
+            })?;
+        load_into(&canonical, ctx)?;
+    } else if let Some(entry) = stdlib_entry(&u.name.name) {
+        if ctx.seen_stdlib.insert(u.name.name.clone()) {
+            for dep in entry.cargo_deps {
+                ctx.cargo_deps.push(dep);
+            }
+            if let Some(prelude) = entry.rust_prelude {
+                ctx.rust_preludes.push(prelude);
+            }
+            let stdlib_dir = Path::new("<stdlib>");
+            load_source(entry.source, stdlib_dir, ctx)?;
+        }
+    } else {
+        return Err(OnewayError::CheckError {
+            message: format!(
+                "`use {}` cannot find `{}` (not in current directory and not a shipped binding)",
+                u.name.name,
+                candidate.display()
+            ),
+            span: u.span,
+        });
+    }
+    Ok(())
 }
 
 fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
@@ -177,37 +249,7 @@ fn load_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
         }
     }
     for u in use_items {
-        let file_name = snake_case(&u.name.name);
-        let candidate = dir.join(format!("{}.ow", file_name));
-        if candidate.exists() {
-            let canonical = candidate
-                .canonicalize()
-                .map_err(|err| OnewayError::CheckError {
-                    message: format!("could not resolve `{}`: {}", candidate.display(), err),
-                    span: u.span,
-                })?;
-            load_into(&canonical, ctx)?;
-        } else if let Some(entry) = stdlib_entry(&u.name.name) {
-            if ctx.seen_stdlib.insert(u.name.name.clone()) {
-                for dep in entry.cargo_deps {
-                    ctx.cargo_deps.push(dep);
-                }
-                if let Some(prelude) = entry.rust_prelude {
-                    ctx.rust_preludes.push(prelude);
-                }
-                let stdlib_dir = Path::new("<stdlib>");
-                load_source(entry.source, stdlib_dir, ctx)?;
-            }
-        } else {
-            return Err(OnewayError::CheckError {
-                message: format!(
-                    "`use {}` cannot find `{}` (not in current directory and not a shipped binding)",
-                    u.name.name,
-                    candidate.display()
-                ),
-                span: u.span,
-            });
-        }
+        process_use(&u, dir, ctx)?;
     }
     ctx.items.extend(other_items);
     Ok(())

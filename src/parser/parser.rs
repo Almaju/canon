@@ -184,16 +184,18 @@ impl Parser {
             let end_span = self.previous_span();
 
             // Extract receiver for camelCase, defer PascalCase to post-parse
-            let (receiver, final_params) = if Self::is_pascal_case_str(&first_ident.name) {
-                (None, params)
-            } else {
-                extract_receiver_from_params(params)
-            };
+            let (receiver, recv_mut, final_params) =
+                if Self::is_pascal_case_str(&first_ident.name) {
+                    (None, false, params)
+                } else {
+                    extract_receiver_from_params(params)
+                };
 
             let empty_body_span =
                 Span::new(end_span.end, end_span.end, end_span.line, end_span.column);
             return Ok(Item::Function(FunctionDef {
                 receiver,
+                receiver_mut: recv_mut,
                 name: first_ident,
                 generic_params,
                 params: final_params,
@@ -258,15 +260,15 @@ impl Parser {
             let end_span = self.previous_span();
 
             // New syntax: extract receiver from first param component
-            let (final_receiver, final_params) = if receiver.is_some() {
+            let (final_receiver, recv_mut, final_params) = if receiver.is_some() {
                 // Old dot syntax — keep as-is
-                (receiver, params)
+                (receiver, false, params)
             } else if name.name == "main" || params.is_empty() {
                 // main or no-param function: no receiver
-                (None, params)
+                (None, false, params)
             } else if Self::is_pascal_case_str(&name.name) {
                 // PascalCase: defer to post-parse resolve_new_syntax
-                (None, params)
+                (None, false, params)
             } else {
                 // camelCase with params: extract first component as receiver
                 extract_receiver_from_params(params)
@@ -274,6 +276,7 @@ impl Parser {
 
             return Ok(Item::Function(FunctionDef {
                 receiver: final_receiver,
+                receiver_mut: recv_mut,
                 name,
                 generic_params,
                 params: final_params,
@@ -484,6 +487,26 @@ impl Parser {
         })
     }
 
+    /// An argument-position expression: a normal expression possibly joined
+    /// with `*` into a value-level product. Used inside `(...)` arg lists.
+    fn parse_arg_expr(&mut self) -> Result<Expr> {
+        let first = self.parse_expr()?;
+        if !self.check(TokenKind::Star) {
+            return Ok(first);
+        }
+        let start_span = first.span();
+        let mut fields = vec![first];
+        while self.check(TokenKind::Star) {
+            self.advance();
+            fields.push(self.parse_expr()?);
+        }
+        let end_span = self.previous_span();
+        Ok(Expr::ProductValue {
+            fields,
+            span: span_join(start_span, end_span),
+        })
+    }
+
     fn parse_expr(&mut self) -> Result<Expr> {
         let mut expr = self.parse_primary()?;
         loop {
@@ -514,12 +537,23 @@ impl Parser {
                         span: span_join(start_span, rparen.span),
                     };
                 } else {
-                    let method_tok =
-                        self.expect(TokenKind::Ident, "expected method name after `.`")?;
-                    let method = Ident {
-                        name: method_tok.lexeme.clone(),
-                        span: method_tok.span,
+                    let name_tok =
+                        self.expect(TokenKind::Ident, "expected method or field name after `.`")?;
+                    let ident = Ident {
+                        name: name_tok.lexeme.clone(),
+                        span: name_tok.span,
                     };
+                    // `value.X` with no `(` or `::` after is field access; with
+                    // `(` or `::` it's a method call.
+                    if !self.check(TokenKind::LParen) && !self.check(TokenKind::ColonColon) {
+                        let start_span = expr.span();
+                        expr = Expr::FieldAccess {
+                            receiver: Box::new(expr),
+                            field: ident,
+                            span: span_join(start_span, name_tok.span),
+                        };
+                        continue;
+                    }
                     let mut type_args = Vec::new();
                     if self.check(TokenKind::ColonColon) {
                         self.advance();
@@ -543,7 +577,7 @@ impl Parser {
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
                         loop {
-                            args.push(self.parse_expr()?);
+                            args.push(self.parse_arg_expr()?);
                             if self.check(TokenKind::Comma) {
                                 self.advance();
                             } else {
@@ -556,7 +590,7 @@ impl Parser {
                     let start_span = expr.span();
                     expr = Expr::MethodCall {
                         receiver: Box::new(expr),
-                        method,
+                        method: ident,
                         type_args,
                         args,
                         span: span_join(start_span, rparen.span),
@@ -587,7 +621,7 @@ impl Parser {
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
                         loop {
-                            args.push(self.parse_expr()?);
+                            args.push(self.parse_arg_expr()?);
                             if self.check(TokenKind::Comma) {
                                 self.advance();
                             } else {

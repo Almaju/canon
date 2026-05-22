@@ -1,12 +1,20 @@
-Bit = Off + On
 Birthday = String
+
+Bit = Off + On
+
 Bool = False + True
+
 Byte = Bit^8
+
 Bytes = Byte^*
+
 Ord = Equal + Greater + Less
-Username = String
-User = Birthday * Username
+
 OtherUser = User
+
+User = Birthday * Username
+
+Username = String
 
 main = (Stdout) -> Unit {
     "type definitions parsed".print(Stdout)

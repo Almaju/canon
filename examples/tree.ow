@@ -1,0 +1,21 @@
+Branch = Left * Right * Value
+
+Left = Tree
+
+Right = Tree
+
+Tree = Branch + Leaf
+
+Value = Int
+
+describe = (Tree) -> String {
+    Tree.(
+        Branch => "branch",
+        Leaf => "leaf",
+    )
+}
+
+main = (Stdout) -> Unit {
+    Leaf.describe().print(Stdout)
+    Branch(Left(Leaf) * Right(Leaf) * Value(7)).describe().print(Stdout)
+}

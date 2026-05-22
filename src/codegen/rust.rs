@@ -107,6 +107,10 @@ pub fn generate_with_meta(module: &Module) -> GeneratedRust {
 struct Codegen {
     variant_of: HashMap<String, String>,
     current_receiver: Option<String>,
+    /// True when the currently-emitted method has a `mut` receiver, so a
+    /// reference to the receiver name in the body resolves to plain `self`
+    /// (not the cloned form used for immutable receivers).
+    receiver_mut_in_scope: bool,
     extern_methods: HashMap<(String, String), ExternMethod>,
     bool_declared: bool,
     async_methods: HashSet<(String, String)>,
@@ -114,6 +118,15 @@ struct Codegen {
     types_with_self: HashSet<String>,
     lambda_scopes: std::cell::RefCell<Vec<HashMap<String, String>>>,
     commutative_methods: HashMap<(String, String), String>,
+    /// For each product TypeDef `T = A * B * ...`, the ordered list of
+    /// component type names. Used to emit struct-literal constructors.
+    product_components: HashMap<String, Vec<String>>,
+    /// Names of TypeDefs declared in this module. Used to decide whether
+    /// a union variant carries a payload (variant name == typedef name).
+    known_typedefs: HashSet<String>,
+    /// (union, variant) pairs where the variant payload must be `Box<…>`
+    /// to break a structural cycle.
+    boxed_variants: HashSet<(String, String)>,
 }
 
 #[derive(Clone)]
@@ -214,9 +227,54 @@ impl Codegen {
             }
         }
 
+        let mut product_components: HashMap<String, Vec<String>> = HashMap::new();
+        let mut typedef_index: HashMap<String, &TypeDef> = HashMap::new();
+        let mut known_typedefs: HashSet<String> = HashSet::new();
+        for item in &module.items {
+            if let Item::TypeDef(td) = item {
+                typedef_index.insert(td.name.name.clone(), td);
+                known_typedefs.insert(td.name.name.clone());
+                if let TypeExpr::Product { fields, .. } = &td.body {
+                    if all_simple_named(fields) {
+                        let names: Vec<String> = fields
+                            .iter()
+                            .filter_map(|f| {
+                                if let TypeExpr::Named { name, .. } = f {
+                                    Some(name.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        product_components.insert(td.name.name.clone(), names);
+                    }
+                }
+            }
+        }
+
+        let mut boxed_variants: HashSet<(String, String)> = HashSet::new();
+        for (union_name, union_td) in &typedef_index {
+            if let TypeExpr::Union { variants, .. } = &union_td.body {
+                for v in variants {
+                    if let TypeExpr::Named {
+                        name: variant_name, ..
+                    } = v
+                    {
+                        if typedef_index.contains_key(variant_name)
+                            && reaches_target(variant_name, union_name, &typedef_index)
+                        {
+                            boxed_variants
+                                .insert((union_name.clone(), variant_name.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
             variant_of,
             current_receiver: None,
+            receiver_mut_in_scope: false,
             extern_methods,
             bool_declared,
             async_methods,
@@ -224,6 +282,9 @@ impl Codegen {
             types_with_self,
             lambda_scopes: std::cell::RefCell::new(Vec::new()),
             commutative_methods,
+            product_components,
+            known_typedefs,
+            boxed_variants,
         }
     }
 
@@ -252,7 +313,18 @@ impl Codegen {
                 let _ = writeln!(out, "pub enum {}{} {{", td.name.name, generic_str);
                 for v in variants {
                     if let TypeExpr::Named { name, .. } = v {
-                        let _ = writeln!(out, "    {},", name);
+                        if self.known_typedefs.contains(name) {
+                            let boxed = self
+                                .boxed_variants
+                                .contains(&(td.name.name.clone(), name.clone()));
+                            if boxed {
+                                let _ = writeln!(out, "    {}(Box<{}>),", name, name);
+                            } else {
+                                let _ = writeln!(out, "    {}({}),", name, name);
+                            }
+                        } else {
+                            let _ = writeln!(out, "    {},", name);
+                        }
                     }
                 }
                 let _ = writeln!(out, "}}");
@@ -353,6 +425,7 @@ impl Codegen {
 
     fn emit_method(&mut self, out: &mut String, recv: &str, func: &FunctionDef) {
         self.current_receiver = Some(recv.to_string());
+        self.receiver_mut_in_scope = func.receiver_mut;
         let mut param_scope = HashMap::new();
         for (i, param) in func.params.iter().enumerate() {
             if let Some(name) = param.ty.simple_name() {
@@ -383,14 +456,23 @@ impl Codegen {
         );
         let mut first = true;
         if !is_self_ctor {
-            out.push_str("&self");
+            if func.receiver_mut {
+                out.push_str("&mut self");
+            } else {
+                out.push_str("&self");
+            }
             first = false;
         }
         for (i, param) in func.params.iter().enumerate() {
             if !first {
                 out.push_str(", ");
             }
-            let _ = write!(out, "arg{}: {}", i, render_type(&param.ty));
+            let ty = render_type(&param.ty);
+            if param.mutable {
+                let _ = write!(out, "arg{}: &mut {}", i, ty);
+            } else {
+                let _ = write!(out, "arg{}: {}", i, ty);
+            }
             first = false;
         }
         let _ = write!(out, ") -> {} {{\n", ret);
@@ -398,6 +480,33 @@ impl Codegen {
         out.push_str("    }\n");
         self.lambda_scopes.borrow_mut().pop();
         self.current_receiver = None;
+        self.receiver_mut_in_scope = false;
+    }
+
+    /// Emit the inner payload of a union-variant constructor. The variant's
+    /// own typedef determines the form: a product → struct literal with
+    /// named fields; anything else → tuple-struct call.
+    fn emit_payload_constructor(&self, out: &mut String, variant_name: &str, args: &[&Expr]) {
+        if let Some(components) = self.product_components.get(variant_name) {
+            let _ = write!(out, "{} {{ ", variant_name);
+            for (i, (comp, arg)) in components.iter().zip(args.iter()).enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                let _ = write!(out, "{}: ", lower_first(comp));
+                self.emit_expr(out, arg);
+            }
+            out.push_str(" }");
+        } else {
+            let _ = write!(out, "{}(", variant_name);
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                self.emit_expr(out, arg);
+            }
+            out.push(')');
+        }
     }
 
     fn emit_block_body(&self, out: &mut String, block: &Block, main_unit: bool) {
@@ -441,11 +550,34 @@ impl Codegen {
                 let _ = write!(out, "0x{:X}u64", value);
             }
             Expr::Constructor { name, args, .. } => {
-                if is_primitive_constructor(&name.name) && args.len() == 1 {
-                    self.emit_expr(out, &args[0]);
+                let flat = flatten_product_args(args);
+                // User union variant with its own payload typedef:
+                // emit `Parent::Variant(payload)`, boxing if the variant is
+                // on a structural cycle.
+                if !is_stdlib_variant(&name.name)
+                    && self.known_typedefs.contains(&name.name)
+                {
+                    if let Some(parent) = self.variant_of.get(&name.name).cloned() {
+                        let boxed = self
+                            .boxed_variants
+                            .contains(&(parent.clone(), name.name.clone()));
+                        let _ = write!(out, "{}::{}(", parent, name.name);
+                        if boxed {
+                            out.push_str("Box::new(");
+                        }
+                        self.emit_payload_constructor(out, &name.name, &flat);
+                        if boxed {
+                            out.push(')');
+                        }
+                        out.push(')');
+                        return;
+                    }
+                }
+                if is_primitive_constructor(&name.name) && flat.len() == 1 {
+                    self.emit_expr(out, flat[0]);
                 } else if name.name == "List" {
                     out.push_str("vec![");
-                    for (i, arg) in args.iter().enumerate() {
+                    for (i, arg) in flat.iter().enumerate() {
                         if i > 0 {
                             out.push_str(", ");
                         }
@@ -453,11 +585,11 @@ impl Codegen {
                     }
                     out.push(']');
                 } else if is_stdlib_variant(&name.name) {
-                    if args.is_empty() {
+                    if flat.is_empty() {
                         out.push_str(&name.name);
                     } else {
                         let _ = write!(out, "{}(", name.name);
-                        for (i, arg) in args.iter().enumerate() {
+                        for (i, arg) in flat.iter().enumerate() {
                             if i > 0 {
                                 out.push_str(", ");
                             }
@@ -465,13 +597,24 @@ impl Codegen {
                         }
                         out.push(')');
                     }
+                } else if let Some(components) = self.product_components.get(&name.name) {
+                    // T = A * B * C → struct literal with named fields.
+                    let _ = write!(out, "{} {{ ", name.name);
+                    for (i, (comp_name, arg)) in components.iter().zip(flat.iter()).enumerate() {
+                        if i > 0 {
+                            out.push_str(", ");
+                        }
+                        let _ = write!(out, "{}: ", lower_first(comp_name));
+                        self.emit_expr(out, arg);
+                    }
+                    out.push_str(" }");
                 } else if self.types_with_self.contains(&name.name) {
                     let key = (name.name.clone(), "Self".to_string());
                     if let Some(em) = self.extern_methods.get(&key) {
                         let path = em.path.clone();
                         let is_async = em.is_async;
                         let _ = write!(out, "{}(", path);
-                        for (i, arg) in args.iter().enumerate() {
+                        for (i, arg) in flat.iter().enumerate() {
                             if i > 0 {
                                 out.push_str(", ");
                             }
@@ -483,7 +626,7 @@ impl Codegen {
                         }
                     } else {
                         let _ = write!(out, "{}::r#Self(", name.name);
-                        for (i, arg) in args.iter().enumerate() {
+                        for (i, arg) in flat.iter().enumerate() {
                             if i > 0 {
                                 out.push_str(", ");
                             }
@@ -493,7 +636,7 @@ impl Codegen {
                     }
                 } else {
                     let _ = write!(out, "{}(", name.name);
-                    for (i, arg) in args.iter().enumerate() {
+                    for (i, arg) in flat.iter().enumerate() {
                         if i > 0 {
                             out.push_str(", ");
                         }
@@ -523,10 +666,11 @@ impl Codegen {
                         .map(|c| c != &recv_ty && args.len() == 1)
                         .unwrap_or(false);
 
+                    let flat = flatten_product_args(args);
                     if needs_swap {
                         // Commutative swap: emit args[0].method(receiver)
                         let canonical_recv = canonical.unwrap();
-                        self.emit_expr(out, &args[0]);
+                        self.emit_expr(out, flat[0]);
                         let _ = write!(out, ".{}", method.name);
                         if !type_args.is_empty() {
                             out.push_str("::");
@@ -546,7 +690,7 @@ impl Codegen {
                             out.push_str(&render_type_args(type_args));
                         }
                         out.push('(');
-                        for (i, arg) in args.iter().enumerate() {
+                        for (i, arg) in flat.iter().enumerate() {
                             if i > 0 {
                                 out.push_str(", ");
                             }
@@ -579,6 +723,24 @@ impl Codegen {
                 out.push('?');
             }
 
+            Expr::ProductValue { fields, .. } => {
+                // A ProductValue should normally be unwrapped by the caller
+                // (constructor / method call). If we hit one here it's the rare
+                // standalone case — emit a tuple, which is the closest Rust
+                // analogue.
+                out.push('(');
+                for (i, f) in fields.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    self.emit_expr(out, f);
+                }
+                out.push(')');
+            }
+            Expr::FieldAccess { receiver, field, .. } => {
+                self.emit_expr(out, receiver);
+                let _ = write!(out, ".{}", lower_first(&field.name));
+            }
             Expr::Lambda {
                 params,
                 return_ty,
@@ -741,20 +903,64 @@ impl Codegen {
     fn emit_pattern(&self, out: &mut String, pattern: &Pattern) {
         match pattern {
             Pattern::Variant { name, args, .. } => {
-                if is_stdlib_variant(name) {
+                if self.bool_declared && (name == "True" || name == "False") {
+                    out.push_str(if name == "True" { "true" } else { "false" });
+                } else if is_stdlib_variant(name) {
                     out.push_str(name);
+                    if !args.is_empty() {
+                        out.push('(');
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                out.push_str(", ");
+                            }
+                            self.emit_pattern(out, arg);
+                        }
+                        out.push(')');
+                    }
+                } else if let Some(parent) = self.variant_of.get(name).cloned() {
+                    // User union variant. If the variant carries a payload
+                    // (typedef of the same name), patterns destructure that
+                    // payload — but with no payload args, write `Parent::V(_)`
+                    // so the match arm still binds.
+                    if self.known_typedefs.contains(name) {
+                        if args.is_empty() {
+                            let _ = write!(out, "{}::{}(_)", parent, name);
+                        } else {
+                            let _ = write!(out, "{}::{}(", parent, name);
+                            for (i, arg) in args.iter().enumerate() {
+                                if i > 0 {
+                                    out.push_str(", ");
+                                }
+                                self.emit_pattern(out, arg);
+                            }
+                            out.push(')');
+                        }
+                    } else {
+                        // No payload — emit the bare variant path.
+                        let _ = write!(out, "{}::{}", parent, name);
+                        if !args.is_empty() {
+                            out.push('(');
+                            for (i, arg) in args.iter().enumerate() {
+                                if i > 0 {
+                                    out.push_str(", ");
+                                }
+                                self.emit_pattern(out, arg);
+                            }
+                            out.push(')');
+                        }
+                    }
                 } else {
                     out.push_str(&self.rust_value(name));
-                }
-                if !args.is_empty() {
-                    out.push('(');
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 {
-                            out.push_str(", ");
+                    if !args.is_empty() {
+                        out.push('(');
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                out.push_str(", ");
+                            }
+                            self.emit_pattern(out, arg);
                         }
-                        self.emit_pattern(out, arg);
+                        out.push(')');
                     }
-                    out.push(')');
                 }
             }
             Pattern::Wildcard { .. } => {
@@ -777,7 +983,11 @@ impl Codegen {
         }
         if let Some(current) = &self.current_receiver {
             if name == current {
-                return "self.clone()".to_string();
+                return if self.receiver_mut_in_scope {
+                    "self".to_string()
+                } else {
+                    "self.clone()".to_string()
+                };
             }
         }
         if self.bool_declared {
@@ -793,6 +1003,76 @@ impl Codegen {
         }
         name.to_string()
     }
+}
+
+/// If `args` is exactly `[ProductValue { fields }]`, treat the product's
+/// fields as the call's positional arguments. Otherwise pass args through.
+fn flatten_product_args(args: &[Expr]) -> Vec<&Expr> {
+    if args.len() == 1 {
+        if let Expr::ProductValue { fields, .. } = &args[0] {
+            return fields.iter().collect();
+        }
+    }
+    args.iter().collect()
+}
+
+/// Names of typedefs structurally referenced by `ty` (Named refs, recursing
+/// into compound types).
+fn collect_referenced_types(ty: &TypeExpr, out: &mut Vec<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            out.push(name.clone());
+            for g in generics {
+                collect_referenced_types(g, out);
+            }
+        }
+        TypeExpr::Union { variants, .. } => {
+            for v in variants {
+                collect_referenced_types(v, out);
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                collect_referenced_types(f, out);
+            }
+        }
+        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
+            collect_referenced_types(ty, out);
+        }
+        TypeExpr::Function { .. } => {}
+    }
+}
+
+/// True if `target` is transitively reachable from `start` by following
+/// structural Named references through the module's typedefs. The start
+/// node itself is not counted as a reach; we want true cycles.
+fn reaches_target(
+    start: &str,
+    target: &str,
+    typedefs: &HashMap<String, &TypeDef>,
+) -> bool {
+    let mut visited: HashSet<String> = HashSet::new();
+    visited.insert(start.to_string());
+    let mut stack: Vec<String> = Vec::new();
+    if let Some(td) = typedefs.get(start) {
+        let mut refs = Vec::new();
+        collect_referenced_types(&td.body, &mut refs);
+        stack.extend(refs);
+    }
+    while let Some(current) = stack.pop() {
+        if current == target {
+            return true;
+        }
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        if let Some(td) = typedefs.get(&current) {
+            let mut refs = Vec::new();
+            collect_referenced_types(&td.body, &mut refs);
+            stack.extend(refs);
+        }
+    }
+    false
 }
 
 fn all_simple_named(items: &[TypeExpr]) -> bool {
@@ -983,7 +1263,10 @@ fn static_type_of_with(
             }
             "<unknown>".to_string()
         }
-        Expr::Match { .. } | Expr::Lambda { .. } => "<unknown>".to_string(),
+        Expr::Match { .. } | Expr::Lambda { .. } | Expr::ProductValue { .. } => {
+            "<unknown>".to_string()
+        }
+        Expr::FieldAccess { field, .. } => field.name.clone(),
     }
 }
 
@@ -1122,6 +1405,10 @@ fn expr_calls_async_extern(
             .exprs
             .iter()
             .any(|e| expr_calls_async_extern(e, extern_methods)),
+        Expr::ProductValue { fields, .. } => fields
+            .iter()
+            .any(|f| expr_calls_async_extern(f, extern_methods)),
+        Expr::FieldAccess { receiver, .. } => expr_calls_async_extern(receiver, extern_methods),
         _ => false,
     }
 }
@@ -1176,6 +1463,12 @@ fn expr_calls_async_oneway(
             .exprs
             .iter()
             .any(|e| expr_calls_async_oneway(e, async_methods, extern_methods)),
+        Expr::ProductValue { fields, .. } => fields
+            .iter()
+            .any(|f| expr_calls_async_oneway(f, async_methods, extern_methods)),
+        Expr::FieldAccess { receiver, .. } => {
+            expr_calls_async_oneway(receiver, async_methods, extern_methods)
+        }
         _ => false,
     }
 }

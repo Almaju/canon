@@ -1,7 +1,8 @@
-Show = () -> String
-
 Greeting = String
+
 Name = String
+
+Show = () -> String
 
 Show = (Greeting) -> String {
     "HELLO!"
