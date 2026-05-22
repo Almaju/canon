@@ -116,7 +116,7 @@ fn check_ordering(module: &Module, entry_items_start: usize, errors: &mut Vec<On
             }
         }
     }
-    for (_recv, methods) in &methods_per_receiver {
+    for methods in methods_per_receiver.values() {
         let pairs: Vec<(&str, crate::error::Span)> =
             methods.iter().map(|(n, s)| (n.as_str(), *s)).collect();
         check_sorted_named("method declaration", &pairs, errors);
@@ -219,6 +219,14 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
     types.insert("Some".to_string());
     types.insert("Ok".to_string());
     types.insert("Err".to_string());
+
+    // `use Foo` imports the type `Foo` — register it as known so references
+    // to it in the same file are not flagged as unknown types.
+    for item in &module.items {
+        if let Item::Use(u) = item {
+            types.insert(u.name.name.clone());
+        }
+    }
 
     for item in &module.items {
         if let Item::TypeDef(td) = item {
@@ -733,10 +741,7 @@ fn check_expr(
                 Some(fields) if fields.iter().any(|f| f == &field.name) => {}
                 Some(_) => {
                     errors.push(OnewayError::CheckError {
-                        message: format!(
-                            "type `{}` has no field `{}`",
-                            recv_ty, field.name
-                        ),
+                        message: format!("type `{}` has no field `{}`", recv_ty, field.name),
                         span: *span,
                     });
                 }
@@ -818,13 +823,13 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "String" && method == "concat" && arg_count == 1 {
         return true;
     }
-    if receiver_ty == "List" {
-        if matches!(
+    if receiver_ty == "List"
+        && matches!(
             (method, arg_count),
             ("length", 0) | ("first", 0) | ("map", 1)
-        ) {
-            return true;
-        }
+        )
+    {
+        return true;
     }
     false
 }
