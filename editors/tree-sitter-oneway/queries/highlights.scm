@@ -74,12 +74,14 @@
 ; Method calls
 (method_call method: (identifier) @function.method)
 
-; Constructor (capitalized name + parens). For lowercase, treat as function call.
+; Constructor calls: PascalCase constructors are styled as @type because in Oneway
+; the constructor name IS the type name (e.g. Greeting("hi") creates a Greeting).
+; This visually separates them from method calls (@function.method) in all themes.
 ((constructor name: (identifier) @function.call)
   (#match? @function.call "^[a-z_]"))
 
-((constructor name: (identifier) @constructor)
-  (#match? @constructor "^[A-Z]"))
+((constructor name: (identifier) @type)
+  (#match? @type "^[A-Z]"))
 
 ; Plain identifier in expression position — distinguish PascalCase vs camelCase
 ((identifier_expr (identifier) @type)
@@ -88,9 +90,9 @@
 ((identifier_expr (identifier) @variable)
   (#match? @variable "^[a-z_]"))
 
-; Pattern variant names (PascalCase are constructors, lowercase are bindings)
-((variant_pattern name: (identifier) @constructor)
-  (#match? @constructor "^[A-Z]"))
+; Pattern variant names: PascalCase variants styled as @type, lowercase as @variable
+((variant_pattern name: (identifier) @type)
+  (#match? @type "^[A-Z]"))
 
 ((variant_pattern name: (identifier) @variable)
   (#match? @variable "^[a-z_]"))
