@@ -135,6 +135,42 @@ uninstall-hooks:
     git config --unset core.hooksPath
     @echo "Git hooks uninstalled (reverted to default .git/hooks)"
 
+# Format an .ow file
+fmt-ow file:
+    cargo run --quiet -- fmt {{file}}
+
+# Check formatting of an .ow file (no changes)
+fmt-check file:
+    cargo run --quiet -- fmt --check {{file}}
+
+# Format all examples
+fmt-all: build
+    #!/usr/bin/env sh
+    for f in examples/*.ow examples/*/*.ow; do
+        [ -f "$f" ] || continue
+        cargo run --quiet -- fmt "$f"
+    done
+
+# Check formatting of all examples (no changes)
+fmt-check-all: build
+    #!/usr/bin/env sh
+    all_ok=true
+    for f in examples/*.ow examples/*/*.ow; do
+        [ -f "$f" ] || continue
+        if ! cargo run --quiet -- fmt --check "$f" 2>/dev/null; then
+            all_ok=false
+        fi
+    done
+    if [ "$all_ok" = false ]; then
+        echo "Some files are not formatted. Run 'just fmt-all' to fix."
+        exit 1
+    fi
+    echo "All files formatted."
+
+# Install the LSP server binary
+install-lsp:
+    cargo install --path . --bin oneway-lsp --force
+
 # Format compiler source
 fmt:
     cargo fmt

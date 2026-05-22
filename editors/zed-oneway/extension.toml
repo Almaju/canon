@@ -5,7 +5,11 @@ schema_version = 1
 authors = ["Oneway Contributors"]
 description = "Oneway language support for Zed"
 
+[language_servers.oneway-lsp]
+name = "Oneway LSP"
+languages = ["Oneway"]
+
 [grammars.oneway]
 repository = "https://github.com/Almaju/oneway"
 path = "editors/tree-sitter-oneway"
-commit = "e2c1cd3bcd43f9dc9359d65d26ea605805340566"
+commit = "da7a9c4d1b9f7aa25e56a43a08bed921f957e377"

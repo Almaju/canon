@@ -1,6 +1,7 @@
 use oneway::checker;
 use oneway::codegen;
 use oneway::error::OnewayError;
+use oneway::formatter;
 use oneway::lexer::Scanner;
 use oneway::loader;
 use oneway::parser::Parser;
@@ -29,6 +30,7 @@ fn main() {
         "ast" => cmd_ast(&rest),
         "check" => cmd_check(&rest),
         "tokens" => cmd_tokens(&rest),
+        "fmt" | "format" => cmd_fmt(&rest),
         "upgrade" | "update" => cmd_upgrade(&rest),
         "version" | "--version" | "-V" => {
             println!("oneway {}", VERSION);
@@ -55,6 +57,7 @@ fn print_help() {
     println!("  ast <file.ow>             Print the parsed AST");
     println!("  check <file.ow>           Check sort order and types");
     println!("  tokens <file.ow>          Print lexer tokens");
+    println!("  fmt <file.ow> [--check]   Format an Oneway source file");
     println!("  upgrade [version]         Update oneway to the latest (or given) release");
     println!("  upgrade --check           Check whether a newer release is available");
     println!("  version                   Print version");
@@ -100,6 +103,64 @@ fn cmd_tokens(args: &[String]) {
             "{:>4}:{:<4} {:<20} {:?}",
             token.span.line, token.span.column, token.kind, token.lexeme
         );
+    }
+}
+
+fn cmd_fmt(args: &[String]) {
+    let mut check_only = false;
+    let mut files: Vec<String> = Vec::new();
+
+    for arg in args {
+        match arg.as_str() {
+            "--check" | "-c" => check_only = true,
+            "--help" | "-h" => {
+                println!("Usage: oneway fmt <file.ow> [--check]");
+                println!();
+                println!("  --check      Check whether files are formatted (exit 1 if not).");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown fmt flag '{}'", other);
+                process::exit(1);
+            }
+            _ => files.push(arg.clone()),
+        }
+    }
+
+    if files.is_empty() {
+        eprintln!("error: missing input file(s)");
+        process::exit(1);
+    }
+
+    let mut any_unformatted = false;
+
+    for file_path in &files {
+        let source = read_source(file_path);
+        match formatter::format(&source) {
+            Ok(formatted) => {
+                if source == formatted {
+                    continue;
+                }
+                any_unformatted = true;
+                if check_only {
+                    eprintln!("{}: not formatted", file_path);
+                } else {
+                    if let Err(err) = fs::write(file_path, &formatted) {
+                        eprintln!("error: could not write '{}': {}", file_path, err);
+                        process::exit(1);
+                    }
+                    println!("formatted: {}", file_path);
+                }
+            }
+            Err(err) => {
+                print_error(file_path, &err);
+                process::exit(1);
+            }
+        }
+    }
+
+    if check_only && any_unformatted {
+        process::exit(1);
     }
 }
 
@@ -379,9 +440,19 @@ fn compile_with_cargo(out_path: &str, source: &str, cargo_deps: &[&oneway::loade
 fn sanitize_crate_name(name: &str) -> String {
     let s: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    if s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+    if s.chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
         format!("_{}", s)
     } else if s.is_empty() {
         "oneway_build".to_string()
@@ -402,7 +473,9 @@ fn cmd_upgrade(args: &[String]) {
             "--help" | "-h" => {
                 println!("Usage: oneway upgrade [version] [--check]");
                 println!();
-                println!("  version      Install a specific release (e.g. v0.2.0). Defaults to latest.");
+                println!(
+                    "  version      Install a specific release (e.g. v0.2.0). Defaults to latest."
+                );
                 println!("  --check      Only check whether a newer release is available.");
                 return;
             }
