@@ -229,10 +229,27 @@ fn cmd_build(args: &[String]) {
     let generated = codegen::generate_with_meta(&loaded.module);
     let source = combine_source(&loaded.rust_preludes, &generated.source);
     let out_path = strip_ow_extension(file_path);
-    if generated.is_async || !loaded.cargo_deps.is_empty() {
-        compile_with_cargo(&out_path, &source, &loaded.cargo_deps);
+    let build_dir = build_dir_for(file_path);
+    let stem = Path::new(file_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("oneway_build");
+    let is_cargo = generated.is_async || !loaded.cargo_deps.is_empty();
+    if source_is_cached(&build_dir, is_cargo, &source, Path::new(&out_path)) {
+        println!("Up to date: {}", out_path);
+        return;
+    }
+    if is_cargo {
+        compile_with_cargo(
+            &build_dir,
+            stem,
+            &out_path,
+            &source,
+            &loaded.cargo_deps,
+            true,
+        );
     } else {
-        compile_with_rustc(&out_path, &source);
+        compile_with_rustc(&build_dir, &out_path, &source, true);
     }
     println!("Compiled to: {}", out_path);
 }
@@ -253,31 +270,33 @@ fn cmd_run(args: &[String]) {
     let generated = codegen::generate_with_meta(&loaded.module);
     let source = combine_source(&loaded.rust_preludes, &generated.source);
 
-    let tmp_dir = match tempdir_for_run() {
-        Ok(p) => p,
-        Err(err) => {
-            eprintln!("error: could not create temp dir: {}", err);
-            process::exit(1);
-        }
-    };
+    let build_dir = build_dir_for(file_path);
     let stem = Path::new(file_path)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("oneway_run");
-    let out_path = tmp_dir.join(stem);
-    let out_str = out_path.to_string_lossy().to_string();
+    let bin_path = build_dir.join("bin");
+    let bin_str = bin_path.to_string_lossy().to_string();
+    let is_cargo = generated.is_async || !loaded.cargo_deps.is_empty();
 
-    if generated.is_async || !loaded.cargo_deps.is_empty() {
-        compile_with_cargo(&out_str, &source, &loaded.cargo_deps);
-    } else {
-        compile_with_rustc(&out_str, &source);
+    if !source_is_cached(&build_dir, is_cargo, &source, &bin_path) {
+        if is_cargo {
+            compile_with_cargo(
+                &build_dir,
+                stem,
+                &bin_str,
+                &source,
+                &loaded.cargo_deps,
+                false,
+            );
+        } else {
+            compile_with_rustc(&build_dir, &bin_str, &source, false);
+        }
     }
 
-    let status = std::process::Command::new(&out_path)
+    let status = std::process::Command::new(&bin_path)
         .args(&program_args)
         .status();
-
-    let _ = fs::remove_dir_all(&tmp_dir);
 
     match status {
         Ok(s) => process::exit(s.code().unwrap_or(1)),
@@ -312,19 +331,28 @@ fn strip_ow_extension(file_path: &str) -> String {
     }
 }
 
-fn tempdir_for_run() -> std::io::Result<PathBuf> {
-    let base = env::temp_dir();
-    let unique = format!(
-        "oneway-run-{}-{}",
-        process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    );
-    let dir = base.join(unique);
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
+fn build_dir_for(file_path: &str) -> PathBuf {
+    let path = Path::new(file_path);
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("oneway");
+    dir.join(".oneway").join(stem)
+}
+
+fn source_is_cached(build_dir: &Path, is_cargo: bool, source: &str, bin_path: &Path) -> bool {
+    if !bin_path.exists() {
+        return false;
+    }
+    let stored = if is_cargo {
+        build_dir.join("cargo").join("src").join("main.rs")
+    } else {
+        build_dir.join("source.rs")
+    };
+    fs::read_to_string(&stored)
+        .map(|s| s == source)
+        .unwrap_or(false)
 }
 
 fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
@@ -337,21 +365,29 @@ fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
     }
 }
 
-fn compile_with_rustc(out_path: &str, source: &str) {
-    let rs_path = format!("{}.rs", out_path);
-    if let Err(err) = fs::write(&rs_path, source) {
-        eprintln!("error: writing {}: {}", rs_path, err);
+fn compile_with_rustc(build_dir: &Path, out_path: &str, source: &str, release: bool) {
+    if let Err(err) = fs::create_dir_all(build_dir) {
+        eprintln!("error: creating build dir {}: {}", build_dir.display(), err);
         process::exit(1);
     }
-    let status = std::process::Command::new("rustc")
-        .arg(&rs_path)
+    let rs_path = build_dir.join("source.rs");
+    if let Err(err) = fs::write(&rs_path, source) {
+        eprintln!("error: writing {}: {}", rs_path.display(), err);
+        process::exit(1);
+    }
+    let incremental_dir = build_dir.join("incremental");
+    let mut cmd = std::process::Command::new("rustc");
+    cmd.arg(&rs_path)
         .arg("-o")
         .arg(out_path)
-        .status();
-    match status {
-        Ok(s) if s.success() => {
-            let _ = fs::remove_file(&rs_path);
-        }
+        .arg(format!("-Cincremental={}", incremental_dir.display()));
+    if release {
+        cmd.arg("-Copt-level=3");
+    } else {
+        cmd.arg("-Copt-level=0");
+    }
+    match cmd.status() {
+        Ok(s) if s.success() => {}
         Ok(s) => {
             eprintln!("error: rustc failed with: {}", s);
             process::exit(1);
@@ -364,20 +400,24 @@ fn compile_with_rustc(out_path: &str, source: &str) {
     }
 }
 
-fn compile_with_cargo(out_path: &str, source: &str, cargo_deps: &[&oneway::loader::CargoDep]) {
-    let project_name = Path::new(out_path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("oneway_build");
-    let build_dir = format!("{}.cargo", out_path);
-    let src_dir = format!("{}/src", build_dir);
+fn compile_with_cargo(
+    build_dir: &Path,
+    project_name: &str,
+    out_path: &str,
+    source: &str,
+    cargo_deps: &[&oneway::loader::CargoDep],
+    release: bool,
+) {
+    let cargo_dir = build_dir.join("cargo");
+    let src_dir = cargo_dir.join("src");
     if let Err(err) = fs::create_dir_all(&src_dir) {
-        eprintln!("error: creating {}: {}", src_dir, err);
+        eprintln!("error: creating {}: {}", src_dir.display(), err);
         process::exit(1);
     }
+    let crate_name = sanitize_crate_name(project_name);
     let mut cargo_toml = format!(
         "[package]\nname = \"{}\"\nedition = \"2021\"\nversion = \"0.0.0\"\n\n[dependencies]\n",
-        sanitize_crate_name(project_name)
+        crate_name
     );
     let mut emitted: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let emit_dep = |toml: &mut String, name: &str, version: &str, features: &[&str]| {
@@ -402,24 +442,23 @@ fn compile_with_cargo(out_path: &str, source: &str, cargo_deps: &[&oneway::loade
     if !emitted.contains("tokio") && source.contains("#[tokio::main]") {
         emit_dep(&mut cargo_toml, "tokio", "1", &["full"]);
     }
-    if let Err(err) = fs::write(format!("{}/Cargo.toml", build_dir), cargo_toml) {
+    if let Err(err) = fs::write(cargo_dir.join("Cargo.toml"), &cargo_toml) {
         eprintln!("error: writing Cargo.toml: {}", err);
         process::exit(1);
     }
-    if let Err(err) = fs::write(format!("{}/main.rs", src_dir), source) {
+    if let Err(err) = fs::write(src_dir.join("main.rs"), source) {
         eprintln!("error: writing main.rs: {}", err);
         process::exit(1);
     }
-    let status = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("--release")
-        .arg("--quiet")
-        .current_dir(&build_dir)
-        .status();
-    match status {
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.arg("build").arg("--quiet").current_dir(&cargo_dir);
+    if release {
+        cmd.arg("--release");
+    }
+    match cmd.status() {
         Ok(s) if s.success() => {
-            let crate_name = sanitize_crate_name(project_name);
-            let bin = format!("{}/target/release/{}", build_dir, crate_name);
+            let profile = if release { "release" } else { "debug" };
+            let bin = cargo_dir.join("target").join(profile).join(&crate_name);
             if let Err(err) = fs::copy(&bin, out_path) {
                 eprintln!("error: copying binary: {}", err);
                 process::exit(1);
@@ -431,7 +470,7 @@ fn compile_with_cargo(out_path: &str, source: &str, cargo_deps: &[&oneway::loade
         }
         Err(err) => {
             eprintln!("error: failed to run cargo: {}", err);
-            eprintln!("       `cargo` must be installed and on PATH for programs with Rust deps.");
+            eprintln!("       `cargo` must be installed and on PATH.");
             process::exit(1);
         }
     }

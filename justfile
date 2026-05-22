@@ -99,11 +99,10 @@ examples: build
                 echo "✗  (runtime error)"
                 fail=$((fail + 1))
             fi
-            rm -rf "${base}" "${base}.rs" "${base}.cargo"
+            rm -f "${base}"
         else
             echo "·  (skip — does not compile yet)"
             skip=$((skip + 1))
-            rm -rf "${base}.rs" "${base}.cargo"
         fi
     done
     echo ""
@@ -219,3 +218,4 @@ clean:
     #!/usr/bin/env sh
     cargo clean
     find examples -type f \( -name '*.rs' -o -perm -u+x ! -name '*.ow' \) -delete
+    find examples -type d -name '.oneway' -exec rm -rf {} +

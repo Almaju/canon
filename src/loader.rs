@@ -52,7 +52,7 @@ const STDLIB: &[StdlibEntry] = &[
     },
     StdlibEntry {
         name: "HttpClient",
-        source: include_str!("../std/http_client.ow"),
+        source: include_str!("../std/http-client.ow"),
         cargo_deps: &[
             CargoDep {
                 name: "reqwest",
@@ -65,11 +65,11 @@ const STDLIB: &[StdlibEntry] = &[
                 features: &["full"],
             },
         ],
-        rust_prelude: Some(include_str!("../std/http_client.rs")),
+        rust_prelude: Some(include_str!("../std/http-client.rs")),
     },
     StdlibEntry {
         name: "HttpServer",
-        source: include_str!("../std/http_server.ow"),
+        source: include_str!("../std/http-server.ow"),
         cargo_deps: &[
             CargoDep {
                 name: "axum",
@@ -82,7 +82,7 @@ const STDLIB: &[StdlibEntry] = &[
                 features: &["full"],
             },
         ],
-        rust_prelude: Some(include_str!("../std/http_server.rs")),
+        rust_prelude: Some(include_str!("../std/http-server.rs")),
     },
     StdlibEntry {
         name: "Json",
@@ -201,8 +201,20 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
 }
 
 fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
-    let file_name = snake_case(&u.name.name);
-    let candidate = dir.join(format!("{}.ow", file_name));
+    let path_str = &u.name.name;
+    let segments: Vec<&str> = path_str.split('/').collect();
+    let type_name = segments[segments.len() - 1];
+    let file_stem = kebab_case(type_name);
+
+    // Resolve the directory: start from `dir`, append any path segments before the type name
+    let mut file_dir = dir.to_path_buf();
+    for seg in &segments[..segments.len() - 1] {
+        file_dir = file_dir.join(seg);
+    }
+
+    let candidate = file_dir.join(format!("{}.ow", file_stem));
+    let module_candidate = file_dir.join(&file_stem).join("main.ow");
+
     if candidate.exists() {
         let canonical = candidate
             .canonicalize()
@@ -211,21 +223,45 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
                 span: u.span,
             })?;
         load_into(&canonical, ctx)?;
-    } else if let Some(entry) = stdlib_entry(&u.name.name) {
-        if ctx.seen_stdlib.insert(u.name.name.clone()) {
-            for dep in entry.cargo_deps {
-                ctx.cargo_deps.push(dep);
+    } else if module_candidate.exists() {
+        let canonical = module_candidate
+            .canonicalize()
+            .map_err(|err| OnewayError::CheckError {
+                message: format!(
+                    "could not resolve `{}`: {}",
+                    module_candidate.display(),
+                    err
+                ),
+                span: u.span,
+            })?;
+        load_into(&canonical, ctx)?;
+    } else if segments.len() == 1 {
+        // Only look in stdlib for simple (non-path) imports
+        if let Some(entry) = stdlib_entry(type_name) {
+            if ctx.seen_stdlib.insert(type_name.to_string()) {
+                for dep in entry.cargo_deps {
+                    ctx.cargo_deps.push(dep);
+                }
+                if let Some(prelude) = entry.rust_prelude {
+                    ctx.rust_preludes.push(prelude);
+                }
+                let stdlib_dir = Path::new("<stdlib>");
+                load_source(entry.source, stdlib_dir, ctx)?;
             }
-            if let Some(prelude) = entry.rust_prelude {
-                ctx.rust_preludes.push(prelude);
-            }
-            let stdlib_dir = Path::new("<stdlib>");
-            load_source(entry.source, stdlib_dir, ctx)?;
+        } else {
+            return Err(OnewayError::CheckError {
+                message: format!(
+                    "`use {}` cannot find `{}` (not in current directory and not a shipped binding)",
+                    u.name.name,
+                    candidate.display()
+                ),
+                span: u.span,
+            });
         }
     } else {
         return Err(OnewayError::CheckError {
             message: format!(
-                "`use {}` cannot find `{}` (not in current directory and not a shipped binding)",
+                "`use {}` cannot find `{}`",
                 u.name.name,
                 candidate.display()
             ),
@@ -272,17 +308,16 @@ fn load_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
     Ok(())
 }
 
-fn snake_case(s: &str) -> String {
+/// Convert a PascalCase type name to its kebab-case file stem.
+/// `UserRole` → `user-role`, `HttpServer` → `http-server`, `Color` → `color`
+fn kebab_case(s: &str) -> String {
     let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_ascii_uppercase() {
-            if i > 0 {
-                out.push('_');
-            }
-            out.push(c.to_ascii_lowercase());
-        } else {
-            out.push(c);
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase() && i > 0 && chars[i - 1].is_ascii_lowercase() {
+            out.push('-');
         }
+        out.push(c.to_ascii_lowercase());
     }
     out
 }

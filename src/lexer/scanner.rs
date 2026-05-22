@@ -85,6 +85,7 @@ impl<'a> Scanner<'a> {
             b'?' => self.single(TokenKind::Question, "?"),
             b'*' => self.single(TokenKind::Star, "*"),
             b'^' => self.single(TokenKind::Caret, "^"),
+            b'/' => self.single(TokenKind::Slash, "/"),
             b'=' => {
                 if self.peek_byte(1) == Some(b'>') {
                     self.pos += 2;

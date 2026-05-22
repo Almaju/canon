@@ -51,7 +51,7 @@
 (extern_type_decl name: (identifier) @type)
 
 ; Use declaration
-(use_decl name: (identifier) @namespace)
+(use_decl (identifier) @namespace)
 
 ; Extern clause
 (extern_clause language: (identifier) @type.builtin)

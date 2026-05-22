@@ -222,11 +222,12 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
     types.insert("Ok".to_string());
     types.insert("Err".to_string());
 
-    // `use Foo` imports the type `Foo` — register it as known so references
-    // to it in the same file are not flagged as unknown types.
+    // `use Foo` (or `use path/Foo`) imports the type `Foo` — register it as
+    // known so references to it in the same file are not flagged as unknown.
     for item in &module.items {
         if let Item::Use(u) = item {
-            types.insert(u.name.name.clone());
+            let type_name = u.name.name.split('/').last().unwrap_or(&u.name.name);
+            types.insert(type_name.to_string());
         }
     }
 

@@ -15,7 +15,7 @@ module.exports = grammar({
     _item: ($) =>
       choice($.use_decl, $.function_def, $.type_def, $.extern_type_decl),
 
-    use_decl: ($) => seq("use", field("name", $.identifier)),
+    use_decl: ($) => seq("use", field("path", sep1($.identifier, "/"))),
 
     // extern Rust("path")
     // name       = (params) -> Ret { body }   (normal free function)

@@ -10,3 +10,4 @@
 *.o
 examples/*.rs
 examples/*.cargo/
+.oneway/
