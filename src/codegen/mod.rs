@@ -1,3 +1,6 @@
-mod rust;
+pub mod async_analysis;
+mod wasm;
 
-pub use rust::{generate, generate_with_meta, GeneratedRust};
+pub use wasm::generate;
+pub use wasm::generate_wat;
+pub use wasm::generate_wit;

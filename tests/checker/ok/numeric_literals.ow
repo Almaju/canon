@@ -1,0 +1,5 @@
+main = () -> Unit {
+    42.print()
+    1.0.print()
+    0xFF.print()
+}

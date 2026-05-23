@@ -1,0 +1,14 @@
+extern Wasm("oneway:builtins/strings@0.1.0#to-lowercase")
+toLower = (String) -> String
+
+extern Wasm("oneway:builtins/strings@0.1.0#to-uppercase")
+toUpper = (String) -> String
+
+main = () -> Unit {
+    "Hello, World"
+        .toUpper()
+        .print()
+    "GoodBye"
+        .toLower()
+        .print()
+}

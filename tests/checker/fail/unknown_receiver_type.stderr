@@ -1,0 +1,1 @@
+error[tests/checker/fail/unknown_receiver_type.ow:1:13]: unknown receiver type `Mystery`

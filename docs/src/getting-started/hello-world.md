@@ -3,8 +3,8 @@
 Create a file named `hello.ow`:
 
 ```oneway
-main = (Stdout) -> Unit {
-    "hello".print(Stdout)
+main = () -> Unit {
+    "hello".print()
 }
 ```
 
@@ -16,7 +16,7 @@ oneway run hello.ow
 
 You should see:
 
-```oneway
+```
 hello
 ```
 
@@ -25,24 +25,20 @@ That's the whole program. Let's walk through it.
 ## Line by Line
 
 ```oneway
-main = (Stdout) -> Unit {
+main = () -> Unit {
 ```
 
-`main` is the program's entry point. Unlike every other function in Oneway,
-`main` is **not** implemented on a type — it's a top-level binding.
+`main` is the program's entry point. Like every other binding in Oneway
+it has the shape `name = (parameters) -> ReturnType { body }`. The empty
+`()` says it takes nothing; the compiler lifts `main` as the component's
+`wasi:cli/run.run` export.
 
-The signature `(Stdout) -> Unit` says: this function takes one parameter
-whose type is `Stdout`, and returns a value of type `Unit`.
-
-- `Stdout` is a **capability**. Real-world capabilities only exist in
-  `main`, which receives them and threads them down to anything that needs
-  to perform a side effect.
-- `Unit` is a singleton type — a type with exactly one value, named after
-  itself. Returning `Unit` is the language's way of saying "this function
-  produces nothing useful".
+`Unit` is a singleton type — a type with exactly one value, named after
+itself. Returning `Unit` is the language's way of saying "this function
+produces nothing useful".
 
 ```oneway
-    "hello".print(Stdout)
+    "hello".print()
 }
 ```
 
@@ -50,26 +46,32 @@ whose type is `Stdout`, and returns a value of type `Unit`.
 sequence of expressions separated by newlines; the last one is the return
 value.
 
-`"hello".print(Stdout)` is a method call.
-The method `print` takes a `String` and a `Stdout` capability:
+`"hello".print()` is a method call. `print` takes a single `String`
+component and writes it to stdout:
 
 ```oneway
-print = (Stdout * String) -> Unit {
-    ...
-}
+print = (String) -> Unit
 ```
 
-`print` needs a `Stdout` capability because writing to standard output is a
-side effect. A function that does not receive `Stdout` cannot print, and
-the type signature is honest about that.
+There is no `Stdout` capability to thread through. The compiler lowers
+`.print` against the standard `wasi:cli/stdout` interface, so the
+resulting `.wasm` runs on any Component Model host.
+
+For *redirectable* output — writing to a file, a log sink, a test
+buffer — you'd construct an explicit destination value (a `File`, a
+`Fileout`) and pass it as an additional component. Plain `.print()` is
+sugar for "I just want stdout".
 
 ## Try Breaking Things
 
 Some small experiments to build intuition:
 
-- **Remove `Stdout` from `main`'s parameters.** The compiler will complain
-  when `print` is called without it.
+- **Add a second `.print()` line.** Each call writes its argument followed
+  by a newline.
 - **Add a comment** (`// hi`). The lexer rejects this — comments are not
   allowed.
 - **Return something other than `Unit`.** The body's last expression must
   match the declared return type.
+- **Inspect the compiled component.** `oneway build hello.ow` writes
+  `.oneway/hello/hello.wasm` and a sibling `.wit` describing the
+  component's world.

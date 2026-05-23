@@ -72,7 +72,7 @@ fn emit_type_def(td: &TypeDef) -> String {
     if let TypeExpr::Named { name, generics, .. } = &td.body {
         if let Some(path) = name.strip_prefix("__extern__") {
             if generics.is_empty() {
-                return format!("extern Rust(\"{}\")\n{}", path, td.name.name);
+                return format!("extern Wasm(\"{}\")\n{}", path, td.name.name);
             }
         }
     }
@@ -105,11 +105,11 @@ fn emit_function(func: &FunctionDef) -> String {
     let mut out = String::new();
 
     // Extern prefix
-    if let Some(ext) = &func.extern_rust {
+    if let Some(ext) = &func.extern_wasm {
         if ext.is_async {
-            out.push_str(&format!("extern Rust.async(\"{}\")\n", ext.path));
+            out.push_str(&format!("extern Wasm.async(\"{}\")\n", ext.path));
         } else {
-            out.push_str(&format!("extern Rust(\"{}\")\n", ext.path));
+            out.push_str(&format!("extern Wasm(\"{}\")\n", ext.path));
         }
     }
 
@@ -122,7 +122,7 @@ fn emit_function(func: &FunctionDef) -> String {
     out.push_str(&emit_type_expr(&func.return_ty));
 
     // Body (absent for extern functions)
-    if func.extern_rust.is_none() {
+    if func.extern_wasm.is_none() {
         out.push_str(" {\n");
         for expr in &func.body.exprs {
             out.push_str("    ");
@@ -664,24 +664,24 @@ mod tests {
     #[test]
     fn test_extern_type() {
         assert_format(
-            "extern Rust(\"std::io::Error\")\nIoError\n",
-            "extern Rust(\"std::io::Error\")\nIoError\n",
+            "extern Wasm(\"wasi:io/streams@0.3.0#get-error\")\nIoError\n",
+            "extern Wasm(\"wasi:io/streams@0.3.0#get-error\")\nIoError\n",
         );
     }
 
     #[test]
     fn test_extern_function() {
         assert_format(
-            "extern Rust(\".to_rfc3339\")\ntoRfc3339 = (Datetime) -> String\n",
-            "extern Rust(\".to_rfc3339\")\ntoRfc3339 = (Datetime) -> String\n",
+            "extern Wasm(\"wasi:clocks/wall-clock@0.3.0#now\")\nnow = (Clock) -> Datetime\n",
+            "extern Wasm(\"wasi:clocks/wall-clock@0.3.0#now\")\nnow = (Clock) -> Datetime\n",
         );
     }
 
     #[test]
     fn test_extern_async() {
         assert_format(
-            "extern Rust.async(\"tokio::fs::read_to_string\")\nread = (Filesystem * Path) -> Result<String, IoError>\n",
-            "extern Rust.async(\"tokio::fs::read_to_string\")\nread = (Filesystem * Path) -> Result<String, IoError>\n",
+            "extern Wasm.async(\"wasi:filesystem/types@0.3.0#read-via-stream\")\nread = (Filesystem * Path) -> Result<String, IoError>\n",
+            "extern Wasm.async(\"wasi:filesystem/types@0.3.0#read-via-stream\")\nread = (Filesystem * Path) -> Result<String, IoError>\n",
         );
     }
 

@@ -1,0 +1,11 @@
+Greeting = String
+
+shout = (Greeting) -> String {
+    "HELLO"
+}
+
+main = () -> Unit {
+    Greeting("howdy")
+        .shout()
+        .print()
+}

@@ -1,0 +1,9 @@
+assistantMessage = (Unit) -> String {
+    "hello"
+}
+
+main = () -> Unit {
+    Unit
+        .assistantMessage()
+        .print()
+}

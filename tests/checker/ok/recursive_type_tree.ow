@@ -1,0 +1,24 @@
+Branch = Left * Right * Value
+
+Leaf = Unit
+
+Left = Tree
+
+Right = Tree
+
+Tree = Branch + Leaf
+
+Value = Int
+
+describe = (Tree) -> String {
+    Tree.(
+        * (Branch) -> String { "branch" }
+        * (Leaf) -> String { "leaf" }
+    )
+}
+
+main = () -> Unit {
+    Leaf()
+        .describe()
+        .print()
+}

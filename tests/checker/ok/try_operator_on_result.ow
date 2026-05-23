@@ -1,0 +1,4 @@
+main = () -> Result<Unit, Unit> {
+    Ok(42)?.print()
+    Ok(Unit())
+}

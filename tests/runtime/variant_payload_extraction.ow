@@ -1,0 +1,24 @@
+Fail = String
+
+Pass = Unit
+
+TestResult = Fail + Pass
+
+makeFail = () -> TestResult {
+    Fail("the message")
+}
+
+makePass = () -> TestResult {
+    Pass()
+}
+
+main = () -> Unit {
+    makeFail().(
+        * (Fail) -> Unit { Fail.print() }
+        * (Pass) -> Unit { "got pass".print() }
+    )
+    makePass().(
+        * (Fail) -> Unit { Fail.print() }
+        * (Pass) -> Unit { "got pass".print() }
+    )
+}

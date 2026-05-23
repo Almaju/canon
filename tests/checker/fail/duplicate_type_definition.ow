@@ -1,0 +1,7 @@
+Foo = String
+
+Foo = Int
+
+main = () -> Unit {
+    "ok".print()
+}

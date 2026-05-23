@@ -1,129 +1,141 @@
-# Extern Rust
+# Extern Wasm
 
-Oneway is **batteries-included**: opinionated binding packages for the major
-application domains (filesystem, HTTP, database, JSON, …) ship with the
-language. Each binding is implemented in ordinary Oneway via `extern Rust`
-declarations over a chosen Rust crate. There is no privileged path — anyone
-can write the same bindings; Oneway just ships a curated default so users
-don't have to.
+Oneway compiles to a **WebAssembly Component**, so foreign functions
+aren't bound to a host language — they're bound to **Component Model
+imports** declared by their fully-qualified path. The mechanism is
+`extern Wasm`, and it works the same whether the import is a standard
+WASI interface (`wasi:random/random#get-random-u64`) or a per-application
+bridge (`oneway:builtins/url@0.1.0#parse`).
 
-The mechanism behind every binding is `extern Rust`, which lets an Oneway
-type or method be declared as backed by a Rust item. The transpiler emits
-direct calls — no runtime glue, no marshalling.
+The compiler emits the matching `(import …)` and lowers each call through
+the canonical ABI — no source-level marshalling, no manual buffer
+management.
 
-## Declaring an Extern Method
+## Declaring an Extern Function
 
 ```oneway
-OtherInt = Int
+extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
+randomInt = () -> Int
 
-extern Rust("std::cmp::min")
-min = (Int * OtherInt) -> Int
-
-main = (Stdout) -> Unit {
-    5.min(3).print(Stdout)
+main = () -> Unit {
+    randomInt().print()
 }
 ```
 
-The string is the fully qualified Rust path. The Oneway signature declares
-how the method is called from Oneway.
+The string follows Component Model path syntax:
 
-A path that begins with `.` indicates a method call on the first component, not a
-free function:
-
-```oneway
-extern Rust(".to_lowercase")
-toLower = (String) -> String
-
-extern Rust(".to_uppercase")
-toUpper = (String) -> String
-
-main = (Stdout) -> Unit {
-    "Hello, World".toUpper().print(Stdout)
-    "GoodBye".toLower().print(Stdout)
-}
 ```
+namespace : package / interface @ version # function
+```
+
+- The `namespace:package/interface` part identifies a WIT interface — a
+  group of related functions, types, and resources.
+- The `@version` is optional and only present on versioned interfaces
+  (every WASI 0.3-rc interface, for example).
+- The `#function` selects one function inside the interface.
+
+The Oneway signature declares how the function is called from Oneway. The
+compiler resolves Oneway types against the WIT-level types: `Int` is
+`s64`, `String` is `string`, `Result<T, E>` is `result<T, E>`, and so on.
 
 ## Extern Types
 
-A type alias to a Rust type is declared the same way, with no body:
+A type that wraps a foreign value is declared the same way, with no body:
 
 ```oneway
-extern Rust("std::io::Error")
-IoError
-
-extern Rust("reqwest::Error")
-HttpError
+HttpError = String
 ```
 
-The Oneway-side name (`IoError`, `HttpError`) is a transparent alias for the
-Rust type, suitable for use in `Result<T, E>` positions or anywhere else the
-Rust type is meaningful.
+There is no need to mark the *type* as `extern`; types in Oneway are
+always plain shapes. What matters is whether the *constructor* is an
+extern function:
+
+```oneway
+Url = String
+
+extern Wasm("oneway:builtins/url@0.1.0#parse")
+Url = (String) -> Result<Url, InvalidUrl>
+```
+
+The type declaration on the first line is an ordinary Oneway newtype.
+The `extern Wasm` block on the second line replaces the implicit total
+constructor — so `Url("https://example.com")` calls the host-provided
+parser and yields a `Result<Url, InvalidUrl>`.
 
 ## Async Externs
 
-Async Rust functions are bound with `extern Rust.async`:
+Suspending Component imports are bound with `extern Wasm.async`:
 
 ```oneway
-extern Rust.async("tokio::fs::read_to_string")
-read = (Filesystem * Path) -> Result<String, IoError>
+extern Wasm.async("oneway:builtins/http-server@0.1.0#serve")
+serve<S> = (HttpServer<S>) -> Result<Unit, IoError>
 ```
 
-The compiler inserts `.await` at every call site, and the calling Oneway
-function is itself compiled as `async fn`. From the Oneway side, the call
-looks like any other method invocation — there is no `async` keyword and
-no `.await`. The async machinery is driven by the **suspending-capability**
-mechanism (see [Capabilities](capabilities.md)): a function that receives
-a suspending capability or calls a `Rust.async` extern is compiled to
-async Rust automatically.
+The compiler lowers the call site through the *async* canonical ABI
+(`canon lower … async`), which means:
 
-An `extern Rust.async` declaration is valid only on a method whose receiver
-or parameters include a suspending capability — typically `Network` or
-`Filesystem`. This keeps the capability set honest: async effects must be
-reflected in the type, not slipped in through an extern declaration.
+- The host can yield before producing a result.
+- The Oneway function that contains the call is marked **suspending** and
+  lifted as `async func(…)` in the emitted component.
+- Every transitive caller of a suspending function is automatically
+  marked suspending too.
 
-## Dependency Manifest
+You write no `async` keyword, no `await`, no `.await`. A `Future<T>`
+returned by a suspending call is implicitly awaited when used in a
+position that expects `T`.
 
-Each Oneway project carries a manifest listing the Rust crates it depends
-on. The transpiler emits a `Cargo.toml` that mirrors it, and `oneway build`
-is a thin wrapper around `cargo build`.
+## No Project Manifest
 
-```
-[deps]
-axum       = "0.7"
-serde_json = "1"
-sqlx       = "0.7"
-```
-
-For programs that only use shipped binding packages, the manifest is empty
-— each binding pulls in its own crate deps automatically when imported.
+There is no `Cargo.toml`, no `package.json`, no per-project dependency
+file. The set of imports a program needs is fully determined by its
+`extern Wasm` declarations and resolved at component-instantiation time
+by the host. `oneway build` produces a `.wasm` plus a sibling `.wit`
+describing the component's world.
 
 ## Binding Packages
 
-Idiomatic Oneway code does not call `extern Rust` directly. Instead, it
-imports from the shipped binding packages:
+Idiomatic Oneway code does not write `extern Wasm` directly. Instead, it
+imports individual types from the embedded standard library:
 
 ```oneway
-use Filesystem    # wraps tokio::fs
-use HttpClient    # wraps reqwest
-use HttpServer    # wraps axum
-use Database      # wraps sqlx
-use Json          # wraps serde_json
+use std/Clock         # nowNanos, resolutionNanos        — wasi:clocks
+use std/File          # File / read                       — oneway:builtins/filesystem
+use std/HttpServer    # HttpServer / get / post / serve   — oneway:builtins/http-server
+use std/Now           # Now()                              — oneway:builtins/clock
+use std/Random        # randomInt                          — wasi:random
+use std/Url           # Url + get on Url                   — oneway:builtins/url + oneway:builtins/http
 ```
 
-A binding package is a few hundred lines of Oneway declarations plus
-minimal ergonomic glue, written once and shipped with the language. The
-community can publish additional or alternative bindings; the shipped set
-is just the curated default.
+Each `use std/X` brings in the named type along with its constructor and
+methods. Behind the scenes those modules are written in ordinary Oneway
+on top of `extern Wasm`; there is no privileged path.
+
+See the [Standard Library](../reference/stdlib.md) reference for the
+complete list and the WIT interfaces behind each module.
+
+## `wasi:*` vs `oneway:builtins/*`
+
+You'll see two namespaces in `extern Wasm` paths:
+
+- `wasi:*` — standard [WASI](https://github.com/WebAssembly/WASI)
+  interfaces. Any compliant host satisfies them.
+- `oneway:builtins/*` — temporary host bridges that `oneway run`
+  implements internally. Each one will move to the corresponding `wasi:*`
+  interface as that interface's canonical-ABI shape (async, streams,
+  resources) becomes available.
+
+From a user's perspective both look identical: `use std/Foo` and call
+methods. The bridge swap is invisible.
 
 ## Tradeoffs
 
-- **Error messages may leak Rust types** when crossing the FFI boundary.
-  Unavoidable to some degree; mitigated by good bindings.
-- **Async-flavored crates** are bound via `Rust.async` externs and the
-  suspending-capability mechanism, so the no-keyword promise is preserved
-  while still using async crates natively. The cost — tokio in the dep
-  tree, state-machine codegen — is paid only by programs that actually
-  take a suspending capability.
-- **Oneway is permanently coupled to Rust** unless a second backend is
-  later added. A real strategic dependency, accepted in exchange for
-  sharing the entire Rust ecosystem.
+- **No direct OS handles.** A Oneway program cannot embed a raw
+  `std::fs::File` or a `tokio::net::TcpStream`; it sees the corresponding
+  `wasi:*` resource handle instead. This is the price of portability.
+- **Phase-5 interfaces are scaffolded.** Where a `wasi:*` interface isn't
+  yet usable from the canonical ABI, Oneway ships an
+  `oneway:builtins/*` stand-in. The user-facing API doesn't change when
+  the bridge is later swapped for native WASI.
+- **Hosts must support WASI Preview 3.** `oneway run` embeds `wasmtime`
+  with the P3 + component-model-async feature gates; other hosts will
+  need equivalent support.

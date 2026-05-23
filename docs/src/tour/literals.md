@@ -74,12 +74,12 @@ a `String`, an `Email` from a `String`, etc. — the fallibility belongs in
 the type system as `Result<T, E>`. Same principle the language already
 applies to "missing": `Option<T>`.
 
-A type opts into this by declaring a constructor with the **same name as the type** — a function whose name matches the type it constructs:
+A type opts into this by declaring a constructor with the **same name as the type** — a function whose name matches the type it constructs. The body can be ordinary Oneway, or it can be an `extern Wasm` binding to a host-provided parser:
 
 ```oneway
 Url = String
 
-extern Rust("oneway_url_parse")
+extern Wasm("oneway:builtins/url@0.1.0#parse")
 Url = (String) -> Result<Url, InvalidUrl>
 ```
 
@@ -92,7 +92,7 @@ whatever the constructor returns, so a fallible constructor *forces* `?` (or
 dispatch) at the call site:
 
 ```oneway
-HttpClient.get(Url("https://example.com")?)?.print(Stdout)
+Url("https://example.com")?.get()?.print()
 ```
 
 External callers cannot bypass the constructor. The raw inner

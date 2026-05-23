@@ -19,8 +19,8 @@ shout = (Greeting) -> String {
     "HELLO"
 }
 
-main = (Stdout) -> Unit {
-    Greeting("howdy").shout().print(Stdout)
+main = () -> Unit {
+    Greeting("howdy").shout().print()
 }
 ```
 
@@ -52,8 +52,8 @@ multiple operations is method chaining. That is the intended style.
 Inside a function body, each component is referenced by **its type name**:
 
 ```oneway
-print = (Stdout * String) -> Unit {
-    Stdout.write(String)
+format = (Greeting * Name) -> String {
+    Greeting
 }
 ```
 
@@ -92,7 +92,7 @@ This allows both forms at the call site:
 
 ```oneway
 "hello".print()
-"hello".print(Red)
+"hello".print(Red())
 ```
 
 ## First-Class Functions
@@ -147,14 +147,15 @@ return position without an annotation.
 
 ## The `main` Function
 
-`main` is the program's entry point. It typically takes
-the capabilities the program needs:
+`main` is the program's entry point. It takes no parameters and is lifted
+as the component's `wasi:cli/run.run` export:
 
 ```oneway
-main = (Stdout) -> Unit {
-    "hello".print(Stdout)
+main = () -> Unit {
+    "hello".print()
 }
 ```
 
-See [Capabilities](./capabilities.md) for how this connects to side
-effects.
+For I/O, construct the value that carries the effect (`File`, `Url`,
+`HttpServer`, …) from inside `main` and thread it through the chain. See
+[Effects and Values](./effects.md) for the full domain-first story.

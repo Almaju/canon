@@ -1,0 +1,1 @@
+error[tests/checker/fail/empty_function_body.ow:1:19]: function body must contain at least one expression

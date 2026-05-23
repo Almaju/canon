@@ -111,24 +111,27 @@ impl LspServer {
     // -----------------------------------------------------------------------
 
     fn handle_initialize(&mut self, id: Option<String>) {
-        let result = r#"{
-            "capabilities": {
-                "textDocumentSync": {
+        let result = format!(
+            r#"{{
+            "capabilities": {{
+                "textDocumentSync": {{
                     "openClose": true,
                     "change": 1,
-                    "save": { "includeText": true }
-                },
+                    "save": {{ "includeText": true }}
+                }},
                 "hoverProvider": true,
                 "definitionProvider": true,
                 "documentFormattingProvider": true
-            },
-            "serverInfo": {
+            }},
+            "serverInfo": {{
                 "name": "oneway-lsp",
-                "version": "0.1.0"
-            }
-        }"#;
+                "version": "{}"
+            }}
+        }}"#,
+            env!("CARGO_PKG_VERSION")
+        );
         if let Some(id) = id {
-            send_response(&id, result);
+            send_response(&id, &result);
         }
     }
 

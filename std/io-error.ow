@@ -1,2 +1,1 @@
-extern Rust("std::io::Error")
-IoError
+IoError = String

@@ -1,0 +1,1 @@
+error[tests/checker/fail/function_returns_wrong_type.ow:2:5]: function returns `Int` but last expression has type `String`

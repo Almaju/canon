@@ -1,0 +1,12 @@
+Greeting = String
+
+Name = String
+
+greet = (Greeting * Name) -> Greeting {
+    Greeting
+}
+
+main = () -> Unit {
+    Greeting("hello").greet(Name("world"))
+    "ok".print()
+}

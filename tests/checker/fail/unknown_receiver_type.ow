@@ -1,0 +1,7 @@
+describe = (Mystery) -> String {
+    "hello"
+}
+
+main = () -> Unit {
+    "ok".print()
+}

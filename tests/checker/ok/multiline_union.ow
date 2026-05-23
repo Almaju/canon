@@ -1,0 +1,7 @@
+Ord = Equal
+  + Greater
+  + Less
+
+main = () -> Unit {
+    "multi-line union defined".print()
+}

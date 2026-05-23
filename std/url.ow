@@ -1,7 +1,0 @@
-extern Rust("url::ParseError")
-InvalidUrl
-
-Url = String
-
-extern Rust("oneway_url_parse")
-Url = (String) -> Result<Url, InvalidUrl>

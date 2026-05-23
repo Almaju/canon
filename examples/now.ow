@@ -1,7 +1,5 @@
 use std/Now
 
 main = () -> Unit {
-    Now()
-        .toRfc3339()
-        .print
+    Now().print()
 }

@@ -1,0 +1,5 @@
+main = () -> Unit {
+    "hello\tworld\n".print()
+    "quote: \"hi\"".print()
+    "backslash: \\".print()
+}

@@ -6,605 +6,94 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub struct CargoDep {
-    pub name: &'static str,
-    pub version: &'static str,
-    pub features: &'static [&'static str],
-}
-
 struct StdlibEntry {
     name: &'static str,
-    /// Deduplication key: multiple type names can share the same module source.
-    module: &'static str,
     source: &'static str,
-    cargo_deps: &'static [CargoDep],
-    rust_prelude: Option<&'static str>,
 }
 
+// The stdlib is structured as small, focused modules — each entry exposes a
+// single public type (the loader looks up entries by the type name the user
+// `use`s). Modules `use` each other to share supporting types; the loader
+// de-duplicates so transitive imports are loaded once.
 const STDLIB: &[StdlibEntry] = &[
     StdlibEntry {
         name: "Body",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
+        source: include_str!("../std/body.ow"),
     },
+    // `Random` and `Clock` provide free functions (`randomInt`, `nowNanos`).
+    // The loader keys them by their declared type but the modules don't
+    // define a wrapper type — `use std/Clock` loads the clock externs and
+    // `use std/Random` loads the random extern.
     StdlibEntry {
-        name: "Datetime",
-        module: "datetime",
-        source: include_str!("../std/datetime.ow"),
-        cargo_deps: &[CargoDep {
-            name: "chrono",
-            version: "0.4",
-            features: &[],
-        }],
-        rust_prelude: None,
+        name: "Clock",
+        source: include_str!("../std/clock-wasm.ow"),
     },
     StdlibEntry {
         name: "File",
-        module: "filesystem",
-        source: include_str!("../std/filesystem.ow"),
-        cargo_deps: &[CargoDep {
-            name: "tokio",
-            version: "1",
-            features: &["full"],
-        }],
-        rust_prelude: None,
-    },
-    StdlibEntry {
-        name: "Fileout",
-        module: "filesystem",
-        source: include_str!("../std/filesystem.ow"),
-        cargo_deps: &[CargoDep {
-            name: "tokio",
-            version: "1",
-            features: &["full"],
-        }],
-        rust_prelude: None,
+        source: include_str!("../std/filesystem-wasm.ow"),
     },
     StdlibEntry {
         name: "HttpError",
-        module: "http-error",
         source: include_str!("../std/http-error.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "reqwest",
-                version: "0.12",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-error.rs")),
     },
     StdlibEntry {
         name: "HttpResponseBody",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
+        source: include_str!("../std/http-response-body.ow"),
     },
     StdlibEntry {
         name: "HttpServer",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
+        source: include_str!("../std/http-server-wasm.ow"),
     },
     StdlibEntry {
         name: "HttpStatus",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
+        source: include_str!("../std/http-status.ow"),
     },
     StdlibEntry {
         name: "InvalidUrl",
-        module: "url",
-        source: include_str!("../std/url.ow"),
-        cargo_deps: &[CargoDep {
-            name: "url",
-            version: "2",
-            features: &[],
-        }],
-        rust_prelude: Some(include_str!("../std/url.rs")),
+        source: include_str!("../std/url-wasm.ow"),
     },
     StdlibEntry {
         name: "IoError",
-        module: "io-error",
         source: include_str!("../std/io-error.ow"),
-        cargo_deps: &[],
-        rust_prelude: None,
     },
     StdlibEntry {
-        name: "JsonArray",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonBool",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonEntry",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonFloat",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonInt",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonKey",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonNull",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonNumber",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonObject",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonString",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "JsonValue",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
-    },
-    StdlibEntry {
-        name: "MalformedJson",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
+        name: "Json",
+        source: include_str!("../std/json-wasm.ow"),
     },
     StdlibEntry {
         name: "Now",
-        module: "now",
-        source: include_str!("../std/now.ow"),
-        cargo_deps: &[CargoDep {
-            name: "chrono",
-            version: "0.4",
-            features: &[],
-        }],
-        rust_prelude: None,
+        source: include_str!("../std/now-wasm.ow"),
     },
     StdlibEntry {
         name: "Path",
-        module: "path",
-        source: include_str!("../std/path.ow"),
-        cargo_deps: &[],
-        rust_prelude: Some(include_str!("../std/path.rs")),
+        source: include_str!("../std/path-wasm.ow"),
     },
     StdlibEntry {
         name: "Port",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
+        source: include_str!("../std/port.ow"),
+    },
+    StdlibEntry {
+        name: "Random",
+        source: include_str!("../std/random-wasm.ow"),
+    },
+    StdlibEntry {
+        name: "Request",
+        source: include_str!("../std/request.ow"),
     },
     StdlibEntry {
         name: "RoutePath",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
+        source: include_str!("../std/route-path.ow"),
     },
+    // Test framework: `use std/TestResult` brings in `TestResult`, `Fail`,
+    // `Pass`, and the `assert` helper. The `oneway test` subcommand
+    // discovers `() -> TestResult` functions and synthesises an entry point.
     StdlibEntry {
-        name: "ServerRequest",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
-    },
-    StdlibEntry {
-        name: "SseData",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
-    },
-    StdlibEntry {
-        name: "SseSender",
-        module: "http-server",
-        source: include_str!("../std/http-server.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "axum",
-                version: "0.7",
-                features: &[],
-            },
-            CargoDep {
-                name: "futures-util",
-                version: "0.3",
-                features: &[],
-            },
-            CargoDep {
-                name: "tokio",
-                version: "1",
-                features: &["full"],
-            },
-            CargoDep {
-                name: "tokio-stream",
-                version: "0.1",
-                features: &["net"],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/http-server.rs")),
-    },
-    StdlibEntry {
-        name: "ToJson",
-        module: "json",
-        source: include_str!("../std/json.ow"),
-        cargo_deps: &[
-            CargoDep {
-                name: "serde",
-                version: "1",
-                features: &["derive"],
-            },
-            CargoDep {
-                name: "serde_json",
-                version: "1",
-                features: &[],
-            },
-        ],
-        rust_prelude: Some(include_str!("../std/json.rs")),
+        name: "TestResult",
+        source: include_str!("../std/test.ow"),
     },
     StdlibEntry {
         name: "Url",
-        module: "url",
-        source: include_str!("../std/url.ow"),
-        cargo_deps: &[CargoDep {
-            name: "url",
-            version: "2",
-            features: &[],
-        }],
-        rust_prelude: Some(include_str!("../std/url.rs")),
+        source: include_str!("../std/url-wasm.ow"),
     },
 ];
 
@@ -614,8 +103,6 @@ fn stdlib_entry(name: &str) -> Option<&'static StdlibEntry> {
 
 pub struct LoadResult {
     pub module: Module,
-    pub cargo_deps: Vec<&'static CargoDep>,
-    pub rust_preludes: Vec<&'static str>,
     /// Index in `module.items` where items declared in the entry file
     /// begin. Items before this index were pulled in via `use` and are
     /// exempt from per-file ordering rules.
@@ -626,8 +113,6 @@ struct LoadCtx {
     seen: HashSet<PathBuf>,
     seen_stdlib: HashSet<String>,
     items: Vec<Item>,
-    cargo_deps: Vec<&'static CargoDep>,
-    rust_preludes: Vec<&'static str>,
 }
 
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
@@ -641,8 +126,6 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen: HashSet::new(),
         seen_stdlib: HashSet::new(),
         items: Vec::new(),
-        cargo_deps: Vec::new(),
-        rust_preludes: Vec::new(),
     };
     let source = fs::read_to_string(&canonical).map_err(|err| OnewayError::CheckError {
         message: format!("could not read `{}`: {}", canonical.display(), err),
@@ -652,13 +135,16 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
     let dir = canonical.parent().unwrap_or_else(|| Path::new("."));
     let entry_items_start = load_entry_source(&source, dir, &mut ctx)?;
     let span = Span::default();
+    let mut module = Module {
+        items: ctx.items,
+        span,
+    };
+    // Auto-await: insert implicit `Expr::Await` nodes wherever a `Future<T>`
+    // value is used in a position that expects `T`. Runs before the checker
+    // so type comparisons see the post-rewrite tree.
+    crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
-        module: Module {
-            items: ctx.items,
-            span,
-        },
-        cargo_deps: ctx.cargo_deps,
-        rust_preludes: ctx.rust_preludes,
+        module,
         entry_items_start,
     })
 }
@@ -697,13 +183,7 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
     // `use std/TypeName` — look up in the embedded standard library.
     if segments.len() >= 2 && segments[0] == "std" {
         if let Some(entry) = stdlib_entry(type_name) {
-            if ctx.seen_stdlib.insert(entry.module.to_string()) {
-                for dep in entry.cargo_deps {
-                    ctx.cargo_deps.push(dep);
-                }
-                if let Some(prelude) = entry.rust_prelude {
-                    ctx.rust_preludes.push(prelude);
-                }
+            if ctx.seen_stdlib.insert(entry.name.to_string()) {
                 let stdlib_dir = Path::new("<stdlib>");
                 load_source(entry.source, stdlib_dir, ctx)?;
             }

@@ -1,8 +1,0 @@
-extern Rust("chrono::DateTime<chrono::Utc>")
-Now
-
-extern Rust(".to_rfc3339")
-toRfc3339 = (Now) -> String
-
-extern Rust("chrono::Utc::now")
-Now = () -> Now

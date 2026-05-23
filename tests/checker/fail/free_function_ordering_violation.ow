@@ -1,0 +1,11 @@
+zebra = () -> Unit {
+    "z".print()
+}
+
+apple = () -> Unit {
+    "a".print()
+}
+
+main = () -> Unit {
+    "ok".print()
+}

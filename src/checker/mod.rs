@@ -2,6 +2,8 @@ use crate::ast::*;
 use crate::error::OnewayError;
 use std::collections::{HashMap, HashSet};
 
+pub mod auto_await;
+
 const BUILTIN_TYPES: &[&str] = &[
     "Bool",
     "Deserialize",
@@ -29,7 +31,8 @@ fn is_capability_type(name: &str) -> bool {
     CAPABILITY_TYPES.contains(&name)
 }
 
-const BUILTIN_GENERIC_TYPES: &[&str] = &["List", "Map", "Option", "Result", "Set"];
+const BUILTIN_GENERIC_TYPES: &[&str] =
+    &["Future", "List", "Map", "Option", "Result", "Set", "Stream"];
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`, `Off()`, `On()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
@@ -48,14 +51,50 @@ pub struct SymbolTable {
     /// Used to distinguish user-defined types (which resolve to themselves
     /// in method lookup) from bare variant tags (which widen to the parent).
     pub standalone_types: HashSet<String>,
+    /// Free functions — functions declared *without* a receiver, like
+    /// `Now = () -> Now` or `randomInt = () -> Int`. The user invokes them
+    /// with constructor syntax (`Now()`, `randomInt()`), which the parser
+    /// uniformly produces as `Expr::Constructor`. The checker consults this
+    /// map to accept those calls even when the name isn't a type.
+    pub free_funcs: HashMap<String, MethodSig>,
+    /// One-level type aliases: each entry `A -> B` records that the user
+    /// wrote `A = B`. The checker walks this chain (via `resolve_alias`)
+    /// when looking up methods on a value so that methods declared on the
+    /// underlying type are accessible on the alias — e.g. `"hello".print`
+    /// on `Path` (which is `Path = String`) resolves through to `String`'s
+    /// `print` method without anyone having to redeclare it for `Path`.
+    pub aliases: HashMap<String, String>,
 }
 
 pub struct MethodSig {
     pub arity: usize,
     pub return_ty: String,
+    /// When the method's return type is `Result<X, Y>` (or `Option<X>`),
+    /// the type name `X`. Used by `?` to compute the type of the extracted
+    /// payload — e.g. `path.File()?` is typed as `File` rather than
+    /// `<unknown>` so subsequent method dispatch on the payload works.
+    pub result_ok_ty: Option<String>,
 }
 
 impl SymbolTable {
+    /// Walks the alias chain starting at `name` and returns the underlying
+    /// type name. Falls back to `name` itself when there's no alias entry,
+    /// and is bounded against cycles by a depth cap.
+    pub fn resolve_alias<'a>(&'a self, name: &'a str) -> &'a str {
+        let mut current = name;
+        let mut depth = 0;
+        while depth < 20 {
+            match self.aliases.get(current) {
+                Some(next) => {
+                    current = next.as_str();
+                    depth += 1;
+                }
+                None => break,
+            }
+        }
+        current
+    }
+
     pub fn knows_type(&self, name: &str) -> bool {
         self.types.contains(name) || self.generic_types.contains(name)
     }
@@ -121,12 +160,15 @@ fn check_ordering(module: &Module, entry_items_start: usize, errors: &mut Vec<On
 
     // Free functions (no receiver) declared in the entry file must be
     // alphabetical. Imported items are exempt — they follow their own
-    // file's ordering.
+    // file's ordering. `main` is also exempt: it's the entry point, a
+    // distinguished role rather than a regular free function, and forcing
+    // it into alphabetical position with peers (or with synthesised mains
+    // produced by `oneway test`) is arbitrary.
     let free_funcs: Vec<(&str, crate::error::Span)> = entry_items
         .iter()
         .filter_map(|item| {
             if let Item::Function(func) = item {
-                if func.receiver.is_none() {
+                if func.receiver.is_none() && func.name.name != "main" {
                     return Some((func.name.name.as_str(), func.name.span));
                 }
             }
@@ -268,23 +310,42 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
         }
     }
 
+    // Field access table. Two shapes of typedef contribute:
+    //
+    //   * `T = A * B * ...`  — a real product; each named component is a
+    //     field on `T`.
+    //   * `T = U`           — a newtype alias; `T` has a single field
+    //     named after the underlying type `U` (see DESIGN.md § "Newtypes
+    //     Are 1-Component Products"). This makes `value.U` a valid
+    //     unwrap expression: `Greeting("hi").String` yields the inner
+    //     `String`. Method lookup still walks the alias chain (so
+    //     `Greeting("hi").print()` works without an explicit unwrap),
+    //     but the unwrap form exists for cases where the explicit step
+    //     reads more clearly.
     let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
-            if let TypeExpr::Product { fields, .. } = &td.body {
-                let names: Vec<String> = fields
-                    .iter()
-                    .filter_map(|f| {
-                        if let TypeExpr::Named { name, .. } = f {
-                            Some(name.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                if !names.is_empty() {
-                    product_fields.insert(td.name.name.clone(), names);
+            match &td.body {
+                TypeExpr::Product { fields, .. } => {
+                    let names: Vec<String> = fields
+                        .iter()
+                        .filter_map(|f| {
+                            if let TypeExpr::Named { name, .. } = f {
+                                Some(name.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if !names.is_empty() {
+                        product_fields.insert(td.name.name.clone(), names);
+                    }
                 }
+                TypeExpr::Named { name, generics, .. } if generics.is_empty() => {
+                    // Newtype `T = U`: one component named after `U`.
+                    product_fields.insert(td.name.name.clone(), vec![name.clone()]);
+                }
+                _ => {}
             }
         }
     }
@@ -293,15 +354,13 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
     for item in &module.items {
         if let Item::Function(func) = item {
             if let Some(recv) = &func.receiver {
-                let return_ty = match &func.return_ty {
-                    TypeExpr::Named { name, .. } => name.clone(),
-                    _ => "<complex>".to_string(),
-                };
+                let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
                 methods.insert(
                     (recv.name.clone(), func.name.name.clone()),
                     MethodSig {
                         arity: func.params.len(),
                         return_ty: return_ty.clone(),
+                        result_ok_ty: result_ok_ty.clone(),
                     },
                 );
                 // Register under each param type for commutative calling.
@@ -334,6 +393,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
                         .or_insert(MethodSig {
                             arity: func.params.len(),
                             return_ty: return_ty.clone(),
+                            result_ok_ty: result_ok_ty.clone(),
                         });
                     if func.name.name == "Self" {
                         // e.g. "str".JsonValue() (arity 0) or Port(...).HttpServer(state) (arity 1)
@@ -342,6 +402,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
                             .or_insert(MethodSig {
                                 arity: *ctor_arity,
                                 return_ty: return_ty.clone(),
+                                result_ok_ty: result_ok_ty.clone(),
                             });
                     }
                 }
@@ -356,6 +417,45 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
         }
     }
 
+    // Type aliases: `A = B` where `B` is a single named type. The checker
+    // uses these to resolve method lookups through alias chains so methods
+    // declared on the base type apply to the alias too.
+    let mut aliases: HashMap<String, String> = HashMap::new();
+    for item in &module.items {
+        if let Item::TypeDef(td) = item {
+            if let TypeExpr::Named { name, generics, .. } = &td.body {
+                if generics.is_empty() {
+                    aliases.insert(td.name.name.clone(), name.clone());
+                }
+            }
+        }
+    }
+
+    // Free functions: every `FunctionDef` with no receiver and a name
+    // distinct from `main` and `Self`. These can be invoked with constructor
+    // syntax (`Foo()`, `bar(x)`); the checker accepts them in that role and
+    // the codegen routes the call through `func_table` lookups.
+    let mut free_funcs: HashMap<String, MethodSig> = HashMap::new();
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            if func.receiver.is_some() {
+                continue;
+            }
+            if func.name.name == "main" || func.name.name == "Self" {
+                continue;
+            }
+            let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
+            free_funcs.insert(
+                func.name.name.clone(),
+                MethodSig {
+                    arity: func.params.len(),
+                    return_ty,
+                    result_ok_ty,
+                },
+            );
+        }
+    }
+
     SymbolTable {
         types,
         generic_types,
@@ -363,6 +463,8 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
         methods,
         product_fields,
         standalone_types,
+        free_funcs,
+        aliases,
     }
 }
 
@@ -480,7 +582,7 @@ fn check_function(
         }
     }
 
-    if func.extern_rust.is_some() {
+    if func.extern_wasm.is_some() {
         return;
     }
 
@@ -687,13 +789,22 @@ fn check_expr(
         Expr::JsonLit { .. } => {}
         Expr::Constructor { name, args, span } => {
             let is_variant = symbols.variant_of.contains_key(&name.name);
-            if !symbols.knows_type(&name.name) && !is_variant {
+            // A free function with this exact name (like `Now = () -> Now`
+            // or `randomInt = () -> Int`) makes the "constructor" call legal
+            // even when the name isn't a known type. Its presence is signalled
+            // by an entry in `extern_funcs` with a matching arity.
+            let matches_free_func = symbols
+                .free_funcs
+                .get(&name.name)
+                .map(|sig| sig.arity == args.len())
+                .unwrap_or(false);
+            if !symbols.knows_type(&name.name) && !is_variant && !matches_free_func {
                 errors.push(OnewayError::CheckError {
                     message: format!("unknown type `{}` in constructor", name.name),
                     span: name.span,
                 });
             }
-            if args.is_empty() && !is_variant {
+            if args.is_empty() && !is_variant && !matches_free_func {
                 let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
                 let has_zero_arg_ctor = symbols
                     .methods
@@ -749,19 +860,20 @@ fn check_expr(
                 _ => recv_ty.clone(),
             };
             let effective_arity = effective_call_arity(args);
-            let known = is_known_method(&recv_ty_specific, &method.name, effective_arity)
-                || symbols
-                    .methods
-                    .get(&(recv_ty_specific.clone(), method.name.clone()))
-                    .map(|m| m.arity == effective_arity)
-                    .unwrap_or(false)
-                || (recv_ty_specific != recv_ty
-                    && (is_known_method(&recv_ty, &method.name, effective_arity)
-                        || symbols
-                            .methods
-                            .get(&(recv_ty.clone(), method.name.clone()))
-                            .map(|m| m.arity == effective_arity)
-                            .unwrap_or(false)));
+            // A method lookup tries, in order: the specific receiver type,
+            // the broader receiver type (when they differ), and the alias
+            // chain of each. This lets methods declared on `String`/`Int`/…
+            // be invoked on user aliases (`Path`, `Now`, `Url`, …) without
+            // redeclaring them.
+            let known =
+                method_known_via_aliases(&recv_ty_specific, &method.name, effective_arity, symbols)
+                    || (recv_ty_specific != recv_ty
+                        && method_known_via_aliases(
+                            &recv_ty,
+                            &method.name,
+                            effective_arity,
+                            symbols,
+                        ));
             if !known {
                 errors.push(OnewayError::CheckError {
                     message: format!(
@@ -863,19 +975,19 @@ fn check_expr(
             if recv_ty == "<unknown>" {
                 return;
             }
-            // Case 1: product field access
+            // Case 1: product field access. A typedef registers fields via
+            // two shapes:
+            //   * `T = A * B * ...`  — each named component is a field.
+            //   * `T = U`            — newtype with one field named `U`
+            //     (see DESIGN.md § "Newtypes Are 1-Component Products").
+            let is_product = symbols.product_fields.contains_key(&recv_ty_for_lookup);
             if let Some(fields) = symbols.product_fields.get(&recv_ty_for_lookup) {
                 if fields.iter().any(|f| f == &field.name) {
                     return; // valid product field
                 }
-                errors.push(OnewayError::CheckError {
-                    message: format!(
-                        "type `{}` has no field `{}`",
-                        recv_ty_for_lookup, field.name
-                    ),
-                    span: *span,
-                });
-                return;
+                // Fall through to method checks before erroring — a name
+                // like `print` on a newtype value isn't a field but is a
+                // valid method-as-value reference via the alias chain.
             }
             // Case 2: first-class method reference (extern or Oneway-defined)
             if symbols
@@ -885,16 +997,29 @@ fn check_expr(
                 return; // valid method reference used as a value
             }
             // Case 3: zero-arg built-in method used without parens (e.g. "hello".print)
-            if is_known_method(&recv_ty_for_lookup, &field.name, 0) {
+            if method_known_via_aliases(&recv_ty_for_lookup, &field.name, 0, symbols) {
                 return;
             }
-            errors.push(OnewayError::CheckError {
-                message: format!(
-                    "field access `.{}` on `{}` — not a product field and no method `{}` found",
-                    field.name, recv_ty_for_lookup, field.name
-                ),
-                span: *span,
-            });
+            // Neither a known field nor a known method. If the receiver is
+            // a product (or newtype), be specific about it being a missing
+            // field; otherwise use the generic message.
+            if is_product {
+                errors.push(OnewayError::CheckError {
+                    message: format!(
+                        "type `{}` has no field `{}`",
+                        recv_ty_for_lookup, field.name
+                    ),
+                    span: *span,
+                });
+            } else {
+                errors.push(OnewayError::CheckError {
+                    message: format!(
+                        "field access `.{}` on `{}` — not a product field and no method `{}` found",
+                        field.name, recv_ty_for_lookup, field.name
+                    ),
+                    span: *span,
+                });
+            }
         }
         Expr::Lambda {
             params,
@@ -917,6 +1042,11 @@ fn check_expr(
                 check_expr(expr, &inner_scope, symbols, errors);
             }
         }
+        // Await nodes are inserted by the checker itself (Phase 5) and are
+        // never produced by the parser. Nothing to validate structurally.
+        Expr::Await { inner, .. } => {
+            check_expr(inner, scope, symbols, errors);
+        }
     }
 }
 
@@ -929,6 +1059,79 @@ fn effective_call_arity(args: &[Expr]) -> usize {
         }
     }
     args.len()
+}
+
+/// Summarises a function's declared return type into:
+///   - the bare name used for type-checking comparisons (`"Result"`,
+///     `"Unit"`, …), and
+///   - the Ok-payload name when the return is a `Result<X, Y>` or
+///     `Option<X>`, so `?` can give the extracted value its proper type.
+///
+/// `Future<T>` and `Stream<T>` are transparent here: a method declared as
+/// returning `Future<Result<X, Y>>` is summarised exactly like one declared
+/// `Result<X, Y>`. The auto-await rule (`auto_await::transform`) inserts
+/// the implicit `Expr::Await` at use sites, so the user-visible type after
+/// awaiting is the inner type. Keeping the summary in lock-step means
+/// `?` and arm-pattern inference work the same way regardless of whether
+/// the method is sync or async.
+fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            // Peel one layer of `Future<…>` / `Stream<…>` — the await is
+            // implicit so the rest of the checker only ever sees the
+            // already-awaited type.
+            if (name == "Future" || name == "Stream") && generics.len() == 1 {
+                return method_return_summary(&generics[0]);
+            }
+            let bare = name.clone();
+            let ok_ty = match name.as_str() {
+                "Result" | "Option" => generics.first().and_then(|g| match g {
+                    TypeExpr::Named { name, .. } => Some(name.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            };
+            (bare, ok_ty)
+        }
+        _ => ("<complex>".to_string(), None),
+    }
+}
+
+/// Combined method lookup: tries the receiver type as given, then walks the
+/// type-alias chain (`Path → String`, `Now → String`, …) up to the depth
+/// cap, checking both `is_known_method` (built-ins) and `symbols.methods`
+/// (user/extern declarations) at each step.
+fn method_known_via_aliases(
+    receiver_ty: &str,
+    method: &str,
+    arg_count: usize,
+    symbols: &SymbolTable,
+) -> bool {
+    let mut current = receiver_ty;
+    let mut depth = 0;
+    loop {
+        if is_known_method(current, method, arg_count) {
+            return true;
+        }
+        if symbols
+            .methods
+            .get(&(current.to_string(), method.to_string()))
+            .map(|m| m.arity == arg_count)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if depth >= 20 {
+            return false;
+        }
+        match symbols.aliases.get(current) {
+            Some(next) => {
+                current = next.as_str();
+                depth += 1;
+            }
+            None => return false,
+        }
+    }
 }
 
 fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
@@ -1011,8 +1214,14 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::FloatLit { .. } => "Float".to_string(),
         Expr::HexLit { .. } => "Hex".to_string(),
         Expr::Constructor { name, .. } => {
+            // Variants widen to their parent union (e.g. `Some(x)` typed as
+            // `Option`); free-function constructors take their declared
+            // return type; everything else is treated as the type name
+            // itself (newtype wrap).
             if let Some(parent) = symbols.variant_of.get(&name.name) {
                 parent.clone()
+            } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
+                sig.return_ty.clone()
             } else {
                 name.name.clone()
             }
@@ -1034,12 +1243,71 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             })
             .unwrap_or_else(|| "<unknown>".to_string()),
         Expr::Try { inner, .. } => {
-            if let Expr::Constructor { name, args, .. } = &**inner {
-                if matches!(name.name.as_str(), "Ok" | "Some") && !args.is_empty() {
-                    return expr_type_name_in_scope(&args[0], symbols);
+            // `?` extracts the Ok/Some payload. We compute its type by
+            // either inspecting the inner constructor directly (`Ok(x)?`)
+            // or, for a method call returning `Result<X, _>` / `Option<X>`,
+            // looking up the method's signature in the symbol table.
+            match &**inner {
+                Expr::Constructor { name, args, .. } => {
+                    if matches!(name.name.as_str(), "Ok" | "Some") && !args.is_empty() {
+                        return expr_type_name_in_scope(&args[0], symbols);
+                    }
+                    // Free-function constructor (`Now = () -> Now`):
+                    if let Some(sig) = symbols.free_funcs.get(&name.name) {
+                        if let Some(ok) = &sig.result_ok_ty {
+                            return ok.clone();
+                        }
+                    }
+                    // Method-style constructor invoked as `Name(arg)`
+                    // (e.g. `Url("…")` dispatches to
+                    // `Url = (String) -> Result<Url, InvalidUrl>`). The
+                    // receiver type is inferred from `args[0]` and the
+                    // function is registered in `methods[(recv, name)]`.
+                    if let Some(arg) = args.first() {
+                        let arg_ty = expr_type_name_in_scope(arg, symbols);
+                        let mut current = arg_ty.as_str();
+                        for _ in 0..20 {
+                            if let Some(sig) = symbols
+                                .methods
+                                .get(&(current.to_string(), name.name.clone()))
+                            {
+                                if let Some(ok) = &sig.result_ok_ty {
+                                    return ok.clone();
+                                }
+                                break;
+                            }
+                            match symbols.aliases.get(current) {
+                                Some(next) => current = next.as_str(),
+                                None => break,
+                            }
+                        }
+                    }
+                    "<unknown>".to_string()
                 }
+                Expr::MethodCall {
+                    receiver, method, ..
+                } => {
+                    let recv_ty = expr_type_name_in_scope(receiver, symbols);
+                    let mut current = recv_ty.as_str();
+                    for _ in 0..20 {
+                        if let Some(sig) = symbols
+                            .methods
+                            .get(&(current.to_string(), method.name.clone()))
+                        {
+                            if let Some(ok) = &sig.result_ok_ty {
+                                return ok.clone();
+                            }
+                            break;
+                        }
+                        match symbols.aliases.get(current) {
+                            Some(next) => current = next.as_str(),
+                            None => break,
+                        }
+                    }
+                    "<unknown>".to_string()
+                }
+                _ => "<unknown>".to_string(),
             }
-            "<unknown>".to_string()
         }
         Expr::Lambda { return_ty, .. } => match return_ty {
             TypeExpr::Named { name, .. } => name.clone(),
@@ -1049,19 +1317,32 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::FieldAccess {
             receiver, field, ..
         } => {
-            // If this is a zero-arg builtin method used without parens, return its
-            // return type rather than the field name (e.g. "hello".print -> Unit).
+            // If this is a zero-arg builtin method used without parens, return
+            // its return type rather than the field name. We walk the alias
+            // chain so `.print` on `Path` / `Now` / etc. resolves through to
+            // the underlying `String`'s `print`.
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
-            let ret = method_return_type(&recv_ty, &field.name);
-            if ret != "<unknown>" {
-                return ret;
-            }
-            if let Some(sig) = symbols.methods.get(&(recv_ty, field.name.clone())) {
-                return sig.return_ty.clone();
+            let mut current = recv_ty.as_str();
+            for _ in 0..20 {
+                let ret = method_return_type(current, &field.name);
+                if ret != "<unknown>" {
+                    return ret;
+                }
+                if let Some(sig) = symbols
+                    .methods
+                    .get(&(current.to_string(), field.name.clone()))
+                {
+                    return sig.return_ty.clone();
+                }
+                match symbols.aliases.get(current) {
+                    Some(next) => current = next.as_str(),
+                    None => break,
+                }
             }
             field.name.clone()
         }
         Expr::JsonLit { .. } => "JsonValue".to_string(),
+        Expr::Await { inner, .. } => expr_type_name_in_scope(inner, symbols),
     }
 }
 

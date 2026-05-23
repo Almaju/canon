@@ -1,0 +1,5 @@
+extern Wasm("wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#now")
+nowNanos = () -> Int
+
+extern Wasm("wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#get-resolution")
+resolutionNanos = () -> Int

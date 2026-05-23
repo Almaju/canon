@@ -1,0 +1,1 @@
+error[tests/checker/fail/unknown_method.ow:2:5]: no method `bogus` on type `Int` with 0 argument(s)

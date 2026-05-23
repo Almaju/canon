@@ -1,3 +1,4 @@
+use oneway::ast::{resolve_new_syntax, FunctionDef, Item, TypeExpr};
 use oneway::checker;
 use oneway::codegen;
 use oneway::error::OnewayError;
@@ -29,6 +30,7 @@ fn main() {
         "emit" => cmd_emit(&rest),
         "ast" => cmd_ast(&rest),
         "check" => cmd_check(&rest),
+        "test" => cmd_test(&rest),
         "tokens" => cmd_tokens(&rest),
         "fmt" | "format" => cmd_fmt(&rest),
         "lsp" => oneway::lsp::run(),
@@ -53,10 +55,11 @@ fn print_help() {
     println!();
     println!("Commands:");
     println!("  run <file.ow> [args...]   Compile and run an Oneway program");
-    println!("  build <file.ow>           Compile to a native binary");
-    println!("  emit <file.ow>            Print generated Rust");
+    println!("  build <file.ow>           Compile to a WASM component (.wasm)");
+    println!("  emit <file.ow>            Print generated WAT (WebAssembly Text)");
     println!("  ast <file.ow>             Print the parsed AST");
     println!("  check <file.ow>           Check sort order and types");
+    println!("  test <file.ow>            Run `() -> TestResult` functions as tests");
     println!("  tokens <file.ow>          Print lexer tokens");
     println!("  fmt <file.ow> [--check]   Format an Oneway source file");
     println!("  lsp                       Start the Language Server Protocol server");
@@ -64,9 +67,6 @@ fn print_help() {
     println!("  upgrade --check           Check whether a newer release is available");
     println!("  version                   Print version");
     println!("  help                      Print this message");
-    println!();
-    println!("`run` and `build` require `rustc` (and `cargo` for async programs)");
-    println!("to be installed on PATH.");
 }
 
 fn require_file(args: &[String]) -> &str {
@@ -212,9 +212,8 @@ fn cmd_emit(args: &[String]) {
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
     }
-    let generated = codegen::generate_with_meta(&loaded.module);
-    let source = combine_source(&loaded.rust_preludes, &generated.source);
-    println!("{}", source);
+    let wat = codegen::generate_wat(&loaded.module);
+    println!("{}", wat);
 }
 
 fn cmd_build(args: &[String]) {
@@ -228,40 +227,168 @@ fn cmd_build(args: &[String]) {
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
     }
-    let generated = codegen::generate_with_meta(&loaded.module);
-    let source = combine_source(&loaded.rust_preludes, &generated.source);
+    let component_bytes = codegen::generate(&loaded.module);
+    let wit_text = codegen::generate_wit(&loaded.module);
     let build_dir = build_dir_for(file_path);
     let stem = Path::new(file_path)
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("oneway_build");
-    // Binary lives inside .oneway/<stem>/<stem> — never next to the source file.
-    let bin_path = build_dir.join(stem);
-    let out_path = bin_path.to_string_lossy().to_string();
-    let is_cargo = generated.is_async || !loaded.cargo_deps.is_empty();
-    if source_is_cached(&build_dir, is_cargo, &source, &bin_path) {
-        println!("Up to date: {}", out_path);
-        return;
+        .unwrap_or("out");
+    let wasm_path = build_dir.join(format!("{}.wasm", stem));
+    let wit_path = build_dir.join(format!("{}.wit", stem));
+    fs::create_dir_all(&build_dir).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        process::exit(1);
+    });
+    fs::write(&wasm_path, &component_bytes).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        process::exit(1);
+    });
+    fs::write(&wit_path, wit_text.as_bytes()).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        process::exit(1);
+    });
+    println!("Compiled to: {}", wasm_path.display());
+    println!("WIT world : {}", wit_path.display());
+}
+
+/// `oneway test <file.ow>` — discover and run all `() -> TestResult`
+/// functions defined in the entry file.
+///
+/// Test files look like normal Oneway modules:
+///
+/// ```text
+/// use std/TestResult
+///
+/// testAdd = () -> TestResult {
+///     Int(1).add(Int(2)).eq(Int(3)).assert("1 + 2 != 3")
+/// }
+/// ```
+///
+/// We load the module via the regular loader (so `use std/TestResult`
+/// pulls in `Fail`, `Pass`, `assert`), collect every entry-file function
+/// with a zero-arg `() -> TestResult` signature, then synthesise a `main`
+/// that dispatches each test result to a pass/fail line. The synthesised
+/// `main` is parsed from a generated source string and appended to the
+/// module before checking, so it travels through the existing checker /
+/// codegen / runtime pipeline unchanged.
+fn cmd_test(args: &[String]) {
+    let file_path = require_file(args);
+    let mut loaded = load_or_exit(file_path);
+
+    // Reject test files that try to define their own `main` — we synthesise it.
+    if let Some(idx) = loaded.module.items[loaded.entry_items_start..]
+        .iter()
+        .position(|item| matches!(item, Item::Function(f) if f.name.name == "main"))
+    {
+        let item = &loaded.module.items[loaded.entry_items_start + idx];
+        if let Item::Function(f) = item {
+            eprintln!(
+                "error[{}:{}:{}]: test files must not define `main` — `oneway test` synthesises one",
+                file_path, f.span.line, f.span.column
+            );
+        }
+        process::exit(1);
     }
-    if is_cargo {
-        compile_with_cargo(
-            &build_dir,
-            stem,
-            &out_path,
-            &source,
-            &loaded.cargo_deps,
-            true,
+
+    let tests: Vec<String> = loaded.module.items[loaded.entry_items_start..]
+        .iter()
+        .filter_map(|item| match item {
+            Item::Function(f) if is_test_function(f) => Some(f.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+
+    if tests.is_empty() {
+        eprintln!(
+            "error: no tests found in `{}` — a test is a function with signature `() -> TestResult`",
+            file_path
         );
-    } else {
-        compile_with_rustc(&build_dir, &out_path, &source, true);
+        process::exit(1);
     }
-    println!("Compiled to: {}", out_path);
+
+    // Synthesise a `main` that runs each test, parse it, and splice the
+    // resulting items into the loaded module. Parsing the synthesised
+    // source (rather than building AST by hand) keeps this code small
+    // and means the runtime sees ordinary Oneway expressions.
+    let synthesised = synthesise_test_main(&tests);
+    let synth_items = match parse_synthesised(&synthesised) {
+        Ok(items) => items,
+        Err(err) => {
+            eprintln!(
+                "internal error: synthesised test harness failed to parse: {}",
+                err.message()
+            );
+            eprintln!("---\n{}\n---", synthesised);
+            process::exit(1);
+        }
+    };
+    loaded.module.items.extend(synth_items);
+
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    if !errors.is_empty() {
+        for err in &errors {
+            print_error(file_path, err);
+        }
+        eprintln!("\n{} error(s) found.", errors.len());
+        process::exit(1);
+    }
+
+    println!("running {} test(s) from {}", tests.len(), file_path);
+    let component_bytes = codegen::generate(&loaded.module);
+    oneway::runtime::run_component(&component_bytes, &[]);
+}
+
+/// A test is a free, zero-arg function whose return type is the named
+/// type `TestResult` (no generics). We deliberately don't require a name
+/// prefix — the type itself is the marker.
+fn is_test_function(f: &FunctionDef) -> bool {
+    if f.receiver.is_some() || !f.params.is_empty() || f.name.name == "main" {
+        return false;
+    }
+    matches!(
+        &f.return_ty,
+        TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
+    )
+}
+
+fn synthesise_test_main(tests: &[String]) -> String {
+    // ASCII markers keep the generated source clean of multi-byte escapes.
+    //
+    // Each test's result is dispatched on. The `Fail` arm prints a single
+    // `[FAIL] testName: message` line by concatenating the per-test
+    // banner with the assertion's message (the `String` payload of
+    // `Fail = String`, unwrapped via `.String`). The `Pass` arm just
+    // prints `[ ok ] testName`.
+    let mut src = String::from("main = () -> Unit {\n");
+    for name in tests {
+        src.push_str(&format!("    {}().(\n", name));
+        src.push_str(&format!(
+            "        * (Fail) -> Unit {{ \"[FAIL] {}: \".concat(Fail.String).print() }}\n",
+            name
+        ));
+        src.push_str(&format!(
+            "        * (Pass) -> Unit {{ \"[ ok ] {}\".print() }}\n",
+            name
+        ));
+        src.push_str("    )\n");
+    }
+    src.push_str("}\n");
+    src
+}
+
+fn parse_synthesised(source: &str) -> Result<Vec<Item>, OnewayError> {
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens()?;
+    let mut parser = Parser::new(tokens);
+    let mut module = parser.parse()?;
+    resolve_new_syntax(&mut module);
+    Ok(module.items)
 }
 
 fn cmd_run(args: &[String]) {
     let file_path = require_file(args);
     let program_args: Vec<&str> = args.iter().skip(1).map(|s| s.as_str()).collect();
-
     let loaded = load_or_exit(file_path);
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
@@ -271,60 +398,8 @@ fn cmd_run(args: &[String]) {
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
     }
-    let generated = codegen::generate_with_meta(&loaded.module);
-    let source = combine_source(&loaded.rust_preludes, &generated.source);
-
-    let build_dir = build_dir_for(file_path);
-    let stem = Path::new(file_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("oneway_run");
-    let bin_path = build_dir.join("bin");
-    let bin_str = bin_path.to_string_lossy().to_string();
-    let is_cargo = generated.is_async || !loaded.cargo_deps.is_empty();
-
-    if !source_is_cached(&build_dir, is_cargo, &source, &bin_path) {
-        if is_cargo {
-            compile_with_cargo(
-                &build_dir,
-                stem,
-                &bin_str,
-                &source,
-                &loaded.cargo_deps,
-                false,
-            );
-        } else {
-            compile_with_rustc(&build_dir, &bin_str, &source, false);
-        }
-    }
-
-    let status = std::process::Command::new(&bin_path)
-        .args(&program_args)
-        .status();
-
-    match status {
-        Ok(s) => process::exit(s.code().unwrap_or(1)),
-        Err(err) => {
-            eprintln!("error: failed to execute program: {}", err);
-            process::exit(1);
-        }
-    }
-}
-
-fn combine_source(preludes: &[&'static str], body: &str) -> String {
-    if preludes.is_empty() {
-        return body.to_string();
-    }
-    let mut s = String::new();
-    for p in preludes {
-        s.push_str(p);
-        if !p.ends_with('\n') {
-            s.push('\n');
-        }
-        s.push('\n');
-    }
-    s.push_str(body);
-    s
+    let component_bytes = codegen::generate(&loaded.module);
+    oneway::runtime::run_component(&component_bytes, &program_args);
 }
 
 fn build_dir_for(file_path: &str) -> PathBuf {
@@ -337,20 +412,6 @@ fn build_dir_for(file_path: &str) -> PathBuf {
     dir.join(".oneway").join(stem)
 }
 
-fn source_is_cached(build_dir: &Path, is_cargo: bool, source: &str, bin_path: &Path) -> bool {
-    if !bin_path.exists() {
-        return false;
-    }
-    let stored = if is_cargo {
-        build_dir.join("cargo").join("src").join("main.rs")
-    } else {
-        build_dir.join("source.rs")
-    };
-    fs::read_to_string(&stored)
-        .map(|s| s == source)
-        .unwrap_or(false)
-}
-
 fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
     match loader::load_module(Path::new(file_path)) {
         Ok(r) => r,
@@ -358,141 +419,6 @@ fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
             print_error(file_path, &err);
             process::exit(1);
         }
-    }
-}
-
-fn compile_with_rustc(build_dir: &Path, out_path: &str, source: &str, release: bool) {
-    if let Err(err) = fs::create_dir_all(build_dir) {
-        eprintln!("error: creating build dir {}: {}", build_dir.display(), err);
-        process::exit(1);
-    }
-    let rs_path = build_dir.join("source.rs");
-    if let Err(err) = fs::write(&rs_path, source) {
-        eprintln!("error: writing {}: {}", rs_path.display(), err);
-        process::exit(1);
-    }
-    let incremental_dir = build_dir.join("incremental");
-    let mut cmd = std::process::Command::new("rustc");
-    cmd.arg(&rs_path)
-        .arg("-o")
-        .arg(out_path)
-        .arg(format!("-Cincremental={}", incremental_dir.display()));
-    if release {
-        cmd.arg("-Copt-level=3");
-    } else {
-        cmd.arg("-Copt-level=0");
-    }
-    match cmd.status() {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            eprintln!("error: rustc failed with: {}", s);
-            process::exit(1);
-        }
-        Err(err) => {
-            eprintln!("error: failed to run rustc: {}", err);
-            eprintln!("       `rustc` must be installed and on PATH.");
-            process::exit(1);
-        }
-    }
-}
-
-fn compile_with_cargo(
-    build_dir: &Path,
-    project_name: &str,
-    out_path: &str,
-    source: &str,
-    cargo_deps: &[&oneway::loader::CargoDep],
-    release: bool,
-) {
-    let cargo_dir = build_dir.join("cargo");
-    let src_dir = cargo_dir.join("src");
-    if let Err(err) = fs::create_dir_all(&src_dir) {
-        eprintln!("error: creating {}: {}", src_dir.display(), err);
-        process::exit(1);
-    }
-    let crate_name = sanitize_crate_name(project_name);
-    let mut cargo_toml = format!(
-        "[package]\nname = \"{}\"\nedition = \"2021\"\nversion = \"0.0.0\"\n\n[dependencies]\n",
-        crate_name
-    );
-    let mut emitted: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let emit_dep = |toml: &mut String, name: &str, version: &str, features: &[&str]| {
-        toml.push_str(&format!("{} = {{ version = \"{}\"", name, version));
-        if !features.is_empty() {
-            toml.push_str(", features = [");
-            for (i, f) in features.iter().enumerate() {
-                if i > 0 {
-                    toml.push_str(", ");
-                }
-                toml.push_str(&format!("\"{}\"", f));
-            }
-            toml.push(']');
-        }
-        toml.push_str(" }\n");
-    };
-    for dep in cargo_deps {
-        if emitted.insert(dep.name) {
-            emit_dep(&mut cargo_toml, dep.name, dep.version, dep.features);
-        }
-    }
-    if !emitted.contains("tokio") && source.contains("#[tokio::main]") {
-        emit_dep(&mut cargo_toml, "tokio", "1", &["full"]);
-    }
-    if let Err(err) = fs::write(cargo_dir.join("Cargo.toml"), &cargo_toml) {
-        eprintln!("error: writing Cargo.toml: {}", err);
-        process::exit(1);
-    }
-    if let Err(err) = fs::write(src_dir.join("main.rs"), source) {
-        eprintln!("error: writing main.rs: {}", err);
-        process::exit(1);
-    }
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.arg("build").arg("--quiet").current_dir(&cargo_dir);
-    if release {
-        cmd.arg("--release");
-    }
-    match cmd.status() {
-        Ok(s) if s.success() => {
-            let profile = if release { "release" } else { "debug" };
-            let bin = cargo_dir.join("target").join(profile).join(&crate_name);
-            if let Err(err) = fs::copy(&bin, out_path) {
-                eprintln!("error: copying binary: {}", err);
-                process::exit(1);
-            }
-        }
-        Ok(s) => {
-            eprintln!("error: cargo build failed with: {}", s);
-            process::exit(1);
-        }
-        Err(err) => {
-            eprintln!("error: failed to run cargo: {}", err);
-            eprintln!("       `cargo` must be installed and on PATH.");
-            process::exit(1);
-        }
-    }
-}
-
-fn sanitize_crate_name(name: &str) -> String {
-    let s: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if s.chars()
-        .next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
-    {
-        format!("_{}", s)
-    } else if s.is_empty() {
-        "oneway_build".to_string()
-    } else {
-        s
     }
 }
 

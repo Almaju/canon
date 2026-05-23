@@ -49,18 +49,21 @@ named type makes the data flow explicit and the documentation structural.
 
 ## Effects Are Honest
 
-A function's signature should not lie about what it does. `print` writes to
-the screen, so it requires a `Stdout` capability — passed as an ordinary
-argument from `main`:
+A function's signature should not lie about what it does. Reading a file
+requires a `File` value; making an HTTP request requires a `Url`; running
+an HTTP server requires an `HttpServer`. The values that carry the effect
+are ordinary arguments:
 
 ```oneway
-print = (Stdout * String) -> Unit {
-    ...
-}
+read = (File) -> Result<String, IoError>
+get  = (Url)  -> Result<String, HttpError>
 ```
 
-A function that does not receive a capability cannot perform the
-corresponding effect. No monads, no effect system — just types.
+There is no `unsafe`, no global mutable state, no service locator. A
+function that doesn't take a `File` cannot read one — because constructing
+a `File` requires a `Path`, which requires a `String`. The type chain *is*
+the access control. See [Effects and Values](./effects.md) for the full
+story.
 
 ## No Comments
 
@@ -70,15 +73,15 @@ usually to introduce a newtype or rename a method.
 
 ## Batteries-Included
 
-Oneway ships opinionated binding packages for the major application
-domains — `HttpServer`, `HttpClient`, `Filesystem`, `Database`, `Json`,
-and more — each wrapping a chosen Rust crate. The user gets a single
-curated import per domain (`use HttpServer`, `use Filesystem`, …) without
-having to evaluate the Rust crate ecosystem. The community is free to
-publish additional bindings, but the headline batteries ship with the
-language.
+Oneway ships opinionated stdlib modules for the major application
+domains — `HttpServer`, `File`, `Url`, `Clock`, `Random`, and more —
+each backed by a standard `wasi:*` interface or, where that interface's
+canonical ABI isn't ready yet, by a temporary `oneway:builtins/*` host
+bridge. The user gets a single curated import per domain
+(`use std/HttpServer`, `use std/File`, …); the community is free to
+publish additional bindings under any path.
 
-Under the hood, every binding is implemented in ordinary Oneway via
-[`extern Rust`](./extern.md) declarations over its underlying crate.
-There is no privileged path — anyone can write the same bindings;
-Oneway just ships them so users don't have to.
+Under the hood, every stdlib module is written in ordinary Oneway on top
+of [`extern Wasm`](./extern.md) declarations. There is no privileged
+path — anyone can write the same bindings; Oneway just ships them so
+users don't have to.

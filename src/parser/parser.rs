@@ -60,10 +60,10 @@ impl Parser {
         let extern_decl = if self.check(TokenKind::KwExtern) {
             self.advance();
             let lang_tok = self.expect(TokenKind::Ident, "expected language after `extern`")?;
-            if lang_tok.lexeme != "Rust" {
+            if lang_tok.lexeme != "Wasm" {
                 return Err(OnewayError::ParseError {
                     message: format!(
-                        "only `extern Rust` is supported (got `extern {}`)",
+                        "only `extern Wasm` is supported (got `extern {}`)",
                         lang_tok.lexeme
                     ),
                     span: lang_tok.span,
@@ -73,11 +73,11 @@ impl Parser {
             if self.check(TokenKind::Dot) {
                 self.advance();
                 let qualifier_tok =
-                    self.expect(TokenKind::Ident, "expected `async` after `extern Rust.`")?;
+                    self.expect(TokenKind::Ident, "expected `async` after `extern Wasm.`")?;
                 if qualifier_tok.lexeme != "async" {
                     return Err(OnewayError::ParseError {
                         message: format!(
-                            "only `extern Rust.async` is supported (got `extern Rust.{}`)",
+                            "only `extern Wasm.async` is supported (got `extern Wasm.{}`)",
                             qualifier_tok.lexeme
                         ),
                         span: qualifier_tok.span,
@@ -85,14 +85,14 @@ impl Parser {
                 }
                 is_async = true;
             }
-            self.expect(TokenKind::LParen, "expected `(` after `extern Rust`")?;
+            self.expect(TokenKind::LParen, "expected `(` after `extern Wasm`")?;
             let path_tok = self.expect(
                 TokenKind::StringLit,
-                "expected a Rust path string after `extern Rust(`",
+                "expected a Wasm path string after `extern Wasm(`",
             )?;
-            self.expect(TokenKind::RParen, "expected `)` after Rust path")?;
+            self.expect(TokenKind::RParen, "expected `)` after Wasm path")?;
             self.skip_newlines();
-            Some(ExternRust {
+            Some(ExternWasm {
                 path: path_tok.lexeme,
                 is_async,
             })
@@ -143,29 +143,33 @@ impl Parser {
         &mut self,
         start_span: Span,
         first_ident: Ident,
-        extern_decl: ExternRust,
+        extern_decl: ExternWasm,
     ) -> Result<Item> {
+        // Optional pre-`=` generic params: `extern Wasm(…) Name<G>` or
+        // `extern Wasm(…) name<G> = …`. The shape after these generics
+        // determines whether this is a bare type alias (no `=`) or a
+        // function/type definition (with `=`).
+        let pre_eq_generics = if self.check(TokenKind::Lt) {
+            self.parse_generic_params()?
+        } else {
+            Vec::new()
+        };
+
         // Check for = (function or type definition)
         if !self.check(TokenKind::Eq) {
-            // No = → bare type: extern Rust("...") TypeName
+            // No = → bare type: extern Wasm("...") TypeName[<G>]
             if extern_decl.is_async {
                 return Err(OnewayError::ParseError {
                     message:
-                        "`extern Rust.async` is only valid on function declarations, not on types"
+                        "`extern Wasm.async` is only valid on function declarations, not on types"
                             .to_string(),
                     span: first_ident.span,
                 });
             }
-            // Parse optional generic params: e.g. HttpRouter<S>
-            let generic_params = if self.check(TokenKind::Lt) {
-                self.parse_generic_params()?
-            } else {
-                Vec::new()
-            };
             let end_span = self.previous_span();
             return Ok(Item::TypeDef(TypeDef {
                 name: first_ident.clone(),
-                generic_params,
+                generic_params: pre_eq_generics,
                 body: TypeExpr::Named {
                     name: format!("__extern__{}", extern_decl.path),
                     generics: Vec::new(),
@@ -177,12 +181,27 @@ impl Parser {
 
         self.advance(); // consume =
 
-        // After =, if ( or < → function signature (new syntax)
+        // After =, if ( or < → function signature (new syntax). Either:
+        //   `name<G> = (params) -> ret`  (generics before `=`, captured above)
+        //   `name = <G>(params) -> ret`  (generics after `=`, captured here)
+        // The two are equivalent at the AST level.
         if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
-            let generic_params = if self.check(TokenKind::Lt) {
+            let post_eq_generics = if self.check(TokenKind::Lt) {
                 self.parse_generic_params()?
             } else {
                 Vec::new()
+            };
+            if !pre_eq_generics.is_empty() && !post_eq_generics.is_empty() {
+                return Err(OnewayError::ParseError {
+                    message: "generic parameters may appear either before or after `=`, not both"
+                        .to_string(),
+                    span: first_ident.span,
+                });
+            }
+            let generic_params = if pre_eq_generics.is_empty() {
+                post_eq_generics
+            } else {
+                pre_eq_generics
             };
             self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
             let mut params = Vec::new();
@@ -222,7 +241,7 @@ impl Parser {
                     exprs: Vec::new(),
                     span: empty_body_span,
                 },
-                extern_rust: Some(extern_decl),
+                extern_wasm: Some(extern_decl),
                 span: span_join(start_span, end_span),
             }));
         }
@@ -230,7 +249,7 @@ impl Parser {
         // After =, not a function → type definition
         if extern_decl.is_async {
             return Err(OnewayError::ParseError {
-                message: "`extern Rust.async` is only valid on function declarations, not on types"
+                message: "`extern Wasm.async` is only valid on function declarations, not on types"
                     .to_string(),
                 span: first_ident.span,
             });
@@ -239,7 +258,7 @@ impl Parser {
         let end_span = self.previous_span();
         Ok(Item::TypeDef(TypeDef {
             name: first_ident,
-            generic_params: Vec::new(),
+            generic_params: pre_eq_generics,
             body,
             span: span_join(start_span, end_span),
         }))
@@ -300,7 +319,7 @@ impl Parser {
                 params: final_params,
                 return_ty,
                 body,
-                extern_rust: None,
+                extern_wasm: None,
                 span: span_join(start_span, end_span),
             }));
         }

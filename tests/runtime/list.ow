@@ -1,0 +1,13 @@
+main = () -> Unit {
+    List(1, 2, 3)
+        .length()
+        .print()
+    List(10, 20, 30)
+        .map((Int) -> Int { Int.mul(2) })
+        .length()
+        .print()
+    List(7, 8, 9).first().(
+        * (None) -> Unit { "empty".print() }
+        * (Some<Int>) -> Unit { "non-empty".print() }
+    )
+}

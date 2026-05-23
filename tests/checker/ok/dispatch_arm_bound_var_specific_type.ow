@@ -1,0 +1,22 @@
+JsonEntry = String
+
+JsonMissing = String
+
+JsonObject = JsonEntry
+
+JsonValue = JsonMissing + JsonObject
+
+describe = (JsonValue) -> Unit {
+    JsonValue.(
+        * (JsonMissing) -> Unit { "missing".print() }
+        * (JsonObject) -> Unit { JsonObject.extract().print() }
+    )
+}
+
+extract = (JsonObject) -> String {
+    "extracted"
+}
+
+main = () -> Unit {
+    "ok".print()
+}

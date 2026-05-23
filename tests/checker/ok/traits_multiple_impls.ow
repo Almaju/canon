@@ -1,0 +1,22 @@
+Greeting = String
+
+Name = String
+
+Show = () -> String
+
+Show = (Greeting) -> String {
+    "HELLO!"
+}
+
+Show = (Name) -> String {
+    "Alice"
+}
+
+main = () -> Unit {
+    Greeting("hi")
+        .Show()
+        .print()
+    Name("Alice")
+        .Show()
+        .print()
+}

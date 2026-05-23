@@ -1,0 +1,7 @@
+Zebra = String
+
+Apple = String
+
+main = () -> Unit {
+    "ok".print()
+}

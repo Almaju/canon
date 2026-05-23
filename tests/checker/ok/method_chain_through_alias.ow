@@ -1,0 +1,7 @@
+Greeting = String
+
+main = () -> Unit {
+    Greeting("hello")
+        .concat(" world")
+        .print()
+}

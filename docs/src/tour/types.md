@@ -137,7 +137,7 @@ Tree   = Branch + Leaf
 Value  = Int
 ```
 
-There is no user-visible `Box<T>`. The transpiler chooses an indirection
+There is no user-visible `Box<T>`. The compiler chooses an indirection
 scheme; it is never spelled out in source.
 
 ## Type Inference

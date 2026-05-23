@@ -1,0 +1,3 @@
+main = () -> Unit {
+    "hello".print()
+}

@@ -1,0 +1,6 @@
+extern Wasm.async("oneway:builtins/http-server@0.1.0#slow-echo")
+slowEcho = (String) -> String
+
+main = () -> Unit {
+    "hello slow".slowEcho().print()
+}

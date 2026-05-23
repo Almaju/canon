@@ -1,0 +1,6 @@
+use std/Clock
+
+main = () -> Unit {
+    nowNanos().print()
+    resolutionNanos().print()
+}

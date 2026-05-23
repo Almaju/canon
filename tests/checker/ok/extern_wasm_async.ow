@@ -1,0 +1,12 @@
+Filesystem = String
+
+IoError = String
+
+Path = String
+
+extern Wasm.async("wasi:filesystem/types@0.3.0-rc-2026-03-15#read-via-stream")
+read = (Filesystem * Path) -> Result<String, IoError>
+
+main = () -> Unit {
+    "ok".print()
+}

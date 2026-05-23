@@ -1,0 +1,6 @@
+main = () -> Unit {
+    True().(
+        * (False) -> Unit { "f".print() }
+        * (None) -> Unit { "wrong".print() }
+    )
+}

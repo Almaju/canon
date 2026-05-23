@@ -1,0 +1,1 @@
+error[tests/checker/fail/dispatch_arm_wrong_variant.ow:4:12]: pattern `None` is not a variant of `Bool`

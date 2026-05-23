@@ -1,0 +1,6 @@
+extern Wasm.async("oneway:builtins/http-server@0.1.0#echo")
+echo = (String) -> String
+
+main = () -> Unit {
+    "hello async".echo().print()
+}

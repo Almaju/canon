@@ -1,0 +1,3 @@
+main = () -> Unit {
+    42.print()
+}

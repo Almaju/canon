@@ -1,0 +1,12 @@
+Fail = String
+
+Pass = Unit
+
+TestResult = Fail + Pass
+
+assert = (Bool * String) -> TestResult {
+    Bool.(
+        * (False) -> TestResult { Fail(String) }
+        * (True) -> TestResult { Pass() }
+    )
+}

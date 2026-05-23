@@ -1,69 +1,109 @@
 # Effects and Values
 
-Oneway does not have a separate effect or capability system. Effects emerge naturally from the values you construct and thread through your program.
+Oneway does not have a separate effect or capability system. Effects
+emerge naturally from the values you construct and thread through your
+program.
 
 ## Domain-First Design
 
-The guiding principle: **start with real domain objects and transform them toward what you need**. There are no service singletons, no manager objects. Access to a resource is represented by holding a value of the corresponding type.
+The guiding principle: **start with real domain objects and transform
+them toward what you need**. There are no service singletons, no manager
+objects. Access to a resource is represented by holding a value of the
+corresponding type.
 
 ```oneway
-Path("./data.json").File()?.read()?.print
+use std/File
+use std/Path
+
+main = () -> Unit {
+    Path("./data.json").File()?.read()?.print()
+}
 ```
 
-`File` is a type. Constructing one (from a `Path`) *is* the act of opening the file. You cannot call `.read()` on something that is not a `File`. The type chain enforces access without any separate permission system.
+`File` is a type. Constructing one (from a `Path`) *is* the act of
+opening the file. You cannot call `.read()` on something that is not a
+`File`. The type chain enforces access without any separate permission
+system.
 
 ## Print
 
-`print = (String) -> Unit` is a built-in that writes to stdout. No capability token, no parameter to thread — any `String` can be printed:
+`print = (String) -> Unit` is a built-in that writes to stdout. No
+capability token, no parameter to thread — any `String` can be printed:
 
 ```oneway
-"hello".print
-42.print
+"hello".print()
+42.print()
 ```
 
-For **redirectable output** — writing to a log file, a test buffer, a named sink — construct a `Fileout` from a `File` and pass it to functions that need it:
+`.print` is lowered against the standard `wasi:cli/stdout` interface, so
+the compiled `.wasm` runs on any Component Model host. The trailing
+newline is emitted automatically.
 
-```oneway
-logFn = (Fileout) -> Unit {
-    "event occurred".print(Fileout)
-}
-
-logFn(Path("./app.log").File()?.Fileout())
-```
-
-`print = (Fileout * String) -> Unit` is the overload that writes to the given output instead of stdout. Functions that need configurable output declare `Fileout` as a parameter; functions that just want stdout call `.print` directly.
+For **redirectable output** — writing to a file, a log sink, a test
+buffer — you'd construct an explicit destination value (a `File` once
+its write side lands, a `Fileout` newtype, …) and pass it as an
+additional component. The mechanism is the same as any other effect:
+thread the value.
 
 ## Threading Effects
 
-When a function performs a meaningful effect — reading a file, talking to a database — the relevant value appears in its signature. This is not enforced by a capability type system; it is the natural consequence of needing the value to do the work:
+When a function performs a meaningful effect — reading a file, talking
+to a database, listening on a socket — the relevant value appears in
+its signature. This is not enforced by a capability type system; it is
+the natural consequence of needing the value to do the work:
 
 ```oneway
 save = (Database * User) -> Result<Unit, DbError>
 ```
 
-`user.save(database)` and `database.save(user)` are both valid (commutative calling). No `UserRepository`. No `DatabaseManager`. The `Database` value *is* the access. You receive it because you had to construct it (from a connection string or config) and thread it to functions that need it.
+`user.save(database)` and `database.save(user)` are both valid
+(commutative calling). No `UserRepository`. No `DatabaseManager`. The
+`Database` value *is* the access. You receive it because you had to
+construct it (from a connection string or config) and thread it to
+functions that need it.
 
 ## Async
 
-All Oneway programs compile to async Rust under tokio. There is no `async` keyword and no `.await` in Oneway source. The compiler handles async machinery uniformly — you write ordinary function calls and the compiler does the rest.
+There is no `async` keyword and no `.await` in Oneway source. Both are
+inferred by the compiler. A function is **suspending** if it (1) is
+declared `extern Wasm.async(…)`, (2) consumes a `Future<T>` or iterates
+a `Stream<T>`, or (3) transitively calls a suspending function. The
+compiler propagates this through the call graph and lifts the affected
+functions as `async func(…)` in the emitted component world.
+
+Where a `Future<T>` value is used in a position that expects `T`, the
+compiler inserts an implicit `await`. You write neither keyword.
 
 ## Domain Examples
 
 ```oneway
-# JSON — start with a String
-"[1, 2, 3]".JsonValue()?.JsonArray()?.length().print
+# Current time
+use std/Now
+Now().print()
 
-# HTTP request — start with a Url
-Url("https://api.example.com/data")?.get()?.print
+# Random integer
+use std/Random
+randomInt().print()
+
+# HTTP GET — start with a Url
+use std/HttpError
+use std/Url
+Url("http://example.com")?.get()?.print()
+
+# Read a file — start with a Path
+use std/File
+use std/Path
+Path("./Cargo.toml").File()?.read()?.print()
 
 # HTTP server — start with a Port
+use std/HttpServer
+use std/Port
+use std/RoutePath
 Port(3000)
     .HttpServer(State(Unit()))
     .get(RoutePath("/"), handler)
     .serve()
-
-# Database — thread the connection
-save = (Database * User) -> Result<Unit, DbError>
 ```
 
-The pattern is always the same: construct a real value, transform it, use it. No singletons. No service locators. No permission tokens.
+The pattern is always the same: construct a real value, transform it,
+use it. No singletons. No service locators. No permission tokens.

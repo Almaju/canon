@@ -1,0 +1,10 @@
+OtherInt = Int
+
+extern Wasm("oneway:builtins/math@0.1.0#min")
+min = (Int * OtherInt) -> Int
+
+main = () -> Unit {
+    5
+        .min(3)
+        .print()
+}

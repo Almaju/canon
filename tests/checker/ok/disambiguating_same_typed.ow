@@ -1,0 +1,15 @@
+Birthday = String
+
+OtherUser = User
+
+User = Birthday * Username
+
+Username = String
+
+equals = (OtherUser * User) -> Bool {
+    True()
+}
+
+main = () -> Unit {
+    "compared".print()
+}

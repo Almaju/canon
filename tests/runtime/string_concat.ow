@@ -1,0 +1,8 @@
+main = () -> Unit {
+    "hello, "
+        .concat("world")
+        .print()
+    "[FAIL] "
+        .concat("the message")
+        .print()
+}

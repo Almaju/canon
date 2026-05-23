@@ -1,0 +1,1 @@
+error[tests/checker/fail/missing_main.ow:0:0]: no `main` entry point defined

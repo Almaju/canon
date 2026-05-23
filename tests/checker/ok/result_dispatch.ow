@@ -1,0 +1,7 @@
+main = () -> Result<Unit, Unit> {
+    Ok(42).(
+        * (Err<Unit>) -> Unit { "err".print() }
+        * (Ok<Int>) -> Unit { "ok".print() }
+    )
+    Ok(Unit())
+}

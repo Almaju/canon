@@ -22,13 +22,13 @@ The postfix `?` operator propagates failure. It works on both
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```oneway
-main = (Stdout) -> Result<Unit, Unit> {
-    Ok(42)?.print(Stdout)
+main = () -> Result<Unit, Unit> {
+    Ok(42)?.print()
     Some(7).(
-        None    => "absent".print(Stdout),
-        Some(_) => "present".print(Stdout),
+        None    => "absent".print(),
+        Some(_) => "present".print(),
     )
-    Ok(Unit)
+    Ok(Unit())
 }
 ```
 
@@ -71,12 +71,12 @@ A type with a declared constructor that returns `Result<Self, E>`
 forces callers to handle the failure mode:
 
 ```oneway
-HttpClient.get(Url("https://example.com")?)?.print(Stdout)
+Url("https://example.com")?.get()?.print()
 ```
 
 Both `?`s here are doing the same job: unwrapping a `Result` at the
 point of use. The first handles `Url` parsing failure (`InvalidUrl`);
-the second handles `HttpClient.get` failure (`HttpError`). The
+the second handles `.get()` failure (`HttpError`). The
 function's return type then carries the union:
 `Result<Unit, HttpError + InvalidUrl>`.
 
@@ -88,7 +88,7 @@ Errors are types like any other, and they should be named *semantically*
 `JsonError`, `FsError` don't.
 
 The exception is opaque wrappers around foreign error types: when
-binding to a Rust crate whose error is a large enum with many variants,
-it's pragmatic to keep the wrapper opaque (e.g., `HttpError` for the
-entirety of `reqwest::Error`) until the underlying error space gets
+binding to a Component Model interface whose error shape is a single
+string or an opaque resource, it's pragmatic to keep the wrapper opaque
+(e.g., `HttpError = String`) until the underlying error space gets
 decomposed into proper Oneway variants.

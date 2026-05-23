@@ -1,0 +1,20 @@
+use std/TestResult
+
+Branch = Left * Right * Value
+
+Leaf = Unit
+
+Left = Tree
+
+Right = Tree
+
+Tree = Branch + Leaf
+
+Value = Int
+
+testDispatchOnLeaf = () -> TestResult {
+    Leaf().(
+        * (Branch) -> TestResult { Fail() }
+        * (Leaf) -> TestResult { Pass() }
+    )
+}

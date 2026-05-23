@@ -20,7 +20,7 @@
 - [Modules](./tour/modules.md)
 - [Traits](./tour/traits.md)
 - [Errors](./tour/errors.md)
-- [Extern Rust](./tour/extern.md)
+- [Extern Wasm](./tour/extern.md)
 
 # Reference
 

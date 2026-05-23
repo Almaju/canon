@@ -1,0 +1,11 @@
+First = String
+
+Pair = First * Second
+
+Second = String
+
+main = () -> Unit {
+    Pair(
+        First("hello") * Second("world")
+    ).First.print()
+}

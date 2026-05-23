@@ -8,3 +8,21 @@ default-run = "oneway"
 [[bin]]
 name = "oneway"
 path = "src/main.rs"
+
+[dependencies]
+# WASM encoding and Component Model (Bytecode Alliance — pin to same minor
+# version). 0.250 matches the wasmparser that wasmtime 45 bundles internally
+# and adds `ComponentFuncTypeEncoder::async_()`, which is required to emit
+# the WIT-level `async func` type that pairs with `CanonicalOption::Async`
+# on the canon.lower for `extern Wasm.async` declarations.
+wasm-encoder  = "0.250"
+wit-parser    = "0.250"
+wit-component = "0.250"
+wasmparser    = "0.250"
+
+# Embedded runtime. We target WASI Preview 3 + the async Component Model.
+# `component-model-async` enables the async canonical ABI; `p3` exposes the
+# experimental WASI 0.3 implementation in wasmtime-wasi.
+wasmtime      = { version = "45", features = ["component-model", "component-model-async", "async"] }
+wasmtime-wasi = { version = "45", features = ["p3"] }
+tokio         = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

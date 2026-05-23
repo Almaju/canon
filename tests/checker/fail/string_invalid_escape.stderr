@@ -1,0 +1,1 @@
+error[tests/checker/fail/string_invalid_escape.ow:2:17]: unknown escape sequence '\q'

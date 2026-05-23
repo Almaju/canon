@@ -1,0 +1,2 @@
+error[tests/checker/fail/unknown_constructor_type.ow:2:5]: unknown type `Mystery` in constructor
+error[tests/checker/fail/unknown_constructor_type.ow:2:5]: no method `print` on type `Mystery` with 0 argument(s)

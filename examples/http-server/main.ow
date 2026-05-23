@@ -4,17 +4,17 @@ use std/HttpServer
 use std/HttpStatus
 use std/IoError
 use std/Port
+use std/Request
 use std/RoutePath
-use std/ServerRequest
 
 State = Unit
 
 main = () -> Result<Unit, IoError> {
-    "Starting server on port 3000...".print
+    "Starting server on port 3000...".print()
     Port(3000)
         .HttpServer(State(Unit()))
-        .get(RoutePath("/"), (ServerRequest * State) -> HttpResponseBody { HttpResponseBody(Body("Hello from Oneway!") * HttpStatus(200)) })
-        .get(RoutePath("/health"), (ServerRequest * State) -> HttpResponseBody { HttpResponseBody(Body("ok") * HttpStatus(200)) })
-        .post(RoutePath("/echo"), (ServerRequest * State) -> HttpResponseBody { HttpResponseBody(Body("received") * HttpStatus(200)) })
+        .get(RoutePath("/"), (Request * State) -> HttpResponseBody { HttpResponseBody(Body("Hello from Oneway!") * HttpStatus(200)) })
+        .get(RoutePath("/health"), (Request * State) -> HttpResponseBody { HttpResponseBody(Body("ok") * HttpStatus(200)) })
+        .post(RoutePath("/echo"), (Request * State) -> HttpResponseBody { HttpResponseBody(Body("received") * HttpStatus(200)) })
         .serve()
 }

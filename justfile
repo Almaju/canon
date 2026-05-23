@@ -18,54 +18,97 @@ build:
 install:
     cargo install --path . --force
 
-# Run the test suite
+# Run the full test suite.
+#
+# `cargo test` runs every integration harness:
+#   * tests/checker_fixtures.rs — checker ok/fail fixtures (golden .stderr)
+#   * tests/runtime_fixtures.rs — full-pipeline programs (golden .stdout)
+#   * tests/oneway_tests.rs     — Oneway-language tests (TestResult)
+#   * tests/checker_api.rs      — Rust tests of compiler internals
+#   * library unit tests        — anything inside src/
+#
+# Every layer fails the build on regression, so this single command is
+# the canonical CI gate.
 test:
     cargo test
 
-# Run all examples and report pass / fail / skip
+# Regenerate every golden file (`.stderr` for checker/fail and `.stdout`
+# for runtime/) from the current compiler's actual output. Review the
+# resulting `git diff` before committing — that's the review surface
+# for "did this output change in a sensible way?". Mirrors
+# `TRYBUILD=overwrite` from Rust's trybuild crate.
+update-fixtures:
+    ONEWAY_UPDATE_FIXTURES=1 cargo test --tests
+
+# Lightweight convenience runner for Oneway-language tests with pretty
+# per-file output. The same tests run under `cargo test` via the
+# `tests/oneway_tests.rs` harness — use that for CI, use this for
+# faster local iteration on a single test file.
+test-ow: build
+    #!/usr/bin/env sh
+    set -e
+    pass=0; fail=0; files=0
+    for f in tests/oneway/*_test.ow; do
+        [ -f "$f" ] || continue
+        files=$((files + 1))
+        printf "\n=== %s ===\n" "$f"
+        if cargo run --quiet -- test "$f"; then
+            pass=$((pass + 1))
+        else
+            fail=$((fail + 1))
+        fi
+    done
+    echo ""
+    echo "${files} test file(s): ${pass} clean, ${fail} with failures"
+    [ "$fail" -eq 0 ]
+
+# Run every example program under examples/ and report pass / fail / skip.
+#
+# Examples live in examples/ for documentation; they are not the test
+# suite (`cargo test` is). This task is a smoke check that examples
+# still compile and run end-to-end — useful when changing the compiler
+# or stdlib, but not gated by CI.
 examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
     for f in examples/*.ow examples/*/main.ow; do
         [ -f "$f" ] || continue
-        dir=$(dirname "$f")
         if [ "$(basename "$f")" = "main.ow" ]; then
             label=$(basename "$(dirname "$f")")
-            stem="main"
         else
-            stem=$(basename "$f" .ow)
-            label="$stem"
+            label=$(basename "$f" .ow)
         fi
-        binpath="$dir/.oneway/$stem/$stem"
         printf "%-20s" "$label"
-        if cargo run --quiet -- build "$f" >/dev/null 2>&1; then
-            tmpout=$(mktemp)
-            "$binpath" > "$tmpout" 2>&1 &
-            pid=$!
-            i=0; timed_out=0
-            while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
-                sleep 1; i=$((i + 1))
-            done
-            if kill -0 "$pid" 2>/dev/null; then
-                kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-                timed_out=1
-            else
-                wait "$pid"; rc=$?
-            fi
-            output=$(cat "$tmpout"); rm -f "$tmpout"
-            if [ "$timed_out" -eq 1 ]; then
-                echo "·  (skip — long-running)"
-                skip=$((skip + 1))
-            elif [ "$rc" -eq 0 ]; then
-                echo "✓  $output"
-                pass=$((pass + 1))
-            else
-                echo "✗  (runtime error)"
-                fail=$((fail + 1))
-            fi
-        else
+        # Skip examples that do not pass the checker (stdlib not yet wired)
+        if ! cargo run --quiet -- check "$f" >/dev/null 2>&1; then
             echo "·  (skip — does not compile yet)"
             skip=$((skip + 1))
+            continue
+        fi
+        # Run via the embedded WASM runtime with a 5s timeout
+        tmpout=$(mktemp)
+        cargo run --quiet -- run "$f" > "$tmpout" 2>&1 &
+        pid=$!
+        i=0; timed_out=0
+        while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
+            sleep 1; i=$((i + 1))
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+            timed_out=1
+        else
+            wait "$pid"; rc=$?
+        fi
+        output=$(cat "$tmpout"); rm -f "$tmpout"
+        if [ "$timed_out" -eq 1 ]; then
+            echo "·  (skip — long-running)"
+            skip=$((skip + 1))
+        elif [ "$rc" -eq 0 ]; then
+            echo "✓  $output"
+            pass=$((pass + 1))
+        else
+            echo "✗  (runtime error)"
+            fail=$((fail + 1))
         fi
     done
     echo ""

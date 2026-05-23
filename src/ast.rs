@@ -44,12 +44,13 @@ pub struct FunctionDef {
     pub params: Vec<Param>,
     pub return_ty: TypeExpr,
     pub body: Block,
-    pub extern_rust: Option<ExternRust>,
+    pub extern_wasm: Option<ExternWasm>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExternRust {
+pub struct ExternWasm {
+    /// WASI import path, e.g. `"wasi:filesystem/types@0.3.0-rc-2026-03-15#read-via-stream"`
     pub path: String,
     pub is_async: bool,
 }
@@ -180,6 +181,12 @@ pub enum Expr {
         value: String,
         span: Span,
     },
+    /// Inserted by the checker when a `Future<T>` expression is used in a position
+    /// that expects `T`. Never produced by the parser.
+    Await {
+        inner: Box<Expr>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -198,6 +205,7 @@ impl Expr {
             Expr::ProductValue { span, .. } => *span,
             Expr::FieldAccess { span, .. } => *span,
             Expr::JsonLit { span, .. } => *span,
+            Expr::Await { span, .. } => *span,
         }
     }
 }

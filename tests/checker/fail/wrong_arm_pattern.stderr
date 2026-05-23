@@ -1,0 +1,1 @@
+error[tests/checker/fail/wrong_arm_pattern.ow:4:12]: pattern `Ok` is not a variant of `Option`

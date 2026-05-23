@@ -1,0 +1,4 @@
+use std/Body
+use std/HttpStatus
+
+HttpResponseBody = Body * HttpStatus

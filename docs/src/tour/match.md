@@ -8,10 +8,10 @@ a union — the value is the receiver, and the arms go inside `.( )`.
 ```oneway
 Bool = False + True
 
-main = (Stdout) -> Unit {
-    True.(
-        False => "no".print(Stdout),
-        True  => "yes".print(Stdout),
+main = () -> Unit {
+    True().(
+        False => "no".print(),
+        True  => "yes".print(),
     )
 }
 ```
@@ -43,8 +43,8 @@ For union variants that carry a payload, bind it with parentheses. Use
 
 ```oneway
 List(7, 8, 9).first().(
-    None    => "empty".print(Stdout),
-    Some(_) => "non-empty".print(Stdout),
+    None    => "empty".print(),
+    Some(_) => "non-empty".print(),
 )
 ```
 

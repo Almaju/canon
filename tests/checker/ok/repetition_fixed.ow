@@ -1,0 +1,7 @@
+Bit = Off + On
+
+Byte = Bit^8
+
+main = () -> Unit {
+    "byte type defined".print()
+}

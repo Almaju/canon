@@ -1,0 +1,4 @@
+Now = String
+
+extern Wasm("oneway:builtins/clock@0.1.0#now-rfc3339")
+Now = () -> Now

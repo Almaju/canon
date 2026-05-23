@@ -3,6 +3,6 @@ use std/JsonValue
 use std/MalformedJson
 
 main = () -> Result<Unit, MalformedJson> {
-    {"greeting": "hello", "temp": -5, "ratio": -1.5, "nested": {"ok": true}}.JsonObject()?.length().print
+    {"greeting": "hello", "temp": -5, "ratio": -1.5, "nested": {"ok": true}}.JsonObject()?.length().print()
     Ok(Unit())
 }

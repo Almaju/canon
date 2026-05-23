@@ -28,9 +28,9 @@ Show = (Name) -> String {
     "Alice"
 }
 
-main = (Stdout) -> Unit {
-    Greeting("hi").Show().print(Stdout)
-    Name("Alice").Show().print(Stdout)
+main = () -> Unit {
+    Greeting("hi").Show().print()
+    Name("Alice").Show().print()
 }
 ```
 

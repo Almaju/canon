@@ -1,0 +1,23 @@
+Equal = Unit
+
+Greater = Unit
+
+Less = Unit
+
+Ord = Equal
+  + Greater
+  + Less
+
+describe = (Ord) -> String {
+    Ord.(
+        * (Equal) -> String { "equal" }
+        * (Greater) -> String { "greater" }
+        * (Less) -> String { "less" }
+    )
+}
+
+main = () -> Unit {
+    Equal()
+        .describe()
+        .print()
+}

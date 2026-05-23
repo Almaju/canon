@@ -1,0 +1,18 @@
+Closed = Unit
+
+Mode = Closed + Opened
+
+Opened = Unit
+
+describe = (Mode) -> String {
+    Mode.(
+        * (Closed) -> String { "closed" }
+        * (Opened) -> String { "opened" }
+    )
+}
+
+main = () -> Unit {
+    Closed()
+        .describe()
+        .print()
+}

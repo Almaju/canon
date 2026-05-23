@@ -1,0 +1,7 @@
+message = () -> Int {
+    "not an int"
+}
+
+main = () -> Unit {
+    "ok".print()
+}

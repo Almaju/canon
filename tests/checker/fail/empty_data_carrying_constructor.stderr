@@ -1,0 +1,1 @@
+error[tests/checker/fail/empty_data_carrying_constructor.ow:2:5]: constructor `String()` is not allowed — empty constructors are disallowed

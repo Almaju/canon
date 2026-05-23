@@ -12,7 +12,7 @@ For most collection work, use methods on the collection itself — `map`,
 List(10, 20, 30)
     .map((Int) -> Int { Int.mul(2) })
     .length()
-    .print(Stdout)
+    .print()
 ```
 
 ## Why No Loop Keywords?

@@ -1,0 +1,1 @@
+error[tests/checker/fail/unknown_newtype_field.ow:4:5]: type `Greeting` has no field `Int`

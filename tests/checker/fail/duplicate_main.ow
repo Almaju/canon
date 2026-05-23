@@ -1,0 +1,7 @@
+main = () -> Unit {
+    "first".print()
+}
+
+main = () -> Unit {
+    "second".print()
+}

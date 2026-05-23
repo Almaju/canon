@@ -1,0 +1,15 @@
+Greeting = String
+
+shout = (Greeting) -> String {
+    "HELLO"
+}
+
+murmur = (Greeting) -> String {
+    "hello"
+}
+
+main = () -> Unit {
+    Greeting("hi")
+        .shout()
+        .print()
+}

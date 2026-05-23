@@ -1,0 +1,1 @@
+error[tests/checker/fail/conjured_capability.ow:2:16]: capability `Stdout` must be received as a parameter — capabilities cannot be conjured

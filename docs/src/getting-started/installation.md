@@ -2,10 +2,14 @@
 
 ## Prerequisites
 
-- **Rust** (stable) — install via [rustup](https://rustup.rs).
-  Oneway transpiles `.ow` programs to Rust and shells out to `rustc` to
-  compile them, so a working Rust toolchain is needed at runtime as well.
-- A working **C linker** (clang or gcc) — already present on most systems.
+None at runtime. Oneway ships a single prebuilt `oneway` binary that
+embeds the `wasmtime` Component Model runtime — there is no Rust
+toolchain to install, no `rustc`/`cargo` invoked at build time, and no
+external linker needed.
+
+(If you want to build the compiler from source rather than install a
+prebuilt release, you'll need stable Rust via [rustup](https://rustup.rs)
+— but that's a contributor concern, not a user one.)
 
 ## Install
 
@@ -39,6 +43,10 @@ oneway upgrade --check      # check whether a newer release is available
 
 ## Editor Support
 
-A Zed extension with syntax highlighting is available in the
-[`editors/`](https://github.com/Almaju/oneway/tree/main/editors) directory
-of the repository.
+The Zed extension at
+[`editors/zed-oneway`](https://github.com/Almaju/oneway/tree/main/editors/zed-oneway)
+provides syntax highlighting and a built-in language server. Install it
+via Zed's *Install Dev Extension* command — see
+[`editors/README.md`](https://github.com/Almaju/oneway/blob/main/editors/README.md)
+for the full instructions. The extension reuses the same `oneway` binary
+(`oneway lsp` subcommand), so there is no separate LSP install.

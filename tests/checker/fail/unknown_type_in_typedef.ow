@@ -1,0 +1,5 @@
+Foo = NeverDeclared
+
+main = () -> Unit {
+    "ok".print()
+}

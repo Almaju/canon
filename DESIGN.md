@@ -1,6 +1,8 @@
 # Oneway
 
-Oneway is a new programming language. The reference implementation transpiles to Rust — Oneway inherits Rust's ownership model and zero-cost abstractions, while presenting a much smaller surface area to the programmer.
+Oneway is a new programming language. The reference implementation compiles to a **WebAssembly Component** targeting **WASI Preview 3** — every Oneway program is a portable `.wasm` that runs on any Component Model host. The compiler itself is written in Rust and embeds `wasmtime` to make `oneway run` a single-step experience, but no Rust toolchain is required at build or run time and no Rust source is emitted along the way.
+
+The language inherits Rust-style ownership and zero-cost abstractions through the compiler's analysis, while presenting a much smaller surface area to the programmer.
 
 ## Guiding Principle: Alphabetical Order Everywhere
 
@@ -72,6 +74,22 @@ For repeated components (or anonymous sequences), positional access by 1-based i
 byte.1   // first Bit
 byte.2   // second Bit
 ```
+
+#### Newtypes Are 1-Component Products
+
+A newtype alias `A = B` (where `B` is a single named type) is a degenerate product with one component, named `B`. The field-access rule applies uniformly:
+
+```
+Greeting = String
+
+Greeting("hi").String   // unwrap to the underlying String
+```
+
+This composes with method lookup through the alias chain: `Greeting("hi").print()` works because `print` is inherited from `String` (no need to unwrap first). Methods declared explicitly on the newtype shadow the inherited ones.
+
+For argument passing, newtypes are *substitutable* for their underlying type — a function expecting `String` accepts a `Greeting` directly, without `.String`. The unwrap form exists for cases where the explicit step is clearer (e.g. inside a dispatch arm where the bound name reads more naturally with the unwrap visible).
+
+Multi-step aliases unwrap one step at a time: with `A = B` and `B = C`, write `aValue.B.C` to reach the bottom.
 
 #### Field Access vs Construction
 
@@ -244,12 +262,12 @@ main = () -> Result<Unit, HttpError + InvalidUrl> {
 
 This generalizes the same principle the language already applies to absence: if a value can legitimately be invalid, the fallibility belongs in the type, not in a runtime convention.
 
-With `extern Rust`, the pattern is the same but the body is omitted:
+With `extern Wasm`, the pattern is the same but the body is omitted:
 
 ```
 Url = String
 
-extern Rust("oneway_url_parse")
+extern Wasm("oneway:builtins/url@0.1.0#parse")
 Url = (String) -> Result<Url, InvalidUrl>
 ```
 
@@ -346,7 +364,7 @@ main = () -> Unit {
 }
 ```
 
-`main` always compiles to an async entry point backed by tokio. There is no condition on this — Oneway targets async-first use cases and every program gets the async runtime. The programmer writes uniform, sync-looking code; the compiler handles async machinery based on what the program does.
+`main` is lifted as the component's `wasi:cli/run.run` export. It is always emitted as an *async-stackful* function at the Component Model boundary so nested calls to suspending externs (filesystem, network, server handlers) can yield without trapping. The programmer writes uniform, sync-looking code; the compiler handles all of this.
 
 ### Referring to Components
 
@@ -477,18 +495,18 @@ Lambda syntax mirrors function declaration syntax: `(components) -> ReturnType {
 
 ## Memory Model
 
-Oneway has **no garbage collector**. The reference implementation transpiles to Rust and inherits Rust's ownership and borrowing rules. However, **ownership is invisible to the Oneway programmer**: there are no lifetimes, no `&` / `&mut` sigils at the value level, no explicit `Box` or `Rc`. The transpiler infers all of this from usage.
+Oneway has **no garbage collector**. The compiler performs Rust-style ownership analysis and lowers each value to a concrete linear-memory layout in the emitted core wasm module. **Ownership is invisible to the Oneway programmer**: there are no lifetimes, no `&` / `&mut` sigils at the value level, no explicit `Box` or `Rc`. The compiler infers all of this from usage.
 
-Rough mapping to Rust:
+Rough mapping of source-level concepts to lowered wasm:
 
-| Oneway                                  | Transpiled to                                  |
-|-----------------------------------------|-------------------------------------------------|
-| Non-`mut` parameter                     | `T` (moved) or `&T` (borrowed) — transpiler picks |
-| `mut T` parameter                       | `&mut T`                                        |
-| Recursive type (e.g. `Tree`)            | Auto-boxed (`Box<T>`)                           |
-| Shared ownership the transpiler can't otherwise prove | `Rc<T>` / `Arc<T>`                  |
+| Oneway                                  | Lowered to                                              |
+|-----------------------------------------|---------------------------------------------------------|
+| Non-`mut` parameter                     | Moved or borrowed value passed through wasm locals      |
+| `mut T` parameter                       | Mutable reference through a linear-memory pointer       |
+| Recursive type (e.g. `Tree`)            | Heap-allocated cell in the bump heap (auto-boxed)       |
+| Shared ownership the compiler can't otherwise prove | Reference-counted cell                      |
 
-If the transpiler cannot find a valid ownership scheme for a given Oneway program, it is a compile-time error — equivalent to a Rust borrow-checker rejection. The error is surfaced in Oneway terms, not Rust terms.
+If the compiler cannot find a valid ownership scheme for a given program, it is a compile-time error. The error is surfaced in Oneway terms.
 
 ## Mutability
 
@@ -500,7 +518,7 @@ add = (mut Counter) -> Unit {
 }
 ```
 
-`mut T` transpiles directly to `&mut T` in Rust: the caller's value is mutated in place.
+`mut T` lowers to an in-place update of the caller's value through a linear-memory pointer.
 
 ## Recursive Types
 
@@ -651,19 +669,14 @@ No service object is ever conjured from thin air. No singleton is accessed stati
 
 ### Print
 
-`print = (String) -> Unit` is a built-in that writes to stdout. It requires nothing beyond a `String` — no capability token, no permission, no threading. This covers the overwhelming majority of output needs.
-
-For redirectable output — writing to a file, a log sink, a test buffer — construct a `Fileout` from a `File` and pass it along:
+`print = (String) -> Unit` is a built-in that writes to stdout. It requires nothing beyond a `String` — no capability token, no permission, no threading:
 
 ```
-logFn = (Fileout) -> Unit {
-    "event occurred".print(Fileout)
-}
-
-logFn(Path("./app.log").File()?.Fileout())
+"hello".print()
+42.print()
 ```
 
-`print = (Fileout * String) -> Unit` is the overload that writes to the given output instead of stdout. Functions that need configurable output declare `Fileout` as a parameter; functions that just want to emit to stdout call `.print` directly.
+Under the hood, `.print` is lowered against `wasi:cli/stdout` so the produced component is portable to any Component Model host. For redirectable output — writing to a file or a log sink — construct the destination as an ordinary value (a `File`, eventually a `Fileout`) and thread it through the call chain. This is not a special form; it is the same domain-first pattern used everywhere else.
 
 ### Threading Effects
 
@@ -677,7 +690,11 @@ save = (Database * User) -> Result<Unit, DbError>
 
 ### Async
 
-All programs compile to async Rust under tokio. There is no `async` keyword and no `.await` in Oneway source. The compiler handles this uniformly for all programs.
+There is no `async` keyword and no `.await` in Oneway source. Both are inferred and inserted by the compiler.
+
+A function is *suspending* if it (1) is declared `extern Wasm.async(…)`, (2) consumes a `Future<T>` or iterates a `Stream<T>`, or (3) transitively calls a suspending function. The compiler computes this set bottom-up over the call graph and lifts the affected functions as `async func(…)` in the emitted Component Model world. Where a `Future<T>` value is consumed in a position that expects `T`, the loader automatically rewrites the call site into an `await` — the user writes neither keyword.
+
+This is uniform: synchronous-looking code is the only style. The async machinery is invisible by design.
 
 ## Traits
 
@@ -742,69 +759,58 @@ There is no `Self` keyword. Inside a function body, components are referenced by
 
 ## Concurrency
 
-Oneway has no `async` keyword and no `.await` at the source level. All programs compile to async Rust under tokio. The programmer writes uniform function calls; the compiler emits the state-machine and await machinery.
+Oneway has no `async` keyword and no `.await` at the source level. The compiler infers which functions are suspending and lifts them as `async func(…)` in the emitted component (see [Async](#async) above for the inference rules).
 
-`Task.spawn` maps to `tokio::spawn`. Channels map to `tokio::sync::mpsc`. A spawned task's body is an ordinary function.
+Task spawning, channels, and structured concurrency are planned and will be expressed as ordinary stdlib types over WASI Preview 3's task model — not as language keywords.
 
 ## Interop With the Host Ecosystem
 
-Oneway is **batteries-included**. Beyond the small type-system core, Oneway ships opinionated binding packages for the major application domains — HTTP server and client, filesystem, date/time, JSON, crypto, logging — each wrapping a chosen Rust crate (`axum`, `tokio::fs`, `serde_json`, `chrono`, etc.). Every type is individually importable with the `std/` prefix, so you declare exactly what you use.
+Oneway compiles to a **WebAssembly Component**, so interop happens at the Component Model boundary rather than at a source-level FFI. A program lists the interfaces it imports through `extern Wasm` declarations; the compiler emits the matching component world; any compliant host (`wasmtime`, browser polyfills, edge runtimes) satisfies the imports.
 
-The community is free to publish additional bindings, but the headline batteries ship with the language. This is the same pragmatic choice Go made (large stdlib + go.mod) and Python made (`stdlib` + PyPI): a curated default that lets new users be productive in minutes, with an open ecosystem behind it.
+Oneway is **batteries-included**. The stdlib ships single-type modules covering the major application domains — HTTP server and client, filesystem, time, random, JSON, URLs — each backed either by a native `wasi:*` interface or, where the canonical-ABI shape isn't ready yet, by an `oneway:builtins/*` host bridge that the embedded runtime implements. From the user's perspective the two look identical: `use std/Foo` and call methods.
 
-Under the hood, every binding is implemented via `extern Rust` declarations — there is no privileged path. Anyone could write the same bindings; Oneway just ships them so users don't have to.
+### `extern Wasm` Declarations
 
-### `extern Rust` Declarations
-
-A type or function can be declared as backed by a Rust item. The transpiler emits direct calls — no runtime glue, no marshalling.
+A type or function can be declared as backed by a Component Model import. The compiler emits the matching `(import …)` and lowers the call through the canonical ABI — no source-level marshalling, no manual buffer management.
 
 ```
-extern Rust("std::io::stdout")
-print = (String) -> Unit
+extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
+randomInt = () -> Int
 
-extern Rust("axum::Router")
-HttpRouter
-
-extern Rust("axum::Router::route")
-route = (Handler * HttpRouter * Path) -> HttpRouter
+extern Wasm("oneway:builtins/url@0.1.0#parse")
+Url = (String) -> Result<Url, InvalidUrl>
 ```
 
-> **First-class references.** `extern Rust` function declarations are entered into the value scope on equal footing with ordinary functions. They may be referenced as first-class values (`Type.fn`) and passed as callbacks wherever a matching function signature is expected.
+The string follows Component Model path syntax: `namespace:package/interface@version#fn-name`. The `@version` is optional for unversioned interfaces. Method shorthand (the `.fn` form) is not used — every Component import is a flat function.
+
+> **First-class references.** `extern Wasm` function declarations are entered into the value scope on equal footing with ordinary functions. They may be referenced as first-class values (`Type.fn`) and passed as callbacks wherever a matching function signature is expected.
 
 #### Async Extern Items
 
-To bind an `async fn` from Rust, use `extern Rust.async`. The compiler inserts `.await` at every call site, and the calling Oneway function is compiled as `async fn`:
+To bind a suspending Component import, use `extern Wasm.async`. The compiler lifts the call site through the async canonical ABI (`canon lower … async`), and every transitive caller is automatically marked suspending:
 
 ```
-extern Rust.async("axum::serve")
-serve = (HttpRouter * HttpServer * TcpListener) -> Result<Unit, IoError>
+extern Wasm.async("oneway:builtins/http-server@0.1.0#serve")
+serve<S> = (HttpServer<S>) -> Result<Unit, IoError>
 ```
 
-Functions that call a `Rust.async` extern are automatically compiled as `async fn` by the transpiler. Any function that calls an async function is transitively made async. There is no annotation required on user-defined functions — the compiler propagates async-ness through the call graph.
+There is no annotation required on user-defined functions — the compiler propagates suspension through the call graph (see [Async](#async)).
 
-### Dependency Manifest
+### No Project Manifest
 
-Each Oneway project carries a manifest listing the Rust crates it depends on. The transpiler emits a `Cargo.toml` that mirrors it, and `oneway build` is a thin wrapper around `cargo build`.
-
-```
-[deps]
-axum       = "0.7"
-serde_json = "1"
-sqlx       = "0.7"
-```
+There is no `Cargo.toml`, no `package.json`, no per-project dep manifest. The set of imports a program needs is fully determined by its `extern Wasm` declarations and resolved at component-instantiation time by the host. `oneway build` produces a `.wasm` and a sibling `.wit` describing the world; the host (whether `oneway run`, `wasmtime serve`, or anything else) is responsible for satisfying the imports.
 
 ### Binding Packages
 
-Idiomatic Oneway code does not call `extern Rust` directly. Instead, it imports individual types from the shipped binding packages:
+Idiomatic Oneway code does not call `extern Wasm` directly. Instead, it imports individual types from the shipped stdlib:
 
 ```
-use std/HttpServer      # HTTP server (axum)
-use std/ServerRequest   # incoming HTTP request
-use std/HttpError       # HTTP client errors + get on Url (reqwest)
-use std/JsonValue       # JSON parsing/emitting (serde_json)
-use std/JsonArray       # JSON array operations
-use std/Now             # current UTC time (chrono)
-use std/File            # file I/O (tokio::fs)
+use std/Clock           # wasi:clocks (nowNanos, resolutionNanos)
+use std/File            # oneway:builtins/filesystem (until wasi:filesystem async lands)
+use std/HttpServer      # oneway:builtins/http-server
+use std/Now             # oneway:builtins/clock (now-rfc3339)
+use std/Random          # wasi:random/random
+use std/Url             # oneway:builtins/url + oneway:builtins/http
 ```
 
 Each `use std/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any path; the `std/` namespace is reserved for the shipped set.
@@ -813,34 +819,39 @@ Each `use std/X` imports exactly the named type along with its associated constr
 
 Two layers ship with the language:
 
-**Core** — the small set of language-level primitives, owned by the compiler and not bindable to Rust crates:
+**Core** — the small set of language-level primitives, owned by the compiler:
 
 - Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`, `Unit`, `Never`
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
 - Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
 - Standard unions: `Bool`, `Ord`
-- I/O built-ins: `print` (stdout), `File`, `Fileout`
+- Async wrappers (rarely written by users): `Future<T>`, `Stream<T>`
+- I/O built-ins: `print` (stdout), wired against `wasi:cli/stdout`
 
-`Map<K, V>` is a sorted key-value map backed by `BTreeMap`. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is a sorted set backed by `BTreeSet`; `T` must implement `Ord`.
+`Map<K, V>` is a sorted key-value map. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is its set-shaped counterpart.
 
-**Batteries** — opinionated binding packages over major Rust crates, written in ordinary Oneway with `extern Rust` declarations:
+**Batteries** — stdlib modules implemented in ordinary Oneway with `extern Wasm` declarations against either `wasi:*` or `oneway:builtins/*` interfaces:
 
-- `HttpServer`, `ServerRequest`, `Port`, `RoutePath`, … (axum)
-- `HttpError` + `get` on `Url` (reqwest)
-- `Now`, `Datetime` (chrono)
-- `File`, `Fileout`, `IoError` (tokio::fs)
-- `Url`, `InvalidUrl` (url)
-- `JsonValue`, `JsonArray`, `JsonObject`, `MalformedJson`, … (serde_json)
-- `Database`, `DbError` (sqlx) — planned
-- `Crypto`, `Log` (ring / rustls, tracing) — planned
+| Module | Backing interface | Status |
+|---|---|---|
+| `Clock` (`nowNanos`, `resolutionNanos`) | `wasi:clocks/monotonic-clock` | ✅ |
+| `Random` (`randomInt`) | `wasi:random/random` | ✅ |
+| `Now` (RFC 3339 wall-clock time) | `oneway:builtins/clock` | ✅ — will move to `wasi:clocks/wall-clock` |
+| `File`, `Path`, `IoError` | `oneway:builtins/filesystem` | ✅ — will move to `wasi:filesystem/types` |
+| `Url`, `InvalidUrl`, `HttpError` (`get` on `Url`) | `oneway:builtins/url` + `oneway:builtins/http` | ✅ — will move to `wasi:http/outgoing-handler` |
+| `HttpServer`, `Request`, `HttpResponseBody`, `HttpStatus`, `Body`, `Port`, `RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
+| `Json` (string handle) | — | ⏳ `JsonValue` / `JsonArray` / `JsonObject` parser pending |
+| `TestResult` (`Pass` / `Fail` + `assert`) | pure Oneway | ✅ |
+
+The `oneway:*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available.
 
 Anything outside these two layers is a third-party binding the community publishes — same mechanism, no privileged path.
 
 ### Tradeoffs
 
-- **Error messages may leak Rust types** when crossing the FFI boundary. Unavoidable to some degree; mitigated by good bindings.
-- **Async-flavored crates** are bound via `Rust.async` externs. The cost — tokio in the dep tree, state-machine codegen — is uniform across all programs.
-- **Oneway is permanently coupled to Rust** unless a second backend is later added. A real strategic dependency, accepted in exchange for sharing the entire Rust ecosystem.
+- **WASM-first means no direct OS handles.** A Oneway program cannot, for example, embed a raw `std::fs::File`; it sees a `wasi:filesystem/types#descriptor` instead. This is the price of portability.
+- **Phase-5 interfaces are scaffolded.** Where a `wasi:*` interface isn't yet usable from the canonical ABI (async filesystem, HTTP, server-side handlers), Oneway ships an `oneway:builtins/*` bridge that the embedded runtime fulfils. The user-facing API doesn't change when the bridge is later swapped for native WASI.
+- **Hosts must support WASI Preview 3.** `oneway run` embeds `wasmtime` with the P3 + component-model-async feature gates; other hosts will need equivalent support.
 
 ## Disambiguating Same-Typed Parameters
 
