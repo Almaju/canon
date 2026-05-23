@@ -4,16 +4,11 @@ use std::collections::{HashMap, HashSet};
 
 const BUILTIN_TYPES: &[&str] = &[
     "Bool",
-    "Clock",
     "Deserialize",
     "False",
-    "Filesystem",
     "Float",
     "Hex",
-    "HttpClient",
-    "HttpServer",
     "Int",
-    "Json",
     "Network",
     "Never",
     "Off",
@@ -28,24 +23,17 @@ const BUILTIN_TYPES: &[&str] = &[
     "Unit",
 ];
 
-const CAPABILITY_TYPES: &[&str] = &[
-    "Clock",
-    "Filesystem",
-    "HttpClient",
-    "HttpServer",
-    "Json",
-    "Network",
-    "Random",
-    "Stderr",
-    "Stdin",
-    "Stdout",
-];
+const CAPABILITY_TYPES: &[&str] = &["Network", "Random", "Stderr", "Stdin", "Stdout"];
 
 fn is_capability_type(name: &str) -> bool {
     CAPABILITY_TYPES.contains(&name)
 }
 
 const BUILTIN_GENERIC_TYPES: &[&str] = &["List", "Map", "Option", "Result", "Set"];
+
+/// Zero-data builtin types that may be constructed with empty parens: `Unit()`, `Off()`, `On()`.
+/// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
+const ZERO_DATA_BUILTINS: &[&str] = &["False", "Off", "On", "True", "Unit"];
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
@@ -56,6 +44,10 @@ pub struct SymbolTable {
     /// component types (in declaration order). Used to validate
     /// `value.Field` access.
     pub product_fields: HashMap<String, Vec<String>>,
+    /// Type names that have an explicit `TypeDef` in this module.
+    /// Used to distinguish user-defined types (which resolve to themselves
+    /// in method lookup) from bare variant tags (which widen to the parent).
+    pub standalone_types: HashSet<String>,
 }
 
 pub struct MethodSig {
@@ -111,7 +103,7 @@ fn check_ordering(module: &Module, entry_items_start: usize, errors: &mut Vec<On
     // Functions on the same receiver type must be declared alphabetically.
     let mut methods_per_receiver: HashMap<String, Vec<(String, crate::error::Span)>> =
         HashMap::new();
-    for item in &module.items {
+    for item in entry_items {
         if let Item::Function(func) = item {
             if let Some(recv) = &func.receiver {
                 methods_per_receiver
@@ -231,7 +223,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
     // known so references to it in the same file are not flagged as unknown.
     for item in &module.items {
         if let Item::Use(u) = item {
-            let type_name = u.name.name.split('/').last().unwrap_or(&u.name.name);
+            let type_name = u.name.name.split('/').next_back().unwrap_or(&u.name.name);
             types.insert(type_name.to_string());
         }
     }
@@ -312,18 +304,55 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
                         return_ty: return_ty.clone(),
                     },
                 );
-                // Register under each param type for commutative calling
+                // Register under each param type for commutative calling.
+                // For constructors (name == "Self"), also register the TYPE NAME as the method
+                // so that `param_val.TypeName()` (commutative constructor call) is recognized.
+                // For product-type params (A * B), register each component separately.
+                // `ctor_arity` is the number of remaining args when that component is the receiver.
+                let mut components: Vec<(String, usize)> = Vec::new();
                 for param in &func.params {
-                    if let Some(param_name) = param.ty.simple_name() {
+                    match &param.ty {
+                        TypeExpr::Named { .. } => {
+                            if let Some(n) = param.ty.simple_name() {
+                                components.push((n.to_string(), 0));
+                            }
+                        }
+                        TypeExpr::Product { fields, .. } => {
+                            let remaining = fields.len().saturating_sub(1);
+                            for field in fields {
+                                if let Some(n) = field.simple_name() {
+                                    components.push((n.to_string(), remaining));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                for (param_name, ctor_arity) in &components {
+                    methods
+                        .entry((param_name.clone(), func.name.name.clone()))
+                        .or_insert(MethodSig {
+                            arity: func.params.len(),
+                            return_ty: return_ty.clone(),
+                        });
+                    if func.name.name == "Self" {
+                        // e.g. "str".JsonValue() (arity 0) or Port(...).HttpServer(state) (arity 1)
                         methods
-                            .entry((param_name.to_string(), func.name.name.clone()))
+                            .entry((param_name.clone(), recv.name.clone()))
                             .or_insert(MethodSig {
-                                arity: func.params.len(),
+                                arity: *ctor_arity,
                                 return_ty: return_ty.clone(),
                             });
                     }
                 }
             }
+        }
+    }
+
+    let mut standalone_types: HashSet<String> = HashSet::new();
+    for item in &module.items {
+        if let Item::TypeDef(td) = item {
+            standalone_types.insert(td.name.name.clone());
         }
     }
 
@@ -333,6 +362,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
         variant_of,
         methods,
         product_fields,
+        standalone_types,
     }
 }
 
@@ -341,15 +371,31 @@ fn check_self_constructor_signature(
     receiver_name: &str,
     errors: &mut Vec<OnewayError>,
 ) {
+    // Collect this constructor's generic param names so we can accept
+    // return types like `HttpServer<S>` when S is a declared generic.
+    let generic_names: std::collections::HashSet<&str> = func
+        .generic_params
+        .iter()
+        .map(|g| g.name.name.as_str())
+        .collect();
+
+    let is_self_ty = |name: &str, generics: &[TypeExpr]| {
+        name == receiver_name
+            && (generics.is_empty()
+                || generics.iter().all(|g| {
+                    matches!(g, TypeExpr::Named { name, generics: inner, .. }
+                        if generic_names.contains(name.as_str()) && inner.is_empty())
+                }))
+    };
+
     let valid = match &func.return_ty {
         TypeExpr::Named { name, generics, .. } => {
-            if name == receiver_name && generics.is_empty() {
+            if is_self_ty(name, generics) {
                 true
             } else if (name == "Result" || name == "Option") && !generics.is_empty() {
                 matches!(
                     &generics[0],
-                    TypeExpr::Named { name, generics, .. }
-                        if name == receiver_name && generics.is_empty()
+                    TypeExpr::Named { name, generics, .. } if is_self_ty(name, generics)
                 )
             } else {
                 false
@@ -638,6 +684,7 @@ fn check_expr(
         }
         Expr::StringLit { .. } => {}
         Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. } => {}
+        Expr::JsonLit { .. } => {}
         Expr::Constructor { name, args, span } => {
             let is_variant = symbols.variant_of.contains_key(&name.name);
             if !symbols.knows_type(&name.name) && !is_variant {
@@ -647,13 +694,21 @@ fn check_expr(
                 });
             }
             if args.is_empty() && !is_variant {
-                errors.push(OnewayError::CheckError {
-                    message: format!(
-                        "constructor `{}()` is not allowed — empty constructors are disallowed",
-                        name.name
-                    ),
-                    span: *span,
-                });
+                let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
+                let has_zero_arg_ctor = symbols
+                    .methods
+                    .get(&(name.name.clone(), "Self".to_string()))
+                    .map(|sig| sig.arity == 0)
+                    .unwrap_or(false);
+                if !is_zero_data_builtin && !has_zero_arg_ctor {
+                    errors.push(OnewayError::CheckError {
+                        message: format!(
+                            "constructor `{}()` is not allowed — empty constructors are disallowed",
+                            name.name
+                        ),
+                        span: *span,
+                    });
+                }
             }
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
@@ -675,13 +730,38 @@ fn check_expr(
                 check_type_expr(ta, symbols, &empty_generic_scope, errors);
             }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            // For types that are both a standalone typedef and a variant of a union,
+            // try method lookup on the specific type first (e.g. JsonObject.get before
+            // falling back to JsonValue.get).
+            let recv_ty_specific: String = match receiver.as_ref() {
+                Expr::Ident(ident)
+                    if symbols.standalone_types.contains(&ident.name)
+                        && symbols.variant_of.contains_key(&ident.name) =>
+                {
+                    ident.name.clone()
+                }
+                Expr::Constructor { name, .. }
+                    if symbols.standalone_types.contains(&name.name)
+                        && symbols.variant_of.contains_key(&name.name) =>
+                {
+                    name.name.clone()
+                }
+                _ => recv_ty.clone(),
+            };
             let effective_arity = effective_call_arity(args);
-            let known = is_known_method(&recv_ty, &method.name, effective_arity)
+            let known = is_known_method(&recv_ty_specific, &method.name, effective_arity)
                 || symbols
                     .methods
-                    .get(&(recv_ty.clone(), method.name.clone()))
+                    .get(&(recv_ty_specific.clone(), method.name.clone()))
                     .map(|m| m.arity == effective_arity)
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                || (recv_ty_specific != recv_ty
+                    && (is_known_method(&recv_ty, &method.name, effective_arity)
+                        || symbols
+                            .methods
+                            .get(&(recv_ty.clone(), method.name.clone()))
+                            .map(|m| m.arity == effective_arity)
+                            .unwrap_or(false)));
             if !known {
                 errors.push(OnewayError::CheckError {
                     message: format!(
@@ -771,16 +851,28 @@ fn check_expr(
         } => {
             check_expr(receiver, scope, symbols, errors);
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            let recv_ty_for_lookup: String = match receiver.as_ref() {
+                Expr::Ident(ident)
+                    if symbols.standalone_types.contains(&ident.name)
+                        && symbols.variant_of.contains_key(&ident.name) =>
+                {
+                    ident.name.clone()
+                }
+                _ => recv_ty.clone(),
+            };
             if recv_ty == "<unknown>" {
                 return;
             }
             // Case 1: product field access
-            if let Some(fields) = symbols.product_fields.get(&recv_ty) {
+            if let Some(fields) = symbols.product_fields.get(&recv_ty_for_lookup) {
                 if fields.iter().any(|f| f == &field.name) {
                     return; // valid product field
                 }
                 errors.push(OnewayError::CheckError {
-                    message: format!("type `{}` has no field `{}`", recv_ty, field.name),
+                    message: format!(
+                        "type `{}` has no field `{}`",
+                        recv_ty_for_lookup, field.name
+                    ),
                     span: *span,
                 });
                 return;
@@ -788,14 +880,18 @@ fn check_expr(
             // Case 2: first-class method reference (extern or Oneway-defined)
             if symbols
                 .methods
-                .contains_key(&(recv_ty.clone(), field.name.clone()))
+                .contains_key(&(recv_ty_for_lookup.clone(), field.name.clone()))
             {
                 return; // valid method reference used as a value
+            }
+            // Case 3: zero-arg built-in method used without parens (e.g. "hello".print)
+            if is_known_method(&recv_ty_for_lookup, &field.name, 0) {
+                return;
             }
             errors.push(OnewayError::CheckError {
                 message: format!(
                     "field access `.{}` on `{}` — not a product field and no method `{}` found",
-                    field.name, recv_ty, field.name
+                    field.name, recv_ty_for_lookup, field.name
                 ),
                 span: *span,
             });
@@ -841,10 +937,15 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     }
     if matches!(
         (receiver_ty, method, arg_count),
-        ("String", "print", 1)
+        ("String", "print", 0)
+            | ("String", "print", 1)
+            | ("Int", "print", 0)
             | ("Int", "print", 1)
+            | ("Float", "print", 0)
             | ("Float", "print", 1)
+            | ("Hex", "print", 0)
             | ("Hex", "print", 1)
+            | ("Bool", "print", 0)
             | ("Bool", "print", 1)
     ) {
         return true;
@@ -945,7 +1046,22 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             _ => "<unknown>".to_string(),
         },
         Expr::ProductValue { .. } => "<unknown>".to_string(),
-        Expr::FieldAccess { field, .. } => field.name.clone(),
+        Expr::FieldAccess {
+            receiver, field, ..
+        } => {
+            // If this is a zero-arg builtin method used without parens, return its
+            // return type rather than the field name (e.g. "hello".print -> Unit).
+            let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            let ret = method_return_type(&recv_ty, &field.name);
+            if ret != "<unknown>" {
+                return ret;
+            }
+            if let Some(sig) = symbols.methods.get(&(recv_ty, field.name.clone())) {
+                return sig.return_ty.clone();
+            }
+            field.name.clone()
+        }
+        Expr::JsonLit { .. } => "JsonValue".to_string(),
     }
 }
 

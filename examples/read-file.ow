@@ -1,4 +1,6 @@
-use Filesystem
+use std/File
+use std/IoError
+use std/Path
 
 main = () -> Result<Unit, IoError> {
     Path("Cargo.toml").File()?.read()?.print

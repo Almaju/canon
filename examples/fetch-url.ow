@@ -1,4 +1,6 @@
-use HttpClient
+use std/HttpError
+use std/InvalidUrl
+use std/Url
 
 main = () -> Result<Unit, HttpError + InvalidUrl> {
     Url("https://example.com")?.get()?.print

@@ -101,7 +101,7 @@ impl<'a> Scanner<'a> {
                     self.column += 2;
                     (TokenKind::Arrow, "->".to_string())
                 } else {
-                    return Err(self.err_at(start_line, start_col, "unexpected `-`"));
+                    self.single(TokenKind::Minus, "-")
                 }
             }
             b'.' => {

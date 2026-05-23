@@ -467,7 +467,7 @@ fn collect_import_items(
     // Recurse into this module's own imports first (using ow_path as base).
     for item in &imported.items {
         if let crate::ast::Item::Use(u) = item {
-            let inner = u.name.name.split('/').last().unwrap_or(&u.name.name);
+            let inner = u.name.name.split('/').next_back().unwrap_or(&u.name.name);
             collect_import_items(inner, &ow_path, seen, out);
         }
     }
@@ -508,7 +508,7 @@ fn check_source(source: &str, file_path: &str) -> Vec<OnewayError> {
         let crate::ast::Item::Use(u) = item else {
             continue;
         };
-        let type_name = u.name.name.split('/').last().unwrap_or(&u.name.name);
+        let type_name = u.name.name.split('/').next_back().unwrap_or(&u.name.name);
         collect_import_items(type_name, file_path, &mut seen, &mut imported_items);
     }
 
@@ -801,7 +801,7 @@ fn find_definition_in_imports(
     for item in &module.items {
         let Item::Use(u) = item else { continue };
         let path_str = &u.name.name;
-        let type_name = path_str.split('/').last().unwrap_or(path_str);
+        let type_name = path_str.split('/').next_back().unwrap_or(path_str);
         let Some(file_path) = resolve_ow_file(type_name, current_file) else {
             continue;
         };

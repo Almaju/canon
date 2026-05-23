@@ -1,7 +1,5 @@
-use Path
-
-extern Rust("std::io::Error")
-IoError
+use std/IoError
+use std/Path
 
 extern Rust("oneway_file")
 File

@@ -1,8 +1,7 @@
-use Clock
+use std/Now
 
 main = () -> Unit {
-    Clock(Unit())
-        .now()
+    Now()
         .toRfc3339()
         .print
 }

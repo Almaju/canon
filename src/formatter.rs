@@ -535,6 +535,7 @@ fn emit_base_inline(expr: &Expr) -> String {
         } => {
             format!("{}.{}", emit_base_inline(receiver), field.name)
         }
+        Expr::JsonLit { value, .. } => value.clone(),
         // MethodCall, Match, Try are handled by chain flattening and should
         // never appear as a Base.  Return empty as a safeguard.
         _ => String::new(),

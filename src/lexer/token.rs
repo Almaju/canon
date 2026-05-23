@@ -30,6 +30,7 @@ pub enum TokenKind {
     Caret,
     Ellipsis,
     Slash,
+    Minus,
 
     KwMut,
     KwUse,
@@ -70,6 +71,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Caret => "`^`",
             TokenKind::Ellipsis => "`...`",
             TokenKind::Slash => "`/`",
+            TokenKind::Minus => "`-`",
             TokenKind::KwMut => "`mut`",
             TokenKind::KwUse => "`use`",
             TokenKind::KwSelf => "`Self`",

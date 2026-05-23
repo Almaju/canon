@@ -275,10 +275,11 @@ The case difference disambiguates trait implementations from regular functions: 
 ### Imports
 
 ```
-use Foo
+use Foo          # load a local file or module
+use std/Foo      # load a standard library type
 ```
 
-This imports `Foo` from the corresponding file/folder. No paths, no aliasing required at the import site.
+Local imports (`use Foo`) look for `foo.ow` or `foo/main.ow` relative to the current file. Standard library types require the explicit `std/` prefix (`use std/JsonValue`, `use std/Url`, `use std/Now`). Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use std/JsonValue` and `use std/JsonArray`.
 
 ### Visibility
 
@@ -634,6 +635,9 @@ This applies everywhere:
 # Fetching from the network — start with a Url
 Url("https://api.example.com/data")?.get()?.print
 
+# Current time — call the Now constructor directly
+Now().toRfc3339().print
+
 # HTTP server — start with a Port
 Port(3000).HttpServer(State(Unit()))
     .get(RoutePath("/"), handler)
@@ -744,7 +748,7 @@ Oneway has no `async` keyword and no `.await` at the source level. All programs 
 
 ## Interop With the Host Ecosystem
 
-Oneway is **batteries-included**. Beyond the small type-system core, Oneway ships opinionated binding packages for the major application domains — HTTP server and client, filesystem, database, JSON, crypto, logging — each wrapping a chosen Rust crate (`axum`, `tokio::fs`, `sqlx`, `serde_json`, etc.). The user gets a single curated import path per domain (`use HttpServer`, `use Filesystem`, `use Database`) without having to evaluate the Rust crate ecosystem.
+Oneway is **batteries-included**. Beyond the small type-system core, Oneway ships opinionated binding packages for the major application domains — HTTP server and client, filesystem, date/time, JSON, crypto, logging — each wrapping a chosen Rust crate (`axum`, `tokio::fs`, `serde_json`, `chrono`, etc.). Every type is individually importable with the `std/` prefix, so you declare exactly what you use.
 
 The community is free to publish additional bindings, but the headline batteries ship with the language. This is the same pragmatic choice Go made (large stdlib + go.mod) and Python made (`stdlib` + PyPI): a curated default that lets new users be productive in minutes, with an open ecosystem behind it.
 
@@ -776,7 +780,7 @@ extern Rust.async("axum::serve")
 serve = (HttpRouter * HttpServer * TcpListener) -> Result<Unit, IoError>
 ```
 
-A `Rust.async` extern is valid only on a function whose components include a suspending capability — typically `Network` or `Filesystem`. This keeps the capability set honest: async effects must still be reflected in the type, not slipped in through an extern declaration.
+Functions that call a `Rust.async` extern are automatically compiled as `async fn` by the transpiler. Any function that calls an async function is transitively made async. There is no annotation required on user-defined functions — the compiler propagates async-ness through the call graph.
 
 ### Dependency Manifest
 
@@ -791,16 +795,19 @@ sqlx       = "0.7"
 
 ### Binding Packages
 
-Idiomatic Oneway code does not call `extern Rust` directly. Instead, it imports from the shipped binding packages:
+Idiomatic Oneway code does not call `extern Rust` directly. Instead, it imports individual types from the shipped binding packages:
 
 ```
-use HttpServer    # wraps axum
-use HttpClient    # wraps reqwest
-use Database      # wraps sqlx
-use Json          # types: JsonValue, JsonArray, JsonObject, …
+use std/HttpServer      # HTTP server (axum)
+use std/ServerRequest   # incoming HTTP request
+use std/HttpError       # HTTP client errors + get on Url (reqwest)
+use std/JsonValue       # JSON parsing/emitting (serde_json)
+use std/JsonArray       # JSON array operations
+use std/Now             # current UTC time (chrono)
+use std/File            # file I/O (tokio::fs)
 ```
 
-Each binding is a few hundred lines of Oneway declarations plus minimal ergonomic glue, written once and shipped with the language. The community can publish additional or alternative bindings; the shipped set is just the curated default.
+Each `use std/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any path; the `std/` namespace is reserved for the shipped set.
 
 ### What Oneway Ships Itself
 
@@ -818,10 +825,14 @@ Two layers ship with the language:
 
 **Batteries** — opinionated binding packages over major Rust crates, written in ordinary Oneway with `extern Rust` declarations:
 
-- `HttpServer` (axum), `HttpClient` (reqwest)
-- `Database` (sqlx)
-- `Json` — types (`JsonValue`, `JsonArray`, `JsonObject`, …) and constructors
-- `Crypto` (ring / rustls), `Log` (tracing)
+- `HttpServer`, `ServerRequest`, `Port`, `RoutePath`, … (axum)
+- `HttpError` + `get` on `Url` (reqwest)
+- `Now`, `Datetime` (chrono)
+- `File`, `Fileout`, `IoError` (tokio::fs)
+- `Url`, `InvalidUrl` (url)
+- `JsonValue`, `JsonArray`, `JsonObject`, `MalformedJson`, … (serde_json)
+- `Database`, `DbError` (sqlx) — planned
+- `Crypto`, `Log` (ring / rustls, tracing) — planned
 
 Anything outside these two layers is a third-party binding the community publishes — same mechanism, no privileged path.
 

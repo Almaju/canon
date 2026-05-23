@@ -119,6 +119,8 @@ module.exports = grammar({
         $.float_literal,
         $.hex_literal,
         $.string_literal,
+        $.json_object,
+        $.json_array,
       ),
 
     identifier_expr: ($) => $.identifier,
@@ -185,6 +187,25 @@ module.exports = grammar({
         "->",
         field("return_type", $._type),
         field("body", $.block),
+      ),
+
+    // JSON literals
+    json_object: ($) => seq("{", optional(sep1($.json_pair, ",")), "}"),
+
+    json_pair: ($) =>
+      seq(field("key", $.string_literal), ":", field("value", $.json_value)),
+
+    json_array: ($) => seq("[", optional(sep1($.json_value, ",")), "]"),
+
+    json_value: ($) =>
+      choice(
+        $.json_object,
+        $.json_array,
+        $.string_literal,
+        seq("-", choice($.integer_literal, $.float_literal)),
+        $.integer_literal,
+        $.float_literal,
+        $.identifier,
       ),
 
     // Literals

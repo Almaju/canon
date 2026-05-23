@@ -632,12 +632,15 @@ impl Parser {
                         )?;
                     }
                     self.expect(TokenKind::LParen, "expected `(` after method name")?;
+                    self.skip_newlines();
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
                         loop {
                             args.push(self.parse_arg_expr()?);
+                            self.skip_newlines();
                             if self.check(TokenKind::Comma) {
                                 self.advance();
+                                self.skip_newlines();
                             } else {
                                 break;
                             }
@@ -676,12 +679,15 @@ impl Parser {
                 self.advance();
                 if self.check(TokenKind::LParen) {
                     self.advance();
+                    self.skip_newlines();
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
                         loop {
                             args.push(self.parse_arg_expr()?);
+                            self.skip_newlines();
                             if self.check(TokenKind::Comma) {
                                 self.advance();
+                                self.skip_newlines();
                             } else {
                                 break;
                             }
@@ -745,11 +751,141 @@ impl Parser {
                     span: tok.span,
                 })
             }
+            TokenKind::LBrace => {
+                let open = tok.span;
+                self.advance();
+                let json = self.parse_json_object_body(open)?;
+                let end = self.previous_span();
+                Ok(Expr::JsonLit {
+                    value: json,
+                    span: span_join(open, end),
+                })
+            }
+            TokenKind::LBracket => {
+                let open = tok.span;
+                self.advance();
+                let json = self.parse_json_array_body(open)?;
+                let end = self.previous_span();
+                Ok(Expr::JsonLit {
+                    value: json,
+                    span: span_join(open, end),
+                })
+            }
             _ => Err(OnewayError::ParseError {
                 message: format!("expected an expression (got {})", tok.kind),
                 span: tok.span,
             }),
         }
+    }
+
+    fn parse_json_object_body(&mut self, open_span: Span) -> Result<String> {
+        let mut out = String::from('{');
+        self.skip_newlines();
+        let mut first = true;
+        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
+            if !first {
+                self.expect(TokenKind::Comma, "expected `,` or `}` in JSON object")?;
+                self.skip_newlines();
+                if self.check(TokenKind::RBrace) {
+                    break; // trailing comma
+                }
+                out.push(',');
+            }
+            first = false;
+            let key_tok =
+                self.expect(TokenKind::StringLit, "expected string key in JSON object")?;
+            out.push_str(&json_encode_string(&key_tok.lexeme));
+            self.skip_newlines();
+            self.expect(TokenKind::Colon, "expected `:` after JSON key")?;
+            self.skip_newlines();
+            let val = self.parse_json_value(open_span)?;
+            self.skip_newlines();
+            out.push(':');
+            out.push_str(&val);
+        }
+        self.expect(TokenKind::RBrace, "expected `}` to close JSON object")?;
+        out.push('}');
+        Ok(out)
+    }
+
+    fn parse_json_array_body(&mut self, open_span: Span) -> Result<String> {
+        let mut out = String::from('[');
+        self.skip_newlines();
+        let mut first = true;
+        while !self.check(TokenKind::RBracket) && !self.is_at_end() {
+            if !first {
+                self.expect(TokenKind::Comma, "expected `,` or `]` in JSON array")?;
+                self.skip_newlines();
+                if self.check(TokenKind::RBracket) {
+                    break; // trailing comma
+                }
+                out.push(',');
+            }
+            first = false;
+            let val = self.parse_json_value(open_span)?;
+            self.skip_newlines();
+            out.push_str(&val);
+        }
+        self.expect(TokenKind::RBracket, "expected `]` to close JSON array")?;
+        out.push(']');
+        Ok(out)
+    }
+
+    fn parse_json_value(&mut self, open_span: Span) -> Result<String> {
+        let tok = self.peek().clone();
+        match tok.kind {
+                TokenKind::LBrace => {
+                    self.advance();
+                    self.parse_json_object_body(tok.span)
+                }
+                TokenKind::LBracket => {
+                    self.advance();
+                    self.parse_json_array_body(tok.span)
+                }
+                TokenKind::StringLit => {
+                    self.advance();
+                    Ok(json_encode_string(&tok.lexeme))
+                }
+                TokenKind::IntLit => {
+                    self.advance();
+                    Ok(tok.lexeme)
+                }
+                TokenKind::FloatLit => {
+                    self.advance();
+                    Ok(tok.lexeme)
+                }
+                TokenKind::Minus => {
+                    self.advance();
+                    let num = self.peek().clone();
+                    match num.kind {
+                        TokenKind::IntLit | TokenKind::FloatLit => {
+                            self.advance();
+                            Ok(format!("-{}", num.lexeme))
+                        }
+                        _ => Err(OnewayError::ParseError {
+                            message: "expected a number after `-` in JSON literal".to_string(),
+                            span: num.span,
+                        }),
+                    }
+                }
+                TokenKind::Ident => match tok.lexeme.as_str() {
+                    "true" | "false" | "null" => {
+                        self.advance();
+                        Ok(tok.lexeme)
+                    }
+                    _ => Err(OnewayError::ParseError {
+                        message: format!(
+                            "unexpected `{}` in JSON literal — expected a string, number, object, array, `true`, `false`, or `null`",
+                            tok.lexeme
+                        ),
+                        span: tok.span,
+                    }),
+                },
+                _ => Err(OnewayError::ParseError {
+                    message: format!("expected a JSON value, got {}", tok.kind),
+                    span: open_span,
+                }),
+            }
     }
 
     fn parse_lambda(&mut self) -> Result<Expr> {
@@ -870,4 +1006,25 @@ impl Parser {
 
 fn span_join(a: Span, b: Span) -> Span {
     Span::new(a.start.min(b.start), a.end.max(b.end), a.line, a.column)
+}
+
+/// Re-encode a Oneway string value (already unescaped by the scanner) as a
+/// JSON string literal, including the surrounding double-quote characters.
+fn json_encode_string(s: &str) -> String {
+    let mut out = String::from('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }

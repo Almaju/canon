@@ -176,6 +176,10 @@ pub enum Expr {
         field: Ident,
         span: Span,
     },
+    JsonLit {
+        value: String,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -193,6 +197,7 @@ impl Expr {
             Expr::Lambda { span, .. } => *span,
             Expr::ProductValue { span, .. } => *span,
             Expr::FieldAccess { span, .. } => *span,
+            Expr::JsonLit { span, .. } => *span,
         }
     }
 }
@@ -290,7 +295,7 @@ pub fn resolve_new_syntax(module: &mut Module) {
 
     for item in &mut module.items {
         if let Item::Function(func) = item {
-            if func.receiver.is_none() && func.name.name != "main" && !func.params.is_empty() {
+            if func.receiver.is_none() && func.name.name != "main" {
                 let is_pascal = func
                     .name
                     .name
@@ -300,7 +305,7 @@ pub fn resolve_new_syntax(module: &mut Module) {
                     .unwrap_or(false);
                 if is_pascal {
                     if type_names.contains(&func.name.name) {
-                        // Constructor: set receiver to type name, rename to "Self"
+                        // Constructor (including zero-arg): set receiver to type name, rename to "Self"
                         let recv_name = func.name.name.clone();
                         let recv_span = func.name.span;
                         func.receiver = Some(Ident {
@@ -311,7 +316,7 @@ pub fn resolve_new_syntax(module: &mut Module) {
                             name: "Self".to_string(),
                             span: func.name.span,
                         };
-                    } else {
+                    } else if !func.params.is_empty() {
                         // Trait impl: extract first component as receiver
                         let old_params = std::mem::take(&mut func.params);
                         let (receiver, recv_mut, new_params) =

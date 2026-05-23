@@ -32,6 +32,14 @@
           "named": true
         },
         {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
+          "named": true
+        },
+        {
           "type": "lambda",
           "named": true
         },
@@ -94,6 +102,14 @@
           "named": true
         },
         {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
+          "named": true
+        },
+        {
           "type": "lambda",
           "named": true
         },
@@ -152,6 +168,14 @@
           },
           {
             "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "json_array",
+            "named": true
+          },
+          {
+            "type": "json_object",
             "named": true
           },
           {
@@ -463,6 +487,97 @@
     }
   },
   {
+    "type": "json_array",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "json_value",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "json_object",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "json_pair",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "json_pair",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string_literal",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "json_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "json_value",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "float_literal",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "integer_literal",
+          "named": true
+        },
+        {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
+          "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "lambda",
     "named": true,
     "fields": {
@@ -557,6 +672,14 @@
             "named": true
           },
           {
+            "type": "json_array",
+            "named": true
+          },
+          {
+            "type": "json_object",
+            "named": true
+          },
+          {
             "type": "lambda",
             "named": true
           },
@@ -631,6 +754,14 @@
         },
         {
           "type": "integer_literal",
+          "named": true
+        },
+        {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
           "named": true
         },
         {
@@ -869,6 +1000,14 @@
             "named": true
           },
           {
+            "type": "json_array",
+            "named": true
+          },
+          {
+            "type": "json_object",
+            "named": true
+          },
+          {
             "type": "lambda",
             "named": true
           },
@@ -1018,6 +1157,10 @@
     "named": false
   },
   {
+    "type": "-",
+    "named": false
+  },
+  {
     "type": "->",
     "named": false
   },
@@ -1051,6 +1194,14 @@
   },
   {
     "type": "?",
+    "named": false
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
     "named": false
   },
   {

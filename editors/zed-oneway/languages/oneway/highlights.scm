@@ -11,6 +11,7 @@
 "?" @operator
 "^" @operator
 "::" @operator
+"-" @operator
 
 ; ─── Punctuation ──────────────────────────────────────────────────────────────
 [
@@ -18,6 +19,8 @@
   ")"
   "{"
   "}"
+  "["
+  "]"
   "<"
   ">"
 ] @punctuation.bracket
@@ -33,6 +36,14 @@
 (float_literal) @number
 (hex_literal) @number
 (string_literal) @string
+
+; ─── JSON Literals ────────────────────────────────────────────────────────────
+(json_pair key: (string_literal) @property)
+(json_pair ":" @punctuation.delimiter)
+
+; true / false / null inside a JSON value
+((json_value (identifier) @constant.builtin)
+  (#any-of? @constant.builtin "true" "false" "null"))
 
 ; ─── Definitions ──────────────────────────────────────────────────────────────
 

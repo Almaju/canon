@@ -2,24 +2,13 @@ use crate::ast::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-const SUSPENDING_CAPABILITIES: &[&str] = &["Filesystem", "HttpClient", "HttpServer", "Network"];
+const SUSPENDING_CAPABILITIES: &[&str] = &["Network"];
 
 fn is_suspending_capability(name: &str) -> bool {
     SUSPENDING_CAPABILITIES.contains(&name)
 }
 
-const CAPABILITY_TYPES: &[&str] = &[
-    "Clock",
-    "Filesystem",
-    "HttpClient",
-    "HttpServer",
-    "Json",
-    "Network",
-    "Random",
-    "Stderr",
-    "Stdin",
-    "Stdout",
-];
+const CAPABILITY_TYPES: &[&str] = &["Network", "Random", "Stderr", "Stdin", "Stdout"];
 
 fn is_capability_type(name: &str) -> bool {
     CAPABILITY_TYPES.contains(&name)
@@ -69,10 +58,16 @@ pub fn generate_with_meta(module: &Module) -> GeneratedRust {
                 continue;
             }
             if let Some(recv) = &func.receiver {
-                methods_by_receiver
-                    .entry(recv.name.clone())
-                    .or_default()
-                    .push(func);
+                if recv.name == "Unit" {
+                    // (Unit) -> T  means a zero-argument free function;
+                    // impl () is invalid Rust, so emit as a top-level fn.
+                    free_functions.push(func);
+                } else {
+                    methods_by_receiver
+                        .entry(recv.name.clone())
+                        .or_default()
+                        .push(func);
+                }
             } else {
                 free_functions.push(func);
             }
@@ -164,14 +159,39 @@ impl Codegen {
                 }
                 Item::Function(func) => {
                     if let (Some(recv), Some(extern_decl)) = (&func.receiver, &func.extern_rust) {
-                        extern_methods.insert(
-                            (recv.name.clone(), func.name.name.clone()),
-                            ExternMethod {
-                                path: extern_decl.path.clone(),
-                                is_async: extern_decl.is_async,
-                                return_ty: func.return_ty.clone(),
-                            },
-                        );
+                        let em = ExternMethod {
+                            path: extern_decl.path.clone(),
+                            is_async: extern_decl.is_async,
+                            return_ty: func.return_ty.clone(),
+                        };
+                        extern_methods
+                            .insert((recv.name.clone(), func.name.name.clone()), em.clone());
+                        // For constructors ("Self"), register commutative entries so that
+                        // `param_val.TypeName()` calls resolve to the extern constructor.
+                        // Handle both simple-named params and product-type params (A * B).
+                        if func.name.name == "Self" {
+                            for param in &func.params {
+                                match &param.ty {
+                                    TypeExpr::Named { .. } => {
+                                        if let Some(n) = param.ty.simple_name() {
+                                            extern_methods
+                                                .entry((n.to_string(), recv.name.clone()))
+                                                .or_insert(em.clone());
+                                        }
+                                    }
+                                    TypeExpr::Product { fields, .. } => {
+                                        for field in fields {
+                                            if let Some(n) = field.simple_name() {
+                                                extern_methods
+                                                    .entry((n.to_string(), recv.name.clone()))
+                                                    .or_insert(em.clone());
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                     }
                 }
                 Item::Use(_) => {}
@@ -566,7 +586,9 @@ impl Codegen {
                         return;
                     }
                 }
-                if is_primitive_constructor(&name.name) && flat.len() == 1 {
+                if name.name == "Unit" && flat.is_empty() {
+                    out.push_str("()");
+                } else if is_primitive_constructor(&name.name) && flat.len() == 1 {
                     self.emit_expr(out, flat[0]);
                 } else if name.name == "List" {
                     out.push_str("vec![");
@@ -628,6 +650,25 @@ impl Codegen {
                         out.push(')');
                     }
                 } else {
+                    // Union-wrapper elision: JsonValue(JsonObject(...)) where JsonObject is a
+                    // variant of JsonValue → the inner constructor already produces the correct
+                    // Rust enum variant, so the outer wrapper is a no-op.
+                    if self.known_typedefs.contains(&name.name)
+                        && !self.variant_of.contains_key(&name.name)
+                        && flat.len() == 1
+                    {
+                        if let Expr::Constructor {
+                            name: inner_name, ..
+                        } = flat[0]
+                        {
+                            if self.variant_of.get(&inner_name.name).map(|p| p.as_str())
+                                == Some(name.name.as_str())
+                            {
+                                self.emit_expr(out, flat[0]);
+                                return;
+                            }
+                        }
+                    }
                     let _ = write!(out, "{}(", name.name);
                     for (i, arg) in flat.iter().enumerate() {
                         if i > 0 {
@@ -650,6 +691,27 @@ impl Codegen {
                     out.push_str(&rust);
                 } else {
                     let recv_ty = static_type_of_with(receiver, Some(&self.extern_methods));
+                    if recv_ty == "Unit" {
+                        // Unit.method(args) → method(args)  (free function call)
+                        let _ = write!(out, "{}", method.name);
+                        if !type_args.is_empty() {
+                            out.push_str("::");
+                            out.push_str(&render_type_args(type_args));
+                        }
+                        out.push('(');
+                        let flat = flatten_product_args(args);
+                        for (i, arg) in flat.iter().enumerate() {
+                            if i > 0 {
+                                out.push_str(", ");
+                            }
+                            self.emit_expr(out, arg);
+                        }
+                        out.push(')');
+                        if self.async_free_fns.contains(method.name.as_str()) {
+                            out.push_str(".await");
+                        }
+                        return;
+                    }
                     let canonical = self
                         .commutative_methods
                         .get(&(recv_ty.clone(), method.name.clone()))
@@ -791,6 +853,18 @@ impl Codegen {
                 receiver, field, ..
             } => {
                 let recv_ty = static_type_of_with(receiver, Some(&self.extern_methods));
+                // Case 0: zero-arg built-in print used without parens (e.g. "hello".print)
+                if field.name == "print"
+                    && matches!(
+                        recv_ty.as_str(),
+                        "String" | "Int" | "Float" | "Hex" | "Bool"
+                    )
+                {
+                    out.push_str("println!(\"{}\", ");
+                    self.emit_expr(out, receiver);
+                    out.push(')');
+                    return;
+                }
                 // Case 1: extern method used as first-class value → emit Rust path directly
                 let method_key = (recv_ty.clone(), field.name.clone());
                 if let Some(em) = self.extern_methods.get(&method_key) {
@@ -847,6 +921,11 @@ impl Codegen {
                 }
                 self.lambda_scopes.borrow_mut().pop();
                 out.push_str(" }");
+            }
+            Expr::JsonLit { value, .. } => {
+                // Emit a compile-time-safe call to the JSON runtime parser.
+                // The JSON string was validated during Oneway parsing, so unwrap() is safe.
+                let _ = write!(out, "oneway_json_parse({:?}.to_string()).unwrap()", value);
             }
         }
     }
@@ -1032,17 +1111,27 @@ impl Codegen {
         } else {
             format!("::{}", render_type_args(type_args))
         };
-        if let Some(method) = rust_path.strip_prefix('.') {
+        if let Some(field_or_method) = rust_path.strip_prefix('.') {
             let mut s = String::new();
             self.emit_expr(&mut s, receiver);
-            let _ = write!(s, ".{}{}(", method, turbofish);
-            for (i, arg) in args.iter().enumerate() {
-                if i > 0 {
-                    s.push_str(", ");
+            // A leading digit means tuple-field access (e.g. `.0`), not a method call.
+            let is_field_access = field_or_method
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false);
+            if is_field_access {
+                let _ = write!(s, ".{}", field_or_method);
+            } else {
+                let _ = write!(s, ".{}{}(", field_or_method, turbofish);
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    self.emit_expr(&mut s, arg);
                 }
-                self.emit_expr(&mut s, arg);
+                s.push(')');
             }
-            s.push(')');
             return s;
         }
         let is_macro = rust_path.ends_with('!');
@@ -1079,7 +1168,7 @@ impl Codegen {
         }
         for scope in self.lambda_scopes.borrow().iter().rev() {
             if let Some(arg) = scope.get(name) {
-                return arg.clone();
+                return format!("{}.clone()", arg);
             }
         }
         if let Some(current) = &self.current_receiver {
@@ -1343,6 +1432,11 @@ fn static_type_of_with(
                 if matches!(name.name.as_str(), "Ok" | "Some") && !args.is_empty() {
                     return static_type_of_with(&args[0], extern_methods);
                 }
+                // Validated constructor (e.g. Url("...") returns Result<Url, E>):
+                // after ?, the type is the constructor's own name.
+                if !args.is_empty() {
+                    return name.name.clone();
+                }
             }
             // For a Result<T, E>?, the unwrapped type is T.
             if let Expr::MethodCall {
@@ -1377,6 +1471,7 @@ fn static_type_of_with(
             "<unknown>".to_string()
         }
         Expr::FieldAccess { field, .. } => field.name.clone(),
+        Expr::JsonLit { .. } => "JsonValue".to_string(),
     }
 }
 
