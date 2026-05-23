@@ -73,6 +73,15 @@ byte.1   // first Bit
 byte.2   // second Bit
 ```
 
+#### Field Access vs Construction
+
+Because both field names and type constructors are PascalCase, the dot syntax would be ambiguous without a rule. Oneway resolves it with parentheses:
+
+- `user.Birthdate` — **field access**: reads the `Birthdate` component of `user`
+- `user.Birthdate()` — **constructor call**: calls `Birthdate` as a function with `user` as the receiver
+
+The `()` unambiguously signals intent to produce a new value. Its absence signals observation of an existing one.
+
 ### Fixed Repetition (`Type^N`)
 
 For a fixed count of the same type, use `Type^N`:
@@ -149,23 +158,38 @@ For ergonomics, several literal forms are sugar over their constructors:
 
 String literals exist to avoid the parsing ambiguity of bare `String(...)` with spaces and punctuation. Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
 
-#### No Empty Constructors
+#### Zero-Data vs Data-Carrying Constructors
 
-`String()`, `Int()`, `User()` — calling any constructor with zero arguments is a compile-time error. The reasoning: if a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
+`T()` with no arguments is valid **only** when `T` has no underlying composition — i.e., it is a zero-data type like `Unit`, `True`, `False`, or a union variant with no payload. These types have exactly one value; `()` simply signals "I am producing it."
 
-For factory-style construction (e.g. "an empty list"), use an explicit function — `List.empty`, `String.empty`, etc.
+`String()`, `Int()`, `User()` — calling any data-carrying constructor with no arguments is a compile-time error. If a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
 
-### Singleton Types
+For factory-style construction (e.g. "an empty list"), use an explicit lowercase function — `List.empty()`, `String.empty()`.
 
-A type with no underlying composition (e.g. `Unit`, `Off`, `On`) has exactly one value. The value is referenced by writing the type name itself:
+### Zero-Data Types
+
+A type with no underlying composition (e.g. `Unit`, `True`, `False`, `Off`, `On`) has exactly one value. In expression position, it is constructed with `T()` — the empty argument list signals that you are producing a value, not accessing a field:
 
 ```
-main = () -> Unit {
-    Unit
+Ok(Unit())
+True().(
+    * (False) -> Unit { "no".print }
+    * (True) -> Unit { "yes".print }
+)
+```
+
+In **type position** (signatures, type definitions, dispatch arm patterns) the bare name is used as usual:
+
+```
+describe = (Tree) -> String {
+    Tree.(
+        * (Branch) -> String { "branch" }
+        * (Leaf) -> String { "leaf" }
+    )
 }
 ```
 
-`Unit` in return position is the type; `Unit` in expression position is its sole value. No constructor call is needed (and would not work — there is no data to pass).
+The rule: `()` signals construction; its absence after a PascalCase name signals observation (field access or type reference).
 
 ## Constructor Arguments
 
@@ -212,9 +236,9 @@ This follows the same `Name = ...` pattern as everything else. The compiler dist
 - External callers cannot bypass the constructor. Only functions declared in the same file have access to the type's raw inner representation.
 
 ```
-main = (HttpClient * Stdout) -> Result<Unit, HttpError + InvalidUrl> {
-    HttpClient.get(Url("https://example.com")?)?.print(Stdout)
-    Ok(Unit)
+main = () -> Result<Unit, HttpError + InvalidUrl> {
+    Url("https://example.com")?.get()?.print
+    Ok(Unit())
 }
 ```
 
@@ -313,25 +337,27 @@ This is a genuinely novel feature: in most languages, the receiver is a privileg
 
 ### The Entry Point
 
-`main` is the single exception. It takes capabilities as input but has no receiver — it is never called via dot syntax:
+`main` is the single exception. It takes no input and has no receiver — it is never called via dot syntax:
 
 ```
-main = (Stdout) -> Unit {
-    "hello".print(Stdout)
+main = () -> Unit {
+    "hello".print
 }
 ```
+
+`main` always compiles to an async entry point backed by tokio. There is no condition on this — Oneway targets async-first use cases and every program gets the async runtime. The programmer writes uniform, sync-looking code; the compiler handles async machinery based on what the program does.
 
 ### Referring to Components
 
 Inside a function body, each component is referenced by **its type name**:
 
 ```
-print = (Stdout * String) -> Unit {
-    Stdout.write(String)
+format = (Greeting * Name) -> String {
+    Greeting
 }
 ```
 
-`String` here is the string value; `Stdout` is the capability value. Each type name binds to the value of that type that was passed in.
+`Greeting` here is the greeting value; `Name` is the name value. Each type name binds to the value of that type that was passed in.
 
 ### Disambiguation
 
@@ -588,49 +614,66 @@ functionName = (Foo) -> ReturnType {
 
 `Option<T>` and `Result<T, Empty>` are structurally similar but **kept distinct**: `None` means "absent", `Err(_)` means "failed". The semantic difference is worth the duplication.
 
-## Side Effects and Capabilities
+## Values and Effects
 
-A function's type should not lie about what it does. `print = (String) -> Unit` claims "nothing happens", but writing to stdout is something.
+Oneway does not have a separate capability or effect system. Effects emerge naturally from the values you construct and thread through your program.
 
-Oneway models effects as **capabilities** — values that must be passed in to perform an effect. A function that prints requires a `Stdout` capability:
+### Domain-First Design
+
+The guiding principle: **start with real domain objects and transform them**. There are no service singletons, no manager objects, no repository classes. A `Path` value represents a file path; transforming it to `File` represents opening that file; reading the `File` gives you a `String`. The type chain is the access control.
 
 ```
-print = (Stdout * String) -> Unit {
-    ...
+Path("./data.json").File()?.read()?.print
+```
+
+Having a `File` value *is* the capability to read that file. You cannot get a `File` without having constructed it from a `Path`, and you cannot construct a `Path` from nowhere — it requires a `String`. The type system enforces this naturally.
+
+This applies everywhere:
+
+```
+# Fetching from the network — start with a Url
+Url("https://api.example.com/data")?.get()?.print
+
+# HTTP server — start with a Port
+Port(3000).HttpServer(State(Unit()))
+    .get(RoutePath("/"), handler)
+    .serve()
+
+# JSON — start with a String
+"[1, 2, 3]".JsonValue()?.JsonArray()?.length().print
+```
+
+No service object is ever conjured from thin air. No singleton is accessed statically. Every transformation requires a value you already hold.
+
+### Print
+
+`print = (String) -> Unit` is a built-in that writes to stdout. It requires nothing beyond a `String` — no capability token, no permission, no threading. This covers the overwhelming majority of output needs.
+
+For redirectable output — writing to a file, a log sink, a test buffer — construct a `Fileout` from a `File` and pass it along:
+
+```
+logFn = (Fileout) -> Unit {
+    "event occurred".print(Fileout)
 }
+
+logFn(Path("./app.log").File()?.Fileout())
 ```
 
-The only place to obtain real-world capabilities is `main.ow`, which receives them and threads them down. A function that does not receive a capability cannot perform the corresponding effect.
+`print = (Fileout * String) -> Unit` is the overload that writes to the given output instead of stdout. Functions that need configurable output declare `Fileout` as a parameter; functions that just want to emit to stdout call `.print` directly.
 
-This requires no new mechanism — capabilities are just types, composed into the function's input with `*` — and it makes effects honest at the type level without monads or a separate effect system.
+### Threading Effects
 
-### Multiple Capabilities
-
-A function that needs several capabilities composes them with `*`:
+When a function performs a meaningful effect — reading a file, talking to a database — the relevant value appears in its signature. This is not enforced by a capability type system; it is the natural consequence of needing the value to do the work:
 
 ```
-main = (Filesystem * Stdout) -> Result<Unit, IoError> {
-    Filesystem.read(Path("Cargo.toml"))?.print(Stdout)
-    Ok(Unit)
-}
+save = (Database * User) -> Result<Unit, DbError>
 ```
 
-The components are accessed by their type names (`Filesystem`, `Stdout`) just like any other product-field access. The alphabetical-order rule that applies to product members also applies here: `(Filesystem * Stdout)` is valid; `(Stdout * Filesystem)` is a compile error.
+`user.save(database)` and `database.save(user)` are both valid (commutative calling). No `UserRepository`. No `DatabaseManager`. The `Database` value IS the access; having it means you can use it. You receive it because you had to construct it (from a connection string, a config, something real) and thread it to the functions that need it.
 
-The product form, not a comma-separated list, is what reads correctly: `main` takes "the Filesystem capability *and* the Stdout capability" — a conjunction, which is exactly what `*` denotes.
+### Async
 
-### Suspending vs Non-Suspending Capabilities
-
-Capabilities are split into two kinds based on whether their effects can wait on the outside world:
-
-- **Non-suspending**: `Clock`, `Random`, `Stderr`, `Stdin`, `Stdout`. Their methods complete without yielding to a scheduler.
-- **Suspending**: `Filesystem`, `Network`. (Future: `Database`.) Their methods may park the caller while the OS or a remote system responds.
-
-A function compiles to `async fn` in Rust if and only if it transitively requires a suspending capability or calls a `Rust.async` extern. Otherwise it compiles to a plain `fn`. This is invisible at the source level — the programmer writes ordinary functions and ordinary calls — but it is what carries the "color" of a function. The capability parameter is the color; no separate `async` keyword exists.
-
-This is similar in spirit to Haskell's `IO` propagation, but implemented via ordinary capability values rather than a monadic wrapper, and split per-effect rather than collapsed into a single `IO`. A function's signature already had to declare every effect it uses; that signature now also tells the compiler whether to emit async machinery.
-
-The propagation rule is the same as for any other capability: if you call something that needs `Network`, your function must declare `Network` in its input. The compiler verifies; it does not infer the signature for you. This matches Oneway's existing no-type-inference rule.
+All programs compile to async Rust under tokio. There is no `async` keyword and no `.await` in Oneway source. The compiler handles this uniformly for all programs.
 
 ## Traits
 
@@ -695,13 +738,9 @@ There is no `Self` keyword. Inside a function body, components are referenced by
 
 ## Concurrency
 
-Oneway has no `async` keyword and no `.await` at the source level. Functions are uniform: any function may call any function, and the syntax of the call is the same in either case.
+Oneway has no `async` keyword and no `.await` at the source level. All programs compile to async Rust under tokio. The programmer writes uniform function calls; the compiler emits the state-machine and await machinery.
 
-Underneath, the compiler reads the capability set to decide how to emit each function. A function that transitively requires a [suspending capability](#suspending-vs-non-suspending-capabilities) (or calls a `Rust.async` extern) compiles to `async fn` in Rust, with `.await` inserted at every relevant call site. A function that only uses non-suspending capabilities — or none at all — compiles to a plain `fn`. The "color" is real, but it lives in the capability parameter the programmer was already threading through; there is no separate keyword for it.
-
-`main` is compiled to `#[tokio::main] async fn main()` if any reachable function is async; otherwise it stays a plain `fn main()`. Pure-compute programs link no async runtime, pay no per-call state-machine overhead, and produce small binaries — the cost of async is paid only by programs that actually take a suspending capability.
-
-The concurrency model is Go-flavored: lightweight tasks and channels. `Task.spawn` maps to `tokio::spawn` when the program is async-colored and to `std::thread::spawn` otherwise. Channels map to `tokio::sync::mpsc` or `std::sync::mpsc` accordingly. A spawned task's body declares the capabilities it uses, same rule as any other function.
+`Task.spawn` maps to `tokio::spawn`. Channels map to `tokio::sync::mpsc`. A spawned task's body is an ordinary function.
 
 ## Interop With the Host Ecosystem
 
@@ -717,10 +756,7 @@ A type or function can be declared as backed by a Rust item. The transpiler emit
 
 ```
 extern Rust("std::io::stdout")
-Stdout
-
-extern Rust("std::println")
-print = (Stdout * String) -> Unit
+print = (String) -> Unit
 
 extern Rust("axum::Router")
 HttpRouter
@@ -760,9 +796,8 @@ Idiomatic Oneway code does not call `extern Rust` directly. Instead, it imports 
 ```
 use HttpServer    # wraps axum
 use HttpClient    # wraps reqwest
-use Filesystem    # wraps tokio::fs
 use Database      # wraps sqlx
-use Json          # wraps serde_json
+use Json          # types: JsonValue, JsonArray, JsonObject, …
 ```
 
 Each binding is a few hundred lines of Oneway declarations plus minimal ergonomic glue, written once and shipped with the language. The community can publish additional or alternative bindings; the shipped set is just the curated default.
@@ -777,22 +812,23 @@ Two layers ship with the language:
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
 - Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
 - Standard unions: `Bool`, `Ord`
-- Capability types: `Clock`, `Filesystem`, `Network`, `Random`, `Stderr`, `Stdin`, `Stdout` (see [Suspending vs Non-Suspending Capabilities](#suspending-vs-non-suspending-capabilities))
+- I/O built-ins: `print` (stdout), `File`, `Fileout`
 
 `Map<K, V>` is a sorted key-value map backed by `BTreeMap`. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is a sorted set backed by `BTreeSet`; `T` must implement `Ord`.
 
 **Batteries** — opinionated binding packages over major Rust crates, written in ordinary Oneway with `extern Rust` declarations:
 
 - `HttpServer` (axum), `HttpClient` (reqwest)
-- `Filesystem` (tokio::fs), `Database` (sqlx)
-- `Json` (serde_json), `Crypto` (ring / rustls), `Log` (tracing)
+- `Database` (sqlx)
+- `Json` — types (`JsonValue`, `JsonArray`, `JsonObject`, …) and constructors
+- `Crypto` (ring / rustls), `Log` (tracing)
 
 Anything outside these two layers is a third-party binding the community publishes — same mechanism, no privileged path.
 
 ### Tradeoffs
 
 - **Error messages may leak Rust types** when crossing the FFI boundary. Unavoidable to some degree; mitigated by good bindings.
-- **Async-flavored crates** are bound via `Rust.async` externs and the suspending-capability mechanism, so the no-keyword promise is preserved while still using async crates natively. The cost — tokio in the dep tree, state-machine codegen — is paid only by programs that actually take a suspending capability.
+- **Async-flavored crates** are bound via `Rust.async` externs. The cost — tokio in the dep tree, state-machine codegen — is uniform across all programs.
 - **Oneway is permanently coupled to Rust** unless a second backend is later added. A real strategic dependency, accepted in exchange for sharing the entire Rust ecosystem.
 
 ## Disambiguating Same-Typed Parameters
@@ -865,7 +901,7 @@ So `A + B * C^3` parses as `A + (B * (C^3))`.
 
 ### Expression-level (tightest first)
 
-1. `.` — function call / field access / dispatch
+1. `.` — function call / field access / dispatch — PascalCase with `()` constructs, without `()` accesses a field
 2. `()` — function application
 3. `?` — postfix error propagation
 4. `*` — value-level product (only inside a constructor argument)
@@ -882,7 +918,7 @@ So `foo.bar()?` is `((foo.bar)())?`.
 | `T^*`      | Unbounded repetition (Kleene star)       |
 | `<T>`      | Generic parameter                        |
 | `<T: Tr>`  | Generic with trait constraint            |
-| `.`        | Function call / field access / dispatch  |
+| `.`        | Function call / field access / dispatch — `T()` constructs, `T` accesses field |
 | `.( )`     | Dispatch on a union                      |
 | `?`        | Propagate `Result` / `Option` failure    |
 

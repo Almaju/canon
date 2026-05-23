@@ -3,8 +3,8 @@ OtherInt = Int
 extern Rust("std::cmp::min")
 min = (Int * OtherInt) -> Int
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     5
         .min(3)
-        .print(Stdout)
+        .print
 }

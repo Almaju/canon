@@ -16,7 +16,7 @@
 - [Functions](./tour/functions.md)
 - [Dispatch](./tour/match.md)
 - [Loops](./tour/loops.md)
-- [Capabilities](./tour/capabilities.md)
+- [Effects and Values](./tour/effects.md)
 - [Modules](./tour/modules.md)
 - [Traits](./tour/traits.md)
 - [Errors](./tour/errors.md)

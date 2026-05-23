@@ -12,11 +12,11 @@ Show = (Name) -> String {
     "Alice"
 }
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     Greeting("hi")
         .Show()
-        .print(Stdout)
+        .print
     Name("Alice")
         .Show()
-        .print(Stdout)
+        .print
 }

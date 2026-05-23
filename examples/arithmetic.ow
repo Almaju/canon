@@ -1,13 +1,12 @@
-
-main = (Stdout) -> Unit {
+main = () -> Unit {
     7
         .add(35)
-        .print(Stdout)
+        .print
     10
         .lt(20)
-        .print(Stdout)
+        .print
     5.gt(3).(
-        (False) -> Unit { "no".print(Stdout) }
-        * (True) -> Unit { "yes".print(Stdout) }
+        * (False) -> Unit { "no".print }
+        * (True) -> Unit { "yes".print }
     )
 }

@@ -1,7 +1,6 @@
-
-main = (Stdout) -> Unit {
-    True.(
-        * (False) -> Unit { "no".print(Stdout) }
-        * (True) -> Unit { "yes".print(Stdout) }
+main = () -> Unit {
+    True().(
+        * (False) -> Unit { "no".print }
+        * (True) -> Unit { "yes".print }
     )
 }

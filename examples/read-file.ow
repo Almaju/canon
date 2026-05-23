@@ -1,8 +1,6 @@
 use Filesystem
 
-main = (Filesystem * Stdout) -> Result<Unit, IoError> {
-    Filesystem
-        .read(Path("Cargo.toml"))?
-        .print(Stdout)
-    Ok(Unit)
+main = () -> Result<Unit, IoError> {
+    Path("Cargo.toml").File()?.read()?.print
+    Ok(Unit())
 }

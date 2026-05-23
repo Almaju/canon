@@ -1,7 +1,7 @@
 use Greeter
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     Greeter("hi")
         .shout()
-        .print(Stdout)
+        .print
 }

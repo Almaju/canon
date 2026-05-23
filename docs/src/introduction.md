@@ -14,11 +14,11 @@ meaningful change.
 ```oneway
 Bool = False + True
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })
         .length()
-        .print(Stdout)
+        .print
 }
 ```
 
@@ -26,10 +26,21 @@ A few things to notice:
 
 - There is **no `let`**, no local variables, no `if`/`else`, no comments.
 - Functions are declared as `name = (Type) -> Ret { ... }` — any component can be the dot-receiver at the call site.
-- `main` is the program's entry point and takes capabilities as parameters.
+- `main` takes no parameters and always runs under an async runtime.
 - Branching is dispatch on a union (`.( )`).
-- Side effects are passed in as **capabilities** (`Stdout`, `Filesystem`, …).
+- Output is simple: `.print` writes a `String` to stdout. No capability token needed.
+- `T()` constructs a value; `value.Field` (no parens) reads a field.
 - Imports are file-based: `use Foo` imports the type declared in `foo.ow`.
+
+## Domain-First Design
+
+Oneway has no service singletons. Instead of asking permission from a `Filesystem` object, you start with a real value and transform it:
+
+```oneway
+Path("./data.json").File()?.read()?.print
+```
+
+Having a `File` value *is* the capability to read that file. The type chain enforces access naturally. The same principle applies to HTTP, JSON, databases — you start with what you concretely have and transform it toward what you need.
 
 ## Status
 

@@ -5,8 +5,8 @@ HttpRequest
 
 HttpResponseBody = Body * HttpStatus
 
-extern Rust("OnewayHttpRouter")
-HttpRouter<S>
+extern Rust("OnewayHttpServer")
+HttpServer<S>
 
 HttpStatus = Int
 
@@ -22,26 +22,26 @@ SseData = String
 extern Rust("oneway_sse_sender")
 SseSender
 
-extern Rust("oneway_http_router_new")
-router = <S>(HttpServer * S) -> HttpRouter<S>
+extern Rust("oneway_http_server_new")
+HttpServer = <S>(Port * S) -> HttpServer<S>
 
 extern Rust("oneway_http_request_body")
 body = (HttpRequest) -> Body
 
 extern Rust("oneway_http_get_route")
-get = <S>(HttpRouter<S> * RoutePath * (HttpRequest * S) -> HttpResponseBody) -> HttpRouter<S>
+get = <S>(HttpServer<S> * RoutePath * (HttpRequest * S) -> HttpResponseBody) -> HttpServer<S>
 
 extern Rust("oneway_http_request_path")
 path = (HttpRequest) -> String
 
 extern Rust("oneway_http_post_route")
-post = <S>(HttpRouter<S> * RoutePath * (HttpRequest * S) -> HttpResponseBody) -> HttpRouter<S>
+post = <S>(HttpServer<S> * RoutePath * (HttpRequest * S) -> HttpResponseBody) -> HttpServer<S>
+
+extern Rust("oneway_http_sse_route")
+sse = <S>(HttpServer<S> * RoutePath * (HttpRequest * S * SseSender) -> Unit) -> HttpServer<S>
 
 extern Rust("oneway_sse_send")
 send = (SseData * SseSender) -> Unit
 
 extern Rust.async("oneway_http_serve")
-serve = <S>(HttpRouter<S> * Port) -> Result<Unit, IoError>
-
-extern Rust("oneway_http_sse_route")
-sse = <S>(HttpRouter<S> * RoutePath * (HttpRequest * S * SseSender) -> Unit) -> HttpRouter<S>
+serve = <S>(HttpServer<S>) -> Result<Unit, IoError>

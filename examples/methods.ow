@@ -4,8 +4,8 @@ shout = (Greeting) -> String {
     "HELLO"
 }
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     Greeting("howdy")
         .shout()
-        .print(Stdout)
+        .print
 }

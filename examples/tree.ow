@@ -15,11 +15,11 @@ describe = (Tree) -> String {
     )
 }
 
-main = (Stdout) -> Unit {
-    Leaf
+main = () -> Unit {
+    Leaf()
         .describe()
-        .print(Stdout)
-    Branch(Left(Leaf) * Right(Leaf) * Value(7))
+        .print
+    Branch(Left(Leaf()) * Right(Leaf()) * Value(7))
         .describe()
-        .print(Stdout)
+        .print
 }

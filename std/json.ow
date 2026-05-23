@@ -48,28 +48,28 @@ extern Rust(".length")
 length = (JsonObject) -> Int
 
 extern Rust("oneway_json_emit")
-emit = (Json * JsonValue) -> String
+emit = (JsonValue) -> String
 
 extern Rust("oneway_json_parse")
-parse = (Json * String) -> Result<JsonValue, MalformedJson>
+JsonValue = (String) -> Result<JsonValue, MalformedJson>
 
 extern Rust(".asArray")
-asArray = (JsonValue) -> Result<JsonArray, MalformedJson>
+JsonArray = (JsonValue) -> Result<JsonArray, MalformedJson>
 
 extern Rust(".asBool")
-asBool = (JsonValue) -> Result<JsonBool, MalformedJson>
+JsonBool = (JsonValue) -> Result<JsonBool, MalformedJson>
 
 extern Rust(".asNull")
-asNull = (JsonValue) -> Result<JsonNull, MalformedJson>
+JsonNull = (JsonValue) -> Result<JsonNull, MalformedJson>
 
 extern Rust(".asNumber")
-asNumber = (JsonValue) -> Result<JsonNumber, MalformedJson>
+JsonNumber = (JsonValue) -> Result<JsonNumber, MalformedJson>
 
 extern Rust(".asObject")
-asObject = (JsonValue) -> Result<JsonObject, MalformedJson>
+JsonObject = (JsonValue) -> Result<JsonObject, MalformedJson>
 
 extern Rust(".asString")
-asString = (JsonValue) -> Result<JsonString, MalformedJson>
+JsonString = (JsonValue) -> Result<JsonString, MalformedJson>
 
 extern Rust("oneway_bool_to_json")
 ToJson = (Bool) -> JsonValue

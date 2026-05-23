@@ -3,5 +3,20 @@ use Path
 extern Rust("std::io::Error")
 IoError
 
-extern Rust.async("tokio::fs::read_to_string")
-read = (Filesystem * Path) -> Result<String, IoError>
+extern Rust("oneway_file")
+File
+
+extern Rust("oneway_file_out")
+Fileout
+
+extern Rust.async("oneway_file_open")
+File = (Path) -> Result<File, IoError>
+
+extern Rust("oneway_fileout_from_file")
+Fileout = (File) -> Fileout
+
+extern Rust.async("oneway_file_read")
+read = (File) -> Result<String, IoError>
+
+extern Rust("oneway_print_fileout")
+print = (Fileout * String) -> Unit

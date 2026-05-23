@@ -6,8 +6,8 @@ greet = (Greeting * Name) -> Greeting {
     Greeting
 }
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     Greeting("hello").greet(Name("world"))
     Name("world").greet(Greeting("hello"))
-    "commutative calling works".print(Stdout)
+    "commutative calling works".print
 }

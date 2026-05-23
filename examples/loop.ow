@@ -1,7 +1,7 @@
-main = (Stdout) -> Unit {
+main = () -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })
         .length()
-        .print(Stdout)
-    "done".print(Stdout)
+        .print
+    "done".print
 }

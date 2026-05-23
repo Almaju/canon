@@ -4,11 +4,11 @@ toLower = (String) -> String
 extern Rust(".to_uppercase")
 toUpper = (String) -> String
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     "Hello, World"
         .toUpper()
-        .print(Stdout)
+        .print
     "GoodBye"
         .toLower()
-        .print(Stdout)
+        .print
 }

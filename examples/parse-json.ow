@@ -1,6 +1,6 @@
 use Json
 
-main = (Json * Stdout) -> Result<Unit, MalformedJson> {
-    Json.parse("[1, 2, 3, 4, 5]")?.asArray()?.length().print(Stdout)
-    Ok(Unit)
+main = () -> Result<Unit, MalformedJson> {
+    "[1, 2, 3, 4, 5]".JsonValue()?.JsonArray()?.length().print
+    Ok(Unit())
 }

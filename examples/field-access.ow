@@ -4,7 +4,7 @@ User = Birthday * Username
 
 Username = String
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     User(Birthday("1990") * Username("alice")).Username
-    "field access ok".print(Stdout)
+    "field access ok".print
 }

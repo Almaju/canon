@@ -1,8 +1,8 @@
 use Clock
 
-main = (Clock * Stdout) -> Unit {
-    Clock
+main = () -> Unit {
+    Clock(Unit())
         .now()
         .toRfc3339()
-        .print(Stdout)
+        .print
 }
