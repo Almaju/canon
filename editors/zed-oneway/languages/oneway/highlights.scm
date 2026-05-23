@@ -3,7 +3,10 @@
 "mut" @keyword
 "extern" @keyword
 
-; ─── Operators ────────────────────────────────────────────────────────────────
+; ─── Operators ───────────────────────────────────────────────────────────────────────
+; Note: `-` is only used inline as part of a negative-number literal
+; (see `seq("-", …)` inside `json_value` in grammar.js), so it is not
+; exposed as a standalone node type and cannot be queried directly.
 "=" @operator
 "->" @operator
 "+" @operator
@@ -11,7 +14,6 @@
 "?" @operator
 "^" @operator
 "::" @operator
-"-" @operator
 
 ; ─── Punctuation ──────────────────────────────────────────────────────────────
 [
@@ -57,7 +59,9 @@
 ; Bare extern type declaration
 (extern_type_decl name: (identifier) @type)
 
-; Use declaration
+; Use declaration — every identifier in the path (e.g. `std/Foo`) is
+; styled as a namespace. We omit the field selector because the `path`
+; field contains multiple identifier nodes separated by `/`.
 (use_decl (identifier) @namespace)
 
 ; Extern clause
