@@ -10,4 +10,6 @@
 *.o
 examples/*.rs
 examples/*.cargo/
+# Build output dirs created by `oneway build` / `oneway run`
 .oneway/
+examples/**/.oneway/
