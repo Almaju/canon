@@ -1,6 +1,8 @@
 use Filesystem
 
 main = (Filesystem * Stdout) -> Result<Unit, IoError> {
-    Filesystem.read(Path("Cargo.toml"))?.print(Stdout)
+    Filesystem
+        .read(Path("Cargo.toml"))?
+        .print(Stdout)
     Ok(Unit)
 }

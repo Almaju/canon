@@ -497,9 +497,25 @@ There is no `if`/`else` or `match` keyword. All branching is via **dispatch** on
 
 ```
 ord.(
-    Equal   => ...,
-    Greater => ...,
-    Less    => ...,
+    * (Equal)   -> String { "equal" }
+    * (Greater) -> String { "greater" }
+    * (Less)    -> String { "less" }
+)
+```
+
+Each arm is a lambda whose single parameter is the variant type. Arms are separated by `*` (a product of handlers). The leading `*` before the first arm is optional — both forms are equivalent:
+
+```
+# leading * on every arm (recommended for alignment)
+bool.(
+    * (False) -> Unit { "no".print(Stdout) }
+    * (True)  -> Unit { "yes".print(Stdout) }
+)
+
+# leading * omitted from the first arm
+bool.(
+    (False) -> Unit { "no".print(Stdout) }
+    * (True)  -> Unit { "yes".print(Stdout) }
 )
 ```
 
@@ -518,7 +534,25 @@ Algebraically, a dispatch on a sum type is isomorphic to a product of functions 
 (A + B + C) -> R  ≅  (A -> R) * (B -> R) * (C -> R)
 ```
 
-The `.( )` syntax makes this explicit: no keyword, no special form, just a value applied to its handlers.
+The `.( )` syntax makes this literal: no keyword, no special form, just a value applied to its product of handlers.
+
+**Accessing the inner value.** When a variant carries a payload, the inner value is in scope inside the arm body under the payload's type name. For standard library variants (`Ok<T>`, `Err<E>`, `Some<T>`) write the type argument explicitly — it binds the unwrapped value:
+
+```
+result.(
+    * (Err<IoError>) -> String { IoError.message() }
+    * (Ok<String>)   -> String { String }
+)
+```
+
+For user-defined variants that have their own type definition (e.g. `Branch = Left * Right * Value`), write just the variant name — the matched value is in scope under that name and its fields are accessible:
+
+```
+Tree.(
+    * (Branch) -> String { Branch.value().show() }
+    * (Leaf)   -> String { "leaf" }
+)
+```
 
 ### Loops
 
@@ -695,6 +729,8 @@ extern Rust("axum::Router::route")
 route = (Handler * HttpRouter * Path) -> HttpRouter
 ```
 
+> **First-class references.** `extern Rust` function declarations are entered into the value scope on equal footing with ordinary functions. They may be referenced as first-class values (`Type.fn`) and passed as callbacks wherever a matching function signature is expected.
+
 #### Async Extern Items
 
 To bind an `async fn` from Rust, use `extern Rust.async`. The compiler inserts `.await` at every call site, and the calling Oneway function is compiled as `async fn`:
@@ -739,9 +775,11 @@ Two layers ship with the language:
 
 - Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`, `Unit`, `Never`
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
-- Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`
+- Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
 - Standard unions: `Bool`, `Ord`
 - Capability types: `Clock`, `Filesystem`, `Network`, `Random`, `Stderr`, `Stdin`, `Stdout` (see [Suspending vs Non-Suspending Capabilities](#suspending-vs-non-suspending-capabilities))
+
+`Map<K, V>` is a sorted key-value map backed by `BTreeMap`. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is a sorted set backed by `BTreeSet`; `T` must implement `Ord`.
 
 **Batteries** — opinionated binding packages over major Rust crates, written in ordinary Oneway with `extern Rust` declarations:
 
@@ -791,6 +829,24 @@ This is a deliberate design choice: types lie less than names.
 ## Strings
 
 A `String` is `Byte^*` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
+
+### String Escape Sequences
+
+String literals support standard escape sequences:
+
+| Sequence     | Meaning                          |
+|--------------|----------------------------------|
+| `\\`         | Backslash                        |
+| `\"`         | Double quote                     |
+| `\n`         | Newline (LF)                     |
+| `\r`         | Carriage return (CR)             |
+| `\t`         | Horizontal tab                   |
+| `\0`         | Null byte                        |
+| `\xNN`       | Byte by hex value (2 digits)     |
+| `\uNNNN`     | Unicode scalar (4 hex digits)    |
+| `\UNNNNNNNN` | Unicode scalar (8 hex digits)    |
+
+An unrecognised escape sequence (e.g. `\q`) is a compile-time lexer error. There are no raw string literals.
 
 ## Comments
 

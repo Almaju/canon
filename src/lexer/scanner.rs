@@ -202,23 +202,141 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_string(&mut self, start_line: u32, start_col: u32) -> Result<(TokenKind, String)> {
-        self.pos += 1;
+        self.pos += 1; // consume opening "
         self.column += 1;
-        let content_start = self.pos;
-        while self.pos < self.bytes.len() && self.bytes[self.pos] != b'"' {
-            if self.bytes[self.pos] == b'\n' {
+        let mut content = String::new();
+        loop {
+            if self.pos >= self.bytes.len() {
                 return Err(self.err_at(start_line, start_col, "unterminated string literal"));
             }
-            self.pos += 1;
-            self.column += 1;
+            match self.bytes[self.pos] {
+                b'"' => {
+                    self.pos += 1;
+                    self.column += 1;
+                    break;
+                }
+                b'\n' => {
+                    return Err(self.err_at(start_line, start_col, "unterminated string literal"));
+                }
+                b'\\' => {
+                    let esc_line = self.line;
+                    let esc_col = self.column;
+                    self.pos += 1;
+                    self.column += 1;
+                    if self.pos >= self.bytes.len() {
+                        return Err(self.err_at(
+                            start_line,
+                            start_col,
+                            "unterminated string literal",
+                        ));
+                    }
+                    match self.bytes[self.pos] {
+                        b'\\' => {
+                            content.push('\\');
+                            self.pos += 1;
+                            self.column += 1;
+                        }
+                        b'"' => {
+                            content.push('"');
+                            self.pos += 1;
+                            self.column += 1;
+                        }
+                        b'n' => {
+                            content.push('\n');
+                            self.pos += 1;
+                            self.column += 1;
+                        }
+                        b'r' => {
+                            content.push('\r');
+                            self.pos += 1;
+                            self.column += 1;
+                        }
+                        b't' => {
+                            content.push('\t');
+                            self.pos += 1;
+                            self.column += 1;
+                        }
+                        b'0' => {
+                            content.push('\0');
+                            self.pos += 1;
+                            self.column += 1;
+                        }
+                        b'x' => {
+                            self.pos += 1;
+                            self.column += 1;
+                            let hi = self.consume_hex_digit(esc_line, esc_col)?;
+                            let lo = self.consume_hex_digit(esc_line, esc_col)?;
+                            content.push(char::from((hi << 4) | lo));
+                        }
+                        b'u' => {
+                            self.pos += 1;
+                            self.column += 1;
+                            let code = self.consume_hex_digits(4, esc_line, esc_col)?;
+                            let ch = char::from_u32(code).ok_or_else(|| {
+                                self.err_at(
+                                    esc_line,
+                                    esc_col,
+                                    &format!("invalid Unicode scalar value U+{:04X}", code),
+                                )
+                            })?;
+                            content.push(ch);
+                        }
+                        b'U' => {
+                            self.pos += 1;
+                            self.column += 1;
+                            let code = self.consume_hex_digits(8, esc_line, esc_col)?;
+                            let ch = char::from_u32(code).ok_or_else(|| {
+                                self.err_at(
+                                    esc_line,
+                                    esc_col,
+                                    &format!("invalid Unicode scalar value U+{:08X}", code),
+                                )
+                            })?;
+                            content.push(ch);
+                        }
+                        other => {
+                            return Err(self.err_at(
+                                esc_line,
+                                esc_col,
+                                &format!("unknown escape sequence '\\{}'", other as char),
+                            ));
+                        }
+                    }
+                }
+                b => {
+                    content.push(b as char);
+                    self.pos += 1;
+                    self.column += 1;
+                }
+            }
         }
+        Ok((TokenKind::StringLit, content))
+    }
+
+    fn consume_hex_digit(&mut self, err_line: u32, err_col: u32) -> Result<u8> {
         if self.pos >= self.bytes.len() {
-            return Err(self.err_at(start_line, start_col, "unterminated string literal"));
+            return Err(self.err_at(err_line, err_col, "unexpected end of escape sequence"));
         }
-        let content = self.source[content_start..self.pos].to_string();
+        let b = self.bytes[self.pos];
+        let val = match b {
+            b'0'..=b'9' => b - b'0',
+            b'a'..=b'f' => b - b'a' + 10,
+            b'A'..=b'F' => b - b'A' + 10,
+            _ => {
+                return Err(self.err_at(err_line, err_col, "expected hex digit in escape sequence"))
+            }
+        };
         self.pos += 1;
         self.column += 1;
-        Ok((TokenKind::StringLit, content))
+        Ok(val)
+    }
+
+    fn consume_hex_digits(&mut self, count: usize, err_line: u32, err_col: u32) -> Result<u32> {
+        let mut acc: u32 = 0;
+        for _ in 0..count {
+            acc = (acc << 4) | self.consume_hex_digit(err_line, err_col)? as u32;
+        }
+        Ok(acc)
     }
 
     fn peek_byte(&self, offset: usize) -> Option<u8> {

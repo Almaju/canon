@@ -1,0 +1,13 @@
+use HttpServer
+
+State = Unit
+
+main = (HttpServer * Stdout) -> Result<Unit, IoError> {
+    "Starting server on port 3000...".print(Stdout)
+    HttpServer
+        .router(State(Unit))
+        .get(RoutePath("/"), (HttpRequest * State) -> HttpResponseBody { HttpResponseBody(Body("Hello from Oneway!") * HttpStatus(200)) })
+        .get(RoutePath("/health"), (HttpRequest * State) -> HttpResponseBody { HttpResponseBody(Body("ok") * HttpStatus(200)) })
+        .post(RoutePath("/echo"), (HttpRequest * State) -> HttpResponseBody { HttpResponseBody(Body("received") * HttpStatus(200)) })
+        .serve(Port(3000))
+}

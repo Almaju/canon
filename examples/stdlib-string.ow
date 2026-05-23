@@ -5,6 +5,10 @@ extern Rust(".to_uppercase")
 toUpper = (String) -> String
 
 main = (Stdout) -> Unit {
-    "Hello, World".toUpper().print(Stdout)
-    "GoodBye".toLower().print(Stdout)
+    "Hello, World"
+        .toUpper()
+        .print(Stdout)
+    "GoodBye"
+        .toLower()
+        .print(Stdout)
 }

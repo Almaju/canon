@@ -17,6 +17,10 @@ build:
 release:
     cargo build --release
 
+# Install the release binary to ~/.cargo/bin/oneway
+install:
+    cargo install --path . --force
+
 # Run cargo tests
 test:
     cargo test
@@ -67,16 +71,20 @@ examples: build
     pass=0; fail=0; skip=0
     for f in examples/*.ow examples/*/main.ow; do
         [ -f "$f" ] || continue
-        base="${f%.ow}"
+        dir=$(dirname "$f")
         if [ "$(basename "$f")" = "main.ow" ]; then
             label=$(basename "$(dirname "$f")")
+            stem="main"
         else
-            label=$(basename "$f" .ow)
+            stem=$(basename "$f" .ow)
+            label="$stem"
         fi
+        # Binary is placed inside .oneway/<stem>/<stem> by `oneway build`
+        binpath="$dir/.oneway/$stem/$stem"
         printf "%-20s" "$label"
         if cargo run --quiet -- build "$f" >/dev/null 2>&1; then
             tmpout=$(mktemp)
-            "./${base}" > "$tmpout" 2>&1 &
+            "$binpath" > "$tmpout" 2>&1 &
             pid=$!
             i=0; timed_out=0
             while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
@@ -99,7 +107,6 @@ examples: build
                 echo "✗  (runtime error)"
                 fail=$((fail + 1))
             fi
-            rm -f "${base}"
         else
             echo "·  (skip — does not compile yet)"
             skip=$((skip + 1))
@@ -140,6 +147,19 @@ check-all: build
             echo "✗"
         fi
     done
+
+# Bump version, commit, tag, and push to trigger the release workflow
+bump version:
+    #!/usr/bin/env sh
+    set -e
+    sed -i.bak 's/^version = ".*"/version = "{{version}}"/' Cargo.toml && rm Cargo.toml.bak
+    cargo check --quiet
+    git add Cargo.toml Cargo.lock
+    git commit -m "chore: release v{{version}}"
+    git tag "v{{version}}"
+    git push origin HEAD
+    git push origin "v{{version}}"
+    echo "Tagged v{{version}} and pushed — GitHub Actions will build and publish the release binaries."
 
 # Install git hooks (pre-commit)
 install-hooks:
@@ -195,10 +215,6 @@ fmt-check-all: build
     fi
     echo "All files formatted."
 
-# Install the LSP server binary
-install-lsp:
-    cargo install --path . --bin oneway-lsp --force
-
 # Run all CI checks locally (mirrors ci.yml)
 ci:
     cargo fmt --check
@@ -217,5 +233,4 @@ clippy:
 clean:
     #!/usr/bin/env sh
     cargo clean
-    find examples -type f \( -name '*.rs' -o -perm -u+x ! -name '*.ow' \) -delete
     find examples -type d -name '.oneway' -exec rm -rf {} +

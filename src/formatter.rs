@@ -78,8 +78,25 @@ fn emit_type_def(td: &TypeDef) -> String {
     }
 
     let g = emit_generic_params(&td.generic_params);
-    let body = emit_type_expr(&td.body);
-    format!("{}{} = {}", td.name.name, g, body)
+    let header = format!("{}{} = ", td.name.name, g);
+
+    // Union types: break one variant per line when there are 3+ variants,
+    // or when the single-line form would exceed MAX_WIDTH.
+    if let TypeExpr::Union { variants, .. } = &td.body {
+        let inline = emit_type_expr(&td.body);
+        let full = format!("{}{}", header, inline);
+        if variants.len() >= 3 || full.len() > MAX_WIDTH {
+            let first = emit_type_expr(&variants[0]);
+            let rest = variants[1..]
+                .iter()
+                .map(|v| format!("  + {}", emit_type_expr(v)))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return format!("{}{}\n{}", header, first, rest);
+        }
+    }
+
+    format!("{}{}", header, emit_type_expr(&td.body))
 }
 
 // ── Function Definitions ────────────────────────────────────────────────────
@@ -297,15 +314,24 @@ fn flatten_into(expr: &Expr, parts: &mut Vec<ChainPart>) {
 }
 
 /// Top-level expression formatter.  Tries single-line first; falls back to
-/// chain breaking when the line would exceed [`MAX_WIDTH`] or a dispatch is
-/// present.
+/// chain breaking when the line would exceed [`MAX_WIDTH`], a dispatch is
+/// present, or there are 2+ method calls in the chain.
 fn emit_expr(expr: &Expr, indent: usize) -> String {
     let chain = flatten_chain(expr);
     let has_dispatch = chain
         .iter()
         .any(|p| matches!(p, ChainPart::Dispatch { .. }));
 
-    if !has_dispatch {
+    // Count only Method parts (not Try or Dispatch) for the force-break
+    // threshold.  Two or more chained method calls always break to separate
+    // lines so the code reads like a pipeline regardless of total width.
+    let method_count = chain
+        .iter()
+        .filter(|p| matches!(p, ChainPart::Method { .. }))
+        .count();
+    let force_break = method_count >= 2;
+
+    if !has_dispatch && !force_break {
         let single = emit_chain_inline(&chain);
         if indent * 4 + single.len() <= MAX_WIDTH {
             return single;
@@ -316,7 +342,7 @@ fn emit_expr(expr: &Expr, indent: usize) -> String {
     if chain.len() > 1 || has_dispatch {
         emit_chain_multi(&chain, indent)
     } else {
-        // A single long expression with no chain to break — emit as-is.
+        // A single expression with no chain to break — emit as-is.
         emit_chain_inline(&chain)
     }
 }
@@ -345,13 +371,9 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
             }
             ChainPart::Dispatch { arms } => {
                 out.push_str(".(");
-                for (i, arm) in arms.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    out.push_str(&emit_pattern(&arm.pattern));
-                    out.push_str(" => ");
-                    out.push_str(&emit_inline(&arm.body));
+                for arm in arms.iter() {
+                    out.push_str(" * ");
+                    out.push_str(&emit_arm_inline(arm));
                 }
                 out.push(')');
             }
@@ -386,12 +408,11 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
             let arm_pad = "    ".repeat(indent + 1);
             let close_pad = "    ".repeat(indent);
             out.push_str(".(\n");
-            for arm in arms {
+            for arm in arms.iter() {
                 out.push_str(&arm_pad);
-                out.push_str(&emit_pattern(&arm.pattern));
-                out.push_str(" => ");
-                out.push_str(&emit_expr(&arm.body, indent + 1));
-                out.push_str(",\n");
+                out.push_str("* ");
+                out.push_str(&emit_arm_inline(arm));
+                out.push('\n');
             }
             out.push_str(&close_pad);
             out.push(')');
@@ -454,12 +475,11 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
                 let arm_pad = "    ".repeat(indent + 2);
                 let close_pad = "    ".repeat(indent + 1);
                 out.push_str(".(\n");
-                for arm in arms {
+                for arm in arms.iter() {
                     out.push_str(&arm_pad);
-                    out.push_str(&emit_pattern(&arm.pattern));
-                    out.push_str(" => ");
-                    out.push_str(&emit_expr(&arm.body, indent + 2));
-                    out.push_str(",\n");
+                    out.push_str("* ");
+                    out.push_str(&emit_arm_inline(arm));
+                    out.push('\n');
                 }
                 out.push_str(&close_pad);
                 out.push(')');
@@ -541,18 +561,17 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
     }
 }
 
-fn emit_pattern(pat: &Pattern) -> String {
-    match pat {
-        Pattern::Variant { name, args, .. } => {
-            if args.is_empty() {
-                name.clone()
-            } else {
-                let ps: Vec<String> = args.iter().map(emit_pattern).collect();
-                format!("{}({})", name, ps.join(", "))
-            }
-        }
-        Pattern::Wildcard { .. } => "_".to_string(),
-    }
+fn emit_arm_inline(arm: &MatchArm) -> String {
+    let ty = emit_type_expr(&arm.param_ty);
+    let ret = emit_type_expr(&arm.return_ty);
+    let body = arm
+        .body
+        .exprs
+        .iter()
+        .map(emit_inline)
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("({}) -> {} {{ {} }}", ty, ret, body)
 }
 
 fn format_float(value: f64) -> String {
@@ -619,15 +638,14 @@ mod tests {
     fn test_use_declarations() {
         assert_format(
             "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\").shout().print(Stdout)\n}\n",
-            "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\").shout().print(Stdout)\n}\n",
+            "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\")\n        .shout()\n        .print(Stdout)\n}\n",
         );
     }
 
     #[test]
     fn test_dispatch() {
-        let input = "Bool = False + True\n\nmain = (Stdout) -> Unit {\n    True.(False => \"no\".print(Stdout), True => \"yes\".print(Stdout),)\n}\n";
-        let expected = "Bool = False + True\n\nmain = (Stdout) -> Unit {\n    True.(\n        False => \"no\".print(Stdout),\n        True => \"yes\".print(Stdout),\n    )\n}\n";
-        assert_format(input, expected);
+        let src = "Bool = False + True\n\nmain = (Stdout) -> Unit {\n    True.(\n        * (False) -> Unit { \"no\".print(Stdout) }\n        * (True) -> Unit { \"yes\".print(Stdout) }\n    )\n}\n";
+        assert_idempotent(src);
     }
 
     #[test]

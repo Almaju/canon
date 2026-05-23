@@ -24,6 +24,18 @@ This produces a debug binary at `target/debug/oneway`. The `justfile` at the
 project root wraps the compiler in convenient recipes, so you rarely call
 the binary directly.
 
+## Installing the Binary
+
+To install a release build to `~/.cargo/bin/oneway` (which should already be
+on your `PATH` if you installed Rust via rustup):
+
+```sh
+just install
+```
+
+After this you can invoke `oneway` directly from any directory, without going
+through `just`.
+
 ## Verifying the Install
 
 Run the bundled hello-world example:

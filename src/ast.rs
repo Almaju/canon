@@ -199,30 +199,10 @@ impl Expr {
 
 #[derive(Debug, Clone)]
 pub struct MatchArm {
-    pub pattern: Pattern,
-    pub body: Expr,
+    pub param_ty: TypeExpr, // variant type, e.g. Err<String>, Ok<Int>, Branch, Leaf
+    pub return_ty: TypeExpr, // arm return type (same across all arms)
+    pub body: Block,
     pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub enum Pattern {
-    Variant {
-        name: String,
-        args: Vec<Pattern>,
-        span: Span,
-    },
-    Wildcard {
-        span: Span,
-    },
-}
-
-impl Pattern {
-    pub fn span(&self) -> Span {
-        match self {
-            Pattern::Variant { span, .. } => *span,
-            Pattern::Wildcard { span, .. } => *span,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

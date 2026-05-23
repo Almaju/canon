@@ -3,8 +3,10 @@ use crate::error::OnewayError;
 use std::collections::{HashMap, HashSet};
 
 const BUILTIN_TYPES: &[&str] = &[
+    "Bool",
     "Clock",
     "Deserialize",
+    "False",
     "Filesystem",
     "Float",
     "Hex",
@@ -22,6 +24,7 @@ const BUILTIN_TYPES: &[&str] = &[
     "Stdin",
     "Stdout",
     "String",
+    "True",
     "Unit",
 ];
 
@@ -221,6 +224,8 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
     types.insert("Some".to_string());
     types.insert("Ok".to_string());
     types.insert("Err".to_string());
+    variant_of.insert("False".to_string(), "Bool".to_string());
+    variant_of.insert("True".to_string(), "Bool".to_string());
 
     // `use Foo` (or `use path/Foo`) imports the type `Foo` — register it as
     // known so references to it in the same file are not flagged as unknown.
@@ -694,30 +699,59 @@ fn check_expr(
         } => {
             check_expr(scrutinee, scope, symbols, errors);
             let scrutinee_ty = expr_type_name_in_scope(scrutinee, symbols);
+            let generic_scope: HashSet<String> = HashSet::new();
             for arm in arms {
-                if let Pattern::Variant {
-                    name, span: pspan, ..
-                } = &arm.pattern
+                // Validate param_ty and return_ty as type expressions
+                check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);
+                check_type_expr(&arm.return_ty, symbols, &generic_scope, errors);
+                // Verify the variant belongs to the scrutinee's type
+                if let TypeExpr::Named {
+                    name: variant_name,
+                    span: vspan,
+                    ..
+                } = &arm.param_ty
                 {
-                    let pattern_enum = symbols.variant_of.get(name);
-                    if pattern_enum.map(|s| s.as_str()) != Some(scrutinee_ty.as_str())
-                        && !scrutinee_ty.is_empty()
-                        && scrutinee_ty != "<unknown>"
-                    {
-                        errors.push(OnewayError::CheckError {
-                            message: format!(
-                                "pattern `{}` is not a variant of `{}`",
-                                name, scrutinee_ty
-                            ),
-                            span: *pspan,
-                        });
+                    if !scrutinee_ty.is_empty() && scrutinee_ty != "<unknown>" {
+                        let pattern_enum = symbols.variant_of.get(variant_name.as_str());
+                        if pattern_enum.map(|s| s.as_str()) != Some(scrutinee_ty.as_str()) {
+                            errors.push(OnewayError::CheckError {
+                                message: format!(
+                                    "pattern `{}` is not a variant of `{}`",
+                                    variant_name, scrutinee_ty
+                                ),
+                                span: *vspan,
+                            });
+                        }
                     }
                 }
-                check_expr(&arm.body, scope, symbols, errors);
+                // Build inner scope: generic type args become accessible by their type name
+                let mut inner_scope = ExprScope {
+                    names: scope.names.clone(),
+                };
+                if let TypeExpr::Named {
+                    name: variant_name,
+                    generics,
+                    ..
+                } = &arm.param_ty
+                {
+                    for g in generics {
+                        push_param_names(g, &mut inner_scope.names);
+                    }
+                    // If the variant itself has a TypeDef (e.g. Branch = Left * Right * Value),
+                    // the matched value is accessible under the variant name.
+                    if symbols.knows_type(variant_name)
+                        && symbols.variant_of.contains_key(variant_name.as_str())
+                    {
+                        inner_scope.names.push(variant_name.clone());
+                    }
+                }
+                for expr in &arm.body.exprs {
+                    check_expr(expr, &inner_scope, symbols, errors);
+                }
             }
             if arms.is_empty() {
                 errors.push(OnewayError::CheckError {
-                    message: "match expression must have at least one arm".to_string(),
+                    message: "dispatch expression must have at least one arm".to_string(),
                     span: *span,
                 });
             }
@@ -740,24 +774,31 @@ fn check_expr(
             if recv_ty == "<unknown>" {
                 return;
             }
-            match symbols.product_fields.get(&recv_ty) {
-                Some(fields) if fields.iter().any(|f| f == &field.name) => {}
-                Some(_) => {
-                    errors.push(OnewayError::CheckError {
-                        message: format!("type `{}` has no field `{}`", recv_ty, field.name),
-                        span: *span,
-                    });
+            // Case 1: product field access
+            if let Some(fields) = symbols.product_fields.get(&recv_ty) {
+                if fields.iter().any(|f| f == &field.name) {
+                    return; // valid product field
                 }
-                None => {
-                    errors.push(OnewayError::CheckError {
-                        message: format!(
-                            "field access `.{}` requires a product type — `{}` is not a product",
-                            field.name, recv_ty
-                        ),
-                        span: *span,
-                    });
-                }
+                errors.push(OnewayError::CheckError {
+                    message: format!("type `{}` has no field `{}`", recv_ty, field.name),
+                    span: *span,
+                });
+                return;
             }
+            // Case 2: first-class method reference (extern or Oneway-defined)
+            if symbols
+                .methods
+                .contains_key(&(recv_ty.clone(), field.name.clone()))
+            {
+                return; // valid method reference used as a value
+            }
+            errors.push(OnewayError::CheckError {
+                message: format!(
+                    "field access `.{}` on `{}` — not a product field and no method `{}` found",
+                    field.name, recv_ty, field.name
+                ),
+                span: *span,
+            });
         }
         Expr::Lambda {
             params,
@@ -834,6 +875,24 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     {
         return true;
     }
+    if receiver_ty == "Map" {
+        return matches!(
+            (method, arg_count),
+            ("empty", 0)
+                | ("get", 1)
+                | ("insert", 2)
+                | ("keys", 0)
+                | ("length", 0)
+                | ("remove", 1)
+                | ("values", 0)
+        );
+    }
+    if receiver_ty == "Set" {
+        return matches!(
+            (method, arg_count),
+            ("contains", 1) | ("empty", 0) | ("insert", 1) | ("length", 0) | ("remove", 1)
+        );
+    }
     false
 }
 
@@ -868,7 +927,10 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         }
         Expr::Match { arms, .. } => arms
             .first()
-            .map(|arm| expr_type_name_in_scope(&arm.body, symbols))
+            .map(|arm| match &arm.return_ty {
+                TypeExpr::Named { name, .. } => name.clone(),
+                _ => "<unknown>".to_string(),
+            })
             .unwrap_or_else(|| "<unknown>".to_string()),
         Expr::Try { inner, .. } => {
             if let Expr::Constructor { name, args, .. } = &**inner {
@@ -903,6 +965,18 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "length") => "Int".to_string(),
         ("List", "map") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
+        ("Map", "empty") => "Map".to_string(),
+        ("Map", "get") => "Option".to_string(),
+        ("Map", "insert") => "Map".to_string(),
+        ("Map", "keys") => "List".to_string(),
+        ("Map", "length") => "Int".to_string(),
+        ("Map", "remove") => "Map".to_string(),
+        ("Map", "values") => "List".to_string(),
+        ("Set", "contains") => "Bool".to_string(),
+        ("Set", "empty") => "Set".to_string(),
+        ("Set", "insert") => "Set".to_string(),
+        ("Set", "length") => "Int".to_string(),
+        ("Set", "remove") => "Set".to_string(),
         _ => "<unknown>".to_string(),
     }
 }

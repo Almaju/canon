@@ -1,6 +1,8 @@
 use HttpClient
 
 main = (HttpClient * Stdout) -> Result<Unit, HttpError + InvalidUrl> {
-    HttpClient.get(Url("https://example.com")?)?.print(Stdout)
+    HttpClient
+        .get(Url("https://example.com")?)?
+        .print(Stdout)
     Ok(Unit)
 }

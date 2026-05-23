@@ -2,21 +2,26 @@
 ///
 /// Communicates over stdin/stdout using JSON-RPC 2.0 with Content-Length framing.
 /// No external dependencies — only std and the `oneway` library crate.
-use oneway::ast::{resolve_new_syntax, FunctionDef, Item, Module, TypeDef, TypeExpr};
-use oneway::checker;
-use oneway::error::OnewayError;
-use oneway::formatter;
-use oneway::lexer::Scanner;
-use oneway::parser::Parser;
+use crate::ast::{resolve_new_syntax, FunctionDef, Item, Module, TypeDef, TypeExpr};
+use crate::checker;
+use crate::error::OnewayError;
+use crate::formatter;
+use crate::lexer::Scanner;
+use crate::loader::kebab_case;
+use crate::parser::Parser;
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+
+/// Path to the std/ directory, baked in at compile time.
+/// Points to the correct location when running from the Oneway source tree.
+const STDLIB_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/std");
 
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
-fn main() {
+pub fn run() {
     let mut server = LspServer::new();
     server.run();
 }
@@ -202,8 +207,8 @@ impl LspServer {
             Some(s) => s.as_str(),
             None => return,
         };
-
-        let errors = check_source(source);
+        let file_path = uri_to_path(uri);
+        let errors = check_source(source, &file_path);
         let mut diags = String::from("[");
         for (i, err) in errors.iter().enumerate() {
             if i > 0 {
@@ -343,13 +348,22 @@ impl LspServer {
         };
 
         // Collect all definitions and find matching one
-        if let Some(span) = find_definition(&module, &word) {
+        // Phase 1: definition in the current file.
+        let location = find_definition(&module, &word).map(|span| (uri.clone(), span));
+
+        // Phase 2: follow `use` imports if not found locally.
+        let location = location.or_else(|| {
+            let current_path = uri_to_path(&uri);
+            find_definition_in_imports(&module, &word, &current_path)
+        });
+
+        if let Some((def_uri, span)) = location {
             let def_line = if span.line > 0 { span.line - 1 } else { 0 };
             let def_col = if span.column > 0 { span.column - 1 } else { 0 };
             let end_col = def_col + (span.end.saturating_sub(span.start) as u32).max(1);
             let result = format!(
                 r#"{{"uri":"{}","range":{{"start":{{"line":{},"character":{}}},"end":{{"line":{},"character":{}}}}}}}"#,
-                json_escape(&uri),
+                json_escape(&def_uri),
                 def_line,
                 def_col,
                 def_line,
@@ -419,21 +433,94 @@ impl LspServer {
 // Compiler integration
 // ===========================================================================
 
+/// Recursively collect non-`use` items from a module and all its transitive
+/// imports into `out`. `seen` tracks already-visited module names to break
+/// cycles. `current_file` is the requesting file, used to resolve relative
+/// local imports.
+fn collect_import_items(
+    type_name: &str,
+    current_file: &str,
+    seen: &mut std::collections::HashSet<String>,
+    out: &mut Vec<crate::ast::Item>,
+) {
+    if !seen.insert(type_name.to_string()) {
+        return; // already loaded
+    }
+    let Some(ow_path) = resolve_ow_file(type_name, current_file) else {
+        return;
+    };
+    let Ok(src) = std::fs::read_to_string(&ow_path) else {
+        return;
+    };
+    let Some(imported) = parse_source(&src) else {
+        return;
+    };
+    // Recurse into this module's own imports first (using ow_path as base).
+    for item in &imported.items {
+        if let crate::ast::Item::Use(u) = item {
+            let inner = u.name.name.split('/').last().unwrap_or(&u.name.name);
+            collect_import_items(inner, &ow_path, seen, out);
+        }
+    }
+    // Then add this module's own non-use definitions.
+    for item in imported.items {
+        if !matches!(item, crate::ast::Item::Use(_)) {
+            out.push(item);
+        }
+    }
+}
+
 /// Check source text and return all errors.
-fn check_source(source: &str) -> Vec<OnewayError> {
+///
+/// `file_path` is the filesystem path of the file being checked (not a URI).
+/// If provided, all `use` imports are resolved relative to it and their
+/// definitions are loaded into the module before checking — giving the
+/// checker full knowledge of imported types and methods.
+fn check_source(source: &str, file_path: &str) -> Vec<OnewayError> {
+    // 1. Parse the in-memory source.
     let mut scanner = Scanner::new(source);
     let tokens = match scanner.scan_tokens() {
         Ok(t) => t,
         Err(e) => return vec![e],
     };
     let mut parser = Parser::new(tokens);
-    let mut module = match parser.parse() {
+    let mut current = match parser.parse() {
         Ok(m) => m,
         Err(e) => return vec![e],
     };
-    resolve_new_syntax(&mut module);
-    let mut errors = checker::check(&module);
-    // Don't require main for single-file checking in LSP
+    resolve_new_syntax(&mut current);
+
+    // 2. Collect items from every `use` import, recursively following
+    //    transitive imports (e.g. `use HttpClient` brings in `use Url` which
+    //    defines `Url` and `InvalidUrl`). A `seen` set prevents cycles.
+    let mut imported_items: Vec<crate::ast::Item> = Vec::new();
+    let mut seen = std::collections::HashSet::<String>::new();
+    for item in &current.items {
+        let crate::ast::Item::Use(u) = item else {
+            continue;
+        };
+        let type_name = u.name.name.split('/').last().unwrap_or(&u.name.name);
+        collect_import_items(type_name, file_path, &mut seen, &mut imported_items);
+    }
+
+    // 3. Build a combined module: imported items first, then current file's
+    //    non-use items. `entry_items_start` tells the checker which items
+    //    belong to the user's file (the only ones subject to ordering rules).
+    let entry_items_start = imported_items.len();
+    for item in current.items {
+        // Strip use declarations here too — they were already resolved above
+        // and keeping them causes false "use must appear before definitions"
+        // and alphabetical ordering errors.
+        if !matches!(item, crate::ast::Item::Use(_)) {
+            imported_items.push(item);
+        }
+    }
+    let combined = crate::ast::Module {
+        items: imported_items,
+        span: current.span,
+    };
+
+    let mut errors = checker::check_with_entry(&combined, entry_items_start);
     errors.retain(|e| e.message() != "no `main` entry point defined");
     errors
 }
@@ -453,19 +540,18 @@ fn parse_source(source: &str) -> Option<Module> {
 // ===========================================================================
 
 fn lookup_hover_info(module: &Module, name: &str) -> Option<String> {
+    // Check user-defined items first.
     for item in &module.items {
         match item {
             Item::TypeDef(td) => {
                 if td.name.name == name {
                     return Some(format_type_def_hover(td));
                 }
-                // Also check if name is a variant of this type
                 if let Some(info) = variant_hover(td, name) {
                     return Some(info);
                 }
             }
             Item::Function(func) => {
-                // Match by function name or receiver.name
                 let display_name = effective_function_name(func);
                 if display_name == name {
                     return Some(format_function_hover(func));
@@ -474,7 +560,57 @@ fn lookup_hover_info(module: &Module, name: &str) -> Option<String> {
             _ => {}
         }
     }
-    None
+    // Fall back to built-in type descriptions.
+    builtin_hover(name)
+}
+
+/// Hover info for built-in types, capabilities, and well-known constructors.
+fn builtin_hover(name: &str) -> Option<String> {
+    let desc = match name {
+        // Core numeric / text types
+        "Int"    => "```oneway\nInt\n```\nA 64-bit signed integer.",
+        "Float"  => "```oneway\nFloat\n```\nA 64-bit floating-point number.",
+        "Hex"    => "```oneway\nHex\n```\nA 64-bit unsigned integer displayed in hexadecimal.",
+        "String" => "```oneway\nString = Byte^*\n```\nA UTF-8 string.",
+        "Byte"   => "```oneway\nByte\n```\nA single byte (u8).",
+        "Bytes"  => "```oneway\nBytes = Byte^*\n```\nA byte sequence.",
+        // Unit / Never
+        "Unit"  => "```oneway\nUnit\n```\nThe singleton type with exactly one value: `Unit`.",
+        "Never" => "```oneway\nNever\n```\nThe uninhabited type — a function returning `Never` does not return.",
+        // Bool and its variants
+        "Bool"  => "```oneway\nBool = False + True\n```\nThe built-in boolean type.",
+        "False" => "```oneway\nFalse\n```\nVariant of `Bool`. The falsy value.",
+        "True"  => "```oneway\nTrue\n```\nVariant of `Bool`. The truthy value.",
+        // Ord and its variants
+        "Ord"     => "```oneway\nOrd = Equal + Greater + Less\n```\nComparison result.",
+        "Equal"   => "```oneway\nEqual\n```\nVariant of `Ord`.",
+        "Greater" => "```oneway\nGreater\n```\nVariant of `Ord`.",
+        "Less"    => "```oneway\nLess\n```\nVariant of `Ord`.",
+        // Generic containers
+        "List"   => "```oneway\nList<T>\n```\nAn ordered sequence of values of type `T`.",
+        "Map"    => "```oneway\nMap<K, V>\n```\nA sorted key-value map. `K` must implement `Ord`.",
+        "Set"    => "```oneway\nSet<T>\n```\nA sorted set of values. `T` must implement `Ord`.",
+        "Option" => "```oneway\nOption<T> = None + Some<T>\n```\nAn optional value.",
+        "Some"   => "```oneway\nSome<T>\n```\nVariant of `Option<T>` — value is present.",
+        "None"   => "```oneway\nNone\n```\nVariant of `Option<T>` — value is absent.",
+        "Result" => "```oneway\nResult<T, E> = Err<E> + Ok<T>\n```\nA fallible computation.",
+        "Ok"     => "```oneway\nOk<T>\n```\nVariant of `Result<T, E>` — success.",
+        "Err"    => "```oneway\nErr<E>\n```\nVariant of `Result<T, E>` — failure.",
+        // Capabilities
+        "Clock"      => "```oneway\nClock\n```\nCapability for reading the current time (non-suspending).",
+        "Filesystem" => "```oneway\nFilesystem\n```\nCapability for filesystem I/O (suspending — makes the function async).",
+        "Network"    => "```oneway\nNetwork\n```\nCapability for network I/O (suspending — makes the function async).",
+        "Random"     => "```oneway\nRandom\n```\nCapability for random number generation (non-suspending).",
+        "Stderr"     => "```oneway\nStderr\n```\nCapability for writing to stderr (non-suspending).",
+        "Stdin"      => "```oneway\nStdin\n```\nCapability for reading from stdin (non-suspending).",
+        "Stdout"     => "```oneway\nStdout\n```\nCapability for writing to stdout (non-suspending).",
+        // Misc flags
+        "Off" => "```oneway\nOff\n```\nSingleton flag type — the \"off\" state.",
+        "On"  => "```oneway\nOn\n```\nSingleton flag type — the \"on\" state.",
+        "Bit" => "```oneway\nBit = Off + On\n```\nA single bit.",
+        _ => return None,
+    };
+    Some(desc.to_string())
 }
 
 /// Check if `name` is a variant inside this type definition.
@@ -540,7 +676,7 @@ fn format_function_hover(func: &FunctionDef) -> String {
     format!("```oneway\n{}\n```", sig)
 }
 
-fn format_generic_params(params: &[oneway::ast::GenericParam]) -> String {
+fn format_generic_params(params: &[crate::ast::GenericParam]) -> String {
     if params.is_empty() {
         return String::new();
     }
@@ -597,14 +733,91 @@ fn format_type_expr(ty: &TypeExpr) -> String {
 /// A definition we collected from the AST.
 struct DefInfo {
     name: String,
-    span: oneway::error::Span,
+    span: crate::error::Span,
 }
 
-fn find_definition(module: &Module, name: &str) -> Option<oneway::error::Span> {
+fn find_definition(module: &Module, name: &str) -> Option<crate::error::Span> {
     let defs = collect_definitions(module);
     for def in &defs {
         if def.name == name {
             return Some(def.span);
+        }
+    }
+    None
+}
+
+/// Convert a filesystem path to a `file://` URI.
+fn path_to_uri(path: &str) -> String {
+    if path.starts_with('/') {
+        format!("file://{}", path)
+    } else {
+        format!("file:///{}", path)
+    }
+}
+
+/// Resolve the filesystem path of a `.ow` file for a `use X` declaration.
+/// Checks (in order): local file, local module dir, stdlib.
+fn resolve_ow_file(type_name: &str, current_file: &str) -> Option<String> {
+    use std::path::Path;
+    let stem = kebab_case(type_name);
+    let dir = Path::new(current_file).parent().unwrap_or(Path::new("."));
+
+    // 1. Local file: <dir>/<stem>.ow
+    let local = dir.join(format!("{}.ow", stem));
+    if local.exists() {
+        return local.to_str().map(|s| s.to_string());
+    }
+    // 2. Local module dir: <dir>/<stem>/main.ow
+    let local_mod = dir.join(&stem).join("main.ow");
+    if local_mod.exists() {
+        return local_mod.to_str().map(|s| s.to_string());
+    }
+    // 3. Stdlib
+    let stdlib = Path::new(STDLIB_DIR).join(format!("{}.ow", stem));
+    if stdlib.exists() {
+        return stdlib.to_str().map(|s| s.to_string());
+    }
+    None
+}
+
+/// Search imported modules for a definition. Returns (file_uri, span) on success.
+/// If the word IS the imported type name (e.g. clicking `Json` in `use Json`),
+/// navigates to the top of the imported file.
+fn find_definition_in_imports(
+    module: &Module,
+    word: &str,
+    current_file: &str,
+) -> Option<(String, crate::error::Span)> {
+    use crate::error::Span;
+    for item in &module.items {
+        let Item::Use(u) = item else { continue };
+        let path_str = &u.name.name;
+        let type_name = path_str.split('/').last().unwrap_or(path_str);
+        let Some(file_path) = resolve_ow_file(type_name, current_file) else {
+            continue;
+        };
+
+        // Clicking the import name itself → top of the imported file.
+        if type_name == word {
+            let file_uri = path_to_uri(&file_path);
+            let top = Span {
+                start: 0,
+                end: 0,
+                line: 1,
+                column: 1,
+            };
+            return Some((file_uri, top));
+        }
+
+        // Otherwise search inside the imported file.
+        let Ok(src) = std::fs::read_to_string(&file_path) else {
+            continue;
+        };
+        let Some(imported) = parse_source(&src) else {
+            continue;
+        };
+        if let Some(span) = find_definition(&imported, word) {
+            return Some((path_to_uri(&file_path), span));
         }
     }
     None
@@ -635,12 +848,8 @@ fn collect_definitions(module: &Module) -> Vec<DefInfo> {
                 };
                 defs.push(DefInfo { name, span });
             }
-            Item::Use(u) => {
-                defs.push(DefInfo {
-                    name: u.name.name.clone(),
-                    span: u.name.span,
-                });
-            }
+            // `use` items are resolved via find_definition_in_imports, not here.
+            Item::Use(_) => {}
         }
     }
     defs

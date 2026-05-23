@@ -156,10 +156,16 @@ impl Parser {
                     span: first_ident.span,
                 });
             }
-            let end_span = first_ident.span;
+            // Parse optional generic params: e.g. HttpRouter<S>
+            let generic_params = if self.check(TokenKind::Lt) {
+                self.parse_generic_params()?
+            } else {
+                Vec::new()
+            };
+            let end_span = self.previous_span();
             return Ok(Item::TypeDef(TypeDef {
                 name: first_ident.clone(),
-                generic_params: Vec::new(),
+                generic_params,
                 body: TypeExpr::Named {
                     name: format!("__extern__{}", extern_decl.path),
                     generics: Vec::new(),
@@ -380,12 +386,15 @@ impl Parser {
     fn parse_type_union(&mut self) -> Result<TypeExpr> {
         let start = self.current_span();
         let first = self.parse_type_product()?;
-        if !self.check(TokenKind::Plus) {
+        // Allow the `+` to appear on the next line so that multi-line union
+        // type definitions (emitted by the formatter) round-trip correctly.
+        if self.peek_past_newlines() != TokenKind::Plus {
             return Ok(first);
         }
         let mut variants = vec![first];
-        while self.check(TokenKind::Plus) {
-            self.advance();
+        while self.peek_past_newlines() == TokenKind::Plus {
+            self.skip_newlines();
+            self.advance(); // consume `+`
             self.skip_newlines();
             variants.push(self.parse_type_product()?);
         }
@@ -563,13 +572,18 @@ impl Parser {
                 // Dispatch syntax: value.( arms ) — desugars to match
                 if self.check(TokenKind::LParen) {
                     self.advance();
-                    self.skip_newlines();
                     let mut arms = Vec::new();
+                    self.skip_newlines();
                     while !self.check(TokenKind::RParen) && !self.is_at_end() {
-                        arms.push(self.parse_match_arm()?);
-                        if self.check(TokenKind::Comma) {
+                        // Consume optional `*` separator before each arm (including the first)
+                        if self.check(TokenKind::Star) {
                             self.advance();
+                            self.skip_newlines();
                         }
+                        if self.check(TokenKind::RParen) || self.is_at_end() {
+                            break;
+                        }
+                        arms.push(self.parse_match_arm()?);
                         self.skip_newlines();
                     }
                     let rparen =
@@ -770,43 +784,21 @@ impl Parser {
     }
 
     fn parse_match_arm(&mut self) -> Result<MatchArm> {
-        let pattern = self.parse_pattern()?;
-        self.expect(TokenKind::FatArrow, "expected `=>` after match pattern")?;
-        let body = self.parse_expr()?;
-        let arm_span = span_join(pattern.span(), body.span());
+        let start = self.current_span();
+        // Each arm is: (VariantType) -> ReturnType { body }
+        self.expect(TokenKind::LParen, "expected `(` to begin dispatch arm")?;
+        // Parse the single variant type — may have generics: Err<String>, Ok<Int>, Branch
+        let param_ty = self.parse_type_atom()?;
+        self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
+        self.expect(TokenKind::Arrow, "expected `->` in dispatch arm")?;
+        let return_ty = self.parse_type_expr()?;
+        let body = self.parse_block()?;
+        let end = self.previous_span();
         Ok(MatchArm {
-            pattern,
+            param_ty,
+            return_ty,
             body,
-            span: arm_span,
-        })
-    }
-
-    fn parse_pattern(&mut self) -> Result<Pattern> {
-        let tok = self.expect(TokenKind::Ident, "expected a pattern (variant name or `_`)")?;
-        if tok.lexeme == "_" {
-            return Ok(Pattern::Wildcard { span: tok.span });
-        }
-        let mut args = Vec::new();
-        let mut end_span = tok.span;
-        if self.check(TokenKind::LParen) {
-            self.advance();
-            if !self.check(TokenKind::RParen) {
-                loop {
-                    args.push(self.parse_pattern()?);
-                    if self.check(TokenKind::Comma) {
-                        self.advance();
-                    } else {
-                        break;
-                    }
-                }
-            }
-            let rparen = self.expect(TokenKind::RParen, "expected `)` to close pattern")?;
-            end_span = rparen.span;
-        }
-        Ok(Pattern::Variant {
-            name: tok.lexeme,
-            args,
-            span: span_join(tok.span, end_span),
+            span: span_join(start, end),
         })
     }
 

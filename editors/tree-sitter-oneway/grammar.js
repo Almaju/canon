@@ -55,8 +55,13 @@ module.exports = grammar({
       ),
 
     // Bare extern type declaration: extern Rust("...") TypeName
+    // Now supports generic params: extern Rust("Foo") Bar<S>
     extern_type_decl: ($) =>
-      seq(field("extern", $.extern_clause), field("name", $.identifier)),
+      seq(
+        field("extern", $.extern_clause),
+        field("name", $.identifier),
+        optional(field("generics", $.generic_params)),
+      ),
 
     generic_params: ($) => seq("<", sep1($.generic_param, ","), ">"),
 
@@ -143,7 +148,9 @@ module.exports = grammar({
         ),
       ),
 
-    // Dispatch: value.( Pattern => expr, ... )
+    // Dispatch: value.( * (Type) -> RetType { body } * (Type) -> RetType { body } )
+    // The `*` before each arm is enforced by the formatter; the grammar accepts
+    // it as optional before the first arm for resilience.
     dispatch: ($) =>
       prec.left(
         2,
@@ -151,13 +158,22 @@ module.exports = grammar({
           field("scrutinee", $._expression),
           ".",
           "(",
-          optional(seq(sep1($.dispatch_arm, ","), optional(","))),
+          repeat(seq(optional("*"), field("arms", $.dispatch_arm))),
           ")",
         ),
       ),
 
+    // Each dispatch arm is a lambda: (VariantType) -> ReturnType { body }
+    // The VariantType may carry generic type args: Ok<Int>, Err<String>, Some<T>
     dispatch_arm: ($) =>
-      seq(field("pattern", $._pattern), "=>", field("body", $._expression)),
+      seq(
+        "(",
+        field("param_type", $.named_type),
+        ")",
+        "->",
+        field("return_type", $._type),
+        field("body", $.block),
+      ),
 
     try_expression: ($) =>
       prec.left(2, seq(field("inner", $._expression), "?")),
@@ -171,20 +187,11 @@ module.exports = grammar({
         field("body", $.block),
       ),
 
-    _pattern: ($) => choice($.wildcard_pattern, $.variant_pattern),
-
-    wildcard_pattern: ($) => "_",
-
-    variant_pattern: ($) =>
-      seq(
-        field("name", $.identifier),
-        optional(seq("(", optional(sep1($._pattern, ",")), ")")),
-      ),
-
     // Literals
     integer_literal: ($) => /[0-9]+/,
     float_literal: ($) => /[0-9]+\.[0-9]+/,
     hex_literal: ($) => /0x[0-9a-fA-F]+/,
+    // String literals support backslash escape sequences
     string_literal: ($) => /"([^"\\\n]|\\.)*"/,
 
     // Identifier — both camelCase and PascalCase share this lexeme.

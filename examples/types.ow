@@ -2,13 +2,13 @@ Birthday = String
 
 Bit = Off + On
 
-Bool = False + True
-
 Byte = Bit^8
 
 Bytes = Byte^*
 
-Ord = Equal + Greater + Less
+Ord = Equal
+  + Greater
+  + Less
 
 OtherUser = User
 

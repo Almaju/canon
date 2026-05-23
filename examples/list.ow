@@ -7,7 +7,7 @@ main = (Stdout) -> Unit {
         .length()
         .print(Stdout)
     List(7, 8, 9).first().(
-        None => "empty".print(Stdout),
-        Some(_) => "non-empty".print(Stdout),
+        * (None) -> Unit { "empty".print(Stdout) }
+        * (Some<Int>) -> Unit { "non-empty".print(Stdout) }
     )
 }

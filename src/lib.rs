@@ -5,4 +5,5 @@ pub mod error;
 pub mod formatter;
 pub mod lexer;
 pub mod loader;
+pub mod lsp;
 pub mod parser;

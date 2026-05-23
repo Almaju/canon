@@ -1,6 +1,6 @@
 use Json
 
 main = (Json * Stdout) -> Result<Unit, MalformedJson> {
-    Json.parse::<List<Int>>("[1, 2, 3, 4, 5]")?.length().print(Stdout)
+    Json.parse("[1, 2, 3, 4, 5]")?.asArray()?.length().print(Stdout)
     Ok(Unit)
 }

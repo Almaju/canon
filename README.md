@@ -98,6 +98,7 @@ For contributors. End users should install the prebuilt binary via the script ab
 
 ```sh
 just build                      # build the compiler
+just install                    # build release binary and install to ~/.cargo/bin/oneway
 just run examples/hello.ow      # compile and run an example
 just example list               # run examples/list.ow (or examples/list/main.ow)
 just examples                   # run every example
@@ -112,10 +113,10 @@ just test                       # run the compiler test suite
 
 Tagging a commit with `vX.Y.Z` triggers `.github/workflows/release.yml`, which cross-builds `oneway` for macOS (arm64, x86_64) and Linux (arm64, x86_64), uploads the tarballs and SHA256 checksums to the GitHub release, and makes the new version installable via the install script.
 
+Use `just bump` to automate the full release flow — it updates `Cargo.toml`, commits, tags, and pushes (which triggers the CI release):
+
 ```sh
-# Bump version in Cargo.toml, then:
-git tag v0.1.0
-git push origin v0.1.0
+just bump 0.3.0
 ```
 
 ---

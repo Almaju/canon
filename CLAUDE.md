@@ -38,6 +38,8 @@ This project uses [`just`](https://github.com/casey/just) as a task runner and s
 ```sh
 just build              # cargo build
 just release            # cargo build --release
+just install            # build release binary and install to ~/.cargo/bin/oneway
+just bump <version>     # bump version in Cargo.toml, commit, tag, and push to trigger CI release
 just test               # cargo test
 just test-verbose       # cargo test -- --nocapture
 just run <file>         # compile and run an .ow file

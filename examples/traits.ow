@@ -13,6 +13,10 @@ Show = (Name) -> String {
 }
 
 main = (Stdout) -> Unit {
-    Greeting("hi").Show().print(Stdout)
-    Name("Alice").Show().print(Stdout)
+    Greeting("hi")
+        .Show()
+        .print(Stdout)
+    Name("Alice")
+        .Show()
+        .print(Stdout)
 }

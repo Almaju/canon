@@ -6,7 +6,6 @@
 ; ─── Operators ────────────────────────────────────────────────────────────────
 "=" @operator
 "->" @operator
-"=>" @operator
 "+" @operator
 "*" @operator
 "?" @operator
@@ -34,9 +33,6 @@
 (float_literal) @number
 (hex_literal) @number
 (string_literal) @string
-
-; ─── Wildcard ─────────────────────────────────────────────────────────────────
-(wildcard_pattern) @variable.special
 
 ; ─── Definitions ──────────────────────────────────────────────────────────────
 
@@ -69,6 +65,12 @@
 ; Names inside type expressions are types
 (named_type name: (identifier) @type)
 
+; ─── Dispatch ─────────────────────────────────────────────────────────────────
+
+; The variant type in each dispatch arm — styled as @type
+(dispatch_arm param_type: (named_type name: (identifier) @type))
+(dispatch_arm "->" @operator)
+
 ; ─── Expressions ──────────────────────────────────────────────────────────────
 
 ; Method calls
@@ -88,13 +90,6 @@
   (#match? @type "^[A-Z]"))
 
 ((identifier_expr (identifier) @variable)
-  (#match? @variable "^[a-z_]"))
-
-; Pattern variant names: PascalCase variants styled as @type, lowercase as @variable
-((variant_pattern name: (identifier) @type)
-  (#match? @type "^[A-Z]"))
-
-((variant_pattern name: (identifier) @variable)
   (#match? @variable "^[a-z_]"))
 
 ; ─── Lambda ───────────────────────────────────────────────────────────────────
@@ -117,6 +112,6 @@
     "Option" "Some" "None"
     "Result" "Ok" "Err"
     "Unit" "Never"
-    "List" "Map"
+    "List" "Map" "Set"
     "Clock" "Filesystem" "Network" "Random"
     "Stderr" "Stdin" "Stdout"))

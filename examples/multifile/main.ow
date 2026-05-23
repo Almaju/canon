@@ -1,5 +1,7 @@
 use Greeter
 
 main = (Stdout) -> Unit {
-    Greeter("hi").shout().print(Stdout)
+    Greeter("hi")
+        .shout()
+        .print(Stdout)
 }

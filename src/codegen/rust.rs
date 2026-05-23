@@ -140,6 +140,9 @@ struct ExternMethod {
 impl Codegen {
     fn from_module(module: &Module) -> Self {
         let mut variant_of = HashMap::new();
+        // Bool is a compiler builtin: False/True always map to Rust's false/true
+        variant_of.insert("False".to_string(), "Bool".to_string());
+        variant_of.insert("True".to_string(), "Bool".to_string());
         let mut extern_methods = HashMap::new();
         for item in &module.items {
             match item {
@@ -174,26 +177,7 @@ impl Codegen {
                 Item::Use(_) => {}
             }
         }
-        let bool_declared = module.items.iter().any(|item| {
-            if let Item::TypeDef(td) = item {
-                if td.name.name == "Bool" {
-                    if let TypeExpr::Union { variants, .. } = &td.body {
-                        let names: Vec<&str> = variants
-                            .iter()
-                            .filter_map(|v| {
-                                if let TypeExpr::Named { name, .. } = v {
-                                    Some(name.as_str())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        return names.contains(&"False") && names.contains(&"True");
-                    }
-                }
-            }
-            false
-        });
+        let bool_declared = true;
 
         let (async_methods, async_free_fns) = compute_async_sets(module, &extern_methods);
 
@@ -342,10 +326,21 @@ impl Codegen {
             }
             TypeExpr::Named { name, generics, .. } => {
                 if let Some(rust_path) = name.strip_prefix("__extern__") {
+                    // Forward any generic params to the RHS, e.g. HttpRouter<S> = OnewayHttpRouter<S>
+                    let forward_generics = if td.generic_params.is_empty() {
+                        String::new()
+                    } else {
+                        let params: Vec<String> = td
+                            .generic_params
+                            .iter()
+                            .map(|p| p.name.name.clone())
+                            .collect();
+                        format!("<{}>", params.join(", "))
+                    };
                     let _ = writeln!(
                         out,
-                        "pub type {}{} = {};",
-                        td.name.name, generic_str, rust_path
+                        "pub type {}{} = {}{};",
+                        td.name.name, generic_str, rust_path, forward_generics
                     );
                 } else {
                     let rendered = render_named_type(name, generics);
@@ -709,10 +704,67 @@ impl Codegen {
                 out.push_str(" {\n");
                 for arm in arms {
                     out.push_str("        ");
-                    self.emit_pattern(out, &arm.pattern);
-                    out.push_str(" => ");
-                    self.emit_expr(out, &arm.body);
-                    out.push_str(",\n");
+                    // Extract variant name and optional inner type from the arm's param_ty
+                    let (variant_name, inner_ty_name): (String, Option<String>) =
+                        match &arm.param_ty {
+                            TypeExpr::Named { name, generics, .. } => {
+                                let inner = generics
+                                    .first()
+                                    .and_then(|g| g.simple_name())
+                                    .map(|s| s.to_string());
+                                (name.clone(), inner)
+                            }
+                            _ => ("_".to_string(), None),
+                        };
+                    // Determine whether this variant binds a payload
+                    let has_payload = inner_ty_name.is_some()
+                        || (self.known_typedefs.contains(&variant_name)
+                            && self.variant_of.contains_key(&variant_name));
+                    // Emit Rust pattern
+                    if self.bool_declared && (variant_name == "True" || variant_name == "False") {
+                        out.push_str(if variant_name == "True" {
+                            "true"
+                        } else {
+                            "false"
+                        });
+                    } else if is_stdlib_variant(&variant_name) {
+                        if has_payload {
+                            let _ = write!(out, "{}(__a0)", variant_name);
+                        } else {
+                            out.push_str(&variant_name);
+                        }
+                    } else if let Some(parent) = self.variant_of.get(&variant_name).cloned() {
+                        if has_payload {
+                            let _ = write!(out, "{}::{}(__a0)", parent, variant_name);
+                        } else {
+                            let _ = write!(out, "{}::{}", parent, variant_name);
+                        }
+                    } else {
+                        out.push_str(&variant_name);
+                    }
+                    out.push_str(" => {\n");
+                    // Build lambda scope so the inner value is addressable by its type name
+                    let mut scope: HashMap<String, String> = HashMap::new();
+                    if let Some(inner_name) = &inner_ty_name {
+                        scope.insert(inner_name.clone(), "__a0".to_string());
+                    } else if self.known_typedefs.contains(&variant_name)
+                        && self.variant_of.contains_key(&variant_name)
+                    {
+                        scope.insert(variant_name.clone(), "__a0".to_string());
+                    }
+                    self.lambda_scopes.borrow_mut().push(scope);
+                    let last_idx = arm.body.exprs.len().saturating_sub(1);
+                    for (i, expr) in arm.body.exprs.iter().enumerate() {
+                        out.push_str("            ");
+                        self.emit_expr(out, expr);
+                        if i != last_idx {
+                            out.push_str(";\n");
+                        } else {
+                            out.push('\n');
+                        }
+                    }
+                    self.lambda_scopes.borrow_mut().pop();
+                    out.push_str("        }\n");
                 }
                 out.push_str("    }");
             }
@@ -738,6 +790,22 @@ impl Codegen {
             Expr::FieldAccess {
                 receiver, field, ..
             } => {
+                let recv_ty = static_type_of_with(receiver, Some(&self.extern_methods));
+                // Case 1: extern method used as first-class value → emit Rust path directly
+                let method_key = (recv_ty.clone(), field.name.clone());
+                if let Some(em) = self.extern_methods.get(&method_key) {
+                    out.push_str(&em.path);
+                    return;
+                }
+                // Case 2: Oneway method reference (Type.method where Type is PascalCase)
+                // Emit as `ReceiverType::method` (Rust method reference syntax)
+                if let Expr::Ident(ident) = receiver.as_ref() {
+                    if is_pascal_case(&ident.name) {
+                        let _ = write!(out, "{}::{}", ident.name, field.name);
+                        return;
+                    }
+                }
+                // Case 3: product field access
                 self.emit_expr(out, receiver);
                 let _ = write!(out, ".{}", lower_first(&field.name));
             }
@@ -747,15 +815,24 @@ impl Codegen {
                 body,
                 ..
             } => {
+                // Flatten product params into separate closure args.
+                // (A * B) -> R becomes |__a0: A, __a1: B| -> R { ... }
                 let mut scope = HashMap::new();
+                let flat: Vec<&TypeExpr> = params
+                    .iter()
+                    .flat_map(|p| match &p.ty {
+                        TypeExpr::Product { fields, .. } => fields.iter().collect::<Vec<_>>(),
+                        other => vec![other],
+                    })
+                    .collect();
                 out.push('|');
-                for (i, param) in params.iter().enumerate() {
+                for (i, ty) in flat.iter().enumerate() {
                     if i > 0 {
                         out.push_str(", ");
                     }
                     let arg = format!("__a{}", i);
-                    let _ = write!(out, "{}: {}", arg, render_type(&param.ty));
-                    if let Some(name) = param.ty.simple_name() {
+                    let _ = write!(out, "{}: {}", arg, render_type(ty));
+                    if let Some(name) = ty.simple_name() {
                         scope.insert(name.to_string(), arg);
                     }
                 }
@@ -840,6 +917,99 @@ impl Codegen {
                 return Some(s);
             }
         }
+        // Map<K, V> built-in methods
+        if static_type_of_with(receiver, Some(&self.extern_methods)) == "Map" {
+            match (method.name.as_str(), args.len()) {
+                ("empty", 0) => {
+                    return Some("std::collections::BTreeMap::new()".to_string());
+                }
+                ("get", 1) => {
+                    let mut s = String::new();
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".get(&");
+                    self.emit_expr(&mut s, &args[0]);
+                    s.push_str(").cloned()");
+                    return Some(s);
+                }
+                ("insert", 2) => {
+                    let flat = flatten_product_args(args);
+                    let mut s = String::from("{ let mut __m = ");
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".clone(); __m.insert(");
+                    self.emit_expr(&mut s, flat[0]);
+                    s.push_str(", ");
+                    self.emit_expr(&mut s, flat[1]);
+                    s.push_str("); __m }");
+                    return Some(s);
+                }
+                ("keys", 0) => {
+                    let mut s = String::new();
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".keys().cloned().collect::<Vec<_>>()");
+                    return Some(s);
+                }
+                ("length", 0) => {
+                    let mut s = String::from("(");
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".len() as i64)");
+                    return Some(s);
+                }
+                ("remove", 1) => {
+                    let mut s = String::from("{ let mut __m = ");
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".clone(); __m.remove(&");
+                    self.emit_expr(&mut s, &args[0]);
+                    s.push_str("); __m }");
+                    return Some(s);
+                }
+                ("values", 0) => {
+                    let mut s = String::new();
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".values().cloned().collect::<Vec<_>>()");
+                    return Some(s);
+                }
+                _ => {}
+            }
+        }
+        // Set<T> built-in methods
+        if static_type_of_with(receiver, Some(&self.extern_methods)) == "Set" {
+            match (method.name.as_str(), args.len()) {
+                ("contains", 1) => {
+                    let mut s = String::new();
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".contains(&");
+                    self.emit_expr(&mut s, &args[0]);
+                    s.push(')');
+                    return Some(s);
+                }
+                ("empty", 0) => {
+                    return Some("std::collections::BTreeSet::new()".to_string());
+                }
+                ("insert", 1) => {
+                    let mut s = String::from("{ let mut __s = ");
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".clone(); __s.insert(");
+                    self.emit_expr(&mut s, &args[0]);
+                    s.push_str("); __s }");
+                    return Some(s);
+                }
+                ("length", 0) => {
+                    let mut s = String::from("(");
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".len() as i64)");
+                    return Some(s);
+                }
+                ("remove", 1) => {
+                    let mut s = String::from("{ let mut __s = ");
+                    self.emit_expr(&mut s, receiver);
+                    s.push_str(".clone(); __s.remove(&");
+                    self.emit_expr(&mut s, &args[0]);
+                    s.push_str("); __s }");
+                    return Some(s);
+                }
+                _ => {}
+            }
+        }
         None
     }
 
@@ -898,75 +1068,6 @@ impl Codegen {
         }
         s.push(')');
         s
-    }
-
-    fn emit_pattern(&self, out: &mut String, pattern: &Pattern) {
-        match pattern {
-            Pattern::Variant { name, args, .. } => {
-                if self.bool_declared && (name == "True" || name == "False") {
-                    out.push_str(if name == "True" { "true" } else { "false" });
-                } else if is_stdlib_variant(name) {
-                    out.push_str(name);
-                    if !args.is_empty() {
-                        out.push('(');
-                        for (i, arg) in args.iter().enumerate() {
-                            if i > 0 {
-                                out.push_str(", ");
-                            }
-                            self.emit_pattern(out, arg);
-                        }
-                        out.push(')');
-                    }
-                } else if let Some(parent) = self.variant_of.get(name).cloned() {
-                    // User union variant. If the variant carries a payload
-                    // (typedef of the same name), patterns destructure that
-                    // payload — but with no payload args, write `Parent::V(_)`
-                    // so the match arm still binds.
-                    if self.known_typedefs.contains(name) {
-                        if args.is_empty() {
-                            let _ = write!(out, "{}::{}(_)", parent, name);
-                        } else {
-                            let _ = write!(out, "{}::{}(", parent, name);
-                            for (i, arg) in args.iter().enumerate() {
-                                if i > 0 {
-                                    out.push_str(", ");
-                                }
-                                self.emit_pattern(out, arg);
-                            }
-                            out.push(')');
-                        }
-                    } else {
-                        // No payload — emit the bare variant path.
-                        let _ = write!(out, "{}::{}", parent, name);
-                        if !args.is_empty() {
-                            out.push('(');
-                            for (i, arg) in args.iter().enumerate() {
-                                if i > 0 {
-                                    out.push_str(", ");
-                                }
-                                self.emit_pattern(out, arg);
-                            }
-                            out.push(')');
-                        }
-                    }
-                } else {
-                    out.push_str(&self.rust_value(name));
-                    if !args.is_empty() {
-                        out.push('(');
-                        for (i, arg) in args.iter().enumerate() {
-                            if i > 0 {
-                                out.push_str(", ");
-                            }
-                            self.emit_pattern(out, arg);
-                        }
-                        out.push(')');
-                    }
-                }
-            }
-            Pattern::Wildcard { .. } => {
-                out.push('_');
-            }
-        }
     }
 
     fn rust_value(&self, name: &str) -> String {
@@ -1119,8 +1220,18 @@ fn render_type(ty: &TypeExpr) -> String {
         TypeExpr::Function {
             params, return_ty, ..
         } => {
-            let ps: Vec<String> = params.iter().map(render_type).collect();
-            format!("fn({}) -> {}", ps.join(", "), render_type(return_ty))
+            // Unpack product params: (A * B) -> R becomes fn(A, B) -> R
+            let mut flat: Vec<String> = Vec::new();
+            for param in params {
+                if let TypeExpr::Product { fields, .. } = param {
+                    for f in fields {
+                        flat.push(render_type(f));
+                    }
+                } else {
+                    flat.push(render_type(param));
+                }
+            }
+            format!("fn({}) -> {}", flat.join(", "), render_type(return_ty))
         }
     }
 }
@@ -1136,6 +1247,8 @@ fn render_named_type(name: &str, generics: &[TypeExpr]) -> String {
         "String" => "String".to_string(),
         "Bool" => "bool".to_string(),
         "List" => "Vec".to_string(),
+        "Map" => "std::collections::BTreeMap".to_string(),
+        "Set" => "std::collections::BTreeSet".to_string(),
         other => other.to_string(),
     };
     if generics.is_empty() {
@@ -1217,8 +1330,9 @@ fn static_type_of_with(
             }
             if let Some(em) = extern_methods {
                 if let Some(method_info) = em.get(&(recv_ty.clone(), method.name.clone())) {
-                    if let Some(name) = method_info.return_ty.simple_name() {
-                        return name.to_string();
+                    // Use the base type name even if the return type is generic (e.g. HttpRouter<S>).
+                    if let TypeExpr::Named { name, .. } = &method_info.return_ty {
+                        return name.clone();
                     }
                 }
             }
@@ -1393,8 +1507,12 @@ fn expr_calls_async_extern(
             if expr_calls_async_extern(scrutinee, extern_methods) {
                 return true;
             }
-            arms.iter()
-                .any(|arm| expr_calls_async_extern(&arm.body, extern_methods))
+            arms.iter().any(|arm| {
+                arm.body
+                    .exprs
+                    .iter()
+                    .any(|e| expr_calls_async_extern(e, extern_methods))
+            })
         }
         Expr::Try { inner, .. } => expr_calls_async_extern(inner, extern_methods),
         Expr::Lambda { body, .. } => body
@@ -1451,8 +1569,12 @@ fn expr_calls_async_oneway(
             if expr_calls_async_oneway(scrutinee, async_methods, extern_methods) {
                 return true;
             }
-            arms.iter()
-                .any(|arm| expr_calls_async_oneway(&arm.body, async_methods, extern_methods))
+            arms.iter().any(|arm| {
+                arm.body
+                    .exprs
+                    .iter()
+                    .any(|e| expr_calls_async_oneway(e, async_methods, extern_methods))
+            })
         }
         Expr::Try { inner, .. } => expr_calls_async_oneway(inner, async_methods, extern_methods),
         Expr::Lambda { body, .. } => body

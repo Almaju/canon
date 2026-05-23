@@ -31,6 +31,7 @@ fn main() {
         "check" => cmd_check(&rest),
         "tokens" => cmd_tokens(&rest),
         "fmt" | "format" => cmd_fmt(&rest),
+        "lsp" => oneway::lsp::run(),
         "upgrade" | "update" => cmd_upgrade(&rest),
         "version" | "--version" | "-V" => {
             println!("oneway {}", VERSION);
@@ -58,6 +59,7 @@ fn print_help() {
     println!("  check <file.ow>           Check sort order and types");
     println!("  tokens <file.ow>          Print lexer tokens");
     println!("  fmt <file.ow> [--check]   Format an Oneway source file");
+    println!("  lsp                       Start the Language Server Protocol server");
     println!("  upgrade [version]         Update oneway to the latest (or given) release");
     println!("  upgrade --check           Check whether a newer release is available");
     println!("  version                   Print version");
@@ -228,14 +230,16 @@ fn cmd_build(args: &[String]) {
     }
     let generated = codegen::generate_with_meta(&loaded.module);
     let source = combine_source(&loaded.rust_preludes, &generated.source);
-    let out_path = strip_ow_extension(file_path);
     let build_dir = build_dir_for(file_path);
     let stem = Path::new(file_path)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("oneway_build");
+    // Binary lives inside .oneway/<stem>/<stem> — never next to the source file.
+    let bin_path = build_dir.join(stem);
+    let out_path = bin_path.to_string_lossy().to_string();
     let is_cargo = generated.is_async || !loaded.cargo_deps.is_empty();
-    if source_is_cached(&build_dir, is_cargo, &source, Path::new(&out_path)) {
+    if source_is_cached(&build_dir, is_cargo, &source, &bin_path) {
         println!("Up to date: {}", out_path);
         return;
     }
@@ -321,14 +325,6 @@ fn combine_source(preludes: &[&'static str], body: &str) -> String {
     }
     s.push_str(body);
     s
-}
-
-fn strip_ow_extension(file_path: &str) -> String {
-    if let Some(stripped) = file_path.strip_suffix(".ow") {
-        stripped.to_string()
-    } else {
-        file_path.to_string()
-    }
 }
 
 fn build_dir_for(file_path: &str) -> PathBuf {

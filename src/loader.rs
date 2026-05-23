@@ -77,9 +77,19 @@ const STDLIB: &[StdlibEntry] = &[
                 features: &[],
             },
             CargoDep {
+                name: "futures-util",
+                version: "0.3",
+                features: &[],
+            },
+            CargoDep {
                 name: "tokio",
                 version: "1",
                 features: &["full"],
+            },
+            CargoDep {
+                name: "tokio-stream",
+                version: "0.1",
+                features: &["net"],
             },
         ],
         rust_prelude: Some(include_str!("../std/http-server.rs")),
@@ -310,7 +320,7 @@ fn load_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
 
 /// Convert a PascalCase type name to its kebab-case file stem.
 /// `UserRole` → `user-role`, `HttpServer` → `http-server`, `Color` → `color`
-fn kebab_case(s: &str) -> String {
+pub fn kebab_case(s: &str) -> String {
     let mut out = String::new();
     let chars: Vec<char> = s.chars().collect();
     for (i, &c) in chars.iter().enumerate() {

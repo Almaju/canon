@@ -1,5 +1,84 @@
+JsonArray = List<JsonValue>
+
+extern Rust("bool")
+JsonBool
+
+JsonEntry = JsonKey * JsonValue
+
+extern Rust("f64")
+JsonFloat
+
+extern Rust("i64")
+JsonInt
+
+JsonKey = String
+
+extern Rust("()")
+JsonNull
+
+JsonNumber = JsonFloat + JsonInt
+
+JsonObject = List<JsonEntry>
+
+extern Rust("String")
+JsonString
+
+JsonValue = JsonArray
+  + JsonBool
+  + JsonNull
+  + JsonNumber
+  + JsonObject
+  + JsonString
+
 extern Rust("serde_json::Error")
 MalformedJson
 
+ToJson = () -> JsonValue
+
+extern Rust(".items")
+items = (JsonArray) -> List<JsonValue>
+
+extern Rust(".length")
+length = (JsonArray) -> Int
+
+extern Rust(".get")
+get = (JsonObject * String) -> Result<JsonValue, MalformedJson>
+
+extern Rust(".length")
+length = (JsonObject) -> Int
+
+extern Rust("oneway_json_emit")
+emit = (Json * JsonValue) -> String
+
 extern Rust("oneway_json_parse")
-parse = <T: Deserialize>(Json * String) -> Result<T, MalformedJson>
+parse = (Json * String) -> Result<JsonValue, MalformedJson>
+
+extern Rust(".asArray")
+asArray = (JsonValue) -> Result<JsonArray, MalformedJson>
+
+extern Rust(".asBool")
+asBool = (JsonValue) -> Result<JsonBool, MalformedJson>
+
+extern Rust(".asNull")
+asNull = (JsonValue) -> Result<JsonNull, MalformedJson>
+
+extern Rust(".asNumber")
+asNumber = (JsonValue) -> Result<JsonNumber, MalformedJson>
+
+extern Rust(".asObject")
+asObject = (JsonValue) -> Result<JsonObject, MalformedJson>
+
+extern Rust(".asString")
+asString = (JsonValue) -> Result<JsonString, MalformedJson>
+
+extern Rust("oneway_bool_to_json")
+ToJson = (Bool) -> JsonValue
+
+extern Rust("oneway_float_to_json")
+ToJson = (Float) -> JsonValue
+
+extern Rust("oneway_int_to_json")
+ToJson = (Int) -> JsonValue
+
+extern Rust("oneway_string_to_json")
+ToJson = (String) -> JsonValue

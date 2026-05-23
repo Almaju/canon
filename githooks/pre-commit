@@ -22,12 +22,16 @@ fail=0
 
 for f in examples/*.ow examples/*/main.ow; do
     [ -f "$f" ] || continue
-    base="${f%.ow}"
+    dir=$(dirname "$f")
     if [ "$(basename "$f")" = "main.ow" ]; then
         label=$(basename "$(dirname "$f")")
+        stem="main"
     else
-        label=$(basename "$f" .ow)
+        stem=$(basename "$f" .ow)
+        label="$stem"
     fi
+    # Binary is placed inside .oneway/<stem>/<stem> by `oneway build`
+    binpath="$dir/.oneway/$stem/$stem"
 
     printf "  %-20s" "$label"
 
@@ -35,19 +39,33 @@ for f in examples/*.ow examples/*/main.ow; do
     if ! cargo run --quiet -- build "$f" >/dev/null 2>&1; then
         echo "✗  (compile error)"
         fail=$((fail + 1))
-        rm -rf "${base}.rs" "${base}.cargo"
         continue
     fi
 
-    # Run
-    if ! output=$("./${base}" 2>&1); then
+    # Run with a 5-second timeout (long-running servers are skipped)
+    tmpout=$(mktemp)
+    "$binpath" > "$tmpout" 2>&1 &
+    pid=$!
+    i=0; timed_out=0
+    while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
+        sleep 1; i=$((i + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+        timed_out=1
+    else
+        wait "$pid"; rc=$?
+    fi
+    rm -f "$tmpout"
+
+    if [ "$timed_out" -eq 1 ]; then
+        echo "·  (skip — long-running)"
+    elif [ "$rc" -eq 0 ]; then
+        echo "✓"
+    else
         echo "✗  (runtime error)"
         fail=$((fail + 1))
-    else
-        echo "✓"
     fi
-
-    rm -rf "${base}" "${base}.rs" "${base}.cargo"
 done
 
 echo ""

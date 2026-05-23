@@ -56,6 +56,15 @@ just check path/to/file.ow
 Validates only the sort-order rules (alphabetical ordering of declarations,
 dispatch arms, imports, etc.) without doing the rest of compilation.
 
+## Install the Binary
+
+```sh
+just install
+```
+
+Builds a release binary and copies it to `~/.cargo/bin/oneway` so you can
+invoke `oneway` directly from any directory.
+
 ## Tests and Linting
 
 ```sh
