@@ -7,7 +7,7 @@ use crate::checker;
 use crate::error::OnewayError;
 use crate::formatter;
 use crate::lexer::Scanner;
-use crate::loader::kebab_case;
+use crate::loader::{kebab_case, stdlib_file_stem, stdlib_source};
 use crate::parser::Parser;
 
 use std::collections::HashMap;
@@ -449,8 +449,15 @@ impl LspServer {
 /// imports into `out`. `seen` tracks already-visited module names to break
 /// cycles. `current_file` is the requesting file, used to resolve relative
 /// local imports.
+///
+/// `is_stdlib` distinguishes `use std/Foo` (resolved against the embedded
+/// stdlib via the loader's `stdlib_source` mapping) from `use Foo`
+/// (resolved against the filesystem relative to `current_file`). The
+/// compiler's own loader makes the same split — we must too, otherwise
+/// the LSP and the compiler disagree about what `Foo` is.
 fn collect_import_items(
     type_name: &str,
+    is_stdlib: bool,
     current_file: &str,
     seen: &mut std::collections::HashSet<String>,
     out: &mut Vec<crate::ast::Item>,
@@ -458,7 +465,37 @@ fn collect_import_items(
     if !seen.insert(type_name.to_string()) {
         return; // already loaded
     }
-    let Some(ow_path) = resolve_ow_file(type_name, current_file) else {
+
+    // Stdlib resolution: pull the embedded source out of the loader.
+    // This is the same `name → source` table the compiler uses, so the
+    // LSP and the compiler never disagree on what `use std/Foo` means.
+    if is_stdlib {
+        let Some(src) = stdlib_source(type_name) else {
+            return;
+        };
+        let Some(imported) = parse_source(src) else {
+            return;
+        };
+        for item in &imported.items {
+            if let crate::ast::Item::Use(u) = item {
+                let (inner, inner_stdlib) = parse_use_path(&u.name.name);
+                // Transitive imports inherit the current file as the
+                // resolution base — the embedded stdlib has no
+                // filesystem location, and local imports from within
+                // the stdlib are not supported.
+                collect_import_items(inner, inner_stdlib, current_file, seen, out);
+            }
+        }
+        for item in imported.items {
+            if !matches!(item, crate::ast::Item::Use(_)) {
+                out.push(item);
+            }
+        }
+        return;
+    }
+
+    // Local resolution: file relative to `current_file`.
+    let Some(ow_path) = resolve_local_ow_file(type_name, current_file) else {
         return;
     };
     let Ok(src) = std::fs::read_to_string(&ow_path) else {
@@ -467,19 +504,27 @@ fn collect_import_items(
     let Some(imported) = parse_source(&src) else {
         return;
     };
-    // Recurse into this module's own imports first (using ow_path as base).
     for item in &imported.items {
         if let crate::ast::Item::Use(u) = item {
-            let inner = u.name.name.split('/').next_back().unwrap_or(&u.name.name);
-            collect_import_items(inner, &ow_path, seen, out);
+            let (inner, inner_stdlib) = parse_use_path(&u.name.name);
+            collect_import_items(inner, inner_stdlib, &ow_path, seen, out);
         }
     }
-    // Then add this module's own non-use definitions.
     for item in imported.items {
         if !matches!(item, crate::ast::Item::Use(_)) {
             out.push(item);
         }
     }
+}
+
+/// Split a `use` path like `std/Foo` or `Foo` into its final segment
+/// and a flag indicating whether it begins with `std/`. Matches the
+/// `process_use` logic in `loader.rs` exactly.
+fn parse_use_path(path: &str) -> (&str, bool) {
+    let segments: Vec<&str> = path.split('/').collect();
+    let last = segments.last().copied().unwrap_or(path);
+    let is_stdlib = segments.len() >= 2 && segments[0] == "std";
+    (last, is_stdlib)
 }
 
 /// Check source text and return all errors.
@@ -503,16 +548,24 @@ fn check_source(source: &str, file_path: &str) -> Vec<OnewayError> {
     resolve_new_syntax(&mut current);
 
     // 2. Collect items from every `use` import, recursively following
-    //    transitive imports (e.g. `use HttpClient` brings in `use Url` which
-    //    defines `Url` and `InvalidUrl`). A `seen` set prevents cycles.
+    //    transitive imports (e.g. `use std/HttpServer` brings in `use
+    //    std/Request` etc.). A `seen` set prevents cycles. The
+    //    `std/` prefix is preserved through `parse_use_path` so the
+    //    embedded stdlib and on-disk files don't collide.
     let mut imported_items: Vec<crate::ast::Item> = Vec::new();
     let mut seen = std::collections::HashSet::<String>::new();
     for item in &current.items {
         let crate::ast::Item::Use(u) = item else {
             continue;
         };
-        let type_name = u.name.name.split('/').next_back().unwrap_or(&u.name.name);
-        collect_import_items(type_name, file_path, &mut seen, &mut imported_items);
+        let (type_name, is_stdlib) = parse_use_path(&u.name.name);
+        collect_import_items(
+            type_name,
+            is_stdlib,
+            file_path,
+            &mut seen,
+            &mut imported_items,
+        );
     }
 
     // 3. Build a combined module: imported items first, then current file's
@@ -767,9 +820,12 @@ fn path_to_uri(path: &str) -> String {
     }
 }
 
-/// Resolve the filesystem path of a `.ow` file for a `use X` declaration.
-/// Checks (in order): local file, local module dir, stdlib.
-fn resolve_ow_file(type_name: &str, current_file: &str) -> Option<String> {
+/// Resolve the filesystem path of a `.ow` file for a local `use X`
+/// declaration. Checks the entry file's sibling directory first, then
+/// the module form. Stdlib imports go through [`stdlib_file_stem`]
+/// instead — the loader's `name → file_stem` mapping is non-trivial and
+/// duplicating it would just guarantee drift.
+fn resolve_local_ow_file(type_name: &str, current_file: &str) -> Option<String> {
     use std::path::Path;
     let stem = kebab_case(type_name);
     let dir = Path::new(current_file).parent().unwrap_or(Path::new("."));
@@ -784,16 +840,26 @@ fn resolve_ow_file(type_name: &str, current_file: &str) -> Option<String> {
     if local_mod.exists() {
         return local_mod.to_str().map(|s| s.to_string());
     }
-    // 3. Stdlib
-    let stdlib = Path::new(STDLIB_DIR).join(format!("{}.ow", stem));
-    if stdlib.exists() {
-        return stdlib.to_str().map(|s| s.to_string());
-    }
     None
 }
 
+/// Compose the on-disk path of a stdlib type's source file. Used so
+/// go-to-definition on a `use std/Foo` import can navigate to the
+/// actual file under `STDLIB_DIR`. Returns `None` if the name isn't a
+/// known stdlib type.
+fn resolve_stdlib_ow_file(type_name: &str) -> Option<String> {
+    use std::path::Path;
+    let stem = stdlib_file_stem(type_name)?;
+    let path = Path::new(STDLIB_DIR).join(format!("{}.ow", stem));
+    if path.exists() {
+        path.to_str().map(|s| s.to_string())
+    } else {
+        None
+    }
+}
+
 /// Search imported modules for a definition. Returns (file_uri, span) on success.
-/// If the word IS the imported type name (e.g. clicking `Json` in `use Json`),
+/// If the word IS the imported type name (e.g. clicking `Json` in `use std/Json`),
 /// navigates to the top of the imported file.
 fn find_definition_in_imports(
     module: &Module,
@@ -803,10 +869,14 @@ fn find_definition_in_imports(
     use crate::error::Span;
     for item in &module.items {
         let Item::Use(u) = item else { continue };
-        let path_str = &u.name.name;
-        let type_name = path_str.split('/').next_back().unwrap_or(path_str);
-        let Some(file_path) = resolve_ow_file(type_name, current_file) else {
-            continue;
+        let (type_name, is_stdlib) = parse_use_path(&u.name.name);
+        let file_path = if is_stdlib {
+            resolve_stdlib_ow_file(type_name)?
+        } else {
+            match resolve_local_ow_file(type_name, current_file) {
+                Some(p) => p,
+                None => continue,
+            }
         };
 
         // Clicking the import name itself → top of the imported file.

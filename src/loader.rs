@@ -6,8 +6,17 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// One row of the embedded standard library.
+///
+/// `name`      — the type the user writes after `use std/` (e.g. `Url`).
+/// `file_stem` — the on-disk filename under `std/` (e.g. `url-wasm`).
+///              Used by the LSP to surface a clickable path for
+///              go-to-definition. Several stdlib types share a file
+///              (`Url`, `InvalidUrl`) so the mapping is many-to-one.
+/// `source`    — the bytes of that file, embedded at compile time.
 struct StdlibEntry {
     name: &'static str,
+    file_stem: &'static str,
     source: &'static str,
 }
 
@@ -18,6 +27,7 @@ struct StdlibEntry {
 const STDLIB: &[StdlibEntry] = &[
     StdlibEntry {
         name: "Body",
+        file_stem: "body",
         source: include_str!("../std/body.ow"),
     },
     // `Random` and `Clock` provide free functions (`randomInt`, `nowNanos`).
@@ -26,62 +36,77 @@ const STDLIB: &[StdlibEntry] = &[
     // `use std/Random` loads the random extern.
     StdlibEntry {
         name: "Clock",
+        file_stem: "clock-wasm",
         source: include_str!("../std/clock-wasm.ow"),
     },
     StdlibEntry {
         name: "File",
+        file_stem: "filesystem-wasm",
         source: include_str!("../std/filesystem-wasm.ow"),
     },
     StdlibEntry {
         name: "HttpError",
+        file_stem: "http-error",
         source: include_str!("../std/http-error.ow"),
     },
     StdlibEntry {
         name: "HttpResponseBody",
+        file_stem: "http-response-body",
         source: include_str!("../std/http-response-body.ow"),
     },
     StdlibEntry {
         name: "HttpServer",
+        file_stem: "http-server-wasm",
         source: include_str!("../std/http-server-wasm.ow"),
     },
     StdlibEntry {
         name: "HttpStatus",
+        file_stem: "http-status",
         source: include_str!("../std/http-status.ow"),
     },
     StdlibEntry {
         name: "InvalidUrl",
+        file_stem: "url-wasm",
         source: include_str!("../std/url-wasm.ow"),
     },
     StdlibEntry {
         name: "IoError",
+        file_stem: "io-error",
         source: include_str!("../std/io-error.ow"),
     },
     StdlibEntry {
         name: "Json",
+        file_stem: "json-wasm",
         source: include_str!("../std/json-wasm.ow"),
     },
     StdlibEntry {
         name: "Now",
+        file_stem: "now-wasm",
         source: include_str!("../std/now-wasm.ow"),
     },
     StdlibEntry {
         name: "Path",
+        file_stem: "path-wasm",
         source: include_str!("../std/path-wasm.ow"),
     },
     StdlibEntry {
         name: "Port",
+        file_stem: "port",
         source: include_str!("../std/port.ow"),
     },
     StdlibEntry {
         name: "Random",
+        file_stem: "random-wasm",
         source: include_str!("../std/random-wasm.ow"),
     },
     StdlibEntry {
         name: "Request",
+        file_stem: "request",
         source: include_str!("../std/request.ow"),
     },
     StdlibEntry {
         name: "RoutePath",
+        file_stem: "route-path",
         source: include_str!("../std/route-path.ow"),
     },
     // Test framework: `use std/TestResult` brings in `TestResult`, `Fail`,
@@ -89,16 +114,35 @@ const STDLIB: &[StdlibEntry] = &[
     // discovers `() -> TestResult` functions and synthesises an entry point.
     StdlibEntry {
         name: "TestResult",
+        file_stem: "test",
         source: include_str!("../std/test.ow"),
     },
     StdlibEntry {
         name: "Url",
+        file_stem: "url-wasm",
         source: include_str!("../std/url-wasm.ow"),
     },
 ];
 
 fn stdlib_entry(name: &str) -> Option<&'static StdlibEntry> {
     STDLIB.iter().find(|e| e.name == name)
+}
+
+/// Returns the embedded source for `use std/<name>`, or `None` if the
+/// name is not a known stdlib type. Used by the LSP to type-check
+/// imports without touching disk — the `name → file_stem` mapping is
+/// non-trivial (`Url` → `url-wasm`, `File` → `filesystem-wasm`, …) and
+/// duplicating it would just guarantee drift.
+pub fn stdlib_source(name: &str) -> Option<&'static str> {
+    stdlib_entry(name).map(|e| e.source)
+}
+
+/// Returns the on-disk filename stem (without `.ow`) for a stdlib type,
+/// or `None` if unknown. Used by the LSP to compose a clickable
+/// go-to-definition URI — the embedded source is great for checking
+/// but worthless for navigation, so we also need the real path.
+pub fn stdlib_file_stem(name: &str) -> Option<&'static str> {
+    stdlib_entry(name).map(|e| e.file_stem)
 }
 
 pub struct LoadResult {
