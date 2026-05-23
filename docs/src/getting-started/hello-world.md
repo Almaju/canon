@@ -11,7 +11,7 @@ main = (Stdout) -> Unit {
 Run it:
 
 ```sh
-just run hello.ow
+oneway run hello.ow
 ```
 
 You should see:

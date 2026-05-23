@@ -138,6 +138,9 @@ impl LspServer {
 
     fn handle_did_open(&mut self, msg: &str) {
         if let Some(uri) = json_get_nested_string(msg, "textDocument", "uri") {
+            if !uri.ends_with(".ow") {
+                return;
+            }
             if let Some(text) = json_get_nested_string(msg, "textDocument", "text") {
                 let text = json_unescape(&text);
                 self.files.insert(uri.clone(), text);
@@ -152,6 +155,9 @@ impl LspServer {
 
     fn handle_did_change(&mut self, msg: &str) {
         if let Some(uri) = json_get_nested_string(msg, "textDocument", "uri") {
+            if !uri.ends_with(".ow") {
+                return;
+            }
             // Full document text is in contentChanges[0].text
             if let Some(text) = extract_content_change_text(msg) {
                 let text = json_unescape(&text);
@@ -167,6 +173,9 @@ impl LspServer {
 
     fn handle_did_save(&mut self, msg: &str) {
         if let Some(uri) = json_get_nested_string(msg, "textDocument", "uri") {
+            if !uri.ends_with(".ow") {
+                return;
+            }
             // If the save notification includes text, use it
             if let Some(text) = extract_param_text(msg) {
                 let text = json_unescape(&text);

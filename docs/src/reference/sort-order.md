@@ -58,11 +58,11 @@ ord.(
 ## Checking Without Compiling
 
 ```sh
-just check path/to/file.ow
+oneway check path/to/file.ow
 ```
 
-This runs only the sort-order check, with no codegen. Useful in pre-commit
-hooks or as a quick lint while editing.
+This runs only the sort-order check, with no codegen. Useful as a quick
+lint while editing.
 
 ## Rationale
 

@@ -1,71 +1,28 @@
-# Oneway Language — Development Commands
+# Oneway Language — Contributor Commands
 #
-# These targets wrap `cargo run -- <subcommand>` for contributors working in
-# the repo. End users install the `oneway` binary via the install script and
-# invoke it directly (e.g. `oneway run hello.ow`).
+# These are development helpers for working on the compiler itself.
+# End users install the `oneway` binary and invoke it directly.
+#
+# See README.md § Building from Source for details.
 
-set quiet
+set quiet := true
 
 default:
     @just --list
 
-# Build the compiler
+# Build a debug binary
 build:
     cargo build
 
-# Build in release mode
-release:
-    cargo build --release
-
-# Install the release binary to ~/.cargo/bin/oneway
+# Build and install the release binary to ~/.cargo/bin/oneway
 install:
     cargo install --path . --force
 
-# Run cargo tests
+# Run the test suite
 test:
     cargo test
 
-# Run cargo tests with output
-test-verbose:
-    cargo test -- --nocapture
-
-# Run an .ow file (compile + execute)
-run file:
-    cargo run --quiet -- run {{file}}
-
-# Run an example by name (e.g. `just example hello`, `just example multifile`)
-example name:
-    #!/usr/bin/env sh
-    set -e
-    for path in "examples/{{name}}.ow" "examples/{{name}}/main.ow"; do
-        if [ -f "$path" ]; then
-            exec cargo run --quiet -- run "$path"
-        fi
-    done
-    echo "No example found at examples/{{name}}.ow or examples/{{name}}/main.ow" >&2
-    exit 1
-
-# Emit generated Rust code for an .ow file
-emit file:
-    cargo run --quiet -- emit {{file}}
-
-# Check sort order of an .ow file
-check file:
-    cargo run --quiet -- check {{file}}
-
-# Show tokens for an .ow file
-tokens file:
-    cargo run --quiet -- tokens {{file}}
-
-# Show AST for an .ow file
-ast file:
-    cargo run --quiet -- ast {{file}}
-
-# Compile an .ow file to binary (no run)
-compile file:
-    cargo run --quiet -- build {{file}}
-
-# Run all examples (continues on failure)
+# Run all examples and report pass / fail / skip
 examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
@@ -79,7 +36,6 @@ examples: build
             stem=$(basename "$f" .ow)
             label="$stem"
         fi
-        # Binary is placed inside .oneway/<stem>/<stem> by `oneway build`
         binpath="$dir/.oneway/$stem/$stem"
         printf "%-20s" "$label"
         if cargo run --quiet -- build "$f" >/dev/null 2>&1; then
@@ -115,51 +71,37 @@ examples: build
     echo ""
     echo "${pass} passed, ${fail} failed, ${skip} skipped"
 
-# Emit Rust for all examples
-emit-all: build
-    #!/usr/bin/env sh
-    for f in examples/*.ow examples/*/main.ow; do
-        [ -f "$f" ] || continue
-        if [ "$(basename "$f")" = "main.ow" ]; then
-            label=$(basename "$(dirname "$f")")
-        else
-            label=$(basename "$f" .ow)
-        fi
-        echo "=== $label ==="
-        cargo run --quiet -- emit "$f" 2>/dev/null || echo "(failed to emit)"
-        echo ""
-    done
-
-# Check all examples for sort order
-check-all: build
-    #!/usr/bin/env sh
-    for f in examples/*.ow examples/*/main.ow; do
-        [ -f "$f" ] || continue
-        if [ "$(basename "$f")" = "main.ow" ]; then
-            label=$(basename "$(dirname "$f")")
-        else
-            label=$(basename "$f" .ow)
-        fi
-        printf "%-20s" "$label"
-        if cargo run --quiet -- check "$f" >/dev/null 2>&1; then
-            echo "✓"
-        else
-            echo "✗"
-        fi
-    done
-
-# Bump version, commit, tag, and push to trigger the release workflow
-bump version:
+# Run a single example by name (e.g. `just example hello`)
+example name:
     #!/usr/bin/env sh
     set -e
-    sed -i.bak 's/^version = ".*"/version = "{{version}}"/' Cargo.toml && rm Cargo.toml.bak
-    cargo check --quiet
-    git add Cargo.toml Cargo.lock
-    git commit -m "chore: release v{{version}}"
-    git tag "v{{version}}"
-    git push origin HEAD
-    git push origin "v{{version}}"
-    echo "Tagged v{{version}} and pushed — GitHub Actions will build and publish the release binaries."
+    for path in "examples/{{ name }}.ow" "examples/{{ name }}/main.ow"; do
+        if [ -f "$path" ]; then
+            exec cargo run --quiet -- run "$path"
+        fi
+    done
+    echo "No example found at examples/{{ name }}.ow or examples/{{ name }}/main.ow" >&2
+    exit 1
+
+# Format compiler source
+fmt:
+    cargo fmt
+
+# Lint compiler source
+clippy:
+    cargo clippy -- -W warnings
+
+# Run all CI checks locally (mirrors ci.yml)
+ci:
+    cargo fmt --check
+    cargo clippy -- -D warnings
+    cargo test
+
+# Clean build artifacts and compiled examples
+clean:
+    #!/usr/bin/env sh
+    cargo clean
+    find examples -type d -name '.oneway' -exec rm -rf {} +
 
 # Install git hooks (pre-commit)
 install-hooks:
@@ -182,55 +124,3 @@ build-extension:
     cd editors/zed-oneway && cargo build --release --target wasm32-wasip1
     cp editors/zed-oneway/target/wasm32-wasip1/release/oneway_zed.wasm editors/zed-oneway/extension.wasm
     echo "Done. Commit editors/zed-oneway/grammars/oneway.wasm and editors/zed-oneway/extension.wasm"
-
-# Format an .ow file
-fmt-ow file:
-    cargo run --quiet -- fmt {{file}}
-
-# Check formatting of an .ow file (no changes)
-fmt-check file:
-    cargo run --quiet -- fmt --check {{file}}
-
-# Format all examples
-fmt-all: build
-    #!/usr/bin/env sh
-    for f in examples/*.ow examples/*/*.ow; do
-        [ -f "$f" ] || continue
-        cargo run --quiet -- fmt "$f"
-    done
-
-# Check formatting of all examples (no changes)
-fmt-check-all: build
-    #!/usr/bin/env sh
-    all_ok=true
-    for f in examples/*.ow examples/*/*.ow; do
-        [ -f "$f" ] || continue
-        if ! cargo run --quiet -- fmt --check "$f" 2>/dev/null; then
-            all_ok=false
-        fi
-    done
-    if [ "$all_ok" = false ]; then
-        echo "Some files are not formatted. Run 'just fmt-all' to fix."
-        exit 1
-    fi
-    echo "All files formatted."
-
-# Run all CI checks locally (mirrors ci.yml)
-ci:
-    cargo fmt --check
-    cargo clippy -- -D warnings
-    cargo test
-
-# Format compiler source
-fmt:
-    cargo fmt
-
-# Lint compiler source
-clippy:
-    cargo clippy -- -W warnings
-
-# Clean build artifacts + compiled examples
-clean:
-    #!/usr/bin/env sh
-    cargo clean
-    find examples -type d -name '.oneway' -exec rm -rf {} +

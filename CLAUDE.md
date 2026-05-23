@@ -36,28 +36,21 @@ See `DESIGN.md` for the full language specification.
 This project uses [`just`](https://github.com/casey/just) as a task runner and standard `cargo` underneath.
 
 ```sh
-just build              # cargo build
-just release            # cargo build --release
-just install            # build release binary and install to ~/.cargo/bin/oneway
-just bump <version>     # bump version in Cargo.toml, commit, tag, and push to trigger CI release
+just build              # cargo build (debug)
+just install            # cargo install --path . --force (release → ~/.cargo/bin)
 just test               # cargo test
-just test-verbose       # cargo test -- --nocapture
-just run <file>         # compile and run an .ow file
-just emit <file>        # print generated Rust for an .ow file
-just ast <file>         # print the AST
-just tokens <file>      # print lexer tokens
-just check <file>       # check sort order and types
-just example <name>     # run examples/<name>.ow or examples/<name>/main.ow
-just examples           # run all examples (reports pass/fail/skip)
+just examples           # compile + run all examples, report pass/fail/skip
+just example <name>     # run a single example by name
 just fmt                # cargo fmt
 just clippy             # cargo clippy -- -W warnings
+just ci                 # fmt + clippy + test (mirrors CI)
 just clean              # cargo clean + remove compiled examples
-just compile <file>     # compile .ow file to binary (no run)
-just emit-all           # emit generated Rust for all examples
-just check-all          # check all examples for sort order
 just install-hooks      # install git hooks (pre-commit)
 just uninstall-hooks    # uninstall git hooks
+just build-extension    # build the Zed extension WASMs
 ```
+
+To cut a release, use the **bump** GitHub Actions workflow (`Actions → bump → Run workflow`). It handles the version bump, commit, tag, and triggers the cross-build release pipeline automatically.
 
 ## Testing
 

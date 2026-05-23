@@ -1,81 +1,67 @@
 # Building and Running
 
-The compiler is invoked through `just` recipes. The ones you'll actually
-use, day to day:
+All `oneway` commands operate on a single `.ow` file (or a module folder).
 
 ## Run a Program
 
 ```sh
-just run path/to/file.ow
+oneway run hello.ow
 ```
 
-Compiles the file to a native binary placed next to the source, runs it,
-prints the output, and removes the binary afterward.
+Compiles the file and immediately runs it. The binary is placed in a
+temporary `.oneway/` directory next to the source and is run in place.
 
-## Run an Example by Name
+## Build a Native Binary
 
 ```sh
-just example hello          # runs examples/hello.ow
-just example multifile      # runs examples/multifile/main.ow
+oneway build hello.ow
 ```
 
-## Run Every Example
+Compiles to a native binary placed in `.oneway/hello/hello` next to the
+source file.
+
+## Inspect Generated Rust
 
 ```sh
-just examples
+oneway emit hello.ow
 ```
 
-Compiles and runs every file in `examples/`, reporting which passed,
-failed, or were skipped (skipped means the example does not yet compile).
-
-## Inspect the Generated Rust
-
-```sh
-just emit path/to/file.ow
-```
-
-Prints the Rust source that the transpiler produces. This is the best way
-to build a mental model of how Oneway constructs map to Rust.
+Prints the Rust source that the transpiler produces. This is the fastest
+way to build a mental model of how Oneway constructs map to Rust.
 
 ## Show Tokens or AST
 
 ```sh
-just tokens path/to/file.ow
-just ast    path/to/file.ow
+oneway tokens hello.ow
+oneway ast    hello.ow
 ```
 
-Both are diagnostic — useful when you want to know exactly how the
-lexer/parser sees your code.
+Diagnostic tools — useful when you want to understand exactly how the
+lexer or parser sees your code.
 
 ## Check Sort Order
 
 ```sh
-just check path/to/file.ow
+oneway check hello.ow
 ```
 
-Validates only the sort-order rules (alphabetical ordering of declarations,
-dispatch arms, imports, etc.) without doing the rest of compilation.
+Validates the sort-order rules (alphabetical ordering of declarations,
+dispatch arms, imports, etc.) without running codegen.
 
-## Install the Binary
+## Format
 
 ```sh
-just install
+oneway fmt hello.ow
 ```
 
-Builds a release binary and copies it to `~/.cargo/bin/oneway` so you can
-invoke `oneway` directly from any directory.
-
-## Tests and Linting
+## All Commands
 
 ```sh
-just test            # cargo test the compiler
-just fmt             # cargo fmt the compiler source
-just clippy          # cargo clippy the compiler source
-just clean           # remove build artifacts and compiled examples
+oneway help
 ```
 
 ## Workflow
 
 There is no `oneway new` or project scaffolder. Single-file programs are
-first class — drop a `.ow` file anywhere and `just run` it. For multi-file
-projects, see [Modules](../tour/modules.md).
+first class — drop a `.ow` file anywhere and `oneway run` it. For
+multi-file projects, see [Modules](../tour/modules.md).

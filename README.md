@@ -97,27 +97,24 @@ oneway run hello.ow
 For contributors. End users should install the prebuilt binary via the script above.
 
 ```sh
-just build                      # build the compiler
-just install                    # build release binary and install to ~/.cargo/bin/oneway
-just run examples/hello.ow      # compile and run an example
-just example list               # run examples/list.ow (or examples/list/main.ow)
-just examples                   # run every example
-just emit examples/hello.ow     # print generated Rust
-just ast  examples/hello.ow     # print the AST
-just test                       # run the compiler test suite
+just build        # build a debug binary
+just install      # build and install the release binary to ~/.cargo/bin/oneway
+just test         # run the test suite
+just examples     # compile and run every example
+just example hello  # run a single example by name
+just ci           # run all CI checks locally
 ```
 
 ---
 
 ## Releases
 
-Tagging a commit with `vX.Y.Z` triggers `.github/workflows/release.yml`, which cross-builds `oneway` for macOS (arm64, x86_64) and Linux (arm64, x86_64), uploads the tarballs and SHA256 checksums to the GitHub release, and makes the new version installable via the install script.
+Releases are fully automated via GitHub Actions. To cut a release, trigger the **bump** workflow from the GitHub UI (`Actions → bump → Run workflow`) and enter the new version (e.g. `0.4.0`).
 
-Use `just bump` to automate the full release flow — it updates `Cargo.toml`, commits, tags, and pushes (which triggers the CI release):
-
-```sh
-just bump 0.3.0
-```
+The workflow:
+1. Updates `Cargo.toml` and `Cargo.lock`
+2. Commits and tags `vX.Y.Z`
+3. Pushes — which triggers `release.yml`, which cross-builds for macOS and Linux and publishes the tarballs to the GitHub release
 
 ---
 

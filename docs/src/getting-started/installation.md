@@ -1,62 +1,44 @@
 # Installation
 
-Oneway is distributed as source. You build the compiler with `cargo`, then
-use it to compile `.ow` programs.
-
 ## Prerequisites
 
 - **Rust** (stable) — install via [rustup](https://rustup.rs).
-- **just** — a command runner. Install with `cargo install just` or your
-  package manager.
+  Oneway transpiles `.ow` programs to Rust and shells out to `rustc` to
+  compile them, so a working Rust toolchain is needed at runtime as well.
 - A working **C linker** (clang or gcc) — already present on most systems.
 
-## Building the Compiler
-
-Clone the repository and build:
+## Install
 
 ```sh
-git clone https://github.com/Almaju/oneway
-cd oneway
-just build
+curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh
 ```
 
-This produces a debug binary at `target/debug/oneway`. The `justfile` at the
-project root wraps the compiler in convenient recipes, so you rarely call
-the binary directly.
+The script downloads a prebuilt `oneway` binary for your platform (macOS
+arm64/x86_64, Linux arm64/x86_64) and installs it to `~/.oneway/bin/oneway`.
+Add that directory to your PATH as instructed by the installer.
 
-## Installing the Binary
-
-To install a release build to `~/.cargo/bin/oneway` (which should already be
-on your `PATH` if you installed Rust via rustup):
+Pin to a specific version:
 
 ```sh
-just install
+curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh -s v0.3.0
 ```
 
-After this you can invoke `oneway` directly from any directory, without going
-through `just`.
-
-## Verifying the Install
-
-Run the bundled hello-world example:
+## Verify
 
 ```sh
-just run examples/hello.ow
+oneway version
 ```
 
-You should see:
+## Update
 
-```oneway
-hello
+```sh
+oneway upgrade              # install the latest release
+oneway upgrade v0.3.0       # install a specific release
+oneway upgrade --check      # check whether a newer release is available
 ```
 
-## Repository Layout
+## Editor Support
 
-| Path          | What it is                                              |
-|---------------|---------------------------------------------------------|
-| `src/`        | The compiler (lexer, parser, checker, codegen).         |
-| `examples/`   | Sample `.ow` programs.                                  |
-| `editors/`    | Tree-sitter grammar and Zed extension.                  |
-| `DESIGN.md`   | The full language specification.                        |
-
-For editor support, see `editors/README.md` in the repository.
+A Zed extension with syntax highlighting is available in the
+[`editors/`](https://github.com/Almaju/oneway/tree/main/editors) directory
+of the repository.

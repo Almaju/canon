@@ -54,4 +54,4 @@ the fastest path in.
   directory in the repo.
 - Read [`DESIGN.md`](https://github.com/Almaju/oneway/blob/main/DESIGN.md)
   — it's the authoritative spec.
-- `just emit path/to/file.ow` prints the Rust the transpiler produces.
+- `oneway emit path/to/file.ow` prints the Rust the transpiler produces.
