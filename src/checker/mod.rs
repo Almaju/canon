@@ -49,6 +49,16 @@ const BUILTIN_GENERIC_TYPES: &[&str] =
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
 const ZERO_DATA_BUILTINS: &[&str] = &["False", "True", "Unit"];
 
+/// Synthetic concurrency combinators recognised by the codegen as built-in
+/// `compile_parallel` / `compile_race` paths. They appear in source as if
+/// they were ordinary calls (`parallel(a, b)`, `race(a, b)`) but the
+/// checker accepts them without resolving the bindings declaration in
+/// `packages/oneway/std/src/concurrent.ow` — the declaration's PascalCase
+/// first parameter (`Future<T>`) would otherwise force the checker to
+/// look them up as methods on `Future`, which the `Constructor(…)` call
+/// shape doesn't support. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
+const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race"];
+
 pub struct SymbolTable {
     pub types: HashSet<String>,
     pub generic_types: HashSet<String>,
@@ -129,7 +139,14 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<Oneway
         match item {
             Item::Function(func) => check_function(func, &symbols, &mut errors, &mut main_found),
             Item::TypeDef(td) => check_type_def(td, &symbols, &mut errors),
-            Item::Use(_) => {}
+            // `use` and `bindings` are file-level directives the loader
+            // has already digested by the time we get here. The loader
+            // patches function-type aliases under `bindings` into
+            // FunctionDefs with `extern_wasm` set; the original
+            // BindingsDecl item is left in the module purely as a
+            // breadcrumb for tooling (formatter, LSP) and has nothing
+            // for the checker to enforce.
+            Item::Use(_) | Item::Bindings(_) => {}
         }
     }
 
@@ -885,21 +902,25 @@ fn check_expr(
             let matches_free_func = symbols
                 .free_funcs
                 .get(&name.name)
-                .map(|sig| sig.arity == args.len())
-                .unwrap_or(false);
-            if !symbols.knows_type(&name.name) && !is_variant && !matches_free_func {
+                .is_some_and(|sig| sig.arity == args.len());
+            let is_concurrent_combinator =
+                CONCURRENT_COMBINATORS.contains(&name.name.as_str()) && args.len() == 2;
+            if !symbols.knows_type(&name.name)
+                && !is_variant
+                && !matches_free_func
+                && !is_concurrent_combinator
+            {
                 errors.push(OnewayError::CheckError {
                     message: format!("unknown type `{}` in constructor", name.name),
                     span: name.span,
                 });
             }
-            if args.is_empty() && !is_variant && !matches_free_func {
+            if args.is_empty() && !is_variant && !matches_free_func && !is_concurrent_combinator {
                 let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
                 let has_zero_arg_ctor = symbols
                     .methods
                     .get(&(name.name.clone(), "Self".to_string()))
-                    .map(|sig| sig.arity == 0)
-                    .unwrap_or(false);
+                    .is_some_and(|sig| sig.arity == 0);
                 if !is_zero_data_builtin && !has_zero_arg_ctor {
                     errors.push(OnewayError::CheckError {
                         message: format!(
@@ -1182,20 +1203,27 @@ fn effective_call_arity(args: &[Expr]) -> usize {
 ///   - the Ok-payload name when the return is a `Result<X, Y>` or
 ///     `Option<X>`, so `?` can give the extracted value its proper type.
 ///
-/// `Future<T>` and `Stream<T>` are transparent here: a method declared as
-/// returning `Future<Result<X, Y>>` is summarised exactly like one declared
+/// `Future<T>` is transparent here: a method declared as returning
+/// `Future<Result<X, Y>>` is summarised exactly like one declared
 /// `Result<X, Y>`. The auto-await rule (`auto_await::transform`) inserts
 /// the implicit `Expr::Await` at use sites, so the user-visible type after
 /// awaiting is the inner type. Keeping the summary in lock-step means
 /// `?` and arm-pattern inference work the same way regardless of whether
 /// the method is sync or async.
+///
+/// `Stream<T>` is **not** peeled. A function returning `Stream<T>` is
+/// producing a stream value that downstream combinators (`map`, `take`,
+/// `concat`, …) operate on directly. Stream consumption (auto-iteration)
+/// is handled at call sites via `.each` / `.next` recognition in
+/// `async_analysis::expr_has_async_trigger`, not by type-peel here. See
+/// `STREAMING.md`.
 fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
     match ty {
         TypeExpr::Named { name, generics, .. } => {
-            // Peel one layer of `Future<…>` / `Stream<…>` — the await is
-            // implicit so the rest of the checker only ever sees the
-            // already-awaited type.
-            if (name == "Future" || name == "Stream") && generics.len() == 1 {
+            // Peel one layer of `Future<…>` only — the await is implicit so
+            // the rest of the checker only ever sees the already-awaited
+            // type. `Stream<…>` stays as-is (producer-side type).
+            if name == "Future" && generics.len() == 1 {
                 return method_return_summary(&generics[0]);
             }
             let bare = name.clone();
@@ -1231,8 +1259,7 @@ fn method_known_via_aliases(
         if symbols
             .methods
             .get(&(current.to_string(), method.to_string()))
-            .map(|m| m.arity == arg_count)
-            .unwrap_or(false)
+            .is_some_and(|m| m.arity == arg_count)
         {
             return true;
         }
@@ -1352,7 +1379,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::IntLit { .. } => "Int".to_string(),
         Expr::FloatLit { .. } => "Float".to_string(),
         Expr::HexLit { .. } => "Hex".to_string(),
-        Expr::Constructor { name, .. } => {
+        Expr::Constructor { name, args, .. } => {
             // Variants widen to their parent union (e.g. `Some(x)` typed as
             // `Option`); free-function constructors take their declared
             // return type; everything else is treated as the type name
@@ -1361,6 +1388,29 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 parent.clone()
             } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
                 sig.return_ty.clone()
+            } else if name.name == "parallel" {
+                // `parallel(a, b)` returns `Future<List<T>>` per
+                // `oneway/std/concurrent`; the auto-await collapses
+                // `Future<List<T>>` → `List<T>` at any consuming site,
+                // so we report `List` here to keep method-chain typing
+                // (`.toJsonArray()`, `.get(i)`, etc.) flowing.
+                "List".to_string()
+            } else if name.name == "race" {
+                // `race(a, b) -> Future<T>` collapses to `T`; the type
+                // of the args is `Future<T>` where T is what the inner
+                // async call returns. Probe the first arg's type and
+                // strip one layer of `Future<…>` if visible.
+                args.first()
+                    .map(|a| {
+                        // For a `.slowEcho()` MethodCall whose method is
+                        // a Future-returning async extern, the static type
+                        // analysis below returns whatever the method's
+                        // synthesised return type is. The auto-await
+                        // transform peels the outer Future for us in most
+                        // call shapes; here we just take the arg's type.
+                        expr_type_name_in_scope(a, symbols)
+                    })
+                    .unwrap_or_else(|| "<unknown>".to_string())
             } else {
                 name.name.clone()
             }

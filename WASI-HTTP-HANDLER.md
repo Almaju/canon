@@ -418,10 +418,14 @@ it actually do something.
 
 ### Slice 5 — async bodies & streaming (future)
 
-Reading large request bodies as streams (not collected into a
-`String`), writing streamed response bodies (SSE, NDJSON). Reuses
-the `wasi:io/streams` async machinery, already wired up for
-`wasi:cli/stdout`. This is its own milestone.
+**Superseded by [`STREAMING.md`](./STREAMING.md).** Reading large
+request bodies as streams, writing streamed response bodies (SSE,
+NDJSON), and the `Stream<T>` stdlib surface are all designed in that
+doc — including the `(Headers * Status * Stream<String>) -> Response`
+constructor and the four-line SSE formatter that replaces the current
+`Content-Type:`-prefix hack. The slices here become the prerequisites
+(handler export + request/response resources) for the work in
+`STREAMING.md`.
 
 ---
 

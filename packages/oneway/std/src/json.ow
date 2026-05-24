@@ -13,22 +13,28 @@ Json = (String) -> Result<Json, MalformedJson> {
 
 ToJson = () -> Json
 
-extern Wasm("oneway:builtins/json@0.1.0#field")
+bindings "oneway:builtins/json@0.1.0"
+
 field = (Json * String) -> Result<Json, MalformedJson>
 
-extern Wasm("oneway:builtins/json@0.1.0#from-bool")
+bindings "oneway:builtins/json@0.1.0#from-bool"
+
 ToJson = (Bool) -> Json
 
-extern Wasm("oneway:builtins/json@0.1.0#from-float")
+bindings "oneway:builtins/json@0.1.0#from-float"
+
 ToJson = (Float) -> Json
 
-extern Wasm("oneway:builtins/json@0.1.0#from-int")
+bindings "oneway:builtins/json@0.1.0#from-int"
+
 ToJson = (Int) -> Json
 
-extern Wasm("oneway:builtins/json@0.1.0#from-string")
+bindings "oneway:builtins/json@0.1.0#from-string"
+
 ToJson = (String) -> Json
 
-extern Wasm("oneway:builtins/json@0.1.0#to-string")
+bindings "oneway:builtins/json@0.1.0#to-string"
+
 asString = (Json) -> Result<String, MalformedJson>
 
 checkTrailing = (ParseStep * String) -> ParseStep {

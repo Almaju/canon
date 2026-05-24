@@ -31,6 +31,10 @@ interface kitchen-sink {
     /// A type alias.
     type color-list = list<color>;
 
+    /// A tuple of identical types — should collapse to `Float^3` on
+    /// the Oneway side rather than `Float * Float * Float`.
+    type triple = tuple<f64, f64, f64>;
+
     /// Pure free function with multiple typed parameters.
     paint: func(palette: color-list, target: shape) -> result<style, string>;
 

@@ -41,6 +41,27 @@ pub fn kebab_to_snake(s: &str) -> String {
     s.replace('-', "_")
 }
 
+/// `getRandomU64` → `get-random-u64`. The inverse of [`kebab_to_camel`]
+/// for function names: insert a `-` before each uppercase ASCII letter,
+/// then lowercase the whole string. Numbers are passed through (so
+/// `getRandomU64` stays `get-random-u64`, not `get-random-u-6-4`).
+///
+/// Used by the loader to reconstruct the WIT function name from the
+/// Oneway-side camelCase identifier when patching `extern Wasm` paths
+/// against the install index.
+pub fn camel_to_kebab(s: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if c.is_ascii_uppercase() && i != 0 {
+            out.push('-');
+        }
+        for lower in c.to_lowercase() {
+            out.push(lower);
+        }
+    }
+    out
+}
+
 /// Split a Component-Model interface id of the form
 /// `namespace:package/interface@version` into its parts. `@version`
 /// is optional. Returns `(namespace, package, interface, Some(version))`
@@ -100,6 +121,33 @@ mod tests {
     fn snake() {
         assert_eq!(kebab_to_snake("monotonic-clock"), "monotonic_clock");
         assert_eq!(kebab_to_snake("clocks"), "clocks");
+    }
+
+    #[test]
+    fn camel_to_kebab_roundtrips_function_names() {
+        // Round-trip identities: kebab → camel → kebab equals identity.
+        // These are the cases the loader actually sees.
+        assert_eq!(camel_to_kebab("now"), "now");
+        assert_eq!(camel_to_kebab("getResolution"), "get-resolution");
+        assert_eq!(camel_to_kebab("getRandomU64"), "get-random-u64");
+        assert_eq!(
+            camel_to_kebab("getInsecureRandomBytes"),
+            "get-insecure-random-bytes"
+        );
+        assert_eq!(camel_to_kebab("writeViaStream"), "write-via-stream");
+    }
+
+    #[test]
+    fn camel_to_kebab_handles_first_char_uppercase() {
+        // First uppercase char doesn't get a leading `-`. Bindgen only
+        // produces camelCase fn names, so this case is theoretical for
+        // function-name use — but the helper is well-defined for it.
+        assert_eq!(camel_to_kebab("GetThing"), "get-thing");
+    }
+
+    #[test]
+    fn camel_to_kebab_passes_empty_through() {
+        assert_eq!(camel_to_kebab(""), "");
     }
 
     #[test]

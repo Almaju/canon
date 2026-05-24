@@ -12,6 +12,30 @@ pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
     Use(UseDecl),
+    /// A file-level `bindings "<urn>"` directive. Declares that all
+    /// camelCase function-type aliases in this file are actually
+    /// external bindings backed by `<urn>` in the WebAssembly Component
+    /// canonical ABI. The loader rewrites those aliases into
+    /// `FunctionDef`s with `extern_wasm` populated; without the
+    /// directive, a bare `name = (P) -> R` stays a function-type alias
+    /// (the existing language semantics).
+    ///
+    /// Emitted at the top of every `oneway install`-generated file as a
+    /// human-readable index of "what is this file bindings for?" so a
+    /// reader sees `bindings "wasi:clocks/timezone@…"` and immediately
+    /// knows where to look in the source WIT.
+    Bindings(BindingsDecl),
+}
+
+/// A `bindings "<urn>"` directive at the top of a generated bindings
+/// file. See [`Item::Bindings`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct BindingsDecl {
+    /// The WIT interface URN, e.g.
+    /// `"wasi:clocks/timezone@0.3.0-rc-2026-03-15"`. Stored verbatim;
+    /// the loader appends `#<fn-kebab>` per function.
+    pub urn: String,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -370,8 +394,7 @@ pub fn resolve_new_syntax(module: &mut Module) {
                     .name
                     .chars()
                     .next()
-                    .map(|c| c.is_uppercase())
-                    .unwrap_or(false);
+                    .is_some_and(char::is_uppercase);
                 if is_pascal {
                     if type_names.contains(&func.name.name) {
                         // Constructor (including zero-arg): set receiver to type name, rename to "Self"

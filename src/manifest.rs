@@ -1,12 +1,12 @@
 //! Package manifest (`oneway.toml`) parser.
 //!
 //! A package's manifest is a tiny TOML file declaring its identity, version,
-//! optional fetch information, and dependencies. The compiler parses only the
-//! subset shown in DESIGN.md § Package Manifests — top-level string keys plus
-//! at most one `[deps]` table with quoted string keys and string values. Full
-//! TOML compatibility is a non-goal; we want editor support and human
-//! familiarity, not expressiveness. Keeping the parser hand-written preserves
-//! the compiler's zero-external-dependency property.
+//! optional fetch information, dependencies, and external bindings. The
+//! compiler parses only the subset shown in DESIGN.md § Package Manifests —
+//! top-level string keys plus at most one each of `[deps]`, `[imports]`, and
+//! `[workspace]`. Full TOML compatibility is a non-goal; we want editor
+//! support and human familiarity, not expressiveness. Keeping the parser
+//! hand-written preserves the compiler's zero-external-dependency property.
 //!
 //! Example accepted package input:
 //!
@@ -19,7 +19,29 @@
 //! [deps]
 //! "oneway/wasi"        = "0.3.x"
 //! "acme/image-decoder" = "1.0.x"
+//!
+//! [imports]
+//! "wasi/random/random"   = "vendor/wasi-random.wit"   # linker-provided
+//! "oneway/builtins/json" = "vendor/oneway-builtins-json.wit"
+//! "example/foo/bar"      = "vendor/some-lib.wasm"     # bundled component
 //! ```
+//!
+//! `[deps]` declares dependencies on other *Oneway packages*. `[imports]`
+//! declares dependencies on *external contracts* — either WIT interfaces
+//! (the runtime must satisfy them, à la WASI) or wasm components (composed
+//! into the final artifact at build time). Each `[imports]` key is a
+//! slash-separated path that doubles as the `use` path; each value is the
+//! source. The source kind is determined by extension:
+//!
+//! - `.wit` → linker-provided. The compiler emits `(import …)` declarations;
+//!   the host (e.g. `oneway run`, `wasmtime serve`) provides the
+//!   implementation. WASI is the canonical example.
+//! - `.wasm` → bundled. The compiler composes the supplied component into
+//!   the final output. The artifact is self-contained.
+//!
+//! Remote sources (e.g. `github:WebAssembly/wasi-random@v0.3.0`) are not yet
+//! accepted; only local paths are. When a package manager arrives the
+//! grammar grows to admit them here.
 //!
 //! Example accepted workspace input (a workspace itself isn't a package —
 //! it just aggregates member packages, Cargo-style):
@@ -40,8 +62,8 @@ use std::collections::BTreeMap;
 
 /// The fully parsed contents of an `oneway.toml`.
 ///
-/// `deps` uses `BTreeMap` so iteration is alphabetical, matching the
-/// "alphabetical wherever ordering is discretionary" rule.
+/// `deps` and `imports` use `BTreeMap` so iteration is alphabetical,
+/// matching the "alphabetical wherever ordering is discretionary" rule.
 ///
 /// When `workspace` is `Some`, this manifest is a workspace root and
 /// `name` / `version` may be empty ("virtual workspace", Cargo-style).
@@ -54,7 +76,35 @@ pub struct Manifest {
     pub from: Option<String>,
     pub sha256: Option<String>,
     pub deps: BTreeMap<String, String>,
+    pub imports: BTreeMap<String, ImportSource>,
     pub workspace: Option<WorkspaceConfig>,
+}
+
+/// Where a single `[imports]` entry's bindings come from.
+///
+/// Determined by file extension at parse time. The contained `String` is
+/// the project-relative path exactly as the manifest author wrote it; we
+/// don't canonicalize, expand `~`, or resolve `..` here — that's the
+/// loader's job once it knows the package's root.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportSource {
+    /// A WIT file describing an interface the runtime must satisfy.
+    /// The compiler emits `(import …)` declarations against this contract;
+    /// the host (e.g. `oneway run`, `wasmtime serve`) provides the
+    /// implementation at instantiation time.
+    Wit(String),
+    /// A wasm component whose exports satisfy the imports. The compiler
+    /// composes this artifact into the final output at build time.
+    Wasm(String),
+}
+
+impl ImportSource {
+    /// The raw source path as written in the manifest.
+    pub fn path(&self) -> &str {
+        match self {
+            ImportSource::Wit(p) | ImportSource::Wasm(p) => p,
+        }
+    }
 }
 
 /// The `[workspace]` table of a manifest.
@@ -90,6 +140,8 @@ enum Section {
     TopLevel,
     /// Inside `[deps]`.
     Deps,
+    /// Inside `[imports]`.
+    Imports,
     /// Inside `[workspace]`.
     Workspace,
 }
@@ -99,6 +151,7 @@ pub fn parse(source: &str) -> Result<Manifest, ManifestError> {
     let mut manifest = Manifest::default();
     let mut section = Section::TopLevel;
     let mut saw_deps_header = false;
+    let mut saw_imports_header = false;
     let mut saw_workspace_header = false;
 
     let mut name_seen = false;
@@ -126,6 +179,13 @@ pub fn parse(source: &str) -> Result<Manifest, ManifestError> {
                     saw_deps_header = true;
                     section = Section::Deps;
                 }
+                "imports" => {
+                    if saw_imports_header {
+                        return Err(err(line_no, "duplicate `[imports]` table".to_string()));
+                    }
+                    saw_imports_header = true;
+                    section = Section::Imports;
+                }
                 "workspace" => {
                     if saw_workspace_header {
                         return Err(err(line_no, "duplicate `[workspace]` table".to_string()));
@@ -138,7 +198,7 @@ pub fn parse(source: &str) -> Result<Manifest, ManifestError> {
                     return Err(err(
                         line_no,
                         format!(
-                            "unknown table `[{header}]` (expected one of: `[deps]`, `[workspace]`)"
+                            "unknown table `[{header}]` (expected one of: `[deps]`, `[imports]`, `[workspace]`)"
                         ),
                     ));
                 }
@@ -182,6 +242,21 @@ pub fn parse(source: &str) -> Result<Manifest, ManifestError> {
             let version = unquote(&value, line_no)
                 .map_err(|m| err(line_no, format!("dependency version: {m}")))?;
             manifest.deps.insert(dep_name, version);
+        } else if section == Section::Imports {
+            // `[imports]` entries: `"<path>" = "<source>"`. The key is a
+            // slash-separated path that doubles as the `use` path. The
+            // value is a project-relative source whose extension picks
+            // the binding kind (`.wit` linker-provided, `.wasm` bundled).
+            let import_path =
+                unquote(&key, line_no).map_err(|m| err(line_no, format!("import key: {m}")))?;
+            validate_import_path(&import_path, line_no)?;
+            if manifest.imports.contains_key(&import_path) {
+                return Err(err(line_no, format!("duplicate import `{import_path}`")));
+            }
+            let source = unquote(&value, line_no)
+                .map_err(|m| err(line_no, format!("import source: {m}")))?;
+            let import_source = classify_import_source(&source, line_no)?;
+            manifest.imports.insert(import_path, import_source);
         } else {
             debug_assert_eq!(section, Section::TopLevel);
             // Top-level fields: each has a fixed name and string value.
@@ -254,6 +329,71 @@ pub fn parse(source: &str) -> Result<Manifest, ManifestError> {
 
 fn err(line: usize, message: String) -> ManifestError {
     ManifestError { line, message }
+}
+
+/// Validate that an `[imports]` key looks like a `use`-style path:
+/// non-empty, slash-separated, no leading/trailing slash, no empty
+/// segments, no `.` or `..` segments. We don't enforce identifier
+/// rules on individual segments here — the loader does that when it
+/// resolves the path against the source tree.
+fn validate_import_path(path: &str, line_no: usize) -> Result<(), ManifestError> {
+    if path.is_empty() {
+        return Err(err(line_no, "import path cannot be empty".to_string()));
+    }
+    if path.starts_with('/') || path.ends_with('/') {
+        return Err(err(
+            line_no,
+            format!("import path `{path}` must not start or end with `/`"),
+        ));
+    }
+    for segment in path.split('/') {
+        if segment.is_empty() {
+            return Err(err(
+                line_no,
+                format!("import path `{path}` contains an empty segment"),
+            ));
+        }
+        if segment == "." || segment == ".." {
+            return Err(err(
+                line_no,
+                format!("import path `{path}` must not contain `.` or `..` segments"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Classify an `[imports]` source string by its file extension. WIT
+/// sources can be either a single `.wit` file or a directory containing
+/// multiple cross-referencing `.wit` files (the real WASI vendor tree is
+/// shaped this way); both end up as `ImportSource::Wit` and the install
+/// step does the file-vs-directory dispatch at the filesystem layer.
+/// Remote sources (URLs, git refs, registry coordinates) aren't accepted
+/// yet; when they are, this function grows new arms ahead of
+/// `Wit`/`Wasm`.
+fn classify_import_source(source: &str, line_no: usize) -> Result<ImportSource, ManifestError> {
+    if source.is_empty() {
+        return Err(err(line_no, "import source cannot be empty".to_string()));
+    }
+    if source.ends_with(".wasm") {
+        return Ok(ImportSource::Wasm(source.to_string()));
+    }
+    if source.ends_with(".wit") {
+        return Ok(ImportSource::Wit(source.to_string()));
+    }
+    // Trailing slash, or a final segment with no extension at all, means
+    // a directory of WIT files. We don't touch the filesystem here — the
+    // install step verifies the path actually exists and contains WITs.
+    let last_segment = source.rsplit('/').next().unwrap_or("");
+    if source.ends_with('/') || !last_segment.contains('.') {
+        return Ok(ImportSource::Wit(source.to_string()));
+    }
+    Err(err(
+        line_no,
+        format!(
+            "import source `{source}` must be a `.wit` file, a `.wasm` component, or a directory of `.wit` files"
+        ),
+    ))
 }
 
 /// Strip a trailing `# …` comment from a line. We do this before quoting is
@@ -575,5 +715,242 @@ members = ["a", "b",]
         let src = "\n   name    = \"foo/bar\"\n\n   version = \"0.1.0\"\n";
         let m = parse(src).unwrap();
         assert_eq!(m.name, "foo/bar");
+    }
+
+    #[test]
+    fn parses_imports_with_wit_and_wasm_sources() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/random/random"   = "vendor/wasi-random.wit"
+"oneway/builtins/json" = "vendor/oneway-builtins-json.wit"
+"example/foo/bar"      = "vendor/some-lib.wasm"
+"#;
+        let m = parse(src).unwrap();
+        assert_eq!(m.imports.len(), 3);
+        assert_eq!(
+            m.imports.get("wasi/random/random"),
+            Some(&ImportSource::Wit("vendor/wasi-random.wit".to_string())),
+        );
+        assert_eq!(
+            m.imports.get("oneway/builtins/json"),
+            Some(&ImportSource::Wit(
+                "vendor/oneway-builtins-json.wit".to_string()
+            )),
+        );
+        assert_eq!(
+            m.imports.get("example/foo/bar"),
+            Some(&ImportSource::Wasm("vendor/some-lib.wasm".to_string())),
+        );
+    }
+
+    #[test]
+    fn parses_imports_alongside_deps() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[deps]
+"oneway/std" = "0.3.x"
+
+[imports]
+"wasi/random/random" = "vendor/wasi-random.wit"
+"#;
+        let m = parse(src).unwrap();
+        assert_eq!(m.deps.len(), 1);
+        assert_eq!(m.imports.len(), 1);
+    }
+
+    #[test]
+    fn imports_default_to_empty() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+"#;
+        let m = parse(src).unwrap();
+        assert!(m.imports.is_empty());
+    }
+
+    #[test]
+    fn rejects_duplicate_imports_table() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/random/random" = "vendor/wasi-random.wit"
+
+[imports]
+"wasi/cli/stdout" = "vendor/wasi-cli.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("duplicate"));
+        assert!(e.message.contains("imports"));
+    }
+
+    #[test]
+    fn rejects_duplicate_import_name() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/random/random" = "vendor/wasi-random.wit"
+"wasi/random/random" = "vendor/other.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("duplicate import"));
+    }
+
+    #[test]
+    fn rejects_import_source_with_unknown_extension() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/random/random" = "vendor/wasi-random.txt"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains(".wit"));
+        assert!(e.message.contains(".wasm"));
+    }
+
+    #[test]
+    fn accepts_directory_source_with_trailing_slash() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi" = "vendor/wasi/"
+"#;
+        let m = parse(src).unwrap();
+        assert_eq!(
+            m.imports.get("wasi"),
+            Some(&ImportSource::Wit("vendor/wasi/".to_string())),
+        );
+    }
+
+    #[test]
+    fn accepts_directory_source_without_trailing_slash() {
+        // Common style: `vendor/wasi` (no slash). Final segment has no
+        // extension, so we infer "directory of WIT files". The install
+        // step ultimately decides; the manifest just stores the path.
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi" = "vendor/wasi"
+"#;
+        let m = parse(src).unwrap();
+        assert_eq!(
+            m.imports.get("wasi"),
+            Some(&ImportSource::Wit("vendor/wasi".to_string())),
+        );
+    }
+
+    #[test]
+    fn rejects_import_path_with_leading_slash() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"/wasi/random/random" = "vendor/wasi-random.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("start or end with `/`"));
+    }
+
+    #[test]
+    fn rejects_import_path_with_trailing_slash() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/random/random/" = "vendor/wasi-random.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("start or end with `/`"));
+    }
+
+    #[test]
+    fn rejects_import_path_with_empty_segment() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi//random" = "vendor/wasi-random.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("empty segment"));
+    }
+
+    #[test]
+    fn rejects_import_path_with_dot_segment() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/./random" = "vendor/wasi-random.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("`.` or `..`"));
+    }
+
+    #[test]
+    fn rejects_import_path_with_double_dot_segment() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/../random" = "vendor/wasi-random.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("`.` or `..`"));
+    }
+
+    #[test]
+    fn rejects_empty_import_path() {
+        let src = r#"
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"" = "vendor/wasi-random.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("cannot be empty"));
+    }
+
+    #[test]
+    fn import_source_path_accessor_returns_raw_string() {
+        let wit = ImportSource::Wit("vendor/x.wit".to_string());
+        let wasm = ImportSource::Wasm("vendor/y.wasm".to_string());
+        assert_eq!(wit.path(), "vendor/x.wit");
+        assert_eq!(wasm.path(), "vendor/y.wasm");
+    }
+
+    #[test]
+    fn unknown_table_error_mentions_imports() {
+        // Sanity: the error message now lists `imports` so users misnaming
+        // the table get a useful hint.
+        let src = r#"
+name = "foo/bar"
+version = "0.1.0"
+
+[bindings]
+"x/y" = "z.wit"
+"#;
+        let e = parse(src).unwrap_err();
+        assert!(e.message.contains("imports"));
     }
 }

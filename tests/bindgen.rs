@@ -34,9 +34,21 @@ fn monotonic_clock_roundtrip() {
     // Types and functions both present, alphabetical.
     assert!(f.content.contains("Duration = Int"));
     assert!(f.content.contains("Instant = Int"));
+    // Bindgen emits a single file-level `bindings "<urn>"` directive
+    // followed by bare function-type aliases — no per-function `extern
+    // Wasm` marker. The loader (`apply_bindings_directive` in
+    // `src/loader.rs`) rewrites each alias into a real FunctionDef with
+    // the URN attached. The URN also lives in `EmittedFile.urn` and the
+    // companion `_install.toml` index for callers that need direct
+    // access.
     assert!(f
         .content
-        .contains("extern Wasm(\"wasi:clocks/monotonic-clock@"));
+        .contains("bindings \"wasi:clocks/monotonic-clock@"));
+    assert!(
+        !f.content.contains("extern Wasm"),
+        "bindgen should not emit per-function `extern Wasm` anymore",
+    );
+    assert_eq!(f.urn, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15");
     assert!(f.content.contains("getResolution = () -> Duration"));
     assert!(f.content.contains("now = () -> Instant"));
 
@@ -159,6 +171,15 @@ fn kitchen_sink_roundtrip() {
 
     // Pure alias.
     assert!(f.content.contains("ColorList = List<Color>"));
+
+    // Tuple of identical types collapses to the `T^N` repeat form
+    // (rather than `Float * Float * Float`, which would violate the
+    // distinct-types rule on products).
+    assert!(
+        f.content.contains("Triple = Float^3"),
+        "tuple of identical types should emit `Float^3`:\n{}",
+        f.content
+    );
 
     // Function signatures.
     assert!(f.content.contains("centre = (Shape) -> Option<Point>"));

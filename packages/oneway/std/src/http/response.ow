@@ -3,5 +3,6 @@ use Status
 
 Response = Handle
 
-extern Wasm("wasi:http/types@0.3.0-rc-2026-03-15#[constructor]response")
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[constructor]response"
+
 Response = (Headers * Status) -> Response

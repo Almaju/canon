@@ -3,8 +3,10 @@ use oneway/std/IoError
 
 File = String
 
-extern Wasm("oneway:builtins/filesystem@0.1.0#open-file")
+bindings "oneway:builtins/filesystem@0.1.0#open-file"
+
 File = (Path) -> Result<File, IoError>
 
-extern Wasm("oneway:builtins/filesystem@0.1.0#read-file-handle")
+bindings "oneway:builtins/filesystem@0.1.0#read-file-handle"
+
 read = (File) -> Result<String, IoError>

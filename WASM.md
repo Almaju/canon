@@ -44,7 +44,7 @@ internal types and 0.250 matches the wasmparser bundled by wasmtime 45.
 | 2 — Hello world | ✅ |
 | 3 — Type system | ✅ |
 | 4 — WASI stdlib | 🟢 most examples pass; gaps below |
-| 5 — Async | 🟡 foundation laid; suspension path missing |
+| 5 — Async | 🟢 single-subtask suspension + `parallel`/`race` working end-to-end; `Stream<T>.each` codegen pending |
 
 ### Passing examples (`examples/`)
 
@@ -152,8 +152,12 @@ In the component, the function type is declared as `async func(…)` via
 3. `call $async_import` → packed status word.
 4. Mask `status & 0xF`, compare to `2` (Returned). On the
    sync-completion fast path, decode the result from the ret-area.
-5. On any other status (`Starting`/`Started`), **`unreachable`-trap** —
-   the `waitable-set.wait` plumbing is the next step.
+5. On any other status (`Starting`/`Started`), allocate a single-element
+   waitable set, join the subtask, block on `waitable-set.wait`, then
+   drop the subtask before the set (otherwise wasmtime's
+   `ResourceTableError::HasChildren` trips). When wait returns the host
+   has written the result into our ret-area; decode and return.
+   Exercised by `tests/runtime/async_slow_echo.ow`.
 
 ---
 
@@ -173,10 +177,9 @@ In the component, the function type is declared as `async func(…)` via
 
 | Gap | Notes |
 |---|---|
-| **`waitable-set.wait`** | `emit_async_call` traps on non-sync completion. Need to allocate a waitable set, add the subtask, wait, then re-read the ret-area. |
-| **`Stream<T>.each(lambda)`** | Compilation sketch in `builtin.rs` is unimplemented. Needs the Component Model stream poll loop. |
+| **`Stream<T>.each(lambda)` codegen** | The stdlib surface is declared in `packages/oneway/std/src/stream.ow` (`map`/`filter`/`take`/`concat`/`toList`/`toString`), the checker accepts the type, and `async_analysis::expr_has_async_trigger` recognises `.each` / `.next` as async triggers — but `build_extern_component_params` returns `None` on `Stream<T>` params/returns, so the imports are silently dropped and the binary won't link. Real fix is slice 1b in `STREAMING.md`: route Stream-using programs through `wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder` type section. |
 | **HTTP-server `.serve()`** | Host bridge (`host_builtin_http_server::serve`) is a stub that returns `0` immediately. Real semantics need host-driven invocation of guest handler lambdas — function-table indirect calls or resource-keyed handler tables. |
-| **`auto_await` coverage** | Only the method-receiver case rewrites `Future<T>` → `Expr::Await`. Function-argument and `?`-operand positions aren't handled. Acceptable today because every receiver of a Future-returning extern *is* a method receiver. |
+| **Sync-completion path through `emit_arg_as_nonblocking`** | `compile_parallel` / `compile_race` assume both arms suspend (subtask handle ≠ 0). If an async extern completes synchronously its packed status has CallState = Returned and subtask = 0; calling `waitable.join(0, set)` traps. Today this is fine because the only test arms (`slowEcho`) always suspend, but a robust implementation should branch on `status & 0xF == 2` and treat synchronously-completed arms as immediately `seen`. |
 
 ### Stdlib gaps
 

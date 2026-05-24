@@ -1,0 +1,7 @@
+main = () -> Result<Unit, Unit> {
+    Ok("model").(
+        * (Err<Unit>) -> Unit { "err".print() }
+        * (Ok<String>) -> Unit { "first: ".concat("literal").print() String.print() "echo: ".concat(String).concat(":").concat(String).print() }
+    )
+    Ok(Unit())
+}

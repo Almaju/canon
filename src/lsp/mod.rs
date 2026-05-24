@@ -3,15 +3,19 @@
 /// Communicates over stdin/stdout using JSON-RPC 2.0 with Content-Length framing.
 /// No external dependencies — only std and the `oneway` library crate.
 use crate::ast::{resolve_new_syntax, FunctionDef, Item, Module, TypeDef, TypeExpr};
+use crate::bindgen::camel_to_kebab;
 use crate::checker;
 use crate::error::OnewayError;
 use crate::formatter;
+use crate::install::{parse_install_index, INSTALL_INDEX_FILENAME};
 use crate::lexer::Scanner;
-use crate::loader::{kebab_case, resolve_bundled_use, BundledFile};
+use crate::loader::{kebab_case, resolve_bundled_use, BundledFile, BUNDLED_PACKAGES};
+use crate::manifest::{self, ImportSource};
 use crate::parser::Parser;
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -356,14 +360,55 @@ impl LspServer {
         };
 
         // Collect all definitions and find matching one
+        let current_path = uri_to_path(&uri);
+
+        // Phase 0a: if the cursor is on a `bindings "<urn>"` directive,
+        // jump to the WIT file the URN points at — with the cursor
+        // landing on the matching `interface <name>` line (or on the
+        // function inside it when the URN carries a `#fn-suffix`).
+        // Lets readers click the directive to see what they're bound
+        // to without first having to figure out which `.wit` to open.
+        let bindings_target =
+            resolve_bindings_directive_target(source, line, &current_path).map(|(p, line, col)| {
+                (
+                    path_to_uri(&p.to_string_lossy()),
+                    crate::error::Span {
+                        start: 0,
+                        end: 0,
+                        line,
+                        column: col,
+                    },
+                )
+            });
+
+        // Phase 0b: if the current file is a bindgen-generated file,
+        // jump straight to the matching WIT declaration. The bindgen
+        // `.ow` file is a derived artifact — the WIT is the authoritative
+        // source of truth, so go-to-def lands the user on the spec
+        // rather than on the regenerable shim. Falls through to the
+        // ordinary lookup if the WIT can't be resolved (no install index,
+        // missing manifest, WIT file not on disk, decl not found).
+        let wit_location = bindings_target.or_else(|| {
+            resolve_to_wit_declaration(&current_path, &word).map(|(p, line, col)| {
+                (
+                    path_to_uri(&p.to_string_lossy()),
+                    crate::error::Span {
+                        start: 0,
+                        end: 0,
+                        line,
+                        column: col,
+                    },
+                )
+            })
+        });
+
         // Phase 1: definition in the current file.
-        let location = find_definition(&module, &word).map(|span| (uri.clone(), span));
+        let location = wit_location
+            .or_else(|| find_definition(&module, &word).map(|span| (uri.clone(), span)));
 
         // Phase 2: follow `use` imports if not found locally.
-        let location = location.or_else(|| {
-            let current_path = uri_to_path(&uri);
-            find_definition_in_imports(&module, &word, &current_path)
-        });
+        let location =
+            location.or_else(|| find_definition_in_imports(&module, &word, &current_path));
 
         if let Some((def_uri, span)) = location {
             let def_line = if span.line > 0 { span.line - 1 } else { 0 };
@@ -807,6 +852,247 @@ fn path_to_uri(path: &str) -> String {
     }
 }
 
+// -----------------------------------------------------------------------
+// Slice 5: go-to-definition from a bindgen file → WIT source.
+//
+// `oneway install` writes bindgen output with bare `extern Wasm`
+// markers; the canonical-ABI URN lives in `<bindgen>/_install.toml`.
+// The WIT file itself — the actual source-of-truth definition the
+// bindgen was generated from — is reachable through the project
+// manifest's `[imports]` table.
+//
+// The flow when the LSP gets a textDocument/definition request on a
+// bindgen file:
+//
+//   1. `urn_for_bindgen_file(current_file)` — is this file a bindgen
+//      artifact? Returns the file's interface URN if so.
+//   2. `wit_file_for_urn(urn, current_file)` — consult the manifest's
+//      `[imports]` table to find the matching `.wit` file on disk.
+//   3. `find_wit_decl(wit_path, kebab_name)` — scan the WIT for a
+//      declaration matching the (camelCase → kebab) version of the
+//      identifier the user clicked.
+//
+// Returns `(wit_file_path, line, column)` (1-indexed). All failures
+// return `None` so the LSP can fall back to the ordinary in-file /
+// follow-imports resolution.
+// -----------------------------------------------------------------------
+
+/// Top-level entry point for the slice-5 navigation. Combines the three
+/// helpers below. Returns the target file path plus a 1-indexed line and
+/// column inside it.
+fn resolve_to_wit_declaration(current_file: &str, word: &str) -> Option<(PathBuf, u32, u32)> {
+    let urn = urn_for_bindgen_file(current_file)?;
+    let (wit_path, _iface) = wit_file_for_urn(&urn, current_file)?;
+    let kebab = camel_to_kebab(word);
+    let (line, col) = find_wit_decl(&wit_path, &kebab)?;
+    Some((wit_path, line, col))
+}
+
+/// If the cursor sits on a `bindings "<urn>"` directive, resolve the
+/// URN to its backing WIT and return the target location. With a
+/// `#fn-suffix` in the URN, the cursor lands on that specific function;
+/// without one, it lands on the `interface <name>` declaration.
+///
+/// Works from *any* file (hand-written `std/` wrappers, generated
+/// `bindgen/` files, or user-project code) — the lookup is anchored
+/// at the file's project root, not at a `bindgen/` directory. This is
+/// what makes the `bindings` directive's URN clickable as a navigation
+/// hint regardless of context.
+fn resolve_bindings_directive_target(
+    source: &str,
+    cursor_line: u32,
+    current_file: &str,
+) -> Option<(PathBuf, u32, u32)> {
+    let line_text = source.lines().nth(cursor_line as usize)?;
+    let trimmed = line_text.trim_start();
+    let rest = trimmed.strip_prefix("bindings")?;
+    // Require whitespace after the keyword so we don't match e.g. an
+    // identifier prefixed with `bindings`.
+    if !rest.starts_with(|c: char| c.is_whitespace()) {
+        return None;
+    }
+    let after_ws = rest.trim_start();
+    let inside = after_ws.strip_prefix('"')?;
+    let urn = inside.split('"').next()?;
+
+    // Split URN at `#`: prefix is `<ns>:<pkg>/<iface>@<ver>`, suffix is
+    // the optional function name. We pass the prefix-only form to the
+    // existing `wit_file_for_urn` resolver and use the suffix to pick
+    // the target line inside the WIT.
+    let (base_urn, fn_suffix) = match urn.split_once('#') {
+        Some((b, f)) => (b, Some(f)),
+        None => (urn, None),
+    };
+    let (wit_path, iface) = wit_file_for_urn(base_urn, current_file)?;
+
+    // If the directive names a specific function, jump to it; else jump
+    // to the interface declaration. WIT function names use the same
+    // kebab convention the LSP already handles for in-file go-to-def,
+    // so `find_wit_decl` does both shapes.
+    let target = fn_suffix.unwrap_or(&iface);
+    let (line, col) = find_wit_decl(&wit_path, target)?;
+    Some((wit_path, line, col))
+}
+
+/// Determine the WIT interface URN that backs the given source file,
+/// if it's a bindgen artifact. Handles two cases:
+///
+///   * **Bundled**: file path matches a `BundledFile.abs_path` whose
+///     `wit_urn` is set. (Compiler running against its own source tree.)
+///   * **Project**: file path sits under `<project_root>/bindgen/` and
+///     a matching entry exists in `<project_root>/bindgen/_install.toml`.
+fn urn_for_bindgen_file(current_file: &str) -> Option<String> {
+    // Bundled-package lookup.
+    for pkg in BUNDLED_PACKAGES {
+        for file in pkg.files {
+            if file.abs_path == current_file {
+                return file.wit_urn.map(|s| s.to_string());
+            }
+        }
+    }
+
+    // Project-bindgen lookup.
+    let path = PathBuf::from(current_file);
+    let project_root = find_project_root_from(&path)?;
+    let bindgen_root = project_root.join("bindgen");
+    let rel = path.strip_prefix(&bindgen_root).ok()?;
+    let rel_str = rel.to_string_lossy().replace('\\', "/");
+    let index_path = bindgen_root.join(INSTALL_INDEX_FILENAME);
+    let index_src = std::fs::read_to_string(&index_path).ok()?;
+    let index = parse_install_index(&index_src).ok()?;
+    index.urn_for(&rel_str).map(|s| s.to_string())
+}
+
+/// Locate the `.wit` file backing a given URN. The lookup goes through
+/// the project manifest's `[imports]` table: for each entry whose key
+/// is a prefix of the URN's `<ns>/<pkg>`, the entry's source path
+/// points at either a single `.wit` (return that) or a directory (look
+/// for `<pkg>.wit` inside).
+///
+/// For bundled bindgen files (the compiler's own `oneway/std`), the
+/// project root we walk up to is `packages/oneway/std/`, whose
+/// manifest's `[imports]` declares `"wasi" = "../../../wit-vendor/wasi"`.
+/// The lookup resolves relative to that manifest's directory, landing
+/// in the repo-root `wit-vendor/`.
+fn wit_file_for_urn(urn: &str, current_file: &str) -> Option<(PathBuf, String)> {
+    // Parse `<ns>:<pkg>/<iface>@<ver>` (or without `@<ver>`).
+    let head = urn.rsplit_once('@').map(|(h, _)| h).unwrap_or(urn);
+    let (ns_pkg, iface) = head.rsplit_once('/')?;
+    let (ns, pkg) = ns_pkg.split_once(':')?;
+    let target = format!("{}/{}", ns, pkg);
+
+    let project_root = find_project_root_from(&PathBuf::from(current_file))?;
+    let manifest_src = std::fs::read_to_string(project_root.join("oneway.toml")).ok()?;
+    let manifest = manifest::parse(&manifest_src).ok()?;
+
+    for (key, source) in &manifest.imports {
+        let ImportSource::Wit(rel) = source else {
+            continue;
+        };
+        // Match the URN's `<ns>/<pkg>` against the manifest key. Either
+        // exact (`"wasi/clocks"`) or a broader prefix (`"wasi"`).
+        let key_matches = target == *key || target.starts_with(&format!("{}/", key));
+        if !key_matches {
+            continue;
+        }
+        let source_path = project_root.join(rel);
+        if source_path.is_file() {
+            return Some((source_path, iface.to_string()));
+        }
+        if source_path.is_dir() {
+            let candidate = source_path.join(format!("{}.wit", pkg));
+            if candidate.is_file() {
+                return Some((candidate, iface.to_string()));
+            }
+        }
+    }
+    None
+}
+
+/// Scan a `.wit` file for a kebab-case identifier appearing in a
+/// declaration position. Returns 1-indexed `(line, column)` of the
+/// declaration's name token, or `None` if no match.
+///
+/// We don't reach for a full WIT parser — the LSP only needs to land
+/// the cursor near the right symbol, and the WIT syntax is regular
+/// enough that a small line-by-line scan does the job. Recognised
+/// declaration shapes:
+///
+///   * `<name>: func(…)` — free-standing function
+///   * `type <name> = …` — type alias
+///   * `record <name> { … }` — record / product
+///   * `variant <name> { … }` — variant / sum
+///   * `enum <name> { … }` — enum
+///   * `flags <name> { … }` — bitflags
+///   * `resource <name>` — resource type
+///   * `interface <name>` — interface itself (matched when the user
+///     navigates from the bindgen file by clicking on a name that
+///     happens to equal the interface's snake-cased filename)
+fn find_wit_decl(wit_path: &Path, kebab_name: &str) -> Option<(u32, u32)> {
+    let src = std::fs::read_to_string(wit_path).ok()?;
+    for (idx, line) in src.lines().enumerate() {
+        let line_no = idx as u32 + 1;
+        let leading_ws = line.len() - line.trim_start().len();
+        let trimmed = line.trim_start();
+
+        // Function: `<name>: func(…)` or `<name>: async func(…)`.
+        if let Some(rest) = trimmed.strip_prefix(kebab_name) {
+            if let Some(after_colon) = rest.strip_prefix(':') {
+                let after = after_colon.trim_start();
+                if after.starts_with("func") || after.starts_with("async") {
+                    return Some((line_no, (leading_ws + 1) as u32));
+                }
+            }
+        }
+
+        // Keyword-led declarations: `type foo`, `record foo`, etc.
+        for kw in [
+            "type",
+            "record",
+            "variant",
+            "enum",
+            "flags",
+            "resource",
+            "interface",
+        ] {
+            let prefix = format!("{} {}", kw, kebab_name);
+            if trimmed.starts_with(&prefix) {
+                // Check that the kebab name ends cleanly (next char is
+                // space, `{`, `=`, `(`, `<`, or end-of-line) so we don't
+                // match prefixes like `foo` against `foo-bar`.
+                let after = &trimmed[prefix.len()..];
+                if after
+                    .chars()
+                    .next()
+                    .map(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+                    .unwrap_or(true)
+                {
+                    return Some((line_no, (leading_ws + kw.len() + 2) as u32));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Walk up from `start` looking for the nearest directory that contains
+/// an `oneway.toml`. Mirrors `loader::find_project_root` (which is
+/// private to that module — duplicated here rather than exported to
+/// keep the loader API surface narrow).
+fn find_project_root_from(start: &Path) -> Option<PathBuf> {
+    let mut cur = if start.is_file() {
+        start.parent()?
+    } else {
+        start
+    };
+    loop {
+        if cur.join("oneway.toml").is_file() {
+            return Some(cur.to_path_buf());
+        }
+        cur = cur.parent()?;
+    }
+}
+
 /// Resolve the filesystem path of a `.ow` file for a local `use X`
 /// declaration. Checks the entry file's sibling directory first, then
 /// the module form. Stdlib imports go through [`stdlib_file_stem`]
@@ -921,8 +1207,11 @@ fn collect_definitions(module: &Module) -> Vec<DefInfo> {
                 };
                 defs.push(DefInfo { name, span });
             }
-            // `use` items are resolved via find_definition_in_imports, not here.
-            Item::Use(_) => {}
+            // `use` items are resolved via find_definition_in_imports;
+            // `bindings` items don't introduce new symbols (the loader
+            // synthesizes FunctionDefs for the function-type aliases
+            // beneath the directive).
+            Item::Use(_) | Item::Bindings(_) => {}
         }
     }
     defs
@@ -1391,4 +1680,301 @@ fn extract_param_text(json: &str) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for the slice-5 WIT-navigation helpers. These exercise the
+    //! filesystem-level lookups end-to-end against the project's own
+    //! `wit-vendor/wasi/` fixtures; the higher-level LSP request/response
+    //! plumbing is still tested by hand against editors.
+    use super::*;
+    use std::fs;
+
+    /// Build a fresh tmpdir under `target/lsp-test-tmp/<name>`. Matches
+    /// the pattern used in `tests/install_test.rs`; we duplicate the
+    /// helper rather than share to keep this module's deps minimal.
+    fn tmpdir(name: &str) -> PathBuf {
+        let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("target");
+        p.push("lsp-test-tmp");
+        p.push(name);
+        if p.exists() {
+            fs::remove_dir_all(&p).expect("clean tmpdir");
+        }
+        fs::create_dir_all(&p).expect("create tmpdir");
+        p
+    }
+
+    #[test]
+    fn find_wit_decl_locates_function() {
+        // `wit-vendor/wasi/clocks.wit` declares `now: func() -> ...`
+        // inside the `monotonic-clock` interface. Find it.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let (line, col) = find_wit_decl(&path, "now").expect("should find `now`");
+        assert!(line > 0);
+        assert!(col > 0);
+
+        // Read back that exact line and verify it's the function decl.
+        let src = fs::read_to_string(&path).unwrap();
+        let actual_line = src.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual_line.contains("now:") && actual_line.contains("func"),
+            "line {line} should be `now: func…`, got `{actual_line}`",
+        );
+    }
+
+    #[test]
+    fn find_wit_decl_locates_kebab_function() {
+        // `get-resolution: func()` is the kebab form `getResolution`
+        // becomes in the bindgen. Verify the kebab scan finds it.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let (line, _) =
+            find_wit_decl(&path, "get-resolution").expect("should find `get-resolution`");
+        let src = fs::read_to_string(&path).unwrap();
+        let actual_line = src.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual_line.contains("get-resolution:") && actual_line.contains("func"),
+            "line {line} should be `get-resolution: func…`, got `{actual_line}`",
+        );
+    }
+
+    #[test]
+    fn find_wit_decl_locates_type_alias() {
+        // `type duration = u64` inside `wasi:clocks/types`.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let (line, _) = find_wit_decl(&path, "duration").expect("should find `duration`");
+        let src = fs::read_to_string(&path).unwrap();
+        let actual_line = src.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual_line.contains("type duration"),
+            "line {line} should be `type duration…`, got `{actual_line}`",
+        );
+    }
+
+    #[test]
+    fn find_wit_decl_locates_interface() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let (line, _) =
+            find_wit_decl(&path, "monotonic-clock").expect("should find `monotonic-clock`");
+        let src = fs::read_to_string(&path).unwrap();
+        let actual_line = src.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual_line.contains("interface monotonic-clock"),
+            "line {line} should be `interface monotonic-clock…`, got `{actual_line}`",
+        );
+    }
+
+    #[test]
+    fn find_wit_decl_does_not_match_prefixes() {
+        // `now` is a real function in clocks.wit; `no` is not, but we
+        // need to make sure we don't half-match `now:` against the
+        // kebab name `no`.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let result = find_wit_decl(&path, "no");
+        assert!(
+            result.is_none(),
+            "`no` is not a declaration in clocks.wit; got {result:?}",
+        );
+    }
+
+    #[test]
+    fn end_to_end_resolves_function_in_bindgen_file_to_wit() {
+        // Full slice-5 contract:
+        //   1. tmp project with manifest + vendored WIT directory
+        //   2. run install — produces `bindgen/wasi/.../monotonic_clock.ow` + index
+        //   3. resolve_to_wit_declaration(<that file>, "now")
+        //      should land us on the `now: func…` line in the WIT
+        let root = tmpdir("e2e_resolve");
+        let vendor_dir = root.join("vendor");
+        fs::create_dir_all(&vendor_dir).unwrap();
+        let wit_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/wit/monotonic-clock.wit");
+        fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
+        fs::write(
+            root.join("oneway.toml"),
+            r#"
+        name = "my-app"
+        version = "0.1.0"
+
+        [imports]
+        "wasi/clocks" = "vendor/monotonic-clock.wit"
+        "#,
+        )
+        .unwrap();
+        crate::install::install(&root).expect("install");
+
+        let bindgen_file = root.join("bindgen/wasi/clocks/monotonic_clock.ow");
+        assert!(bindgen_file.is_file());
+        let bindgen_str = bindgen_file.to_string_lossy().to_string();
+
+        let (wit_path, line, col) =
+            resolve_to_wit_declaration(&bindgen_str, "now").expect("should resolve");
+        assert_eq!(wit_path, vendor_dir.join("monotonic-clock.wit"));
+
+        let src = fs::read_to_string(&wit_path).unwrap();
+        let actual_line = src.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual_line.contains("now:") && actual_line.contains("func"),
+            "resolved line {line} (col {col}) should be `now: func…`, got `{actual_line}`",
+        );
+    }
+
+    #[test]
+    fn end_to_end_resolves_camel_case_back_to_kebab() {
+        // `getResolution` (camelCase as it appears in the bindgen) must
+        // be reverse-mapped to `get-resolution` for the WIT scan.
+        let root = tmpdir("e2e_camel");
+        let vendor_dir = root.join("vendor");
+        fs::create_dir_all(&vendor_dir).unwrap();
+        let wit_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/wit/monotonic-clock.wit");
+        fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
+        fs::write(
+            root.join("oneway.toml"),
+            r#"
+        name = "my-app"
+        version = "0.1.0"
+
+        [imports]
+        "wasi/clocks" = "vendor/monotonic-clock.wit"
+        "#,
+        )
+        .unwrap();
+        crate::install::install(&root).expect("install");
+
+        let bindgen_file = root.join("bindgen/wasi/clocks/monotonic_clock.ow");
+        let (_, line, _) =
+            resolve_to_wit_declaration(&bindgen_file.to_string_lossy(), "getResolution")
+                .expect("camel name should resolve via kebab conversion");
+
+        let src = fs::read_to_string(vendor_dir.join("monotonic-clock.wit")).unwrap();
+        let actual = src.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual.contains("get-resolution"),
+            "line {line} should be `get-resolution…`, got `{actual}`",
+        );
+    }
+
+    #[test]
+    fn clicking_bindings_directive_jumps_to_wit_interface() {
+        // Cursor on a `bindings "<urn-without-#>"` line resolves to
+        // the `interface <name>` declaration inside the WIT.
+        let root = tmpdir("click_bindings");
+        let vendor_dir = root.join("vendor");
+        fs::create_dir_all(&vendor_dir).unwrap();
+        let wit_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/wit/monotonic-clock.wit");
+        fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
+        fs::write(
+            root.join("oneway.toml"),
+            r#"
+name = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/clocks" = "vendor/monotonic-clock.wit"
+"#,
+        )
+        .unwrap();
+
+        // A source file with a `bindings` directive on the second line.
+        let source = "use whatever\nbindings \"wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15\"\n\nnow = () -> Instant\n";
+        let src_path = root.join("src.ow");
+        fs::write(&src_path, source).unwrap();
+
+        // Line 1 (0-indexed) is the bindings directive.
+        let (wit_path, line, _col) =
+            resolve_bindings_directive_target(source, 1, &src_path.to_string_lossy())
+                .expect("bindings URN should resolve");
+        assert_eq!(wit_path, vendor_dir.join("monotonic-clock.wit"));
+        let wit_text = fs::read_to_string(&wit_path).unwrap();
+        let actual = wit_text.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual.contains("interface monotonic-clock"),
+            "expected to land on `interface monotonic-clock`, got `{actual}`",
+        );
+    }
+
+    #[test]
+    fn clicking_bindings_directive_with_fn_suffix_jumps_to_function() {
+        // Cursor on a `bindings "<urn>#<fn>"` line resolves to the
+        // specific function inside the WIT interface, not the interface
+        // declaration. This is the per-decl override form used in
+        // `json.ow` for trait-overloaded `ToJson` declarations.
+        let root = tmpdir("click_bindings_fn");
+        let vendor_dir = root.join("vendor");
+        fs::create_dir_all(&vendor_dir).unwrap();
+        let wit_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/wit/monotonic-clock.wit");
+        fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
+        fs::write(
+            root.join("oneway.toml"),
+            r#"
+name = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi/clocks" = "vendor/monotonic-clock.wit"
+"#,
+        )
+        .unwrap();
+
+        let source = "bindings \"wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#get-resolution\"\n\nresolution = () -> Duration\n";
+        let src_path = root.join("src.ow");
+        fs::write(&src_path, source).unwrap();
+
+        let (_, line, _) =
+            resolve_bindings_directive_target(source, 0, &src_path.to_string_lossy())
+                .expect("bindings#fn URN should resolve");
+
+        let wit_text = fs::read_to_string(vendor_dir.join("monotonic-clock.wit")).unwrap();
+        let actual = wit_text.lines().nth((line - 1) as usize).unwrap();
+        assert!(
+            actual.contains("get-resolution") && actual.contains("func"),
+            "expected to land on `get-resolution: func…`, got `{actual}`",
+        );
+    }
+
+    #[test]
+    fn clicking_non_bindings_line_returns_none() {
+        // The directive resolver only fires on `bindings "…"` lines
+        // — a `use` line or a function decl should fall through to the
+        // ordinary go-to-def path.
+        let root = tmpdir("click_non_bindings");
+        fs::write(
+            root.join("oneway.toml"),
+            "name = \"x\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let src_path = root.join("src.ow");
+        let source = "use wasi/clocks/monotonic_clock\n";
+        fs::write(&src_path, source).unwrap();
+
+        let result = resolve_bindings_directive_target(source, 0, &src_path.to_string_lossy());
+        assert!(result.is_none(), "non-bindings line should not resolve");
+    }
+
+    #[test]
+    fn returns_none_for_non_bindgen_file() {
+        // A regular `.ow` file (not under any `bindgen/` directory) should
+        // resolve to nothing — the LSP will then fall back to its
+        // ordinary in-file / follow-imports lookup.
+        let root = tmpdir("non_bindgen");
+        fs::write(
+            root.join("oneway.toml"),
+            "name = \"my-app\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let src_dir = root.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        let main = src_dir.join("main.ow");
+        fs::write(&main, "main = () -> Unit { Unit() }\n").unwrap();
+
+        let result = resolve_to_wit_declaration(&main.to_string_lossy(), "main");
+        assert!(
+            result.is_none(),
+            "non-bindgen file should yield no WIT location; got {result:?}",
+        );
+    }
 }

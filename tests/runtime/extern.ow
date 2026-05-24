@@ -1,6 +1,7 @@
+bindings "oneway:builtins/math@0.1.0"
+
 OtherInt = Int
 
-extern Wasm("oneway:builtins/math@0.1.0#min")
 min = (Int * OtherInt) -> Int
 
 main = () -> Unit {

@@ -5,14 +5,14 @@ use oneway/std/IoError
 
 HttpServer = String
 
-extern Wasm("oneway:builtins/http-server@0.1.0#create")
+bindings "oneway:builtins/http-server@0.1.0#create"
+
 HttpServer = (Port) -> HttpServer
 
-extern Wasm("oneway:builtins/http-server@0.1.0#get")
+bindings "oneway:builtins/http-server@0.1.0"
+
 get = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
 
-extern Wasm("oneway:builtins/http-server@0.1.0#post")
 post = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
 
-extern Wasm.async("oneway:builtins/http-server@0.1.0#serve")
-serve = (HttpServer) -> Result<Unit, IoError>
+serve = (HttpServer) -> Future<Result<Unit, IoError>>

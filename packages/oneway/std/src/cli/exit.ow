@@ -1,4 +1,5 @@
 Exit = Int
 
-extern Wasm("oneway:builtins/cli@0.1.0#exit-with-code")
+bindings "oneway:builtins/cli@0.1.0#exit-with-code"
+
 exit = (Int) -> Unit

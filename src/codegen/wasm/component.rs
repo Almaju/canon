@@ -105,6 +105,30 @@ pub(super) const WASI_CLI_STDOUT_CORE_IMPORT: &str = "wasi:cli/stdout";
 /// WASI Preview 3 cli/run interface name.
 pub(super) const WASI_CLI_RUN: &str = "wasi:cli/run@0.3.0-rc-2026-03-15";
 
+/// WASI Preview 3 http/handler interface name. Emitted as the
+/// component-level export for programs whose entry has a
+/// `(Request) -> Response` signature. See `WASI-HTTP-HANDLER.md`.
+#[allow(dead_code)]
+pub(super) const WASI_HTTP_HANDLER: &str = "wasi:http/handler@0.3.0-rc-2026-03-15";
+
+/// Slice 1b stub: HTTP-entry programs route here. The full pipeline
+/// (core module emission → `wit-component` wrapping → validation) is
+/// being landed across sub-slices; today we panic with a clear message
+/// so users see the same diagnostic as the checker's slice-1a guard,
+/// not an internal crash.
+///
+/// Replaces the checker's "codegen not yet implemented" diagnostic with
+/// a runtime-side equivalent once we drop that diagnostic in 1b.0.
+pub(super) fn wrap_http_service(_module: &OModule) -> Vec<u8> {
+    eprintln!(
+        "error: HTTP-handler codegen (slice 1b of the migration) is not yet \
+         implemented. The entry-point detection and stdlib types are in place; \
+         the `wasi:http/service` world emission is being landed next. See \
+         WASI-HTTP-HANDLER.md §\"Implementation slicing\"."
+    );
+    std::process::exit(1);
+}
+
 /// Builds the Component Model component. Returns the binary `.wasm`.
 ///
 /// `externs` lists every `extern Wasm` function the user program declared,
@@ -514,12 +538,13 @@ pub(super) fn wrap(
         // declare core functions implementing the canon operators. The
         // order here must match the order in which the user core module
         // imports them (see `mod.rs::compile`, `oneway:async/waitable.*`):
-        //   set-new      → ()         -> i32
-        //   join         → (i32, i32) -> ()
-        //   set-wait     → (i32, i32) -> i32   (memory = core memory 0)
-        //   set-drop     → (i32)      -> ()
-        //   subtask-drop → (i32)      -> ()
-        //   task-return  → (i32)      -> ()   (discriminant of result<_,_>)
+        //   set-new        → ()         -> i32
+        //   join           → (i32, i32) -> ()
+        //   set-wait       → (i32, i32) -> i32   (memory = core memory 0)
+        //   set-drop       → (i32)      -> ()
+        //   subtask-drop   → (i32)      -> ()
+        //   task-return    → (i32)      -> ()   (discriminant of result<_,_>)
+        //   subtask-cancel → (i32)      -> i32  (used by `race` to abandon the loser)
         canon.waitable_set_new();
         canon.waitable_join();
         canon.waitable_set_wait(false, 0);
@@ -533,6 +558,11 @@ pub(super) fn wrap(
             Some(ComponentValType::Type(1)),
             std::iter::empty::<CanonicalOption>(),
         );
+        // `subtask.cancel` with `async_ = false` blocks the calling task
+        // (allowed because our `run` is lifted async-stackful) until the
+        // cancellation is observed, then returns the new state code.
+        // `compile_race` drops the state code after the call.
+        canon.subtask_cancel(false);
 
         // ── 7c. Canon stream/future builtins for native stdout output ───
         //
@@ -554,8 +584,8 @@ pub(super) fn wrap(
     //   0           = cabi_realloc (aliased above)
     //   1           = lowered write-via-stream
     //   2..1+N      = lowered externs in (iface, fn) order
-    //   2+N..7+N    = 6 waitable / task intrinsics
-    //   8+N..11+N   = 4 stream/future canon builtins for stdout
+    //   2+N..8+N    = 7 waitable / task / cancel intrinsics
+    //   9+N..12+N   = 4 stream/future canon builtins for stdout
     let write_via_stream_core_fn: u32 = 1;
     let mut extern_core_fn_idx: BTreeMap<(&str, &str), u32> = BTreeMap::new();
     {
@@ -573,12 +603,13 @@ pub(super) fn wrap(
     let waitable_set_drop_core_fn: u32 = waitable_set_new_core_fn + 3;
     let subtask_drop_core_fn: u32 = waitable_set_new_core_fn + 4;
     let task_return_core_fn: u32 = waitable_set_new_core_fn + 5;
+    let subtask_cancel_core_fn: u32 = waitable_set_new_core_fn + 6;
     // Stream/future stdout builtins live immediately after the
-    // waitable group; their indices are 8+N .. 11+N.
-    let stream_new_core_fn: u32 = waitable_set_new_core_fn + 6;
-    let stream_write_core_fn: u32 = waitable_set_new_core_fn + 7;
-    let stream_drop_writable_core_fn: u32 = waitable_set_new_core_fn + 8;
-    let future_drop_readable_core_fn: u32 = waitable_set_new_core_fn + 9;
+    // waitable group; their indices are 9+N .. 12+N.
+    let stream_new_core_fn: u32 = waitable_set_new_core_fn + 7;
+    let stream_write_core_fn: u32 = waitable_set_new_core_fn + 8;
+    let stream_drop_writable_core_fn: u32 = waitable_set_new_core_fn + 9;
+    let future_drop_readable_core_fn: u32 = waitable_set_new_core_fn + 10;
 
     // ── 8. Synthetic core instances, one per import-module ──────────
     // The user core module's `(import "<core-namespace>" "<fn>" ...)` clauses
@@ -634,6 +665,7 @@ pub(super) fn wrap(
             ("set-drop", ExportKind::Func, waitable_set_drop_core_fn),
             ("subtask-drop", ExportKind::Func, subtask_drop_core_fn),
             ("task-return", ExportKind::Func, task_return_core_fn),
+            ("subtask-cancel", ExportKind::Func, subtask_cancel_core_fn),
         ]);
         c.section(&insts);
     }
@@ -696,10 +728,10 @@ pub(super) fn wrap(
     //   cabi_realloc(0),
     //   lowered write-via-stream(1),
     //   N lowered externs (2..2+N),
-    //   6 waitable+task canon intrinsics (2+N..8+N),
-    //   4 stream/future canon builtins (8+N..12+N),
-    // it's `12 + N`.
-    let run_core_fn: u32 = 12 + externs.len() as u32;
+    //   7 waitable+task canon intrinsics (2+N..9+N),
+    //   4 stream/future canon builtins (9+N..13+N),
+    // it's `13 + N`.
+    let run_core_fn: u32 = 13 + externs.len() as u32;
 
     // ── 11. Lift it as the typed `wasi:cli/run.run` ─────────────────────
     // Async-stackful lift — the core function's wasm signature is
@@ -757,9 +789,9 @@ pub(super) fn wrap(
         }
         // Core func index of the aliased user function. It sits one
         // slot after `run` in the aliased-core-functions sequence.
-        // `run` was the previous alias and lives at `12 + N`, so the
-        // handler is at `13 + N`.
-        let handler_core_fn: u32 = 13 + externs.len() as u32;
+        // `run` was the previous alias and lives at `13 + N`, so the
+        // handler is at `14 + N`.
+        let handler_core_fn: u32 = 14 + externs.len() as u32;
 
         // 15. Lift the user function directly as
         //     `func(body: string) -> string`. The user function's core

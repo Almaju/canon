@@ -1,4 +1,4 @@
-use oneway/wasi/random/random
+use wasi/random/random
 
 Random = Int
 

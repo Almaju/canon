@@ -3,11 +3,14 @@ use Method
 
 Request = Handle
 
-extern Wasm("wasi:http/types@0.3.0-rc-2026-03-15#[method]request.method")
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.method"
+
 method = (Request) -> Method
 
-extern Wasm("wasi:http/types@0.3.0-rc-2026-03-15#[method]request.path-with-query")
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.path-with-query"
+
 path = (Request) -> Option<String>
 
-extern Wasm.async("wasi:http/types@0.3.0-rc-2026-03-15#[method]request.consume-body")
-body = (Request) -> Result<String, HttpError>
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.consume-body"
+
+body = (Request) -> Future<Result<String, HttpError>>

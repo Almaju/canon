@@ -1,4 +1,4 @@
-use oneway/wasi/sockets/types
+use wasi/sockets/types
 
 ErrorCode = ErrorCodeAccessDenied
   + ErrorCodeInvalidArgument

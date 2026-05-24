@@ -132,10 +132,10 @@ example name:
 
 # Regenerate the embedded WASI bindings from the vendored WIT files
 # under wit-vendor/. Run after upgrading the WASI version or after
-
-# changing the bindgen emitter. Commit the resulting packages/oneway/wasi/ tree.
+# changing the bindgen emitter. Commit the resulting
+# packages/oneway/std/bindgen/ tree.
 regen-bindings: build
-    cargo run --quiet -- bindgen wit-vendor/wasi -o packages/oneway
+    cargo run --quiet -- install packages/oneway/std
 
 # Format compiler source
 fmt:

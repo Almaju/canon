@@ -33,6 +33,7 @@ fn main() {
         "fmt" => cmd_fmt(&rest),
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
+        "install" => cmd_install(&rest),
         "lsp" => oneway::lsp::run(),
         "upgrade" => cmd_upgrade(&rest),
         "--version" | "-V" => {
@@ -73,6 +74,10 @@ fn print_help() {
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
     println!(
         "                            Generate Oneway bindings from a WIT package or WASM component"
+    );
+    println!("  install [target]          Materialize bindings declared in `[imports]`");
+    println!(
+        "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
     println!("  lsp                       Start the Language Server Protocol server");
     println!("  upgrade [version]         Update oneway to the latest (or given) release");
@@ -672,6 +677,67 @@ fn cmd_bindgen(args: &[String]) {
     }
 }
 
+fn cmd_install(args: &[String]) {
+    let mut target: Option<String> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                println!("Usage: oneway install [target]");
+                println!();
+                println!("  target       The project directory (containing `oneway.toml`).");
+                println!("               Defaults to the current directory.");
+                println!();
+                println!("For every entry in the manifest's `[imports]` table, materializes");
+                println!("the corresponding Oneway bindings into `<target>/bindgen/`. WIT");
+                println!("sources (`*.wit`) become Oneway source under `<ns>/<pkg>/<iface>.ow`.");
+                println!("Wasm-component sources (`*.wasm`) are recorded as deferred.");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown install flag '{}'", other);
+                process::exit(1);
+            }
+            other => {
+                if target.is_some() {
+                    eprintln!(
+                        "error: multiple targets given ('{}' and '{}')",
+                        target.as_deref().unwrap(),
+                        other
+                    );
+                    process::exit(1);
+                }
+                target = Some(other.to_string());
+            }
+        }
+    }
+
+    let target_path = target
+        .as_deref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    match oneway::install::install(&target_path) {
+        Ok(outcome) => {
+            if outcome.written.is_empty() && outcome.skipped.is_empty() {
+                println!(
+                    "no `[imports]` entries in `{}/oneway.toml` \u{2014} nothing to install",
+                    target_path.display()
+                );
+            } else {
+                for p in &outcome.written {
+                    println!("wrote: {}", p.display());
+                }
+                for note in &outcome.skipped {
+                    eprintln!("skipped: {}", note);
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("error: {}", err);
+            process::exit(1);
+        }
+    }
+}
+
 fn cmd_fmt(args: &[String]) {
     let mut check_only = false;
     let mut inputs: Vec<String> = Vec::new();
@@ -1158,11 +1224,49 @@ fn load_or_exit(file_path: &str) -> LoadResult {
 /// than exiting. Used by workspace iteration so one member's load failure
 /// doesn't terminate the whole run.
 fn load_or_print(file_path: &str) -> Option<LoadResult> {
+    // Auto-install: if the file lives inside an Oneway project whose
+    // `[imports]` are out-of-date with what's materialized under
+    // `bindgen/`, run `oneway install` first so the binding files exist
+    // before the loader looks for them. This is what makes `oneway run`
+    // / `oneway check` / `oneway build` work without a separate
+    // `oneway install` step in normal use. Errors during the auto-step
+    // are printed to stderr and treated as load failures.
+    if !auto_install(file_path) {
+        return None;
+    }
     match loader::load_module(Path::new(file_path)) {
         Ok(r) => Some(r),
         Err(err) => {
             print_error(file_path, &err);
             None
+        }
+    }
+}
+
+/// Run `install::ensure_installed` for the project the given path lives
+/// in. Returns `true` on success (including the no-project and
+/// up-to-date cases); `false` if install was needed and failed. When an
+/// install was actually run we print a brief note to stderr so the user
+/// knows what happened.
+fn auto_install(file_path: &str) -> bool {
+    match oneway::install::ensure_installed(Path::new(file_path)) {
+        Ok(oneway::install::EnsureOutcome::NoProject) => true,
+        Ok(oneway::install::EnsureOutcome::UpToDate) => true,
+        Ok(oneway::install::EnsureOutcome::Installed(outcome)) => {
+            if !outcome.written.is_empty() {
+                eprintln!(
+                    "installed {} binding file(s) into bindgen/",
+                    outcome.written.len()
+                );
+            }
+            for note in &outcome.skipped {
+                eprintln!("skipped: {}", note);
+            }
+            true
+        }
+        Err(err) => {
+            eprintln!("error: install failed: {}", err);
+            false
         }
     }
 }

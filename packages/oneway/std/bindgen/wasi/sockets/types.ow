@@ -1,4 +1,4 @@
-use oneway/wasi/clocks/types
+use wasi/clocks/types
 
 ErrorCode = ErrorCodeAccessDenied
   + ErrorCodeAddressInUse
@@ -64,7 +64,7 @@ IpSocketAddressIpv4 = Ipv4SocketAddress
 
 IpSocketAddressIpv6 = Ipv6SocketAddress
 
-Ipv4Address = Int * Int * Int * Int
+Ipv4Address = Int^4
 
 Ipv4SocketAddress = Ipv4SocketAddressAddress * Ipv4SocketAddressPort
 
@@ -72,9 +72,12 @@ Ipv4SocketAddressAddress = Ipv4Address
 
 Ipv4SocketAddressPort = Int
 
-Ipv6Address = Int * Int * Int * Int * Int * Int * Int * Int
+Ipv6Address = Int^8
 
-Ipv6SocketAddress = Ipv6SocketAddressAddress * Ipv6SocketAddressFlowInfo * Ipv6SocketAddressPort * Ipv6SocketAddressScopeId
+Ipv6SocketAddress = Ipv6SocketAddressAddress
+  * Ipv6SocketAddressFlowInfo
+  * Ipv6SocketAddressPort
+  * Ipv6SocketAddressScopeId
 
 Ipv6SocketAddressAddress = Ipv6Address
 

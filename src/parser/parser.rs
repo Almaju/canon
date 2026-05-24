@@ -57,58 +57,28 @@ impl Parser {
             }));
         }
 
-        let extern_decl = if self.check(TokenKind::KwExtern) {
+        // `bindings "<urn>"` directive. The string carries the WIT
+        // interface URN; the loader uses it to patch every camelCase
+        // function-type alias in the file into an external function
+        // declaration. See `ast::BindingsDecl` for the full story.
+        if self.check(TokenKind::KwBindings) {
             self.advance();
-            let lang_tok = self.expect(TokenKind::Ident, "expected language after `extern`")?;
-            if lang_tok.lexeme != "Wasm" {
-                return Err(OnewayError::ParseError {
-                    message: format!(
-                        "only `extern Wasm` is supported (got `extern {}`)",
-                        lang_tok.lexeme
-                    ),
-                    span: lang_tok.span,
-                });
-            }
-            let mut is_async = false;
-            if self.check(TokenKind::Dot) {
-                self.advance();
-                let qualifier_tok =
-                    self.expect(TokenKind::Ident, "expected `async` after `extern Wasm.`")?;
-                if qualifier_tok.lexeme != "async" {
-                    return Err(OnewayError::ParseError {
-                        message: format!(
-                            "only `extern Wasm.async` is supported (got `extern Wasm.{}`)",
-                            qualifier_tok.lexeme
-                        ),
-                        span: qualifier_tok.span,
-                    });
-                }
-                is_async = true;
-            }
-            self.expect(TokenKind::LParen, "expected `(` after `extern Wasm`")?;
-            let path_tok = self.expect(
+            let urn_tok = self.expect(
                 TokenKind::StringLit,
-                "expected a Wasm path string after `extern Wasm(`",
+                "expected a quoted WIT URN after `bindings`",
             )?;
-            self.expect(TokenKind::RParen, "expected `)` after Wasm path")?;
-            self.skip_newlines();
-            Some(ExternWasm {
-                path: path_tok.lexeme,
-                is_async,
-            })
-        } else {
-            None
-        };
+            let end_span = urn_tok.span;
+            return Ok(Item::Bindings(crate::ast::BindingsDecl {
+                urn: urn_tok.lexeme,
+                span: span_join(start_span, end_span),
+            }));
+        }
 
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),
             span: first.span,
         };
-
-        if let Some(extern_decl) = extern_decl {
-            return self.parse_extern_item(start_span, first_ident, extern_decl);
-        }
 
         let pre_eq_generics = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
@@ -129,131 +99,6 @@ impl Parser {
             return self.parse_function_after_eq(None, first_ident, start_span);
         }
 
-        let body = self.parse_type_expr()?;
-        let end_span = self.previous_span();
-        Ok(Item::TypeDef(TypeDef {
-            name: first_ident,
-            generic_params: pre_eq_generics,
-            body,
-            span: span_join(start_span, end_span),
-        }))
-    }
-
-    fn parse_extern_item(
-        &mut self,
-        start_span: Span,
-        first_ident: Ident,
-        extern_decl: ExternWasm,
-    ) -> Result<Item> {
-        // Optional pre-`=` generic params: `extern Wasm(…) Name<G>` or
-        // `extern Wasm(…) name<G> = …`. The shape after these generics
-        // determines whether this is a bare type alias (no `=`) or a
-        // function/type definition (with `=`).
-        let pre_eq_generics = if self.check(TokenKind::Lt) {
-            self.parse_generic_params()?
-        } else {
-            Vec::new()
-        };
-
-        // Check for = (function or type definition)
-        if !self.check(TokenKind::Eq) {
-            // No = → bare type: extern Wasm("...") TypeName[<G>]
-            if extern_decl.is_async {
-                return Err(OnewayError::ParseError {
-                    message:
-                        "`extern Wasm.async` is only valid on function declarations, not on types"
-                            .to_string(),
-                    span: first_ident.span,
-                });
-            }
-            let end_span = self.previous_span();
-            return Ok(Item::TypeDef(TypeDef {
-                name: first_ident.clone(),
-                generic_params: pre_eq_generics,
-                body: TypeExpr::Named {
-                    name: format!("__extern__{}", extern_decl.path),
-                    generics: Vec::new(),
-                    span: end_span,
-                },
-                span: span_join(start_span, end_span),
-            }));
-        }
-
-        self.advance(); // consume =
-
-        // After =, if ( or < → function signature (new syntax). Either:
-        //   `name<G> = (params) -> ret`  (generics before `=`, captured above)
-        //   `name = <G>(params) -> ret`  (generics after `=`, captured here)
-        // The two are equivalent at the AST level.
-        if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
-            let post_eq_generics = if self.check(TokenKind::Lt) {
-                self.parse_generic_params()?
-            } else {
-                Vec::new()
-            };
-            if !pre_eq_generics.is_empty() && !post_eq_generics.is_empty() {
-                return Err(OnewayError::ParseError {
-                    message: "generic parameters may appear either before or after `=`, not both"
-                        .to_string(),
-                    span: first_ident.span,
-                });
-            }
-            let generic_params = if pre_eq_generics.is_empty() {
-                post_eq_generics
-            } else {
-                pre_eq_generics
-            };
-            self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
-            let mut params = Vec::new();
-            if !self.check(TokenKind::RParen) {
-                loop {
-                    params.push(self.parse_param()?);
-                    if self.check(TokenKind::Comma) {
-                        self.advance();
-                    } else {
-                        break;
-                    }
-                }
-            }
-            self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
-            self.expect(TokenKind::Arrow, "expected `->` before return type")?;
-            let return_ty = self.parse_type_expr()?;
-            let end_span = self.previous_span();
-
-            // Extract receiver for camelCase, defer PascalCase to post-parse
-            let (receiver, recv_mut, final_params) = if Self::is_pascal_case_str(&first_ident.name)
-            {
-                (None, false, params)
-            } else {
-                extract_receiver_from_params(params)
-            };
-
-            let empty_body_span =
-                Span::new(end_span.end, end_span.end, end_span.line, end_span.column);
-            return Ok(Item::Function(FunctionDef {
-                receiver,
-                receiver_mut: recv_mut,
-                name: first_ident,
-                generic_params,
-                params: final_params,
-                return_ty,
-                body: Block {
-                    exprs: Vec::new(),
-                    span: empty_body_span,
-                },
-                extern_wasm: Some(extern_decl),
-                span: span_join(start_span, end_span),
-            }));
-        }
-
-        // After =, not a function → type definition
-        if extern_decl.is_async {
-            return Err(OnewayError::ParseError {
-                message: "`extern Wasm.async` is only valid on function declarations, not on types"
-                    .to_string(),
-                span: first_ident.span,
-            });
-        }
         let body = self.parse_type_expr()?;
         let end_span = self.previous_span();
         Ok(Item::TypeDef(TypeDef {
@@ -438,12 +283,15 @@ impl Parser {
     fn parse_type_product(&mut self) -> Result<TypeExpr> {
         let start = self.current_span();
         let first = self.parse_type_postfix()?;
-        if !self.check(TokenKind::Star) {
+        // Allow the `*` to appear on the next line so that multi-line product
+        // type definitions (emitted by the formatter) round-trip correctly.
+        if self.peek_past_newlines() != TokenKind::Star {
             return Ok(first);
         }
         let mut fields = vec![first];
-        while self.check(TokenKind::Star) {
-            self.advance();
+        while self.peek_past_newlines() == TokenKind::Star {
+            self.skip_newlines();
+            self.advance(); // consume `*`
             self.skip_newlines();
             fields.push(self.parse_type_postfix()?);
         }
@@ -1090,7 +938,7 @@ impl Parser {
     }
 
     fn is_pascal_case_str(s: &str) -> bool {
-        s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+        s.chars().next().is_some_and(char::is_uppercase)
     }
 
     fn is_at_end(&self) -> bool {

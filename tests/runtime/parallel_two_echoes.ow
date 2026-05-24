@@ -1,0 +1,12 @@
+use oneway/std/Json
+use oneway/std/concurrent
+
+bindings "oneway:builtins/http-server@0.1.0"
+
+slowEcho = (String) -> Future<String>
+
+main = () -> Unit {
+    parallel("hello".slowEcho(), "world".slowEcho())
+        .toJsonArray()
+        .print()
+}

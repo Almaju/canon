@@ -4,6 +4,7 @@ pub mod checker;
 pub mod codegen;
 pub mod error;
 pub mod formatter;
+pub mod install;
 pub mod lexer;
 pub mod loader;
 pub mod lsp;

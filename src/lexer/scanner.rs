@@ -146,7 +146,7 @@ impl<'a> Scanner<'a> {
             "use" => TokenKind::KwUse,
             "Self" => TokenKind::KwSelf,
             "impl" => TokenKind::KwImpl,
-            "extern" => TokenKind::KwExtern,
+            "bindings" => TokenKind::KwBindings,
             _ => TokenKind::Ident,
         };
         (kind, lex)

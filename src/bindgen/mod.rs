@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use wit_parser::{Resolve, UnresolvedPackageGroup};
 
 pub use emit::EmittedFile;
+pub use naming::camel_to_kebab;
 
 /// Top-level error type for the bindgen pipeline. Stays a plain `String`
 /// for now — there's no callers that need structured matching yet, and

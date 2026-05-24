@@ -59,6 +59,7 @@ fn emit_module(module: &Module) -> String {
 fn emit_item(item: &Item) -> String {
     match item {
         Item::Use(u) => format!("use {}", u.name.name),
+        Item::Bindings(b) => format!("bindings \"{}\"", b.urn),
         Item::TypeDef(td) => emit_type_def(td),
         Item::Function(f) => emit_function(f),
     }
@@ -67,16 +68,6 @@ fn emit_item(item: &Item) -> String {
 // ── Type Definitions ────────────────────────────────────────────────────────
 
 fn emit_type_def(td: &TypeDef) -> String {
-    // Extern type (bare, no `=`): the parser stores these with a
-    // `__extern__` prefix on the body's name.
-    if let TypeExpr::Named { name, generics, .. } = &td.body {
-        if let Some(path) = name.strip_prefix("__extern__") {
-            if generics.is_empty() {
-                return format!("extern Wasm(\"{}\")\n{}", path, td.name.name);
-            }
-        }
-    }
-
     let g = emit_generic_params(&td.generic_params);
     let header = format!("{}{} = ", td.name.name, g);
 
@@ -96,6 +87,24 @@ fn emit_type_def(td: &TypeDef) -> String {
         }
     }
 
+    // Product types: break one field per line only when the single-line
+    // form would exceed MAX_WIDTH. Unlike unions we don't break on field
+    // count alone — short products like `Ipv4Address = Int * Int * Int * Int`
+    // read better on one line.
+    if let TypeExpr::Product { fields, .. } = &td.body {
+        let inline = emit_type_expr(&td.body);
+        let full = format!("{}{}", header, inline);
+        if full.len() > MAX_WIDTH && fields.len() >= 2 {
+            let first = emit_type_in_product(&fields[0]);
+            let rest = fields[1..]
+                .iter()
+                .map(|f| format!("  * {}", emit_type_in_product(f)))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return format!("{}{}\n{}", header, first, rest);
+        }
+    }
+
     format!("{}{}", header, emit_type_expr(&td.body))
 }
 
@@ -103,15 +112,6 @@ fn emit_type_def(td: &TypeDef) -> String {
 
 fn emit_function(func: &FunctionDef) -> String {
     let mut out = String::new();
-
-    // Extern prefix
-    if let Some(ext) = &func.extern_wasm {
-        if ext.is_async {
-            out.push_str(&format!("extern Wasm.async(\"{}\")\n", ext.path));
-        } else {
-            out.push_str(&format!("extern Wasm(\"{}\")\n", ext.path));
-        }
-    }
 
     // Signature: name<G> = (params) -> ReturnType
     out.push_str(&func.name.name);
@@ -121,7 +121,12 @@ fn emit_function(func: &FunctionDef) -> String {
     out.push_str(") -> ");
     out.push_str(&emit_type_expr(&func.return_ty));
 
-    // Body (absent for extern functions)
+    // Body. Functions whose body was synthesized by the loader (i.e.
+    // the `extern_wasm` field is populated because they were declared
+    // under a `bindings "…"` directive) get no body emitted — the
+    // source they came from already used the bodyless `name = (P) -> R`
+    // form. The loader recreates that shape on every parse, so the
+    // formatter just needs to mirror it.
     if func.extern_wasm.is_none() {
         out.push_str(" {\n");
         for expr in &func.body.exprs {
@@ -663,6 +668,20 @@ mod tests {
     }
 
     #[test]
+    fn test_type_def_product_short_stays_inline() {
+        // Four short fields fit under MAX_WIDTH — must stay on one line.
+        assert_idempotent("Ipv4Address = Int * Int * Int * Int\n");
+    }
+
+    #[test]
+    fn test_type_def_product_wide_wraps() {
+        let input = "Ipv6SocketAddress = Ipv6SocketAddressAddress * Ipv6SocketAddressFlowInfo * Ipv6SocketAddressPort * Ipv6SocketAddressScopeId\n";
+        let expected = "Ipv6SocketAddress = Ipv6SocketAddressAddress\n  * Ipv6SocketAddressFlowInfo\n  * Ipv6SocketAddressPort\n  * Ipv6SocketAddressScopeId\n";
+        assert_format(input, expected);
+        assert_idempotent(input);
+    }
+
+    #[test]
     fn test_type_def_repeat() {
         assert_format("Byte = Bit^8\n", "Byte = Bit^8\n");
     }
@@ -699,26 +718,24 @@ mod tests {
     }
 
     #[test]
-    fn test_extern_type() {
+    fn test_bindings_directive_round_trips() {
+        // A `bindings "<urn>"` line at the top of a file is the new
+        // canonical way to declare external function bindings. The
+        // formatter passes it through unchanged.
         assert_format(
-            "extern Wasm(\"wasi:io/streams@0.3.0#get-error\")\nIoError\n",
-            "extern Wasm(\"wasi:io/streams@0.3.0#get-error\")\nIoError\n",
+            "bindings \"wasi:clocks/wall-clock@0.3.0\"\n\nnow = () -> Datetime\n",
+            "bindings \"wasi:clocks/wall-clock@0.3.0\"\n\nnow = () -> Datetime\n",
         );
     }
 
     #[test]
-    fn test_extern_function() {
+    fn test_bindings_with_multiple_functions() {
+        // Multiple function-type aliases under a single `bindings`
+        // directive — the loader rewrites each into a bound FunctionDef
+        // at parse time; the formatter just preserves the source shape.
         assert_format(
-            "extern Wasm(\"wasi:clocks/wall-clock@0.3.0#now\")\nnow = (Clock) -> Datetime\n",
-            "extern Wasm(\"wasi:clocks/wall-clock@0.3.0#now\")\nnow = (Clock) -> Datetime\n",
-        );
-    }
-
-    #[test]
-    fn test_extern_async() {
-        assert_format(
-            "extern Wasm.async(\"wasi:filesystem/types@0.3.0#read-via-stream\")\nread = (Filesystem * Path) -> Result<String, IoError>\n",
-            "extern Wasm.async(\"wasi:filesystem/types@0.3.0#read-via-stream\")\nread = (Filesystem * Path) -> Result<String, IoError>\n",
+            "bindings \"wasi:clocks/monotonic-clock@0.3.0\"\n\ngetResolution = () -> Duration\n\nnow = () -> Mark\n",
+            "bindings \"wasi:clocks/monotonic-clock@0.3.0\"\n\ngetResolution = () -> Duration\n\nnow = () -> Mark\n",
         );
     }
 

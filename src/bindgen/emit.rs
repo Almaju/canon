@@ -30,6 +30,12 @@ use super::naming::{
 pub struct EmittedFile {
     pub relative_path: String,
     pub content: String,
+    /// The WIT interface URN this file was generated from, of the form
+    /// `"<ns>:<pkg>/<iface>@<version>"`. Used by `oneway install` to
+    /// populate the install index alongside the generated source; the
+    /// loader then reconstructs per-function `extern Wasm` paths from
+    /// this URN plus the function name.
+    pub urn: String,
     /// Items the generator skipped because their WIT shape isn't yet
     /// representable in Oneway (resources, async, streams, futures, …).
     /// The caller surfaces these on stderr — the file itself is kept as
@@ -145,12 +151,24 @@ fn emit_interface(
         }
     }
 
-    // Emit `use` lines first (alphabetical — BTreeSet already sorted), then
-    // type decls, then function decls.
+    // Emit `use` lines first (alphabetical — BTreeSet already sorted),
+    // then the file-level `bindings "<urn>"` directive (only when the
+    // file actually contains function declarations — binding-less type
+    // files like `wasi/clocks/types.ow` don't need it), then type
+    // decls, then function decls. The directive does two jobs:
+    // documents which WIT interface this file shadows (the reader sees
+    // it and immediately knows where to look in `wit-vendor/`), and
+    // tells the loader to convert the camelCase function-type aliases
+    // beneath into bound FunctionDefs without each one needing its own
+    // `extern Wasm` marker.
     for use_path in &external_use_paths {
         let _ = writeln!(content, "use {}", use_path);
     }
     if !external_use_paths.is_empty() {
+        content.push('\n');
+    }
+    if !fn_decls.is_empty() {
+        let _ = writeln!(content, "bindings \"{}\"", qualified_id);
         content.push('\n');
     }
     for decl in type_decls.values() {
@@ -165,6 +183,7 @@ fn emit_interface(
     Some(EmittedFile {
         relative_path,
         content,
+        urn: qualified_id.to_string(),
         skipped,
     })
 }
@@ -202,16 +221,17 @@ fn interface_use_path(resolve: &Resolve, iface_id: InterfaceId) -> Option<String
     let iface = &resolve.interfaces[iface_id];
     let qualified_id = qualified_interface_id(resolve, iface)?;
     let (ns, pkg, iface_name, _ver) = split_interface_id(&qualified_id)?;
-    // A WIT interface lives at `oneway/<ns>/<pkg>/<iface>` from a consumer's
-    // point of view: it's part of the `oneway/<ns>` package (today only
-    // `oneway/wasi`) and the consumer writes a `use` against the package's
-    // public path, which is `<pkg>/<iface>` inside it. The `src/` directory
-    // is a layout convention invisible to `use`.
-    //
-    // If we ever generate bindings for a third-party namespace, this prefix
-    // becomes a parameter — see the bindgen TODO.
+    // A WIT interface lives at `<ns>/<pkg>/<iface>` from a consumer's
+    // point of view. After `oneway install` writes the bindings to
+    // `<project>/bindgen/<ns>/<pkg>/<iface>.ow`, the loader resolves
+    // `use <ns>/<pkg>/<iface>` against that file (via the project's
+    // `bindgen/` lookup for user code, or via the same-package bundled
+    // lookup for compiler-shipped `oneway/std`). Before the manifest-
+    // driven flow landed, bindings lived inside the `oneway/wasi`
+    // bundled package and this function emitted an `oneway/wasi/…`
+    // prefix; that prefix is gone now.
     Some(format!(
-        "oneway/{}/{}/{}",
+        "{}/{}/{}",
         kebab_to_snake(&ns),
         kebab_to_snake(&pkg),
         kebab_to_snake(&iface_name),
@@ -335,11 +355,21 @@ fn emit_type_decl(
                 fields.push((n, r));
             }
             fields.sort_by(|a, b| a.0.cmp(&b.0));
-            let rhs = fields
-                .iter()
-                .map(|(_, ty)| ty.as_str())
-                .collect::<Vec<_>>()
-                .join(" * ");
+            // When every field shares the same rendered type and there
+            // are at least 2 of them, collapse to the `T^N` repeat form.
+            // This is both shorter and — more importantly — sidesteps the
+            // "product components must be distinct types" rule that would
+            // otherwise reject a WIT `tuple<u16, u16, u16, u16, u16, u16,
+            // u16, u16>` (e.g. `wasi:sockets/types#ipv6-address`).
+            let rhs = if fields.len() >= 2 && fields.iter().all(|(_, ty)| ty == &fields[0].1) {
+                format!("{}^{}", fields[0].1, fields.len())
+            } else {
+                fields
+                    .iter()
+                    .map(|(_, ty)| ty.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" * ")
+            };
             Ok(Some(format!("{} = {}\n", name, rhs)))
         }
         TypeDefKind::Type(t) => {
@@ -412,10 +442,13 @@ fn emit_function(
     // Skip async + resource methods. Resource *types* are emitted as
     // `Foo = Handle` newtypes; their methods stay skipped until the
     // codegen learns to lower `own<T>`/`borrow<T>` canonical-ABI shapes
-    // (see CLAUDE.md "Known codegen gaps").
-    let (is_async, fn_label) = match &func.kind {
-        FunctionKind::Freestanding => (false, name.to_string()),
-        FunctionKind::AsyncFreestanding => (true, name.to_string()),
+    // (see CLAUDE.md "Known codegen gaps"). The original WIT function
+    // name in kebab is no longer used here — the loader recovers it
+    // from the Oneway camelCase identifier at patch time — so we don't
+    // bind it.
+    match &func.kind {
+        FunctionKind::Freestanding => {}
+        FunctionKind::AsyncFreestanding => return Err("async (v1 skips async)".into()),
         FunctionKind::Method(_)
         | FunctionKind::Static(_)
         | FunctionKind::Constructor(_)
@@ -423,9 +456,6 @@ fn emit_function(
         | FunctionKind::AsyncStatic(_) => {
             return Err("resource method (codegen lowering pending, see CLAUDE.md)".into());
         }
-    };
-    if is_async {
-        return Err("async (v1 skips async)".into());
     }
 
     // A free-standing function that takes or returns a `Handle`/`own<T>`/
@@ -473,8 +503,7 @@ fn emit_function(
     let narrow_in_return = func
         .result
         .as_ref()
-        .map(|t| has_narrow_int(resolve, t))
-        .unwrap_or(false);
+        .is_some_and(|t| has_narrow_int(resolve, t));
     if narrow_in_params || narrow_in_return {
         return Err("sub-u64 integer width (codegen lowers all `Int` as u64)".into());
     }
@@ -506,11 +535,19 @@ fn emit_function(
         None => "Unit".to_string(),
     };
 
-    // Reconstruct the canonical-ABI path: `ns:pkg/iface@ver#fn-name`.
-    let extern_path = format!("{}#{}", qualified_iface_id, fn_label);
+    // Bindgen output uses the bare function-type-alias form. There's no
+    // per-function marker — a single `bindings "<urn>"` directive at
+    // the top of the file does the job of identifying every function
+    // below as a binding. The loader (`apply_bindings_directive` in
+    // `src/loader.rs`) walks each camelCase function-type alias and
+    // converts it into a real FunctionDef with the URN attached.
+    //
+    // The `qualified_iface_id` parameter is still passed in by callers
+    // because they use it for error / skip messages; the actual URN
+    // baked into each function lives in the file-level directive now.
+    let _ = qualified_iface_id;
 
     let mut decl = String::new();
-    let _ = writeln!(decl, "extern Wasm(\"{}\")", extern_path);
     let _ = writeln!(decl, "{} = {} -> {}", camel, params_str, ret);
 
     Ok((camel, decl))
@@ -569,21 +606,15 @@ fn has_narrow_int(resolve: &Resolve, t: &Type) -> bool {
                 TypeDefKind::List(inner) => has_narrow_int(resolve, inner),
                 TypeDefKind::Option(inner) => has_narrow_int(resolve, inner),
                 TypeDefKind::Result(r) => {
-                    r.ok.as_ref()
-                        .map(|t| has_narrow_int(resolve, t))
-                        .unwrap_or(false)
-                        || r.err
-                            .as_ref()
-                            .map(|t| has_narrow_int(resolve, t))
-                            .unwrap_or(false)
+                    r.ok.as_ref().is_some_and(|t| has_narrow_int(resolve, t))
+                        || r.err.as_ref().is_some_and(|t| has_narrow_int(resolve, t))
                 }
                 TypeDefKind::Tuple(t) => t.types.iter().any(|t| has_narrow_int(resolve, t)),
                 TypeDefKind::Record(r) => r.fields.iter().any(|f| has_narrow_int(resolve, &f.ty)),
-                TypeDefKind::Variant(v) => v.cases.iter().any(|c| {
-                    c.ty.as_ref()
-                        .map(|t| has_narrow_int(resolve, t))
-                        .unwrap_or(false)
-                }),
+                TypeDefKind::Variant(v) => v
+                    .cases
+                    .iter()
+                    .any(|c| c.ty.as_ref().is_some_and(|t| has_narrow_int(resolve, t))),
                 TypeDefKind::Map(k, v) => has_narrow_int(resolve, k) || has_narrow_int(resolve, v),
                 // Resources / futures / streams / flags / enums never
                 // carry a narrow-int themselves; they're filtered earlier
@@ -629,12 +660,10 @@ fn mentions_handle_ty(resolve: &Resolve, t: &Type) -> bool {
                 TypeDefKind::Option(inner) => mentions_handle_ty(resolve, inner),
                 TypeDefKind::Result(r) => {
                     r.ok.as_ref()
-                        .map(|t| mentions_handle_ty(resolve, t))
-                        .unwrap_or(false)
+                        .is_some_and(|t| mentions_handle_ty(resolve, t))
                         || r.err
                             .as_ref()
-                            .map(|t| mentions_handle_ty(resolve, t))
-                            .unwrap_or(false)
+                            .is_some_and(|t| mentions_handle_ty(resolve, t))
                 }
                 TypeDefKind::Tuple(t) => t.types.iter().any(|t| mentions_handle_ty(resolve, t)),
                 TypeDefKind::Record(r) => {
@@ -642,16 +671,14 @@ fn mentions_handle_ty(resolve: &Resolve, t: &Type) -> bool {
                 }
                 TypeDefKind::Variant(v) => v.cases.iter().any(|c| {
                     c.ty.as_ref()
-                        .map(|t| mentions_handle_ty(resolve, t))
-                        .unwrap_or(false)
+                        .is_some_and(|t| mentions_handle_ty(resolve, t))
                 }),
                 TypeDefKind::Map(k, v) => {
                     mentions_handle_ty(resolve, k) || mentions_handle_ty(resolve, v)
                 }
                 TypeDefKind::Future(inner) | TypeDefKind::Stream(inner) => inner
                     .as_ref()
-                    .map(|t| mentions_handle_ty(resolve, t))
-                    .unwrap_or(false),
+                    .is_some_and(|t| mentions_handle_ty(resolve, t)),
                 _ => false,
             }
         }

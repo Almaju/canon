@@ -1,4 +1,4 @@
-use oneway/wasi/clocks/system_clock
+use wasi/clocks/system_clock
 
 Advice = AdviceDontNeed
   + AdviceNoReuse
@@ -21,7 +21,12 @@ AdviceWillNeed = Unit
 
 Descriptor = Handle
 
-DescriptorFlags = DescriptorFlagsDataIntegritySync * DescriptorFlagsFileIntegritySync * DescriptorFlagsMutateDirectory * DescriptorFlagsRead * DescriptorFlagsRequestedWriteSync * DescriptorFlagsWrite
+DescriptorFlags = DescriptorFlagsDataIntegritySync
+  * DescriptorFlagsFileIntegritySync
+  * DescriptorFlagsMutateDirectory
+  * DescriptorFlagsRead
+  * DescriptorFlagsRequestedWriteSync
+  * DescriptorFlagsWrite
 
 DescriptorFlagsDataIntegritySync = Bool
 
@@ -35,7 +40,12 @@ DescriptorFlagsRequestedWriteSync = Bool
 
 DescriptorFlagsWrite = Bool
 
-DescriptorStat = DescriptorStatDataAccessTimestamp * DescriptorStatDataModificationTimestamp * DescriptorStatLinkCount * DescriptorStatSize * DescriptorStatStatusChangeTimestamp * DescriptorStatType
+DescriptorStat = DescriptorStatDataAccessTimestamp
+  * DescriptorStatDataModificationTimestamp
+  * DescriptorStatLinkCount
+  * DescriptorStatSize
+  * DescriptorStatStatusChangeTimestamp
+  * DescriptorStatType
 
 DescriptorStatDataAccessTimestamp = Option<Instant>
 

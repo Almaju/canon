@@ -1,2 +1,0 @@
-extern Wasm("wasi:cli/environment@0.3.0-rc-2026-03-15#get-initial-cwd")
-getInitialCwd = () -> Option<String>

@@ -1,0 +1,3 @@
+bindings "wasi:random/insecure@0.3.0-rc-2026-03-15"
+
+getInsecureRandomU64 = () -> Int

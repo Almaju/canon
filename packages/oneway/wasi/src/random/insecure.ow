@@ -1,2 +1,0 @@
-extern Wasm("wasi:random/insecure@0.3.0-rc-2026-03-15#get-insecure-random-u64")
-getInsecureRandomU64 = () -> Int

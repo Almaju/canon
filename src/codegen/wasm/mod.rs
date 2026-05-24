@@ -114,6 +114,15 @@ fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         let Some((component_ns, core_ns, fn_name)) = parse_extern_path(&ext.path) else {
             continue;
         };
+        // `oneway:builtins/concurrent` is a *synthetic* interface — the
+        // codegen recognises `parallel(…)` and `race(…)` as built-in
+        // combinators and emits the multi-subtask wait sequence inline
+        // (see `compile_parallel` / `compile_race`). It has no host
+        // implementation; skipping it from the import collection prevents
+        // the linker from looking for one.
+        if component_ns.starts_with("oneway:builtins/concurrent") {
+            continue;
+        }
 
         // Validate the signature: flat-scalar or string params + (flat-scalar
         // OR string) return. Anything more exotic (lists, records, Result,
@@ -518,12 +527,21 @@ impl Ty {
 /// Maps Oneway parameter names to their local variable index + repr.
 ///
 /// Extra locals (indices after params, declared via `extra_locals_decl()`):
-///   pc+0, pc+1 (i32): rptr, rlen   — for Str match results
-///   pc+2       (i32): rbool         — for I32/Ptr match results
-///   pc+3       (i32): tmp_i32       — general scratch i32
-///   pc+4       (i64): tmp_i64       — general scratch i64
-///   pc+5       (i32): alloc_ptr     — result of $alloc
-///   pc+6       (i32): tmp_i32_b     — second scratch i32
+///   pc+0, pc+1  (i32): rptr, rlen   — for Str match results
+///   pc+2        (i32): rbool         — for I32/Ptr match results
+///   pc+3        (i32): tmp_i32       — general scratch i32
+///   pc+4        (i64): tmp_i64       — general scratch i64
+///   pc+5        (i32): alloc_ptr     — result of $alloc
+///   pc+6        (i32): tmp_i32_b     — second scratch i32
+///   pc+7, pc+8  (i32): arm_payload_ptr (+1) — bound arm payload
+///   pc+9, pc+10 (i32): str_scratch_ptr (+1) — string-builtin scratch
+///   pc+11..pc+18 (i32): par_subtask_a/b, par_retarea_a/b, par_set,
+///                       par_event_ptr, par_seen_a/b — parallel/race state.
+///                       Eight locals, kept always-on so the wasm validator
+///                       sees a stable local layout regardless of whether
+///                       the function actually uses concurrency combinators.
+///                       Cost: ~32 bytes of dead locals per non-using
+///                       function, which is fine.
 #[derive(Clone, Default)]
 struct LocalScope {
     vars: HashMap<String, (u32, Ty)>,
@@ -565,6 +583,47 @@ impl LocalScope {
     fn arm_payload_ptr(&self) -> u32 {
         self.param_count + 7
     }
+    /// Adjacent pair of i32s reserved as scratch for string-shaped
+    /// builtins (`concat`, `substring`, …) that need to stash a
+    /// `(ptr, len)` pair across an `$alloc` + copy loop. Kept distinct
+    /// from `arm_payload_ptr` so a builtin call inside a dispatch arm
+    /// body can't corrupt the bound payload — see the
+    /// "Heap allocations inside `Ok`/`Err` dispatch arm bodies" gap in
+    /// CLAUDE.md.
+    fn str_scratch_ptr(&self) -> u32 {
+        self.param_count + 9
+    }
+
+    // ── Parallel / race scratch locals ───────────────────────────────
+    //
+    // Eight i32s used by `compile_parallel` and `compile_race` to thread
+    // the multi-subtask wait state through the emitted instruction stream.
+    // Kept in a contiguous block from `pc+11..pc+18` so the wasm validator
+    // can statically prove they exist regardless of the call site.
+    fn par_subtask_a(&self) -> u32 {
+        self.param_count + 11
+    }
+    fn par_subtask_b(&self) -> u32 {
+        self.param_count + 12
+    }
+    fn par_retarea_a(&self) -> u32 {
+        self.param_count + 13
+    }
+    fn par_retarea_b(&self) -> u32 {
+        self.param_count + 14
+    }
+    fn par_set(&self) -> u32 {
+        self.param_count + 15
+    }
+    fn par_event_ptr(&self) -> u32 {
+        self.param_count + 16
+    }
+    fn par_seen_a(&self) -> u32 {
+        self.param_count + 17
+    }
+    fn par_seen_b(&self) -> u32 {
+        self.param_count + 18
+    }
 }
 
 /// Local declarations appended after the function params.
@@ -574,6 +633,9 @@ fn extra_locals_decl() -> Vec<(u32, ValType)> {
         (1, ValType::I64), // tmp_i64
         (2, ValType::I32), // alloc_ptr, tmp_i32_b
         (2, ValType::I32), // arm_payload_ptr, arm_payload_ptr + 1 (len)
+        (2, ValType::I32), // str_scratch_ptr, str_scratch_ptr + 1 (len)
+        (8, ValType::I32), // par_subtask_a/b, par_retarea_a/b, par_set,
+                           // par_event_ptr, par_seen_a/b (parallel/race state)
     ]
 }
 
@@ -768,7 +830,11 @@ struct WasmGen<'m> {
     fn_waitable_set_drop: u32, // `(i32)      -> ()`   (set)
     fn_subtask_drop: u32,      // `(i32)      -> ()`   (subtask)
     fn_task_return: u32,       // `(i32)      -> ()`   (discriminant for result<_,_>)
-
+    fn_subtask_cancel: u32,    // `(i32)      -> i32`  (subtask) -> new state
+    //                                                  Used by `compile_race` to
+    //                                                  abandon the loser. The
+    //                                                  i32 result is the new
+    //                                                  CallState; we drop it.
     fn_print_str: u32,
     fn_print_int: u32,
     fn_print_bool: u32,
@@ -812,7 +878,10 @@ impl<'m> WasmGen<'m> {
         // block is the 6 waitable+task intrinsics, then the defined
         // functions follow.
         let base_waitable = FIRST_EXTERN_IMPORT_FN + n_externs; // = 5 + N
-        let base_defined = base_waitable + 6; // skip the 6 waitable+task imports
+        let base_defined = base_waitable + 7; // skip the 7 waitable+task imports
+                                              // (set-new, join, set-wait,
+                                              //  set-drop, subtask-drop,
+                                              //  task-return, subtask-cancel)
         WasmGen {
             ast,
             strings: StringTable::new(),
@@ -831,6 +900,7 @@ impl<'m> WasmGen<'m> {
             fn_waitable_set_drop: base_waitable + 3,
             fn_subtask_drop: base_waitable + 4,
             fn_task_return: base_waitable + 5,
+            fn_subtask_cancel: base_waitable + 6,
             fn_print_str: base_defined,
             fn_print_int: base_defined + 1,
             fn_print_bool: base_defined + 2,
@@ -2389,6 +2459,15 @@ impl<'m> WasmGen<'m> {
             }
             // List constructor: List(e1, e2, e3, ...)
             "List" => self.build_list_literal(args, scope, f),
+            // ── Concurrency combinators (synthetic) ───────────────────
+            // `parallel(a, b)` and `race(a, b)` are declared in
+            // `packages/oneway/std/src/concurrent.ow` but have NO host
+            // bridge — the codegen recognises them by name and emits the
+            // canonical-ABI multi-subtask wait sequence inline. They're
+            // also filtered out of `collect_extern_imports` so no wasm
+            // import is generated for them.
+            "parallel" => self.compile_parallel(args, scope, f),
+            "race" => self.compile_race(args, scope, f),
             // User-defined types
             _ => {
                 // 1. Union variant constructor (e.g. `Branch(...)`, `Leaf`).
@@ -3333,6 +3412,471 @@ impl<'m> WasmGen<'m> {
         }
     }
 
+    // ── Concurrency combinators ─────────────────────────────────────
+    //
+    // `parallel(a, b)` and `race(a, b)` are guest-side combinators: the
+    // codegen emits a non-blocking async call for each arg (capturing
+    // subtask handle + ret-area into named locals), then runs the
+    // canonical-ABI multi-subtask wait sequence in the same function.
+    // No host bridge is involved — the `oneway:async/waitable` canon
+    // intrinsics (`set-new`, `join`, `set-wait`, `set-drop`,
+    // `subtask-drop`, `subtask-cancel`) handle everything.
+
+    /// Compile a single `parallel`/`race` argument as a non-blocking
+    /// async call. The arg must be a `MethodCall` or `Constructor` that
+    /// resolves to an `extern Wasm.async` function in `func_table`.
+    ///
+    /// On exit:
+    ///   - The arg's sub-args are evaluated.
+    ///   - The arg's ret-area is allocated into `retarea_local`.
+    ///   - The import is called; the packed status is consumed.
+    ///   - The subtask handle (status >> 4) is stored in `subtask_local`.
+    ///
+    /// Returns the callee's declared `result_ty` so the caller knows how
+    /// to decode the ret-area later.
+    ///
+    /// Today this is conservative: if the arg shape doesn't match a known
+    /// async extern, the codegen traps via `unreachable`. The checker
+    /// can't surface a friendlier error yet because the surface is brand
+    /// new; clean up once user pain reports.
+    fn emit_arg_as_nonblocking(
+        &mut self,
+        arg: &Expr,
+        scope: &LocalScope,
+        f: &mut Function,
+        subtask_local: u32,
+        retarea_local: u32,
+    ) -> Ty {
+        // Resolve the callee FuncInfo and identify the receiver / args.
+        let resolved: Option<(FuncInfo, Option<Box<Expr>>, Vec<Expr>)> = match arg {
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            } => {
+                let recv_ty_name = self.infer_static_type_name(receiver);
+                let key = recv_ty_name.map(|n| (Some(n), method.name.clone()));
+                let info = key
+                    .and_then(|k| self.func_table.get(&k).cloned())
+                    .or_else(|| self.func_table.get(&(None, method.name.clone())).cloned());
+                info.map(|i| (i, Some(receiver.clone()), args.clone()))
+            }
+            Expr::Constructor { name, args, .. } => {
+                // Try free-function key first.
+                let mut info = self.func_table.get(&(None, name.name.clone())).cloned();
+                // Then try Self-renamed constructor.
+                if info.is_none() {
+                    info = self
+                        .func_table
+                        .get(&(Some(name.name.clone()), "Self".to_string()))
+                        .cloned();
+                }
+                // Then try capability-receiver: first arg's type as receiver.
+                if info.is_none() {
+                    if let Some(first) = args.first() {
+                        if let Some(tname) = self.infer_static_type_name(first) {
+                            info = self
+                                .func_table
+                                .get(&(Some(tname), name.name.clone()))
+                                .cloned();
+                        }
+                    }
+                }
+                info.map(|i| (i, None, args.clone()))
+            }
+            _ => None,
+        };
+
+        let Some((info, receiver_opt, args_to_push)) = resolved else {
+            // Couldn't resolve the call; trap. Callers should ensure the
+            // arg points to a real async extern.
+            f.instruction(&Instruction::Unreachable);
+            return Ty::Unit;
+        };
+
+        if !info.is_async {
+            // Only async calls make sense here — a sync call would
+            // complete immediately and there'd be no subtask to wait on.
+            f.instruction(&Instruction::Unreachable);
+            return info.result_ty.clone();
+        }
+
+        // Push the receiver expression first (for MethodCall form). The
+        // receiver becomes the first param of the import call.
+        if let Some(rcv) = receiver_opt {
+            let _ = self.compile_expr(&rcv, scope, f);
+        }
+        // Then the explicit args.
+        for a in args_to_push {
+            let _ = self.compile_expr(&a, scope, f);
+        }
+
+        // Allocate the ret-area and tee into `retarea_local` (leaving the
+        // ptr on the stack as the last param to the import).
+        let has_result = !matches!(info.result_ty, Ty::Unit);
+        if has_result {
+            let size = ret_area_size_for(&info.result_ty);
+            f.instruction(&Instruction::I32Const(size as i32));
+            f.instruction(&Instruction::Call(self.fn_alloc));
+            f.instruction(&Instruction::LocalTee(retarea_local));
+        } else {
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::LocalSet(retarea_local));
+        }
+
+        // Call the async-lowered import. Stack on return: i32 packed status.
+        f.instruction(&Instruction::Call(info.func_idx));
+
+        // Extract subtask handle = status >> 4. The low 4 bits encode the
+        // CallState; the high 28 bits are the subtask waitable handle.
+        f.instruction(&Instruction::I32Const(4));
+        f.instruction(&Instruction::I32ShrU);
+        f.instruction(&Instruction::LocalSet(subtask_local));
+
+        info.result_ty.clone()
+    }
+
+    /// Emit `parallel(a, b)`: start both async calls non-blocking, join
+    /// their subtasks to a fresh waitable-set, loop until both events
+    /// fire, then build a `List<T>` with the two results in arg-order.
+    ///
+    /// Both args must call async externs returning the same payload type.
+    /// The result type is `Ty::List`. Today only `Ty::Str` / `Ty::NamedStr`
+    /// element shapes are decoded; other shapes trap.
+    fn compile_parallel(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+        if args.len() != 2 {
+            // Surface error: parallel expects exactly two args. The
+            // checker doesn't yet validate arity for synthetic combinators.
+            f.instruction(&Instruction::Unreachable);
+            return Ty::List;
+        }
+
+        // ── Start both calls non-blocking ─────────────────────────
+        let ty_a = self.emit_arg_as_nonblocking(
+            &args[0],
+            scope,
+            f,
+            scope.par_subtask_a(),
+            scope.par_retarea_a(),
+        );
+        let ty_b = self.emit_arg_as_nonblocking(
+            &args[1],
+            scope,
+            f,
+            scope.par_subtask_b(),
+            scope.par_retarea_b(),
+        );
+        // Both arms must agree on element type.
+        let _ = ty_b;
+        let elem_ty = ty_a;
+
+        // ── Build waitable-set, join both ──────────────────────────
+        f.instruction(&Instruction::Call(self.fn_waitable_set_new));
+        f.instruction(&Instruction::LocalSet(scope.par_set()));
+
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(self.fn_waitable_join));
+
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_b()));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(self.fn_waitable_join));
+
+        // ── Event area + seen flags ─────────────────────────────
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
+
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_b()));
+
+        // ── Wait loop until both seen ───────────────────────────
+        //
+        // Structure:
+        //   block $break
+        //     loop $continue
+        //       wait; drop event_code
+        //       handle = load i32 at par_event_ptr+0
+        //       handle == subtask_a ? seen_a = 1
+        //       handle == subtask_b ? seen_b = 1
+        //       (seen_a & seen_b) ? br $break (depth=1)
+        //       br $continue (depth=0)
+        //     end
+        //   end
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+
+        // waitable-set.wait(set, event_area) → event_code; drop event_code
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::Call(self.fn_waitable_set_wait));
+        f.instruction(&Instruction::Drop);
+
+        // event_handle = load i32 at par_event_ptr+0 → tmp_i32
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+
+        // if event_handle == subtask_a: seen_a = 1
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+        f.instruction(&Instruction::End);
+
+        // if event_handle == subtask_b: seen_b = 1
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_b()));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_b()));
+        f.instruction(&Instruction::End);
+
+        // if (seen_a & seen_b): br $break (depth 1 — the block above the loop)
+        f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+        f.instruction(&Instruction::LocalGet(scope.par_seen_b()));
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::BrIf(1));
+
+        // br $continue (depth 0 — the loop itself)
+        f.instruction(&Instruction::Br(0));
+
+        f.instruction(&Instruction::End); // end loop
+        f.instruction(&Instruction::End); // end block
+
+        // ── Cleanup: drop subtasks before the set ────────────────────
+        // Subtasks are children of the set; the set's drop requires no
+        // children (see wasmtime's `ResourceTableError::HasChildren`).
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::Call(self.fn_subtask_drop));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_b()));
+        f.instruction(&Instruction::Call(self.fn_subtask_drop));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(self.fn_waitable_set_drop));
+
+        // ── Build List<T> with the two results ──────────────────────
+        // List layout per `build_list_literal`: N*8 bytes, each slot is
+        // (ptr i32, len i32) for Str / (8 bytes for I64/F64) at offsets
+        // i*8. Total size = 16 for 2 elements.
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+
+        match &elem_ty {
+            Ty::Str | Ty::NamedStr(_) => {
+                // slot 0 ← (ptr,len) at par_retarea_a +0/+4
+                self.copy_str_pair(f, scope.alloc_ptr(), 0, scope.par_retarea_a(), 0);
+                // slot 1 ← (ptr,len) at par_retarea_b +0/+4
+                self.copy_str_pair(f, scope.alloc_ptr(), 8, scope.par_retarea_b(), 0);
+            }
+            Ty::I64 | Ty::F64 => {
+                // Each slot is one i64. Source ret-area holds the value at +0.
+                for (slot_off, retarea) in
+                    [(0u64, scope.par_retarea_a()), (8u64, scope.par_retarea_b())]
+                {
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::LocalGet(retarea));
+                    f.instruction(&Instruction::I64Load(MemArg {
+                        offset: 0,
+                        align: 3,
+                        memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: slot_off,
+                        align: 3,
+                        memory_index: 0,
+                    }));
+                }
+            }
+            _ => {
+                // Other element shapes not yet supported. Trap so the gap
+                // is visible (we'd silently corrupt the list otherwise).
+                f.instruction(&Instruction::Unreachable);
+            }
+        }
+
+        // Push (list_ptr, len=2) — the standard `Ty::List` representation.
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Const(2));
+        Ty::List
+    }
+
+    /// Emit `race(a, b)`: start both async calls non-blocking, wait for
+    /// the *first* event, cancel the loser, drop everything, and return
+    /// the winner's result decoded from its ret-area.
+    ///
+    /// Today only `Ty::Str` / `Ty::NamedStr` element shapes are decoded;
+    /// other shapes trap.
+    fn compile_race(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+        if args.len() != 2 {
+            f.instruction(&Instruction::Unreachable);
+            return Ty::Str;
+        }
+
+        // Start both calls non-blocking.
+        let ty_a = self.emit_arg_as_nonblocking(
+            &args[0],
+            scope,
+            f,
+            scope.par_subtask_a(),
+            scope.par_retarea_a(),
+        );
+        let _ = self.emit_arg_as_nonblocking(
+            &args[1],
+            scope,
+            f,
+            scope.par_subtask_b(),
+            scope.par_retarea_b(),
+        );
+        let elem_ty = ty_a;
+
+        // Build waitable-set, join both.
+        f.instruction(&Instruction::Call(self.fn_waitable_set_new));
+        f.instruction(&Instruction::LocalSet(scope.par_set()));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(self.fn_waitable_join));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_b()));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(self.fn_waitable_join));
+
+        // Event area + flags. Re-using par_seen_a as "winner is a?".
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+
+        // One wait, then identify the winner.
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::Call(self.fn_waitable_set_wait));
+        f.instruction(&Instruction::Drop);
+
+        // Read event handle into tmp_i32, set seen_a = (handle == subtask_a).
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalTee(scope.tmp_i32()));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+
+        // Cancel the loser. `subtask.cancel` takes a subtask handle and
+        // returns a state code (which we drop). The runtime guarantees
+        // teardown of any transitive subtasks.
+        //
+        // The cancel call returns an i32 status code, even when issued
+        // with async semantics. We drop it; the caller only cares that
+        // the loser is no longer producing observable side effects.
+        f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // a won → cancel b
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_b()));
+        f.instruction(&Instruction::Call(self.fn_subtask_cancel));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::Else);
+        // b won → cancel a
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::Call(self.fn_subtask_cancel));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::End);
+
+        // Drop both subtasks before the set.
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_a()));
+        f.instruction(&Instruction::Call(self.fn_subtask_drop));
+        f.instruction(&Instruction::LocalGet(scope.par_subtask_b()));
+        f.instruction(&Instruction::Call(self.fn_subtask_drop));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(self.fn_waitable_set_drop));
+
+        // Decode the winner's ret-area onto the stack.
+        match &elem_ty {
+            Ty::Str | Ty::NamedStr(_) => {
+                // if seen_a: push (par_retarea_a +0, +4) else (par_retarea_b +0, +4)
+                // WASM `if` with result type doesn't natively allow pushing two
+                // values — use a Select-style approach via a winner_retarea local.
+                // Compute winner_retarea via Select.
+                f.instruction(&Instruction::LocalGet(scope.par_retarea_a()));
+                f.instruction(&Instruction::LocalGet(scope.par_retarea_b()));
+                f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+                f.instruction(&Instruction::Select);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+
+                // Push ptr, then len.
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                elem_ty
+            }
+            _ => {
+                f.instruction(&Instruction::Unreachable);
+                elem_ty
+            }
+        }
+    }
+
+    /// Copy a `(ptr i32, len i32)` pair from `src_local + src_off` to
+    /// `dst_local + dst_off`. Small helper used by the list-building tail
+    /// of `compile_parallel`.
+    fn copy_str_pair(
+        &self,
+        f: &mut Function,
+        dst_local: u32,
+        dst_off: u64,
+        src_local: u32,
+        src_off: u64,
+    ) {
+        // ptr
+        f.instruction(&Instruction::LocalGet(dst_local));
+        f.instruction(&Instruction::LocalGet(src_local));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: src_off,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Store(MemArg {
+            offset: dst_off,
+            align: 2,
+            memory_index: 0,
+        }));
+        // len
+        f.instruction(&Instruction::LocalGet(dst_local));
+        f.instruction(&Instruction::LocalGet(src_local));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: src_off + 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Store(MemArg {
+            offset: dst_off + 4,
+            align: 2,
+            memory_index: 0,
+        }));
+    }
+
     fn compile_builtin_method(
         &mut self,
         recv_ty: Ty,
@@ -3444,21 +3988,26 @@ impl<'m> WasmGen<'m> {
                 }
 
                 // Stash inputs into locals (top of stack first):
-                //   arm_payload_ptr+1 = len2
-                //   arm_payload_ptr   = ptr2
+                //   str_scratch_ptr+1 = len2
+                //   str_scratch_ptr   = ptr2
                 //   tmp_i32_b         = len1 (kept immutable; used both as
                 //                              n for copy 1 and as offset
                 //                              into result for copy 2)
                 //   rbool             = ptr1 (used as src in copy 1; the
                 //                              copy loop modifies it)
-                f.instruction(&Instruction::LocalSet(scope.arm_payload_ptr() + 1));
-                f.instruction(&Instruction::LocalSet(scope.arm_payload_ptr()));
+                //
+                // NOTE: deliberately uses `str_scratch_ptr` (not
+                // `arm_payload_ptr`) so a `concat` call inside a
+                // dispatch arm body doesn't corrupt the arm's bound
+                // payload — see the gap fix in CLAUDE.md.
+                f.instruction(&Instruction::LocalSet(scope.str_scratch_ptr() + 1));
+                f.instruction(&Instruction::LocalSet(scope.str_scratch_ptr()));
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
                 f.instruction(&Instruction::LocalSet(scope.rbool()));
 
                 // total_len = len1 + len2, kept in tmp_i32 for the return.
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
-                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr() + 1));
+                f.instruction(&Instruction::LocalGet(scope.str_scratch_ptr() + 1));
                 f.instruction(&Instruction::I32Add);
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
 
@@ -3481,9 +4030,9 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
                 f.instruction(&Instruction::I32Add);
                 f.instruction(&Instruction::LocalSet(scope.rptr()));
-                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.str_scratch_ptr()));
                 f.instruction(&Instruction::LocalSet(scope.rbool()));
-                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr() + 1));
+                f.instruction(&Instruction::LocalGet(scope.str_scratch_ptr() + 1));
                 f.instruction(&Instruction::LocalSet(scope.rlen()));
                 self.emit_byte_copy_loop(scope, f);
 
@@ -3570,26 +4119,29 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
                 f.instruction(&Instruction::I32Add);
                 f.instruction(&Instruction::LocalSet(scope.rbool())); // src
-                                                                      // new_len = end - start (preserved in arm_payload_ptr for
+                                                                      // new_len = end - start (preserved in str_scratch_ptr for
                                                                       // the final return push; the copy loop will clobber rlen).
+                                                                      // Uses `str_scratch_ptr` (not `arm_payload_ptr`) so a
+                                                                      // `substring` call inside a dispatch arm body doesn't
+                                                                      // corrupt the bound payload.
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
                 f.instruction(&Instruction::I32Sub);
-                f.instruction(&Instruction::LocalSet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::LocalSet(scope.str_scratch_ptr()));
                 // result_ptr = alloc(new_len)
-                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.str_scratch_ptr()));
                 f.instruction(&Instruction::Call(self.fn_alloc));
                 f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
                 // Copy loop locals: dst → rptr, src → rbool (already set),
                 // n → rlen (decremented to 0 by the loop).
                 f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                 f.instruction(&Instruction::LocalSet(scope.rptr()));
-                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.str_scratch_ptr()));
                 f.instruction(&Instruction::LocalSet(scope.rlen()));
                 self.emit_byte_copy_loop(scope, f);
                 // Return (result_ptr, new_len).
                 f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.str_scratch_ptr()));
                 Ty::Str
             }
             // ── String eq ───────────────────────────────────────────────────────────────
@@ -4390,6 +4942,10 @@ impl<'m> WasmGen<'m> {
         // TY_PRINT_BOOL).
         let ty_waitable_set_wait =
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32]);
+        // `subtask.cancel` has signature `(i32) -> (i32)` — takes a
+        // subtask handle, returns the new CallState. Used by `race`'s
+        // loser-cancel path.
+        let ty_subtask_cancel = self.get_or_add_wasm_type(&[ValType::I32], &[ValType::I32]);
         // Reserve the wasm type for the list-to-json-array helper:
         // `(i32, i32) -> (i32, i32)`. Must be registered *before* the
         // type section is emitted below; the function section uses the
@@ -4516,6 +5072,11 @@ impl<'m> WasmGen<'m> {
             "oneway:async/waitable",
             "task-return",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> () — result<_,_> tag
+        );
+        imports.import(
+            "oneway:async/waitable",
+            "subtask-cancel",
+            EntityType::Function(ty_subtask_cancel), // (i32) -> (i32)
         );
         imports.import(
             "env",
@@ -4821,6 +5382,20 @@ fn generate_core_module(module: &OModule) -> Vec<u8> {
     gen.compile()
 }
 
+/// Returns whether the program has a free function returning `Response`
+/// (or `Result<Response, _>`), per the entry-point rule in
+/// `WASI-HTTP-HANDLER.md`. When true, codegen routes through
+/// `component::wrap_http_service` instead of the CLI path.
+fn has_http_entry(module: &OModule) -> bool {
+    use crate::ast::{entry_world_of, EntryWorld};
+    module.items.iter().any(|item| match item {
+        Item::Function(func) => {
+            func.receiver.is_none() && entry_world_of(&func.return_ty) == Some(EntryWorld::Http)
+        }
+        _ => false,
+    })
+}
+
 /// Returns whether the program defines a `handleRequest` function that
 /// should be lifted as the component-level dynamic-handler export.
 ///
@@ -4845,6 +5420,21 @@ fn program_has_handler(module: &OModule) -> bool {
 /// declaration in the user program.
 /// It is validated with `wasmparser` before being returned.
 pub fn generate(module: &OModule) -> Vec<u8> {
+    // Branch on the entry-point's world (see `WASI-HTTP-HANDLER.md`
+    // §Entry-point selection). CLI entries flow through the existing
+    // hand-rolled `wasm-encoder` pipeline; HTTP entries route to a
+    // separate codegen path that delegates type-section emission to
+    // `wit-component` (the resource + variant surface in
+    // `wasi:http/types` is too large to maintain by hand).
+    //
+    // The checker has already validated which entry shape applies and
+    // emitted a diagnostic for HTTP entries (slice 1a). When that
+    // diagnostic was downgraded as part of slice 1b, this dispatch
+    // becomes the authoritative entry-world router.
+    if has_http_entry(module) {
+        return component::wrap_http_service(module);
+    }
+
     let core = generate_core_module(module);
     let externs = collect_extern_imports(module);
     // Run the async-inference fixpoint so the component wrapper can

@@ -17,6 +17,7 @@
 - [Dispatch](./tour/match.md)
 - [Loops](./tour/loops.md)
 - [Effects and Values](./tour/effects.md)
+- [Async](./tour/async.md)
 - [Modules](./tour/modules.md)
 - [Traits](./tour/traits.md)
 - [Errors](./tour/errors.md)

@@ -1,0 +1,5 @@
+use oneway/std/concurrent
+
+main = () -> Unit {
+    "ok".print()
+}
