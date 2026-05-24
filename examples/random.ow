@@ -1,5 +1,0 @@
-use std/Random
-
-main = () -> Unit {
-    randomInt().print()
-}

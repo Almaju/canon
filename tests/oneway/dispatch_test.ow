@@ -1,4 +1,4 @@
-use std/TestResult
+use oneway/std/TestResult
 
 Dark = Unit
 

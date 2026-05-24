@@ -1,0 +1,10 @@
+use HttpError
+use InvalidUrl
+
+Url = String
+
+extern Wasm("oneway:builtins/url@0.1.0#parse")
+Url = (String) -> Result<Url, InvalidUrl>
+
+extern Wasm("oneway:builtins/http@0.1.0#get")
+get = (Url) -> Result<String, HttpError>

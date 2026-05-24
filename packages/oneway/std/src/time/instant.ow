@@ -1,0 +1,7 @@
+use oneway/wasi/clocks/monotonic_clock
+
+Instant = Int
+
+Instant = () -> Instant {
+    Instant(now())
+}

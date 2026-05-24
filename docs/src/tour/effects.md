@@ -83,7 +83,7 @@ Now().print()
 
 # Random integer
 use std/Random
-randomInt().print()
+Random().print()
 
 # HTTP GET — start with a Url
 use std/HttpError

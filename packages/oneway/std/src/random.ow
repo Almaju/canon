@@ -1,0 +1,7 @@
+use oneway/wasi/random/random
+
+Random = Int
+
+Random = () -> Random {
+    Random(getRandomU64())
+}

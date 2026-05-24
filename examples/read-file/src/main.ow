@@ -1,0 +1,6 @@
+use oneway/std/fs/File
+use oneway/std/fs/Path
+
+main = () -> Unit {
+    Path("Cargo.toml").File()?.read()?.print()
+}

@@ -1,6 +1,0 @@
-use std/File
-use std/Path
-
-main = () -> Unit {
-    Path("Cargo.toml").File()?.read()?.print()
-}

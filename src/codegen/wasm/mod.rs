@@ -412,7 +412,7 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
             // `HttpServer<S>` and `HttpClient` are *value types* with state,
             // not capability markers — they're flat-scalar/string aliases
             // declared in the stdlib (`std/http-server-wasm.ow`).
-            "Stdout" | "Stderr" | "Stdin" | "Network" | "Random" | "Clock" | "Filesystem" => vec![],
+            "Stdout" | "Stderr" | "Stdin" | "Network" | "Clock" | "Filesystem" => vec![],
             _ => {
                 if let Some(body) = type_defs.get(name) {
                     return match body {
@@ -1077,9 +1077,7 @@ impl<'m> WasmGen<'m> {
             // See `resolve_name_val_types::go` for the rationale on which
             // names belong here — only true ambient-effect capabilities,
             // not value types like `HttpServer<S>`.
-            "Stdout" | "Stderr" | "Stdin" | "Network" | "Random" | "Clock" | "Filesystem" => {
-                Ty::Unit
-            }
+            "Stdout" | "Stderr" | "Stdin" | "Network" | "Clock" | "Filesystem" => Ty::Unit,
             "List" | "Map" | "Set" => Ty::List,
             "Option" | "Result" => Ty::NamedPtr(name.to_string()),
             _ => {

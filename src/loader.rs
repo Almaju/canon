@@ -1,149 +1,115 @@
 use crate::ast::{resolve_new_syntax, Item, Module};
 use crate::error::{OnewayError, Result, Span};
 use crate::lexer::Scanner;
+use crate::manifest::{self, Manifest};
 use crate::parser::Parser;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// One row of the embedded standard library.
+// ---------------------------------------------------------------------------
+// Bundled packages
+// ---------------------------------------------------------------------------
+//
+// The shipped packages (`oneway/std`, `oneway/wasi`, …) are baked into the
+// compiler binary at build time by `build.rs`, which walks `packages/` and
+// emits a flat registry as `bundled_packages.rs`. The registry replaces what
+// used to be hand-maintained `STDLIB` and `WASI_BINDINGS` arrays — drop a new
+// file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up.
+
+/// One package shipped with the compiler.
+#[derive(Debug, Clone, Copy)]
+pub struct BundledPackage {
+    /// Canonical name, e.g. `"oneway/std"`. Matches the package's
+    /// declared `name` in its `oneway.toml`.
+    pub name: &'static str,
+    /// The full `oneway.toml` source, parsed lazily on first use.
+    pub manifest_src: &'static str,
+    /// Every `.ow` file under the package root, sorted alphabetically by
+    /// package-relative path.
+    pub files: &'static [BundledFile],
+}
+
+/// One file inside a bundled package.
+#[derive(Debug, Clone, Copy)]
+pub struct BundledFile {
+    /// Path relative to the package root, e.g. `"clocks/monotonic_clock.ow"`.
+    /// Always uses `/` separators so it matches `use` paths users write.
+    pub path: &'static str,
+    /// The file's source, embedded at build time via `include_str!`.
+    pub source: &'static str,
+    /// Build-time absolute path. Used by the LSP for go-to-definition when
+    /// the binary is run against its source tree. For an installed binary
+    /// this path won't exist on the user's filesystem; the LSP must cope
+    /// (same caveat as the previous `CARGO_MANIFEST_DIR` baked-in path).
+    pub abs_path: &'static str,
+}
+
+include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
+
+/// Find a bundled package by its canonical name (`"oneway/std"`).
+pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
+    BUNDLED_PACKAGES.iter().find(|p| p.name == name)
+}
+
+/// Find a specific file inside a bundled package.
+pub fn bundled_file(pkg: &BundledPackage, rel_path: &str) -> Option<&'static BundledFile> {
+    pkg.files.iter().find(|f| f.path == rel_path)
+}
+
+/// Resolve a `use a/b/c/…/Z` path against the bundled packages.
 ///
-/// `name`      — the type the user writes after `use std/` (e.g. `Url`).
-/// `file_stem` — the on-disk filename under `std/` (e.g. `url-wasm`).
-///              Used by the LSP to surface a clickable path for
-///              go-to-definition. Several stdlib types share a file
-///              (`Url`, `InvalidUrl`) so the mapping is many-to-one.
-/// `source`    — the bytes of that file, embedded at compile time.
-struct StdlibEntry {
-    name: &'static str,
-    file_stem: &'static str,
-    source: &'static str,
+/// Returns the matching file plus the owning package, or `None` if no
+/// bundled package's name is a prefix of `use_path`.
+///
+/// The matching rule mirrors what the local-file loader does for
+/// directories: walk the trailing segments as a path within the package,
+/// kebab-casing the final type-name segment to find its `.ow` file.
+pub fn resolve_bundled_use(
+    use_path: &str,
+) -> Option<(&'static BundledPackage, &'static BundledFile)> {
+    // Two-segment package prefix: `<namespace>/<package>`.
+    let segments: Vec<&str> = use_path.split('/').collect();
+    if segments.len() < 3 {
+        // Need at least `<ns>/<pkg>/<something>` to be a package import.
+        return None;
+    }
+    let package_name = format!("{}/{}", segments[0], segments[1]);
+    let pkg = bundled_package(&package_name)?;
+
+    // Walk the remaining segments. Intermediate ones are directory names
+    // (kept as-is, no case translation); the final segment is the type or
+    // file name and gets kebab-cased before we append `.ow`.
+    let rest = &segments[2..];
+    let (last, dirs) = rest.split_last()?;
+    let mut rel = String::new();
+    for d in dirs {
+        rel.push_str(d);
+        rel.push('/');
+    }
+    let stem = if last.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+        kebab_case(last)
+    } else {
+        // Already a snake_case or kebab-case path segment — use directly.
+        // This covers `use oneway/wasi/clocks/monotonic_clock`.
+        (*last).to_string()
+    };
+    rel.push_str(&stem);
+    rel.push_str(".ow");
+
+    let file = bundled_file(pkg, &rel)?;
+    Some((pkg, file))
 }
 
-// The stdlib is structured as small, focused modules — each entry exposes a
-// single public type (the loader looks up entries by the type name the user
-// `use`s). Modules `use` each other to share supporting types; the loader
-// de-duplicates so transitive imports are loaded once.
-const STDLIB: &[StdlibEntry] = &[
-    StdlibEntry {
-        name: "Body",
-        file_stem: "body",
-        source: include_str!("../std/body.ow"),
-    },
-    // `Random` and `Clock` provide free functions (`randomInt`, `nowNanos`).
-    // The loader keys them by their declared type but the modules don't
-    // define a wrapper type — `use std/Clock` loads the clock externs and
-    // `use std/Random` loads the random extern.
-    StdlibEntry {
-        name: "Clock",
-        file_stem: "clock-wasm",
-        source: include_str!("../std/clock-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "File",
-        file_stem: "filesystem-wasm",
-        source: include_str!("../std/filesystem-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "HttpError",
-        file_stem: "http-error",
-        source: include_str!("../std/http-error.ow"),
-    },
-    StdlibEntry {
-        name: "HttpResponseBody",
-        file_stem: "http-response-body",
-        source: include_str!("../std/http-response-body.ow"),
-    },
-    StdlibEntry {
-        name: "HttpServer",
-        file_stem: "http-server-wasm",
-        source: include_str!("../std/http-server-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "HttpStatus",
-        file_stem: "http-status",
-        source: include_str!("../std/http-status.ow"),
-    },
-    StdlibEntry {
-        name: "InvalidUrl",
-        file_stem: "url-wasm",
-        source: include_str!("../std/url-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "IoError",
-        file_stem: "io-error",
-        source: include_str!("../std/io-error.ow"),
-    },
-    StdlibEntry {
-        name: "Json",
-        file_stem: "json-wasm",
-        source: include_str!("../std/json-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "Now",
-        file_stem: "now-wasm",
-        source: include_str!("../std/now-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "Path",
-        file_stem: "path-wasm",
-        source: include_str!("../std/path-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "Port",
-        file_stem: "port",
-        source: include_str!("../std/port.ow"),
-    },
-    StdlibEntry {
-        name: "Random",
-        file_stem: "random-wasm",
-        source: include_str!("../std/random-wasm.ow"),
-    },
-    StdlibEntry {
-        name: "Request",
-        file_stem: "request",
-        source: include_str!("../std/request.ow"),
-    },
-    StdlibEntry {
-        name: "RoutePath",
-        file_stem: "route-path",
-        source: include_str!("../std/route-path.ow"),
-    },
-    // Test framework: `use std/TestResult` brings in `TestResult`, `Fail`,
-    // `Pass`, and the `assert` helper. The `oneway test` subcommand
-    // discovers `() -> TestResult` functions and synthesises an entry point.
-    StdlibEntry {
-        name: "TestResult",
-        file_stem: "test",
-        source: include_str!("../std/test.ow"),
-    },
-    StdlibEntry {
-        name: "Url",
-        file_stem: "url-wasm",
-        source: include_str!("../std/url-wasm.ow"),
-    },
-];
-
-fn stdlib_entry(name: &str) -> Option<&'static StdlibEntry> {
-    STDLIB.iter().find(|e| e.name == name)
+/// Parse a bundled package's manifest. Called lazily because the loader
+/// only needs the dep graph, not every package's metadata up front.
+pub fn parse_bundled_manifest(pkg: &BundledPackage) -> std::result::Result<Manifest, String> {
+    manifest::parse(pkg.manifest_src).map_err(|e| format!("{}: {}", pkg.name, e))
 }
 
-/// Returns the embedded source for `use std/<name>`, or `None` if the
-/// name is not a known stdlib type. Used by the LSP to type-check
-/// imports without touching disk — the `name → file_stem` mapping is
-/// non-trivial (`Url` → `url-wasm`, `File` → `filesystem-wasm`, …) and
-/// duplicating it would just guarantee drift.
-pub fn stdlib_source(name: &str) -> Option<&'static str> {
-    stdlib_entry(name).map(|e| e.source)
-}
-
-/// Returns the on-disk filename stem (without `.ow`) for a stdlib type,
-/// or `None` if unknown. Used by the LSP to compose a clickable
-/// go-to-definition URI — the embedded source is great for checking
-/// but worthless for navigation, so we also need the real path.
-pub fn stdlib_file_stem(name: &str) -> Option<&'static str> {
-    stdlib_entry(name).map(|e| e.file_stem)
-}
+// ---------------------------------------------------------------------------
+// Module loading
+// ---------------------------------------------------------------------------
 
 pub struct LoadResult {
     pub module: Module,
@@ -155,7 +121,10 @@ pub struct LoadResult {
 
 struct LoadCtx {
     seen: HashSet<PathBuf>,
-    seen_stdlib: HashSet<String>,
+    /// Deduplicates bundled imports so a single package is loaded once even
+    /// when multiple files transitively `use` it. Keyed by absolute bundled
+    /// file path (`pkg.name + "/" + file.path`).
+    seen_bundled: HashSet<String>,
     items: Vec<Item>,
 }
 
@@ -168,7 +137,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         })?;
     let mut ctx = LoadCtx {
         seen: HashSet::new(),
-        seen_stdlib: HashSet::new(),
+        seen_bundled: HashSet::new(),
         items: Vec::new(),
     };
     let source = fs::read_to_string(&canonical).map_err(|err| OnewayError::CheckError {
@@ -221,29 +190,25 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
 
 fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
     let path_str = &u.name.name;
-    let segments: Vec<&str> = path_str.split('/').collect();
-    let type_name = segments[segments.len() - 1];
 
-    // `use std/TypeName` — look up in the embedded standard library.
-    if segments.len() >= 2 && segments[0] == "std" {
-        if let Some(entry) = stdlib_entry(type_name) {
-            if ctx.seen_stdlib.insert(entry.name.to_string()) {
-                let stdlib_dir = Path::new("<stdlib>");
-                load_source(entry.source, stdlib_dir, ctx)?;
-            }
-            return Ok(());
-        } else {
-            return Err(OnewayError::CheckError {
-                message: format!(
-                    "`use std/{}` is not a known standard library type",
-                    type_name
-                ),
-                span: u.span,
-            });
+    // Package resolution: if the first two segments name a bundled package,
+    // serve the file from the embedded registry. (Project-manifest-driven
+    // dep gating will layer on top of this in a later phase.)
+    if let Some((pkg, file)) = resolve_bundled_use(path_str) {
+        let key = format!("{}/{}", pkg.name, file.path);
+        if ctx.seen_bundled.insert(key) {
+            // Bundled files have no on-disk directory we can hand to nested
+            // `use` lookups. Their `use` lines resolve either against the
+            // bundled registry (cross-package) or against the importing
+            // file's own directory within its package (same-package).
+            load_bundled_source(pkg, file, ctx)?;
         }
+        return Ok(());
     }
 
-    // Local file/module lookup only (no stdlib fallback for bare names).
+    // Local file/module lookup.
+    let segments: Vec<&str> = path_str.split('/').collect();
+    let type_name = segments[segments.len() - 1];
     let file_stem = kebab_case(type_name);
     let mut file_dir = dir.to_path_buf();
     for seg in &segments[..segments.len() - 1] {
@@ -274,17 +239,11 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
             })?;
         load_into(&canonical, ctx)?;
     } else {
-        let hint = if stdlib_entry(type_name).is_some() {
-            format!(" (for std library types, use `use std/{}`)", type_name)
-        } else {
-            String::new()
-        };
         return Err(OnewayError::CheckError {
             message: format!(
-                "`use {}` cannot find `{}`{}",
+                "`use {}` cannot find `{}`",
                 u.name.name,
                 candidate.display(),
-                hint
             ),
             span: u.span,
         });
@@ -328,6 +287,105 @@ fn load_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
     ctx.items.extend(other_items);
     Ok(())
 }
+
+/// Load a bundled file's source. `use` lines inside the source resolve
+/// against either the bundled registry (cross-package) or the importing
+/// file's directory within its package (same-package). Local-disk paths
+/// are not available because the bundle is in-memory.
+fn load_bundled_source(
+    pkg: &'static BundledPackage,
+    current: &'static BundledFile,
+    ctx: &mut LoadCtx,
+) -> Result<()> {
+    let mut scanner = Scanner::new(current.source);
+    let tokens = scanner.scan_tokens()?;
+    let mut parser = Parser::new(tokens);
+    let mut module = parser.parse()?;
+    resolve_new_syntax(&mut module);
+
+    let mut use_items = Vec::new();
+    let mut other_items = Vec::new();
+    for item in module.items {
+        match item {
+            Item::Use(u) => use_items.push(u),
+            other => other_items.push(other),
+        }
+    }
+    for u in use_items {
+        process_bundled_use(pkg, current, &u, ctx)?;
+    }
+    ctx.items.extend(other_items);
+    Ok(())
+}
+
+/// Resolve a `use` directive that appeared inside a bundled file.
+///
+/// Resolution rule:
+/// 1. If the path's first two segments name a known bundled package, treat
+///    as a cross-package import.
+/// 2. Otherwise, walk the path relative to the importing file's own
+///    directory within its package. `use Foo` → `<dir>/foo.ow`,
+///    `use sub/Foo` → `<dir>/sub/foo.ow`.
+fn process_bundled_use(
+    pkg: &'static BundledPackage,
+    current: &'static BundledFile,
+    u: &crate::ast::UseDecl,
+    ctx: &mut LoadCtx,
+) -> Result<()> {
+    let path_str = &u.name.name;
+
+    // Cross-package lookup. `resolve_bundled_use` only returns `Some` when
+    // the path's first two segments name an actual bundled package.
+    if let Some((other_pkg, file)) = resolve_bundled_use(path_str) {
+        let key = format!("{}/{}", other_pkg.name, file.path);
+        if ctx.seen_bundled.insert(key) {
+            load_bundled_source(other_pkg, file, ctx)?;
+        }
+        return Ok(());
+    }
+
+    // Same-package, possibly nested. Compute the importing file's directory
+    // within its package and prepend it to the use path.
+    let current_dir = current
+        .path
+        .rsplit_once('/')
+        .map(|(dir, _)| format!("{dir}/"))
+        .unwrap_or_default();
+
+    let segments: Vec<&str> = path_str.split('/').collect();
+    let (last, dirs) = segments.split_last().expect("split_last on non-empty Vec");
+    let mut rel = current_dir;
+    for d in dirs {
+        rel.push_str(d);
+        rel.push('/');
+    }
+    let stem = if last.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+        kebab_case(last)
+    } else {
+        (*last).to_string()
+    };
+    rel.push_str(&stem);
+    rel.push_str(".ow");
+
+    let Some(file) = bundled_file(pkg, &rel) else {
+        return Err(OnewayError::CheckError {
+            message: format!(
+                "`use {}` from package `{}` not found (looked for `{}`)",
+                path_str, pkg.name, rel
+            ),
+            span: u.span,
+        });
+    };
+    let key = format!("{}/{}", pkg.name, file.path);
+    if ctx.seen_bundled.insert(key) {
+        load_bundled_source(pkg, file, ctx)?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Naming
+// ---------------------------------------------------------------------------
 
 /// Convert a PascalCase type name to its kebab-case file stem.
 /// `UserRole` → `user-role`, `HttpServer` → `http-server`, `Color` → `color`

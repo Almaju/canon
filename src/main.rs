@@ -5,6 +5,7 @@ use oneway::error::OnewayError;
 use oneway::formatter;
 use oneway::lexer::Scanner;
 use oneway::loader;
+use oneway::manifest;
 use oneway::parser::Parser;
 use std::env;
 use std::fs;
@@ -33,6 +34,7 @@ fn main() {
         "test" => cmd_test(&rest),
         "tokens" => cmd_tokens(&rest),
         "fmt" | "format" => cmd_fmt(&rest),
+        "gen-bindings" => cmd_gen_bindings(&rest),
         "lsp" => oneway::lsp::run(),
         "upgrade" | "update" => cmd_upgrade(&rest),
         "version" | "--version" | "-V" => {
@@ -49,19 +51,29 @@ fn main() {
 }
 
 fn print_help() {
-    println!("oneway {} — the Oneway language compiler", VERSION);
+    println!("oneway {} \u{2014} the Oneway language compiler", VERSION);
     println!();
     println!("Usage: oneway <command> [args]");
     println!();
+    println!("A target is either a package directory (containing `oneway.toml`");
+    println!("and `src/main.ow`), a workspace directory (manifest with a");
+    println!("`[workspace]` table), or a single `.ow` file. When omitted, defaults");
+    println!("to the current directory.");
+    println!();
     println!("Commands:");
-    println!("  run <file.ow> [args...]   Compile and run an Oneway program");
-    println!("  build <file.ow>           Compile to a WASM component (.wasm)");
+    println!("  run [target] [-p name] [args...]");
+    println!("                            Compile and run an Oneway program");
+    println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
+    println!("  check [target] [-p name]  Check sort order and types");
     println!("  emit <file.ow>            Print generated WAT (WebAssembly Text)");
     println!("  ast <file.ow>             Print the parsed AST");
-    println!("  check <file.ow>           Check sort order and types");
     println!("  test <file.ow>            Run `() -> TestResult` functions as tests");
     println!("  tokens <file.ow>          Print lexer tokens");
     println!("  fmt <file.ow> [--check]   Format an Oneway source file");
+    println!("  gen-bindings <wit-or-wasm> [-o <dir>]");
+    println!(
+        "                            Generate Oneway bindings from a WIT package or WASM component"
+    );
     println!("  lsp                       Start the Language Server Protocol server");
     println!("  upgrade [version]         Update oneway to the latest (or given) release");
     println!("  upgrade --check           Check whether a newer release is available");
@@ -89,6 +101,384 @@ fn read_source(file_path: &str) -> String {
     }
 }
 
+/// A single buildable compilation target: a package (`oneway.toml` +
+/// `src/main.ow`) or a loose `.ow` file in single-file mode.
+struct BuildSpec {
+    /// Entry `.ow` file the loader will read.
+    entry: PathBuf,
+    /// Where `build/` lives for this target. For a workspace member, this
+    /// points at the workspace's shared `build/` (Cargo-style `target/`).
+    output_dir: PathBuf,
+    /// Stem used for output artifacts (`<stem>.wasm`, `<stem>.wit`). For a
+    /// package it's the last `/`-separated segment of the manifest `name`
+    /// (e.g. `oneway/std` -> `std`). For a loose file it's the file stem.
+    output_stem: String,
+    /// Path the user typed (or the workspace member's display path), used
+    /// as the context in error messages.
+    label: String,
+    /// Full manifest `name` (e.g. `"oneway/std"`). Empty for file-mode
+    /// targets. Used by `-p <name>` filtering.
+    name: String,
+}
+
+impl BuildSpec {
+    fn entry_str(&self) -> &str {
+        self.entry.to_str().unwrap_or(&self.label)
+    }
+}
+
+/// A resolved compile target.
+///
+/// `oneway run|build|check` accept any of:
+///
+/// - a **package directory** (containing `oneway.toml` and `src/main.ow`),
+/// - a **single `.ow` file** (anonymous single-file package), or
+/// - a **workspace directory** (containing `oneway.toml` with a
+///   `[workspace]` table) which aggregates one or more member packages.
+enum Target {
+    /// One package or one loose file.
+    Build(BuildSpec),
+    /// A workspace and its already-resolved member specs (sorted
+    /// alphabetically by label).
+    Workspace {
+        members: Vec<BuildSpec>,
+        label: String,
+    },
+}
+
+/// Parsed command-line args for the package-aware commands
+/// (`build`/`check`/`run`).
+struct ParsedTargetArgs {
+    /// First positional argument: a target path. `None` means `.`.
+    target_path: Option<String>,
+    /// `-p`/`--package` value: select a single member by name within a
+    /// workspace target.
+    package: Option<String>,
+    /// Remaining positional arguments after the target path. Only used
+    /// by `oneway run` (passed through to the program).
+    program_args: Vec<String>,
+}
+
+/// Parse a command's args into `(target_path, -p, program_args)`. When
+/// `accept_program_args` is `false`, any positional beyond the target
+/// path is an error.
+fn parse_target_args(args: &[String], accept_program_args: bool) -> ParsedTargetArgs {
+    let mut target_path: Option<String> = None;
+    let mut package: Option<String> = None;
+    let mut program_args: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        match a.as_str() {
+            "-p" | "--package" => {
+                if i + 1 >= args.len() {
+                    eprintln!("error: `{}` requires a package name", a);
+                    process::exit(1);
+                }
+                if package.is_some() {
+                    eprintln!("error: `-p` given more than once");
+                    process::exit(1);
+                }
+                package = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other if other.starts_with('-') && other.len() > 1 => {
+                eprintln!("error: unknown flag `{}`", other);
+                process::exit(1);
+            }
+            _ => {
+                if target_path.is_none() {
+                    target_path = Some(a.clone());
+                } else if accept_program_args {
+                    program_args.push(a.clone());
+                } else {
+                    eprintln!("error: unexpected argument `{}`", a);
+                    process::exit(1);
+                }
+                i += 1;
+            }
+        }
+    }
+    ParsedTargetArgs {
+        target_path,
+        package,
+        program_args,
+    }
+}
+
+/// Apply `-p <name>` to a resolved target, narrowing a workspace down
+/// to a single member. Errors out if `-p` is given for a non-workspace
+/// target or if no member matches.
+fn apply_package_filter(target: Target, filter: Option<&str>) -> Target {
+    let Some(want) = filter else {
+        return target;
+    };
+    match target {
+        Target::Build(_) => {
+            eprintln!("error: `-p {}` is only valid with a workspace target", want);
+            process::exit(1);
+        }
+        Target::Workspace { members, label } => {
+            // Match against the full manifest name (`oneway/std`) or its
+            // last segment (`std`). Workspace members in this repo use
+            // flat names, but we accept both for parity with `cargo -p`.
+            let matched: Vec<BuildSpec> = members
+                .into_iter()
+                .filter(|s| s.name == want || s.output_stem == want)
+                .collect();
+            match matched.len() {
+                0 => {
+                    eprintln!("error: no member `{}` in workspace `{}`", want, label);
+                    process::exit(1);
+                }
+                1 => Target::Build(matched.into_iter().next().unwrap()),
+                n => {
+                    eprintln!(
+                        "error: package name `{}` matched {} members of workspace `{}`",
+                        want, n, label
+                    );
+                    process::exit(1);
+                }
+            }
+        }
+    }
+}
+
+/// Resolve the first positional argument to a `Target`. Defaults to `.`
+/// (current directory) when no path is given.
+fn resolve_target(path_arg: Option<&str>) -> Target {
+    let arg = path_arg.unwrap_or(".");
+    let path = Path::new(arg);
+
+    if path.is_dir() {
+        resolve_dir_target(path, arg)
+    } else if path.is_file() {
+        Target::Build(resolve_file_spec(path, arg))
+    } else {
+        eprintln!("error: `{}` is neither a file nor a directory", arg);
+        process::exit(1);
+    }
+}
+
+fn resolve_dir_target(path: &Path, arg: &str) -> Target {
+    let manifest_path = path.join("oneway.toml");
+    if !manifest_path.exists() {
+        eprintln!("error: `{}` is a directory but has no `oneway.toml`", arg);
+        eprintln!(
+            "hint: a package directory must contain an `oneway.toml` manifest; \
+             pass a `.ow` file directly to compile in single-file mode"
+        );
+        process::exit(1);
+    }
+    let m = read_manifest(&manifest_path);
+
+    if let Some(ws) = &m.workspace {
+        let members = resolve_workspace_members(path, arg, &ws.members);
+        return Target::Workspace {
+            members,
+            label: arg.to_string(),
+        };
+    }
+
+    // Plain package directory. If it lives inside a workspace, route its
+    // artifacts to the workspace's shared `build/` (Cargo-style).
+    let workspace_root = find_parent_workspace(path);
+    Target::Build(resolve_package_spec(
+        path,
+        arg,
+        &m,
+        workspace_root.as_deref(),
+    ))
+}
+
+/// Walk up from `start` (exclusive) looking for an ancestor whose
+/// `oneway.toml` carries a `[workspace]` table. Returns the workspace
+/// root directory, or `None` if there isn't one.
+///
+/// Failure to read or parse an ancestor's manifest is silent here: we
+/// only care about the workspace-or-not flag. The full parse error will
+/// surface when the user actually invokes a command on that path.
+fn find_parent_workspace(start: &Path) -> Option<PathBuf> {
+    let mut current = start.canonicalize().ok()?;
+    while let Some(parent) = current.parent() {
+        let parent = parent.to_path_buf();
+        let manifest = parent.join("oneway.toml");
+        if manifest.exists() {
+            if let Ok(src) = fs::read_to_string(&manifest) {
+                if let Ok(m) = manifest::parse(&src) {
+                    if m.workspace.is_some() {
+                        return Some(parent);
+                    }
+                }
+            }
+        }
+        if parent == current {
+            break;
+        }
+        current = parent;
+    }
+    None
+}
+
+fn read_manifest(manifest_path: &Path) -> manifest::Manifest {
+    let src = match fs::read_to_string(manifest_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: could not read `{}`: {}", manifest_path.display(), e);
+            process::exit(1);
+        }
+    };
+    match manifest::parse(&src) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: in `{}`: {}", manifest_path.display(), e);
+            process::exit(1);
+        }
+    }
+}
+
+/// Build a `BuildSpec` for a package directory. When `workspace_root` is
+/// `Some`, output is routed to `<workspace_root>/build/`; otherwise it
+/// lands in `<pkg_root>/build/`.
+fn resolve_package_spec(
+    pkg_root: &Path,
+    label: &str,
+    m: &manifest::Manifest,
+    workspace_root: Option<&Path>,
+) -> BuildSpec {
+    let entry = pkg_root.join("src").join("main.ow");
+    if !entry.exists() {
+        eprintln!(
+            "error: package `{}` has no entry point at `{}`",
+            if m.name.is_empty() { label } else { &m.name },
+            entry.display()
+        );
+        eprintln!("hint: create `src/main.ow` with a `main` function");
+        process::exit(1);
+    }
+    let output_stem = m.name.rsplit('/').next().unwrap_or(&m.name);
+    let output_stem = if output_stem.is_empty() {
+        // Workspace member with no name: fall back to the directory name.
+        pkg_root
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("out")
+            .to_string()
+    } else {
+        output_stem.to_string()
+    };
+    let output_dir = match workspace_root {
+        Some(ws) => ws.join("build"),
+        None => pkg_root.join("build"),
+    };
+    BuildSpec {
+        entry,
+        output_dir,
+        output_stem,
+        label: label.to_string(),
+        name: m.name.clone(),
+    }
+}
+
+fn resolve_file_spec(path: &Path, arg: &str) -> BuildSpec {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("oneway")
+        .to_string();
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    // File mode keeps a per-stem subdir so a directory full of `.ow`
+    // files (e.g. `tests/runtime/`) doesn't have its artifacts collide.
+    let output_dir = dir.join("build").join(&stem);
+    BuildSpec {
+        entry: path.to_path_buf(),
+        output_dir,
+        output_stem: stem,
+        label: arg.to_string(),
+        name: String::new(),
+    }
+}
+
+/// Resolve a workspace's `members = [...]` directive to concrete
+/// `BuildSpec`s. A single literal `"*"` expands to every immediate
+/// subdirectory of the workspace root that contains an `oneway.toml`.
+/// Otherwise each entry is treated as a relative path from the workspace
+/// root. Members are returned sorted alphabetically by label.
+fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String]) -> Vec<BuildSpec> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut had_glob = false;
+
+    for entry in members {
+        if entry == "*" {
+            had_glob = true;
+            let read = match fs::read_dir(ws_root) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: could not list `{}`: {}", ws_root.display(), e);
+                    process::exit(1);
+                }
+            };
+            for d in read.flatten() {
+                let p = d.path();
+                if p.is_dir() && p.join("oneway.toml").exists() {
+                    paths.push(p);
+                }
+            }
+        } else {
+            let p = ws_root.join(entry);
+            if !p.is_dir() {
+                eprintln!(
+                    "error: workspace member `{}` is not a directory (looked at `{}`)",
+                    entry,
+                    p.display()
+                );
+                process::exit(1);
+            }
+            if !p.join("oneway.toml").exists() {
+                eprintln!(
+                    "error: workspace member `{}` has no `oneway.toml`",
+                    p.display()
+                );
+                process::exit(1);
+            }
+            paths.push(p);
+        }
+    }
+
+    paths.sort();
+    paths.dedup();
+
+    if paths.is_empty() {
+        if had_glob {
+            eprintln!(
+                "warning: workspace `{}` matched no members (no subdir of `{}` contains an `oneway.toml`)",
+                ws_label,
+                ws_root.display()
+            );
+        } else {
+            eprintln!("warning: workspace `{}` has no members", ws_label);
+        }
+    }
+
+    paths
+        .into_iter()
+        .map(|p| {
+            let label = p.to_string_lossy().into_owned();
+            let manifest_path = p.join("oneway.toml");
+            let m = read_manifest(&manifest_path);
+            if m.workspace.is_some() {
+                eprintln!(
+                    "error: nested workspaces are not supported (`{}` is also a workspace)",
+                    p.display()
+                );
+                process::exit(1);
+            }
+            // All members share the workspace's `build/` (Cargo-style).
+            resolve_package_spec(&p, &label, &m, Some(ws_root))
+        })
+        .collect()
+}
+
 fn cmd_tokens(args: &[String]) {
     let file_path = require_file(args);
     let source = read_source(file_path);
@@ -105,6 +495,77 @@ fn cmd_tokens(args: &[String]) {
             "{:>4}:{:<4} {:<20} {:?}",
             token.span.line, token.span.column, token.kind, token.lexeme
         );
+    }
+}
+
+fn cmd_gen_bindings(args: &[String]) {
+    let mut input: Option<String> = None;
+    let mut out_dir: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "-o" | "--out" => match iter.next() {
+                Some(v) => out_dir = Some(v.clone()),
+                None => {
+                    eprintln!("error: `-o` requires a directory argument");
+                    process::exit(1);
+                }
+            },
+            "--help" | "-h" => {
+                println!("Usage: oneway gen-bindings <wit-or-wasm> [-o <dir>]");
+                println!();
+                println!("  <wit-or-wasm>   A `.wit` file, a directory of `.wit` files, or a");
+                println!("                  WebAssembly Component `.wasm` whose embedded WIT will");
+                println!("                  be extracted.");
+                println!("  -o <dir>        Output root (default: current directory).");
+                println!();
+                println!("Bindings are written as `<dir>/<namespace>/<package>/<interface>.ow`,");
+                println!("e.g. `wasi/clocks/monotonic_clock.ow`.");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown gen-bindings flag '{}'", other);
+                process::exit(1);
+            }
+            other => {
+                if input.is_some() {
+                    eprintln!(
+                        "error: multiple input paths given ('{}' and '{}')",
+                        input.as_deref().unwrap(),
+                        other
+                    );
+                    process::exit(1);
+                }
+                input = Some(other.to_string());
+            }
+        }
+    }
+
+    let input = match input {
+        Some(p) => p,
+        None => {
+            eprintln!("error: missing input path (expected a `.wit` file or `.wasm` component)");
+            process::exit(1);
+        }
+    };
+    let out_path = out_dir.as_deref().map(Path::new);
+    match oneway::bindgen::run(Path::new(&input), out_path) {
+        Ok(outcome) => {
+            if outcome.written.is_empty() {
+                eprintln!("warning: no interfaces found in `{}`", input);
+            } else {
+                for p in &outcome.written {
+                    println!("wrote: {}", p.display());
+                }
+            }
+            for note in &outcome.skipped {
+                eprintln!("skipped: {}", note);
+            }
+        }
+        Err(err) => {
+            eprintln!("error: {}", err);
+            process::exit(1);
+        }
     }
 }
 
@@ -188,17 +649,53 @@ fn cmd_ast(args: &[String]) {
 }
 
 fn cmd_check(args: &[String]) {
-    let file_path = require_file(args);
-    let loaded = load_or_exit(file_path);
+    let parsed = parse_target_args(args, false);
+    let target = resolve_target(parsed.target_path.as_deref());
+    let target = apply_package_filter(target, parsed.package.as_deref());
+    match target {
+        Target::Build(spec) => {
+            if !check_spec(&spec) {
+                process::exit(1);
+            }
+        }
+        Target::Workspace { members, label, .. } => {
+            println!(
+                "checking workspace `{}` ({} member(s))",
+                label,
+                members.len()
+            );
+            let mut failures = 0usize;
+            for spec in &members {
+                println!("\n-- {} --", spec.label);
+                if !check_spec(spec) {
+                    failures += 1;
+                }
+            }
+            if failures > 0 {
+                eprintln!("\n{}/{} member(s) failed.", failures, members.len());
+                process::exit(1);
+            }
+            println!("\nAll {} member(s) checked clean.", members.len());
+        }
+    }
+}
+
+/// Run the checker on one buildable target. Returns `true` on success,
+/// `false` if any errors were printed.
+fn check_spec(spec: &BuildSpec) -> bool {
+    let Some(loaded) = load_or_print(spec.entry_str()) else {
+        return false;
+    };
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
-            print_error(file_path, err);
+            print_error(spec.entry_str(), err);
         }
-        eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
+        eprintln!("{} error(s) found.", errors.len());
+        return false;
     }
     println!("All checks passed.");
+    true
 }
 
 fn cmd_emit(args: &[String]) {
@@ -217,39 +714,70 @@ fn cmd_emit(args: &[String]) {
 }
 
 fn cmd_build(args: &[String]) {
-    let file_path = require_file(args);
-    let loaded = load_or_exit(file_path);
+    let parsed = parse_target_args(args, false);
+    let target = resolve_target(parsed.target_path.as_deref());
+    let target = apply_package_filter(target, parsed.package.as_deref());
+    match target {
+        Target::Build(spec) => {
+            if !build_spec(&spec) {
+                process::exit(1);
+            }
+        }
+        Target::Workspace { members, label, .. } => {
+            println!(
+                "building workspace `{}` ({} member(s))",
+                label,
+                members.len()
+            );
+            let mut failures = 0usize;
+            for spec in &members {
+                println!("\n-- {} --", spec.label);
+                if !build_spec(spec) {
+                    failures += 1;
+                }
+            }
+            if failures > 0 {
+                eprintln!("\n{}/{} member(s) failed.", failures, members.len());
+                process::exit(1);
+            }
+            println!("\nAll {} member(s) built successfully.", members.len());
+        }
+    }
+}
+
+/// Compile one buildable target to `<output_dir>/<stem>.{wasm,wit}`.
+/// Returns `true` on success, `false` if the checker or filesystem errored.
+fn build_spec(spec: &BuildSpec) -> bool {
+    let Some(loaded) = load_or_print(spec.entry_str()) else {
+        return false;
+    };
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
-            print_error(file_path, err);
+            print_error(spec.entry_str(), err);
         }
-        eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
+        eprintln!("{} error(s) found.", errors.len());
+        return false;
     }
     let component_bytes = codegen::generate(&loaded.module);
     let wit_text = codegen::generate_wit(&loaded.module);
-    let build_dir = build_dir_for(file_path);
-    let stem = Path::new(file_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("out");
-    let wasm_path = build_dir.join(format!("{}.wasm", stem));
-    let wit_path = build_dir.join(format!("{}.wit", stem));
-    fs::create_dir_all(&build_dir).unwrap_or_else(|e| {
+    let wasm_path = spec.output_dir.join(format!("{}.wasm", spec.output_stem));
+    let wit_path = spec.output_dir.join(format!("{}.wit", spec.output_stem));
+    if let Err(e) = fs::create_dir_all(&spec.output_dir) {
         eprintln!("error: {e}");
-        process::exit(1);
-    });
-    fs::write(&wasm_path, &component_bytes).unwrap_or_else(|e| {
+        return false;
+    }
+    if let Err(e) = fs::write(&wasm_path, &component_bytes) {
         eprintln!("error: {e}");
-        process::exit(1);
-    });
-    fs::write(&wit_path, wit_text.as_bytes()).unwrap_or_else(|e| {
+        return false;
+    }
+    if let Err(e) = fs::write(&wit_path, wit_text.as_bytes()) {
         eprintln!("error: {e}");
-        process::exit(1);
-    });
+        return false;
+    }
     println!("Compiled to: {}", wasm_path.display());
     println!("WIT world : {}", wit_path.display());
+    true
 }
 
 /// `oneway test <file.ow>` — discover and run all `() -> TestResult`
@@ -387,13 +915,31 @@ fn parse_synthesised(source: &str) -> Result<Vec<Item>, OnewayError> {
 }
 
 fn cmd_run(args: &[String]) {
-    let file_path = require_file(args);
-    let program_args: Vec<&str> = args.iter().skip(1).map(|s| s.as_str()).collect();
-    let loaded = load_or_exit(file_path);
+    let parsed = parse_target_args(args, true);
+    let target = resolve_target(parsed.target_path.as_deref());
+    let target = apply_package_filter(target, parsed.package.as_deref());
+    let program_args: Vec<&str> = parsed.program_args.iter().map(|s| s.as_str()).collect();
+    let spec = match target {
+        Target::Build(spec) => spec,
+        Target::Workspace { label, members, .. } => {
+            eprintln!(
+                "error: `oneway run` on workspace `{}` is ambiguous \u{2014} pick a member",
+                label
+            );
+            if !members.is_empty() {
+                eprintln!("hint: try one of:");
+                for m in &members {
+                    eprintln!("  oneway run {}", m.label);
+                }
+            }
+            process::exit(1);
+        }
+    };
+    let loaded = load_or_exit(spec.entry_str());
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
-            print_error(file_path, err);
+            print_error(spec.entry_str(), err);
         }
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
@@ -402,22 +948,22 @@ fn cmd_run(args: &[String]) {
     oneway::runtime::run_component(&component_bytes, &program_args);
 }
 
-fn build_dir_for(file_path: &str) -> PathBuf {
-    let path = Path::new(file_path);
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("oneway");
-    dir.join(".oneway").join(stem)
+fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
+    match load_or_print(file_path) {
+        Some(r) => r,
+        None => process::exit(1),
+    }
 }
 
-fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
+/// Like `load_or_exit`, but prints the error and returns `None` rather
+/// than exiting. Used by workspace iteration so one member's load failure
+/// doesn't terminate the whole run.
+fn load_or_print(file_path: &str) -> Option<oneway::loader::LoadResult> {
     match loader::load_module(Path::new(file_path)) {
-        Ok(r) => r,
+        Ok(r) => Some(r),
         Err(err) => {
             print_error(file_path, &err);
-            process::exit(1);
+            None
         }
     }
 }

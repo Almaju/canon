@@ -15,10 +15,10 @@ management.
 
 ```oneway
 extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
-randomInt = () -> Int
+getRandomU64 = () -> Int
 
 main = () -> Unit {
-    randomInt().print()
+    getRandomU64().print()
 }
 ```
 
@@ -92,23 +92,44 @@ file. The set of imports a program needs is fully determined by its
 by the host. `oneway build` produces a `.wasm` plus a sibling `.wit`
 describing the component's world.
 
+## Generating Bindings from WIT
+
+Writing `extern Wasm` declarations by hand is rarely necessary. The
+compiler can read a WIT file (or a `.wasm` component, whose embedded
+WIT is extracted automatically) and emit one Oneway binding file per
+interface:
+
+```sh
+oneway gen-bindings path/to/my-component.wit -o .
+```
+
+This writes `<ns>/<pkg>/<iface>.ow` for each interface, alphabetically
+ordered, ready to `use`. The mapping is mechanical: WIT records become
+products, variants become unions, `list<T>` becomes `List<T>`, kebab-case
+becomes Oneway camelCase / PascalCase, and so on. See `DESIGN.md` for the
+full table.
+
+The `wasi/…` bindings shipped with the compiler are produced this way
+from the WIT files vendored under `wit-vendor/wasi/`. Regenerate them
+with `just regen-bindings`.
+
 ## Binding Packages
 
 Idiomatic Oneway code does not write `extern Wasm` directly. Instead, it
 imports individual types from the embedded standard library:
 
 ```oneway
-use std/Clock         # nowNanos, resolutionNanos        — wasi:clocks
+use std/Instant       # Instant()  — monotonic clock     — wasi/clocks/monotonic_clock
 use std/File          # File / read                       — oneway:builtins/filesystem
 use std/HttpServer    # HttpServer / get / post / serve   — oneway:builtins/http-server
-use std/Now           # Now()                              — oneway:builtins/clock
-use std/Random        # randomInt                          — wasi:random
+use std/Now           # Now()      — RFC 3339 wall-clock — oneway:builtins/clock
+use std/Random        # Random()   — random Int          — wasi/random/random
 use std/Url           # Url + get on Url                   — oneway:builtins/url + oneway:builtins/http
 ```
 
 Each `use std/X` brings in the named type along with its constructor and
 methods. Behind the scenes those modules are written in ordinary Oneway
-on top of `extern Wasm`; there is no privileged path.
+on top of the generated `wasi/…` bindings; there is no privileged path.
 
 See the [Standard Library](../reference/stdlib.md) reference for the
 complete list and the WIT interfaces behind each module.

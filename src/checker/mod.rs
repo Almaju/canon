@@ -15,7 +15,6 @@ const BUILTIN_TYPES: &[&str] = &[
     "Never",
     "Off",
     "On",
-    "Random",
     "Serialize",
     "Stderr",
     "Stdin",
@@ -25,7 +24,12 @@ const BUILTIN_TYPES: &[&str] = &[
     "Unit",
 ];
 
-const CAPABILITY_TYPES: &[&str] = &["Network", "Random", "Stderr", "Stdin", "Stdout"];
+// `Random` used to live here as a capability marker, but the stdlib now
+// owns it as a data-carrying newtype (`Random = Int`, see `std/random.ow`)
+// constructed via `Random()`. Random bytes aren't a capability in any
+// meaningful sense — they're just data — so this matches the new layering
+// where `std/` defines user-facing types and `wasi/` provides the FFI.
+const CAPABILITY_TYPES: &[&str] = &["Network", "Stderr", "Stdin", "Stdout"];
 
 fn is_capability_type(name: &str) -> bool {
     CAPABILITY_TYPES.contains(&name)

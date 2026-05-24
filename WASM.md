@@ -21,7 +21,7 @@ in `src/codegen/wasm/` and the runtime in `src/runtime.rs`.
 | File | Role |
 |---|---|
 | `src/ast.rs` | `FunctionDef.extern_wasm: Option<ExternWasm>`, `Expr::Await` |
-| `src/loader.rs` | Embedded stdlib (`std/*-wasm.ow`); runs `auto_await::transform` |
+| `src/loader.rs` | Bundled-package registry (from `packages/oneway/{std,wasi}/`); runs `auto_await::transform` |
 | `src/checker/mod.rs` | `Future`/`Stream` in `BUILTIN_GENERIC_TYPES`; `method_return_summary` peels one layer |
 | `src/checker/auto_await.rs` | Rewrites `Future<T>` method receivers as `Expr::Await` |
 | `src/codegen/async_analysis.rs` | Bottom-up fixpoint → `AsyncSet` of suspending functions |
@@ -48,8 +48,9 @@ internal types and 0.250 matches the wasmparser bundled by wasmtime 45.
 
 ### Passing examples (`examples/`)
 
-`clock.ow`, `random.ow`, `now.ow`, `read-file.ow`, `fetch-url.ow`, plus
-`examples/http-server/main.ow` (checks, builds, runs to the "Starting
+`examples/` is a Cargo-style workspace; each subdirectory is a package.
+Passing members: `clock`, `random`, `now`, `read-file`, `fetch-url`,
+`multifile`, plus `http-server` (checks, builds, runs to the "Starting
 server…" banner; `.serve()` is a stub host-side and exits 0).
 
 ### Passing runtime fixtures (`tests/runtime/`)
@@ -162,7 +163,7 @@ In the component, the function type is declared as `async func(…)` via
 
 | Gap | Notes |
 |---|---|
-| **JSON parser** | `examples/parse-json.ow` and `examples/json-literal.ow` need `JsonArray` / `JsonObject` stdlib types and a parser. Pure compute — implementable in Oneway, or as an `oneway:builtins/json` host bridge. |
+| **JSON parser** | `examples/parse-json/` and `examples/json-literal/` need `JsonArray` / `JsonObject` stdlib types and a parser. Pure compute — implementable in Oneway, or as an `oneway:builtins/json` host bridge. |
 | **More `Result<T, E>` shapes** | `classify_return` only recognises `Result<String, String>`. `Result<Int, String>`, `Result<Unit, IoError>`, … need a small extension to the indirect-return decoder (machinery is generic; only the recognition + readback is hard-coded). |
 | **Early-return on `?`** | `?` extracts the Ok/Some payload but doesn't branch on the discriminant. A failing host call surfaces garbage on the Ok path. Fix: load tag after the lowered call, `br_if` to the enclosing function's epilogue on the error case. |
 | **Match-arm payload binding for `Result<String, String>`** | Dispatch picks the right arm, but the bound variable in `Ok(s) => … s …` isn't populated. The `bind_arm_payload` mechanism that works for user unions needs to extend to `Ty::NamedPtrStr`. |

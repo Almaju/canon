@@ -1,0 +1,5 @@
+name    = "oneway/std"
+version = "0.3.0"
+
+[deps]
+"oneway/wasi" = "0.3.x"

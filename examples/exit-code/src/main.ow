@@ -1,0 +1,6 @@
+use oneway/std/cli/Exit
+
+main = () -> Unit {
+    "exiting cleanly".print()
+    Exit(0).exit()
+}

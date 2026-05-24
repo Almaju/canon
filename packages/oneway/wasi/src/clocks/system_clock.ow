@@ -1,0 +1,9 @@
+use oneway/wasi/clocks/types
+
+Instant = InstantNanoseconds * InstantSeconds
+InstantNanoseconds = Int
+InstantSeconds = Int
+
+extern Wasm("wasi:clocks/system-clock@0.3.0-rc-2026-03-15#get-resolution")
+getResolution = () -> Duration
+

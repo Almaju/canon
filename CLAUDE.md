@@ -2,7 +2,7 @@
 
 ## What is this project?
 
-Oneway is a programming language whose reference compiler transpiles to Rust. The compiler is itself written in Rust. Oneway inherits Rust's ownership model and zero-cost abstractions while presenting a much smaller surface area — no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Effects are passed as capabilities. The guiding rule: **wherever ordering is discretionary, the compiler enforces alphabetical order**.
+Oneway is a programming language whose reference compiler emits **WebAssembly components** directly (not transpiled to Rust — that was the original prototype). The compiler is itself written in Rust. Oneway presents a small surface area — no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Effects are passed as capabilities. The guiding rule: **wherever ordering is discretionary, the compiler enforces alphabetical order**.
 
 See `DESIGN.md` for the full language specification.
 
@@ -20,9 +20,14 @@ See `DESIGN.md` for the full language specification.
 | `src/ast.rs` | AST node definitions |
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading |
-| `src/main.rs` | CLI entry point (`run`, `build`, `emit`, `check`, `test`, `ast`, `tokens`, `upgrade`) |
+| `src/bindgen/` | `oneway gen-bindings` — WIT → Oneway source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
+| `src/main.rs` | CLI entry point (`run`, `build`, `emit`, `check`, `test`, `ast`, `tokens`, `fmt`, `gen-bindings`, `upgrade`) |
 | `src/lib.rs` | Public crate modules |
-| `std/` | Oneway standard library (`.ow` files + Rust FFI `.rs` files) |
+| `src/manifest.rs` | `oneway.toml` parser (TOML subset, hand-written) |
+| `build.rs` | Walks `packages/` and emits a bundled-package registry baked into the compiler binary |
+| `packages/oneway/std/` | Curated Oneway standard library — one primary type per file, idiomatic API. Shipped as a package; the loader resolves `use oneway/std/X` against this tree. |
+| `packages/oneway/wasi/` | Generated WASI bindings (produced by `just regen-bindings`, embedded into the compiler binary). Pure Oneway source. |
+| `wit-vendor/wasi/` | Vendored upstream WIT files — source for `packages/oneway/wasi/`. Bumped when WASI advances. |
 | `examples/` | Example `.ow` programs |
 | `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests (incl. `tests/fixtures/` & `tests/oneway/`) |
@@ -147,6 +152,10 @@ The checker accepts more than the codegen currently implements. Each item below 
 | **Option/Result string payloads on the construct side** | `Some("hi")` doesn't write the string to the Option struct; reading the bound `String` in `(Some<String>)` arms then yields garbage | User-defined unions with string payloads work end-to-end (see `tests/runtime/variant_payload_extraction.ow`); the stdlib Option/Result paths are separate and need their own fix in `build_option_some` / `build_result_ok` / `store_payload_at_offset` |
 | **`?` short-circuit propagation** | `Result<T,E>?` extracts the payload but doesn't actually short-circuit on `Err` | Multi-step error handling is fragile |
 | **`use` ordering check unreachable** | The "use must come first" check in the checker is dead code under the loader path | Cosmetic; loader strips uses before checking |
+| **`extern Wasm` functions returning `list<T>`** | The component+core type pair the codegen emits for such imports is mismatched (e.g. "expected `list` found `u32`"); the whole binary fails to validate even when the function isn't called | `oneway gen-bindings` currently skips these with a `list<T> return type (codegen gap, see CLAUDE.md)` note, dropping e.g. `wasi:random/random#get-random-bytes` from the generated bindings. Fix in `src/codegen/wasm/mod.rs` extern-import lowering. |
+| **Sub-u64 WIT integer widths in `extern Wasm`** | The component validator rejects imports whose param/return is `u8`/`u16`/`u32`/`s8`/`s16`/`s32` (e.g. "expected `u8` found `u64`"). Oneway has a single `Int` type and codegen always lowers it as `u64`. | `oneway gen-bindings` skips any function whose signature mentions a narrow integer (transitive through `option`/`list`/`record`/`variant`/`tuple`/`result`/`map`). This drops `wasi:cli/exit#exit-with-code`, `wasi:clocks/system_clock#now` (because `instant.nanoseconds` is `u32`), and most of the filesystem/sockets record-returning helpers. Fix in `src/codegen/wasm/mod.rs` extern-import lowering by threading WIT widths through. |
+| **WIT `result` with no `ok`/`err` payloads in `extern Wasm`** | The bare `result;` form lowers to a discriminant-only canonical-ABI shape that the codegen renders as `u32`, mismatched with the host's `result` shape. Even unused imports fail validation. | `oneway gen-bindings` skips affected functions (e.g. `wasi:cli/exit#exit`). Same codegen origin as the narrow-int gap. |
+| **`Option<T>` / structured records returned from `extern Wasm`** | The component validator rejects `option<T>` returns from extern imports (e.g. "expected `option` found `u32`"). The lowering doesn't emit the canonical-ABI discriminated-shape correctly. | Blocks `wasi:cli/environment#get-initial-cwd` (returns `option<string>`) and any other extern returning a non-flat type. Not currently filtered by bindgen because the surface is broad and the gap is in lowering, not the binding shape. |
 
 The following gaps were *closed* in recent passes — mentioned here so the
 shape of the working machinery is documented somewhere:
@@ -161,7 +170,9 @@ shape of the working machinery is documented somewhere:
 - **Alphabetical ordering** is central to the language. If you modify the parser or checker, be aware that sort-order enforcement applies to: product type fields, union variants, function declarations, dispatch arms, and imports.
 - The compiler pipeline is: **source → lexer → parser → checker → codegen (Rust) → rustc**.
 - Generated Rust is compiled by shelling out to `rustc` (single file) or `cargo` (when extern dependencies are needed).
-- Standard library items in `std/` come in pairs: a `.ow` file declaring the Oneway interface and optionally a `.rs` file with the Rust FFI implementation.
+- Standard library is **layered** and shipped as two packages bundled with the compiler binary: `packages/oneway/wasi/<ns>/<pkg>/<iface>.ow` holds raw, generated `extern Wasm` bindings (one file per WIT interface); `packages/oneway/std/<type>.ow` holds the hand-written curated wrapper exposing one primary type. Users only ever `use oneway/std/…`. The compiler's runtime fulfils the WASI imports through `wasmtime_wasi::p3`.
+- The `packages/oneway/wasi/` tree is regenerated by `just regen-bindings`. Don't hand-edit it; bump the vendored WIT and regenerate.
+- `build.rs` walks `packages/` at build time and emits a bundled-package registry the loader consults at runtime. Drop a new file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up — there is no hand-maintained STDLIB array.
 - Example programs in `examples/` should always compile and run after changes — use `just examples` to verify.
 
 ## Code style

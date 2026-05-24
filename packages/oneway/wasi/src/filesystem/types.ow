@@ -1,0 +1,101 @@
+use oneway/wasi/clocks/system_clock
+
+Advice = AdviceDontNeed + AdviceNoReuse + AdviceNormal + AdviceRandom + AdviceSequential + AdviceWillNeed
+AdviceDontNeed = Unit
+AdviceNoReuse = Unit
+AdviceNormal = Unit
+AdviceRandom = Unit
+AdviceSequential = Unit
+AdviceWillNeed = Unit
+
+DescriptorFlags = DescriptorFlagsDataIntegritySync * DescriptorFlagsFileIntegritySync * DescriptorFlagsMutateDirectory * DescriptorFlagsRead * DescriptorFlagsRequestedWriteSync * DescriptorFlagsWrite
+DescriptorFlagsDataIntegritySync = Bool
+DescriptorFlagsFileIntegritySync = Bool
+DescriptorFlagsMutateDirectory = Bool
+DescriptorFlagsRead = Bool
+DescriptorFlagsRequestedWriteSync = Bool
+DescriptorFlagsWrite = Bool
+
+DescriptorStat = DescriptorStatDataAccessTimestamp * DescriptorStatDataModificationTimestamp * DescriptorStatLinkCount * DescriptorStatSize * DescriptorStatStatusChangeTimestamp * DescriptorStatType
+DescriptorStatDataAccessTimestamp = Option<Instant>
+DescriptorStatDataModificationTimestamp = Option<Instant>
+DescriptorStatLinkCount = LinkCount
+DescriptorStatSize = Filesize
+DescriptorStatStatusChangeTimestamp = Option<Instant>
+DescriptorStatType = DescriptorType
+
+DescriptorType = DescriptorTypeBlockDevice + DescriptorTypeCharacterDevice + DescriptorTypeDirectory + DescriptorTypeFifo + DescriptorTypeOther + DescriptorTypeRegularFile + DescriptorTypeSocket + DescriptorTypeSymbolicLink
+DescriptorTypeBlockDevice = Unit
+DescriptorTypeCharacterDevice = Unit
+DescriptorTypeDirectory = Unit
+DescriptorTypeFifo = Unit
+DescriptorTypeOther = Option<String>
+DescriptorTypeRegularFile = Unit
+DescriptorTypeSocket = Unit
+DescriptorTypeSymbolicLink = Unit
+
+DirectoryEntry = DirectoryEntryName * DirectoryEntryType
+DirectoryEntryName = String
+DirectoryEntryType = DescriptorType
+
+ErrorCode = ErrorCodeAccess + ErrorCodeAlready + ErrorCodeBadDescriptor + ErrorCodeBusy + ErrorCodeCrossDevice + ErrorCodeDeadlock + ErrorCodeExist + ErrorCodeFileTooLarge + ErrorCodeIllegalByteSequence + ErrorCodeInProgress + ErrorCodeInsufficientMemory + ErrorCodeInsufficientSpace + ErrorCodeInterrupted + ErrorCodeInvalid + ErrorCodeInvalidSeek + ErrorCodeIo + ErrorCodeIsDirectory + ErrorCodeLoop + ErrorCodeMessageSize + ErrorCodeNameTooLong + ErrorCodeNoDevice + ErrorCodeNoEntry + ErrorCodeNoLock + ErrorCodeNoSuchDevice + ErrorCodeNoTty + ErrorCodeNotDirectory + ErrorCodeNotEmpty + ErrorCodeNotPermitted + ErrorCodeNotRecoverable + ErrorCodeOther + ErrorCodeOverflow + ErrorCodePipe + ErrorCodeQuota + ErrorCodeReadOnly + ErrorCodeTextFileBusy + ErrorCodeTooManyLinks + ErrorCodeUnsupported
+ErrorCodeAccess = Unit
+ErrorCodeAlready = Unit
+ErrorCodeBadDescriptor = Unit
+ErrorCodeBusy = Unit
+ErrorCodeCrossDevice = Unit
+ErrorCodeDeadlock = Unit
+ErrorCodeExist = Unit
+ErrorCodeFileTooLarge = Unit
+ErrorCodeIllegalByteSequence = Unit
+ErrorCodeInProgress = Unit
+ErrorCodeInsufficientMemory = Unit
+ErrorCodeInsufficientSpace = Unit
+ErrorCodeInterrupted = Unit
+ErrorCodeInvalid = Unit
+ErrorCodeInvalidSeek = Unit
+ErrorCodeIo = Unit
+ErrorCodeIsDirectory = Unit
+ErrorCodeLoop = Unit
+ErrorCodeMessageSize = Unit
+ErrorCodeNameTooLong = Unit
+ErrorCodeNoDevice = Unit
+ErrorCodeNoEntry = Unit
+ErrorCodeNoLock = Unit
+ErrorCodeNoSuchDevice = Unit
+ErrorCodeNoTty = Unit
+ErrorCodeNotDirectory = Unit
+ErrorCodeNotEmpty = Unit
+ErrorCodeNotPermitted = Unit
+ErrorCodeNotRecoverable = Unit
+ErrorCodeOther = Option<String>
+ErrorCodeOverflow = Unit
+ErrorCodePipe = Unit
+ErrorCodeQuota = Unit
+ErrorCodeReadOnly = Unit
+ErrorCodeTextFileBusy = Unit
+ErrorCodeTooManyLinks = Unit
+ErrorCodeUnsupported = Unit
+
+Filesize = Int
+
+LinkCount = Int
+
+MetadataHashValue = MetadataHashValueLower * MetadataHashValueUpper
+MetadataHashValueLower = Int
+MetadataHashValueUpper = Int
+
+NewTimestamp = NewTimestampNoChange + NewTimestampNow + NewTimestampTimestamp
+NewTimestampNoChange = Unit
+NewTimestampNow = Unit
+NewTimestampTimestamp = Instant
+
+OpenFlags = OpenFlagsCreate * OpenFlagsDirectory * OpenFlagsExclusive * OpenFlagsTruncate
+OpenFlagsCreate = Bool
+OpenFlagsDirectory = Bool
+OpenFlagsExclusive = Bool
+OpenFlagsTruncate = Bool
+
+PathFlags = PathFlagsSymlinkFollow
+PathFlagsSymlinkFollow = Bool
+

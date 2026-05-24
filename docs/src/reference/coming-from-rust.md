@@ -61,13 +61,22 @@ syntax-level mapping, not a runtime mapping.
 
 | Command                         | Output                                                      |
 |---------------------------------|-------------------------------------------------------------|
-| `oneway run hello.ow`           | Runs through the embedded `wasmtime`, prints to stdout       |
-| `oneway build hello.ow`         | `.oneway/hello/hello.wasm` + sibling `.wit` world           |
+| `oneway run`                    | Builds the current package and runs it through `wasmtime`    |
+| `oneway run hello.ow`           | Single-file mode: same, but for one loose `.ow` file         |
+| `oneway run my-ws -p foo`       | Runs workspace member `foo` (`cargo run -p foo`)             |
+| `oneway build`                  | `build/<name>.wasm` + sibling `.wit` for the current package |
+| `oneway build my-ws`            | Builds every member of a workspace into its shared `build/`  |
+| `oneway build hello.ow`         | `build/hello/hello.wasm` + sibling `.wit` (single-file mode) |
 | `oneway emit hello.ow`          | WAT (WebAssembly Text) for the **core** module               |
-| `oneway check hello.ow`         | Type + sort-order check, no codegen                          |
+| `oneway check`                  | Type + sort-order check on the current package, no codegen   |
 
-There is no `Cargo.toml`, no manifest, no `rustc`/`cargo` invocation
-anywhere in the build path.
+A package looks like `oneway.toml` + `src/main.ow` + `build/` — the
+same three-sibling shape as `Cargo.toml` + `src/` + `target/`. A
+workspace looks like `oneway.toml` (`[workspace] members = ["*"]`) +
+member packages + a shared `build/` at the workspace root — the same
+shape as Cargo workspaces. There is no `rustc`/`cargo` invocation
+anywhere in the build path; the output `.wasm` is a portable
+WebAssembly Component.
 
 ## When in Doubt
 

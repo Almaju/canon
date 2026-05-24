@@ -7,15 +7,11 @@ use crate::checker;
 use crate::error::OnewayError;
 use crate::formatter;
 use crate::lexer::Scanner;
-use crate::loader::{kebab_case, stdlib_file_stem, stdlib_source};
+use crate::loader::{kebab_case, resolve_bundled_use, BundledFile};
 use crate::parser::Parser;
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
-
-/// Path to the std/ directory, baked in at compile time.
-/// Points to the correct location when running from the Oneway source tree.
-const STDLIB_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/std");
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -450,40 +446,36 @@ impl LspServer {
 /// cycles. `current_file` is the requesting file, used to resolve relative
 /// local imports.
 ///
-/// `is_stdlib` distinguishes `use std/Foo` (resolved against the embedded
-/// stdlib via the loader's `stdlib_source` mapping) from `use Foo`
-/// (resolved against the filesystem relative to `current_file`). The
-/// compiler's own loader makes the same split — we must too, otherwise
-/// the LSP and the compiler disagree about what `Foo` is.
+/// `bundled` is `Some` when the `use` path resolves into a shipped package
+/// (`oneway/std`, `oneway/wasi`, …) and `None` for local-file imports. The
+/// compiler's own loader makes the same split — we must too, otherwise the
+/// LSP and the compiler disagree about what `Foo` is.
 fn collect_import_items(
-    type_name: &str,
-    is_stdlib: bool,
+    use_path: &str,
+    bundled: Option<&'static BundledFile>,
     current_file: &str,
     seen: &mut std::collections::HashSet<String>,
     out: &mut Vec<crate::ast::Item>,
 ) {
-    if !seen.insert(type_name.to_string()) {
+    if !seen.insert(use_path.to_string()) {
         return; // already loaded
     }
 
-    // Stdlib resolution: pull the embedded source out of the loader.
-    // This is the same `name → source` table the compiler uses, so the
-    // LSP and the compiler never disagree on what `use std/Foo` means.
-    if is_stdlib {
-        let Some(src) = stdlib_source(type_name) else {
-            return;
-        };
-        let Some(imported) = parse_source(src) else {
+    // Bundled-package resolution: pull the embedded source out of the
+    // loader. This is the same registry the compiler uses, so the LSP and
+    // the compiler never disagree on what `use oneway/std/Foo` means.
+    if let Some(file) = bundled {
+        let Some(imported) = parse_source(file.source) else {
             return;
         };
         for item in &imported.items {
             if let crate::ast::Item::Use(u) = item {
-                let (inner, inner_stdlib) = parse_use_path(&u.name.name);
+                let (inner_path, inner_bundled) = parse_use_path(&u.name.name);
                 // Transitive imports inherit the current file as the
-                // resolution base — the embedded stdlib has no
+                // resolution base — the embedded packages have no
                 // filesystem location, and local imports from within
-                // the stdlib are not supported.
-                collect_import_items(inner, inner_stdlib, current_file, seen, out);
+                // a bundled package resolve against the package itself.
+                collect_import_items(inner_path, inner_bundled, current_file, seen, out);
             }
         }
         for item in imported.items {
@@ -494,7 +486,13 @@ fn collect_import_items(
         return;
     }
 
-    // Local resolution: file relative to `current_file`.
+    // Local resolution: file relative to `current_file`. Only the last
+    // segment (the type name) of the use path is meaningful for the
+    // local-file form — multi-segment local paths aren't supported by
+    // this helper yet (the compiler's loader handles them via
+    // `process_use`, but LSP-side definition-following is single-segment
+    // only for now).
+    let type_name = use_path.rsplit('/').next().unwrap_or(use_path);
     let Some(ow_path) = resolve_local_ow_file(type_name, current_file) else {
         return;
     };
@@ -506,8 +504,8 @@ fn collect_import_items(
     };
     for item in &imported.items {
         if let crate::ast::Item::Use(u) = item {
-            let (inner, inner_stdlib) = parse_use_path(&u.name.name);
-            collect_import_items(inner, inner_stdlib, &ow_path, seen, out);
+            let (inner_path, inner_bundled) = parse_use_path(&u.name.name);
+            collect_import_items(inner_path, inner_bundled, &ow_path, seen, out);
         }
     }
     for item in imported.items {
@@ -517,14 +515,13 @@ fn collect_import_items(
     }
 }
 
-/// Split a `use` path like `std/Foo` or `Foo` into its final segment
-/// and a flag indicating whether it begins with `std/`. Matches the
-/// `process_use` logic in `loader.rs` exactly.
-fn parse_use_path(path: &str) -> (&str, bool) {
-    let segments: Vec<&str> = path.split('/').collect();
-    let last = segments.last().copied().unwrap_or(path);
-    let is_stdlib = segments.len() >= 2 && segments[0] == "std";
-    (last, is_stdlib)
+/// Classify a `use` path: if it matches a bundled package, return the
+/// bundled file; otherwise return `None`. The returned `&str` is the
+/// original full path — callers use it as the seen-set key and (for the
+/// local case) extract the last segment for filesystem lookup.
+fn parse_use_path(path: &str) -> (&str, Option<&'static BundledFile>) {
+    let bundled = resolve_bundled_use(path).map(|(_, file)| file);
+    (path, bundled)
 }
 
 /// Check source text and return all errors.
@@ -548,24 +545,18 @@ fn check_source(source: &str, file_path: &str) -> Vec<OnewayError> {
     resolve_new_syntax(&mut current);
 
     // 2. Collect items from every `use` import, recursively following
-    //    transitive imports (e.g. `use std/HttpServer` brings in `use
-    //    std/Request` etc.). A `seen` set prevents cycles. The
-    //    `std/` prefix is preserved through `parse_use_path` so the
-    //    embedded stdlib and on-disk files don't collide.
+    //    transitive imports (e.g. `use oneway/std/HttpServer` brings in
+    //    `use oneway/std/Request` etc.). A `seen` set prevents cycles. The
+    //    full use path is preserved through `parse_use_path` so the
+    //    embedded packages and on-disk files don't collide.
     let mut imported_items: Vec<crate::ast::Item> = Vec::new();
     let mut seen = std::collections::HashSet::<String>::new();
     for item in &current.items {
         let crate::ast::Item::Use(u) = item else {
             continue;
         };
-        let (type_name, is_stdlib) = parse_use_path(&u.name.name);
-        collect_import_items(
-            type_name,
-            is_stdlib,
-            file_path,
-            &mut seen,
-            &mut imported_items,
-        );
+        let (use_path, bundled) = parse_use_path(&u.name.name);
+        collect_import_items(use_path, bundled, file_path, &mut seen, &mut imported_items);
     }
 
     // 3. Build a combined module: imported items first, then current file's
@@ -665,7 +656,7 @@ fn builtin_hover(name: &str) -> Option<String> {
         "Clock"      => "```oneway\nClock\n```\nCapability for reading the current time (non-suspending).",
         "Filesystem" => "```oneway\nFilesystem\n```\nCapability for filesystem I/O (suspending — makes the function async).",
         "Network"    => "```oneway\nNetwork\n```\nCapability for network I/O (suspending — makes the function async).",
-        "Random"     => "```oneway\nRandom\n```\nCapability for random number generation (non-suspending).",
+
         "Stderr"     => "```oneway\nStderr\n```\nCapability for writing to stderr (non-suspending).",
         "Stdin"      => "```oneway\nStdin\n```\nCapability for reading from stdin (non-suspending).",
         "Stdout"     => "```oneway\nStdout\n```\nCapability for writing to stdout (non-suspending).",
@@ -843,16 +834,17 @@ fn resolve_local_ow_file(type_name: &str, current_file: &str) -> Option<String> 
     None
 }
 
-/// Compose the on-disk path of a stdlib type's source file. Used so
-/// go-to-definition on a `use std/Foo` import can navigate to the
-/// actual file under `STDLIB_DIR`. Returns `None` if the name isn't a
-/// known stdlib type.
-fn resolve_stdlib_ow_file(type_name: &str) -> Option<String> {
+/// Compose the on-disk path of a bundled file. Used so go-to-definition
+/// on a `use oneway/std/Foo` import can navigate to the actual file in
+/// the source tree. Returns `None` if the use path doesn't match any
+/// bundled package, or if the build-time absolute path no longer exists
+/// (e.g. when running from an installed binary).
+fn resolve_bundled_ow_file(use_path: &str) -> Option<String> {
     use std::path::Path;
-    let stem = stdlib_file_stem(type_name)?;
-    let path = Path::new(STDLIB_DIR).join(format!("{}.ow", stem));
+    let (_, file) = resolve_bundled_use(use_path)?;
+    let path = Path::new(file.abs_path);
     if path.exists() {
-        path.to_str().map(|s| s.to_string())
+        Some(file.abs_path.to_string())
     } else {
         None
     }
@@ -869,9 +861,12 @@ fn find_definition_in_imports(
     use crate::error::Span;
     for item in &module.items {
         let Item::Use(u) = item else { continue };
-        let (type_name, is_stdlib) = parse_use_path(&u.name.name);
-        let file_path = if is_stdlib {
-            resolve_stdlib_ow_file(type_name)?
+        let (use_path, bundled) = parse_use_path(&u.name.name);
+        // The clickable target name is always the last segment of the use
+        // path — the type or file name the user is importing.
+        let type_name = use_path.rsplit('/').next().unwrap_or(use_path);
+        let file_path = if bundled.is_some() {
+            resolve_bundled_ow_file(use_path)?
         } else {
             match resolve_local_ow_file(type_name, current_file) {
                 Some(p) => p,

@@ -1,0 +1,42 @@
+package demo:sink@1.0.0;
+
+interface kitchen-sink {
+    /// A simple record.
+    record point {
+        x: f64,
+        y: f64,
+    }
+
+    /// A variant — some arms carry payloads, some don't.
+    variant shape {
+        circle(f64),
+        empty,
+        rectangle(point),
+    }
+
+    /// A zero-data union.
+    enum color {
+        red,
+        green,
+        blue,
+    }
+
+    /// Flags become a product of Bool components.
+    flags style {
+        bold,
+        italic,
+        underline,
+    }
+
+    /// A type alias.
+    type color-list = list<color>;
+
+    /// Pure free function with multiple typed parameters.
+    paint: func(palette: color-list, target: shape) -> result<style, string>;
+
+    /// Maybe-returning function.
+    centre: func(of: shape) -> option<point>;
+
+    /// No-arg, no-result function.
+    reset: func();
+}

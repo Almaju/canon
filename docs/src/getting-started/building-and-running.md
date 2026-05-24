@@ -1,27 +1,81 @@
 # Building and Running
 
-All `oneway` commands operate on a single `.ow` file (or a module folder).
+Oneway commands operate on a **target**, which is one of:
+
+- a **package directory** (`oneway.toml` + `src/main.ow`),
+- a **workspace directory** (`oneway.toml` with a `[workspace]` table
+  aggregating member packages), or
+- a single **`.ow` file** (anonymous single-file package).
+
+When omitted, the target defaults to the current directory.
+
+## Package Layout
+
+```text
+my-app/
+  oneway.toml      # name, version, dependencies
+  src/
+    main.ow        # entry point
+    helpers.ow
+  build/           # compiler output (gitignored)
+    my-app.wasm
+    my-app.wit
+```
+
+The artifact is named after the package, not the entry file.
+
+## Workspace Layout
+
+A workspace is a directory whose `oneway.toml` carries a `[workspace]`
+table instead of (or in addition to) `name`/`version`. Each member is a
+full package; all members share the workspace's `build/`, Cargo-style.
+
+```text
+my-workspace/
+  oneway.toml      # [workspace] members = ["*"]
+  build/           # shared artifacts
+    foo.wasm
+    bar.wasm
+  foo/
+    oneway.toml
+    src/main.ow
+  bar/
+    oneway.toml
+    src/main.ow
+```
+
+`members = ["*"]` is a shorthand for "every immediate subdirectory that
+contains an `oneway.toml`". Explicit lists (`members = ["foo", "bar"]`)
+work too. Nested workspaces are not allowed.
 
 ## Run a Program
 
 ```sh
-oneway run hello.ow
+oneway run                       # current directory as a package
+oneway run path/to/pkg           # another package
+oneway run hello.ow              # single-file mode
+oneway run my-workspace -p foo   # one member of a workspace
 ```
 
-Compiles the file to a WebAssembly component and immediately runs it
-through the embedded `wasmtime` runtime. No artifact is left behind in
-the source directory.
+Compiles the target to a WebAssembly component and immediately runs it
+through the embedded `wasmtime` runtime. `oneway run` on a workspace
+without `-p` is ambiguous and errors with a hint listing the members.
 
 ## Build a Component
 
 ```sh
-oneway build hello.ow
+oneway build                     # current directory as a package or workspace
+oneway build hello.ow            # single-file mode
+oneway build my-workspace        # builds every member
+oneway build my-workspace -p foo # builds only `foo`
 ```
 
-Produces a portable WebAssembly Component at `.oneway/hello/hello.wasm`,
-plus a sibling `.wit` describing the component's world (its imports and
-exports). The component runs on any host that supports WASI Preview 3 and
-satisfies its imports — `oneway run`, `wasmtime serve`, browser
+In package mode, produces `build/<name>.wasm` and `build/<name>.wit`
+next to the package's `src/`. In workspace mode, every member's
+artifacts land in the workspace's shared `build/` directory. In
+single-file mode, the output goes to `build/<stem>/<stem>.wasm` next to
+the file. The component runs on any host that supports WASI Preview 3
+and satisfies its imports — `oneway run`, `wasmtime serve`, browser
 polyfills, edge runtimes, etc.
 
 ## Inspect Generated WAT
@@ -48,7 +102,9 @@ lexer or parser sees your code.
 ## Check Sort Order and Types
 
 ```sh
-oneway check hello.ow
+oneway check                     # current package or workspace
+oneway check hello.ow            # single-file mode
+oneway check my-workspace -p foo # only one member of a workspace
 ```
 
 Runs the full checker (sort-order rules plus type checking) without
@@ -89,6 +145,8 @@ oneway help
 
 ## Workflow
 
-There is no `oneway new` or project scaffolder. Single-file programs are
-first class — drop a `.ow` file anywhere and `oneway run` it. For
-multi-file projects, see [Modules](../tour/modules.md).
+There is no `oneway new` or project scaffolder yet. For quick
+experimentation, drop a `.ow` file anywhere and `oneway run` it. For
+proper projects, create an `oneway.toml` next to a `src/main.ow` and
+run `oneway build` / `oneway run` from that directory. For multi-file
+projects, see [Modules](../tour/modules.md).

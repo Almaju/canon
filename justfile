@@ -28,6 +28,7 @@ install:
 #   * library unit tests        — anything inside src/
 #
 # Every layer fails the build on regression, so this single command is
+
 # the canonical CI gate.
 test:
     cargo test
@@ -36,6 +37,7 @@ test:
 # for runtime/) from the current compiler's actual output. Review the
 # resulting `git diff` before committing — that's the review surface
 # for "did this output change in a sensible way?". Mirrors
+
 # `TRYBUILD=overwrite` from Rust's trybuild crate.
 update-fixtures:
     ONEWAY_UPDATE_FIXTURES=1 cargo test --tests
@@ -43,6 +45,7 @@ update-fixtures:
 # Lightweight convenience runner for Oneway-language tests with pretty
 # per-file output. The same tests run under `cargo test` via the
 # `tests/oneway_tests.rs` harness — use that for CI, use this for
+
 # faster local iteration on a single test file.
 test-ow: build
     #!/usr/bin/env sh
@@ -68,26 +71,29 @@ test-ow: build
 # suite (`cargo test` is). This task is a smoke check that examples
 # still compile and run end-to-end — useful when changing the compiler
 # or stdlib, but not gated by CI.
+#
+# `examples/` is a workspace whose members are individual packages under
+# `examples/<name>/`. Each member is built and run with a 5-second timeout
+# so long-running examples (servers, fetch loops) don't block the smoke
+# check. Members that fail the checker are reported as skipped — they're
+
+# usually waiting on a stdlib gap, not a regression.
 examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
-    for f in examples/*.ow examples/*/main.ow; do
-        [ -f "$f" ] || continue
-        if [ "$(basename "$f")" = "main.ow" ]; then
-            label=$(basename "$(dirname "$f")")
-        else
-            label=$(basename "$f" .ow)
-        fi
+    for d in examples/*/; do
+        [ -f "$d/oneway.toml" ] || continue
+        label=$(basename "$d")
         printf "%-20s" "$label"
-        # Skip examples that do not pass the checker (stdlib not yet wired)
-        if ! cargo run --quiet -- check "$f" >/dev/null 2>&1; then
+        # Skip examples that do not pass the checker (stdlib gap, etc.)
+        if ! cargo run --quiet -- check "$d" >/dev/null 2>&1; then
             echo "·  (skip — does not compile yet)"
             skip=$((skip + 1))
             continue
         fi
         # Run via the embedded WASM runtime with a 5s timeout
         tmpout=$(mktemp)
-        cargo run --quiet -- run "$f" > "$tmpout" 2>&1 &
+        cargo run --quiet -- run "$d" > "$tmpout" 2>&1 &
         pid=$!
         i=0; timed_out=0
         while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
@@ -114,17 +120,22 @@ examples: build
     echo ""
     echo "${pass} passed, ${fail} failed, ${skip} skipped"
 
-# Run a single example by name (e.g. `just example hello`)
+# Run a single example by name (e.g. `just example clock`)
 example name:
     #!/usr/bin/env sh
     set -e
-    for path in "examples/{{ name }}.ow" "examples/{{ name }}/main.ow"; do
-        if [ -f "$path" ]; then
-            exec cargo run --quiet -- run "$path"
-        fi
-    done
-    echo "No example found at examples/{{ name }}.ow or examples/{{ name }}/main.ow" >&2
-    exit 1
+    if [ ! -f "examples/{{ name }}/oneway.toml" ]; then
+        echo "No example package at examples/{{ name }}/ (need an oneway.toml there)" >&2
+        exit 1
+    fi
+    exec cargo run --quiet -- run "examples/{{ name }}"
+
+# Regenerate the embedded WASI bindings from the vendored WIT files
+# under wit-vendor/. Run after upgrading the WASI version or after
+
+# changing the bindgen emitter. Commit the resulting packages/oneway/wasi/ tree.
+regen-bindings: build
+    cargo run --quiet -- gen-bindings wit-vendor/wasi -o packages/oneway
 
 # Format compiler source
 fmt:
@@ -144,7 +155,7 @@ ci:
 clean:
     #!/usr/bin/env sh
     cargo clean
-    find examples -type d -name '.oneway' -exec rm -rf {} +
+    find examples packages -type d -name 'build' -prune -exec rm -rf {} +
 
 # Install git hooks (pre-commit)
 install-hooks:

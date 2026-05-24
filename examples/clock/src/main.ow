@@ -1,0 +1,5 @@
+use oneway/std/time/Instant
+
+main = () -> Unit {
+    Instant().print()
+}

@@ -50,7 +50,7 @@ pub fn oneway_binary() -> PathBuf {
 /// formatted error output (one error per line) — or an empty string
 /// when the fixture checks cleanly.
 ///
-/// Uses the real `loader::load_module`, so fixtures may `use std/...`
+/// Uses the real `loader::load_module`, so fixtures may `use oneway/std/...`
 /// and exercise the same import machinery `oneway check` does.
 pub fn run_check_fixture(fixture_path: &Path) -> String {
     let display_path = fixture_display_path(fixture_path);

@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod bindgen;
 pub mod checker;
 pub mod codegen;
 pub mod error;
@@ -6,5 +7,6 @@ pub mod formatter;
 pub mod lexer;
 pub mod loader;
 pub mod lsp;
+pub mod manifest;
 pub mod parser;
 pub mod runtime;

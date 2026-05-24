@@ -1,0 +1,5 @@
+use oneway/std/Random
+
+main = () -> Unit {
+    Random().print()
+}

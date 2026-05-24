@@ -1,0 +1,45 @@
+use oneway/wasi/clocks/types
+
+ErrorCode = ErrorCodeAccessDenied + ErrorCodeAddressInUse + ErrorCodeAddressNotBindable + ErrorCodeConnectionAborted + ErrorCodeConnectionBroken + ErrorCodeConnectionRefused + ErrorCodeConnectionReset + ErrorCodeDatagramTooLarge + ErrorCodeInvalidArgument + ErrorCodeInvalidState + ErrorCodeNotSupported + ErrorCodeOther + ErrorCodeOutOfMemory + ErrorCodeRemoteUnreachable + ErrorCodeTimeout
+ErrorCodeAccessDenied = Unit
+ErrorCodeAddressInUse = Unit
+ErrorCodeAddressNotBindable = Unit
+ErrorCodeConnectionAborted = Unit
+ErrorCodeConnectionBroken = Unit
+ErrorCodeConnectionRefused = Unit
+ErrorCodeConnectionReset = Unit
+ErrorCodeDatagramTooLarge = Unit
+ErrorCodeInvalidArgument = Unit
+ErrorCodeInvalidState = Unit
+ErrorCodeNotSupported = Unit
+ErrorCodeOther = Option<String>
+ErrorCodeOutOfMemory = Unit
+ErrorCodeRemoteUnreachable = Unit
+ErrorCodeTimeout = Unit
+
+IpAddress = IpAddressIpv4 + IpAddressIpv6
+IpAddressIpv4 = Ipv4Address
+IpAddressIpv6 = Ipv6Address
+
+IpAddressFamily = IpAddressFamilyIpv4 + IpAddressFamilyIpv6
+IpAddressFamilyIpv4 = Unit
+IpAddressFamilyIpv6 = Unit
+
+IpSocketAddress = IpSocketAddressIpv4 + IpSocketAddressIpv6
+IpSocketAddressIpv4 = Ipv4SocketAddress
+IpSocketAddressIpv6 = Ipv6SocketAddress
+
+Ipv4Address = Int * Int * Int * Int
+
+Ipv4SocketAddress = Ipv4SocketAddressAddress * Ipv4SocketAddressPort
+Ipv4SocketAddressAddress = Ipv4Address
+Ipv4SocketAddressPort = Int
+
+Ipv6Address = Int * Int * Int * Int * Int * Int * Int * Int
+
+Ipv6SocketAddress = Ipv6SocketAddressAddress * Ipv6SocketAddressFlowInfo * Ipv6SocketAddressPort * Ipv6SocketAddressScopeId
+Ipv6SocketAddressAddress = Ipv6Address
+Ipv6SocketAddressFlowInfo = Int
+Ipv6SocketAddressPort = Int
+Ipv6SocketAddressScopeId = Int
+

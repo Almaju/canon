@@ -1,0 +1,5 @@
+use oneway/std/time/Now
+
+main = () -> Unit {
+    Now().print()
+}

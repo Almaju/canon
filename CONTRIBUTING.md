@@ -27,9 +27,8 @@ just release      # release build (optimized)
 ## Running programs
 
 ```sh
-just run examples/hello.ow          # compile and execute
-just example hello                  # shorthand for examples/hello.ow (or examples/hello/main.ow)
-just examples                       # run every example and report pass / fail / skip
+just example clock                  # run examples/clock/ (a package)
+just examples                       # run every member of the examples/ workspace
 ```
 
 ## Testing

@@ -262,12 +262,13 @@ main = () -> Result<Unit, HttpError + InvalidUrl> {
 
 This generalizes the same principle the language already applies to absence: if a value can legitimately be invalid, the fallibility belongs in the type, not in a runtime convention.
 
-With `extern Wasm`, the pattern is the same but the body is omitted:
+In a [binding file](#binding-files), the pattern is the same but the body is omitted (and the WIT path lives in the file's `extern` header, not on each declaration):
 
 ```
+extern "oneway:builtins/url@0.1.0"
+
 Url = String
 
-extern Wasm("oneway:builtins/url@0.1.0#parse")
 Url = (String) -> Result<Url, InvalidUrl>
 ```
 
@@ -293,11 +294,22 @@ The case difference disambiguates trait implementations from regular functions: 
 ### Imports
 
 ```
-use Foo          # load a local file or module
-use std/Foo      # load a standard library type
+use Foo                    # local: load `foo.ow` or `foo/main.ow` relative to this file
+use models/User            # local: subfolder lookup, `models/user.ow`
+use oneway/std/Json        # package: <namespace>/<package>/<Type>
+use acme/image/Decoder     # third-party: same shape, no privileged path
 ```
 
-Local imports (`use Foo`) look for `foo.ow` or `foo/main.ow` relative to the current file. Standard library types require the explicit `std/` prefix (`use std/JsonValue`, `use std/Url`, `use std/Now`). Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use std/JsonValue` and `use std/JsonArray`.
+There is exactly one `use` resolution rule. Given `use a/b/c/…/Z`:
+
+1. If the leading segments `a/b` (the first two) match a declared dependency in the project's package manifest, resolve as a **package import**: locate the package in the cache, then look up the type `Z` (or, for multi-file packages, the file matching `Z`'s [kebab-case form](#naming-conventions)) inside it.
+2. Otherwise, resolve as a **local import**: walk the segments as directories relative to the current file and load `z.ow` or `z/main.ow` at the end.
+
+The shipped packages `oneway/std` and `oneway/wasi` are pre-installed and bundled with the compiler binary, but indistinguishable from any other package at the language level — they appear in the cache and must be listed as deps to be used.
+
+Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use oneway/std/JsonValue` and `use oneway/std/JsonArray`.
+
+Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. `use oneway/std/Json` never carries an `@version`.
 
 ### Visibility
 
@@ -692,7 +704,7 @@ save = (Database * User) -> Result<Unit, DbError>
 
 There is no `async` keyword and no `.await` in Oneway source. Both are inferred and inserted by the compiler.
 
-A function is *suspending* if it (1) is declared `extern Wasm.async(…)`, (2) consumes a `Future<T>` or iterates a `Stream<T>`, or (3) transitively calls a suspending function. The compiler computes this set bottom-up over the call graph and lifts the affected functions as `async func(…)` in the emitted Component Model world. Where a `Future<T>` value is consumed in a position that expects `T`, the loader automatically rewrites the call site into an `await` — the user writes neither keyword.
+A function is *suspending* if it (1) is a body-less declaration in a [binding file](#binding-files) whose corresponding WIT entry is `async func`, (2) consumes a `Future<T>` or iterates a `Stream<T>`, or (3) transitively calls a suspending function. The compiler computes this set bottom-up over the call graph and lifts the affected functions as `async func(…)` in the emitted Component Model world. Where a `Future<T>` value is consumed in a position that expects `T`, the loader automatically rewrites the call site into an `await` — the user writes neither keyword.
 
 This is uniform: synchronous-looking code is the only style. The async machinery is invisible by design.
 
@@ -765,61 +777,181 @@ Task spawning, channels, and structured concurrency are planned and will be expr
 
 ## Interop With the Host Ecosystem
 
-Oneway compiles to a **WebAssembly Component**, so interop happens at the Component Model boundary rather than at a source-level FFI. A program lists the interfaces it imports through `extern Wasm` declarations; the compiler emits the matching component world; any compliant host (`wasmtime`, browser polyfills, edge runtimes) satisfies the imports.
+Oneway compiles to a **WebAssembly Component**, so interop happens at the Component Model boundary rather than at a source-level FFI. Every Component-Model interface a program uses is exposed as a **binding package** — an ordinary Oneway package whose `.ow` files are binding files. The compiler emits the matching component world; any compliant host (`wasmtime`, browser polyfills, edge runtimes) satisfies the imports.
 
-Oneway is **batteries-included**. The stdlib ships single-type modules covering the major application domains — HTTP server and client, filesystem, time, random, JSON, URLs — each backed either by a native `wasi:*` interface or, where the canonical-ABI shape isn't ready yet, by an `oneway:builtins/*` host bridge that the embedded runtime implements. From the user's perspective the two look identical: `use std/Foo` and call methods.
+The shipped stdlib is **layered**:
 
-### `extern Wasm` Declarations
+- `oneway/wasi` — **raw bindings**, machine-generated from upstream WIT by `oneway gen-bindings`. One `.ow` file per WIT interface, each a [binding file](#binding-files). No idioms, no capability discipline, no opinions. Regenerated, never hand-edited.
+- `oneway/std` — **curated wrappers**, hand-written. One primary type per file (`oneway/std/clock.ow` declares `Clock`, `oneway/std/file.ow` declares `File`, …). Methods, constructors, and capability arguments live here. Idiomatic Oneway code only ever imports from `oneway/std`.
 
-A type or function can be declared as backed by a Component Model import. The compiler emits the matching `(import …)` and lowers the call through the canonical ABI — no source-level marshalling, no manual buffer management.
+Where a `wasi:*` interface isn't yet usable from the canonical ABI, the corresponding `oneway/wasi` file binds an `oneway:builtins/*` bridge instead. The split is invariant — only the WIT path on the file's `extern` header changes.
 
-```
-extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
-randomInt = () -> Int
+### Binding Files
 
-extern Wasm("oneway:builtins/url@0.1.0#parse")
-Url = (String) -> Result<Url, InvalidUrl>
-```
-
-The string follows Component Model path syntax: `namespace:package/interface@version#fn-name`. The `@version` is optional for unversioned interfaces. Method shorthand (the `.fn` form) is not used — every Component import is a flat function.
-
-> **First-class references.** `extern Wasm` function declarations are entered into the value scope on equal footing with ordinary functions. They may be referenced as first-class values (`Type.fn`) and passed as callbacks wherever a matching function signature is expected.
-
-#### Async Extern Items
-
-To bind a suspending Component import, use `extern Wasm.async`. The compiler lifts the call site through the async canonical ABI (`canon lower … async`), and every transitive caller is automatically marked suspending:
+A **binding file** is a `.ow` file whose first declaration is an `extern` header naming a Component-Model interface:
 
 ```
-extern Wasm.async("oneway:builtins/http-server@0.1.0#serve")
-serve<S> = (HttpServer<S>) -> Result<Unit, IoError>
+extern "wasi:random/random@0.3.0-rc-2026-03-15"
+
+getRandomBytes = (Int) -> Bytes
+getRandomU64 = () -> Int
 ```
 
-There is no annotation required on user-defined functions — the compiler propagates suspension through the call graph (see [Async](#async)).
+The header pins the WIT interface this file binds. Every declaration in the file describes one symbol from that interface, mapped through the mechanical [WIT → Oneway mapping](#wit--oneway-mapping):
 
-### No Project Manifest
+- **Function declarations are body-less.** Each function's name and signature must match a `func` (or `async func`) in the named WIT interface. The compiler verifies this when the package is loaded.
+- **Type declarations** describe types defined by the WIT interface (records, variants, resources). They follow the same mechanical mapping.
+- The `extern` header is the **only** way to introduce a Component-Model import. Body-less function declarations are **only legal inside a binding file** — anywhere else, a missing body is a compile error ("forgot a body").
 
-There is no `Cargo.toml`, no `package.json`, no per-project dep manifest. The set of imports a program needs is fully determined by its `extern Wasm` declarations and resolved at component-instantiation time by the host. `oneway build` produces a `.wasm` and a sibling `.wit` describing the world; the host (whether `oneway run`, `wasmtime serve`, or anything else) is responsible for satisfying the imports.
+The header string follows Component-Model path syntax: `namespace:package/interface@version`. The `@version` is optional for unversioned interfaces. There are no per-function path strings, no async annotations, no `from`/`sha256` fields on declarations — a binding file looks like ordinary Oneway code, just without bodies.
 
-### Binding Packages
+> **First-class references.** Functions declared in a binding file are entered into the value scope on equal footing with ordinary functions. They may be referenced as first-class values (`Type.fn`) and passed as callbacks wherever a matching function signature is expected.
 
-Idiomatic Oneway code does not call `extern Wasm` directly. Instead, it imports individual types from the shipped stdlib:
+#### Async
+
+Async-ness is **not** declared in source. If the WIT marks a function `async func`, the binding's mechanical mapping gives it a `Future<T>` return type. The async-ness is then visible in the signature itself, and the suspension-propagation rule in [Async](#async) handles the rest. No annotation, no keyword.
+
+### Package Manifests
+
+Each package — shipped, installed, or local — has an `oneway.toml` at its root. The manifest is **TOML**, fixed schema:
+
+```toml
+# oneway/std/oneway.toml
+name    = "oneway/std"
+version = "0.1.0"
+
+[deps]
+"oneway/wasi" = "0.3.x"
+```
+
+A **project** is a package whose source includes a `main.ow` entry point and whose manifest lists its dependencies. Dependencies are pinned by semver constraint:
+
+```toml
+# my-app/oneway.toml
+name    = "my-app"
+version = "0.1.0"
+
+[deps]
+"oneway/std"         = "0.1.x"
+"acme/image-decoder" = "1.0.x"
+```
+
+When a package's component must be **fetched** (rather than satisfied by the host), the package's own manifest declares it:
+
+```toml
+# acme/image-decoder/oneway.toml
+name    = "acme/image-decoder"
+version = "1.0.0"
+from    = "https://components.example/image-decoder-1.0.0.wasm"
+sha256  = "ab12cd34ef56…"
+```
+
+The compiler parses only the subset shown above (string values at the top level, a single `[deps]` table with quoted keys and string values). Full TOML compatibility is a non-goal; the format choice is for editor and tooling support, not for expressiveness.
+
+Rules:
+
+- `from` is **optional**. Absent means the package's bindings are host-provided (WASI, `oneway:builtins/*`). Present means the build tool must resolve it.
+- `from` schemes: `https://…`, `file://…`, and `github:owner/repo@vX.Y.Z/path.wasm` (sugar that expands to the corresponding GitHub release-download URL).
+- `sha256` is **required whenever `from` is present**. No "fetch on first run and trust". The hash is computed by `oneway install` at install time and written into the manifest by the tool; humans don't type it.
+- Resolved components are cached at `~/.oneway/cache/<sha256>.wasm`. The cache is content-addressed and machine-independent, so the same `(from, sha256)` pair is reproducible across checkouts.
+- `oneway build` with a cache miss while offline is a hard error. There is no implicit network access at build time — fetching is `oneway install`'s job.
+- When `from` is present, `oneway build` **inlines** the fetched component as a nested instance in the output `.wasm`, producing a self-contained binary. (This is the role `wac plug` plays in the broader ecosystem; in Oneway it's a built-in build step.)
+
+The lockfile is the manifest. There is no separate `oneway.lock`.
+
+### Generating Bindings from WIT
+
+The `oneway/wasi` layer is produced by:
 
 ```
-use std/Clock           # wasi:clocks (nowNanos, resolutionNanos)
-use std/File            # oneway:builtins/filesystem (until wasi:filesystem async lands)
-use std/HttpServer      # oneway:builtins/http-server
-use std/Now             # oneway:builtins/clock (now-rfc3339)
-use std/Random          # wasi:random/random
-use std/Url             # oneway:builtins/url + oneway:builtins/http
+oneway gen-bindings <path-or-url>
 ```
 
-Each `use std/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any path; the `std/` namespace is reserved for the shipped set.
+The input is either a `.wit` file (parsed directly) or a WebAssembly Component `.wasm` (the embedded `component-type` custom section is extracted and parsed). The output is a complete package: one [binding file](#binding-files) per WIT interface under `<namespace>/<package>/<interface>.ow`, plus an `oneway.toml` manifest. Output is deterministic and alphabetically ordered, so it round-trips through `oneway fmt` and produces clean diffs on regeneration.
+
+`oneway install <url>` is a convenience that combines fetch + verify + `gen-bindings` + record:
+
+1. Fetch the `.wasm` from the URL.
+2. Compute its sha256. Confirm it is a valid Component.
+3. Extract its WIT and emit a binding package, with its `oneway.toml` carrying `from = "<url>", sha256 = "<digest>"`.
+4. Populate `~/.oneway/cache/<sha256>.wasm`.
+5. Add the package to the project manifest's `deps`.
+
+After `oneway install`, the consumer writes `use <namespace>/<package>/<Type>` and the rest is ordinary Oneway.
+
+#### WIT → Oneway Mapping
+
+The mapping is mechanical. Every shape on the left maps to exactly one shape on the right.
+
+| WIT | Oneway |
+|---|---|
+| `bool` | `Bool` |
+| `u8` … `u64`, `s8` … `s64` | `Int` |
+| `f32`, `f64` | `Float` |
+| `char` | `String` (single-grapheme) |
+| `string` | `String` |
+| `list<T>` | `List<T>` |
+| `option<T>` | `Option<T>` |
+| `result<T, E>` | `Result<T, E>` |
+| `result<T>` (no error) | `Result<T, Unit>` |
+| `result` (no payload) | `Result<Unit, Unit>` |
+| `tuple<A, B, …>` | product with positional field names `_0`, `_1`, … (alphabetised by index) |
+| `record { a: A, b: B }` | product `A * B` with fields kept in WIT order at the ABI boundary but exposed alphabetically in source |
+| `variant { a, b(T), c }` | union; data-carrying arms become 1-component products |
+| `enum { a, b, c }` | zero-data union |
+| `flags { a, b, c }` | product of `Bool` per flag |
+| `resource foo { … }` | newtype `Foo = Handle` (see below) |
+| `func` | body-less top-level fn in a binding file |
+| `async func` | body-less fn whose return type is wrapped in `Future<T>` |
+| `stream<T>` | `Stream<T>` |
+| `future<T>` | `Future<T>` |
+
+**Identifier case** is converted mechanically: WIT `kebab-case` becomes Oneway `camelCase` for values and `PascalCase` for types. `get-resolution` → `getResolution`; `incoming-request` → `IncomingRequest`; the WIT interface `wasi:clocks/monotonic-clock` becomes the file path `wasi/clocks/monotonic_clock.ow` within the `oneway/wasi` package.
+
+**Record field ordering.** WIT records have a positional ABI order; Oneway products are alphabetical. The generator preserves both: source-level fields are sorted alphabetically, and the canonical-ABI lowering reorders to the WIT layout. This reordering is invisible to user code.
+
+#### Resources as `Handle`
+
+WIT `resource` types are opaque, owning handles with methods and an implicit `drop`. Oneway models them as a single-field product wrapping a builtin `Handle`:
+
+```
+# oneway/wasi/filesystem/types.ow  (generated)
+extern "wasi:filesystem/types@0.3.0"
+
+Descriptor = Handle
+
+readViaStream = (Descriptor * Int) -> Result<InputStream, ErrorCode>
+```
+
+- `Handle` is a language-level primitive. It is **non-copyable** and **non-printable**; the only operations on it are passing it to a binding function and going out of scope.
+- Methods on a WIT resource become free functions in the generated binding, with the resource as the first parameter. The canonical-ABI `[method]resource.fn` form is matched to a body-less Oneway function whose first parameter is the corresponding resource type; the prefix is implicit and never written in source. Collisions are resolved by Oneway's normal dispatch rules.
+- Static methods (`[static]resource.fn`) become free functions with no `Handle` parameter; constructors (`[constructor]resource`) become functions returning the resource type.
+- When a `Handle` value goes out of scope, the compiler emits the matching `resource.drop` call. Ownership is linear: a `Handle` cannot be aliased, only moved.
+
+This means `oneway/std/file.ow` can wrap `oneway/wasi/filesystem/types#Descriptor` in a clean type without the user ever touching a `Handle` directly — exactly the layering the stdlib split is for.
+
+### Importing from Bindings
+
+Idiomatic Oneway code does not import binding files directly. Instead, it imports curated wrappers from `oneway/std`:
+
+```
+use oneway/std/Clock           # wraps oneway/wasi/clocks/monotonic_clock
+use oneway/std/File            # wraps oneway/wasi/filesystem/types (or oneway:builtins/* until P3 lands)
+use oneway/std/HttpServer      # wraps oneway:builtins/http-server
+use oneway/std/Now             # wraps oneway/wasi/clocks/wall_clock (or oneway:builtins/* until P3 lands)
+use oneway/std/Random          # wraps oneway/wasi/random/random
+use oneway/std/Url             # wraps oneway:builtins/url + oneway:builtins/http
+```
+
+Each `use oneway/std/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any namespace; the `oneway/` namespace is reserved for packages shipped with the language.
+
+A direct `use oneway/wasi/clocks/monotonic_clock/now` works (everything is public), but you give up the capability discipline and the cleaned-up names that the `oneway/std` wrapper provides.
 
 ### What Oneway Ships Itself
 
-Two layers ship with the language:
+Three things ship with the language:
 
-**Core** — the small set of language-level primitives, owned by the compiler:
+**Core** — the small set of language-level primitives, owned by the compiler (not a package):
 
 - Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`, `Unit`, `Never`
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
@@ -830,22 +962,26 @@ Two layers ship with the language:
 
 `Map<K, V>` is a sorted key-value map. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is its set-shaped counterpart.
 
-**Batteries** — stdlib modules implemented in ordinary Oneway with `extern Wasm` declarations against either `wasi:*` or `oneway:builtins/*` interfaces:
+**Batteries** — two packages, bundled with the compiler binary and pre-populated in the cache:
 
-| Module | Backing interface | Status |
+- **`oneway/wasi`** — generated binding files against `wasi:*` (and `oneway:builtins/*` for interfaces that don't yet have a stable canonical-ABI shape). Mechanically produced by `oneway gen-bindings`.
+- **`oneway/std`** — hand-written wrappers presenting a clean, capability-disciplined API. One primary type per file.
+
+| Wrapper | Underlying binding | Status |
 |---|---|---|
-| `Clock` (`nowNanos`, `resolutionNanos`) | `wasi:clocks/monotonic-clock` | ✅ |
-| `Random` (`randomInt`) | `wasi:random/random` | ✅ |
-| `Now` (RFC 3339 wall-clock time) | `oneway:builtins/clock` | ✅ — will move to `wasi:clocks/wall-clock` |
-| `File`, `Path`, `IoError` | `oneway:builtins/filesystem` | ✅ — will move to `wasi:filesystem/types` |
-| `Url`, `InvalidUrl`, `HttpError` (`get` on `Url`) | `oneway:builtins/url` + `oneway:builtins/http` | ✅ — will move to `wasi:http/outgoing-handler` |
-| `HttpServer`, `Request`, `HttpResponseBody`, `HttpStatus`, `Body`, `Port`, `RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
-| `Json` (string handle) | — | ⏳ `JsonValue` / `JsonArray` / `JsonObject` parser pending |
-| `TestResult` (`Pass` / `Fail` + `assert`) | pure Oneway | ✅ |
+| `oneway/std/Clock` (capability) + `oneway/std/Instant` | `oneway/wasi/clocks/monotonic_clock` | ✅ |
+| `oneway/std/Exit` (`Int.exit()`) | `oneway:builtins/cli` (will move to `wasi/cli/exit` once narrow-int codegen lands) | ✅ |
+| `oneway/std/Random` | `oneway/wasi/random/random` | ✅ |
+| `oneway/std/Now` (RFC 3339 wall-clock time) | `oneway/wasi/clocks/wall_clock` (today: `oneway:builtins/clock`) | ✅ |
+| `oneway/std/File`, `oneway/std/Path`, `oneway/std/IoError` | `oneway/wasi/filesystem/types` (today: `oneway:builtins/filesystem`) | ✅ |
+| `oneway/std/Url`, `oneway/std/InvalidUrl`, `oneway/std/HttpError` | `oneway:builtins/url` + `oneway:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
+| `oneway/std/HttpServer`, `oneway/std/Request`, `oneway/std/HttpResponseBody`, `oneway/std/HttpStatus`, `oneway/std/Body`, `oneway/std/Port`, `oneway/std/RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
+| `oneway/std/Json` (string handle) | — | ⏳ `JsonValue` / `JsonArray` / `JsonObject` parser pending |
+| `oneway/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Oneway | ✅ |
 
-The `oneway:*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available.
+The `oneway:builtins/*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available — the binding file in `oneway/wasi` is regenerated, the `oneway/std` wrapper stays the same.
 
-Anything outside these two layers is a third-party binding the community publishes — same mechanism, no privileged path.
+Anything outside `oneway/std` and `oneway/wasi` is a third-party package the community publishes — same mechanism (`oneway install`), no privileged path.
 
 ### Tradeoffs
 

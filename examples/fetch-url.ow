@@ -1,6 +1,0 @@
-use std/HttpError
-use std/Url
-
-main = () -> Unit {
-    Url("http://example.com")?.get()?.print()
-}

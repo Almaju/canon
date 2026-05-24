@@ -83,11 +83,20 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
     // builtin is now compiled directly against `wasi:cli/stdout` — no host
     // bridge needed for output.
     let mut linker: Linker<State> = Linker::new(&engine);
-    wasmtime_wasi::p3::add_to_linker(&mut linker)?;
+    // Opt into `wasi:cli/exit#exit-with-code` so guest code can request a
+    // non-zero exit status. Without this the host serves only the
+    // `exit(result)` form (0 or 1), which isn't expressive enough for a
+    // real CLI. The flag is upstream-gated as "unstable"; we treat it as
+    // stable because the alternative is shipping a stdlib with no exit
+    // codes.
+    let mut p3_options = wasmtime_wasi::p3::bindings::LinkOptions::default();
+    p3_options.cli_exit_with_code(true);
+    wasmtime_wasi::p3::add_to_linker_with_options(&mut linker, &p3_options)?;
     host_builtins::add_to_linker(&mut linker)?;
     host_builtin_clock::add_to_linker(&mut linker)?;
     host_builtin_string::add_to_linker(&mut linker)?;
     host_builtin_filesystem::add_to_linker(&mut linker)?;
+    host_builtin_cli::add_to_linker(&mut linker)?;
     host_builtin_http::add_to_linker(&mut linker)?;
     host_builtin_http_server::add_to_linker(&mut linker)?;
     host_builtin_url::add_to_linker(&mut linker)?;
@@ -542,5 +551,52 @@ mod host_builtin_url {
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
         oneway::builtins::url::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+    }
+}
+
+/// `oneway:builtins/cli` — a thin shim for command-line concerns that
+/// either aren't yet served by `wasmtime_wasi::p3` (e.g. timezone) or
+/// trip current codegen gaps (e.g. `wasi:cli/exit#exit-with-code` uses a
+/// `u8` parameter, and Oneway always lowers `Int` as `u64`). Bridging
+/// through `s64` here sidesteps the width mismatch.
+///
+/// When the underlying codegen learns to honor sub-u64 WIT widths, the
+/// stdlib wrapper switches its `extern Wasm` path to point at
+/// `wasi:cli/exit` directly and this shim retires.
+mod host_builtin_cli {
+    use super::State;
+    use wasmtime::component::{HasSelf, Linker};
+
+    wasmtime::component::bindgen!({
+        inline: "
+            package oneway:builtins@0.1.0;
+            interface cli {
+                /// Terminate the program with the given exit code.
+                /// Maps directly onto `wasi:cli/exit#exit-with-code` but
+                /// takes the code as `s64` so it lines up with Oneway's
+                /// canonical `Int` lowering. Values are clamped to the
+                /// 0..=255 range expected by POSIX-shaped hosts.
+                exit-with-code: func(status-code: s64);
+            }
+            world host-shim {
+                import cli;
+            }
+        ",
+        require_store_data_send: true,
+    });
+
+    impl oneway::builtins::cli::Host for State {
+        fn exit_with_code(&mut self, status_code: i64) {
+            // POSIX exit codes are 8-bit; clamp to that range to match
+            // every embedder's expectations. `std::process::exit` skips
+            // wasmtime's cleanup paths, which is the right semantics here:
+            // the guest asked to terminate immediately.
+            let code: i32 = status_code.clamp(0, 255) as i32;
+            std::process::exit(code);
+        }
+    }
+
+    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
+        oneway::builtins::cli::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }

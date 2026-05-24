@@ -73,5 +73,5 @@ Some small experiments to build intuition:
 - **Return something other than `Unit`.** The body's last expression must
   match the declared return type.
 - **Inspect the compiled component.** `oneway build hello.ow` writes
-  `.oneway/hello/hello.wasm` and a sibling `.wit` describing the
+  `build/hello/hello.wasm` and a sibling `.wit` describing the
   component's world.
