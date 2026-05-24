@@ -245,6 +245,46 @@ pub struct Ident {
     pub span: Span,
 }
 
+/// Which WASI world's primary export shape a function's return type
+/// matches, if any. Used by both the parser (to suppress receiver
+/// extraction for entry-shaped functions) and the checker (for the
+/// entry-detection rule documented in `WASI-HTTP-HANDLER.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryWorld {
+    /// `wasi:cli/command`, exporting `wasi:cli/run.run`.
+    Cli,
+    /// `wasi:http/service`, exporting `wasi:http/handler.handle`.
+    Http,
+}
+
+/// Returns the WASI world whose primary export shape this return type
+/// matches, or `None` if it's not a world-shape type.
+///
+/// Shape registry (matches the table in DESIGN.md §Entry Point):
+///
+/// | Return type                              | World |
+/// |------------------------------------------|-------|
+/// | `Unit`, `ExitCode`                       | Cli   |
+/// | `Result<Unit, _>`, `Result<ExitCode, _>` | Cli   |
+/// | `Response`                               | Http  |
+/// | `Result<Response, _>`                    | Http  |
+///
+/// The unwrapping recurses through `Result` so wrapped and unwrapped
+/// shapes both classify.
+pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
+    match ty {
+        TypeExpr::Named { name, generics, .. } if generics.is_empty() => match name.as_str() {
+            "Unit" | "ExitCode" => Some(EntryWorld::Cli),
+            "Response" => Some(EntryWorld::Http),
+            _ => None,
+        },
+        TypeExpr::Named { name, generics, .. } if name == "Result" && !generics.is_empty() => {
+            entry_world_of(&generics[0])
+        }
+        _ => None,
+    }
+}
+
 /// Extract the receiver type from the first component of a parameter list.
 /// In the new syntax `name = (A * B * C) -> ...`, A is the receiver and B, C are params.
 /// For a single param `name = (A) -> ...`, A is the receiver with no extra params.

@@ -1,6 +1,6 @@
 Birthday = String
 
-Bit = Off + On
+Bit = One + Zero
 
 Byte = Bit^8
 

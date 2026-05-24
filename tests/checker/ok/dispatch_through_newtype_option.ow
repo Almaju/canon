@@ -1,0 +1,14 @@
+Content = String
+
+MessageContent = Option<Content>
+
+describe = (MessageContent) -> String {
+    MessageContent.(
+        * (None) -> String { "absent" }
+        * (Some<Content>) -> String { "present" }
+    )
+}
+
+main = () -> Unit {
+    "ok".print()
+}

@@ -428,6 +428,22 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
     go(name, type_defs, 0)
 }
 
+// ── Dynamic HTTP handler export naming ─────────────────────────────────────────
+//
+// When the program defines a top-level function named `handleRequest =
+// (String) -> String { … }`, the compiler synthesises a canonical-ABI
+// wrapper and exports it from the component under this interface +
+// function name. The host's `host_builtin_http_server::run_server`
+// looks the export up after instantiation and invokes it per request.
+// See `DYNAMIC-HANDLERS.md` for the full architecture.
+//
+// The interface + function names are duplicated in `runtime.rs` for the
+// host-side lookup. Keep them in sync if you ever rename either.
+#[allow(dead_code)]
+pub(super) const HTTP_HANDLER_INTERFACE: &str = "oneway:http-handler/handler@0.1.0";
+#[allow(dead_code)]
+pub(super) const HTTP_HANDLER_FN_NAME: &str = "handle-request";
+
 // ── Global index constants ──────────────────────────────────────────────────────────
 // The bump pointer is now an *imported* mutable global so it can be shared
 // between the user core module and the component wrapper's `cabi_realloc`
@@ -758,7 +774,29 @@ struct WasmGen<'m> {
     fn_print_bool: u32,
     fn_alloc: u32,
     fn_start: u32, // exported as "run"
+    /// Helper that converts a `List<String>` (list of pre-encoded JSON
+    /// values) into a single `Json` string, joining elements with `,`
+    /// and wrapping with `[`/`]`. Always emitted — unused programs pay
+    /// a few hundred bytes of dead code, which is acceptable for now.
+    /// Core signature: `(list_ptr: i32, list_len: i32) -> (i32, i32)`.
+    /// See `build_list_to_json_array` for the body.
+    fn_list_to_json_array: u32,
+    /// Synthesised wrapper that adapts a user-defined `handleRequest`
+    /// function (signature `(String) -> String`, direct multi-value
+    /// return) to the canonical-ABI shape required for a component
+    /// export of `func(body: string) -> string`. The wrapper has core
+    /// signature `(body_ptr: i32, body_len: i32, ret_area: i32) -> ()`
+    /// and writes `(out_ptr, out_len)` at offsets 0/4 of the ret-area.
+    ///
+    /// `Some(_)` only when the AST contains a top-level
+    /// `handleRequest = (String) -> String { … }` (or any function
+    /// with the matching signature — we check the name as a stable
+    /// convention for now; user-visible API on top can come later).
+    fn_handler_wrapper: Option<u32>,
     fn_user_start: u32,
+    /// Index of the user-defined `handleRequest` function in the core
+    /// function space. Populated alongside `fn_handler_wrapper`.
+    user_handler_func_idx: Option<u32>,
 }
 
 impl<'m> WasmGen<'m> {
@@ -798,8 +836,338 @@ impl<'m> WasmGen<'m> {
             fn_print_bool: base_defined + 2,
             fn_alloc: base_defined + 3,
             fn_start: base_defined + 4,
-            fn_user_start: base_defined + 5,
+            fn_list_to_json_array: base_defined + 5,
+            // Slot reservation for the handler wrapper is decided in
+            // `assign_func_indices` (it depends on whether the AST
+            // actually defines `handleRequest`). When present, it sits
+            // at the last available slot after user functions.
+            fn_handler_wrapper: None,
+            fn_user_start: base_defined + 6,
+            user_handler_func_idx: None,
         }
+    }
+
+    /// Returns the core-module function index of the synthesised
+    /// handler wrapper when present. The component wrapper in
+    /// `wasm/component.rs` aliases and lifts this as the
+    /// `oneway:http-handler/handler.handle-request` export.
+    pub(super) fn handler_wrapper_func_idx(&self) -> Option<u32> {
+        self.fn_handler_wrapper
+    }
+
+    /// Locates a user-defined function with the conventional name
+    /// `handleRequest` and signature `(String) -> String`. Returns its
+    /// core-module function index when present.
+    ///
+    /// The signature check guards against accidentally exporting a
+    /// same-named function that doesn't match the host's expected shape
+    /// — lifting a mismatched core function would fail component
+    /// validation at instantiation time.
+    fn find_handler_request_idx(&self) -> Option<u32> {
+        let key = (Some("String".to_string()), "handleRequest".to_string());
+        let info = self.func_table.get(&key)?;
+        // Verify the function's wasm type is `(i32, i32) -> (i32, i32)` —
+        // i.e. (String) -> String when both are flat-lowered.
+        let (params, results) = self
+            .user_type_sigs
+            .get((info.type_idx - TY_USER_START) as usize)?;
+        if params.as_slice() == [ValType::I32, ValType::I32]
+            && results.as_slice() == [ValType::I32, ValType::I32]
+        {
+            Some(info.func_idx)
+        } else {
+            None
+        }
+    }
+
+    /// Build the `fn_list_to_json_array` helper function.
+    ///
+    /// Core signature: `(list_ptr: i32, list_len: i32) -> (i32, i32)`
+    /// returning `(out_ptr, out_len)` of a freshly-allocated string
+    /// containing `[elem0,elem1,…,elemN]`. Element slots in the list
+    /// follow the storage convention of `build_list_literal`:
+    /// `(i32 ptr, i32 len)` at offsets 0 / 4 of an 8-byte slot.
+    ///
+    /// Algorithm: two passes. Pass 1 sums the byte budget
+    /// (`2 + sum(elem_len) + max(0, len-1)`), so we allocate the
+    /// output buffer exactly once. Pass 2 fills it by walking the
+    /// list, writing `[`, comma separators, each element body, and
+    /// finally `]`.
+    fn build_list_to_json_array(&self) -> Function {
+        // Locals declared in order. Indices follow the params (2 i32s),
+        // so the first local is index 2.
+        //   0: list_ptr  (param)
+        //   1: list_len  (param)
+        //   2: total     (output size accumulator / final length)
+        //   3: i         (loop counter)
+        //   4: out_ptr   (allocated buffer)
+        //   5: out_pos   (write offset within buffer)
+        //   6: elem_ptr  (per-iteration element pointer)
+        //   7: elem_len  (per-iteration element length)
+        //   8: slot_addr (list_ptr + i*8, reused twice per iteration)
+        let mut f = Function::new([(7, ValType::I32)]);
+
+        // ── Pass 1: total = 2 + sum(elem_len) + max(0, len-1) ─────────────────
+        // Start total with 2 (for `[` and `]`).
+        f.instruction(&Instruction::I32Const(2));
+        f.instruction(&Instruction::LocalSet(2));
+        // If len > 1, add (len - 1) for the commas.
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32GtS);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(2));
+        f.instruction(&Instruction::End);
+        // Loop: i = 0; while i < len: total += elem_len[i]; i++
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        // if i >= len: break
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32GeS);
+        f.instruction(&Instruction::BrIf(1));
+        // slot_addr = list_ptr + i*8
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::I32Mul);
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalTee(8));
+        // total += i32.load offset=4 (slot_addr) = elem_len
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(2));
+        // i++
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End); // end loop
+        f.instruction(&Instruction::End); // end block
+
+        // ── Allocate output buffer (size = total) ──────────────────────────────
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(4));
+
+        // Write `[` at out_ptr+0
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::I32Const(b'[' as i32));
+        f.instruction(&Instruction::I32Store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        // out_pos = 1
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::LocalSet(5));
+
+        // ── Pass 2: walk elements, write to buffer ─────────────────────────
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        // if i >= len: break
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32GeS);
+        f.instruction(&Instruction::BrIf(1));
+        // if i > 0: write `,` at out_ptr+out_pos, out_pos++
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32GtS);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Const(b',' as i32));
+        f.instruction(&Instruction::I32Store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(5));
+        f.instruction(&Instruction::End);
+        // slot_addr = list_ptr + i*8
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::I32Mul);
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(8));
+        // elem_ptr = i32.load(slot_addr+0)
+        f.instruction(&Instruction::LocalGet(8));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalSet(6));
+        // elem_len = i32.load(slot_addr+4)
+        f.instruction(&Instruction::LocalGet(8));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalSet(7));
+        // Inline byte-copy loop: copy elem_len bytes from elem_ptr to
+        // out_ptr+out_pos. We use local 6 (elem_ptr) as src cursor,
+        // local 8 as dst cursor (= out_ptr+out_pos initially), local 7
+        // as remaining count.
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(8));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(7));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::BrIf(1));
+        // *dst = *src
+        f.instruction(&Instruction::LocalGet(8));
+        f.instruction(&Instruction::LocalGet(6));
+        f.instruction(&Instruction::I32Load8U(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        // dst++, src++, n--
+        f.instruction(&Instruction::LocalGet(8));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(8));
+        f.instruction(&Instruction::LocalGet(6));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(6));
+        f.instruction(&Instruction::LocalGet(7));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(7));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End); // end inner loop
+        f.instruction(&Instruction::End); // end inner block
+                                          // out_pos += original elem_len (re-load from slot+4)
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::I32Mul);
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(5));
+        // i++
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End); // end outer loop
+        f.instruction(&Instruction::End); // end outer block
+
+        // Write `]` at out_ptr+out_pos
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Const(b']' as i32));
+        f.instruction(&Instruction::I32Store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+
+        // Return (out_ptr, total). `total` was the pass-1 budget,
+        // which equals the final length — we wrote exactly that many
+        // bytes.
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::End);
+        f
+    }
+
+    /// Build the canonical-ABI wrapper function for the dynamic handler.
+    ///
+    /// Core signature: `(body_ptr: i32, body_len: i32) -> i32`.
+    ///
+    /// Body:
+    ///   1. Call user `handleRequest(body_ptr, body_len)` — leaves
+    ///      `(out_ptr, out_len)` on the stack.
+    ///   2. Save them to scratch locals.
+    ///   3. Allocate 8 bytes for the ret-area via `$alloc`.
+    ///   4. Store `out_ptr` at ret_area+0, `out_len` at ret_area+4.
+    ///   5. Return the ret-area pointer.
+    ///
+    /// This is the **callee-allocated** indirect return shape the
+    /// canonical ABI uses for a `string` result under the default
+    /// MAX_FLAT_RESULTS limit — the host then reads `(ptr, len)` from
+    /// the returned address.
+    fn build_handler_wrapper(&self, user_handler_idx: u32) -> Function {
+        // Three extra i32 locals: scratch for the (ptr, len) pair from
+        // the user function and the alloc'd ret-area pointer.
+        let mut f = Function::new([(3, ValType::I32)]);
+        // Local layout:
+        //   0: body_ptr   (param)
+        //   1: body_len   (param)
+        //   2: out_ptr    (scratch)
+        //   3: out_len    (scratch)
+        //   4: ret_area   (scratch)
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::Call(user_handler_idx));
+        // Stack: [out_ptr, out_len]
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::LocalSet(2));
+        // ret_area = alloc(8)
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(4));
+        // ret_area[0..4] = out_ptr
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::I32Store(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        // ret_area[4..8] = out_len
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Store(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        // Return the ret-area pointer.
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::End);
+        f
     }
 
     // ── Pre-passes ────────────────────────────────────────────────────────────
@@ -870,6 +1238,47 @@ impl<'m> WasmGen<'m> {
             .insert("Ok".to_string(), "Result".to_string());
         self.variant_tag.insert("Err".to_string(), 0);
         self.variant_tag.insert("Ok".to_string(), 1);
+
+        // Newtype aliases of unions inherit their variant set so that
+        // dispatching on a value whose static type is the alias resolves
+        // correctly. E.g. `MessageContent = Option<Content>` is
+        // registered with the same variants as `Option`, letting
+        // `someMessageContent.(None => ..., Some<Content> => ...)`
+        // compile through the same `emit_union_dispatch` path as a raw
+        // `Option`.
+        //
+        // The alias chain is walked through `type_defs` until we hit a
+        // name that's already in `union_variants` (either a user union
+        // or a builtin like `Option`/`Result`/`Bool`). The bound of 20
+        // hops guards against a malformed cyclic alias.
+        let alias_defs: Vec<(String, String)> = self
+            .type_defs
+            .iter()
+            .filter_map(|(alias_name, body)| {
+                if let TypeExpr::Named { name: target, .. } = body {
+                    Some((alias_name.clone(), target.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for (alias_name, initial_target) in alias_defs {
+            if self.union_variants.contains_key(&alias_name) {
+                continue; // already a union itself, not an alias
+            }
+            let mut current = initial_target;
+            for _ in 0..20 {
+                if let Some(variants) = self.union_variants.get(&current) {
+                    let variants = variants.clone();
+                    self.union_variants.insert(alias_name.clone(), variants);
+                    break;
+                }
+                match self.type_defs.get(&current) {
+                    Some(TypeExpr::Named { name: next, .. }) => current = next.clone(),
+                    _ => break,
+                }
+            }
+        }
     }
 
     fn collect_all_strings(&mut self) {
@@ -1105,6 +1514,22 @@ impl<'m> WasmGen<'m> {
                 idx += 1;
             }
         }
+
+        // 3. Dynamic HTTP handler detection. When the AST defines a
+        //    top-level `handleRequest = (String) -> String { … }`, we
+        //    synthesise a canonical-ABI wrapper at the next available
+        //    index. The wrapper has core signature `(i32, i32) -> i32`
+        //    — the callee-allocated indirect-return shape the
+        //    component-level lift of `func(body: string) -> string`
+        //    expects under the default MAX_FLAT_RESULTS. See
+        //    `build_handler_wrapper` for the body.
+        if let Some(user_idx) = self.find_handler_request_idx() {
+            self.user_handler_func_idx = Some(user_idx);
+            self.fn_handler_wrapper = Some(idx);
+            // Register the wrapper's wasm type so the function section
+            // can declare it. Signature: `(i32, i32) -> i32`.
+            let _ = self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32]);
+        }
     }
 
     // ── Type system ───────────────────────────────────────────────────────────
@@ -1132,7 +1557,7 @@ impl<'m> WasmGen<'m> {
         match name {
             "Int" | "Byte" | "Hex" => Ty::I64,
             "Float" => Ty::F64,
-            "Bool" | "True" | "False" | "Off" | "On" => Ty::I32,
+            "Bool" | "True" | "False" => Ty::I32,
             "String" => Ty::Str,
             "Unit" | "Never" => Ty::Unit,
             // See `resolve_name_val_types::go` for the rationale on which
@@ -1768,6 +2193,22 @@ impl<'m> WasmGen<'m> {
                 if let Some(unwrapped) = newtype_unwrap_ty(&recv_ty, &field.name) {
                     return unwrapped;
                 }
+                // Product field access: the receiver is a heap pointer
+                // to a struct laid out by `build_product_value`. Read
+                // back from the matching byte offset.
+                if let Ty::NamedPtr(product_name) = &recv_ty {
+                    if self
+                        .type_defs
+                        .get(product_name)
+                        .is_some_and(|t| matches!(t, TypeExpr::Product { .. }))
+                    {
+                        if let Some(ty) =
+                            self.load_product_field(product_name, &field.name, scope, f)
+                        {
+                            return ty;
+                        }
+                    }
+                }
                 self.drop_value(recv_ty, f);
                 Ty::Unit
             }
@@ -2003,8 +2444,31 @@ impl<'m> WasmGen<'m> {
                     let body = self.type_defs.get(name).cloned().unwrap();
                     return match &body {
                         TypeExpr::Product { .. } => {
-                            // Product type: compile args for side effects, return Unit.
-                            // The caller is responsible for handling the result.
+                            // Product type. Two surface shapes reach here:
+                            //   * `Name(a * b * c)` — one arg, an
+                            //     `Expr::ProductValue` whose fields are
+                            //     the positional field values.
+                            //   * `Name(a, b, c)` — N comma-separated args
+                            //     in declaration (alphabetical) order.
+                            // Both route through `build_product_value`,
+                            // which allocates the struct, lays each field
+                            // out at its byte offset, and returns the
+                            // pointer typed as `Ty::NamedPtr(name)`.
+                            // Anything else (mismatched arity, an empty
+                            // call) falls through to the legacy
+                            // side-effect-only path so we don't regress
+                            // existing programs.
+                            let layout = self.product_field_layout(name);
+                            if args.len() == 1 {
+                                if let Expr::ProductValue { fields, .. } = &args[0].clone() {
+                                    if fields.len() == layout.len() {
+                                        return self.build_product_value(name, fields, scope, f);
+                                    }
+                                }
+                            }
+                            if !layout.is_empty() && args.len() == layout.len() {
+                                return self.build_product_value(name, args, scope, f);
+                            }
                             for a in args {
                                 let ty = self.compile_expr(a, scope, f);
                                 self.drop_value(ty, f);
@@ -2367,6 +2831,131 @@ impl<'m> WasmGen<'m> {
         Ty::NamedPtr(union_name.to_string())
     }
 
+    /// Build a value-level product (`Foo(a * b * c)` or `Foo(a, b, c)`).
+    ///
+    /// Allocates one heap block sized to the product's field layout,
+    /// then for each field: pushes the struct base, compiles the field
+    /// expression, and stores the result at the field's byte offset.
+    /// Returns the struct pointer typed as `Ty::NamedPtr(product_name)`,
+    /// which downstream `Expr::FieldAccess` reads back from in
+    /// `compile_expr` (matching offset via `product_field_layout`).
+    ///
+    /// Field expressions are assumed to be positional (same order as
+    /// the type-level field declaration, which the parser preserves
+    /// and the alphabetical-ordering rule pins).
+    fn build_product_value(
+        &mut self,
+        product_name: &str,
+        field_exprs: &[Expr],
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let layout = self.product_field_layout(product_name);
+        let total_size: u32 = layout
+            .iter()
+            .map(|(name, _, _)| self.field_byte_size(name))
+            .sum::<u32>()
+            .max(4); // `alloc` expects a non-zero size.
+
+        // ── Allocate ──────────────────────────────────────────────────
+        f.instruction(&Instruction::I32Const(total_size as i32));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+
+        // ── Lay out each field ────────────────────────────────────────
+        // Push base, compile field value, store at offset. The store
+        // helper accepts `[addr, value]` (scalar) or `[addr, ptr, len]`
+        // (string) on the stack and emits the appropriate i32/i64 stores.
+        for (i, (_field_name, field_repr, field_offset)) in layout.iter().enumerate() {
+            let Some(expr) = field_exprs.get(i) else {
+                break;
+            };
+            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+            let _val_ty = self.compile_expr(expr, scope, f);
+            self.store_payload_at_offset(*field_offset, field_repr, scope, f);
+        }
+
+        // ── Result ────────────────────────────────────────────────────
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        Ty::NamedPtr(product_name.to_string())
+    }
+
+    /// Load a single field from a heap-allocated product struct.
+    ///
+    /// Stack contract: enters with `[ptr_to_struct]` on top, exits with
+    /// the field value laid out per `field_repr` (one i32/i64 for
+    /// scalars / named pointers, two i32s `[ptr, len]` for strings).
+    /// Returns the field's wasm repr so the caller can thread it
+    /// through subsequent method dispatch.
+    ///
+    /// Returns `None` if `field_name` is not a known field of
+    /// `product_name` (the caller is responsible for the fallback).
+    fn load_product_field(
+        &self,
+        product_name: &str,
+        field_name: &str,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Option<Ty> {
+        let layout = self.product_field_layout(product_name);
+        let (_, field_repr, field_offset) =
+            layout.iter().find(|(n, _, _)| n == field_name).cloned()?;
+        match &field_repr {
+            Ty::I64 | Ty::F64 => {
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: field_offset as u64,
+                    align: 3,
+                    memory_index: 0,
+                }));
+                Some(field_repr)
+            }
+            Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) => {
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: field_offset as u64,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                Some(field_repr)
+            }
+            Ty::Str | Ty::NamedStr(_) => {
+                // Stack: [base]. Stash base, then re-load it twice to
+                // emit the (ptr, len) pair as two i32 loads.
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: field_offset as u64,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: (field_offset + 4) as u64,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                Some(field_repr)
+            }
+            Ty::List | Ty::Unit => {
+                f.instruction(&Instruction::Drop);
+                None
+            }
+        }
+    }
+
+    /// Build a list value from positional element expressions.
+    ///
+    /// Each slot is fixed at 8 bytes regardless of element type. The
+    /// layout per slot is:
+    ///
+    ///   * `Ty::I64`        → one i64 at offset 0.
+    ///   * `Ty::I32`        → one i32 at offset 0, upper 4 bytes unused.
+    ///   * `Ty::Str`/`NamedStr` → i32 ptr at offset 0, i32 len at offset 4.
+    ///   * anything else    → dropped + zeroed (legacy fallback).
+    ///
+    /// The fixed 8-byte stride lets the same `(ptr, len)` representation
+    /// describe lists of any of the above types; downstream methods
+    /// dispatch on a `Ty::List` receiver and read back according to the
+    /// expected element shape (see `compile_builtin_method`).
     fn build_list_literal(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
         let n = args.len() as u32;
         let byte_size = n * 8;
@@ -2376,25 +2965,69 @@ impl<'m> WasmGen<'m> {
 
         for (i, arg) in args.iter().enumerate() {
             let ty = self.compile_expr(arg, scope, f);
-            // All list elements treated as i64 for Phase 3
+            let slot_offset = (i as u64) * 8;
             match ty {
-                Ty::I64 => {}
-                Ty::I32 => {
-                    f.instruction(&Instruction::I64ExtendI32S);
+                Ty::I64 | Ty::F64 => {
+                    // Stack: [value]. Store at slot.
+                    f.instruction(&Instruction::LocalSet(scope.tmp_i64()));
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: slot_offset,
+                        align: 3,
+                        memory_index: 0,
+                    }));
                 }
-                _ => {
-                    self.drop_value(ty, f);
+                Ty::I32 => {
+                    // Promote i32 to i64 so all numeric lists share the
+                    // same wire format. Upper 4 bytes carry the
+                    // sign-extension; callers reading back as i32 simply
+                    // load the low 4 bytes.
+                    f.instruction(&Instruction::I64ExtendI32S);
+                    f.instruction(&Instruction::LocalSet(scope.tmp_i64()));
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: slot_offset,
+                        align: 3,
+                        memory_index: 0,
+                    }));
+                }
+                Ty::Str | Ty::NamedStr(_) => {
+                    // Stack: [ptr, len]. Stash len, then ptr, then store
+                    // them at offset+0 and offset+4 of the slot.
+                    f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // len
+                    f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // ptr
+                                                                            // Store ptr at offset+0
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                    f.instruction(&Instruction::I32Store(MemArg {
+                        offset: slot_offset,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    // Store len at offset+4
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                    f.instruction(&Instruction::I32Store(MemArg {
+                        offset: slot_offset + 4,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                }
+                other => {
+                    self.drop_value(other, f);
+                    // Zero the slot so a later read doesn't see
+                    // uninitialised heap bytes.
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                     f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: slot_offset,
+                        align: 3,
+                        memory_index: 0,
+                    }));
                 }
             }
-            f.instruction(&Instruction::LocalSet(scope.tmp_i64()));
-            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-            f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
-            f.instruction(&Instruction::I64Store(MemArg {
-                offset: (i as u64) * 8,
-                align: 3,
-                memory_index: 0,
-            }));
         }
 
         f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
@@ -3070,6 +3703,19 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
                 Ty::List
             }
+            ("toJsonArray", Ty::List) => {
+                // Stack: [list_ptr, list_len]. Call the helper which
+                // returns `(out_ptr, out_len)` of a freshly-allocated
+                // string `[elem0,elem1,…,elemN]`. Each slot in the list
+                // is read as `(i32 ptr, i32 len)` at offsets 0/4 — the
+                // storage layout of `build_list_literal` for string
+                // elements. Lists of `Int` / `Float` slots are
+                // misinterpreted (their first 4 bytes would be read as
+                // a ptr); we document that and rely on user code to
+                // only call this on `List<String>`-shaped lists.
+                f.instruction(&Instruction::Call(self.fn_list_to_json_array));
+                Ty::Str
+            }
             ("first", Ty::List) => {
                 // Stack: [ptr, len] → Option<Int>
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // save len
@@ -3744,6 +4390,12 @@ impl<'m> WasmGen<'m> {
         // TY_PRINT_BOOL).
         let ty_waitable_set_wait =
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32]);
+        // Reserve the wasm type for the list-to-json-array helper:
+        // `(i32, i32) -> (i32, i32)`. Must be registered *before* the
+        // type section is emitted below; the function section uses the
+        // returned absolute index.
+        let list_to_json_array_ty =
+            self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
 
         let mut m = Module::new();
 
@@ -3897,13 +4549,14 @@ impl<'m> WasmGen<'m> {
         funcs.function(TY_PRINT_BOOL);
         funcs.function(TY_ALLOC);
         funcs.function(TY_RUN); // exported run() -> i32
-                                // User-compiled functions only — extern imports are already declared
-                                // in the import section and must NOT get a defined-function slot.
-                                // Dedupe by `func_idx`: the same `FuncInfo` can be registered
-                                // under multiple keys in `func_table` (the self-ctor commutative
-                                // alias adds a second entry pointing at the same function body).
-                                // Each function body must declare its type exactly once or the
-                                // wasm function-section and code-section lengths drift apart.
+        funcs.function(list_to_json_array_ty); // list → json array helper
+                                               // User-compiled functions only — extern imports are already declared
+                                               // in the import section and must NOT get a defined-function slot.
+                                               // Dedupe by `func_idx`: the same `FuncInfo` can be registered
+                                               // under multiple keys in `func_table` (the self-ctor commutative
+                                               // alias adds a second entry pointing at the same function body).
+                                               // Each function body must declare its type exactly once or the
+                                               // wasm function-section and code-section lengths drift apart.
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut user_func_defs: Vec<(u32, u32)> = self
             .func_table
@@ -3916,9 +4569,20 @@ impl<'m> WasmGen<'m> {
         for (_, type_idx) in &user_func_defs {
             funcs.function(*type_idx);
         }
+        // Optional handler wrapper sits at the very end of the function
+        // index space — see `assign_func_indices` and
+        // `build_handler_wrapper`. Type: `(i32, i32) -> i32`.
+        if self.fn_handler_wrapper.is_some() {
+            let wrapper_ty = self
+                .user_type_map
+                .get(&(vec![ValType::I32, ValType::I32], vec![ValType::I32]))
+                .copied()
+                .expect("handler wrapper type was reserved in assign_func_indices");
+            funcs.function(wrapper_ty);
+        }
         m.section(&funcs);
 
-        // ── Memory section ────────────────────────────────────────────────────────────
+        // ── Memory section ───────────────────────────────────────────────────────────────
         // We import the memory rather than declaring our own — the component
         // wrapper instantiates a tiny "memory provider" core module first so
         // that the canonical-ABI lowers (which need a memory option) can
@@ -3929,17 +4593,25 @@ impl<'m> WasmGen<'m> {
 
         // ── Export section ─────────────────────────────────────────────────────────────
         // The Component Model wrapper lifts `run` as `wasi:cli/run.run`.
+        // When the user defined `handleRequest`, the synthesised
+        // wrapper (callee-allocated indirect-return shape) is exported
+        // under a stable core name so `component::wrap` can alias and
+        // lift it as `handle-request`.
         let mut exports = ExportSection::new();
         exports.export("run", ExportKind::Func, self.fn_start);
+        if let Some(wrapper_idx) = self.fn_handler_wrapper {
+            exports.export("__handle_request", ExportKind::Func, wrapper_idx);
+        }
         m.section(&exports);
 
-        // ── Code section ──────────────────────────────────────────────────────
+        // ── Code section ─────────────────────────────────────────────────────────────
         let mut codes = CodeSection::new();
         codes.function(&self.build_print_str());
         codes.function(&self.build_print_int());
         codes.function(&self.build_print_bool());
         codes.function(&self.build_alloc());
         codes.function(&self.build_start());
+        codes.function(&self.build_list_to_json_array());
         // User functions — compile each FunctionDef in ascending func_idx order
         let ordered_funcs: Vec<FunctionDef> = {
             let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
@@ -3966,6 +4638,17 @@ impl<'m> WasmGen<'m> {
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
+        }
+        // Optional handler wrapper goes last in the code section so it
+        // pairs with the function-section entry added above. The
+        // wrapper calls the already-compiled `handleRequest` user
+        // function and packages its return into a callee-allocated
+        // ret-area for the canonical-ABI lift.
+        if let (Some(_wrapper_idx), Some(user_idx)) =
+            (self.fn_handler_wrapper, self.user_handler_func_idx)
+        {
+            let wrapper = self.build_handler_wrapper(user_idx);
+            codes.function(&wrapper);
         }
         m.section(&codes);
 
@@ -4138,6 +4821,22 @@ fn generate_core_module(module: &OModule) -> Vec<u8> {
     gen.compile()
 }
 
+/// Returns whether the program defines a `handleRequest` function that
+/// should be lifted as the component-level dynamic-handler export.
+///
+/// We re-run the relevant prefix of `WasmGen::compile()` to avoid
+/// threading the boolean through the existing `generate` /
+/// `generate_core_module` signatures. The work duplicated is just
+/// `assign_func_indices`, which is fast and side-effect-free.
+fn program_has_handler(module: &OModule) -> bool {
+    let mut gen = WasmGen::new(module);
+    gen.build_type_defs();
+    gen.build_variant_info();
+    gen.collect_all_strings();
+    gen.assign_func_indices();
+    gen.handler_wrapper_func_idx().is_some()
+}
+
 /// Builds the final Component Model component (`.wasm` bytes).
 ///
 /// The output is a WASI Preview 3 component that exports
@@ -4152,7 +4851,8 @@ pub fn generate(module: &OModule) -> Vec<u8> {
     // surface async metadata in the emitted WIT and — once async lowering
     // lands — attach `CanonicalOption::Async` to the right lifts/lowers.
     let async_set = crate::codegen::async_analysis::analyse(module);
-    let bytes = component::wrap(&core, &externs, &async_set);
+    let has_handler = program_has_handler(module);
+    let bytes = component::wrap(&core, &externs, &async_set, has_handler);
     validate(&bytes);
     bytes
 }

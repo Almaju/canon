@@ -117,6 +117,20 @@ pub struct LoadResult {
     /// begin. Items before this index were pulled in via `use` and are
     /// exempt from per-file ordering rules.
     pub entry_items_start: usize,
+    /// Every user-authored source file that contributed to this module,
+    /// in load order. Bundled package files are deliberately excluded —
+    /// they ship with the compiler and aren't the user's responsibility
+    /// to format. The entry file is always the first element.
+    pub local_sources: Vec<LoadedSource>,
+}
+
+/// A user-authored Oneway source file as the loader saw it on disk.
+/// Used by the pipeline to enforce canonical formatting (see
+/// `enforce_format` in `main.rs`).
+#[derive(Debug, Clone)]
+pub struct LoadedSource {
+    pub path: PathBuf,
+    pub source: String,
 }
 
 struct LoadCtx {
@@ -126,6 +140,10 @@ struct LoadCtx {
     /// file path (`pkg.name + "/" + file.path`).
     seen_bundled: HashSet<String>,
     items: Vec<Item>,
+    /// User-authored sources accumulated during load (entry + transitive
+    /// local `use` imports). Mirrors `seen` but keeps each file's full
+    /// text so callers can validate canonical formatting later.
+    local_sources: Vec<LoadedSource>,
 }
 
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
@@ -139,12 +157,17 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
         items: Vec::new(),
+        local_sources: Vec::new(),
     };
     let source = fs::read_to_string(&canonical).map_err(|err| OnewayError::CheckError {
         message: format!("could not read `{}`: {}", canonical.display(), err),
         span: Span::default(),
     })?;
     ctx.seen.insert(canonical.to_path_buf());
+    ctx.local_sources.push(LoadedSource {
+        path: canonical.to_path_buf(),
+        source: source.clone(),
+    });
     let dir = canonical.parent().unwrap_or_else(|| Path::new("."));
     let entry_items_start = load_entry_source(&source, dir, &mut ctx)?;
     let span = Span::default();
@@ -159,6 +182,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
     Ok(LoadResult {
         module,
         entry_items_start,
+        local_sources: ctx.local_sources,
     })
 }
 
@@ -259,6 +283,10 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
         message: format!("could not read `{}`: {}", path.display(), err),
         span: Span::default(),
     })?;
+    ctx.local_sources.push(LoadedSource {
+        path: path.to_path_buf(),
+        source: source.clone(),
+    });
     load_source(
         &source,
         path.parent().unwrap_or_else(|| Path::new(".")),

@@ -14,7 +14,7 @@ sets, so you don't need to think about the boundary.
 The library is **layered**:
 
 - `wasi/…` — raw bindings, machine-generated from the upstream WIT by
-  `oneway gen-bindings`. One file per WIT interface. No idioms.
+  `oneway bindgen`. One file per WIT interface. No idioms.
 - `std/…` — curated wrappers (what you see below). One primary type per
   file, idiomatic Oneway, hides the FFI layer entirely.
 

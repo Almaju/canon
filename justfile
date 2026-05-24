@@ -135,7 +135,7 @@ example name:
 
 # changing the bindgen emitter. Commit the resulting packages/oneway/wasi/ tree.
 regen-bindings: build
-    cargo run --quiet -- gen-bindings wit-vendor/wasi -o packages/oneway
+    cargo run --quiet -- bindgen wit-vendor/wasi -o packages/oneway
 
 # Format compiler source
 fmt:

@@ -58,7 +58,7 @@ new version is downloadable and works:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh
-oneway version
+oneway --version
 ```
 
 ## Version scheme

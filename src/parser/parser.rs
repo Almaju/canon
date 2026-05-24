@@ -303,6 +303,17 @@ impl Parser {
             } else if name.name == "main" || params.is_empty() {
                 // main or no-param function: no receiver
                 (None, false, params)
+            } else if matches!(
+                crate::ast::entry_world_of(&return_ty),
+                Some(crate::ast::EntryWorld::Http)
+            ) {
+                // World-shape return (`Response` / `Result<Response, _>`):
+                // this is an HTTP entry, not a method. Suppress receiver
+                // extraction so `home = (Request) -> Response { … }` stays
+                // a free function with `Request` as its parameter (not
+                // a method on `Request`). See `WASI-HTTP-HANDLER.md`
+                // §Entry-point selection.
+                (None, false, params)
             } else if Self::is_pascal_case_str(&name.name) {
                 // PascalCase: defer to post-parse resolve_new_syntax
                 (None, false, params)
@@ -620,6 +631,10 @@ impl Parser {
                         name: name_tok.lexeme.clone(),
                         span: name_tok.span,
                     };
+                    // Optional generic type args after the field/method
+                    // name (`value.Option<Content>`, etc.). See
+                    // `consume_phantom_type_args` for the rationale.
+                    let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
                     // `value.X` with no `(` or `::` after is field access; with
                     // `(` or `::` it's a method call.
                     if !self.check(TokenKind::LParen) && !self.check(TokenKind::ColonColon) {
@@ -696,6 +711,13 @@ impl Parser {
             TokenKind::LParen => self.parse_lambda(),
             TokenKind::Ident | TokenKind::KwSelf => {
                 self.advance();
+                // Optional generic type arguments after a PascalCase
+                // identifier: `Option<Content>`, `List<Choice>`, etc.
+                // Accepted and discarded (see `consume_phantom_type_args`).
+                // Skipped when followed by `(` to avoid swallowing the
+                // turbofish-like form `Foo<T>(arg)` mid-call — type args
+                // before a constructor call use `::<>` (turbofish) syntax.
+                let _consumed_generics = self.consume_phantom_type_args(&tok.lexeme)?;
                 if self.check(TokenKind::LParen) {
                     self.advance();
                     self.skip_newlines();
@@ -1073,6 +1095,57 @@ impl Parser {
 
     fn is_at_end(&self) -> bool {
         matches!(self.peek().kind, TokenKind::Eof)
+    }
+
+    /// If the next token is `<` and the current identifier is PascalCase,
+    /// consume a `<T1, T2, ...>` type-argument list and discard it.
+    ///
+    /// Returns `true` iff a type-argument list was consumed.
+    ///
+    /// This exists so that parameterized type names (`Option<Content>`,
+    /// `List<Choice>`, `Result<T, E>`) can appear in expression position
+    /// where they would otherwise be a parse error. Examples:
+    ///
+    /// ```text
+    /// // Dispatch on a value whose static type carries generic args:
+    /// Option<Content>.(
+    ///     * (None)          -> Json { ... }
+    ///     * (Some<Content>) -> Json { ... }
+    /// )
+    ///
+    /// // Field access where the field's underlying type is generic:
+    /// wrapper.Option<Content>
+    /// ```
+    ///
+    /// The generic args are accepted but discarded — runtime values don't
+    /// carry generic parameters, only their unparameterized type names
+    /// reach codegen. The identifier (`Option`, `List`, `Result`, …) is
+    /// what the checker and codegen look up. `<` is not used as a binary
+    /// operator anywhere in expression position, so consuming it here is
+    /// unambiguous.
+    fn consume_phantom_type_args(&mut self, ident_lexeme: &str) -> Result<bool> {
+        if !Self::is_pascal_case_str(ident_lexeme) {
+            return Ok(false);
+        }
+        if !self.check(TokenKind::Lt) {
+            return Ok(false);
+        }
+        self.advance();
+        if !self.check(TokenKind::Gt) {
+            loop {
+                // Parse the type arg purely for syntactic acceptance.
+                // The result is dropped — it doesn't affect runtime
+                // behaviour.
+                let _ = self.parse_type_expr()?;
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::Gt, "expected `>` to close generic argument list")?;
+        Ok(true)
     }
 }
 

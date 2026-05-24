@@ -43,7 +43,7 @@ body:
     id: version
     attributes:
       label: Oneway version
-      placeholder: "e.g. 0.2.0  (run `oneway version`)"
+      placeholder: "e.g. 0.2.0  (run `oneway --version`)"
     validations:
       required: true
 

@@ -29,7 +29,7 @@ tokio         = { version = "1", features = ["rt-multi-thread", "macros", "time"
 
 # WASI HTTP P3 — drives `wasi:http/handler.handle` exports through hyper.
 # We disable `default-features` to drop `default-send-request` (which pulls
-# in rustls + webpki); `oneway serve` only needs the *server* side today.
+# in rustls + webpki); `oneway run --addr` only needs the *server* side today.
 # The outbound request path can be re-enabled when we wire `wasi:http/client`
 # imports for the Oneway HTTP client (which is currently the
 # `oneway:builtins/http` bridge).

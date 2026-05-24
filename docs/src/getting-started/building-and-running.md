@@ -78,26 +78,31 @@ the file. The component runs on any host that supports WASI Preview 3
 and satisfies its imports — `oneway run`, `wasmtime serve`, browser
 polyfills, edge runtimes, etc.
 
-## Inspect Generated WAT
+## Serve as an HTTP Handler
 
 ```sh
-oneway emit hello.ow
+oneway run --addr 127.0.0.1:8080            # current directory
+oneway run hello.ow --addr 127.0.0.1:8080   # single-file mode
 ```
 
-Prints the **core** wasm module as WebAssembly Text. This is the fastest
-way to see how Oneway constructs map to wasm — print statements, dispatch,
-heap allocation, async lowering — without dragging in the component
-wrapping layer.
+With `--addr`, the same `run` verb instantiates the component as a
+`wasi:http/handler` instead of running it once as a command. The runtime
+opens a TCP listener at the given address and dispatches each incoming
+HTTP/1.1 request to the guest's `handle` export.
 
-## Show Tokens or AST
+## Inspect Compiler Stages
 
 ```sh
-oneway tokens hello.ow
-oneway ast    hello.ow
+oneway inspect tokens hello.ow   # lexer output
+oneway inspect ast    hello.ow   # parser output (AST debug dump)
+oneway inspect wat    hello.ow   # generated WebAssembly Text
 ```
 
-Diagnostic tools — useful when you want to understand exactly how the
-lexer or parser sees your code.
+One verb, three stages. The `wat` stage is the fastest way to see how
+Oneway constructs map to wasm — print statements, dispatch, heap
+allocation, async lowering — without dragging in the component wrapping
+layer. `tokens` and `ast` are diagnostic tools when you want to
+understand exactly how the lexer or parser sees your code.
 
 ## Check Sort Order and Types
 

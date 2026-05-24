@@ -1,0 +1,12 @@
+use oneway/std/http/Headers
+use oneway/std/http/Request
+use oneway/std/http/Response
+use oneway/std/http/Status
+
+home = (Request) -> Response {
+    Response(Headers(), Status(200))
+}
+
+main = () -> Unit {
+    "ok".print()
+}

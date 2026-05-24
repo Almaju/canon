@@ -1,5 +1,5 @@
 main = () -> Unit {
-    "hello".concat(
-        "world"
-    ).print()
+    "hello"
+        .concat("world")
+        .print()
 }

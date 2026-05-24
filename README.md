@@ -54,14 +54,18 @@ oneway upgrade --check    # only check whether a newer release is available
 ## Usage
 
 ```sh
-oneway run hello.ow         # compile and run
-oneway build hello.ow       # compile to a native binary next to the source
-oneway emit hello.ow        # print generated Rust
-oneway check hello.ow       # check sort order and types
-oneway ast hello.ow         # print the AST
-oneway tokens hello.ow      # print lexer tokens
-oneway upgrade              # update to the latest release
-oneway version
+oneway run hello.ow              # compile and run
+oneway run --addr 127.0.0.1:8080 # serve as a wasi:http/handler
+oneway build hello.ow            # compile to a WASM component (.wasm)
+oneway check hello.ow            # check sort order and types
+oneway test hello_test.ow        # run `() -> TestResult` functions
+oneway fmt hello.ow              # format source (use --check to verify only)
+oneway inspect wat hello.ow      # print generated WAT
+oneway inspect ast hello.ow      # print the parsed AST
+oneway inspect tokens hello.ow   # print lexer tokens
+oneway bindgen file.wit          # generate Oneway bindings from WIT
+oneway upgrade                   # update to the latest release
+oneway --version
 oneway help
 ```
 

@@ -22,7 +22,7 @@ Please include:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a minimal proof of concept
-- The Oneway version affected (`oneway version`)
+- The Oneway version affected (`oneway --version`)
 - Your operating system and architecture
 
 We will acknowledge the report, investigate, and coordinate a fix and disclosure

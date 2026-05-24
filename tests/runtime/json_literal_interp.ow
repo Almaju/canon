@@ -2,14 +2,18 @@ use oneway/std/Json
 use oneway/std/MalformedJson
 
 label = (Int) -> Json {
-    {"answer": Int, "doubled": Int.mul(2), "ok": True()}
+    {"answer":Int,"doubled":Int.mul(2),"ok":True()}
 }
 
 main = () -> Result<Unit, MalformedJson> {
-    42.label().print()
-    {"label": "life"}.print()
-    [1, 2, 3].print()
-    [1.add(0), 2.add(0), 3.add(0)].print()
-    {"who": "team", "members": ["alice", "bob", "carol"]}.Json()?.print()
+    42
+        .label()
+        .print()
+    {"label":"life"}.print()
+    [1,2,3].print()
+    [1.add(0),2.add(0),3.add(0)].print()
+    {"who":"team","members":["alice","bob","carol"]}
+        .Json()?
+        .print()
     Ok(Unit())
 }

@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh 
 ## Verify
 
 ```sh
-oneway version
+oneway --version
 ```
 
 ## Update

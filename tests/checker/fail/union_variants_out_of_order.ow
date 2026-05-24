@@ -4,7 +4,9 @@ Banana = String
 
 Cherry = String
 
-Fruit = Cherry + Banana + Apple
+Fruit = Cherry
+  + Banana
+  + Apple
 
 main = () -> Unit {
     "ok".print()

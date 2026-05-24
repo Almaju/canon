@@ -660,10 +660,6 @@ fn builtin_hover(name: &str) -> Option<String> {
         "Stderr"     => "```oneway\nStderr\n```\nCapability for writing to stderr (non-suspending).",
         "Stdin"      => "```oneway\nStdin\n```\nCapability for reading from stdin (non-suspending).",
         "Stdout"     => "```oneway\nStdout\n```\nCapability for writing to stdout (non-suspending).",
-        // Misc flags
-        "Off" => "```oneway\nOff\n```\nSingleton flag type — the \"off\" state.",
-        "On"  => "```oneway\nOn\n```\nSingleton flag type — the \"on\" state.",
-        "Bit" => "```oneway\nBit = Off + On\n```\nA single bit.",
         _ => return None,
     };
     Some(desc.to_string())

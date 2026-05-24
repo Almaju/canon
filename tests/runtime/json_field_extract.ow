@@ -1,0 +1,10 @@
+use oneway/std/Json
+use oneway/std/MalformedJson
+
+main = () -> Result<Unit, MalformedJson> {
+    Json("{\"model\":\"gpt-4\",\"stream\":true}")?
+        .field("model")?
+        .asString()?
+        .print()
+    Ok(Unit())
+}

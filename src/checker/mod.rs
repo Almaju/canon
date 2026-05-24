@@ -22,8 +22,6 @@ const BUILTIN_TYPES: &[&str] = &[
     "Int",
     "Network",
     "Never",
-    "Off",
-    "On",
     "Serialize",
     "Stderr",
     "Stdin",
@@ -47,9 +45,9 @@ fn is_capability_type(name: &str) -> bool {
 const BUILTIN_GENERIC_TYPES: &[&str] =
     &["Future", "List", "Map", "Option", "Result", "Set", "Stream"];
 
-/// Zero-data builtin types that may be constructed with empty parens: `Unit()`, `Off()`, `On()`.
+/// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
-const ZERO_DATA_BUILTINS: &[&str] = &["False", "Off", "On", "True", "Unit"];
+const ZERO_DATA_BUILTINS: &[&str] = &["False", "True", "Unit"];
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
@@ -135,19 +133,84 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<Oneway
         }
     }
 
-    check_ordering(module, entry_items_start, &mut errors);
+    // Detect HTTP entries (free functions returning `Response` or
+    // `Result<Response, _>`). See `WASI-HTTP-HANDLER.md` §Entry-point
+    // selection for the rule.
+    let http_entries: Vec<&FunctionDef> = module.items[entry_items_start..]
+        .iter()
+        .filter_map(|item| match item {
+            Item::Function(func)
+                if func.receiver.is_none()
+                    && entry_world_of(&func.return_ty) == Some(EntryWorld::Http) =>
+            {
+                Some(func)
+            }
+            _ => None,
+        })
+        .collect();
 
-    if !main_found {
-        errors.push(OnewayError::CheckError {
-            message: "no `main` entry point defined".to_string(),
+    let http_entry_name = http_entries.first().map(|f| f.name.name.as_str());
+
+    check_ordering(module, entry_items_start, http_entry_name, &mut errors);
+
+    match (main_found, http_entries.len()) {
+        // CLI program: `main` exists, no HTTP entry. Existing behaviour.
+        (true, 0) => {}
+        // Library or malformed: neither entry shape is present.
+        (false, 0) => errors.push(OnewayError::CheckError {
+            message: "no entry point defined: expected either a `main` function or a free \
+                      function returning `Response` (HTTP handler). See \
+                      `WASI-HTTP-HANDLER.md` §Entry-point selection."
+                .to_string(),
             span: module.span,
-        });
+        }),
+        // Mixed worlds: a component exports exactly one world.
+        (true, _) => errors.push(OnewayError::CheckError {
+            message: format!(
+                "mixed worlds: this module defines `main` (CLI entry) and also `{}` returning \
+                  `Response` (HTTP entry). A component exports exactly one world. Remove one. \
+                  See `WASI-HTTP-HANDLER.md` §Entry-point selection.",
+                http_entries[0].name.name
+            ),
+            span: http_entries[0].span,
+        }),
+        // Ambiguous HTTP entry.
+        (false, n) if n > 1 => errors.push(OnewayError::CheckError {
+            message: format!(
+                "ambiguous HTTP entry: `{}` and `{}` both return `Response`. Exactly one \
+                  free function may be the entry. Refactor helpers to return a non-world type. \
+                  See `WASI-HTTP-HANDLER.md` §Entry-point selection.",
+                http_entries[0].name.name, http_entries[1].name.name
+            ),
+            span: http_entries[1].span,
+        }),
+        // Exactly one HTTP entry. Type surface is well-formed, but the
+        // codegen path for `wasi:http/handler` is slice 1b — not yet
+        // implemented. Surface this so users see a clear diagnostic
+        // instead of an internal codegen crash.
+        (false, 1) => errors.push(OnewayError::CheckError {
+            message: format!(
+                "HTTP handler `{}` is well-formed, but the codegen path for \
+                  `wasi:http/handler` is not yet implemented (slice 1b of the migration; \
+                  see `WASI-HTTP-HANDLER.md`). The stdlib types and the entry-detection \
+                  rule are landed; the world-emission and resource-lowering work is \
+                  pending.",
+                http_entries[0].name.name
+            ),
+            span: http_entries[0].span,
+        }),
+        _ => unreachable!(),
     }
 
     errors
 }
 
-fn check_ordering(module: &Module, entry_items_start: usize, errors: &mut Vec<OnewayError>) {
+fn check_ordering(
+    module: &Module,
+    entry_items_start: usize,
+    http_entry_name: Option<&str>,
+    errors: &mut Vec<OnewayError>,
+) {
     let entry_items = &module.items[entry_items_start..];
     // Union variants and product fields are checked in check_type_expr (covers
     // every position they appear in, not just top-level TypeDef bodies).
@@ -181,7 +244,10 @@ fn check_ordering(module: &Module, entry_items_start: usize, errors: &mut Vec<On
         .iter()
         .filter_map(|item| {
             if let Item::Function(func) = item {
-                if func.receiver.is_none() && func.name.name != "main" {
+                if func.receiver.is_none()
+                    && func.name.name != "main"
+                    && Some(func.name.name.as_str()) != http_entry_name
+                {
                     return Some((func.name.name.as_str(), func.name.span));
                 }
             }
@@ -354,8 +420,12 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
                         product_fields.insert(td.name.name.clone(), names);
                     }
                 }
-                TypeExpr::Named { name, generics, .. } if generics.is_empty() => {
-                    // Newtype `T = U`: one component named after `U`.
+                TypeExpr::Named { name, .. } => {
+                    // Newtype `T = U` (or `T = U<…>`): one component named
+                    // after the underlying type. The generic args don't
+                    // affect the field's name — `MessageContent = Option<Content>`
+                    // still has a single field named `Option`. See DESIGN.md
+                    // § "Newtypes Are 1-Component Products".
                     product_fields.insert(td.name.name.clone(), vec![name.clone()]);
                 }
                 _ => {}
@@ -430,16 +500,22 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
         }
     }
 
-    // Type aliases: `A = B` where `B` is a single named type. The checker
-    // uses these to resolve method lookups through alias chains so methods
-    // declared on the base type apply to the alias too.
+    // Type aliases: `A = B` or `A = B<...>` where the right-hand side is a
+    // single named type. The checker uses these to resolve method lookups
+    // and dispatch-arm pattern matches through alias chains, so methods
+    // and variants declared on the base type apply to the alias too.
+    //
+    // Generic arguments on the right-hand side are stripped at the alias
+    // level — `MessageContent = Option<Content>` is recorded as
+    // `MessageContent -> Option`. This makes a dispatch on a
+    // `MessageContent` value match patterns like `None` / `Some<Content>`
+    // (which live under `variant_of["None"] == "Option"`) by walking
+    // through the alias.
     let mut aliases: HashMap<String, String> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
-            if let TypeExpr::Named { name, generics, .. } = &td.body {
-                if generics.is_empty() {
-                    aliases.insert(td.name.name.clone(), name.clone());
-                }
+            if let TypeExpr::Named { name, .. } = &td.body {
+                aliases.insert(td.name.name.clone(), name.clone());
             }
         }
     }
@@ -909,7 +985,13 @@ fn check_expr(
                 // Validate param_ty and return_ty as type expressions
                 check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);
                 check_type_expr(&arm.return_ty, symbols, &generic_scope, errors);
-                // Verify the variant belongs to the scrutinee's type
+                // Verify the variant belongs to the scrutinee's type.
+                //
+                // The scrutinee may be a newtype wrapper around a union
+                // (e.g. `MessageContent = Option<Content>`). We walk the
+                // alias chain so dispatching `MessageContent.(None, Some)`
+                // matches `Option`'s variants. See `aliases` in
+                // `collect_symbols` for how the chain is built.
                 if let TypeExpr::Named {
                     name: variant_name,
                     span: vspan,
@@ -917,15 +999,35 @@ fn check_expr(
                 } = &arm.param_ty
                 {
                     if !scrutinee_ty.is_empty() && scrutinee_ty != "<unknown>" {
-                        let pattern_enum = symbols.variant_of.get(variant_name.as_str());
-                        if pattern_enum.map(|s| s.as_str()) != Some(scrutinee_ty.as_str()) {
-                            errors.push(OnewayError::CheckError {
-                                message: format!(
-                                    "pattern `{}` is not a variant of `{}`",
-                                    variant_name, scrutinee_ty
-                                ),
-                                span: *vspan,
-                            });
+                        if let Some(pattern_enum) = symbols.variant_of.get(variant_name.as_str()) {
+                            let mut current = scrutinee_ty.as_str();
+                            let mut matched = current == pattern_enum.as_str();
+                            // Walk aliases until we hit the target or run
+                            // out of links. The bound keeps a malformed
+                            // alias cycle from spinning forever.
+                            for _ in 0..20 {
+                                if matched {
+                                    break;
+                                }
+                                match symbols.aliases.get(current) {
+                                    Some(next) => {
+                                        current = next.as_str();
+                                        if current == pattern_enum.as_str() {
+                                            matched = true;
+                                        }
+                                    }
+                                    None => break,
+                                }
+                            }
+                            if !matched {
+                                errors.push(OnewayError::CheckError {
+                                    message: format!(
+                                        "pattern `{}` is not a variant of `{}`",
+                                        variant_name, scrutinee_ty
+                                    ),
+                                    span: *vspan,
+                                });
+                            }
                         }
                     }
                 }
@@ -1211,7 +1313,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "List"
         && matches!(
             (method, arg_count),
-            ("length", 0) | ("first", 0) | ("map", 1)
+            ("length", 0) | ("first", 0) | ("map", 1) | ("toJsonArray", 0)
         )
     {
         return true;
@@ -1408,6 +1510,7 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "length") => "Int".to_string(),
         ("List", "map") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
+        ("List", "toJsonArray") => "Json".to_string(),
         ("Map", "empty") => "Map".to_string(),
         ("Map", "get") => "Option".to_string(),
         ("Map", "insert") => "Map".to_string(),

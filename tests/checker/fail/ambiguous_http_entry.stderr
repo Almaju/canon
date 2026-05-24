@@ -1,0 +1,1 @@
+error[tests/checker/fail/ambiguous_http_entry.ow:10:1]: ambiguous HTTP entry: `about` and `home` both return `Response`. Exactly one free function may be the entry. Refactor helpers to return a non-world type. See `WASI-HTTP-HANDLER.md` §Entry-point selection.

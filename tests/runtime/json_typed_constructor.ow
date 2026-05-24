@@ -1,0 +1,19 @@
+use oneway/std/Json
+use oneway/std/MalformedJson
+
+ChatCompletionRequest = Model
+
+Model = String
+
+ChatCompletionRequest = (Json) -> Result<ChatCompletionRequest, MalformedJson> {
+    Json
+        .field("model")?
+        .asString()
+}
+
+main = () -> Result<Unit, MalformedJson> {
+    Json("{\"model\":\"gpt-4\"}")?
+        .ChatCompletionRequest()?
+        .print()
+    Ok(Unit())
+}

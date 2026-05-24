@@ -1,4 +1,4 @@
-//! `oneway gen-bindings` — generate Oneway source from a WIT package or a
+//! `oneway bindgen` — generate Oneway source from a WIT package or a
 //! WebAssembly Component.
 //!
 //! Entry points:
@@ -162,7 +162,7 @@ fn parse_wit_directory(dir: &Path) -> Result<Resolve, BindgenError> {
     Ok(resolve)
 }
 
-/// Outcome of a successful `oneway gen-bindings` invocation.
+/// Outcome of a successful `oneway bindgen` invocation.
 pub struct RunOutcome {
     /// Paths that were written.
     pub written: Vec<PathBuf>,
@@ -202,7 +202,15 @@ pub fn run(input: &Path, out_dir: Option<&Path>) -> Result<RunOutcome, BindgenEr
                 BindgenError(format!("could not create `{}`: {e}", parent.display()))
             })?;
         }
-        fs::write(&path, file.content.as_bytes())
+        // Run the emitted Oneway source through the same formatter the
+        // compiler enforces on every build. Keeps regenerated bindings
+        // canonical even when the emitter's whitespace heuristics drift.
+        // If the emitted source somehow fails to parse, fall back to the
+        // raw content rather than refusing to write — the user will see
+        // the failure on the next `oneway check`.
+        let content =
+            crate::formatter::format(&file.content).unwrap_or_else(|_| file.content.clone());
+        fs::write(&path, content.as_bytes())
             .map_err(|e| BindgenError(format!("could not write `{}`: {e}", path.display())))?;
         written.push(path);
         skipped.extend(file.skipped);

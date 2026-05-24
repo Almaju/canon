@@ -1,0 +1,13 @@
+CompletionTokens = Int
+
+PromptTokens = Int
+
+TotalTokens = Int
+
+Usage = CompletionTokens * PromptTokens * TotalTokens
+
+main = () -> Unit {
+    Usage(CompletionTokens(11) * PromptTokens(22) * TotalTokens(33)).CompletionTokens.print()
+    Usage(CompletionTokens(11) * PromptTokens(22) * TotalTokens(33)).PromptTokens.print()
+    Usage(CompletionTokens(11) * PromptTokens(22) * TotalTokens(33)).TotalTokens.print()
+}

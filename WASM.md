@@ -194,7 +194,7 @@ still exists. Either delete it (if unused) or document why it's needed.
 | `Random` | `wasi:random/random@0.3.0-rc-2026-03-15` |
 | `Filesystem` | currently `oneway:builtins/filesystem` (blocking bridge) — WASI `wasi:filesystem/types` async path is Phase-5 work |
 | `Network`/`HttpClient` | currently `oneway:builtins/http` (blocking bridge) — `wasi:http/outgoing-handler` is Phase-5 |
-| `HttpServer` | exported `wasi:http/incoming-handler` (Phase-5); currently stubbed via `oneway:builtins/http-server` |
+| `HttpServer` | exported `wasi:http/handler` (Phase-5); currently stubbed via `oneway:builtins/http-server`. See `WASI-HTTP-HANDLER.md` for the migration plan |
 
 The `oneway:*` interfaces are temporary scaffolds. Each one moves to the
 corresponding `wasi:*` interface once its canonical-ABI shape (async,
@@ -226,8 +226,8 @@ intentionally. `examples/` is documentation, not a test layer.
 - `extern Rust` is gone from the language. Don't reintroduce it.
 - `Future<T>` and `Stream<T>` auto-await at method call sites. The user
   writes neither `async` nor `await`.
-- `oneway fmt`, `oneway check`, `oneway ast`, `oneway tokens`, `oneway lsp`
-  are target-agnostic and must keep working regardless of codegen state.
+- `oneway fmt`, `oneway check`, `oneway inspect`, `oneway lsp` are
+  target-agnostic and must keep working regardless of codegen state.
 - When the codegen can't lower something, the answer is "not yet
   implemented" — never a fallback to a different backend.
 - Every call to `codegen::generate` validates its output with `wasmparser`

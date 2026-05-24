@@ -1,0 +1,12 @@
+Content = String
+
+describeParam = (Option<Content>) -> String {
+    Option<Content>.(
+        * (None) -> String { "none" }
+        * (Some<Content>) -> String { "some" }
+    )
+}
+
+main = () -> Unit {
+    "ok".print()
+}

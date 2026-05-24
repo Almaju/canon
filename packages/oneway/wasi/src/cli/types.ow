@@ -1,5 +1,9 @@
-ErrorCode = ErrorCodeIllegalByteSequence + ErrorCodeIo + ErrorCodePipe
-ErrorCodeIllegalByteSequence = Unit
-ErrorCodeIo = Unit
-ErrorCodePipe = Unit
+ErrorCode = ErrorCodeIllegalByteSequence
+  + ErrorCodeIo
+  + ErrorCodePipe
 
+ErrorCodeIllegalByteSequence = Unit
+
+ErrorCodeIo = Unit
+
+ErrorCodePipe = Unit

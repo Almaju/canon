@@ -1,0 +1,15 @@
+Content = String
+
+MessageContent = Option<Content>
+
+dispatch = (MessageContent) -> Unit {
+    MessageContent.(
+        * (None) -> Unit { "absent".print() }
+        * (Some<Content>) -> Unit { "present".print() }
+    )
+}
+
+main = () -> Unit {
+    MessageContent(Some("hi")).dispatch()
+    MessageContent(None()).dispatch()
+}

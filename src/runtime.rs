@@ -20,7 +20,7 @@ use http_body_util::combinators::UnsyncBoxBody;
 use std::future::Future;
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
-use wasmtime_wasi::p3::bindings::Command;
+
 use wasmtime_wasi::{TrappableError, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
 use wasmtime_wasi_http::p3::{RequestOptions, WasiHttpCtxView, WasiHttpHooks, WasiHttpView};
@@ -40,6 +40,11 @@ struct State {
     table: ResourceTable,
     http: WasiHttpCtx,
     http_hooks: OneswayHttpHooks,
+    /// Optional reference to the guest's `oneway:http-handler/handler.handle-request`
+    /// component export, when the program defined a `handleRequest`
+    /// function. The HTTP server runtime calls this Func per incoming
+    /// request to compute the response body. See `DYNAMIC-HANDLERS.md`.
+    handler_func: Option<wasmtime::component::Func>,
 }
 
 impl WasiView for State {
@@ -113,6 +118,7 @@ impl State {
             table: ResourceTable::new(),
             http: WasiHttpCtx::new(),
             http_hooks: OneswayHttpHooks,
+            handler_func: None,
         }
     }
 }
@@ -148,9 +154,46 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
     let component = Component::new(&engine, bytes)
         .map_err(|e| wasmtime::Error::msg(format!("invalid wasm component: {e:?}")))?;
 
-    let command = Command::instantiate_async(&mut store, &component, &linker).await?;
-    let result = store
-        .run_concurrent(async move |store| command.wasi_cli_run().call_run(store).await)
+    // Instantiate via the linker directly so we have access to the
+    // `Instance` handle. We use it to (a) look up the optional
+    // `oneway:http-handler/handler.handle-request` export and stash it
+    // in `State`, and (b) drive `wasi:cli/run.run` ourselves — the
+    // bindgen-generated `Command` keeps its inner `Instance` private,
+    // and we need both the run call *and* the dynamic-handler export
+    // to reference the *same* instance (otherwise the handler `Func`
+    // we stash wouldn't match the instance executing `serve`).
+    let instance = linker.instantiate_async(&mut store, &component).await?;
+
+    // Optional dynamic-handler export hookup. When present, stash the
+    // `Func` in `State` so `host_builtin_http_server::serve` can call
+    // it per request. When absent the handler stays unset and the
+    // HTTP server falls back to its static-body route table.
+    if let Some(iface_idx) =
+        instance.get_export_index(&mut store, None, "oneway:http-handler/handler@0.1.0")
+    {
+        if let Some(fn_idx) =
+            instance.get_export_index(&mut store, Some(&iface_idx), "handle-request")
+        {
+            if let Some(func) = instance.get_func(&mut store, fn_idx) {
+                store.data_mut().handler_func = Some(func);
+            }
+        }
+    }
+
+    // Look up `wasi:cli/run.run` and call it as an async-stackful
+    // function returning `result<_, _>`. Mirrors what `Command::wasi_cli_run().call_run`
+    // does internally for the typed-bindings path.
+    let run_iface_idx = instance
+        .get_export_index(&mut store, None, WASI_CLI_RUN)
+        .ok_or_else(|| wasmtime::Error::msg(format!("missing {WASI_CLI_RUN} export")))?;
+    let run_fn_idx = instance
+        .get_export_index(&mut store, Some(&run_iface_idx), "run")
+        .ok_or_else(|| wasmtime::Error::msg("missing wasi:cli/run.run export"))?;
+    let run_func: wasmtime::component::TypedFunc<(), (Result<(), ()>,)> =
+        instance.get_typed_func(&mut store, run_fn_idx)?;
+
+    let (result,) = store
+        .run_concurrent(async move |store| run_func.call_concurrent(store, ()).await)
         .await??;
 
     match result {
@@ -158,6 +201,10 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
         Err(()) => std::process::exit(1),
     }
 }
+
+/// The component-export path for `wasi:cli/run`. Must match what the
+/// component wrapper emits in `wasm/component.rs`.
+const WASI_CLI_RUN: &str = "wasi:cli/run@0.3.0-rc-2026-03-15";
 
 /// Builds the shared `wasmtime::Engine` for both `run` and `serve` paths.
 ///
@@ -292,7 +339,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| wasmtime::Error::msg(format!("bind {addr}: {e}")))?;
-    eprintln!("oneway serve: listening on http://{addr}");
+    eprintln!("oneway run --addr {addr}: listening on http://{addr}");
 
     // Accept loop. Each connection gets its own task with its own
     // wasmtime `Store` so guest state is connection-scoped — a panic /
@@ -302,7 +349,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
         let (socket, peer) = match listener.accept().await {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("oneway serve: accept error: {e}");
+                eprintln!("oneway run --addr: accept error: {e}");
                 continue;
             }
         };
@@ -310,7 +357,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
         let service_pre = service_pre.clone();
         tokio::spawn(async move {
             if let Err(e) = serve_connection(engine, service_pre, socket).await {
-                eprintln!("oneway serve: {peer}: {e:?}");
+                eprintln!("oneway run --addr: {peer}: {e:?}");
             }
         });
     }
@@ -781,10 +828,17 @@ mod host_builtin_http_server {
     // into `add_to_linker` resolves the right way.
     impl oneway::builtins::http_server::HostWithStore for HasSelf<State> {
         async fn serve<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
+            accessor: &wasmtime::component::Accessor<U, Self>,
             server: String,
         ) -> i32 {
-            match run_server(&server).await {
+            // Snapshot the (optional) guest-side `handle-request` Func
+            // from State. When present, every incoming request is
+            // dispatched through this Func via `call_concurrent` from
+            // inside the connection loop. When absent, we fall back to
+            // the static-body route table (existing behaviour).
+            let handler_func: Option<wasmtime::component::Func> =
+                accessor.with(|mut access| access.get().handler_func);
+            match run_server(accessor, &server, handler_func).await {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("http-server: {e}");
@@ -855,6 +909,7 @@ mod host_builtin_http_server {
     /// Parse the handle string into `(port, routes)`. Returns an error on
     /// malformed input — but in practice the handle is always produced by
     /// our own `create`/`get`/`post` impls, so this is mostly defensive.
+    #[allow(clippy::type_complexity)]
     fn decode_handle(handle: &str) -> Result<(u16, HashMap<(String, String), Route>), String> {
         let mut records = handle.split(RS);
         let port_str = records
@@ -881,16 +936,24 @@ mod host_builtin_http_server {
     /// Bind a TCP listener and serve registered routes until cancelled.
     /// Logs each accepted request to stderr so the example is
     /// self-documenting (`curl localhost:3000/` shows up as a log line).
-    async fn run_server(handle: &str) -> Result<(), String> {
+    ///
+    /// Connections are handled **serially** when a dynamic handler is
+    /// present (because the wasmtime callback ABI needs the
+    /// `Accessor` we received in `serve`, which can't be cloned
+    /// across tasks). For the static-body fallback we keep the
+    /// per-connection `tokio::spawn` so multiple clients can be served
+    /// concurrently — the route table is `Clone` and bounded‐copy.
+    async fn run_server<U: Send>(
+        accessor: &wasmtime::component::Accessor<U, HasSelf<State>>,
+        handle: &str,
+        handler_func: Option<wasmtime::component::Func>,
+    ) -> Result<(), String> {
         let (port, routes) = decode_handle(handle)?;
         let addr = format!("127.0.0.1:{port}");
         let listener = TcpListener::bind(&addr)
             .await
             .map_err(|e| format!("bind {addr}: {e}"))?;
         eprintln!("http-server: listening on http://{addr}");
-        // Accept loop. Each connection gets its own task so handlers run
-        // concurrently; the route table is `Clone` so we hand each task
-        // its own copy and avoid sharing across threads.
         loop {
             let (mut socket, peer) = match listener.accept().await {
                 Ok(p) => p,
@@ -899,13 +962,106 @@ mod host_builtin_http_server {
                     continue;
                 }
             };
-            let routes = routes.clone();
-            tokio::spawn(async move {
-                if let Err(e) = handle_connection(&mut socket, &routes).await {
-                    eprintln!("http-server: {peer}: {e}");
+            match handler_func {
+                Some(func) => {
+                    // Dynamic-handler path: handle inline so we can
+                    // call the guest export via `call_concurrent`. No
+                    // `tokio::spawn` because the accessor isn't `Send`
+                    // across task boundaries.
+                    if let Err(e) = handle_connection_dynamic(&mut socket, func, accessor).await {
+                        eprintln!("http-server: {peer}: {e}");
+                    }
                 }
-            });
+                None => {
+                    // Static-body path: spawn per-connection.
+                    let routes = routes.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_connection(&mut socket, &routes).await {
+                            eprintln!("http-server: {peer}: {e}");
+                        }
+                    });
+                }
+            }
         }
+    }
+
+    /// Connection handler for the dynamic-handler path. Reads one HTTP
+    /// request, calls the guest's `handle-request` export with the
+    /// request body, and writes the returned string as the response
+    /// body (status fixed at 200 for now — routing comes later).
+    async fn handle_connection_dynamic<U: Send>(
+        socket: &mut tokio::net::TcpStream,
+        handler_func: wasmtime::component::Func,
+        accessor: &wasmtime::component::Accessor<U, HasSelf<State>>,
+    ) -> Result<(), String> {
+        use wasmtime::component::Val;
+        let mut buf = [0u8; 8192];
+        let n = socket
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("read: {e}"))?;
+        if n == 0 {
+            return Ok(());
+        }
+        let head = String::from_utf8_lossy(&buf[..n]);
+        let request_line = head.lines().next().unwrap_or("");
+        let mut parts = request_line.split_whitespace();
+        let method = parts.next().unwrap_or("").to_ascii_uppercase();
+        let target = parts.next().unwrap_or("");
+        let path = target.split('?').next().unwrap_or(target).to_string();
+        eprintln!("http-server: {method} {path}");
+
+        // Extract the request body. Naive parser: locate the
+        // header/body separator `\r\n\r\n` and treat everything after
+        // it as the body. Sufficient for the small payloads we test
+        // with; full streaming bodies come later.
+        let body_start = head.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+        let body = if body_start < n {
+            String::from_utf8_lossy(&buf[body_start..n]).into_owned()
+        } else {
+            String::new()
+        };
+
+        // Call into the guest handler.
+        let params = vec![Val::String(body)];
+        let mut results = vec![Val::String(String::new())];
+        let response = match handler_func
+            .call_concurrent(accessor, &params, &mut results)
+            .await
+        {
+            Ok(()) => {
+                if let Val::String(s) = &results[0] {
+                    // Optional Content-Type override: when the handler
+                    // wants to return SSE / JSON / HTML / etc., it
+                    // prefixes its response with
+                    // `Content-Type: <mime>\r\n\r\n` and the rest is
+                    // the body. We detect this and honour it. Absent
+                    // the prefix we use `text/plain` as before.
+                    //
+                    // This is the minimum-viable SSE pathway from
+                    // `DYNAMIC-HANDLERS.md` slice 3 — a single
+                    // event-stream payload returned in one shot. True
+                    // multi-event streaming (`SseSender` capability,
+                    // events pushed over time) builds on top of this
+                    // by passing a host-owned writer handle into the
+                    // handler; this MVP proves the Content-Type wiring.
+                    let (content_type, body_bytes) = parse_handler_response(s);
+                    build_response_with_type(200, content_type, body_bytes)
+                } else {
+                    build_response(500, "handler returned non-string value")
+                }
+            }
+            Err(e) => {
+                eprintln!("http-server: handler error: {e}");
+                build_response(500, "handler error")
+            }
+        };
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| format!("write: {e}"))?;
+        let _ = socket.shutdown().await;
+        Ok(())
     }
 
     /// Read one HTTP/1.1 request, match it against the route table, and
@@ -954,16 +1110,49 @@ mod host_builtin_http_server {
     /// with an explicit `Content-Length` so clients don't need chunked
     /// decoding.
     fn build_response(status: u16, body: &str) -> String {
+        build_response_with_type(status, "text/plain; charset=utf-8", body)
+    }
+
+    /// Build an HTTP/1.1 response with an explicit Content-Type.
+    /// Connection is always closed after the response.
+    fn build_response_with_type(status: u16, content_type: &str, body: &str) -> String {
         let reason = reason_phrase(status);
         format!(
             "HTTP/1.1 {status} {reason}\r\n\
-             Content-Type: text/plain; charset=utf-8\r\n\
+             Content-Type: {content_type}\r\n\
              Content-Length: {len}\r\n\
              Connection: close\r\n\
              \r\n\
              {body}",
             len = body.len(),
         )
+    }
+
+    /// Parse the dynamic-handler's return string for an optional
+    /// `Content-Type: <mime>\r\n\r\n` prefix. Returns the chosen
+    /// content-type and the trailing body slice.
+    ///
+    /// This is the minimum-viable hook for SSE / JSON / HTML responses
+    /// without inventing a richer return type. Handlers stay
+    /// `(String) -> String` at the Oneway level; the structure of the
+    /// returned string is the only place we look for metadata.
+    fn parse_handler_response(s: &str) -> (&str, &str) {
+        const DEFAULT: &str = "text/plain; charset=utf-8";
+        const PREFIX: &str = "Content-Type: ";
+        if !s.starts_with(PREFIX) {
+            return (DEFAULT, s);
+        }
+        // Find the `\r\n\r\n` separator between the header and body.
+        let Some(sep_idx) = s.find("\r\n\r\n") else {
+            return (DEFAULT, s);
+        };
+        let header_end = sep_idx;
+        let body_start = sep_idx + 4;
+        let header_value = s[PREFIX.len()..header_end].trim();
+        if header_value.is_empty() {
+            return (DEFAULT, s);
+        }
+        (header_value, &s[body_start..])
     }
 
     /// Reason phrases for the handful of statuses a demo server actually
@@ -1040,6 +1229,25 @@ mod host_builtin_json {
 
                 /// Return the literal `null`.
                 from-null: func() -> string;
+
+                /// Extract a field's value from a JSON object. `input`
+                /// is the JSON text of an object, `name` the field's
+                /// unquoted key. On success, returns the field's value
+                /// as JSON text (still a `Json` handle, ready to be
+                /// re-parsed). On failure (input isn't an object, or
+                /// the field is missing), returns a diagnostic message.
+                ///
+                /// This is the primitive read-side counterpart to the
+                /// `from-*` builders — it lets pure-Oneway code walk a
+                /// parsed JSON tree without owning a per-type parser.
+                field: func(input: string, name: string) -> result<string, string>;
+
+                /// Decode a JSON string value into its unquoted contents.
+                /// `input` must be JSON text whose top-level value is a
+                /// string literal; anything else returns a diagnostic
+                /// message. Inverse of `from-string`: escape sequences
+                /// like backslash-n become real newlines.
+                to-string: func(input: string) -> result<string, string>;
             }
             world host-shim {
                 import json;
@@ -1083,6 +1291,156 @@ mod host_builtin_json {
         fn from_null(&mut self) -> String {
             "null".to_string()
         }
+
+        fn field(&mut self, input: String, name: String) -> Result<String, String> {
+            extract_field(&input, &name)
+        }
+
+        fn to_string(&mut self, input: String) -> Result<String, String> {
+            decode_string(&input)
+        }
+    }
+
+    /// Walk a JSON object and return the raw JSON text of `name`'s value,
+    /// preserving its enclosing syntax (strings stay quoted, objects stay
+    /// braced, etc.) so the caller can re-parse or pass it on as a `Json`
+    /// value.
+    ///
+    /// Errors when the input isn't a JSON object, the field isn't found,
+    /// or the input is malformed in a way that makes navigation
+    /// unambiguous. The error message names the byte offset for parity
+    /// with `parse`.
+    fn extract_field(input: &str, name: &str) -> Result<String, String> {
+        let bytes = input.as_bytes();
+        let mut p = Parser { src: bytes, pos: 0 };
+        p.skip_ws();
+        if p.peek() != Some(b'{') {
+            return Err(format!(
+                "expected object at byte {}, got {:?}",
+                p.pos,
+                p.peek().map(|c| c as char)
+            ));
+        }
+        p.pos += 1; // consume '{'
+        p.skip_ws();
+        if p.peek() == Some(b'}') {
+            return Err(format!("field `{}` not found", name));
+        }
+        loop {
+            p.skip_ws();
+            if p.peek() != Some(b'"') {
+                return Err(format!("expected string key at byte {}", p.pos));
+            }
+            let key_start = p.pos;
+            p.string()?;
+            let key_end = p.pos;
+            // The key in the source is the inner unescaped slice between
+            // the quotes. We compare against `name` literally — no
+            // unescaping. For ASCII keys (the common case) this is
+            // correct; for keys containing escapes the caller can decode
+            // their own key before calling.
+            let key_slice = &input[key_start + 1..key_end - 1];
+            p.skip_ws();
+            if p.bump() != Some(b':') {
+                return Err(format!(
+                    "expected ':' after key at byte {}",
+                    p.pos.saturating_sub(1)
+                ));
+            }
+            p.skip_ws();
+            let value_start = p.pos;
+            p.value()?;
+            let value_end = p.pos;
+            if key_slice == name {
+                return Ok(input[value_start..value_end].to_string());
+            }
+            p.skip_ws();
+            match p.bump() {
+                Some(b',') => continue,
+                Some(b'}') => return Err(format!("field `{}` not found", name)),
+                _ => {
+                    return Err(format!(
+                        "expected ',' or '}}' at byte {}",
+                        p.pos.saturating_sub(1)
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Decode a JSON string literal (e.g. `"hello\\nworld"`) into its raw
+    /// contents (e.g. `hello\nworld`). Mirrors the inverse of
+    /// `from_string`. Errors when the input isn't a JSON string value or
+    /// contains a malformed escape.
+    fn decode_string(input: &str) -> Result<String, String> {
+        let bytes = input.as_bytes();
+        let mut p = Parser { src: bytes, pos: 0 };
+        p.skip_ws();
+        if p.peek() != Some(b'"') {
+            return Err(format!(
+                "expected string at byte {}, got {:?}",
+                p.pos,
+                p.peek().map(|c| c as char)
+            ));
+        }
+        let start = p.pos;
+        p.string()?; // validates the string syntax and advances past closing `"`
+        let end = p.pos;
+        // Strip the surrounding quotes and decode escapes.
+        let inner = &input[start + 1..end - 1];
+        unescape_json_string(inner)
+    }
+
+    /// Decode the body of a JSON string literal (no surrounding quotes).
+    /// Caller has already validated the escape syntax via `Parser::string`,
+    /// so we can assume well-formedness and focus on the byte mapping.
+    fn unescape_json_string(s: &str) -> Result<String, String> {
+        let bytes = s.as_bytes();
+        let mut out = String::with_capacity(s.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if c != b'\\' {
+                out.push(c as char);
+                i += 1;
+                continue;
+            }
+            i += 1;
+            if i >= bytes.len() {
+                return Err("truncated escape".to_string());
+            }
+            match bytes[i] {
+                b'"' => out.push('"'),
+                b'\\' => out.push('\\'),
+                b'/' => out.push('/'),
+                b'b' => out.push('\x08'),
+                b'f' => out.push('\x0c'),
+                b'n' => out.push('\n'),
+                b'r' => out.push('\r'),
+                b't' => out.push('\t'),
+                b'u' => {
+                    if i + 4 >= bytes.len() {
+                        return Err("truncated \\u escape".to_string());
+                    }
+                    let hex = std::str::from_utf8(&bytes[i + 1..i + 5])
+                        .map_err(|_| "bad \\u escape".to_string())?;
+                    let code =
+                        u32::from_str_radix(hex, 16).map_err(|_| "bad \\u escape".to_string())?;
+                    // Push as a single char when in the BMP; surrogate
+                    // pairs aren't combined here — a \uD800..\uDFFF code
+                    // unit is emitted as the Unicode replacement
+                    // character to keep the result valid UTF-8. Strings
+                    // built via `from_string` never produce surrogate
+                    // escapes, so this only bites on hand-written JSON.
+                    out.push(char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER));
+                    i += 5;
+                    continue;
+                }
+                other => return Err(format!("bad escape \\{}", other as char)),
+            }
+            i += 1;
+        }
+        Ok(out)
     }
 
     /// Escape a Rust `&str` as a JSON string literal (including the

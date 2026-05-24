@@ -67,7 +67,7 @@ syntax-level mapping, not a runtime mapping.
 | `oneway build`                  | `build/<name>.wasm` + sibling `.wit` for the current package |
 | `oneway build my-ws`            | Builds every member of a workspace into its shared `build/`  |
 | `oneway build hello.ow`         | `build/hello/hello.wasm` + sibling `.wit` (single-file mode) |
-| `oneway emit hello.ow`          | WAT (WebAssembly Text) for the **core** module               |
+| `oneway inspect wat hello.ow`   | WAT (WebAssembly Text) for the **core** module               |
 | `oneway check`                  | Type + sort-order check on the current package, no codegen   |
 
 A package looks like `oneway.toml` + `src/main.ow` + `build/` — the
@@ -86,4 +86,4 @@ WebAssembly Component.
   — it's the authoritative spec.
 - Read [`WASM.md`](https://github.com/Almaju/oneway/blob/main/WASM.md)
   for the WASM-backend status and known gaps.
-- `oneway emit path/to/file.ow` prints the WAT the compiler produces.
+- `oneway inspect wat path/to/file.ow` prints the WAT the compiler produces.

@@ -1,0 +1,7 @@
+Headers = Handle
+
+extern Wasm("wasi:http/types@0.3.0-rc-2026-03-15#[constructor]fields")
+Headers = () -> Headers
+
+extern Wasm("wasi:http/types@0.3.0-rc-2026-03-15#[method]fields.append")
+set = (Headers * String * String) -> Headers

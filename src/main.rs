@@ -4,7 +4,7 @@ use oneway::codegen;
 use oneway::error::OnewayError;
 use oneway::formatter;
 use oneway::lexer::Scanner;
-use oneway::loader;
+use oneway::loader::{self, LoadResult, LoadedSource};
 use oneway::manifest;
 use oneway::parser::Parser;
 use std::env;
@@ -27,18 +27,15 @@ fn main() {
 
     match cmd {
         "run" => cmd_run(&rest),
-        "serve" => cmd_serve(&rest),
         "build" => cmd_build(&rest),
-        "emit" => cmd_emit(&rest),
-        "ast" => cmd_ast(&rest),
         "check" => cmd_check(&rest),
         "test" => cmd_test(&rest),
-        "tokens" => cmd_tokens(&rest),
-        "fmt" | "format" => cmd_fmt(&rest),
-        "gen-bindings" => cmd_gen_bindings(&rest),
+        "fmt" => cmd_fmt(&rest),
+        "inspect" => cmd_inspect(&rest),
+        "bindgen" => cmd_bindgen(&rest),
         "lsp" => oneway::lsp::run(),
-        "upgrade" | "update" => cmd_upgrade(&rest),
-        "version" | "--version" | "-V" => {
+        "upgrade" => cmd_upgrade(&rest),
+        "--version" | "-V" => {
             println!("oneway {}", VERSION);
         }
         "help" | "--help" | "-h" => print_help(),
@@ -62,27 +59,25 @@ fn print_help() {
     println!("to the current directory.");
     println!();
     println!("Commands:");
-    println!("  run [target] [-p name] [args...]");
-    println!("                            Compile and run an Oneway program");
-    println!("  serve [target] [-p name] [--addr <ip:port>]");
+    println!("  run [target] [-p name] [--addr <ip:port>] [args...]");
+    println!("                            Compile and run an Oneway program.");
     println!(
-        "                            Run an Oneway `wasi:http/handler` program as an HTTP server"
+        "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
-    println!("  emit <file.ow>            Print generated WAT (WebAssembly Text)");
-    println!("  ast <file.ow>             Print the parsed AST");
     println!("  test <file.ow>            Run `() -> TestResult` functions as tests");
-    println!("  tokens <file.ow>          Print lexer tokens");
-    println!("  fmt <file.ow> [--check]   Format an Oneway source file");
-    println!("  gen-bindings <wit-or-wasm> [-o <dir>]");
+    println!("  fmt [path...] [--check]   Format Oneway source files or directories");
+    println!("  inspect <stage> <file.ow> Print an intermediate pipeline stage");
+    println!("                              stages: tokens | ast | wat");
+    println!("  bindgen <wit-or-wasm> [-o <dir>]");
     println!(
         "                            Generate Oneway bindings from a WIT package or WASM component"
     );
     println!("  lsp                       Start the Language Server Protocol server");
     println!("  upgrade [version]         Update oneway to the latest (or given) release");
     println!("  upgrade --check           Check whether a newer release is available");
-    println!("  version                   Print version");
+    println!("  --version, -V             Print version");
     println!("  help                      Print this message");
 }
 
@@ -484,8 +479,74 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String])
         .collect()
 }
 
-fn cmd_tokens(args: &[String]) {
-    let file_path = require_file(args);
+/// `oneway inspect <stage> <file.ow>` — print one intermediate pipeline
+/// stage to stdout. Replaces the old `tokens` / `ast` / `emit` triple:
+/// each command was the same shape (load file, run pipeline up to a
+/// point, dump it) so they collapse cleanly into a single verb with a
+/// `stage` selector.
+fn cmd_inspect(args: &[String]) {
+    let mut stage: Option<&str> = None;
+    let mut file_path: Option<&str> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                print_inspect_help();
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown inspect flag '{}'", other);
+                process::exit(1);
+            }
+            other if stage.is_none() => stage = Some(other),
+            other if file_path.is_none() => file_path = Some(other),
+            other => {
+                eprintln!("error: unexpected argument '{}'", other);
+                process::exit(1);
+            }
+        }
+    }
+
+    let stage = match stage {
+        Some(s) => s,
+        None => {
+            print_inspect_help();
+            process::exit(1);
+        }
+    };
+    let file_path = match file_path {
+        Some(p) => p,
+        None => {
+            eprintln!("error: missing <file.ow>");
+            print_inspect_help();
+            process::exit(1);
+        }
+    };
+
+    match stage {
+        "tokens" => inspect_tokens(file_path),
+        "ast" => inspect_ast(file_path),
+        "wat" => inspect_wat(file_path),
+        other => {
+            eprintln!(
+                "error: unknown stage '{}' (expected `tokens`, `ast`, or `wat`)",
+                other
+            );
+            process::exit(1);
+        }
+    }
+}
+
+fn print_inspect_help() {
+    println!("Usage: oneway inspect <stage> <file.ow>");
+    println!();
+    println!("  <stage>     One of:");
+    println!("                tokens    Lexer output");
+    println!("                ast       Parser output (Module debug dump)");
+    println!("                wat       Generated WebAssembly Text");
+    println!("  <file.ow>   Source file to inspect.");
+}
+
+fn inspect_tokens(file_path: &str) {
     let source = read_source(file_path);
     let mut scanner = Scanner::new(&source);
     let tokens = match scanner.scan_tokens() {
@@ -503,7 +564,44 @@ fn cmd_tokens(args: &[String]) {
     }
 }
 
-fn cmd_gen_bindings(args: &[String]) {
+fn inspect_ast(file_path: &str) {
+    let source = read_source(file_path);
+    let mut scanner = Scanner::new(&source);
+    let tokens = match scanner.scan_tokens() {
+        Ok(t) => t,
+        Err(err) => {
+            print_error(file_path, &err);
+            process::exit(1);
+        }
+    };
+    let mut parser = Parser::new(tokens);
+    match parser.parse() {
+        Ok(module) => println!("{:#?}", module),
+        Err(err) => {
+            print_error(file_path, &err);
+            process::exit(1);
+        }
+    }
+}
+
+fn inspect_wat(file_path: &str) {
+    let loaded = load_or_exit(file_path);
+    if !enforce_format(&loaded) {
+        process::exit(1);
+    }
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    if !errors.is_empty() {
+        for err in &errors {
+            print_error(file_path, err);
+        }
+        eprintln!("\n{} error(s) found.", errors.len());
+        process::exit(1);
+    }
+    let wat = codegen::generate_wat(&loaded.module);
+    println!("{}", wat);
+}
+
+fn cmd_bindgen(args: &[String]) {
     let mut input: Option<String> = None;
     let mut out_dir: Option<String> = None;
     let mut iter = args.iter();
@@ -517,7 +615,7 @@ fn cmd_gen_bindings(args: &[String]) {
                 }
             },
             "--help" | "-h" => {
-                println!("Usage: oneway gen-bindings <wit-or-wasm> [-o <dir>]");
+                println!("Usage: oneway bindgen <wit-or-wasm> [-o <dir>]");
                 println!();
                 println!("  <wit-or-wasm>   A `.wit` file, a directory of `.wit` files, or a");
                 println!("                  WebAssembly Component `.wasm` whose embedded WIT will");
@@ -529,7 +627,7 @@ fn cmd_gen_bindings(args: &[String]) {
                 return;
             }
             other if other.starts_with('-') => {
-                eprintln!("error: unknown gen-bindings flag '{}'", other);
+                eprintln!("error: unknown bindgen flag '{}'", other);
                 process::exit(1);
             }
             other => {
@@ -576,14 +674,17 @@ fn cmd_gen_bindings(args: &[String]) {
 
 fn cmd_fmt(args: &[String]) {
     let mut check_only = false;
-    let mut files: Vec<String> = Vec::new();
+    let mut inputs: Vec<String> = Vec::new();
 
     for arg in args {
         match arg.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: oneway fmt <file.ow> [--check]");
+                println!("Usage: oneway fmt [path...] [--check]");
                 println!();
+                println!("  path         A `.ow` file or a directory. Directories are walked");
+                println!("               recursively. With no arguments, formats every `.ow`");
+                println!("               file under the current directory.");
                 println!("  --check      Check whether files are formatted (exit 1 if not).");
                 return;
             }
@@ -591,19 +692,46 @@ fn cmd_fmt(args: &[String]) {
                 eprintln!("error: unknown fmt flag '{}'", other);
                 process::exit(1);
             }
-            _ => files.push(arg.clone()),
+            _ => inputs.push(arg.clone()),
         }
     }
 
+    // No args — default to the current directory so `oneway fmt` can be
+    // run from a project root with no further ceremony.
+    if inputs.is_empty() {
+        inputs.push(".".to_string());
+    }
+
+    // Expand directories into their `.ow` files. File arguments pass
+    // through unchanged. When the user explicitly passed only file
+    // paths, a parse error aborts; when any input was a directory we
+    // soldier on past individual parse failures (one bad file in 100
+    // shouldn't block formatting the other 99).
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut had_dir_input = false;
+    for input in &inputs {
+        let path = Path::new(input);
+        if path.is_dir() {
+            had_dir_input = true;
+            collect_ow_files(path, &mut files);
+        } else {
+            files.push(path.to_path_buf());
+        }
+    }
+    files.sort();
+    files.dedup();
+
     if files.is_empty() {
-        eprintln!("error: missing input file(s)");
+        eprintln!("error: no `.ow` files found");
         process::exit(1);
     }
 
     let mut any_unformatted = false;
+    let mut any_parse_error = false;
 
     for file_path in &files {
-        let source = read_source(file_path);
+        let display = file_path.display().to_string();
+        let source = read_source(&display);
         match formatter::format(&source) {
             Ok(formatted) => {
                 if source == formatted {
@@ -611,44 +739,54 @@ fn cmd_fmt(args: &[String]) {
                 }
                 any_unformatted = true;
                 if check_only {
-                    eprintln!("{}: not formatted", file_path);
+                    eprintln!("{}: not formatted", display);
                 } else {
                     if let Err(err) = fs::write(file_path, &formatted) {
-                        eprintln!("error: could not write '{}': {}", file_path, err);
+                        eprintln!("error: could not write '{}': {}", display, err);
                         process::exit(1);
                     }
-                    println!("formatted: {}", file_path);
+                    println!("formatted: {}", display);
                 }
             }
             Err(err) => {
-                print_error(file_path, &err);
+                print_error(&display, &err);
+                if had_dir_input {
+                    any_parse_error = true;
+                    continue;
+                }
                 process::exit(1);
             }
         }
     }
 
-    if check_only && any_unformatted {
+    if (check_only && any_unformatted) || any_parse_error {
         process::exit(1);
     }
 }
 
-fn cmd_ast(args: &[String]) {
-    let file_path = require_file(args);
-    let source = read_source(file_path);
-    let mut scanner = Scanner::new(&source);
-    let tokens = match scanner.scan_tokens() {
-        Ok(t) => t,
+/// Recursively collect every `.ow` file under `dir`, skipping common
+/// generated/build directories (`target`, `node_modules`, `.git`).
+fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
         Err(err) => {
-            print_error(file_path, &err);
+            eprintln!("error: could not read '{}': {}", dir.display(), err);
             process::exit(1);
         }
     };
-    let mut parser = Parser::new(tokens);
-    match parser.parse() {
-        Ok(module) => println!("{:#?}", module),
-        Err(err) => {
-            print_error(file_path, &err);
-            process::exit(1);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if path.is_dir() {
+            // Skip a few well-known directories that have no business
+            // being formatted: build artefacts, deps, VCS metadata.
+            if matches!(name.as_ref(), "target" | "node_modules" | ".git") {
+                continue;
+            }
+            collect_ow_files(&path, out);
+        } else if path.extension().and_then(|s| s.to_str()) == Some("ow") {
+            out.push(path);
         }
     }
 }
@@ -691,6 +829,9 @@ fn check_spec(spec: &BuildSpec) -> bool {
     let Some(loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
+    if !enforce_format(&loaded) {
+        return false;
+    }
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
@@ -701,21 +842,6 @@ fn check_spec(spec: &BuildSpec) -> bool {
     }
     println!("All checks passed.");
     true
-}
-
-fn cmd_emit(args: &[String]) {
-    let file_path = require_file(args);
-    let loaded = load_or_exit(file_path);
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
-    if !errors.is_empty() {
-        for err in &errors {
-            print_error(file_path, err);
-        }
-        eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
-    }
-    let wat = codegen::generate_wat(&loaded.module);
-    println!("{}", wat);
 }
 
 fn cmd_build(args: &[String]) {
@@ -756,6 +882,9 @@ fn build_spec(spec: &BuildSpec) -> bool {
     let Some(loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
+    if !enforce_format(&loaded) {
+        return false;
+    }
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
@@ -808,6 +937,9 @@ fn build_spec(spec: &BuildSpec) -> bool {
 fn cmd_test(args: &[String]) {
     let file_path = require_file(args);
     let mut loaded = load_or_exit(file_path);
+    if !enforce_format(&loaded) {
+        process::exit(1);
+    }
 
     // Reject test files that try to define their own `main` — we synthesise it.
     if let Some(idx) = loaded.module.items[loaded.entry_items_start..]
@@ -919,54 +1051,26 @@ fn parse_synthesised(source: &str) -> Result<Vec<Item>, OnewayError> {
     Ok(module.items)
 }
 
-fn cmd_run(args: &[String]) {
-    let parsed = parse_target_args(args, true);
-    let target = resolve_target(parsed.target_path.as_deref());
-    let target = apply_package_filter(target, parsed.package.as_deref());
-    let program_args: Vec<&str> = parsed.program_args.iter().map(|s| s.as_str()).collect();
-    let spec = match target {
-        Target::Build(spec) => spec,
-        Target::Workspace { label, members, .. } => {
-            eprintln!(
-                "error: `oneway run` on workspace `{}` is ambiguous \u{2014} pick a member",
-                label
-            );
-            if !members.is_empty() {
-                eprintln!("hint: try one of:");
-                for m in &members {
-                    eprintln!("  oneway run {}", m.label);
-                }
-            }
-            process::exit(1);
-        }
-    };
-    let loaded = load_or_exit(spec.entry_str());
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
-    if !errors.is_empty() {
-        for err in &errors {
-            print_error(spec.entry_str(), err);
-        }
-        eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
-    }
-    let component_bytes = codegen::generate(&loaded.module);
-    oneway::runtime::run_component(&component_bytes, &program_args);
-}
-
-/// `oneway serve [target] [-p name] [--addr <ip:port>]`
+/// `oneway run [target] [-p name] [--addr <ip:port>] [args...]`
 ///
-/// Compiles the target Oneway package or file and runs it as a WASI HTTP
-/// P3 service — i.e. the component is expected to export
-/// `wasi:http/handler.handle`. The runtime opens a TCP listener and
-/// dispatches each incoming HTTP/1.1 request to the guest's `handle`
-/// through `wasmtime-wasi-http`. Default address is `127.0.0.1:8080`;
-/// override with `--addr <ip:port>`.
+/// Compiles the target Oneway package or file, then either:
+///
+///   * runs it as a `wasi:cli/command` (the default), forwarding any
+///     trailing arguments as program arguments; or
+///   * serves it as a `wasi:http/handler` over HTTP when `--addr` is
+///     given. The runtime opens a TCP listener at the given `ip:port`
+///     and dispatches each incoming HTTP/1.1 request to the guest's
+///     `handle` export through `wasmtime-wasi-http`.
 ///
 /// Until the codegen learns to emit a `wasi:http/service` world (see
-/// M2 of the wasi:http migration in WASM.md), this will fail with a
-/// component-instantiation error — the diagnostic surfaces the
+/// M2 of the wasi:http migration in WASM.md), the `--addr` mode will
+/// fail at component-instantiation time — the diagnostic surfaces the
 /// expected exports so users know what's missing.
-fn cmd_serve(args: &[String]) {
+fn cmd_run(args: &[String]) {
+    // Peel off `--addr <ip:port>` (or `--addr=<ip:port>`) before the
+    // rest of the arg parser, which expects `-p name`, a target path,
+    // and then program args after `--`. `--addr` is a *runner* flag,
+    // not a program arg, so it has to come out first.
     let mut addr: Option<String> = None;
     let mut filtered: Vec<String> = Vec::new();
     let mut i = 0;
@@ -991,26 +1095,34 @@ fn cmd_serve(args: &[String]) {
         }
     }
 
-    let parsed = parse_target_args(&filtered, false);
+    // Program args are only meaningful for command-style runs. In HTTP
+    // mode there's no `argv` to thread — the guest is invoked per
+    // request, not once at startup.
+    let allow_program_args = addr.is_none();
+    let parsed = parse_target_args(&filtered, allow_program_args);
     let target = resolve_target(parsed.target_path.as_deref());
     let target = apply_package_filter(target, parsed.package.as_deref());
+    let program_args: Vec<&str> = parsed.program_args.iter().map(|s| s.as_str()).collect();
     let spec = match target {
         Target::Build(spec) => spec,
         Target::Workspace { label, members, .. } => {
             eprintln!(
-                "error: `oneway serve` on workspace `{}` is ambiguous — pick a member",
+                "error: `oneway run` on workspace `{}` is ambiguous — pick a member",
                 label
             );
             if !members.is_empty() {
                 eprintln!("hint: try one of:");
                 for m in &members {
-                    eprintln!("  oneway serve {}", m.label);
+                    eprintln!("  oneway run {}", m.label);
                 }
             }
             process::exit(1);
         }
     };
     let loaded = load_or_exit(spec.entry_str());
+    if !enforce_format(&loaded) {
+        process::exit(1);
+    }
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
     if !errors.is_empty() {
         for err in &errors {
@@ -1019,25 +1131,23 @@ fn cmd_serve(args: &[String]) {
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
     }
-
-    let bind_addr: std::net::SocketAddr = addr
-        .as_deref()
-        .unwrap_or("127.0.0.1:8080")
-        .parse()
-        .unwrap_or_else(|e| {
-            eprintln!(
-                "error: invalid `--addr` value `{}`: {}",
-                addr.as_deref().unwrap_or("127.0.0.1:8080"),
-                e
-            );
-            process::exit(1);
-        });
-
     let component_bytes = codegen::generate(&loaded.module);
-    oneway::runtime::serve_component(&component_bytes, bind_addr);
+
+    match addr {
+        Some(raw) => {
+            let bind_addr: std::net::SocketAddr = raw.parse().unwrap_or_else(|e| {
+                eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
+                process::exit(1);
+            });
+            oneway::runtime::serve_component(&component_bytes, bind_addr);
+        }
+        None => {
+            oneway::runtime::run_component(&component_bytes, &program_args);
+        }
+    }
 }
 
-fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
+fn load_or_exit(file_path: &str) -> LoadResult {
     match load_or_print(file_path) {
         Some(r) => r,
         None => process::exit(1),
@@ -1047,7 +1157,7 @@ fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {
 /// Like `load_or_exit`, but prints the error and returns `None` rather
 /// than exiting. Used by workspace iteration so one member's load failure
 /// doesn't terminate the whole run.
-fn load_or_print(file_path: &str) -> Option<oneway::loader::LoadResult> {
+fn load_or_print(file_path: &str) -> Option<LoadResult> {
     match loader::load_module(Path::new(file_path)) {
         Ok(r) => Some(r),
         Err(err) => {
@@ -1055,6 +1165,43 @@ fn load_or_print(file_path: &str) -> Option<oneway::loader::LoadResult> {
             None
         }
     }
+}
+
+/// Enforce canonical formatting across every user-authored source file
+/// loaded for this build. Oneway's guiding rule is "one way" — the
+/// compiler refuses to proceed if any source isn't already in canonical
+/// form. Bundled packages are skipped (they ship with the compiler).
+///
+/// Returns `true` when every file is canonical, `false` after printing
+/// a diagnostic listing the offenders. Files that fail to parse are
+/// skipped here so the checker can produce the better-located error.
+fn enforce_format(loaded: &LoadResult) -> bool {
+    let mut unformatted: Vec<&LoadedSource> = Vec::new();
+    for src in &loaded.local_sources {
+        match formatter::format(&src.source) {
+            Ok(canonical) => {
+                if src.source != canonical {
+                    unformatted.push(src);
+                }
+            }
+            // Parse/lex error — leave it to the checker pipeline to
+            // surface the precise diagnostic.
+            Err(_) => continue,
+        }
+    }
+    if unformatted.is_empty() {
+        return true;
+    }
+    eprintln!(
+        "error: {} file(s) are not canonically formatted:",
+        unformatted.len()
+    );
+    for src in &unformatted {
+        eprintln!("  {}", src.path.display());
+    }
+    eprintln!();
+    eprintln!("hint: run `oneway fmt` to fix them in place.");
+    false
 }
 
 const INSTALL_URL: &str = "https://raw.githubusercontent.com/almaju/oneway/main/install.sh";

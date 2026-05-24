@@ -495,7 +495,7 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
 fn emit_base_inline(expr: &Expr) -> String {
     match expr {
         Expr::Ident(id) => id.name.clone(),
-        Expr::StringLit { value, .. } => format!("\"{}\"", value),
+        Expr::StringLit { value, .. } => format!("\"{}\"", escape_string(value)),
         Expr::IntLit { value, .. } => value.to_string(),
         Expr::FloatLit { value, .. } => format_float(*value),
         Expr::HexLit { value, .. } => format!("0x{:X}", value),
@@ -590,6 +590,28 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
     format!("({}) -> {} {{ {} }}", ty, ret, body)
 }
 
+/// Re-escape a string literal's contents for emission. The lexer
+/// stores the decoded value (with `\n`, `\t`, `\\`, `\"` already
+/// translated to their raw bytes); the formatter has to put those
+/// escapes back so the emitted source is parseable Oneway again.
+fn escape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            // Other control characters use the lexer's `\uNNNN` escape
+            // so the round-trip stays lossless.
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn format_float(value: f64) -> String {
     let s = value.to_string();
     if s.contains('.') {
@@ -672,7 +694,7 @@ mod tests {
     #[test]
     fn test_idempotent_types() {
         assert_idempotent(
-            "Bit = Off + On\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) -> Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
+            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) -> Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
         );
     }
 

@@ -21,9 +21,17 @@ The reasoning: ordering is a constant source of bikeshedding and diff noise. By 
 
 ## Core Types
 
-The language is built from two primitive types: `Off` and `On` (names TBD). Every other type is composed from these via unions and products.
+The language has one primitive zero-data type: `Unit` — the type with exactly one value (the multiplicative identity — `T * Unit ≡ T`). `Never` completes the algebra as the type with zero values (the additive identity — `T + Never ≡ T`). Together with `+` and `*`, these form a type semiring.
 
-Two identity types complete the algebra: `Unit` is the type with exactly one value (the multiplicative identity — `T * Unit ≡ T`), and `Never` is the type with zero values (the additive identity — `T + Never ≡ T`). Together with `+` and `*`, these form a type semiring.
+Everything else is composed. The two boolean atoms are themselves newtype aliases of `Unit`:
+
+```
+False = Unit
+True  = Unit
+Bool  = False + True
+```
+
+A `Bit` is just `Bool` under a different name (`Bit = False + True`), so the same algebra extends from booleans up through `Byte = Bit^8` and `Bytes = Byte^*`.
 
 A small set of built-in primitive operations (e.g. arithmetic on `Int`) is supplied by the compiler — these cannot be derived purely from bits, but their *shape* is still described by the type system.
 
@@ -34,7 +42,7 @@ A small set of built-in primitive operations (e.g. arithmetic on `Int`) is suppl
 A union expresses "this or that":
 
 ```
-Bit = Off + On
+Bit = False + True
 ```
 
 ### Products (`*`)
@@ -140,7 +148,7 @@ The chevron syntax does not conflict with `[]` repetition or `*` product.
 Constraints on type parameters use `:`, naming a trait the parameter must implement:
 
 ```
-print = <T: Print>(List<T>) -> Unit {
+showAll = <T: Show>(List<T>) -> Unit {
     ...
 }
 ```
@@ -171,7 +179,7 @@ For ergonomics, several literal forms are sugar over their constructors:
 |----------------|--------------------|
 | `123`          | `Int(123)`         |
 | `1.0`          | `Float(1.0)`       |
-| `"abc"`        | `String(abc)`      |
+| `"abc"`        | `String("abc")`    |
 | `0xFF0000`     | `Hex(0xFF0000)`    |
 
 String literals exist to avoid the parsing ambiguity of bare `String(...)` with spaces and punctuation. Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
@@ -186,7 +194,7 @@ For factory-style construction (e.g. "an empty list"), use an explicit lowercase
 
 ### Zero-Data Types
 
-A type with no underlying composition (e.g. `Unit`, `True`, `False`, `Off`, `On`) has exactly one value. In expression position, it is constructed with `T()` — the empty argument list signals that you are producing a value, not accessing a field:
+A type with no underlying composition (e.g. `Unit`, or any newtype alias of it such as `True` or `False`) has exactly one value. In expression position, it is constructed with `T()` — the empty argument list signals that you are producing a value, not accessing a field:
 
 ```
 Ok(Unit())
@@ -221,12 +229,7 @@ Every type `T` has a constructor `T(_)`. The argument is a value matching the ty
 | Union `A + B`    | `T(A(...))` or `T(B(...))`              | a value of any variant                         |
 | Newtype          | `T(inner)`                             | a value of the aliased type                    |
 
-So:
-
-```
-red  = Hex(0xFF0000)
-user = User(Birthday(...) * Username("ahanot"))
-```
+So `Hex(0xFF0000)` constructs a `Hex` value (the literal `0xFF0000` desugars to the same form), and `User(Birthday(...) * Username("ahanot"))` constructs a `User` from its two components.
 
 `*` is overloaded across the two levels: at the type level it forms a product type, at the value level it forms a product value. The two never appear in the same context.
 
@@ -368,15 +371,43 @@ This is a genuinely novel feature: in most languages, the receiver is a privileg
 
 ### The Entry Point
 
-`main` is the single exception. It takes no input and has no receiver — it is never called via dot syntax:
+A module becomes a runnable program when exactly one of its top-level free functions has a **return type matching a known WASI world's primary export**. That function is the entry. The compiler scans the module by signature, not by name — there is no magic `main`.
+
+The world registry:
+
+| Return type | World | WASI export |
+|---|---|---|
+| `Unit`, `ExitCode`, `Result<Unit, _>`, `Result<ExitCode, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Response`, `Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
+
+A CLI program:
 
 ```
-main = () -> Unit {
+hello = (Stdout) -> Unit {
     "hello".print
 }
 ```
 
-`main` is lifted as the component's `wasi:cli/run.run` export. It is always emitted as an *async-stackful* function at the Component Model boundary so nested calls to suspending externs (filesystem, network, server handlers) can yield without trapping. The programmer writes uniform, sync-looking code; the compiler handles all of this.
+An HTTP service:
+
+```
+home = (Request) -> Response {
+    Response(Headers(), Status(200))
+}
+```
+
+The function's parameters declare the program's capability requirements. For a CLI program, valid parameters are host-provided capabilities (`Stdout`, `Filesystem`, `Args`, …); for an HTTP service, the parameter is the incoming `Request`. The compiler validates that the parameter list is consistent with the selected world.
+
+Rules:
+
+- **Exactly one** top-level function may return a world-shape type. Multiple matches are a compile error.
+- **Mixed worlds** in the same module (one function returning `Unit`, another returning `Response`) are a compile error — a component exports exactly one world.
+- **Zero matches** means the module is a library, not a program. It can be `use`d from another module but not run with `oneway run`.
+- The entry is lifted as *async-stackful* at the Component Model boundary so nested calls to suspending externs (filesystem, network, …) can yield without trapping. The programmer writes uniform, sync-looking code; the compiler handles the rest.
+
+Helpers should return non-world types (`String`, user-defined products, etc.). The discipline "helpers return data, the entry returns the world-shape" is the layering this rule encourages.
+
+See `WASI-HTTP-HANDLER.md` for the implementation plan.
 
 ### Referring to Components
 
@@ -429,10 +460,10 @@ This is a compile-time requirement, not a convention.
 There is no special syntax for optional parameters. Optionality is expressed through the type system using `Option<T>`:
 
 ```
+Blue  = Hex
+Green = Hex
+Red   = Hex
 Color = Blue + Green + Red
-Blue  = Hex(0000FF)
-Green = Hex(00FF00)
-Red   = Hex(FF0000)
 
 print = (Option<Color> * String) -> Unit {
     ...
@@ -443,7 +474,7 @@ This allows both forms at the call site:
 
 ```
 "hello".print()
-"hello".print(Red)
+"hello".print(Red(0xFF0000))
 ```
 
 ## No Local Bindings
@@ -472,9 +503,9 @@ readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
 
 classify = (Int) -> Sign {
     Int.compare(Int(0)).(
-        Equal   => Zero,
-        Greater => Positive,
-        Less    => Negative,
+        * (Equal)   -> Sign { Zero }
+        * (Greater) -> Sign { Positive }
+        * (Less)    -> Sign { Negative }
     )
 }
 ```
@@ -513,24 +544,13 @@ Rough mapping of source-level concepts to lowered wasm:
 
 | Oneway                                  | Lowered to                                              |
 |-----------------------------------------|---------------------------------------------------------|
-| Non-`mut` parameter                     | Moved or borrowed value passed through wasm locals      |
-| `mut T` parameter                       | Mutable reference through a linear-memory pointer       |
+| Function parameter                      | Moved or borrowed value passed through wasm locals      |
 | Recursive type (e.g. `Tree`)            | Heap-allocated cell in the bump heap (auto-boxed)       |
 | Shared ownership the compiler can't otherwise prove | Reference-counted cell                      |
 
 If the compiler cannot find a valid ownership scheme for a given program, it is a compile-time error. The error is surfaced in Oneway terms.
 
-## Mutability
 
-Values are immutable by default. The `mut` keyword marks a **component** as mutable. There are no local variables, so there is nothing else `mut` can apply to.
-
-```
-add = (mut Counter) -> Unit {
-    ...
-}
-```
-
-`mut T` lowers to an in-place update of the caller's value through a linear-memory pointer.
 
 ## Recursive Types
 
@@ -710,58 +730,58 @@ This is uniform: synchronous-looking code is the only style. The async machinery
 
 ## Traits
 
-A trait is a callable type signature. It is declared like a function type:
+A trait is declared like a body-less function signature. It names the shape that implementations must match:
 
 ```
-Print = <Error>() -> Result<Unit, Error>
+Show = () -> String
 ```
 
-Because traits are types, they are written in `PascalCase`.
+Because traits are types, they are written in `PascalCase`. The shape is read as "any type that can produce a `String`".
+
+### Implementing a Trait
+
+A trait is implemented for a type by declaring a function with the trait's name (PascalCase) and the implementing type as a component. The implementing type is prepended to the trait's parameter list:
+
+```
+Show = () -> String          # trait declaration (no body)
+
+Show = (Greeting) -> String {
+    "HELLO!"
+}
+
+Show = (Name) -> String {
+    "Alice"
+}
+```
+
+This is distinguished from a regular function by case alone: `print` (camelCase) is a regular function, `Show` (PascalCase) is a trait implementation.
+
+Call sites use ordinary commutative-call syntax:
+
+```
+Greeting("hi").Show()    # invokes the Greeting impl of Show
+Name("Alice").Show()     # invokes the Name impl of Show
+```
 
 ### Multi-Method Traits
 
 A trait with multiple methods is just a product of single-method traits:
 
 ```
-Show = Debug * PrintString
+Debug       = () -> String
+PrintString = () -> Unit
+Presentable = Debug * PrintString
 ```
 
-### Default Implementations
-
-A trait declaration can carry a default body marked `{ impl }`:
-
-```
-Greet = () -> String { impl }
-```
-
-Implementing types may then either override or inherit the default.
-
-### Implementing a Trait
-
-A trait is implemented for a type by declaring a function with the trait's name (PascalCase) and the implementing type as a component:
-
-```
-Print = (User) -> Result<Unit, IoError> {
-    ...
-}
-```
-
-This is distinguished from a regular function by case alone: `print` (camelCase) is a regular function, `Print` (PascalCase) is a trait implementation.
-
-Multiple implementations of the same trait for different types:
-
-```
-Show = (Greeting) -> String { "HELLO!" }
-Show = (Name) -> String { "Alice" }
-```
+Implementing `Presentable` for a type means implementing both `Debug` and `PrintString` for it.
 
 ### Using a Trait as a Parameter
 
 A trait can be used directly as a component type. The component binds the trait implementation, which is then invocable:
 
 ```
-needsPrint = (Print) -> Unit {
-    Print()
+needsShow = (Show) -> Unit {
+    Show().print()
 }
 ```
 
@@ -781,7 +801,7 @@ Oneway compiles to a **WebAssembly Component**, so interop happens at the Compon
 
 The shipped stdlib is **layered**:
 
-- `oneway/wasi` — **raw bindings**, machine-generated from upstream WIT by `oneway gen-bindings`. One `.ow` file per WIT interface, each a [binding file](#binding-files). No idioms, no capability discipline, no opinions. Regenerated, never hand-edited.
+- `oneway/wasi` — **raw bindings**, machine-generated from upstream WIT by `oneway bindgen`. One `.ow` file per WIT interface, each a [binding file](#binding-files). No idioms, no capability discipline, no opinions. Regenerated, never hand-edited.
 - `oneway/std` — **curated wrappers**, hand-written. One primary type per file (`oneway/std/clock.ow` declares `Clock`, `oneway/std/file.ow` declares `File`, …). Methods, constructors, and capability arguments live here. Idiomatic Oneway code only ever imports from `oneway/std`.
 
 Where a `wasi:*` interface isn't yet usable from the canonical ABI, the corresponding `oneway/wasi` file binds an `oneway:builtins/*` bridge instead. The split is invariant — only the WIT path on the file's `extern` header changes.
@@ -864,12 +884,12 @@ The lockfile is the manifest. There is no separate `oneway.lock`.
 The `oneway/wasi` layer is produced by:
 
 ```
-oneway gen-bindings <path-or-url>
+oneway bindgen <path-or-url>
 ```
 
 The input is either a `.wit` file (parsed directly) or a WebAssembly Component `.wasm` (the embedded `component-type` custom section is extracted and parsed). The output is a complete package: one [binding file](#binding-files) per WIT interface under `<namespace>/<package>/<interface>.ow`, plus an `oneway.toml` manifest. Output is deterministic and alphabetically ordered, so it round-trips through `oneway fmt` and produces clean diffs on regeneration.
 
-`oneway install <url>` is a convenience that combines fetch + verify + `gen-bindings` + record:
+`oneway install <url>` is a convenience that combines fetch + verify + `bindgen` + record:
 
 1. Fetch the `.wasm` from the URL.
 2. Compute its sha256. Confirm it is a valid Component.
@@ -933,18 +953,21 @@ This means `oneway/std/file.ow` can wrap `oneway/wasi/filesystem/types#Descripto
 
 ### Importing from Bindings
 
-Idiomatic Oneway code does not import binding files directly. Instead, it imports curated wrappers from `oneway/std`:
+Idiomatic Oneway code does not import binding files directly. Instead, it imports curated wrappers from `oneway/std`. The wrappers are grouped into thematic sub-namespaces (`cli`, `fs`, `http`, `time`); the top level of `oneway/std` is reserved for cross-cutting types (`IoError`, `Json`, `MalformedJson`, `Random`, `TestResult`).
 
 ```
-use oneway/std/Clock           # wraps oneway/wasi/clocks/monotonic_clock
-use oneway/std/File            # wraps oneway/wasi/filesystem/types (or oneway:builtins/* until P3 lands)
-use oneway/std/HttpServer      # wraps oneway:builtins/http-server
-use oneway/std/Now             # wraps oneway/wasi/clocks/wall_clock (or oneway:builtins/* until P3 lands)
-use oneway/std/Random          # wraps oneway/wasi/random/random
-use oneway/std/Url             # wraps oneway:builtins/url + oneway:builtins/http
+use oneway/std/cli/Exit          # wraps oneway:builtins/cli
+use oneway/std/fs/File           # wraps oneway/wasi/filesystem/types (or oneway:builtins/* until P3 lands)
+use oneway/std/fs/Path
+use oneway/std/http/HttpServer   # wraps oneway:builtins/http-server
+use oneway/std/http/Url          # wraps oneway:builtins/url + oneway:builtins/http
+use oneway/std/time/Instant      # wraps oneway/wasi/clocks/monotonic_clock
+use oneway/std/time/Now          # wraps oneway/wasi/clocks/wall_clock (or oneway:builtins/* until P3 lands)
+use oneway/std/Random            # wraps oneway/wasi/random/random
+use oneway/std/IoError
 ```
 
-Each `use oneway/std/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any namespace; the `oneway/` namespace is reserved for packages shipped with the language.
+Each `use oneway/std/<path>/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any namespace; the `oneway/` namespace is reserved for packages shipped with the language.
 
 A direct `use oneway/wasi/clocks/monotonic_clock/now` works (everything is public), but you give up the capability discipline and the cleaned-up names that the `oneway/std` wrapper provides.
 
@@ -954,29 +977,33 @@ Three things ship with the language:
 
 **Core** — the small set of language-level primitives, owned by the compiler (not a package):
 
-- Type system primitives: `Off`, `On`, `Bit`, `Byte`, `Bytes`, `Unit`, `Never`
+- Type system primitives: `Unit`, `Never`
+- Boolean atoms (newtype aliases of `Unit`): `False`, `True`
+- Bit‑level composition: `Bit` (`= False + True`), `Byte` (`= Bit^8`), `Bytes` (`= Byte^*`)
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
 - Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
-- Standard unions: `Bool`, `Ord`
-- Async wrappers (rarely written by users): `Future<T>`, `Stream<T>`
+- Standard unions: `Bool` (`= False + True`), `Ord`
+- Async wrappers: `Future<T>`, `Stream<T>`
 - I/O built-ins: `print` (stdout), wired against `wasi:cli/stdout`
 
 `Map<K, V>` is a sorted key-value map. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is its set-shaped counterpart.
 
+`Future<T>` and `Stream<T>` appear in user-visible signatures only when a binding file mirrors an `async func` / `stream<T>` from its WIT interface (see [WIT → Oneway Mapping](#wit--oneway-mapping)). Everywhere else they are inferred and inserted by the compiler — ordinary Oneway code consumes the unwrapped `T` and the async/streaming machinery is invisible (see [Async](#async)).
+
 **Batteries** — two packages, bundled with the compiler binary and pre-populated in the cache:
 
-- **`oneway/wasi`** — generated binding files against `wasi:*` (and `oneway:builtins/*` for interfaces that don't yet have a stable canonical-ABI shape). Mechanically produced by `oneway gen-bindings`.
+- **`oneway/wasi`** — generated binding files against `wasi:*` (and `oneway:builtins/*` for interfaces that don't yet have a stable canonical-ABI shape). Mechanically produced by `oneway bindgen`.
 - **`oneway/std`** — hand-written wrappers presenting a clean, capability-disciplined API. One primary type per file.
 
 | Wrapper | Underlying binding | Status |
 |---|---|---|
-| `oneway/std/Clock` (capability) + `oneway/std/Instant` | `oneway/wasi/clocks/monotonic_clock` | ✅ |
-| `oneway/std/Exit` (`Int.exit()`) | `oneway:builtins/cli` (will move to `wasi/cli/exit` once narrow-int codegen lands) | ✅ |
+| `oneway/std/time/Instant` | `oneway/wasi/clocks/monotonic_clock` | ✅ |
+| `oneway/std/cli/Exit` (`Int.exit()`) | `oneway:builtins/cli` (will move to `wasi/cli/exit` once narrow-int codegen lands) | ✅ |
 | `oneway/std/Random` | `oneway/wasi/random/random` | ✅ |
-| `oneway/std/Now` (RFC 3339 wall-clock time) | `oneway/wasi/clocks/wall_clock` (today: `oneway:builtins/clock`) | ✅ |
-| `oneway/std/File`, `oneway/std/Path`, `oneway/std/IoError` | `oneway/wasi/filesystem/types` (today: `oneway:builtins/filesystem`) | ✅ |
-| `oneway/std/Url`, `oneway/std/InvalidUrl`, `oneway/std/HttpError` | `oneway:builtins/url` + `oneway:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
-| `oneway/std/HttpServer`, `oneway/std/HttpStatus`, `oneway/std/Port`, `oneway/std/RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
+| `oneway/std/time/Now` (RFC 3339 wall-clock time) | `oneway/wasi/clocks/wall_clock` (today: `oneway:builtins/clock`) | ✅ |
+| `oneway/std/fs/File`, `oneway/std/fs/Path`, `oneway/std/IoError` | `oneway/wasi/filesystem/types` (today: `oneway:builtins/filesystem`) | ✅ |
+| `oneway/std/http/Url`, `oneway/std/http/InvalidUrl`, `oneway/std/http/HttpError` | `oneway:builtins/url` + `oneway:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
+| `oneway/std/http/HttpServer`, `oneway/std/http/HttpStatus`, `oneway/std/http/Port`, `oneway/std/http/RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
 | `oneway/std/Json`, `oneway/std/MalformedJson` | `oneway:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Oneway (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k": v}` / `[v, ...]` literal syntax with interpolation; structural derive for user types pending |
 | `oneway/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Oneway | ✅ |
 
@@ -1082,4 +1109,3 @@ So `foo.bar()?` is `((foo.bar)())?`.
 | `?`        | Propagate `Result` / `Option` failure    |
 
 | `"..."`    | String literal sugar                     |
-| `mut`      | Mutable binding                          |

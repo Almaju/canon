@@ -1,10 +1,20 @@
 use oneway/wasi/sockets/types
 
-ErrorCode = ErrorCodeAccessDenied + ErrorCodeInvalidArgument + ErrorCodeNameUnresolvable + ErrorCodeOther + ErrorCodePermanentResolverFailure + ErrorCodeTemporaryResolverFailure
-ErrorCodeAccessDenied = Unit
-ErrorCodeInvalidArgument = Unit
-ErrorCodeNameUnresolvable = Unit
-ErrorCodeOther = Option<String>
-ErrorCodePermanentResolverFailure = Unit
-ErrorCodeTemporaryResolverFailure = Unit
+ErrorCode = ErrorCodeAccessDenied
+  + ErrorCodeInvalidArgument
+  + ErrorCodeNameUnresolvable
+  + ErrorCodeOther
+  + ErrorCodePermanentResolverFailure
+  + ErrorCodeTemporaryResolverFailure
 
+ErrorCodeAccessDenied = Unit
+
+ErrorCodeInvalidArgument = Unit
+
+ErrorCodeNameUnresolvable = Unit
+
+ErrorCodeOther = Option<String>
+
+ErrorCodePermanentResolverFailure = Unit
+
+ErrorCodeTemporaryResolverFailure = Unit

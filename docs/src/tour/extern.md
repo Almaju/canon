@@ -100,7 +100,7 @@ WIT is extracted automatically) and emit one Oneway binding file per
 interface:
 
 ```sh
-oneway gen-bindings path/to/my-component.wit -o .
+oneway bindgen path/to/my-component.wit -o .
 ```
 
 This writes `<ns>/<pkg>/<iface>.ow` for each interface, alphabetically

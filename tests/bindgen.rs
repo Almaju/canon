@@ -1,4 +1,4 @@
-//! End-to-end tests for `oneway gen-bindings`.
+//! End-to-end tests for `oneway bindgen`.
 //!
 //! Each test feeds a `.wit` fixture from `tests/fixtures/wit/` through
 //! `oneway::bindgen::generate_from_path` and asserts on the produced

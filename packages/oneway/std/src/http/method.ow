@@ -1,0 +1,17 @@
+Delete = Unit
+
+Get = Unit
+
+Head = Unit
+
+Method = Delete + Get + Head + Options + Other + Patch + Post + Put
+
+Options = Unit
+
+Other = String
+
+Patch = Unit
+
+Post = Unit
+
+Put = Unit

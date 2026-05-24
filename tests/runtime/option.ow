@@ -1,7 +1,7 @@
 main = () -> Result<Unit, Unit> {
     Ok(42)?.print()
     Some(7).(
-        (None) -> Unit { "absent".print() }
+        * (None) -> Unit { "absent".print() }
         * (Some<Int>) -> Unit { "present".print() }
     )
     Ok(Unit())
