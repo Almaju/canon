@@ -1,0 +1,3 @@
+{"hello":"world","len":5}
+{"escaped":"a \"b\" c"}
+{"control":"tab:\there"}

@@ -535,7 +535,22 @@ fn emit_base_inline(expr: &Expr) -> String {
         } => {
             format!("{}.{}", emit_base_inline(receiver), field.name)
         }
-        Expr::JsonLit { value, .. } => value.clone(),
+        Expr::JsonLit { parts, .. } => {
+            // Reconstruct the source-level JSON literal by emitting each
+            // Static part verbatim and each Interp part as its formatted
+            // expression. The Static fragments already include the
+            // surrounding `{` / `[` / `,` / `:` / `}` / `]` scaffolding
+            // and any literal string keys/values, so joining them with
+            // the formatted interps in place is a valid round-trip.
+            let mut out = String::new();
+            for p in parts {
+                match p {
+                    JsonLitPart::Static(s) => out.push_str(s),
+                    JsonLitPart::Interp(e) => out.push_str(&emit_inline(e)),
+                }
+            }
+            out
+        }
         // MethodCall, Match, Try are handled by chain flattening and should
         // never appear as a Base.  Return empty as a safeguard.
         _ => String::new(),

@@ -8,6 +8,8 @@ AdviceRandom = Unit
 AdviceSequential = Unit
 AdviceWillNeed = Unit
 
+Descriptor = Handle
+
 DescriptorFlags = DescriptorFlagsDataIntegritySync * DescriptorFlagsFileIntegritySync * DescriptorFlagsMutateDirectory * DescriptorFlagsRead * DescriptorFlagsRequestedWriteSync * DescriptorFlagsWrite
 DescriptorFlagsDataIntegritySync = Bool
 DescriptorFlagsFileIntegritySync = Bool

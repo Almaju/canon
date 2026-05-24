@@ -668,9 +668,9 @@ Url("https://api.example.com/data")?.get()?.print
 # Current time — call the Now constructor directly
 Now().toRfc3339().print
 
-# HTTP server — start with a Port
-Port(3000).HttpServer(State(Unit()))
-    .get(RoutePath("/"), handler)
+# HTTP server — wrap a Port, register routes, serve
+HttpServer(Port(3000))
+    .get(HttpStatus(200), RoutePath("/"), "hello")
     .serve()
 
 # JSON — start with a String
@@ -927,6 +927,7 @@ readViaStream = (Descriptor * Int) -> Result<InputStream, ErrorCode>
 - Methods on a WIT resource become free functions in the generated binding, with the resource as the first parameter. The canonical-ABI `[method]resource.fn` form is matched to a body-less Oneway function whose first parameter is the corresponding resource type; the prefix is implicit and never written in source. Collisions are resolved by Oneway's normal dispatch rules.
 - Static methods (`[static]resource.fn`) become free functions with no `Handle` parameter; constructors (`[constructor]resource`) become functions returning the resource type.
 - When a `Handle` value goes out of scope, the compiler emits the matching `resource.drop` call. Ownership is linear: a `Handle` cannot be aliased, only moved.
+- **Own vs borrow is invisible at the source level.** WIT distinguishes `own<T>` (consuming) from `borrow<T>` (non-consuming) at the canonical-ABI boundary, but Oneway source mentions neither. A binding function written as `(Descriptor * Int) -> Result<InputStream, ErrorCode>` may be lowered with a borrowing receiver or an owning one depending on the underlying WIT signature; the compiler reads that off the WIT and routes the call accordingly. This matches the rest of the language's [memory model](#memory-model) — ownership is inferred by the compiler, never written by the user. The same handle therefore flows through a chain of borrowing methods (`File.read`, `File.seek`, …) without the user threading anything back, and is dropped at the end of its last use just like every other value.
 
 This means `oneway/std/file.ow` can wrap `oneway/wasi/filesystem/types#Descriptor` in a clean type without the user ever touching a `Handle` directly — exactly the layering the stdlib split is for.
 
@@ -975,8 +976,8 @@ Three things ship with the language:
 | `oneway/std/Now` (RFC 3339 wall-clock time) | `oneway/wasi/clocks/wall_clock` (today: `oneway:builtins/clock`) | ✅ |
 | `oneway/std/File`, `oneway/std/Path`, `oneway/std/IoError` | `oneway/wasi/filesystem/types` (today: `oneway:builtins/filesystem`) | ✅ |
 | `oneway/std/Url`, `oneway/std/InvalidUrl`, `oneway/std/HttpError` | `oneway:builtins/url` + `oneway:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
-| `oneway/std/HttpServer`, `oneway/std/Request`, `oneway/std/HttpResponseBody`, `oneway/std/HttpStatus`, `oneway/std/Body`, `oneway/std/Port`, `oneway/std/RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
-| `oneway/std/Json` (string handle) | — | ⏳ `JsonValue` / `JsonArray` / `JsonObject` parser pending |
+| `oneway/std/HttpServer`, `oneway/std/HttpStatus`, `oneway/std/Port`, `oneway/std/RoutePath` | `oneway:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
+| `oneway/std/Json`, `oneway/std/MalformedJson` | `oneway:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Oneway (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k": v}` / `[v, ...]` literal syntax with interpolation; structural derive for user types pending |
 | `oneway/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Oneway | ✅ |
 
 The `oneway:builtins/*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available — the binding file in `oneway/wasi` is regenerated, the `oneway/std` wrapper stays the same.

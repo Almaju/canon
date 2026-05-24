@@ -1,0 +1,5 @@
+[1, 2, 3]
+{"a":1,"b":[true,false,null]}
+"a plain string"
+42
+null

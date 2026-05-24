@@ -1,0 +1,25 @@
+package demo:resources@1.0.0;
+
+interface handles {
+    /// An opaque resource — bindgen emits `Counter = Handle` and skips
+    /// its methods (constructor / instance / static) until codegen
+    /// learns to lower handle-typed extern imports.
+    resource counter {
+        constructor();
+        increment: func();
+        current: func() -> u64;
+        zero: static func() -> counter;
+    }
+
+    /// A second resource, so we can verify that a free function
+    /// mentioning one (without being a method on it) is also skipped.
+    resource gauge {}
+
+    /// Free function that references a resource by `own<…>` — gets
+    /// skipped because its signature mentions a `Handle`.
+    consume: func(g: own<gauge>);
+
+    /// Plain free function, no resources in its signature — emitted as
+    /// usual to prove the resource handling doesn't bleed into other items.
+    tick: func() -> u64;
+}

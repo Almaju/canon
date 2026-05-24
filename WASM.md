@@ -163,12 +163,11 @@ In the component, the function type is declared as `async func(…)` via
 
 | Gap | Notes |
 |---|---|
-| **JSON parser** | `examples/parse-json/` and `examples/json-literal/` need `JsonArray` / `JsonObject` stdlib types and a parser. Pure compute — implementable in Oneway, or as an `oneway:builtins/json` host bridge. |
+| **JSON structural derive** | `Json` validation, `ToJson` for primitives, and `{"k": v}` / `[v, ...]` literal syntax with arbitrary-expression interpolation are live (`oneway:builtins/json` host bridge). Still needed: compiler-derived `ToJson` / `FromJson` for user-defined product / union types, including auto-fall-through for newtypes (today `Email = String` needs a hand-written `ToJson` or `.String` unwrap). |
 | **More `Result<T, E>` shapes** | `classify_return` only recognises `Result<String, String>`. `Result<Int, String>`, `Result<Unit, IoError>`, … need a small extension to the indirect-return decoder (machinery is generic; only the recognition + readback is hard-coded). |
 | **Early-return on `?`** | `?` extracts the Ok/Some payload but doesn't branch on the discriminant. A failing host call surfaces garbage on the Ok path. Fix: load tag after the lowered call, `br_if` to the enclosing function's epilogue on the error case. |
 | **Match-arm payload binding for `Result<String, String>`** | Dispatch picks the right arm, but the bound variable in `Ok(s) => … s …` isn't populated. The `bind_arm_payload` mechanism that works for user unions needs to extend to `Ty::NamedPtrStr`. |
 | **Record returns** | e.g. `wasi:clocks/wall-clock#now → datetime { seconds, nanoseconds }`. Indirect-return machinery is there; needs a multi-field decoder. |
-| **`String.concat`** | Currently a no-op stub (`mod.rs ~2411`) that drops both args and returns `Unit`. Visible in the test framework's `[FAIL]` banner, which prints on two lines instead of one joined string. |
 
 ### Phase 5 gaps
 

@@ -43,3 +43,7 @@ Ipv6SocketAddressFlowInfo = Int
 Ipv6SocketAddressPort = Int
 Ipv6SocketAddressScopeId = Int
 
+TcpSocket = Handle
+
+UdpSocket = Handle
+

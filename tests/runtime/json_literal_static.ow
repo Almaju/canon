@@ -1,0 +1,7 @@
+use oneway/std/Json
+
+main = () -> Unit {
+    {"answer": 42, "label": "life"}.print()
+    [1, 2, 3].print()
+    {"nested": {"x": 1}, "arr": [true, false, null]}.print()
+}

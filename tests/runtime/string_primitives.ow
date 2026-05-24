@@ -1,0 +1,26 @@
+main = () -> Unit {
+    "hello"
+        .length()
+        .print()
+    "hello"
+        .byteAt(0)
+        .print()
+    "hello"
+        .byteAt(4)
+        .print()
+    "hello"
+        .substring(1, 4)
+        .print()
+    "hello".eq("hello").(
+        * (False) -> Unit { "ne".print() }
+        * (True) -> Unit { "eq".print() }
+    )
+    "hello".eq("world").(
+        * (False) -> Unit { "ne".print() }
+        * (True) -> Unit { "eq".print() }
+    )
+    "hello".eq("hell").(
+        * (False) -> Unit { "ne".print() }
+        * (True) -> Unit { "eq".print() }
+    )
+}

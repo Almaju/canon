@@ -895,8 +895,20 @@ impl<'m> WasmGen<'m> {
                 // host-returned strings and literals identical output.
                 self.strings.intern(value);
             }
-            Expr::JsonLit { value, .. } => {
-                self.strings.intern(value);
+            Expr::JsonLit { parts, .. } => {
+                // Intern every Static fragment so the `compile_expr`
+                // path — which lowers a mixed JsonLit to a concat
+                // chain over synthesized `StringLit`s — finds each
+                // fragment in the intern table. Recurse into Interp
+                // expressions so their strings are also interned.
+                for p in parts {
+                    match p {
+                        crate::ast::JsonLitPart::Static(s) => {
+                            self.strings.intern(s);
+                        }
+                        crate::ast::JsonLitPart::Interp(e) => self.collect_strings_expr(e),
+                    }
+                }
             }
             Expr::FieldAccess { receiver, .. } => self.collect_strings_expr(receiver),
             Expr::MethodCall { receiver, args, .. } => {
@@ -968,7 +980,16 @@ impl<'m> WasmGen<'m> {
             // dispatch arms can extract the string payload with the right
             // Oneway-level type on either branch.
             let surface_result_ty = match &ext.indirect_return {
-                Some(IndirectReturnShape::String) => Ty::Str,
+                Some(IndirectReturnShape::String) => {
+                    // Preserve any String-alias name (e.g. `HttpServer`,
+                    // `Now`, `Url`) so subsequent method dispatch finds
+                    // the right key. `resolve_return_ty` already wraps
+                    // String-aliased types as `Ty::NamedStr(name)`.
+                    match &result_ty {
+                        Ty::NamedStr(_) => result_ty.clone(),
+                        _ => Ty::Str,
+                    }
+                }
                 Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
                     Ty::NamedPtrStr("Result".to_string(), ok_name.clone(), err_name.clone())
                 }
@@ -1025,22 +1046,62 @@ impl<'m> WasmGen<'m> {
                 let params = self.func_wasm_params(func);
                 let results = self.func_wasm_results(func);
                 let type_idx = self.get_or_add_wasm_type(&params, &results);
-                let result_ty = self.resolve_return_ty(func);
+                // Surface result type: classify `Result<String-aliased,
+                // String-aliased>` returns the same way as externs so
+                // `?` and dispatch arms can extract string payloads via
+                // the `Ty::NamedPtrStr` path. The function body itself
+                // returns an i32 pointer (via `build_result_ok` /
+                // `build_result_err`) whose memory layout matches the
+                // extern indirect-return area (tag at +0, ptr at +4,
+                // len at +8), so no calling-convention change is needed
+                // — only the type label.
+                let result_ty = match classify_return(&func.return_ty, &results, &self.type_defs) {
+                    Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
+                        Ty::NamedPtrStr("Result".to_string(), ok_name, err_name)
+                    }
+                    _ => self.resolve_return_ty(func),
+                };
 
                 let key = (
                     func.receiver.as_ref().map(|r| r.name.clone()),
                     func.name.name.clone(),
                 );
-                self.func_table.insert(
-                    key,
-                    FuncInfo {
-                        func_idx: idx,
-                        type_idx,
-                        result_ty,
-                        indirect_return: None,
-                        is_async: false,
-                    },
-                );
+                let info = FuncInfo {
+                    func_idx: idx,
+                    type_idx,
+                    result_ty,
+                    indirect_return: None,
+                    is_async: false,
+                };
+                self.func_table.insert(key, info.clone());
+
+                // Self-ctor commutative registration (mirrors the extern
+                // block above). After `resolve_new_syntax`, a function
+                // declared as `Name = (P) -> R<Name, E>` is rewritten to
+                // `Self = (P) -> ...` with receiver `Name`. We also need
+                // to make it reachable from `p.Name()` — the natural
+                // method-call form on a value of type `P` — by adding
+                // an alias entry under `(Some(P), Name)`. Without this,
+                // body-defined validating constructors (`Json = (String)
+                // -> Result<Json, MalformedJson> { … }`) fall through
+                // to the type-newtype constructor path in
+                // `compile_constructor`, silently dropping the body.
+                if is_self_ctor(func) {
+                    if let Some(first_param) = func.params.first() {
+                        if let TypeExpr::Named {
+                            name: param_name, ..
+                        } = &first_param.ty
+                        {
+                            let recv_name = func
+                                .receiver
+                                .as_ref()
+                                .map(|r| r.name.clone())
+                                .unwrap_or_default();
+                            let commutative_key = (Some(param_name.clone()), recv_name);
+                            self.func_table.entry(commutative_key).or_insert(info);
+                        }
+                    }
+                }
                 idx += 1;
             }
         }
@@ -1545,24 +1606,83 @@ impl<'m> WasmGen<'m> {
         f
     }
 
+    /// Collect every name in a type's alias chain. For `Json = String`,
+    /// returns `["Json", "String"]`. For a base type like `String`,
+    /// returns `["String"]`. Bounded by `resolve_repr_depth`'s 20-step
+    /// guard so a malformed cycle can't infinite-loop.
+    fn collect_alias_chain(&self, name: &str) -> Vec<String> {
+        let mut out = vec![name.to_string()];
+        let mut current = name.to_string();
+        for _ in 0..20 {
+            let body = match self.type_defs.get(&current) {
+                Some(b) => b.clone(),
+                None => break,
+            };
+            if let TypeExpr::Named {
+                name: next,
+                generics,
+                ..
+            } = &body
+            {
+                if !generics.is_empty() {
+                    break;
+                }
+                if out.iter().any(|n| n == next) {
+                    break;
+                }
+                out.push(next.clone());
+                current = next.clone();
+            } else {
+                break;
+            }
+        }
+        out
+    }
+
     /// Build LocalScope for a function's params + receiver.
     fn build_local_scope(&self, func: &FunctionDef) -> (Vec<ValType>, LocalScope) {
         let mut scope = LocalScope::default();
         let mut local_idx: u32 = 0;
         let mut params = Vec::new();
 
+        // For Self-ctor functions (`Name = (P) -> R<Name, E>` after
+        // `resolve_new_syntax`), the WASM signature omits the receiver
+        // — the value lives as the first param. The receiver name is
+        // a type-level handle, not a runtime value. We still register
+        // it under the *param's* local index (so the body can reference
+        // it by either the newtype name like `Json` or the underlying
+        // type name like `String`) but we don't allocate a separate
+        // slot for it.
+        let skip_receiver_slot = is_self_ctor(func);
         if let Some(recv) = &func.receiver {
-            let repr = self.resolve_repr(&recv.name);
-            let vt = repr.val_types();
-            scope.vars.insert(recv.name.clone(), (local_idx, repr));
-            local_idx += vt.len() as u32;
-            params.extend(vt);
+            if !skip_receiver_slot {
+                let repr = self.resolve_repr(&recv.name);
+                let vt = repr.val_types();
+                for alias in self.collect_alias_chain(&recv.name) {
+                    scope.vars.insert(alias, (local_idx, repr.clone()));
+                }
+                local_idx += vt.len() as u32;
+                params.extend(vt);
+            }
         }
         for param in &func.params {
             if let TypeExpr::Named { name, .. } = &param.ty {
                 let repr = self.resolve_repr(name);
                 let vt = repr.val_types();
-                scope.vars.insert(name.clone(), (local_idx, repr));
+                for alias in self.collect_alias_chain(name) {
+                    scope.vars.insert(alias, (local_idx, repr.clone()));
+                }
+                // For a Self-ctor, also register the receiver-type name
+                // (`Json` for `Self = (String) -> ...`) as an alias of
+                // the first param so `Json` inside the body refers to
+                // the same value as `String`.
+                if skip_receiver_slot && local_idx == 0 {
+                    if let Some(recv) = &func.receiver {
+                        scope
+                            .vars
+                            .insert(recv.name.clone(), (local_idx, repr.clone()));
+                    }
+                }
                 local_idx += vt.len() as u32;
                 params.extend(vt);
             }
@@ -1739,11 +1859,38 @@ impl<'m> WasmGen<'m> {
             }
 
             // ── JSON literal ──────────────────────────────────────────────
-            Expr::JsonLit { value, .. } => {
-                let (ptr, len) = self.strings.intern(value);
-                f.instruction(&Instruction::I32Const(ptr as i32));
-                f.instruction(&Instruction::I32Const(len as i32));
-                Ty::Str
+            // ── JSON literal ──────────────────────────────────
+            //
+            // All-static fast path: collapse the parts into one string
+            // literal and push directly — zero runtime cost.
+            //
+            // Mixed (with interpolations): synthesize a left-associated
+            // chain of `String.concat` calls over alternating `StringLit`
+            // (Static fragments) and `MethodCall { method: "ToJson" }`
+            // (Interp expressions), then compile that. This reuses the
+            // existing `concat` builtin and the existing `ToJson` trait
+            // dispatch so we don't need new codegen for either; the
+            // surface-syntax `{"k": foo}` is purely parser sugar over
+            // machinery that already exists.
+            Expr::JsonLit { parts, span } => {
+                let all_static = parts
+                    .iter()
+                    .all(|p| matches!(p, crate::ast::JsonLitPart::Static(_)));
+                if all_static {
+                    let mut merged = String::new();
+                    for p in parts {
+                        if let crate::ast::JsonLitPart::Static(s) = p {
+                            merged.push_str(s);
+                        }
+                    }
+                    let (ptr, len) = self.strings.intern(&merged);
+                    f.instruction(&Instruction::I32Const(ptr as i32));
+                    f.instruction(&Instruction::I32Const(len as i32));
+                    Ty::Str
+                } else {
+                    let chain = json_lit_to_concat_chain(parts, *span);
+                    self.compile_expr(&chain, scope, f)
+                }
             }
 
             // ── Await (checker-inserted, Phase 5) ─────────────────────────────
@@ -2351,7 +2498,9 @@ impl<'m> WasmGen<'m> {
         // Decode the result.
         match shape {
             IndirectReturnShape::String => {
-                // (i32 ptr at +0, i32 len at +4) — push both as `Ty::Str`.
+                // (i32 ptr at +0, i32 len at +4) — push both as a string
+                // pair. Use `info.result_ty` so the alias name is
+                // preserved (set up by `assign_func_indices`).
                 f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                 f.instruction(&Instruction::I32Load(MemArg {
                     offset: 0,
@@ -2364,7 +2513,7 @@ impl<'m> WasmGen<'m> {
                     align: 2,
                     memory_index: 0,
                 }));
-                Ty::Str
+                info.result_ty.clone()
             }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
                 // Flip the WIT discriminant (byte 0) into Oneway's tag
@@ -2709,6 +2858,185 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
                 Ty::Str
+            }
+            // ── String length ───────────────────────────────────────
+            //
+            // Stack: [ptr, len] → [len_i64]. Drops the pointer; the
+            // length is the i32 byte-count promoted to i64 (Oneway `Int`).
+            ("length" | "len", _) if recv_ty.is_str_like() => {
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // save len
+                f.instruction(&Instruction::Drop); // drop ptr
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I64ExtendI32S);
+                Ty::I64
+            }
+            // ── String byteAt ──────────────────────────────────────
+            //
+            // `s.byteAt(i)` returns the unsigned byte at index `i`
+            // (0..=255) as an `Int`. Out-of-bounds access traps via the
+            // raw `i32.load8_u` (wasmtime translates an OOB load into a
+            // memory-out-of-bounds trap, which surfaces as a Rust panic
+            // through wasmtime's runtime). For a string-as-bytes view of
+            // a String — this is the primitive that makes Oneway-side
+            // string parsing possible.
+            ("byteAt", _) if recv_ty.is_str_like() => {
+                // Receiver on stack: [ptr, len]. Compile index arg next.
+                let mut arg_pushed = false;
+                if let Some(a) = args.first() {
+                    let arg_ty = self.compile_expr(a, scope, f);
+                    if matches!(arg_ty, Ty::I64) {
+                        arg_pushed = true;
+                    } else {
+                        self.drop_value(arg_ty, f);
+                    }
+                }
+                if !arg_pushed {
+                    f.instruction(&Instruction::I64Const(0));
+                }
+                // Stack: [ptr, len, index_i64]. Want: load byte at ptr+index.
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // index_i32
+                f.instruction(&Instruction::Drop); // drop len
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Add); // ptr + index
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I64ExtendI32U);
+                Ty::I64
+            }
+            // ── String substring ────────────────────────────────────
+            //
+            // `s.substring(start, end)` returns the half-open slice
+            // `[start, end)` as a fresh String. Allocates a new buffer
+            // and copies the bytes — the result is independent of the
+            // receiver's lifetime (heap is bump-allocated, so neither
+            // outlives the other; copying makes mutation safe if it
+            // ever lands).
+            ("substring" | "slice", _) if recv_ty.is_str_like() && args.len() == 2 => {
+                // Compile start, then end (both `Int`).
+                let ty0 = self.compile_expr(&args[0], scope, f);
+                if !matches!(ty0, Ty::I64) {
+                    self.drop_value(ty0, f);
+                    f.instruction(&Instruction::I64Const(0));
+                }
+                let ty1 = self.compile_expr(&args[1], scope, f);
+                if !matches!(ty1, Ty::I64) {
+                    self.drop_value(ty1, f);
+                    f.instruction(&Instruction::I64Const(0));
+                }
+                // Stack: [ptr, len, start_i64, end_i64].
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // end_i32
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // start_i32
+                f.instruction(&Instruction::Drop); // drop len
+                                                   // src = ptr + start
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rbool())); // src
+                                                                      // new_len = end - start (preserved in arm_payload_ptr for
+                                                                      // the final return push; the copy loop will clobber rlen).
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Sub);
+                f.instruction(&Instruction::LocalSet(scope.arm_payload_ptr()));
+                // result_ptr = alloc(new_len)
+                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+                // Copy loop locals: dst → rptr, src → rbool (already set),
+                // n → rlen (decremented to 0 by the loop).
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalSet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                f.instruction(&Instruction::LocalSet(scope.rlen()));
+                self.emit_byte_copy_loop(scope, f);
+                // Return (result_ptr, new_len).
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.arm_payload_ptr()));
+                Ty::Str
+            }
+            // ── String eq ───────────────────────────────────────────────────────────────
+            //
+            // `s1.eq(s2)` returns `True` if both strings have the same
+            // length and byte-for-byte content. Length-mismatch is the
+            // fast-fail path; equal-length walks a byte-by-byte compare
+            // loop. Pairs with `byteAt` to unblock parser-style code.
+            ("eq", _) if recv_ty.is_str_like() && args.len() == 1 => {
+                // Compile the other string. Stack ends as [ptr1, len1, ptr2, len2].
+                let arg_ty = self.compile_expr(&args[0], scope, f);
+                if !arg_ty.is_str_like() {
+                    // Mismatched arg type — drop everything and return false.
+                    self.drop_value(arg_ty, f);
+                    self.drop_value(recv_ty, f);
+                    f.instruction(&Instruction::I32Const(0));
+                    return Ty::I32;
+                }
+                // Save into locals.
+                f.instruction(&Instruction::LocalSet(scope.rlen())); // len2
+                f.instruction(&Instruction::LocalSet(scope.rbool())); // ptr2
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // len1
+                f.instruction(&Instruction::LocalSet(scope.rptr())); // ptr1
+                                                                     // If len1 != len2, push 0 and skip. Otherwise compare bytes.
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                f.instruction(&Instruction::I32Ne);
+                f.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::Else);
+                // Equal-length compare. Use tmp_i32_b as the running
+                // result (1 = still-equal). Walk bytes; on mismatch,
+                // set result=0 and break out.
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                // if len == 0: break
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                // if load8(p1) != load8(p2): result=0, break
+                f.instruction(&Instruction::LocalGet(scope.rptr()));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I32Ne);
+                f.instruction(&Instruction::If(BlockType::Empty));
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::Br(2)); // break outer block
+                f.instruction(&Instruction::End);
+                // p1++, p2++, len--
+                f.instruction(&Instruction::LocalGet(scope.rptr()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Sub);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::Br(0)); // continue
+                f.instruction(&Instruction::End); // end loop
+                f.instruction(&Instruction::End); // end block
+                                                  // Push result.
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::End); // end outer if
+                Ty::I32
             }
             // ── List methods ───────────────────────────────────────────────────
             ("length" | "len", Ty::List) | ("length" | "len", Ty::NamedPtr(_)) => {
@@ -3121,9 +3449,39 @@ impl<'m> WasmGen<'m> {
                     .vars
                     .insert(bound_name, (base_scope.arm_payload_ptr(), payload_ty));
             }
+            Ty::I64 | Ty::F64 => {
+                // Load i64 at +4 into tmp_i64 and bind the arm's name
+                // to that local. Variant payloads of `Int` / `Float`
+                // user-newtype (or the primitives directly) use the
+                // same 8-byte slot at offset 4 of the union struct
+                // — see `build_union_value` and
+                // `store_value_at_offset`.
+                f.instruction(&Instruction::LocalGet(base_scope.alloc_ptr()));
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: 4,
+                    align: 3,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(base_scope.tmp_i64()));
+                scope
+                    .vars
+                    .insert(bound_name, (base_scope.tmp_i64(), payload_ty));
+            }
+            Ty::I32 => {
+                // Bool / discriminant-style payload at +4.
+                f.instruction(&Instruction::LocalGet(base_scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(base_scope.rbool()));
+                scope
+                    .vars
+                    .insert(bound_name, (base_scope.rbool(), payload_ty));
+            }
             _ => {
-                // Other payload shapes (Int, product, etc.) aren't bound
-                // yet — see CLAUDE.md § Known codegen gaps.
+                // Product / ptr / list payloads not yet bound.
             }
         }
         scope
@@ -3541,10 +3899,17 @@ impl<'m> WasmGen<'m> {
         funcs.function(TY_RUN); // exported run() -> i32
                                 // User-compiled functions only — extern imports are already declared
                                 // in the import section and must NOT get a defined-function slot.
+                                // Dedupe by `func_idx`: the same `FuncInfo` can be registered
+                                // under multiple keys in `func_table` (the self-ctor commutative
+                                // alias adds a second entry pointing at the same function body).
+                                // Each function body must declare its type exactly once or the
+                                // wasm function-section and code-section lengths drift apart.
+        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut user_func_defs: Vec<(u32, u32)> = self
             .func_table
             .values()
             .filter(|info| info.func_idx >= self.fn_user_start)
+            .filter(|info| seen_idx.insert(info.func_idx))
             .map(|info| (info.func_idx, info.type_idx))
             .collect();
         user_func_defs.sort_by_key(|(idx, _)| *idx);
@@ -3628,6 +3993,56 @@ impl<'m> WasmGen<'m> {
 /// expects: a single packed value at offset 0, aligned to its natural
 /// boundary. Returns a multiple of 4 so the bump allocator's 4-byte
 /// alignment is sufficient.
+/// Lower a `JsonLit { parts }` into the equivalent left-associative
+/// `String.concat` chain over `StringLit` (Static parts) and `.ToJson()`
+/// method calls (Interp parts). The result is a normal `Expr` the
+/// codegen can compile via its existing machinery — no JsonLit-specific
+/// instructions to lower below this point.
+///
+/// Example: `{"k": foo}` (parts = [Static(`{"k":`), Interp(foo), Static(`}`)])
+///
+///   → `"{\"k\":".concat(foo.ToJson()).concat("}")`
+fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::error::Span) -> Expr {
+    use crate::ast::{Ident, JsonLitPart};
+    let part_exprs: Vec<Expr> = parts
+        .iter()
+        .map(|p| match p {
+            JsonLitPart::Static(s) => Expr::StringLit {
+                value: s.clone(),
+                span,
+            },
+            JsonLitPart::Interp(e) => Expr::MethodCall {
+                receiver: e.clone(),
+                method: Ident {
+                    name: "ToJson".to_string(),
+                    span,
+                },
+                type_args: vec![],
+                args: vec![],
+                span,
+            },
+        })
+        .collect();
+
+    let mut iter = part_exprs.into_iter();
+    // Parser invariant: parts is never empty (always starts with the
+    // opening `{` or `[` as a Static).
+    let mut acc = iter.next().expect("JsonLit parts must be non-empty");
+    for next in iter {
+        acc = Expr::MethodCall {
+            receiver: Box::new(acc),
+            method: Ident {
+                name: "concat".to_string(),
+                span,
+            },
+            type_args: vec![],
+            args: vec![next],
+            span,
+        };
+    }
+    acc
+}
+
 fn ret_area_size_for(ty: &Ty) -> u32 {
     match ty {
         Ty::Str | Ty::NamedStr(_) => 8, // (i32 ptr, i32 len)
@@ -3677,6 +4092,14 @@ fn newtype_unwrap_ty(recv_ty: &Ty, field: &str) -> Option<Ty> {
     match (recv_ty, field) {
         (Ty::NamedStr(_), "String") => Some(Ty::Str),
         (Ty::Str, "String") => Some(Ty::Str), // idempotent
+        // Idempotent unwrap for primitive payloads. `ParsePos.Int`
+        // (where `ParsePos = Int`) is a no-op at the wasm level —
+        // the value on the stack is already an i64 — but the
+        // surface-level type changes from the newtype to the base.
+        // Matches the way `Ty::Str` handles `.String`.
+        (Ty::I64, "Int") => Some(Ty::I64),
+        (Ty::F64, "Float") => Some(Ty::F64),
+        (Ty::I32, "Bool") => Some(Ty::I32),
         _ => None,
     }
 }

@@ -773,20 +773,26 @@ impl Parser {
             TokenKind::LBrace => {
                 let open = tok.span;
                 self.advance();
-                let json = self.parse_json_object_body(open)?;
+                let mut builder = JsonPartBuilder::new();
+                builder.push_char('{');
+                self.parse_json_object_body(open, &mut builder)?;
+                builder.push_char('}');
                 let end = self.previous_span();
                 Ok(Expr::JsonLit {
-                    value: json,
+                    parts: builder.finish(),
                     span: span_join(open, end),
                 })
             }
             TokenKind::LBracket => {
                 let open = tok.span;
                 self.advance();
-                let json = self.parse_json_array_body(open)?;
+                let mut builder = JsonPartBuilder::new();
+                builder.push_char('[');
+                self.parse_json_array_body(open, &mut builder)?;
+                builder.push_char(']');
                 let end = self.previous_span();
                 Ok(Expr::JsonLit {
-                    value: json,
+                    parts: builder.finish(),
                     span: span_join(open, end),
                 })
             }
@@ -797,8 +803,11 @@ impl Parser {
         }
     }
 
-    fn parse_json_object_body(&mut self, open_span: Span) -> Result<String> {
-        let mut out = String::from('{');
+    fn parse_json_object_body(
+        &mut self,
+        open_span: Span,
+        builder: &mut JsonPartBuilder,
+    ) -> Result<()> {
         self.skip_newlines();
         let mut first = true;
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
@@ -808,27 +817,28 @@ impl Parser {
                 if self.check(TokenKind::RBrace) {
                     break; // trailing comma
                 }
-                out.push(',');
+                builder.push_char(',');
             }
             first = false;
             let key_tok =
                 self.expect(TokenKind::StringLit, "expected string key in JSON object")?;
-            out.push_str(&json_encode_string(&key_tok.lexeme));
+            builder.push_text(&json_encode_string(&key_tok.lexeme));
             self.skip_newlines();
             self.expect(TokenKind::Colon, "expected `:` after JSON key")?;
             self.skip_newlines();
-            let val = self.parse_json_value(open_span)?;
+            builder.push_char(':');
+            self.parse_json_value(open_span, builder)?;
             self.skip_newlines();
-            out.push(':');
-            out.push_str(&val);
         }
         self.expect(TokenKind::RBrace, "expected `}` to close JSON object")?;
-        out.push('}');
-        Ok(out)
+        Ok(())
     }
 
-    fn parse_json_array_body(&mut self, open_span: Span) -> Result<String> {
-        let mut out = String::from('[');
+    fn parse_json_array_body(
+        &mut self,
+        open_span: Span,
+        builder: &mut JsonPartBuilder,
+    ) -> Result<()> {
         self.skip_newlines();
         let mut first = true;
         while !self.check(TokenKind::RBracket) && !self.is_at_end() {
@@ -838,73 +848,116 @@ impl Parser {
                 if self.check(TokenKind::RBracket) {
                     break; // trailing comma
                 }
-                out.push(',');
+                builder.push_char(',');
             }
             first = false;
-            let val = self.parse_json_value(open_span)?;
+            self.parse_json_value(open_span, builder)?;
             self.skip_newlines();
-            out.push_str(&val);
         }
         self.expect(TokenKind::RBracket, "expected `]` to close JSON array")?;
-        out.push(']');
-        Ok(out)
+        Ok(())
     }
 
-    fn parse_json_value(&mut self, open_span: Span) -> Result<String> {
+    /// Parse a single JSON value, appending it to `builder`. The strategy:
+    ///
+    /// 1. JSON-only forms (`{`, `[`, the keywords `true` / `false` /
+    ///    `null`, and `-IntLit` / `-FloatLit` since Oneway has no unary
+    ///    minus at expression level) are consumed directly and emitted
+    ///    as Static text.
+    /// 2. Everything else is parsed as a full Oneway expression. If the
+    ///    resulting expression is itself a pure literal
+    ///    (`StringLit` / `IntLit` / `FloatLit` / `JsonLit`), it's still
+    ///    emitted as Static — so `{"k": 42}` stays fully constant. Any
+    ///    expression with runtime content (`Ident`, `MethodCall`, etc.)
+    ///    becomes an `Interp` part, which the codegen later
+    ///    `.ToJson()`-converts and concats into the surrounding
+    ///    scaffolding.
+    ///
+    /// This two-tier approach lets `{"x": foo.bar()}` parse as a JSON
+    /// literal *with* an interpolated expression, without committing
+    /// eagerly to the literal-shaped path on bare `IntLit`s.
+    fn parse_json_value(&mut self, _open_span: Span, builder: &mut JsonPartBuilder) -> Result<()> {
         let tok = self.peek().clone();
         match tok.kind {
-                TokenKind::LBrace => {
-                    self.advance();
-                    self.parse_json_object_body(tok.span)
-                }
-                TokenKind::LBracket => {
-                    self.advance();
-                    self.parse_json_array_body(tok.span)
-                }
-                TokenKind::StringLit => {
-                    self.advance();
-                    Ok(json_encode_string(&tok.lexeme))
-                }
-                TokenKind::IntLit => {
-                    self.advance();
-                    Ok(tok.lexeme)
-                }
-                TokenKind::FloatLit => {
-                    self.advance();
-                    Ok(tok.lexeme)
-                }
-                TokenKind::Minus => {
-                    self.advance();
-                    let num = self.peek().clone();
-                    match num.kind {
-                        TokenKind::IntLit | TokenKind::FloatLit => {
-                            self.advance();
-                            Ok(format!("-{}", num.lexeme))
-                        }
-                        _ => Err(OnewayError::ParseError {
+            TokenKind::LBrace => {
+                self.advance();
+                builder.push_char('{');
+                self.parse_json_object_body(tok.span, builder)?;
+                builder.push_char('}');
+                return Ok(());
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                builder.push_char('[');
+                self.parse_json_array_body(tok.span, builder)?;
+                builder.push_char(']');
+                return Ok(());
+            }
+            TokenKind::Minus => {
+                // `-IntLit` / `-FloatLit` are folded as a static JSON
+                // negative number. Oneway has no general unary-minus, so
+                // a bare `-` followed by anything else is an error here.
+                self.advance();
+                let num = self.peek().clone();
+                match num.kind {
+                    TokenKind::IntLit | TokenKind::FloatLit => {
+                        self.advance();
+                        builder.push_char('-');
+                        builder.push_text(&num.lexeme);
+                        return Ok(());
+                    }
+                    _ => {
+                        return Err(OnewayError::ParseError {
                             message: "expected a number after `-` in JSON literal".to_string(),
                             span: num.span,
-                        }),
+                        });
                     }
                 }
-                TokenKind::Ident => match tok.lexeme.as_str() {
-                    "true" | "false" | "null" => {
-                        self.advance();
-                        Ok(tok.lexeme)
-                    }
-                    _ => Err(OnewayError::ParseError {
-                        message: format!(
-                            "unexpected `{}` in JSON literal — expected a string, number, object, array, `true`, `false`, or `null`",
-                            tok.lexeme
-                        ),
-                        span: tok.span,
-                    }),
-                },
-                _ => Err(OnewayError::ParseError {
-                    message: format!("expected a JSON value, got {}", tok.kind),
-                    span: open_span,
-                }),
             }
+            TokenKind::Ident if matches!(tok.lexeme.as_str(), "true" | "false" | "null") => {
+                // JSON keywords: not valid Oneway identifiers, so we have
+                // to handle them before `parse_expr` would choke. (Oneway
+                // booleans are capitalised: `True()` / `False()`.)
+                self.advance();
+                builder.push_text(&tok.lexeme);
+                return Ok(());
+            }
+            _ => {}
+        }
+
+        // General case: parse a full Oneway expression. This handles
+        // bare literals (`42`, `"hi"`), method chains (`x.foo()`,
+        // `1.add(2)`), constructors (`Email("a")`), field access
+        // (`User.Email`), `?` on Results, etc.
+        let expr = self.parse_expr()?;
+        // Fold pure-literal exprs into Static text so all-constant JSON
+        // literals stay zero-runtime-cost. Anything with runtime content
+        // becomes an Interp.
+        match expr {
+            Expr::StringLit { value, .. } => {
+                builder.push_text(&json_encode_string(&value));
+            }
+            Expr::IntLit { value, .. } => {
+                builder.push_text(&value.to_string());
+            }
+            Expr::FloatLit { value, .. } => {
+                builder.push_text(&value.to_string());
+            }
+            Expr::JsonLit { parts, .. } => {
+                // Inline the nested literal's parts directly so static
+                // chunks merge into the outer accumulator.
+                for p in parts {
+                    match p {
+                        JsonLitPart::Static(s) => builder.push_text(&s),
+                        JsonLitPart::Interp(e) => builder.push_interp(*e),
+                    }
+                }
+            }
+            other => {
+                builder.push_interp(other);
+            }
+        }
+        Ok(())
     }
 
     fn parse_lambda(&mut self) -> Result<Expr> {
@@ -1025,6 +1078,48 @@ impl Parser {
 
 fn span_join(a: Span, b: Span) -> Span {
     Span::new(a.start.min(b.start), a.end.max(b.end), a.line, a.column)
+}
+
+/// Accumulator used while parsing a JSON literal: collects pre-encoded
+/// JSON text fragments into a flat list of `JsonLitPart`s, merging
+/// consecutive static text so the final `parts` always alternates
+/// `Static` ↔ `Interp` (starting and ending with `Static` when not
+/// empty). See `Expr::JsonLit`.
+struct JsonPartBuilder {
+    parts: Vec<JsonLitPart>,
+    current: String,
+}
+
+impl JsonPartBuilder {
+    fn new() -> Self {
+        Self {
+            parts: Vec::new(),
+            current: String::new(),
+        }
+    }
+
+    fn push_text(&mut self, s: &str) {
+        self.current.push_str(s);
+    }
+
+    fn push_char(&mut self, c: char) {
+        self.current.push(c);
+    }
+
+    fn push_interp(&mut self, expr: Expr) {
+        if !self.current.is_empty() {
+            self.parts
+                .push(JsonLitPart::Static(std::mem::take(&mut self.current)));
+        }
+        self.parts.push(JsonLitPart::Interp(Box::new(expr)));
+    }
+
+    fn finish(mut self) -> Vec<JsonLitPart> {
+        if !self.current.is_empty() {
+            self.parts.push(JsonLitPart::Static(self.current));
+        }
+        self.parts
+    }
 }
 
 /// Re-encode a Oneway string value (already unescaped by the scanner) as a

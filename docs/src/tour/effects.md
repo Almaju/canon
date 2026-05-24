@@ -95,13 +95,13 @@ use std/File
 use std/Path
 Path("./Cargo.toml").File()?.read()?.print()
 
-# HTTP server — start with a Port
+# HTTP server — wrap a Port, register routes, serve
 use std/HttpServer
+use std/HttpStatus
 use std/Port
 use std/RoutePath
-Port(3000)
-    .HttpServer(State(Unit()))
-    .get(RoutePath("/"), handler)
+HttpServer(Port(3000))
+    .get(HttpStatus(200), RoutePath("/"), "hello")
     .serve()
 ```
 

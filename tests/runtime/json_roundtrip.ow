@@ -1,0 +1,11 @@
+use oneway/std/Json
+use oneway/std/MalformedJson
+
+main = () -> Result<Unit, MalformedJson> {
+    Json("[1, 2, 3]")?.print()
+    Json("{\"a\":1,\"b\":[true,false,null]}")?.print()
+    Json("\"a plain string\"")?.print()
+    Json("42")?.print()
+    Json("null")?.print()
+    Ok(Unit())
+}

@@ -25,4 +25,23 @@ wasmparser    = "0.250"
 # experimental WASI 0.3 implementation in wasmtime-wasi.
 wasmtime      = { version = "45", features = ["component-model", "component-model-async", "async"] }
 wasmtime-wasi = { version = "45", features = ["p3"] }
-tokio         = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio         = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
+
+# WASI HTTP P3 — drives `wasi:http/handler.handle` exports through hyper.
+# We disable `default-features` to drop `default-send-request` (which pulls
+# in rustls + webpki); `oneway serve` only needs the *server* side today.
+# The outbound request path can be re-enabled when we wire `wasi:http/client`
+# imports for the Oneway HTTP client (which is currently the
+# `oneway:builtins/http` bridge).
+wasmtime-wasi-http = { version = "45", default-features = false, features = ["p3"] }
+
+# hyper-side HTTP. `hyper` provides the wire protocol, `hyper-util` the
+# tokio glue (`TokioIo`, server-side conn auto-detect). `http-body-util`
+# gives us `BodyExt::collect()` and the `UnsyncBoxBody` adapter that
+# `wasmtime-wasi-http`'s `Request::from_http` consumes. `http` + `bytes`
+# are the shared types both libraries speak.
+hyper         = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util    = { version = "0.1", default-features = false, features = ["tokio", "server-auto"] }
+http-body-util = { version = "0.1", default-features = false }
+http          = { version = "1", default-features = false }
+bytes         = { version = "1", default-features = false }

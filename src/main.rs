@@ -27,6 +27,7 @@ fn main() {
 
     match cmd {
         "run" => cmd_run(&rest),
+        "serve" => cmd_serve(&rest),
         "build" => cmd_build(&rest),
         "emit" => cmd_emit(&rest),
         "ast" => cmd_ast(&rest),
@@ -63,6 +64,10 @@ fn print_help() {
     println!("Commands:");
     println!("  run [target] [-p name] [args...]");
     println!("                            Compile and run an Oneway program");
+    println!("  serve [target] [-p name] [--addr <ip:port>]");
+    println!(
+        "                            Run an Oneway `wasi:http/handler` program as an HTTP server"
+    );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
     println!("  emit <file.ow>            Print generated WAT (WebAssembly Text)");
@@ -946,6 +951,90 @@ fn cmd_run(args: &[String]) {
     }
     let component_bytes = codegen::generate(&loaded.module);
     oneway::runtime::run_component(&component_bytes, &program_args);
+}
+
+/// `oneway serve [target] [-p name] [--addr <ip:port>]`
+///
+/// Compiles the target Oneway package or file and runs it as a WASI HTTP
+/// P3 service — i.e. the component is expected to export
+/// `wasi:http/handler.handle`. The runtime opens a TCP listener and
+/// dispatches each incoming HTTP/1.1 request to the guest's `handle`
+/// through `wasmtime-wasi-http`. Default address is `127.0.0.1:8080`;
+/// override with `--addr <ip:port>`.
+///
+/// Until the codegen learns to emit a `wasi:http/service` world (see
+/// M2 of the wasi:http migration in WASM.md), this will fail with a
+/// component-instantiation error — the diagnostic surfaces the
+/// expected exports so users know what's missing.
+fn cmd_serve(args: &[String]) {
+    let mut addr: Option<String> = None;
+    let mut filtered: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--addr" => {
+                if i + 1 >= args.len() {
+                    eprintln!("error: `--addr` requires an `ip:port` argument");
+                    process::exit(1);
+                }
+                addr = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other if other.starts_with("--addr=") => {
+                addr = Some(other["--addr=".len()..].to_string());
+                i += 1;
+            }
+            _ => {
+                filtered.push(args[i].clone());
+                i += 1;
+            }
+        }
+    }
+
+    let parsed = parse_target_args(&filtered, false);
+    let target = resolve_target(parsed.target_path.as_deref());
+    let target = apply_package_filter(target, parsed.package.as_deref());
+    let spec = match target {
+        Target::Build(spec) => spec,
+        Target::Workspace { label, members, .. } => {
+            eprintln!(
+                "error: `oneway serve` on workspace `{}` is ambiguous — pick a member",
+                label
+            );
+            if !members.is_empty() {
+                eprintln!("hint: try one of:");
+                for m in &members {
+                    eprintln!("  oneway serve {}", m.label);
+                }
+            }
+            process::exit(1);
+        }
+    };
+    let loaded = load_or_exit(spec.entry_str());
+    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    if !errors.is_empty() {
+        for err in &errors {
+            print_error(spec.entry_str(), err);
+        }
+        eprintln!("\n{} error(s) found.", errors.len());
+        process::exit(1);
+    }
+
+    let bind_addr: std::net::SocketAddr = addr
+        .as_deref()
+        .unwrap_or("127.0.0.1:8080")
+        .parse()
+        .unwrap_or_else(|e| {
+            eprintln!(
+                "error: invalid `--addr` value `{}`: {}",
+                addr.as_deref().unwrap_or("127.0.0.1:8080"),
+                e
+            );
+            process::exit(1);
+        });
+
+    let component_bytes = codegen::generate(&loaded.module);
+    oneway::runtime::serve_component(&component_bytes, bind_addr);
 }
 
 fn load_or_exit(file_path: &str) -> oneway::loader::LoadResult {

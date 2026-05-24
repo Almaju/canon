@@ -122,6 +122,18 @@ pub struct Block {
     pub span: Span,
 }
 
+/// One piece of a JSON literal expression — see `Expr::JsonLit`.
+#[derive(Debug, Clone)]
+pub enum JsonLitPart {
+    /// A pre-encoded chunk of JSON text (e.g. `{"k":` or `,"k2":"hi"}`).
+    /// Inlined verbatim into the output.
+    Static(String),
+    /// An interpolated Oneway expression. Its runtime value is converted
+    /// to JSON via `.ToJson()` and concatenated into the surrounding
+    /// JSON text.
+    Interp(Box<Expr>),
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Ident(Ident),
@@ -177,8 +189,17 @@ pub enum Expr {
         field: Ident,
         span: Span,
     },
+    /// A JSON object or array literal: `{"k": value, ...}` / `[v, ...]`.
+    ///
+    /// Compiled-out at parse time into an alternating list of `Static`
+    /// (pre-encoded JSON text fragments) and `Interp` (arbitrary Oneway
+    /// expressions whose runtime values are `.ToJson()`-converted and
+    /// concatenated into the surrounding scaffolding). When `parts`
+    /// contains a single `Static`, the literal is fully constant and
+    /// codegen lowers it to a single string-literal load; otherwise it
+    /// emits a `String.concat` chain over the parts.
     JsonLit {
-        value: String,
+        parts: Vec<JsonLitPart>,
         span: Span,
     },
     /// Inserted by the checker when a `Future<T>` expression is used in a position

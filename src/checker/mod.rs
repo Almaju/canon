@@ -9,6 +9,15 @@ const BUILTIN_TYPES: &[&str] = &[
     "Deserialize",
     "False",
     "Float",
+    // Opaque, non-copyable, non-printable primitive that backs every WIT
+    // `resource` type. Generated `oneway/wasi/...` bindings declare each
+    // resource as `Foo = Handle`. Users never write `Handle` directly —
+    // they receive `Foo` values from binding constructors and thread them
+    // through binding methods. The own/borrow distinction WIT exposes is
+    // intentionally invisible at the source level (see DESIGN.md §Resources):
+    // the canonical-ABI lowering reads it from the WIT signature, the
+    // source-level type is just `Foo`.
+    "Handle",
     "Hex",
     "Int",
     "Network",
@@ -1160,7 +1169,20 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if matches!(receiver_ty, "Int" | "Float")
         && matches!(
             method,
-            "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt" | "gt" | "lte" | "gte"
+            "add"
+                | "sub"
+                | "mul"
+                | "div"
+                | "rem"
+                | "mod"
+                | "ne"
+                | "eq"
+                | "lt"
+                | "gt"
+                | "le"
+                | "ge"
+                | "lte"
+                | "gte"
         )
         && arg_count == 1
     {
@@ -1172,7 +1194,18 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "Bool" && matches!(method, "and" | "or") && arg_count == 1 {
         return true;
     }
-    if receiver_ty == "String" && method == "concat" && arg_count == 1 {
+    if receiver_ty == "String"
+        && matches!(
+            (method, arg_count),
+            ("concat", 1)
+                | ("length", 0)
+                | ("len", 0)
+                | ("byteAt", 1)
+                | ("substring", 2)
+                | ("slice", 2)
+                | ("eq", 1)
+        )
+    {
         return true;
     }
     if receiver_ty == "List"
@@ -1345,7 +1378,16 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             }
             field.name.clone()
         }
-        Expr::JsonLit { .. } => "JsonValue".to_string(),
+        // A JSON literal expression has type `Json` (declared in
+        // `oneway/std/json.ow` as `Json = String`). The checker resolves
+        // method dispatch on `Json` through the normal newtype-aliasing
+        // path, so `.print` (on String), `.concat` (on String), and
+        // `Json`-specific methods all line up.
+        //
+        // Requires `use oneway/std/Json` to be in scope at the call site
+        // — same shape as any other stdlib type. JSON literal syntax
+        // is first-class, but its *type name* is part of the stdlib.
+        Expr::JsonLit { .. } => "Json".to_string(),
         Expr::Await { inner, .. } => expr_type_name_in_scope(inner, symbols),
     }
 }

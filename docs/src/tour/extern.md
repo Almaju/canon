@@ -68,7 +68,7 @@ Suspending Component imports are bound with `extern Wasm.async`:
 
 ```oneway
 extern Wasm.async("oneway:builtins/http-server@0.1.0#serve")
-serve<S> = (HttpServer<S>) -> Result<Unit, IoError>
+serve = (HttpServer) -> Result<Unit, IoError>
 ```
 
 The compiler lowers the call site through the *async* canonical ABI

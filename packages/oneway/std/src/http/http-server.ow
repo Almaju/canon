@@ -1,19 +1,18 @@
-use HttpResponseBody
+use HttpStatus
 use Port
-use Request
 use RoutePath
 use oneway/std/IoError
 
-HttpServer<S> = String
+HttpServer = String
 
 extern Wasm("oneway:builtins/http-server@0.1.0#create")
-HttpServer<S> = (Port * S) -> HttpServer<S>
+HttpServer = (Port) -> HttpServer
 
 extern Wasm("oneway:builtins/http-server@0.1.0#get")
-get<S> = (HttpServer<S> * RoutePath * (Request * S) -> HttpResponseBody) -> HttpServer<S>
+get = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
 
 extern Wasm("oneway:builtins/http-server@0.1.0#post")
-post<S> = (HttpServer<S> * RoutePath * (Request * S) -> HttpResponseBody) -> HttpServer<S>
+post = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
 
 extern Wasm.async("oneway:builtins/http-server@0.1.0#serve")
-serve<S> = (HttpServer<S>) -> Result<Unit, IoError>
+serve = (HttpServer) -> Result<Unit, IoError>

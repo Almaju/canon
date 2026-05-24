@@ -374,8 +374,16 @@ fn emit_type_decl(
             let vr = render_type(resolve, v, external_use_paths, self_iface)?;
             Ok(Some(format!("{} = Map<{}, {}>\n", name, kr, vr)))
         }
-        TypeDefKind::Resource => Err("resource (v1 skips resources)".into()),
+        TypeDefKind::Resource => {
+            // Opaque resource — declare as a `Handle` newtype. Methods
+            // (own/borrow consumers) are emitted as ordinary free fns by
+            // `emit_function`, gated by codegen support.
+            Ok(Some(format!("{} = Handle\n", name)))
+        }
         TypeDefKind::Handle(h) => {
+            // A `type foo = own<bar>` (or `borrow<bar>`) alias: render as
+            // the target resource's PascalCase name. Own/borrow is
+            // intentionally invisible at the source level.
             let target = match h {
                 Handle::Own(id) | Handle::Borrow(id) => *id,
             };
@@ -384,7 +392,7 @@ fn emit_type_decl(
                 .as_deref()
                 .map(kebab_to_pascal)
                 .unwrap_or_else(|| "Unknown".into());
-            Err(format!("handle to {} (v1 skips resources)", target_name))
+            Ok(Some(format!("{} = {}\n", name, target_name)))
         }
         TypeDefKind::Future(_) => Err("future (v1 skips futures)".into()),
         TypeDefKind::Stream(_) => Err("stream (v1 skips streams)".into()),
@@ -401,7 +409,10 @@ fn emit_function(
     external_use_paths: &mut BTreeSet<String>,
     self_iface: InterfaceId,
 ) -> Result<(String, String), String> {
-    // V1: skip async + resource methods.
+    // Skip async + resource methods. Resource *types* are emitted as
+    // `Foo = Handle` newtypes; their methods stay skipped until the
+    // codegen learns to lower `own<T>`/`borrow<T>` canonical-ABI shapes
+    // (see CLAUDE.md "Known codegen gaps").
     let (is_async, fn_label) = match &func.kind {
         FunctionKind::Freestanding => (false, name.to_string()),
         FunctionKind::AsyncFreestanding => (true, name.to_string()),
@@ -410,11 +421,24 @@ fn emit_function(
         | FunctionKind::Constructor(_)
         | FunctionKind::AsyncMethod(_)
         | FunctionKind::AsyncStatic(_) => {
-            return Err("resource method (v1 skips resources)".into());
+            return Err("resource method (codegen lowering pending, see CLAUDE.md)".into());
         }
     };
     if is_async {
         return Err("async (v1 skips async)".into());
+    }
+
+    // A free-standing function that takes or returns a `Handle`/`own<T>`/
+    // `borrow<T>` somewhere in its signature still can't be lowered yet —
+    // skip with the same reason as resource methods so the gap is reported
+    // uniformly.
+    if mentions_handle(resolve, &func.result)
+        || func
+            .params
+            .iter()
+            .any(|p| mentions_handle_ty(resolve, &p.ty))
+    {
+        return Err("handle in signature (codegen lowering pending, see CLAUDE.md)".into());
     }
 
     // V1 codegen gap: `extern Wasm` functions returning `list<T>` produce
@@ -570,6 +594,70 @@ fn has_narrow_int(resolve: &Resolve, t: &Type) -> bool {
     }
 }
 
+/// True when `t` is (or transparently aliases) a WIT `resource`, an
+/// `own<T>`/`borrow<T>` handle, or a structural type that transitively
+/// contains one. Used to filter functions whose signature mentions a
+/// resource so they can be skipped uniformly while codegen support for
+/// handle-typed extern imports is pending.
+fn mentions_handle(resolve: &Resolve, result: &Option<Type>) -> bool {
+    let Some(t) = result else { return false };
+    mentions_handle_ty(resolve, t)
+}
+
+fn mentions_handle_ty(resolve: &Resolve, t: &Type) -> bool {
+    match t {
+        Type::Bool
+        | Type::U8
+        | Type::U16
+        | Type::U32
+        | Type::U64
+        | Type::S8
+        | Type::S16
+        | Type::S32
+        | Type::S64
+        | Type::F32
+        | Type::F64
+        | Type::Char
+        | Type::String
+        | Type::ErrorContext => false,
+        Type::Id(id) => {
+            let td = &resolve.types[*id];
+            match &td.kind {
+                TypeDefKind::Resource | TypeDefKind::Handle(_) => true,
+                TypeDefKind::Type(inner) => mentions_handle_ty(resolve, inner),
+                TypeDefKind::List(inner) => mentions_handle_ty(resolve, inner),
+                TypeDefKind::Option(inner) => mentions_handle_ty(resolve, inner),
+                TypeDefKind::Result(r) => {
+                    r.ok.as_ref()
+                        .map(|t| mentions_handle_ty(resolve, t))
+                        .unwrap_or(false)
+                        || r.err
+                            .as_ref()
+                            .map(|t| mentions_handle_ty(resolve, t))
+                            .unwrap_or(false)
+                }
+                TypeDefKind::Tuple(t) => t.types.iter().any(|t| mentions_handle_ty(resolve, t)),
+                TypeDefKind::Record(r) => {
+                    r.fields.iter().any(|f| mentions_handle_ty(resolve, &f.ty))
+                }
+                TypeDefKind::Variant(v) => v.cases.iter().any(|c| {
+                    c.ty.as_ref()
+                        .map(|t| mentions_handle_ty(resolve, t))
+                        .unwrap_or(false)
+                }),
+                TypeDefKind::Map(k, v) => {
+                    mentions_handle_ty(resolve, k) || mentions_handle_ty(resolve, v)
+                }
+                TypeDefKind::Future(inner) | TypeDefKind::Stream(inner) => inner
+                    .as_ref()
+                    .map(|t| mentions_handle_ty(resolve, t))
+                    .unwrap_or(false),
+                _ => false,
+            }
+        }
+    }
+}
+
 fn is_list_shape(resolve: &Resolve, t: &Type) -> bool {
     match t {
         Type::Id(id) => {
@@ -665,8 +753,34 @@ fn render_type_id(
             ))
         }
         TypeDefKind::Type(t) => render_type(resolve, t, external_use_paths, self_iface),
-        TypeDefKind::Resource => Err("resource".into()),
-        TypeDefKind::Handle(_) => Err("handle".into()),
+        TypeDefKind::Resource => {
+            // Inline (unnamed) `resource` references shouldn't appear in
+            // well-formed WIT — every resource has a name. The named-case
+            // early return above handles the normal path; this arm just
+            // surfaces a clear error if the impossible happens.
+            Err("anonymous resource".into())
+        }
+        TypeDefKind::Handle(h) => {
+            // Anonymous `own<bar>` / `borrow<bar>` in a parameter or return
+            // position. Render as the target's PascalCase name; the
+            // ownership distinction is encoded in the canonical-ABI
+            // lowering, not in the source-level type.
+            let target = match h {
+                Handle::Own(id) | Handle::Borrow(id) => *id,
+            };
+            let target_td = &resolve.types[target];
+            if let TypeOwner::Interface(owner) = target_td.owner {
+                if owner != self_iface {
+                    if let Some(path) = interface_use_path(resolve, owner) {
+                        external_use_paths.insert(path);
+                    }
+                }
+            }
+            match &target_td.name {
+                Some(n) => Ok(kebab_to_pascal(n)),
+                None => Err("handle to anonymous resource".into()),
+            }
+        }
         TypeDefKind::Future(_) => Err("future".into()),
         TypeDefKind::Stream(_) => Err("stream".into()),
         _ => {
