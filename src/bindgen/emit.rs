@@ -1,6 +1,6 @@
-//! Emit Oneway source from a parsed `wit_parser::Resolve`.
+//! Emit Canon source from a parsed `wit_parser::Resolve`.
 //!
-//! For each interface in the resolve, this produces one `.ow` file
+//! For each interface in the resolve, this produces one `.can` file
 //! containing:
 //!
 //!   - Type declarations (records → products, variants → unions, etc.),
@@ -31,15 +31,15 @@ pub struct EmittedFile {
     pub relative_path: String,
     pub content: String,
     /// The WIT interface URN this file was generated from, of the form
-    /// `"<ns>:<pkg>/<iface>@<version>"`. Used by `oneway install` to
+    /// `"<ns>:<pkg>/<iface>@<version>"`. Used by `canon install` to
     /// populate the install index alongside the generated source; the
     /// loader then reconstructs per-function `extern Wasm` paths from
     /// this URN plus the function name.
     pub urn: String,
     /// Items the generator skipped because their WIT shape isn't yet
-    /// representable in Oneway (resources, async, streams, futures, …).
+    /// representable in Canon (resources, async, streams, futures, …).
     /// The caller surfaces these on stderr — the file itself is kept as
-    /// clean Oneway source since the language has no comments.
+    /// clean Canon source since the language has no comments.
     pub skipped: Vec<String>,
 }
 
@@ -154,7 +154,7 @@ fn emit_interface(
     // Emit `use` lines first (alphabetical — BTreeSet already sorted),
     // then the file-level `bindings "<urn>"` directive (only when the
     // file actually contains function declarations — binding-less type
-    // files like `wasi/clocks/types.ow` don't need it), then type
+    // files like `wasi/clocks/types.can` don't need it), then type
     // decls, then function decls. The directive does two jobs:
     // documents which WIT interface this file shadows (the reader sees
     // it and immediately knows where to look in `wit-vendor/`), and
@@ -215,20 +215,20 @@ fn external_alias_source(
     None
 }
 
-/// Build `<ns>/<pkg>/<iface>` (without the trailing `.ow`) for use in a
+/// Build `<ns>/<pkg>/<iface>` (without the trailing `.can`) for use in a
 /// `use` directive.
 fn interface_use_path(resolve: &Resolve, iface_id: InterfaceId) -> Option<String> {
     let iface = &resolve.interfaces[iface_id];
     let qualified_id = qualified_interface_id(resolve, iface)?;
     let (ns, pkg, iface_name, _ver) = split_interface_id(&qualified_id)?;
     // A WIT interface lives at `<ns>/<pkg>/<iface>` from a consumer's
-    // point of view. After `oneway install` writes the bindings to
-    // `<project>/bindgen/<ns>/<pkg>/<iface>.ow`, the loader resolves
+    // point of view. After `canon install` writes the bindings to
+    // `<project>/bindgen/<ns>/<pkg>/<iface>.can`, the loader resolves
     // `use <ns>/<pkg>/<iface>` against that file (via the project's
     // `bindgen/` lookup for user code, or via the same-package bundled
-    // lookup for compiler-shipped `oneway/std`). Before the manifest-
-    // driven flow landed, bindings lived inside the `oneway/wasi`
-    // bundled package and this function emitted an `oneway/wasi/…`
+    // lookup for compiler-shipped `canon/std`). Before the manifest-
+    // driven flow landed, bindings lived inside the `canon/wasi`
+    // bundled package and this function emitted an `canon/wasi/…`
     // prefix; that prefix is gone now.
     Some(format!(
         "{}/{}/{}",
@@ -238,7 +238,7 @@ fn interface_use_path(resolve: &Resolve, iface_id: InterfaceId) -> Option<String
     ))
 }
 
-/// Returns `Ok(Some(decl))` if a Oneway declaration was produced for this
+/// Returns `Ok(Some(decl))` if a Canon declaration was produced for this
 /// type, `Ok(None)` if the type is a transparent alias to another local
 /// type that needs no declaration of its own, or `Err(reason)` if the
 /// type uses a feature we don't yet support (resource, future, stream).
@@ -257,7 +257,7 @@ fn emit_type_decl(
             // → `Point = PointX * PointY` + `PointX = Float` + `PointY = Float`).
             // The prefix prevents collisions when two records in the same
             // interface share a field name, and — more importantly —
-            // satisfies Oneway's "product members are distinct types" rule
+            // satisfies Canon's "product members are distinct types" rule
             // even when several fields share a WIT type.
             let mut fields: Vec<(String, String)> = Vec::new();
             for f in &record.fields {
@@ -331,7 +331,7 @@ fn emit_type_decl(
             // Each flag is a Bool field; the whole thing is a product.
             // Prefix each flag with the parent type's name so two `flags`
             // declarations in the same interface can both contain e.g.
-            // a `bold` field without colliding at the Oneway type level.
+            // a `bold` field without colliding at the Canon type level.
             let mut fields: Vec<String> = f
                 .flags
                 .iter()
@@ -444,7 +444,7 @@ fn emit_function(
     // codegen learns to lower `own<T>`/`borrow<T>` canonical-ABI shapes
     // (see CLAUDE.md "Known codegen gaps"). The original WIT function
     // name in kebab is no longer used here — the loader recovers it
-    // from the Oneway camelCase identifier at patch time — so we don't
+    // from the Canon camelCase identifier at patch time — so we don't
     // bind it.
     match &func.kind {
         FunctionKind::Freestanding => {}
@@ -493,7 +493,7 @@ fn emit_function(
         return Err("bare `result` (codegen gap, no ok/err payloads)".into());
     }
 
-    // Codegen gap: Oneway has a single `Int` type and always lowers it as
+    // Codegen gap: Canon has a single `Int` type and always lowers it as
     // `u64` (8 bytes) in the canonical ABI. WIT distinguishes u8/u16/u32/
     // s8/s16/s32 from s64/u64, and the host rejects any import whose
     // canonical-ABI signature mismatches. Until codegen learns to honor
@@ -512,14 +512,14 @@ fn emit_function(
 
     // Build the param product. Each WIT parameter becomes a component
     // typed by its declared WIT type; we surface the parameter *name*
-    // only through the type (Oneway has no named parameters), so two
+    // only through the type (Canon has no named parameters), so two
     // params of the same WIT type force a newtype on the caller's side
     // anyway — same situation as hand-written stdlib bindings.
     let mut params: Vec<String> = Vec::new();
     for p in &func.params {
         params.push(render_type(resolve, &p.ty, external_use_paths, self_iface)?);
     }
-    // Oneway requires alphabetical product components; if two are
+    // Canon requires alphabetical product components; if two are
     // the same type that's an error the user (or the std/ wrapper)
     // must resolve. We sort here so the source is always valid for
     // the common single-of-each-type case.
@@ -699,7 +699,7 @@ fn is_list_shape(resolve: &Resolve, t: &Type) -> bool {
     }
 }
 
-/// Render a WIT `Type` as Oneway source. Returns `Err` for unsupported
+/// Render a WIT `Type` as Canon source. Returns `Err` for unsupported
 /// shapes (resource/handle/future/stream).
 ///
 /// `external_use_paths` is the accumulator for cross-interface references
@@ -771,7 +771,7 @@ fn render_type_id(
             Ok(format!("Result<{}, {}>", ok, err))
         }
         TypeDefKind::Tuple(t) => {
-            // Anonymous tuple in argument/return position. Oneway has no
+            // Anonymous tuple in argument/return position. Canon has no
             // anonymous product — bail with a clear message so the caller
             // turns it into a skipped item.
             Err(format!(

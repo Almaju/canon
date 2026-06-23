@@ -1,1 +1,1 @@
-error[tests/checker/fail/unknown_type_in_typedef.ow:1:7]: unknown type `NeverDeclared`
+error[tests/checker/fail/unknown_type_in_typedef.can:1:7]: unknown type `NeverDeclared`

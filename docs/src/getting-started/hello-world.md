@@ -1,8 +1,8 @@
 # Hello, World
 
-Create a file named `hello.ow`:
+Create a file named `hello.can`:
 
-```oneway
+```canon
 main = () -> Unit {
     "hello".print()
 }
@@ -11,7 +11,7 @@ main = () -> Unit {
 Run it:
 
 ```sh
-oneway run hello.ow
+canon run hello.can
 ```
 
 You should see:
@@ -24,11 +24,11 @@ That's the whole program. Let's walk through it.
 
 ## Line by Line
 
-```oneway
+```canon
 main = () -> Unit {
 ```
 
-`main` is the program's entry point. Like every other binding in Oneway
+`main` is the program's entry point. Like every other binding in Canon
 it has the shape `name = (parameters) -> ReturnType { body }`. The empty
 `()` says it takes nothing; the compiler lifts `main` as the component's
 `wasi:cli/run.run` export.
@@ -37,7 +37,7 @@ it has the shape `name = (parameters) -> ReturnType { body }`. The empty
 itself. Returning `Unit` is the language's way of saying "this function
 produces nothing useful".
 
-```oneway
+```canon
     "hello".print()
 }
 ```
@@ -49,7 +49,7 @@ value.
 `"hello".print()` is a method call. `print` takes a single `String`
 component and writes it to stdout:
 
-```oneway
+```canon
 print = (String) -> Unit
 ```
 
@@ -72,6 +72,6 @@ Some small experiments to build intuition:
   allowed.
 - **Return something other than `Unit`.** The body's last expression must
   match the declared return type.
-- **Inspect the compiled component.** `oneway build hello.ow` writes
+- **Inspect the compiled component.** `canon build hello.can` writes
   `build/hello/hello.wasm` and a sibling `.wit` describing the
   component's world.

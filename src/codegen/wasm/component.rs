@@ -10,7 +10,7 @@
 //!     `stream.write<u8>`, `stream.drop-writable<u8>`,
 //!     `future.drop-readable`) so the resulting `.wasm` is portable to any
 //!     compliant WASI P3 runtime — it does **not** import any
-//!     `oneway:*` interface for output.
+//!     `canon:*` interface for output.
 //!   - Exports `wasi:cli/run.run` — wasmtime's command entry point.
 //!
 //! ## Architecture
@@ -358,7 +358,7 @@ pub(super) fn wrap(
 
         // Optional handler-request instance type. When the user defined
         // `handleRequest = (String) -> String`, the wrapper exports an
-        // `oneway:http-handler/handler@0.1.0` instance carrying
+        // `canon:http-handler/handler@0.1.0` instance carrying
         // `handle-request: func(body: string) -> string`. The host's
         // HTTP server runtime looks up this instance after
         // instantiation and invokes it per request.
@@ -378,7 +378,7 @@ pub(super) fn wrap(
             types.instance(&handler_iface_ty);
             // Track the resulting top-level type index for the export
             // step below by reusing `next_type_idx`.
-            extern_iface_type_idx.insert("__oneway_http_handler__", next_type_idx);
+            extern_iface_type_idx.insert("__canon_http_handler__", next_type_idx);
             next_type_idx += 1;
         }
 
@@ -537,7 +537,7 @@ pub(super) fn wrap(
         // They take no component-level function inputs — they just
         // declare core functions implementing the canon operators. The
         // order here must match the order in which the user core module
-        // imports them (see `mod.rs::compile`, `oneway:async/waitable.*`):
+        // imports them (see `mod.rs::compile`, `canon:async/waitable.*`):
         //   set-new        → ()         -> i32
         //   join           → (i32, i32) -> ()
         //   set-wait       → (i32, i32) -> i32   (memory = core memory 0)
@@ -617,7 +617,7 @@ pub(super) fn wrap(
     // contain the right functions.
     //   - wasi:cli/stdout:               core instance 1
     //   - extern iface k:                core instance 2+k (in BTreeMap order)
-    //   - oneway:async/waitable:         core instance 2 + by_iface.len()
+    //   - canon:async/waitable:         core instance 2 + by_iface.len()
     {
         let mut insts = InstanceSection::new();
         // wasi:cli/stdout synthetic instance — bundles the lowered
@@ -656,7 +656,7 @@ pub(super) fn wrap(
                 .collect();
             insts.export_items(exports);
         }
-        // `oneway:async/waitable` synthetic instance — always present so the
+        // `canon:async/waitable` synthetic instance — always present so the
         // user core module's imports section is shape-stable.
         insts.export_items([
             ("set-new", ExportKind::Func, waitable_set_new_core_fn),
@@ -701,10 +701,10 @@ pub(super) fn wrap(
             ));
         }
         // Waitable intrinsics module-import — matches the import names
-        // declared by `mod.rs::compile` for the `oneway:async/waitable`
+        // declared by `mod.rs::compile` for the `canon:async/waitable`
         // group.
         args.push((
-            "oneway:async/waitable".to_string(),
+            "canon:async/waitable".to_string(),
             ModuleArg::Instance(waitable_synth_inst),
         ));
         insts.instantiate(1, args);
@@ -853,11 +853,11 @@ pub(super) fn wrap(
             c.section(&comp_insts);
         }
 
-        // 17. Export the instance as `oneway:http-handler/handler@0.1.0`.
+        // 17. Export the instance as `canon:http-handler/handler@0.1.0`.
         {
             let mut exports = ComponentExportSection::new();
             exports.export(
-                "oneway:http-handler/handler@0.1.0",
+                "canon:http-handler/handler@0.1.0",
                 ComponentExportKind::Instance,
                 handler_instance_idx,
                 None,
@@ -871,7 +871,7 @@ pub(super) fn wrap(
 
 /// Converts a single `ExternImport`'s logical parameters into
 /// `(name, ComponentValType)` pairs. `component_params` is already structured
-/// so each entry corresponds to one Oneway argument — strings show up as a
+/// so each entry corresponds to one Canon argument — strings show up as a
 /// single `ParamKind::String` rather than two `i32` slots — so we just map
 /// directly into the component-level type space.
 fn extern_params_to_component(ext: &ExternImport) -> Vec<(String, ComponentValType)> {
@@ -1033,7 +1033,7 @@ fn build_memory_module() -> Module {
 
 /// Generates the textual WIT world description that accompanies the `.wasm`.
 ///
-/// The WIT file is written alongside each `oneway build` output so users can
+/// The WIT file is written alongside each `canon build` output so users can
 /// inspect the component contract and feed it to tools like `wasm-tools` or
 /// `wit-bindgen`.
 ///
@@ -1043,9 +1043,9 @@ fn build_memory_module() -> Module {
 /// lowering will produce once that work lands.
 pub(super) fn generate_wit(module: &OModule, async_set: &AsyncSet) -> String {
     let mut out = String::new();
-    out.push_str("// Auto-generated by the Oneway compiler.\n");
+    out.push_str("// Auto-generated by the Canon compiler.\n");
     out.push_str("// The compiled component implements this world.\n\n");
-    out.push_str("package oneway:app@0.1.0;\n\n");
+    out.push_str("package canon:app@0.1.0;\n\n");
 
     // Async inference summary — listed as a comment block so users can
     // verify the bottom-up fixpoint matches their expectations. Once the
@@ -1086,7 +1086,7 @@ pub(super) fn generate_wit(module: &OModule, async_set: &AsyncSet) -> String {
     out.push_str(
         "/// The world the compiled component implements. It is a WASI Preview 3\n\
          /// command — stdout is reached natively through\n\
-         /// `wasi:cli/stdout.write-via-stream`, no `oneway:*` bridge is\n\
+         /// `wasi:cli/stdout.write-via-stream`, no `canon:*` bridge is\n\
          /// imported.\n\
          world app {\n\
          \x20   include wasi:cli/command@0.3.0-rc-2026-03-15;\n\
@@ -1095,7 +1095,7 @@ pub(super) fn generate_wit(module: &OModule, async_set: &AsyncSet) -> String {
     out
 }
 
-/// Formats a `(receiver, name)` pair as a human-readable Oneway-level
+/// Formats a `(receiver, name)` pair as a human-readable Canon-level
 /// reference. Free functions are `name`; methods are `Receiver.name`.
 fn format_suspending(receiver: Option<&crate::ast::Ident>, name: &str) -> String {
     match receiver {

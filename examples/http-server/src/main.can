@@ -1,0 +1,17 @@
+use canon/std/IoError
+use canon/std/http/HttpServer
+use canon/std/http/HttpStatus
+use canon/std/http/Port
+use canon/std/http/RoutePath
+
+main = () -> Result<Unit, IoError> {
+    "Starting server on port 3000...".print()
+    "  GET  /        -> 200 Hello from Canon!".print()
+    "  GET  /health  -> 200 ok".print()
+    "  POST /echo    -> 200 received".print()
+    HttpServer(Port(3000))
+        .get(HttpStatus(200), RoutePath("/"), "Hello from Canon!")
+        .get(HttpStatus(200), RoutePath("/health"), "ok")
+        .post(HttpStatus(200), RoutePath("/echo"), "received")
+        .serve()
+}

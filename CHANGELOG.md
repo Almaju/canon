@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Oneway are documented here.
+All notable changes to Canon are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
@@ -9,7 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 **Domain-first value model replaces capability system.**
 
-Oneway no longer uses a capability-based effect system. Instead, effects emerge from the values you construct and thread. The changes:
+Canon no longer uses a capability-based effect system. Instead, effects emerge from the values you construct and thread. The changes:
 
 - **`main = () -> Unit`** — the entry point takes no parameters and always runs under tokio. No capability declaration needed.
 - **`T()` required for zero-data construction** — types with no underlying composition (`Unit`, `True`, `False`, union variants with no payload) must be constructed with `T()` in expression positions. Bare `T` after `.` without `()` is now always a field access.
@@ -23,11 +23,11 @@ Oneway no longer uses a capability-based effect system. Instead, effects emerge 
 - **`Ok(Unit())` not `Ok(Unit)`** — `Unit` in expression position now requires `()` like all zero-data types.
 
 ### Standard Library — Breaking Changes
-- `json.ow`: Removed `Json` type. `parse` renamed to `JsonValue` constructor. `asArray`, `asBool`, `asNull`, `asNumber`, `asObject`, `asString` renamed to `JsonArray`, `JsonBool`, `JsonNull`, `JsonNumber`, `JsonObject`, `JsonString` constructors. `emit` no longer takes a `Json` receiver.
-- `filesystem.ow`: Removed `Filesystem` type and `read = (Filesystem * Path)`. New `File` type with `File = (Path) -> Result<File, IoError>` and `read = (File) -> Result<String, IoError>`. New `Fileout` type for redirectable output.
-- `http-server.ow`: Removed `router`. `HttpRouter<S>` renamed to `HttpServer<S>`. New constructor `HttpServer = <S>(Port * S) -> HttpServer<S>`. `serve` no longer takes a `Port`.
-- `http-client.ow`: Removed `HttpClient` type. `get` now takes `Url` directly.
-- `clock.ow`: `Clock = Unit` (constructible newtype).
+- `json.can`: Removed `Json` type. `parse` renamed to `JsonValue` constructor. `asArray`, `asBool`, `asNull`, `asNumber`, `asObject`, `asString` renamed to `JsonArray`, `JsonBool`, `JsonNull`, `JsonNumber`, `JsonObject`, `JsonString` constructors. `emit` no longer takes a `Json` receiver.
+- `filesystem.can`: Removed `Filesystem` type and `read = (Filesystem * Path)`. New `File` type with `File = (Path) -> Result<File, IoError>` and `read = (File) -> Result<String, IoError>`. New `Fileout` type for redirectable output.
+- `http-server.can`: Removed `router`. `HttpRouter<S>` renamed to `HttpServer<S>`. New constructor `HttpServer = <S>(Port * S) -> HttpServer<S>`. `serve` no longer takes a `Port`.
+- `http-client.can`: Removed `HttpClient` type. `get` now takes `Url` directly.
+- `clock.can`: `Clock = Unit` (constructible newtype).
 
 ## [0.2.0]
 
@@ -41,9 +41,9 @@ Oneway no longer uses a capability-based effect system. Instead, effects emerge 
 - Multi-file modules via `use`
 
 ### Compiler
-- Formatter (`oneway fmt`) with `--check` mode for CI
-- `oneway upgrade` for in-place binary updates
-- LSP server (`oneway-lsp`) with real-time diagnostics
+- Formatter (`canon fmt`) with `--check` mode for CI
+- `canon upgrade` for in-place binary updates
+- LSP server (`canon-lsp`) with real-time diagnostics
 
 ### Standard Library
 - `clock` — `now` returning `Datetime`

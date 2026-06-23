@@ -1,11 +1,11 @@
 # Building and Running
 
-Oneway commands operate on a **target**, which is one of:
+Canon commands operate on a **target**, which is one of:
 
-- a **package directory** (`oneway.toml` + `src/main.ow`),
-- a **workspace directory** (`oneway.toml` with a `[workspace]` table
+- a **package directory** (`canon.toml` + `src/main.can`),
+- a **workspace directory** (`canon.toml` with a `[workspace]` table
   aggregating member packages), or
-- a single **`.ow` file** (anonymous single-file package).
+- a single **`.can` file** (anonymous single-file package).
 
 When omitted, the target defaults to the current directory.
 
@@ -13,10 +13,10 @@ When omitted, the target defaults to the current directory.
 
 ```text
 my-app/
-  oneway.toml      # name, version, dependencies
+  canon.toml      # name, version, dependencies
   src/
-    main.ow        # entry point
-    helpers.ow
+    main.can        # entry point
+    helpers.can
   build/           # compiler output (gitignored)
     my-app.wasm
     my-app.wit
@@ -26,48 +26,48 @@ The artifact is named after the package, not the entry file.
 
 ## Workspace Layout
 
-A workspace is a directory whose `oneway.toml` carries a `[workspace]`
+A workspace is a directory whose `canon.toml` carries a `[workspace]`
 table instead of (or in addition to) `name`/`version`. Each member is a
 full package; all members share the workspace's `build/`, Cargo-style.
 
 ```text
 my-workspace/
-  oneway.toml      # [workspace] members = ["*"]
+  canon.toml      # [workspace] members = ["*"]
   build/           # shared artifacts
     foo.wasm
     bar.wasm
   foo/
-    oneway.toml
-    src/main.ow
+    canon.toml
+    src/main.can
   bar/
-    oneway.toml
-    src/main.ow
+    canon.toml
+    src/main.can
 ```
 
 `members = ["*"]` is a shorthand for "every immediate subdirectory that
-contains an `oneway.toml`". Explicit lists (`members = ["foo", "bar"]`)
+contains an `canon.toml`". Explicit lists (`members = ["foo", "bar"]`)
 work too. Nested workspaces are not allowed.
 
 ## Run a Program
 
 ```sh
-oneway run                       # current directory as a package
-oneway run path/to/pkg           # another package
-oneway run hello.ow              # single-file mode
-oneway run my-workspace -p foo   # one member of a workspace
+canon run                       # current directory as a package
+canon run path/to/pkg           # another package
+canon run hello.can              # single-file mode
+canon run my-workspace -p foo   # one member of a workspace
 ```
 
 Compiles the target to a WebAssembly component and immediately runs it
-through the embedded `wasmtime` runtime. `oneway run` on a workspace
+through the embedded `wasmtime` runtime. `canon run` on a workspace
 without `-p` is ambiguous and errors with a hint listing the members.
 
 ## Build a Component
 
 ```sh
-oneway build                     # current directory as a package or workspace
-oneway build hello.ow            # single-file mode
-oneway build my-workspace        # builds every member
-oneway build my-workspace -p foo # builds only `foo`
+canon build                     # current directory as a package or workspace
+canon build hello.can            # single-file mode
+canon build my-workspace        # builds every member
+canon build my-workspace -p foo # builds only `foo`
 ```
 
 In package mode, produces `build/<name>.wasm` and `build/<name>.wit`
@@ -75,14 +75,14 @@ next to the package's `src/`. In workspace mode, every member's
 artifacts land in the workspace's shared `build/` directory. In
 single-file mode, the output goes to `build/<stem>/<stem>.wasm` next to
 the file. The component runs on any host that supports WASI Preview 3
-and satisfies its imports — `oneway run`, `wasmtime serve`, browser
+and satisfies its imports — `canon run`, `wasmtime serve`, browser
 polyfills, edge runtimes, etc.
 
 ## Serve as an HTTP Handler
 
 ```sh
-oneway run --addr 127.0.0.1:8080            # current directory
-oneway run hello.ow --addr 127.0.0.1:8080   # single-file mode
+canon run --addr 127.0.0.1:8080            # current directory
+canon run hello.can --addr 127.0.0.1:8080   # single-file mode
 ```
 
 With `--addr`, the same `run` verb instantiates the component as a
@@ -93,13 +93,13 @@ HTTP/1.1 request to the guest's `handle` export.
 ## Inspect Compiler Stages
 
 ```sh
-oneway inspect tokens hello.ow   # lexer output
-oneway inspect ast    hello.ow   # parser output (AST debug dump)
-oneway inspect wat    hello.ow   # generated WebAssembly Text
+canon inspect tokens hello.can   # lexer output
+canon inspect ast    hello.can   # parser output (AST debug dump)
+canon inspect wat    hello.can   # generated WebAssembly Text
 ```
 
 One verb, three stages. The `wat` stage is the fastest way to see how
-Oneway constructs map to wasm — print statements, dispatch, heap
+Canon constructs map to wasm — print statements, dispatch, heap
 allocation, async lowering — without dragging in the component wrapping
 layer. `tokens` and `ast` are diagnostic tools when you want to
 understand exactly how the lexer or parser sees your code.
@@ -107,9 +107,9 @@ understand exactly how the lexer or parser sees your code.
 ## Check Sort Order and Types
 
 ```sh
-oneway check                     # current package or workspace
-oneway check hello.ow            # single-file mode
-oneway check my-workspace -p foo # only one member of a workspace
+canon check                     # current package or workspace
+canon check hello.can            # single-file mode
+canon check my-workspace -p foo # only one member of a workspace
 ```
 
 Runs the full checker (sort-order rules plus type checking) without
@@ -118,25 +118,25 @@ codegen. Fast — useful as an editor lint or pre-commit gate.
 ## Format
 
 ```sh
-oneway fmt hello.ow
-oneway fmt hello.ow --check     # exit 1 if not already formatted
+canon fmt hello.can
+canon fmt hello.can --check     # exit 1 if not already formatted
 ```
 
 ## Run Tests
 
 ```sh
-oneway test mymod_test.ow
+canon test mymod_test.can
 ```
 
 Discovers every `() -> TestResult` function in the file and prints a
 `[ ok ]` / `[FAIL]` line per test. See the
-[testing notes in `CLAUDE.md`](https://github.com/Almaju/oneway/blob/main/CLAUDE.md#testing)
+[testing notes in `CLAUDE.md`](https://github.com/Almaju/canon/blob/main/CLAUDE.md#testing)
 for the full conventions.
 
 ## Language Server
 
 ```sh
-oneway lsp
+canon lsp
 ```
 
 Speaks LSP over stdio. The Zed extension wires this up automatically;
@@ -145,13 +145,13 @@ other editors can point at the same binary.
 ## All Commands
 
 ```sh
-oneway help
+canon help
 ```
 
 ## Workflow
 
-There is no `oneway new` or project scaffolder yet. For quick
-experimentation, drop a `.ow` file anywhere and `oneway run` it. For
-proper projects, create an `oneway.toml` next to a `src/main.ow` and
-run `oneway build` / `oneway run` from that directory. For multi-file
+There is no `canon new` or project scaffolder yet. For quick
+experimentation, drop a `.can` file anywhere and `canon run` it. For
+proper projects, create an `canon.toml` next to a `src/main.can` and
+run `canon build` / `canon run` from that directory. For multi-file
 projects, see [Modules](../tour/modules.md).

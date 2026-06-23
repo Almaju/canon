@@ -1,9 +1,0 @@
-bindings "oneway:builtins/http-server@0.1.0"
-
-echo = (String) -> Future<String>
-
-main = () -> Unit {
-    "hello async"
-        .echo()
-        .print()
-}

@@ -1,17 +1,17 @@
-//! End-to-end tests for `oneway bindgen`.
+//! End-to-end tests for `canon bindgen`.
 //!
 //! Each test feeds a `.wit` fixture from `tests/fixtures/wit/` through
-//! `oneway::bindgen::generate_from_path` and asserts on the produced
-//! Oneway source. The source is then re-parsed via the Oneway lexer +
+//! `canon::bindgen::generate_from_path` and asserts on the produced
+//! Canon source. The source is then re-parsed via the Canon lexer +
 //! parser to make sure it's syntactically valid.
 
 use std::path::Path;
 
-use oneway::bindgen;
-use oneway::lexer::Scanner;
-use oneway::parser::Parser;
+use canon::bindgen;
+use canon::lexer::Scanner;
+use canon::parser::Parser;
 
-fn parse_oneway(source: &str) {
+fn parse_canon(source: &str) {
     let mut scanner = Scanner::new(source);
     let tokens = scanner
         .scan_tokens()
@@ -28,7 +28,7 @@ fn monotonic_clock_roundtrip() {
     let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
     assert_eq!(files.len(), 1);
     let f = &files[0];
-    assert_eq!(f.relative_path, "wasi/src/clocks/monotonic_clock.ow");
+    assert_eq!(f.relative_path, "wasi/src/clocks/monotonic_clock.can");
     assert!(f.skipped.is_empty(), "no items should be skipped");
 
     // Types and functions both present, alphabetical.
@@ -60,7 +60,7 @@ fn monotonic_clock_roundtrip() {
     let n = f.content.find("\nnow ").unwrap();
     assert!(g < n, "functions should be alphabetical");
 
-    parse_oneway(&f.content);
+    parse_canon(&f.content);
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn resources_emit_handle_newtypes() {
     let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
     assert_eq!(files.len(), 1);
     let f = &files[0];
-    assert_eq!(f.relative_path, "demo/src/resources/handles.ow");
+    assert_eq!(f.relative_path, "demo/src/resources/handles.can");
 
     assert!(
         f.content.contains("Counter = Handle"),
@@ -130,7 +130,7 @@ fn resources_emit_handle_newtypes() {
         f.skipped
     );
 
-    parse_oneway(&f.content);
+    parse_canon(&f.content);
 }
 
 #[test]
@@ -139,11 +139,11 @@ fn kitchen_sink_roundtrip() {
     let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
     assert_eq!(files.len(), 1);
     let f = &files[0];
-    assert_eq!(f.relative_path, "demo/src/sink/kitchen_sink.ow");
+    assert_eq!(f.relative_path, "demo/src/sink/kitchen_sink.can");
     assert!(f.skipped.is_empty(), "no items should be skipped");
 
     // Records emit prefixed field newtypes so the resulting product is
-    // composed of distinct types (Oneway's "alphabetical-distinct" rule).
+    // composed of distinct types (Canon's "alphabetical-distinct" rule).
     assert!(f.content.contains("Point = PointX * PointY"));
     assert!(f.content.contains("PointX = Float"));
     assert!(f.content.contains("PointY = Float"));
@@ -188,5 +188,5 @@ fn kitchen_sink_roundtrip() {
         .contains("paint = (ColorList * Shape) -> Result<Style, String>"));
     assert!(f.content.contains("reset = () -> Unit"));
 
-    parse_oneway(&f.content);
+    parse_canon(&f.content);
 }

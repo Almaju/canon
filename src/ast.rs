@@ -20,7 +20,7 @@ pub enum Item {
     /// directive, a bare `name = (P) -> R` stays a function-type alias
     /// (the existing language semantics).
     ///
-    /// Emitted at the top of every `oneway install`-generated file as a
+    /// Emitted at the top of every `canon install`-generated file as a
     /// human-readable index of "what is this file bindings for?" so a
     /// reader sees `bindings "wasi:clocks/timezone@…"` and immediately
     /// knows where to look in the source WIT.
@@ -152,7 +152,7 @@ pub enum JsonLitPart {
     /// A pre-encoded chunk of JSON text (e.g. `{"k":` or `,"k2":"hi"}`).
     /// Inlined verbatim into the output.
     Static(String),
-    /// An interpolated Oneway expression. Its runtime value is converted
+    /// An interpolated Canon expression. Its runtime value is converted
     /// to JSON via `.ToJson()` and concatenated into the surrounding
     /// JSON text.
     Interp(Box<Expr>),
@@ -216,7 +216,7 @@ pub enum Expr {
     /// A JSON object or array literal: `{"k": value, ...}` / `[v, ...]`.
     ///
     /// Compiled-out at parse time into an alternating list of `Static`
-    /// (pre-encoded JSON text fragments) and `Interp` (arbitrary Oneway
+    /// (pre-encoded JSON text fragments) and `Interp` (arbitrary Canon
     /// expressions whose runtime values are `.ToJson()`-converted and
     /// concatenated into the surrounding scaffolding). When `parts`
     /// contains a single `Static`, the literal is fully constant and

@@ -8,8 +8,8 @@
 //!
 //! Output is reached natively through `wasi:cli/stdout` (the codegen
 //! emits the canonical-ABI stream sequence around `write-via-stream`);
-//! no `oneway:host/console` bridge is registered. A handful of
-//! `oneway:builtins/*` bridges remain for cases without a WASI
+//! no `canon:host/console` bridge is registered. A handful of
+//! `canon:builtins/*` bridges remain for cases without a WASI
 //! equivalent (math, strings, clock RFC-3339, URL parse) and for the
 //! Phase-5 http-server stub — each is documented in its own submodule
 //! and will be replaced with native WASI as the canonical-ABI lowerings
@@ -40,7 +40,7 @@ struct State {
     table: ResourceTable,
     http: WasiHttpCtx,
     http_hooks: OneswayHttpHooks,
-    /// Optional reference to the guest's `oneway:http-handler/handler.handle-request`
+    /// Optional reference to the guest's `canon:http-handler/handler.handle-request`
     /// component export, when the program defined a `handleRequest`
     /// function. The HTTP server runtime calls this Func per incoming
     /// request to compute the response body. See `DYNAMIC-HANDLERS.md`.
@@ -66,18 +66,18 @@ impl WasiHttpView for State {
     }
 }
 
-/// Oneway's `WasiHttpHooks` implementation.
+/// Canon's `WasiHttpHooks` implementation.
 ///
 /// We disable wasmtime-wasi-http's `default-send-request` feature (which
 /// pulls in rustls + webpki + tokio-rustls), so the hook's outbound
-/// `send_request` becomes required rather than defaulted. Today Oneway
-/// programs use the `oneway:builtins/http` host bridge for outbound HTTP
+/// `send_request` becomes required rather than defaulted. Today Canon
+/// programs use the `canon:builtins/http` host bridge for outbound HTTP
 /// (see `host_builtin_http`), so a guest calling `wasi:http/client.send`
 /// is out-of-band — we return `internal-error` rather than mask the
 /// architectural gap with a silently routed request.
 ///
 /// When `wasi:http/client` migration lands (replacing the
-/// `oneway:builtins/http` bridge), this hook becomes a real outbound
+/// `canon:builtins/http` bridge), this hook becomes a real outbound
 /// client — either by re-enabling `default-send-request` or by routing
 /// through a hyper client of our own.
 struct OneswayHttpHooks;
@@ -102,8 +102,8 @@ impl WasiHttpHooks for OneswayHttpHooks {
         Box::new(async {
             Err(ErrorCode::InternalError(Some(
                 "wasi:http/client outbound requests are not routed by the \
-                 Oneway runtime yet \u{2014} use `oneway:builtins/http` (via \
-                 `oneway/std/Url`) for now"
+                 Canon runtime yet \u{2014} use `canon:builtins/http` (via \
+                 `canon/std/Url`) for now"
                     .to_string(),
             ))
             .into())
@@ -156,7 +156,7 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
 
     // Instantiate via the linker directly so we have access to the
     // `Instance` handle. We use it to (a) look up the optional
-    // `oneway:http-handler/handler.handle-request` export and stash it
+    // `canon:http-handler/handler.handle-request` export and stash it
     // in `State`, and (b) drive `wasi:cli/run.run` ourselves — the
     // bindgen-generated `Command` keeps its inner `Instance` private,
     // and we need both the run call *and* the dynamic-handler export
@@ -169,7 +169,7 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
     // it per request. When absent the handler stays unset and the
     // HTTP server falls back to its static-body route table.
     if let Some(iface_idx) =
-        instance.get_export_index(&mut store, None, "oneway:http-handler/handler@0.1.0")
+        instance.get_export_index(&mut store, None, "canon:http-handler/handler@0.1.0")
     {
         if let Some(fn_idx) =
             instance.get_export_index(&mut store, Some(&iface_idx), "handle-request")
@@ -225,7 +225,7 @@ fn build_engine() -> wasmtime::Result<Engine> {
 }
 
 /// Builds a `Linker<State>` populated with every host interface a
-/// compiled Oneway component might import.
+/// compiled Canon component might import.
 ///
 /// Shared between `run_component` (command-style guests) and
 /// `serve_component` (`wasi:http/service`-style guests). The list is
@@ -253,7 +253,7 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // imports these and the registration is a no-op.
     wasmtime_wasi_http::p3::add_to_linker(&mut linker)?;
 
-    // Compiler-managed `oneway:*` host bridges. Each is a temporary
+    // Compiler-managed `canon:*` host bridges. Each is a temporary
     // scaffold that will migrate to a `wasi:*` interface as the
     // canonical-ABI shapes (resources, async, streams) become available
     // in the codegen. The `.print` builtin is compiled directly against
@@ -277,7 +277,7 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
 /// `args` becomes the program's `argv` when non-empty; stdio, env, and
 /// network access are inherited from the host process so users see
 /// printed output and the program can resolve hostnames /
-/// `oneway:builtins/http` outbound calls.
+/// `canon:builtins/http` outbound calls.
 fn build_state(args: &[&str]) -> State {
     let mut builder = WasiCtxBuilder::new();
     builder
@@ -339,7 +339,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| wasmtime::Error::msg(format!("bind {addr}: {e}")))?;
-    eprintln!("oneway run --addr {addr}: listening on http://{addr}");
+    eprintln!("canon run --addr {addr}: listening on http://{addr}");
 
     // Accept loop. Each connection gets its own task with its own
     // wasmtime `Store` so guest state is connection-scoped — a panic /
@@ -349,7 +349,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
         let (socket, peer) = match listener.accept().await {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("oneway run --addr: accept error: {e}");
+                eprintln!("canon run --addr: accept error: {e}");
                 continue;
             }
         };
@@ -357,7 +357,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
         let service_pre = service_pre.clone();
         tokio::spawn(async move {
             if let Err(e) = serve_connection(engine, service_pre, socket).await {
-                eprintln!("oneway run --addr: {peer}: {e:?}");
+                eprintln!("canon run --addr: {peer}: {e:?}");
             }
         });
     }
@@ -467,11 +467,11 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
         .expect("static response builder shape is valid")
 }
 
-/// `oneway:builtins/math` — a tiny standard library of pure math functions
-/// that compiled programs can call via `extern Wasm("oneway:builtins/math…")`.
+/// `canon:builtins/math` — a tiny standard library of pure math functions
+/// that compiled programs can call via `extern Wasm("canon:builtins/math…")`.
 ///
 /// Keeps a few common operations (min/max) out of the language proper while
-/// the codegen learns to inline them. Once Oneway's stdlib grows real
+/// the codegen learns to inline them. Once Canon's stdlib grows real
 /// implementations of these, this module can be removed.
 mod host_builtins {
     use super::State;
@@ -479,7 +479,7 @@ mod host_builtins {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface math {
                 min: func(a: s64, b: s64) -> s64;
                 max: func(a: s64, b: s64) -> s64;
@@ -492,7 +492,7 @@ mod host_builtins {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::math::Host for State {
+    impl canon::builtins::math::Host for State {
         fn min(&mut self, a: i64, b: i64) -> i64 {
             a.min(b)
         }
@@ -505,11 +505,11 @@ mod host_builtins {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::math::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::math::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/clock` — a string-returning host bridge that demonstrates
+/// `canon:builtins/clock` — a string-returning host bridge that demonstrates
 /// the canonical-ABI indirect-return path. `now-rfc3339()` reads the host's
 /// `SystemTime`, formats it manually as `YYYY-MM-DDTHH:MM:SSZ`, and returns
 /// the resulting `String` to the guest. The component wrapper attaches the
@@ -522,7 +522,7 @@ mod host_builtin_clock {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface clock {
                 now-rfc3339: func() -> string;
                 now-unix-seconds: func() -> s64;
@@ -534,7 +534,7 @@ mod host_builtin_clock {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::clock::Host for State {
+    impl canon::builtins::clock::Host for State {
         fn now_rfc3339(&mut self) -> String {
             let secs = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -577,11 +577,11 @@ mod host_builtin_clock {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::clock::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::clock::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/string` — simple string transforms. Exercises the
+/// `canon:builtins/string` — simple string transforms. Exercises the
 /// `string → string` canonical-ABI path: the guest passes a UTF-8 buffer in
 /// its linear memory, the host reads it via the `Memory` option, computes
 /// the result, allocates a new buffer in guest memory via `cabi_realloc`,
@@ -592,7 +592,7 @@ mod host_builtin_string {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface strings {
                 to-lowercase: func(input: string) -> string;
                 to-uppercase: func(input: string) -> string;
@@ -604,7 +604,7 @@ mod host_builtin_string {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::strings::Host for State {
+    impl canon::builtins::strings::Host for State {
         fn to_lowercase(&mut self, input: String) -> String {
             input.to_lowercase()
         }
@@ -615,11 +615,11 @@ mod host_builtin_string {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::strings::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::strings::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/filesystem` — minimal filesystem operations exposed as
+/// `canon:builtins/filesystem` — minimal filesystem operations exposed as
 /// `string → string` functions. Errors are reported as empty strings
 /// (`""`) until the codegen learns to lower `result<string, error>`. The
 /// host has full POSIX-style access; sandboxing happens at the WASI level
@@ -631,7 +631,7 @@ mod host_builtin_filesystem {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface filesystem {
                 /// Open a file by path. Returns the path string back as the
                 /// `File` handle on success, or a diagnostic message on
@@ -650,7 +650,7 @@ mod host_builtin_filesystem {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::filesystem::Host for State {
+    impl canon::builtins::filesystem::Host for State {
         fn open_file(&mut self, path: String) -> Result<String, String> {
             if std::path::Path::new(&path).is_file() {
                 Ok(path)
@@ -665,11 +665,11 @@ mod host_builtin_filesystem {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::filesystem::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::filesystem::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/http` — a minimal blocking HTTP GET. Written against
+/// `canon:builtins/http` — a minimal blocking HTTP GET. Written against
 /// `std::net::TcpStream` to avoid pulling in an HTTP client dependency.
 /// Only handles `http://`/`https://` URLs of the shape `scheme://host/path`,
 /// returns the response body on 2xx, otherwise an empty string. Until the
@@ -682,7 +682,7 @@ mod host_builtin_http {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface http {
                 /// HTTP GET on a previously-parsed `Url`. Returns the
                 /// response body or an error message.
@@ -695,7 +695,7 @@ mod host_builtin_http {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::http::Host for State {
+    impl canon::builtins::http::Host for State {
         fn get(&mut self, url: String) -> Result<String, String> {
             http_get(&url).ok_or_else(|| format!("HTTP GET failed for {url}"))
         }
@@ -705,7 +705,7 @@ mod host_builtin_http {
         let (host, path) = parse_http_url(url)?;
         let mut stream = TcpStream::connect((host.as_str(), 80)).ok()?;
         let request = format!(
-            "GET {} HTTP/1.0\r\nHost: {}\r\nUser-Agent: oneway/0.1\r\nConnection: close\r\nAccept: */*\r\n\r\n",
+            "GET {} HTTP/1.0\r\nHost: {}\r\nUser-Agent: canon/0.1\r\nConnection: close\r\nAccept: */*\r\n\r\n",
             path, host
         );
         stream.write_all(request.as_bytes()).ok()?;
@@ -732,11 +732,11 @@ mod host_builtin_http {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::http::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::http::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/http-server` — host bridge for `std/http/http-server`.
+/// `canon:builtins/http-server` — host bridge for `std/http/http-server`.
 ///
 /// The API surface is small and stateless: `create(port)` produces an
 /// opaque server-handle string, `get`/`post` thread routes through that
@@ -783,12 +783,12 @@ mod host_builtin_http_server {
     // sync and use the regular blocking trait method.
     //
     // The WIT signatures match what the codegen emits from the stdlib
-    // declarations in `std/http/http-server.ow`. `Int` lowers to `s64` in
-    // the `oneway:*` namespace (signed default for non-WASI imports);
+    // declarations in `std/http/http-server.can`. `Int` lowers to `s64` in
+    // the `canon:*` namespace (signed default for non-WASI imports);
     // `HttpServer = String` is a string alias.
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface http-server {
                 create: func(port: s64) -> string;
                 get: func(server: string, status: s64, path: string, body: string) -> string;
@@ -805,7 +805,7 @@ mod host_builtin_http_server {
     });
 
     // Sync functions go on the `Host` trait.
-    impl oneway::builtins::http_server::Host for State {
+    impl canon::builtins::http_server::Host for State {
         fn create(&mut self, port: i64) -> String {
             // First record of the handle is just the port number. Each
             // chained `.get(…)` / `.post(…)` appends one route record.
@@ -826,7 +826,7 @@ mod host_builtin_http_server {
     // generated by the bindgen macro above; we impl it on
     // `HasSelf<State>` so the data getter `|state| state` we already pass
     // into `add_to_linker` resolves the right way.
-    impl oneway::builtins::http_server::HostWithStore for HasSelf<State> {
+    impl canon::builtins::http_server::HostWithStore for HasSelf<State> {
         async fn serve<U: Send>(
             accessor: &wasmtime::component::Accessor<U, Self>,
             server: String,
@@ -851,7 +851,7 @@ mod host_builtin_http_server {
             _accessor: &wasmtime::component::Accessor<U, Self>,
             input: String,
         ) -> String {
-            // Used by `tests/runtime/async_echo.ow` to exercise the
+            // Used by `tests/runtime/async_echo.can` to exercise the
             // guest-side async call sequence (alloc ret-area, call,
             // check status, decode result). The Future completes
             // immediately so the guest's sync-completion fast path
@@ -863,7 +863,7 @@ mod host_builtin_http_server {
             _accessor: &wasmtime::component::Accessor<U, Self>,
             input: String,
         ) -> String {
-            // Used by `tests/runtime/async_slow_echo.ow` to exercise
+            // Used by `tests/runtime/async_slow_echo.can` to exercise
             // the *async-suspend* path of `emit_async_call`: the host
             // future yields before producing a result, so wasmtime has
             // to return a Started subtask handle to the guest. The
@@ -878,7 +878,7 @@ mod host_builtin_http_server {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::http_server::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::http_server::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 
     /// Append one route record to the handle string. See the module-level
@@ -1134,7 +1134,7 @@ mod host_builtin_http_server {
     ///
     /// This is the minimum-viable hook for SSE / JSON / HTML responses
     /// without inventing a richer return type. Handlers stay
-    /// `(String) -> String` at the Oneway level; the structure of the
+    /// `(String) -> String` at the Canon level; the structure of the
     /// returned string is the only place we look for metadata.
     fn parse_handler_response(s: &str) -> (&str, &str) {
         const DEFAULT: &str = "text/plain; charset=utf-8";
@@ -1179,27 +1179,27 @@ mod host_builtin_http_server {
     }
 }
 
-/// `oneway:builtins/json` — JSON validation + primitive builders.
+/// `canon:builtins/json` — JSON validation + primitive builders.
 ///
-/// The stdlib type `Json = String` (in `oneway/std/json.ow`) is just the
+/// The stdlib type `Json = String` (in `canon/std/json.can`) is just the
 /// JSON-encoded text. `parse` validates that a string is well-formed JSON
 /// and returns the same string back as the `Json` handle on success.
 /// The `from-*` builders emit the JSON text for a single primitive value,
 /// handling string escaping and the special-case spellings (`null`,
-/// `true`, `false`). Object / array construction lives entirely in Oneway
+/// `true`, `false`). Object / array construction lives entirely in Canon
 /// — the stdlib wrapper builds those via `String.concat` from the
 /// primitive builders.
 ///
 /// Hand-rolled (no `serde_json` dep) to keep the compiler's runtime
 /// dependency surface minimal and to match the existing
-/// `oneway:builtins/url` validator style.
+/// `canon:builtins/url` validator style.
 mod host_builtin_json {
     use super::State;
     use wasmtime::component::{HasSelf, Linker};
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface json {
                 /// Validate that `input` is well-formed JSON. On success,
                 /// returns the same string back (so it can be threaded
@@ -1220,11 +1220,11 @@ mod host_builtin_json {
                 from-float: func(value: f64) -> string;
 
                 /// Render a bool as `true` or `false`. The parameter
-                /// is `s32` rather than `bool` because Oneway's codegen
+                /// is `s32` rather than `bool` because Canon's codegen
                 /// lowers `Bool` as a flat i32 (0 = False, non-zero =
                 /// True) and the canonical-ABI shape for `bool` doesn't
                 /// line up with that. Same workaround as
-                /// `oneway:builtins/cli#exit-with-code`.
+                /// `canon:builtins/cli#exit-with-code`.
                 from-bool: func(value: s32) -> string;
 
                 /// Return the literal `null`.
@@ -1238,7 +1238,7 @@ mod host_builtin_json {
                 /// the field is missing), returns a diagnostic message.
                 ///
                 /// This is the primitive read-side counterpart to the
-                /// `from-*` builders — it lets pure-Oneway code walk a
+                /// `from-*` builders — it lets pure-Canon code walk a
                 /// parsed JSON tree without owning a per-type parser.
                 field: func(input: string, name: string) -> result<string, string>;
 
@@ -1256,7 +1256,7 @@ mod host_builtin_json {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::json::Host for State {
+    impl canon::builtins::json::Host for State {
         fn parse(&mut self, input: String) -> Result<String, String> {
             match validate_json(&input) {
                 Ok(()) => Ok(input),
@@ -1701,11 +1701,11 @@ mod host_builtin_json {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::json::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::json::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/url` — URL parsing. Validates the shape of a `Url`
+/// `canon:builtins/url` — URL parsing. Validates the shape of a `Url`
 /// string (must start with `http://` or `https://` and have a non-empty
 /// host). Returns the same string back as the `Url` handle on success or a
 /// diagnostic message on failure.
@@ -1715,7 +1715,7 @@ mod host_builtin_url {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface url {
                 parse: func(input: string) -> result<string, string>;
             }
@@ -1726,7 +1726,7 @@ mod host_builtin_url {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::url::Host for State {
+    impl canon::builtins::url::Host for State {
         fn parse(&mut self, input: String) -> Result<String, String> {
             let scheme_ok = input.starts_with("http://") || input.starts_with("https://");
             if !scheme_ok {
@@ -1746,14 +1746,14 @@ mod host_builtin_url {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::url::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::url::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
-/// `oneway:builtins/cli` — a thin shim for command-line concerns that
+/// `canon:builtins/cli` — a thin shim for command-line concerns that
 /// either aren't yet served by `wasmtime_wasi::p3` (e.g. timezone) or
 /// trip current codegen gaps (e.g. `wasi:cli/exit#exit-with-code` uses a
-/// `u8` parameter, and Oneway always lowers `Int` as `u64`). Bridging
+/// `u8` parameter, and Canon always lowers `Int` as `u64`). Bridging
 /// through `s64` here sidesteps the width mismatch.
 ///
 /// When the underlying codegen learns to honor sub-u64 WIT widths, the
@@ -1765,11 +1765,11 @@ mod host_builtin_cli {
 
     wasmtime::component::bindgen!({
         inline: "
-            package oneway:builtins@0.1.0;
+            package canon:builtins@0.1.0;
             interface cli {
                 /// Terminate the program with the given exit code.
                 /// Maps directly onto `wasi:cli/exit#exit-with-code` but
-                /// takes the code as `s64` so it lines up with Oneway's
+                /// takes the code as `s64` so it lines up with Canon's
                 /// canonical `Int` lowering. Values are clamped to the
                 /// 0..=255 range expected by POSIX-shaped hosts.
                 exit-with-code: func(status-code: s64);
@@ -1781,7 +1781,7 @@ mod host_builtin_cli {
         require_store_data_send: true,
     });
 
-    impl oneway::builtins::cli::Host for State {
+    impl canon::builtins::cli::Host for State {
         fn exit_with_code(&mut self, status_code: i64) {
             // POSIX exit codes are 8-bit; clamp to that range to match
             // every embedder's expectations. `std::process::exit` skips
@@ -1793,6 +1793,6 @@ mod host_builtin_cli {
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        oneway::builtins::cli::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
+        canon::builtins::cli::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }

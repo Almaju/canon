@@ -1,6 +1,6 @@
 # Release Process
 
-Steps to cut a new release of Oneway. All commands run from the repo root.
+Steps to cut a new release of Canon. All commands run from the repo root.
 
 ## Checklist
 
@@ -48,7 +48,7 @@ platforms and creates a draft GitHub release automatically.
 
 ### 6. Publish the release
 
-Go to the [GitHub releases page](https://github.com/almaju/oneway/releases),
+Go to the [GitHub releases page](https://github.com/almaju/canon/releases),
 review the auto-generated notes, and click **Publish release**.
 
 ### 7. Verify the installer
@@ -57,13 +57,13 @@ Run the install script on a clean machine (or a fresh shell) to confirm the
 new version is downloadable and works:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh
-oneway --version
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
+canon --version
 ```
 
 ## Version scheme
 
-Oneway uses [Semantic Versioning](https://semver.org) loosely while pre-1.0:
+Canon uses [Semantic Versioning](https://semver.org) loosely while pre-1.0:
 
 | Bump | When |
 |---|---|

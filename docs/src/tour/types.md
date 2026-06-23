@@ -1,6 +1,6 @@
 # Types
 
-Every type in Oneway is built by composing two operators — `+` for "or",
+Every type in Canon is built by composing two operators — `+` for "or",
 `*` for "and" — over a small core of primitives.
 
 ## Naming
@@ -11,7 +11,7 @@ Every type in Oneway is built by composing two operators — `+` for "or",
 The case difference distinguishes a method from a trait implementation
 declared on the same type:
 
-```oneway
+```canon
 Type.print  // method
 Type.Print  // implementation of the `Print` trait
 ```
@@ -20,7 +20,7 @@ Type.Print  // implementation of the `Print` trait
 
 A union expresses "this or that":
 
-```oneway
+```canon
 Bit  = Off + On
 Bool = False + True
 Ord  = Equal + Greater + Less
@@ -34,7 +34,7 @@ keyword.
 A product expresses "this and that". A value of the resulting type has all
 of its components:
 
-```oneway
+```canon
 User = Birthday * Username
 ```
 
@@ -45,7 +45,7 @@ keyword.
 
 A product's components are addressed by their type name:
 
-```oneway
+```canon
 user.Birthday
 user.Username
 ```
@@ -53,7 +53,7 @@ user.Username
 For repeated components or anonymous sequences, use 1-based positional
 indices:
 
-```oneway
+```canon
 Byte = Bit^8
 
 byte.1   // first Bit
@@ -64,7 +64,7 @@ byte.2   // second Bit
 
 Aliasing a type creates a distinct new type that wraps the original:
 
-```oneway
+```canon
 Birthday = String
 Username = String
 ```
@@ -77,13 +77,13 @@ storage, but they are different types — which is exactly the point. See
 
 For a fixed count of the same type, use `Type^N`:
 
-```oneway
+```canon
 Byte = Bit^8
 ```
 
 For unbounded sequences, use `Type^*`:
 
-```oneway
+```canon
 Bytes = Byte^*
 ```
 
@@ -94,7 +94,7 @@ Higher-level types like `Int`, `Float`, and `String` are defined from
 
 Type parameters use angle brackets:
 
-```oneway
+```canon
 List<T>
 Option<T>
 Result<T, E>
@@ -104,7 +104,7 @@ Map<String, Int>
 Constraints on type parameters use `:`, naming a trait the parameter must
 implement:
 
-```oneway
+```canon
 print = <T: Print>(List<T>) -> Unit {
     ...
 }
@@ -115,7 +115,7 @@ print = <T: Print>(List<T>) -> Unit {
 A type with no underlying composition has exactly one value, referenced by
 writing the type name itself:
 
-```oneway
+```canon
 main = () -> Unit {
     Unit
 }
@@ -129,7 +129,7 @@ no data to pass).
 
 Recursive type definitions are allowed and **boxed automatically**:
 
-```oneway
+```canon
 Branch = Left * Right * Value
 Left   = Tree
 Right  = Tree

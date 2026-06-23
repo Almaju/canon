@@ -1,6 +1,6 @@
 use crate::ast::extract_receiver_from_params;
 use crate::ast::*;
-use crate::error::{OnewayError, Result, Span};
+use crate::error::{CanonError, Result, Span};
 use crate::lexer::{Token, TokenKind};
 
 pub struct Parser {
@@ -90,7 +90,7 @@ impl Parser {
 
         if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
             if !pre_eq_generics.is_empty() {
-                return Err(OnewayError::ParseError {
+                return Err(CanonError::ParseError {
                     message: "generic parameters on function definitions go after `=`, not before"
                         .to_string(),
                     span: first_ident.span,
@@ -181,7 +181,7 @@ impl Parser {
         }
 
         if receiver.is_some() {
-            return Err(OnewayError::ParseError {
+            return Err(CanonError::ParseError {
                 message: "method definition requires a body `{ ... }`".to_string(),
                 span: self.peek().span,
             });
@@ -323,7 +323,7 @@ impl Parser {
         let count: u64 = count_tok
             .lexeme
             .parse()
-            .map_err(|_| OnewayError::ParseError {
+            .map_err(|_| CanonError::ParseError {
                 message: format!("invalid integer `{}` in repetition count", count_tok.lexeme),
                 span: count_tok.span,
             })?;
@@ -607,7 +607,7 @@ impl Parser {
             }
             TokenKind::IntLit => {
                 self.advance();
-                let value: i64 = tok.lexeme.parse().map_err(|_| OnewayError::ParseError {
+                let value: i64 = tok.lexeme.parse().map_err(|_| CanonError::ParseError {
                     message: format!("invalid integer literal `{}`", tok.lexeme),
                     span: tok.span,
                 })?;
@@ -618,7 +618,7 @@ impl Parser {
             }
             TokenKind::FloatLit => {
                 self.advance();
-                let value: f64 = tok.lexeme.parse().map_err(|_| OnewayError::ParseError {
+                let value: f64 = tok.lexeme.parse().map_err(|_| CanonError::ParseError {
                     message: format!("invalid float literal `{}`", tok.lexeme),
                     span: tok.span,
                 })?;
@@ -631,7 +631,7 @@ impl Parser {
                 self.advance();
                 let stripped = tok.lexeme.trim_start_matches("0x");
                 let value =
-                    u64::from_str_radix(stripped, 16).map_err(|_| OnewayError::ParseError {
+                    u64::from_str_radix(stripped, 16).map_err(|_| CanonError::ParseError {
                         message: format!("invalid hex literal `{}`", tok.lexeme),
                         span: tok.span,
                     })?;
@@ -666,7 +666,7 @@ impl Parser {
                     span: span_join(open, end),
                 })
             }
-            _ => Err(OnewayError::ParseError {
+            _ => Err(CanonError::ParseError {
                 message: format!("expected an expression (got {})", tok.kind),
                 span: tok.span,
             }),
@@ -731,10 +731,10 @@ impl Parser {
     /// Parse a single JSON value, appending it to `builder`. The strategy:
     ///
     /// 1. JSON-only forms (`{`, `[`, the keywords `true` / `false` /
-    ///    `null`, and `-IntLit` / `-FloatLit` since Oneway has no unary
+    ///    `null`, and `-IntLit` / `-FloatLit` since Canon has no unary
     ///    minus at expression level) are consumed directly and emitted
     ///    as Static text.
-    /// 2. Everything else is parsed as a full Oneway expression. If the
+    /// 2. Everything else is parsed as a full Canon expression. If the
     ///    resulting expression is itself a pure literal
     ///    (`StringLit` / `IntLit` / `FloatLit` / `JsonLit`), it's still
     ///    emitted as Static — so `{"k": 42}` stays fully constant. Any
@@ -765,7 +765,7 @@ impl Parser {
             }
             TokenKind::Minus => {
                 // `-IntLit` / `-FloatLit` are folded as a static JSON
-                // negative number. Oneway has no general unary-minus, so
+                // negative number. Canon has no general unary-minus, so
                 // a bare `-` followed by anything else is an error here.
                 self.advance();
                 let num = self.peek().clone();
@@ -777,7 +777,7 @@ impl Parser {
                         return Ok(());
                     }
                     _ => {
-                        return Err(OnewayError::ParseError {
+                        return Err(CanonError::ParseError {
                             message: "expected a number after `-` in JSON literal".to_string(),
                             span: num.span,
                         });
@@ -785,8 +785,8 @@ impl Parser {
                 }
             }
             TokenKind::Ident if matches!(tok.lexeme.as_str(), "true" | "false" | "null") => {
-                // JSON keywords: not valid Oneway identifiers, so we have
-                // to handle them before `parse_expr` would choke. (Oneway
+                // JSON keywords: not valid Canon identifiers, so we have
+                // to handle them before `parse_expr` would choke. (Canon
                 // booleans are capitalised: `True()` / `False()`.)
                 self.advance();
                 builder.push_text(&tok.lexeme);
@@ -795,7 +795,7 @@ impl Parser {
             _ => {}
         }
 
-        // General case: parse a full Oneway expression. This handles
+        // General case: parse a full Canon expression. This handles
         // bare literals (`42`, `"hi"`), method chains (`x.foo()`,
         // `1.add(2)`), constructors (`Email("a")`), field access
         // (`User.Email`), `?` on Results, etc.
@@ -914,7 +914,7 @@ impl Parser {
             Ok(self.advance().clone())
         } else {
             let actual = self.peek().clone();
-            Err(OnewayError::ParseError {
+            Err(CanonError::ParseError {
                 message: format!("{} (got {})", msg, actual.kind),
                 span: actual.span,
             })
@@ -1043,7 +1043,7 @@ impl JsonPartBuilder {
     }
 }
 
-/// Re-encode a Oneway string value (already unescaped by the scanner) as a
+/// Re-encode a Canon string value (already unescaped by the scanner) as a
 /// JSON string literal, including the surrounding double-quote characters.
 fn json_encode_string(s: &str) -> String {
     let mut out = String::from('"');

@@ -1,1 +1,1 @@
-error[tests/checker/fail/duplicate_main.ow:5:1]: duplicate `main` definition
+error[tests/checker/fail/duplicate_main.can:5:1]: duplicate `main` definition

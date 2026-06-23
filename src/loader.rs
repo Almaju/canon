@@ -3,7 +3,7 @@ use crate::ast::{
     Item, Module, Param, TypeExpr,
 };
 use crate::bindgen;
-use crate::error::{OnewayError, Result, Span};
+use crate::error::{CanonError, Result, Span};
 use crate::install::{self, InstallIndex, INSTALL_INDEX_FILENAME};
 use crate::lexer::Scanner;
 use crate::manifest::{self, Manifest};
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 /// Walk a slice of items and fill in the path string of any `extern Wasm`
 /// declaration that was emitted without one.
 ///
-/// `oneway install` writes bindgen output with bare `extern Wasm` markers
+/// `canon install` writes bindgen output with bare `extern Wasm` markers
 /// (no URN string) and a sidecar `_install.toml` index mapping each file
 /// to its WIT interface URN. The loader consults that index to fill in
 /// the per-function path each function's codegen needs: `"<urn>#<fn>"`
@@ -45,12 +45,12 @@ fn patch_extern_paths(items: &mut [Item], urn: &str) {
 ///      URN. Subsequent function-type aliases auto-derive their
 ///      canonical-ABI path as `"<urn>#<kebab(name)>"` until another
 ///      base-form directive replaces it. A file can mix several bases
-///      (`url.ow` does that for `oneway:builtins/url` followed by
-///      `oneway:builtins/http`).
+///      (`url.can` does that for `canon:builtins/url` followed by
+///      `canon:builtins/http`).
 ///   2. `bindings "<urn>#<fn-name>"` (explicit `#fn`) is a *one-shot*
 ///      override: it applies only to the very next function-type alias,
 ///      using `<urn>#<fn-name>` verbatim as the path. Used for cases
-///      where the Oneway name doesn't kebab-back to the WIT name —
+///      where the Canon name doesn't kebab-back to the WIT name —
 ///      e.g. `ToJson = (Bool) -> Json` is bound to `#from-bool`, not
 ///      `#to-json`. After the next alias is consumed, the previous
 ///      base-form (if any) is back in effect.
@@ -106,7 +106,7 @@ pub fn apply_bindings_directive(items: &mut [Item]) {
             format!("{}#{}", base, bindgen::camel_to_kebab(&td.name.name))
         } else {
             // No bindings context in scope: leave the TypeDef as a
-            // function-type alias (the existing Oneway callback-type
+            // function-type alias (the existing Canon callback-type
             // syntax). This is the path user code outside any bindings
             // block follows.
             continue;
@@ -168,7 +168,7 @@ pub fn apply_bindings_directive(items: &mut [Item]) {
 // Bundled packages
 // ---------------------------------------------------------------------------
 //
-// The shipped packages (`oneway/std`, `oneway/wasi`, …) are baked into the
+// The shipped packages (`canon/std`, `canon/wasi`, …) are baked into the
 // compiler binary at build time by `build.rs`, which walks `packages/` and
 // emits a flat registry as `bundled_packages.rs`. The registry replaces what
 // used to be hand-maintained `STDLIB` and `WASI_BINDINGS` arrays — drop a new
@@ -177,12 +177,12 @@ pub fn apply_bindings_directive(items: &mut [Item]) {
 /// One package shipped with the compiler.
 #[derive(Debug, Clone, Copy)]
 pub struct BundledPackage {
-    /// Canonical name, e.g. `"oneway/std"`. Matches the package's
-    /// declared `name` in its `oneway.toml`.
+    /// Canonical name, e.g. `"canon/std"`. Matches the package's
+    /// declared `name` in its `canon.toml`.
     pub name: &'static str,
-    /// The full `oneway.toml` source, parsed lazily on first use.
+    /// The full `canon.toml` source, parsed lazily on first use.
     pub manifest_src: &'static str,
-    /// Every `.ow` file under the package root, sorted alphabetically by
+    /// Every `.can` file under the package root, sorted alphabetically by
     /// package-relative path.
     pub files: &'static [BundledFile],
 }
@@ -190,7 +190,7 @@ pub struct BundledPackage {
 /// One file inside a bundled package.
 #[derive(Debug, Clone, Copy)]
 pub struct BundledFile {
-    /// Path relative to the package root, e.g. `"clocks/monotonic_clock.ow"`.
+    /// Path relative to the package root, e.g. `"clocks/monotonic_clock.can"`.
     /// Always uses `/` separators so it matches `use` paths users write.
     pub path: &'static str,
     /// The file's source, embedded at build time via `include_str!`.
@@ -211,7 +211,7 @@ pub struct BundledFile {
 
 include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
 
-/// Find a bundled package by its canonical name (`"oneway/std"`).
+/// Find a bundled package by its canonical name (`"canon/std"`).
 pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
     BUNDLED_PACKAGES.iter().find(|p| p.name == name)
 }
@@ -228,7 +228,7 @@ pub fn bundled_file(pkg: &BundledPackage, rel_path: &str) -> Option<&'static Bun
 ///
 /// The matching rule mirrors what the local-file loader does for
 /// directories: walk the trailing segments as a path within the package,
-/// kebab-casing the final type-name segment to find its `.ow` file.
+/// kebab-casing the final type-name segment to find its `.can` file.
 pub fn resolve_bundled_use(
     use_path: &str,
 ) -> Option<(&'static BundledPackage, &'static BundledFile)> {
@@ -243,7 +243,7 @@ pub fn resolve_bundled_use(
 
     // Walk the remaining segments. Intermediate ones are directory names
     // (kept as-is, no case translation); the final segment is the type or
-    // file name and gets kebab-cased before we append `.ow`.
+    // file name and gets kebab-cased before we append `.can`.
     let rest = &segments[2..];
     let (last, dirs) = rest.split_last()?;
     let mut rel = String::new();
@@ -255,11 +255,11 @@ pub fn resolve_bundled_use(
         kebab_case(last)
     } else {
         // Already a snake_case or kebab-case path segment — use directly.
-        // This covers `use oneway/wasi/clocks/monotonic_clock`.
+        // This covers `use canon/wasi/clocks/monotonic_clock`.
         (*last).to_string()
     };
     rel.push_str(&stem);
-    rel.push_str(".ow");
+    rel.push_str(".can");
 
     let file = bundled_file(pkg, &rel)?;
     Some((pkg, file))
@@ -288,7 +288,7 @@ pub struct LoadResult {
     pub local_sources: Vec<LoadedSource>,
 }
 
-/// A user-authored Oneway source file as the loader saw it on disk.
+/// A user-authored Canon source file as the loader saw it on disk.
 /// Used by the pipeline to enforce canonical formatting (see
 /// `enforce_format` in `main.rs`).
 #[derive(Debug, Clone)]
@@ -309,14 +309,14 @@ struct LoadCtx {
     /// text so callers can validate canonical formatting later.
     local_sources: Vec<LoadedSource>,
     /// Root of the project that contains the entry file, identified by
-    /// the nearest ancestor directory containing an `oneway.toml`. `None`
-    /// when the entry is a loose `.ow` file outside any project (in that
+    /// the nearest ancestor directory containing an `canon.toml`. `None`
+    /// when the entry is a loose `.can` file outside any project (in that
     /// case `use` paths resolve via bundled packages and local-relative
     /// lookup only, exactly as before this field existed).
     ///
     /// When set, `process_use` consults `<project_root>/bindgen/` between
     /// the bundled-package check and the local-relative fallback. This is
-    /// where `oneway install` writes the materialized bindings declared
+    /// where `canon install` writes the materialized bindings declared
     /// in the manifest's `[imports]` table.
     project_root: Option<PathBuf>,
     /// Parsed `<project_root>/bindgen/_install.toml`, when present.
@@ -327,14 +327,14 @@ struct LoadCtx {
 }
 
 /// Walk up from `start` looking for the nearest directory that contains
-/// an `oneway.toml`. Returns that directory, or `None` if the walk
+/// an `canon.toml`. Returns that directory, or `None` if the walk
 /// reaches the filesystem root without finding one. Used to anchor the
 /// `bindgen/` lookup so a project's installed bindings are reachable
 /// from any source file beneath the project root.
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut cur: &Path = start;
     loop {
-        if cur.join("oneway.toml").is_file() {
+        if cur.join("canon.toml").is_file() {
             return Some(cur.to_path_buf());
         }
         cur = cur.parent()?;
@@ -344,7 +344,7 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
     let canonical = entry
         .canonicalize()
-        .map_err(|err| OnewayError::CheckError {
+        .map_err(|err| CanonError::CheckError {
             message: format!("could not resolve `{}`: {}", entry.display(), err),
             span: Span::default(),
         })?;
@@ -364,7 +364,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         project_root,
         project_install_index,
     };
-    let source = fs::read_to_string(&canonical).map_err(|err| OnewayError::CheckError {
+    let source = fs::read_to_string(&canonical).map_err(|err| CanonError::CheckError {
         message: format!("could not read `{}`: {}", canonical.display(), err),
         span: Span::default(),
     })?;
@@ -444,19 +444,19 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
     }
 
     // Project `bindgen/` lookup. When the entry file lives inside a
-    // project (an ancestor directory has `oneway.toml`), `use` paths
-    // also resolve against `<project_root>/bindgen/<path>.ow` — the
-    // directory where `oneway install` materializes external bindings
+    // project (an ancestor directory has `canon.toml`), `use` paths
+    // also resolve against `<project_root>/bindgen/<path>.can` — the
+    // directory where `canon install` materializes external bindings
     // declared in the manifest's `[imports]` table. Sits between the
     // bundled-package check and the local-relative fallback so bindgen
     // output is reachable from any source file in the project without
     // overriding either bundled std lookups or in-project sibling files.
     if let Some(root) = ctx.project_root.clone() {
-        let bindgen_file = root.join("bindgen").join(format!("{}.ow", path_str));
+        let bindgen_file = root.join("bindgen").join(format!("{}.can", path_str));
         if bindgen_file.is_file() {
             let canonical = bindgen_file
                 .canonicalize()
-                .map_err(|err| OnewayError::CheckError {
+                .map_err(|err| CanonError::CheckError {
                     message: format!("could not resolve `{}`: {}", bindgen_file.display(), err),
                     span: u.span,
                 })?;
@@ -474,13 +474,13 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
         file_dir = file_dir.join(seg);
     }
 
-    let candidate = file_dir.join(format!("{}.ow", file_stem));
-    let module_candidate = file_dir.join(&file_stem).join("main.ow");
+    let candidate = file_dir.join(format!("{}.can", file_stem));
+    let module_candidate = file_dir.join(&file_stem).join("main.can");
 
     if candidate.exists() {
         let canonical = candidate
             .canonicalize()
-            .map_err(|err| OnewayError::CheckError {
+            .map_err(|err| CanonError::CheckError {
                 message: format!("could not resolve `{}`: {}", candidate.display(), err),
                 span: u.span,
             })?;
@@ -488,7 +488,7 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
     } else if module_candidate.exists() {
         let canonical = module_candidate
             .canonicalize()
-            .map_err(|err| OnewayError::CheckError {
+            .map_err(|err| CanonError::CheckError {
                 message: format!(
                     "could not resolve `{}`: {}",
                     module_candidate.display(),
@@ -498,7 +498,7 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
             })?;
         load_into(&canonical, ctx)?;
     } else {
-        return Err(OnewayError::CheckError {
+        return Err(CanonError::CheckError {
             message: format!(
                 "`use {}` cannot find `{}`",
                 u.name.name,
@@ -514,7 +514,7 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
     if !ctx.seen.insert(path.to_path_buf()) {
         return Ok(());
     }
-    let source = fs::read_to_string(path).map_err(|err| OnewayError::CheckError {
+    let source = fs::read_to_string(path).map_err(|err| CanonError::CheckError {
         message: format!("could not read `{}`: {}", path.display(), err),
         span: Span::default(),
     })?;
@@ -616,12 +616,12 @@ fn load_bundled_source(
 /// 1. If the path's first two segments name a known bundled package, treat
 ///    as a cross-package import.
 /// 2. Otherwise try same-directory relative first: `use Foo` from
-///    `time/instant.ow` resolves to `time/foo.ow`. This is how sibling
+///    `time/instant.can` resolves to `time/foo.can`. This is how sibling
 ///    imports inside the package have always worked.
 /// 3. If that misses, try the use path as a package-root-relative path:
-///    `use wasi/random/random` from `random.ow` resolves to
-///    `wasi/random/random.ow` at the package root. This is what lets
-///    `oneway/std`'s hand-written wrappers `use wasi/…` against the
+///    `use wasi/random/random` from `random.can` resolves to
+///    `wasi/random/random.can` at the package root. This is what lets
+///    `canon/std`'s hand-written wrappers `use wasi/…` against the
 ///    bindings materialized under `<package>/bindgen/` (which the
 ///    bundler flattens into the same namespace as `src/`).
 fn process_bundled_use(
@@ -651,8 +651,8 @@ fn process_bundled_use(
         .unwrap_or_default();
 
     // Translate the use path into a candidate filename relative to some
-    // base directory: `use sub/Foo` becomes `<base>sub/foo.ow`,
-    // `use lowercase/path` becomes `<base>lowercase/path.ow`.
+    // base directory: `use sub/Foo` becomes `<base>sub/foo.can`,
+    // `use lowercase/path` becomes `<base>lowercase/path.can`.
     let candidate_path = |base: &str| -> String {
         let segments: Vec<&str> = path_str.split('/').collect();
         let (last, dirs) = segments.split_last().expect("split_last on non-empty Vec");
@@ -667,7 +667,7 @@ fn process_bundled_use(
             (*last).to_string()
         };
         rel.push_str(&stem);
-        rel.push_str(".ow");
+        rel.push_str(".can");
         rel
     };
 
@@ -685,7 +685,7 @@ fn process_bundled_use(
         } else {
             format!("{sibling_rel}` or `{root_rel}")
         };
-        return Err(OnewayError::CheckError {
+        return Err(CanonError::CheckError {
             message: format!(
                 "`use {}` from package `{}` not found (looked for `{}`)",
                 u.name.name, pkg.name, looked_for,

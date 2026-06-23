@@ -1,4 +1,4 @@
-//! Package manifest (`oneway.toml`) parser.
+//! Package manifest (`canon.toml`) parser.
 //!
 //! A package's manifest is a tiny TOML file declaring its identity, version,
 //! optional fetch information, dependencies, and external bindings. The
@@ -11,22 +11,22 @@
 //! Example accepted package input:
 //!
 //! ```toml
-//! name    = "oneway/std"
+//! name    = "canon/std"
 //! version = "0.1.0"
 //! from    = "https://example.com/component.wasm"
 //! sha256  = "ab12cd..."
 //!
 //! [deps]
-//! "oneway/wasi"        = "0.3.x"
+//! "canon/wasi"        = "0.3.x"
 //! "acme/image-decoder" = "1.0.x"
 //!
 //! [imports]
 //! "wasi/random/random"   = "vendor/wasi-random.wit"   # linker-provided
-//! "oneway/builtins/json" = "vendor/oneway-builtins-json.wit"
+//! "canon/builtins/json" = "vendor/canon-builtins-json.wit"
 //! "example/foo/bar"      = "vendor/some-lib.wasm"     # bundled component
 //! ```
 //!
-//! `[deps]` declares dependencies on other *Oneway packages*. `[imports]`
+//! `[deps]` declares dependencies on other *Canon packages*. `[imports]`
 //! declares dependencies on *external contracts* — either WIT interfaces
 //! (the runtime must satisfy them, à la WASI) or wasm components (composed
 //! into the final artifact at build time). Each `[imports]` key is a
@@ -34,7 +34,7 @@
 //! source. The source kind is determined by extension:
 //!
 //! - `.wit` → linker-provided. The compiler emits `(import …)` declarations;
-//!   the host (e.g. `oneway run`, `wasmtime serve`) provides the
+//!   the host (e.g. `canon run`, `wasmtime serve`) provides the
 //!   implementation. WASI is the canonical example.
 //! - `.wasm` → bundled. The compiler composes the supplied component into
 //!   the final output. The artifact is self-contained.
@@ -48,7 +48,7 @@
 //!
 //! ```toml
 //! [workspace]
-//! members = ["*"]              # every subdir with an oneway.toml
+//! members = ["*"]              # every subdir with an canon.toml
 //! # members = ["clock", "now"] # or an explicit list of subpaths
 //! ```
 //!
@@ -60,7 +60,7 @@
 
 use std::collections::BTreeMap;
 
-/// The fully parsed contents of an `oneway.toml`.
+/// The fully parsed contents of an `canon.toml`.
 ///
 /// `deps` and `imports` use `BTreeMap` so iteration is alphabetical,
 /// matching the "alphabetical wherever ordering is discretionary" rule.
@@ -90,7 +90,7 @@ pub struct Manifest {
 pub enum ImportSource {
     /// A WIT file describing an interface the runtime must satisfy.
     /// The compiler emits `(import …)` declarations against this contract;
-    /// the host (e.g. `oneway run`, `wasmtime serve`) provides the
+    /// the host (e.g. `canon run`, `wasmtime serve`) provides the
     /// implementation at instantiation time.
     Wit(String),
     /// A wasm component whose exports satisfy the imports. The compiler
@@ -112,7 +112,7 @@ impl ImportSource {
 pub struct WorkspaceConfig {
     /// Member subpaths relative to the workspace root. A single literal
     /// `"*"` means "every immediate subdirectory containing an
-    /// `oneway.toml`" and is expanded by the loader, not the parser.
+    /// `canon.toml`" and is expanded by the loader, not the parser.
     pub members: Vec<String>,
 }
 
@@ -127,7 +127,7 @@ pub struct ManifestError {
 
 impl std::fmt::Display for ManifestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "oneway.toml:{}: {}", self.line, self.message)
+        write!(f, "canon.toml:{}: {}", self.line, self.message)
     }
 }
 
@@ -146,7 +146,7 @@ enum Section {
     Workspace,
 }
 
-/// Parse the contents of an `oneway.toml` into a `Manifest`.
+/// Parse the contents of an `canon.toml` into a `Manifest`.
 pub fn parse(source: &str) -> Result<Manifest, ManifestError> {
     let mut manifest = Manifest::default();
     let mut section = Section::TopLevel;
@@ -488,11 +488,11 @@ mod tests {
     #[test]
     fn parses_minimal_manifest() {
         let src = r#"
-            name    = "oneway/std"
+            name    = "canon/std"
             version = "0.1.0"
         "#;
         let m = parse(src).unwrap();
-        assert_eq!(m.name, "oneway/std");
+        assert_eq!(m.name, "canon/std");
         assert_eq!(m.version, "0.1.0");
         assert!(m.from.is_none());
         assert!(m.sha256.is_none());
@@ -506,12 +506,12 @@ name = "my-app"
 version = "0.1.0"
 
 [deps]
-"oneway/std"         = "0.1.x"
+"canon/std"         = "0.1.x"
 "acme/image-decoder" = "1.0.x"
 "#;
         let m = parse(src).unwrap();
         assert_eq!(m.deps.len(), 2);
-        assert_eq!(m.deps.get("oneway/std").map(String::as_str), Some("0.1.x"));
+        assert_eq!(m.deps.get("canon/std").map(String::as_str), Some("0.1.x"));
         assert_eq!(
             m.deps.get("acme/image-decoder").map(String::as_str),
             Some("1.0.x"),
@@ -725,7 +725,7 @@ version = "0.1.0"
 
 [imports]
 "wasi/random/random"   = "vendor/wasi-random.wit"
-"oneway/builtins/json" = "vendor/oneway-builtins-json.wit"
+"canon/builtins/json" = "vendor/canon-builtins-json.wit"
 "example/foo/bar"      = "vendor/some-lib.wasm"
 "#;
         let m = parse(src).unwrap();
@@ -735,9 +735,9 @@ version = "0.1.0"
             Some(&ImportSource::Wit("vendor/wasi-random.wit".to_string())),
         );
         assert_eq!(
-            m.imports.get("oneway/builtins/json"),
+            m.imports.get("canon/builtins/json"),
             Some(&ImportSource::Wit(
-                "vendor/oneway-builtins-json.wit".to_string()
+                "vendor/canon-builtins-json.wit".to_string()
             )),
         );
         assert_eq!(
@@ -753,7 +753,7 @@ name    = "my-app"
 version = "0.1.0"
 
 [deps]
-"oneway/std" = "0.3.x"
+"canon/std" = "0.3.x"
 
 [imports]
 "wasi/random/random" = "vendor/wasi-random.wit"

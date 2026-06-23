@@ -1,6 +1,6 @@
 # Literals
 
-Oneway is values-only. There is no `new`, no implicit nullability, no
+Canon is values-only. There is no `new`, no implicit nullability, no
 keywords like `true` or `false`. Every value is built by calling its
 type's constructor.
 
@@ -37,7 +37,7 @@ with spaces and punctuation.
 A singleton type — one with no underlying composition — has one value,
 referenced by writing the type name:
 
-```oneway
+```canon
 Unit      // the sole value of type Unit
 On        // the sole value of type On
 ```
@@ -57,7 +57,7 @@ method like `List.empty` or `String.empty`.
 The argument to a product's constructor is its components joined with
 value-level `*`:
 
-```oneway
+```canon
 user = User(Birthday(...) * Username("ahanot"))
 red  = Hex(0xFF0000)
 ```
@@ -74,12 +74,12 @@ a `String`, an `Email` from a `String`, etc. — the fallibility belongs in
 the type system as `Result<T, E>`. Same principle the language already
 applies to "missing": `Option<T>`.
 
-A type opts into this by declaring a constructor with the **same name as the type** — a function whose name matches the type it constructs. The body can be ordinary Oneway, or it can be an `extern Wasm` binding to a host-provided parser:
+A type opts into this by declaring a constructor with the **same name as the type** — a function whose name matches the type it constructs. The body can be ordinary Canon, or it can be an `extern Wasm` binding to a host-provided parser:
 
-```oneway
+```canon
 Url = String
 
-extern Wasm("oneway:builtins/url@0.1.0#parse")
+extern Wasm("canon:builtins/url@0.1.0#parse")
 Url = (String) -> Result<Url, InvalidUrl>
 ```
 
@@ -91,7 +91,7 @@ syntax `Url("https://example.com")`, but the expression's type is now
 whatever the constructor returns, so a fallible constructor *forces* `?` (or
 dispatch) at the call site:
 
-```oneway
+```canon
 Url("https://example.com")?.get()?.print()
 ```
 

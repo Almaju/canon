@@ -1,17 +1,17 @@
 # Concurrency Combinators — Design
 
 > **Status: shipped.** `parallel(a, b)` and `race(a, b)` work end-to-end.
-> Runtime fixtures: `tests/runtime/parallel_two_echoes.ow` and
-> `tests/runtime/race_two_echoes.ow`. This doc documents the architecture
+> Runtime fixtures: `tests/runtime/parallel_two_echoes.can` and
+> `tests/runtime/race_two_echoes.can`. This doc documents the architecture
 > for future maintainers; the slice plan that was here originally ended
 > up not being needed — see "Why this didn't need slice 1" below.
 
 ## Surface (final, shipped)
 
-`packages/oneway/std/src/concurrent.ow`:
+`packages/canon/std/src/concurrent.can`:
 
 ```
-bindings "oneway:builtins/concurrent@0.1.0"
+bindings "canon:builtins/concurrent@0.1.0"
 
 parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
 race     = <T>(Future<T> * Future<T>) -> Future<T>
@@ -24,8 +24,8 @@ recognised by name in the codegen — no host bridge.
 
 Usage:
 
-```oneway
-use oneway/std/concurrent
+```canon
+use canon/std/concurrent
 
 main = () -> Unit {
     parallel("hello".slowEcho(), "world".slowEcho())
@@ -40,10 +40,10 @@ main = () -> Unit {
 ### Step 1 — Bindings are filtered out of extern collection
 
 `collect_extern_imports` (in `src/codegen/wasm/mod.rs`) skips any extern
-whose component namespace starts with `oneway:builtins/concurrent`:
+whose component namespace starts with `canon:builtins/concurrent`:
 
 ```rust
-if component_ns.starts_with("oneway:builtins/concurrent") {
+if component_ns.starts_with("canon:builtins/concurrent") {
     continue;
 }
 ```
@@ -134,13 +134,13 @@ is selected via `Select` and decoded onto the stack.
 
 ### Step 7 — `canon.subtask.cancel` intrinsic
 
-A new entry in the `oneway:async/waitable` synthetic instance:
+A new entry in the `canon:async/waitable` synthetic instance:
 
 - `component.rs::wrap` emits `canon.subtask_cancel(false)` after
   `canon.task_return`. The `async_ = false` flag means the cancel
   blocks until acknowledged, which is permitted because `run` is
   lifted async-stackful.
-- `mod.rs` imports it from `oneway:async/waitable.subtask-cancel`
+- `mod.rs` imports it from `canon:async/waitable.subtask-cancel`
   with core type `(i32) -> (i32)` (subtask handle → new state code).
 - `fn_subtask_cancel` is added to `WasmGen` and points at the new
   import index (`base_waitable + 6`).
@@ -206,7 +206,7 @@ These are documented in `WASM.md` § "Phase 5 gaps":
 
 ## Why this matters
 
-With these combinators landed, Oneway has a complete async surface:
+With these combinators landed, Canon has a complete async surface:
 
 - **Sequential**: every method call on a `Future<T>` auto-awaits.
 - **Parallel**: `parallel(call, call)` runs two futures concurrently and

@@ -1,0 +1,5 @@
+name    = "canon/std"
+version = "0.3.0"
+
+[imports]
+"wasi" = "../../../wit-vendor/wasi"

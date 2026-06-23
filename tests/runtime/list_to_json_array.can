@@ -1,0 +1,13 @@
+use canon/std/Json
+
+main = () -> Unit {
+    List("\"a\"", "\"b\"", "\"c\"")
+        .toJsonArray()
+        .print()
+    List("1", "2", "3")
+        .toJsonArray()
+        .print()
+    List("\"only\"")
+        .toJsonArray()
+        .print()
+}

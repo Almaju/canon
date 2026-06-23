@@ -1,9 +1,9 @@
-# Oneway WASM Backend — Status
+# Canon WASM Backend — Status
 
-The Oneway compiler emits a WebAssembly **Component Model** component
+The Canon compiler emits a WebAssembly **Component Model** component
 targeting **WASI Preview 3**. There is no Rust backend, no `--target` flag,
-and no external toolchain step — `oneway build` produces a `.wasm` directly
-and `oneway run` executes it through an embedded `wasmtime`.
+and no external toolchain step — `canon build` produces a `.wasm` directly
+and `canon run` executes it through an embedded `wasmtime`.
 
 The lexer / parser / checker / loader are target-agnostic. All codegen lives
 in `src/codegen/wasm/` and the runtime in `src/runtime.rs`.
@@ -13,21 +13,21 @@ in `src/codegen/wasm/` and the runtime in `src/runtime.rs`.
 ## Current pipeline
 
 ```
-.ow source → Lexer → Parser → AST → Loader (resolves `use`, runs auto-await)
+.can source → Lexer → Parser → AST → Loader (resolves `use`, runs auto-await)
            → Checker → WASM Codegen → core module → wit-component wrap
-           → .wasm component → wasmtime (WASI P3 + oneway:* host bridges)
+           → .wasm component → wasmtime (WASI P3 + canon:* host bridges)
 ```
 
 | File | Role |
 |---|---|
 | `src/ast.rs` | `FunctionDef.extern_wasm: Option<ExternWasm>`, `Expr::Await` |
-| `src/loader.rs` | Bundled-package registry (from `packages/oneway/{std,wasi}/`); runs `auto_await::transform` |
+| `src/loader.rs` | Bundled-package registry (from `packages/canon/{std,wasi}/`); runs `auto_await::transform` |
 | `src/checker/mod.rs` | `Future`/`Stream` in `BUILTIN_GENERIC_TYPES`; `method_return_summary` peels one layer |
 | `src/checker/auto_await.rs` | Rewrites `Future<T>` method receivers as `Expr::Await` |
 | `src/codegen/async_analysis.rs` | Bottom-up fixpoint → `AsyncSet` of suspending functions |
 | `src/codegen/wasm/mod.rs` | Core module emission, `extern Wasm` import collection, expr compilation, `emit_async_call` |
 | `src/codegen/wasm/component.rs` | Component wrapping, canonical-ABI lowering, WIT world emission |
-| `src/runtime.rs` | wasmtime embedding; WASI P3 + `oneway:*` host bridges |
+| `src/runtime.rs` | wasmtime embedding; WASI P3 + `canon:*` host bridges |
 
 The compiler depends on `wasm-encoder`, `wit-parser`, `wit-component`,
 `wasmparser` (0.250) and `wasmtime` / `wasmtime-wasi` (45, `p3` feature).
@@ -59,7 +59,7 @@ server…" banner; `.serve()` is a stub host-side and exits 0).
 `literals`, `loop`, `match`, `methods`, `newtype_unwrap`, `option`,
 `stdlib-string`, `traits`, `tree`, `types`, `variant_payload_extraction`,
 `async_echo` (exercises the alloc / async-lower call / status-mask /
-sync-completion decode path against `oneway:builtins/http-server#echo`).
+sync-completion decode path against `canon:builtins/http-server#echo`).
 
 ---
 
@@ -87,20 +87,20 @@ is lowered as follows:
    through the canonical ABI with the appropriate `CanonicalOption`s, and
    wires instances into the core module instantiation.
 5. **Linker** (`runtime.rs`) — `wasmtime_wasi::p3::add_to_linker` covers
-   every `wasi:*` extern; small `oneway:*` host modules cover the bridges.
+   every `wasi:*` extern; small `canon:*` host modules cover the bridges.
 
 Externs are **signedness-aware**: `wasi:*` paths use `u32`/`u64` while
-`oneway:*` paths use `s32`/`s64`, matching Oneway's `Int = s64` convention.
+`canon:*` paths use `s32`/`s64`, matching Canon's `Int = s64` convention.
 
 ### Supported call-site shapes
 
 | Shape | Where exercised |
 |---|---|
-| Flat scalar params + flat scalar return | `random.ow`, `clock.ow`, `extern.ow` |
-| String return (indirect via `cabi_realloc`) | `now.ow` |
-| String params + string return | `stdlib-string.ow`, `read-file.ow`, `fetch-url.ow` |
-| `result<string, string>` return (with `?`) | `read-file.ow`, `fetch-url.ow` |
-| `extern Wasm.async` with sync-completion fast path | `tests/runtime/async_echo.ow` |
+| Flat scalar params + flat scalar return | `random.can`, `clock.can`, `extern.can` |
+| String return (indirect via `cabi_realloc`) | `now.can` |
+| String params + string return | `stdlib-string.can`, `read-file.can`, `fetch-url.can` |
+| `result<string, string>` return (with `?`) | `read-file.can`, `fetch-url.can` |
+| `extern Wasm.async` with sync-completion fast path | `tests/runtime/async_echo.can` |
 
 Anything more exotic (lists, records, `Result<Int, …>`, futures of
 non-strings) is silently skipped by `collect_extern_imports` — those call
@@ -125,7 +125,7 @@ For each `extern Wasm` function, `IndirectReturnShape` describes the return:
   pass the pointer, then read `(ptr, len)` back into a `Ty::Str`.
 - **`ResultStringString`**: 12-byte return area `[u8 disc, _, _, _, i32
   ptr, i32 len]`. The WIT discriminant (0=ok, 1=err) is the inverse of
-  Oneway's alphabetical tagging (Err=0, Ok=1), so the codegen XORs byte 0
+  Canon's alphabetical tagging (Err=0, Ok=1), so the codegen XORs byte 0
   with 1 after the call. Pushed as `Ty::NamedPtrStr("Result")` so `?` /
   match arms can extract the string payload.
 
@@ -157,7 +157,7 @@ In the component, the function type is declared as `async func(…)` via
    drop the subtask before the set (otherwise wasmtime's
    `ResourceTableError::HasChildren` trips). When wait returns the host
    has written the result into our ret-area; decode and return.
-   Exercised by `tests/runtime/async_slow_echo.ow`.
+   Exercised by `tests/runtime/async_slow_echo.can`.
 
 ---
 
@@ -167,7 +167,7 @@ In the component, the function type is declared as `async func(…)` via
 
 | Gap | Notes |
 |---|---|
-| **JSON structural derive** | `Json` validation, `ToJson` for primitives, and `{"k": v}` / `[v, ...]` literal syntax with arbitrary-expression interpolation are live (`oneway:builtins/json` host bridge). Still needed: compiler-derived `ToJson` / `FromJson` for user-defined product / union types, including auto-fall-through for newtypes (today `Email = String` needs a hand-written `ToJson` or `.String` unwrap). |
+| **JSON structural derive** | `Json` validation, `ToJson` for primitives, and `{"k": v}` / `[v, ...]` literal syntax with arbitrary-expression interpolation are live (`canon:builtins/json` host bridge). Still needed: compiler-derived `ToJson` / `FromJson` for user-defined product / union types, including auto-fall-through for newtypes (today `Email = String` needs a hand-written `ToJson` or `.String` unwrap). |
 | **More `Result<T, E>` shapes** | `classify_return` only recognises `Result<String, String>`. `Result<Int, String>`, `Result<Unit, IoError>`, … need a small extension to the indirect-return decoder (machinery is generic; only the recognition + readback is hard-coded). |
 | **Early-return on `?`** | `?` extracts the Ok/Some payload but doesn't branch on the discriminant. A failing host call surfaces garbage on the Ok path. Fix: load tag after the lowered call, `br_if` to the enclosing function's epilogue on the error case. |
 | **Match-arm payload binding for `Result<String, String>`** | Dispatch picks the right arm, but the bound variable in `Ok(s) => … s …` isn't populated. The `bind_arm_payload` mechanism that works for user unions needs to extend to `Ty::NamedPtrStr`. |
@@ -177,7 +177,7 @@ In the component, the function type is declared as `async func(…)` via
 
 | Gap | Notes |
 |---|---|
-| **`Stream<T>.each(lambda)` codegen** | The stdlib surface is declared in `packages/oneway/std/src/stream.ow` (`map`/`filter`/`take`/`concat`/`toList`/`toString`), the checker accepts the type, and `async_analysis::expr_has_async_trigger` recognises `.each` / `.next` as async triggers — but `build_extern_component_params` returns `None` on `Stream<T>` params/returns, so the imports are silently dropped and the binary won't link. Real fix is slice 1b in `STREAMING.md`: route Stream-using programs through `wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder` type section. |
+| **`Stream<T>.each(lambda)` codegen** | The stdlib surface is declared in `packages/canon/std/src/stream.can` (`map`/`filter`/`take`/`concat`/`toList`/`toString`), the checker accepts the type, and `async_analysis::expr_has_async_trigger` recognises `.each` / `.next` as async triggers — but `build_extern_component_params` returns `None` on `Stream<T>` params/returns, so the imports are silently dropped and the binary won't link. Real fix is slice 1b in `STREAMING.md`: route Stream-using programs through `wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder` type section. |
 | **HTTP-server `.serve()`** | Host bridge (`host_builtin_http_server::serve`) is a stub that returns `0` immediately. Real semantics need host-driven invocation of guest handler lambdas — function-table indirect calls or resource-keyed handler tables. |
 | **Sync-completion path through `emit_arg_as_nonblocking`** | `compile_parallel` / `compile_race` assume both arms suspend (subtask handle ≠ 0). If an async extern completes synchronously its packed status has CallState = Returned and subtask = 0; calling `waitable.join(0, set)` traps. Today this is fine because the only test arms (`slowEcho`) always suspend, but a robust implementation should branch on `status & 0xF == 2` and treat synchronously-completed arms as immediately `seen`. |
 
@@ -190,16 +190,16 @@ still exists. Either delete it (if unused) or document why it's needed.
 
 ## Capability → WASI P3 import mapping
 
-| Oneway capability | WASI P3 interface |
+| Canon capability | WASI P3 interface |
 |---|---|
-| (implicit `print`) | `oneway:host/console` (bridge) |
+| (implicit `print`) | `canon:host/console` (bridge) |
 | `Clock` | `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15` |
 | `Random` | `wasi:random/random@0.3.0-rc-2026-03-15` |
-| `Filesystem` | currently `oneway:builtins/filesystem` (blocking bridge) — WASI `wasi:filesystem/types` async path is Phase-5 work |
-| `Network`/`HttpClient` | currently `oneway:builtins/http` (blocking bridge) — `wasi:http/outgoing-handler` is Phase-5 |
-| `HttpServer` | exported `wasi:http/handler` (Phase-5); currently stubbed via `oneway:builtins/http-server`. See `WASI-HTTP-HANDLER.md` for the migration plan |
+| `Filesystem` | currently `canon:builtins/filesystem` (blocking bridge) — WASI `wasi:filesystem/types` async path is Phase-5 work |
+| `Network`/`HttpClient` | currently `canon:builtins/http` (blocking bridge) — `wasi:http/outgoing-handler` is Phase-5 |
+| `HttpServer` | exported `wasi:http/handler` (Phase-5); currently stubbed via `canon:builtins/http-server`. See `WASI-HTTP-HANDLER.md` for the migration plan |
 
-The `oneway:*` interfaces are temporary scaffolds. Each one moves to the
+The `canon:*` interfaces are temporary scaffolds. Each one moves to the
 corresponding `wasi:*` interface once its canonical-ABI shape (async,
 streams, resources) is implemented.
 
@@ -212,8 +212,8 @@ streams, resources) is implemented.
 - `tests/checker/ok/` & `tests/checker/fail/` — checker fixtures, with
   `.stderr` goldens for the failure cases.
 - `tests/runtime/` — full-pipeline programs with `.stdout` goldens (run
-  through `oneway run` and compared exactly).
-- `tests/oneway/*_test.ow` — `() -> TestResult` functions discovered by
+  through `canon run` and compared exactly).
+- `tests/canon/*_test.can` — `() -> TestResult` functions discovered by
   signature.
 - `tests/async_test.rs` — unit tests for `async_analysis::analyse`.
 
@@ -229,7 +229,7 @@ intentionally. `examples/` is documentation, not a test layer.
 - `extern Rust` is gone from the language. Don't reintroduce it.
 - `Future<T>` and `Stream<T>` auto-await at method call sites. The user
   writes neither `async` nor `await`.
-- `oneway fmt`, `oneway check`, `oneway inspect`, `oneway lsp` are
+- `canon fmt`, `canon check`, `canon inspect`, `canon lsp` are
   target-agnostic and must keep working regardless of codegen state.
 - When the codegen can't lower something, the answer is "not yet
   implemented" — never a fallback to a different backend.

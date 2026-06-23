@@ -1,0 +1,21 @@
+bindings "canon:builtins/stream@0.1.0#from-list"
+
+streamOf = <T>(List<T>) -> Stream<T>
+
+bindings "canon:builtins/stream@0.1.0"
+
+empty = <T>() -> Stream<T>
+
+generate = <T>(() -> Option<Stream<T> * T>) -> Stream<T>
+
+concat = <T>(Stream<T> * Stream<T>) -> Stream<T>
+
+filter = <T>(Stream<T> * (T) -> Bool) -> Stream<T>
+
+map = <A, B>(Stream<A> * (A) -> B) -> Stream<B>
+
+take = <T>(Stream<T> * Int) -> Stream<T>
+
+toList = <T>(Stream<T>) -> Future<List<T>>
+
+toString = (Stream<String>) -> Future<String>

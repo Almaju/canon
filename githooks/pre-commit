@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
 #
-# pre-commit hook for oneway
+# pre-commit hook for canon
 #
 # Runs before every commit to make sure:
 #   1. cargo test passes
 #   2. all examples compile and run successfully (via the embedded
-#      wasmtime — `oneway run` produces no native binary)
+#      wasmtime — `canon run` produces no native binary)
 #
 # Install with:  just install-hooks
 # Bypass once:   git commit --no-verify
@@ -33,12 +33,12 @@ pass=0
 fail=0
 skip=0
 
-for f in examples/*.ow examples/*/main.ow; do
+for f in examples/*.can examples/*/main.can; do
     [ -f "$f" ] || continue
-    if [ "$(basename "$f")" = "main.ow" ]; then
+    if [ "$(basename "$f")" = "main.can" ]; then
         label=$(basename "$(dirname "$f")")
     else
-        label=$(basename "$f" .ow)
+        label=$(basename "$f" .can)
     fi
 
     printf "  %-20s" "$label"

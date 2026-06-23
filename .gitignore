@@ -1,14 +1,14 @@
 /target
-/editors/zed-oneway/target
-/editors/zed-oneway/grammars/oneway
-/editors/zed-oneway/Cargo.lock
-/editors/tree-sitter-oneway/node_modules
-/editors/tree-sitter-oneway/build
-/editors/tree-sitter-oneway/bindings
-/editors/tree-sitter-oneway/target
+/editors/zed-canon/target
+/editors/zed-canon/grammars/canon
+/editors/zed-canon/Cargo.lock
+/editors/tree-sitter-canon/node_modules
+/editors/tree-sitter-canon/build
+/editors/tree-sitter-canon/bindings
+/editors/tree-sitter-canon/target
 *.rs.bk
 *.o
 examples/*.rs
 examples/*.cargo/
-# Build output dirs created by `oneway build` / `oneway run`
+# Build output dirs created by `canon build` / `canon run`
 build/

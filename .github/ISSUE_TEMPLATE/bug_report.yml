@@ -19,7 +19,7 @@ body:
     id: reproduction
     attributes:
       label: Minimal reproduction
-      description: The smallest `.ow` snippet that reproduces the bug.
+      description: The smallest `.can` snippet that reproduces the bug.
       render: shell
     validations:
       required: true
@@ -42,8 +42,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Oneway version
-      placeholder: "e.g. 0.2.0  (run `oneway --version`)"
+      label: Canon version
+      placeholder: "e.g. 0.2.0  (run `canon --version`)"
     validations:
       required: true
 
@@ -64,7 +64,7 @@ body:
   - type: dropdown
     id: install
     attributes:
-      label: How did you install Oneway?
+      label: How did you install Canon?
       options:
         - install.sh (prebuilt binary)
         - Built from source

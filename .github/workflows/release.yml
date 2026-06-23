@@ -74,9 +74,9 @@ jobs:
         shell: bash
         run: |
           ref="${{ steps.tag.outputs.ref }}"
-          name="oneway-${ref}-${{ matrix.target }}"
+          name="canon-${ref}-${{ matrix.target }}"
           mkdir -p "dist/${name}"
-          cp "target/${{ matrix.target }}/release/oneway${{ matrix.exe }}" "dist/${name}/"
+          cp "target/${{ matrix.target }}/release/canon${{ matrix.exe }}" "dist/${name}/"
           cp README.md LICENSE DESIGN.md "dist/${name}/" 2>/dev/null || true
           tar -czf "dist/${name}.tar.gz" -C dist "${name}"
           if command -v sha256sum >/dev/null 2>&1; then
@@ -89,7 +89,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: oneway-${{ matrix.target }}
+          name: canon-${{ matrix.target }}
           path: |
             ${{ steps.package.outputs.archive }}
             ${{ steps.package.outputs.sha }}

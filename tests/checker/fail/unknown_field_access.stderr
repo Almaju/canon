@@ -1,2 +1,2 @@
-error[tests/checker/fail/unknown_field_access.ow:8:5]: type `User` has no field `Mystery`
-error[tests/checker/fail/unknown_field_access.ow:8:5]: no method `print` on type `Mystery` with 0 argument(s)
+error[tests/checker/fail/unknown_field_access.can:8:5]: type `User` has no field `Mystery`
+error[tests/checker/fail/unknown_field_access.can:8:5]: no method `print` on type `Mystery` with 0 argument(s)

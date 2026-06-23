@@ -1,0 +1,21 @@
+use canon/std/TestResult
+
+Dark = Unit
+
+Light = Unit
+
+Mode = Dark + Light
+
+testDispatchOnDark = () -> TestResult {
+    Dark().(
+        * (Dark) -> TestResult { Pass() }
+        * (Light) -> TestResult { Fail() }
+    )
+}
+
+testDispatchOnLight = () -> TestResult {
+    Light().(
+        * (Dark) -> TestResult { Fail() }
+        * (Light) -> TestResult { Pass() }
+    )
+}

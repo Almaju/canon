@@ -1,5 +1,5 @@
 //! Tests that probe the *checker's API surface* directly — things
-//! that can't be expressed as a single `.ow` fixture because they
+//! that can't be expressed as a single `.can` fixture because they
 //! involve calling internal entry points with synthetic arguments.
 //!
 //! Positive and negative tests of plain source code belong in
@@ -8,13 +8,13 @@
 //! test needs to feed the checker something the loader wouldn't
 //! produce on its own.
 
-use oneway::ast::resolve_new_syntax;
-use oneway::checker;
-use oneway::checker::check_with_entry;
-use oneway::lexer::Scanner;
-use oneway::parser::Parser;
+use canon::ast::resolve_new_syntax;
+use canon::checker;
+use canon::checker::check_with_entry;
+use canon::lexer::Scanner;
+use canon::parser::Parser;
 
-fn parse(source: &str) -> oneway::ast::Module {
+fn parse(source: &str) -> canon::ast::Module {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().expect("lexer failed");
     let mut parser = Parser::new(tokens);

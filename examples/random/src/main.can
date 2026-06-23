@@ -1,0 +1,5 @@
+use canon/std/Random
+
+main = () -> Unit {
+    Random().print()
+}

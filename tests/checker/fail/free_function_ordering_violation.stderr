@@ -1,1 +1,1 @@
-error[tests/checker/fail/free_function_ordering_violation.ow:5:1]: function declarations must be in alphabetical order — `apple` should come before `zebra`
+error[tests/checker/fail/free_function_ordering_violation.can:5:1]: function declarations must be in alphabetical order — `apple` should come before `zebra`

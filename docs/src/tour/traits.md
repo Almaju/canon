@@ -2,7 +2,7 @@
 
 A trait is a callable type signature. It is declared like a function type:
 
-```oneway
+```canon
 Show = () -> String
 ```
 
@@ -14,7 +14,7 @@ difference is how the compiler distinguishes a trait implementation
 
 A trait is implemented for a type by declaring a function with the trait's name and the implementing type as a component:
 
-```oneway
+```canon
 Show = () -> String
 
 Greeting = String
@@ -41,7 +41,7 @@ main = () -> Unit {
 
 A trait with multiple methods is just a product of single-method traits:
 
-```oneway
+```canon
 Show = Debug * PrintString
 ```
 
@@ -49,7 +49,7 @@ Show = Debug * PrintString
 
 A trait declaration can carry a default body marked `{ impl }`:
 
-```oneway
+```canon
 Greet = () -> String { impl }
 ```
 
@@ -60,7 +60,7 @@ Implementing types may then either override or inherit the default.
 A trait can be used directly as a parameter type. The parameter binds the
 trait implementation, which is then invocable:
 
-```oneway
+```canon
 needsPrint = (Print) -> Unit {
     Print()
 }
@@ -71,7 +71,7 @@ needsPrint = (Print) -> Unit {
 Constraints on generic parameters use `:`, naming a trait the parameter
 must implement:
 
-```oneway
+```canon
 print = <T: Print>(List<T>) -> Unit {
     ...
 }

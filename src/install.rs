@@ -1,12 +1,12 @@
-//! `oneway install` — materialize external bindings declared in
+//! `canon install` — materialize external bindings declared in
 //! `[imports]`.
 //!
-//! For each `[imports]` entry of type `.wit`, this generates one Oneway
+//! For each `[imports]` entry of type `.wit`, this generates one Canon
 //! file per interface within the WIT package, writing them under the
-//! project's `bindgen/` directory at `<namespace>/<package>/<iface>.ow`.
-//! The output is the same Oneway source `oneway bindgen` produces, only
-//! relocated: `oneway bindgen` was designed for one-shot point-at-a-WIT
-//! generation; `oneway install` is the manifest-driven flow a user will
+//! project's `bindgen/` directory at `<namespace>/<package>/<iface>.can`.
+//! The output is the same Canon source `canon bindgen` produces, only
+//! relocated: `canon bindgen` was designed for one-shot point-at-a-WIT
+//! generation; `canon install` is the manifest-driven flow a user will
 //! actually run from inside a project.
 //!
 //! Wasm-component entries (`*.wasm` bundled deps) are recorded as
@@ -16,8 +16,8 @@
 //! The manifest key (`"wasi"`, `"wasi/random"`, …) acts as a *prefix*
 //! guard: every emitted file's path (with kebab→snake normalization,
 //! and the bindgen's internal `src/` segment stripped) must start with
-//! the key. A key of `"wasi"` matches `wasi/cli/stdout.ow`,
-//! `wasi/clocks/monotonic_clock.ow`, etc.; a key of `"wasi/random"`
+//! the key. A key of `"wasi"` matches `wasi/cli/stdout.can`,
+//! `wasi/clocks/monotonic_clock.can`, etc.; a key of `"wasi/random"`
 //! matches only files under `wasi/random/`. Mismatches surface at install
 //! time, not at the eventual `use` site, so the error names both the
 //! key and the file that failed to match.
@@ -36,8 +36,8 @@ use std::time::SystemTime;
 use crate::bindgen;
 use crate::manifest::{self, ImportSource, Manifest};
 
-/// Name of the sidecar file `oneway install` writes alongside the
-/// generated bindings. Maps each emitted `.ow` file's `bindgen/`-relative
+/// Name of the sidecar file `canon install` writes alongside the
+/// generated bindings. Maps each emitted `.can` file's `bindgen/`-relative
 /// path to the WIT interface URN it was generated from.
 ///
 /// The loader consults this file to patch `extern Wasm` declarations
@@ -46,7 +46,7 @@ use crate::manifest::{self, ImportSource, Manifest};
 /// index, the loader can reconstruct `"<urn>#<fn-kebab>"` for each
 /// function it sees in a bindgen-originated module.
 ///
-/// Format is a TOML subset matching `oneway.toml`: one `"<rel>" =
+/// Format is a TOML subset matching `canon.toml`: one `"<rel>" =
 /// "<urn>"` line per file, in alphabetical order. The first two lines
 /// are a fixed comment header so anyone opening the file knows it's a
 /// derived artifact.
@@ -54,8 +54,8 @@ pub const INSTALL_INDEX_FILENAME: &str = "_install.toml";
 
 /// The parsed contents of `bindgen/_install.toml`.
 ///
-/// `entries` keys are `.ow` file paths relative to the `bindgen/`
-/// directory (e.g. `"wasi/clocks/monotonic_clock.ow"`); values are
+/// `entries` keys are `.can` file paths relative to the `bindgen/`
+/// directory (e.g. `"wasi/clocks/monotonic_clock.can"`); values are
 /// WIT interface URNs of the form `"<ns>:<pkg>/<iface>@<version>"`
 /// (without a trailing `#<fn>`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -137,10 +137,10 @@ pub struct InstallOutcome {
     pub skipped: Vec<String>,
 }
 
-/// Read `<project_root>/oneway.toml` and install every entry in
+/// Read `<project_root>/canon.toml` and install every entry in
 /// `[imports]`. Returns the list of files written and any deferred items.
 pub fn install(project_root: &Path) -> Result<InstallOutcome, InstallError> {
-    let manifest_path = project_root.join("oneway.toml");
+    let manifest_path = project_root.join("canon.toml");
     let source = fs::read_to_string(&manifest_path)
         .map_err(|e| InstallError(format!("could not read `{}`: {e}", manifest_path.display())))?;
     let manifest = manifest::parse(&source).map_err(|e| InstallError(e.to_string()))?;
@@ -148,7 +148,7 @@ pub fn install(project_root: &Path) -> Result<InstallOutcome, InstallError> {
 }
 
 /// Walk up from `start` looking for the nearest directory containing
-/// `oneway.toml`. Returns `None` if the walk reaches the filesystem
+/// `canon.toml`. Returns `None` if the walk reaches the filesystem
 /// root without finding one. `start` may be a file or a directory.
 ///
 /// Used by `ensure_installed` to anchor the staleness check against
@@ -162,7 +162,7 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
         start.to_path_buf()
     };
     loop {
-        if cur.join("oneway.toml").is_file() {
+        if cur.join("canon.toml").is_file() {
             return Some(cur);
         }
         cur = cur.parent()?.to_path_buf();
@@ -188,12 +188,12 @@ pub enum EnsureOutcome {
 /// Run `install` on the project containing `start_path` if any of its
 /// `[imports]` entries appear out-of-date relative to the materialized
 /// `bindgen/_install.toml` index. This is the auto-installer hook the
-/// CLI calls from `oneway run` / `oneway check` / `oneway build` /
-/// `oneway test`, so users don't have to remember a separate step.
+/// CLI calls from `canon run` / `canon check` / `canon build` /
+/// `canon test`, so users don't have to remember a separate step.
 ///
 /// Staleness rules (any of):
 ///   * `bindgen/_install.toml` doesn't exist (never installed).
-///   * `oneway.toml`'s mtime is newer than the index (manifest changed).
+///   * `canon.toml`'s mtime is newer than the index (manifest changed).
 ///   * Any WIT source declared in `[imports]` has an mtime newer than
 ///     the index. For directory sources, we take the max mtime over
 ///     every `.wit` file inside.
@@ -208,7 +208,7 @@ pub fn ensure_installed(start_path: &Path) -> Result<EnsureOutcome, InstallError
         None => return Ok(EnsureOutcome::NoProject),
     };
 
-    let manifest_path = project_root.join("oneway.toml");
+    let manifest_path = project_root.join("canon.toml");
     let manifest_src = fs::read_to_string(&manifest_path)
         .map_err(|e| InstallError(format!("could not read `{}`: {e}", manifest_path.display())))?;
     let manifest = manifest::parse(&manifest_src).map_err(|e| InstallError(e.to_string()))?;
@@ -294,7 +294,7 @@ fn max_wit_mtime_newer_than(path: &Path, cutoff: SystemTime) -> bool {
 }
 
 /// Same as [`install`], but with a pre-parsed manifest. Useful for tests
-/// and for callers (e.g. a future `oneway build`) that already parsed the
+/// and for callers (e.g. a future `canon build`) that already parsed the
 /// manifest for their own reasons.
 pub fn install_from_manifest(
     project_root: &Path,
@@ -318,7 +318,7 @@ pub fn install_from_manifest(
             }
             ImportSource::Wasm(rel_path) => {
                 skipped.push(format!(
-                    "import `{}` from `{}`: bundled wasm components are not yet supported by `oneway install`",
+                    "import `{}` from `{}`: bundled wasm components are not yet supported by `canon install`",
                     import_key, rel_path
                 ));
             }
@@ -346,7 +346,7 @@ pub fn install_from_manifest(
 struct EntryResult {
     written: Vec<PathBuf>,
     skipped: Vec<String>,
-    /// One entry per generated `.ow` file: `(rel_path, urn)`. Aggregated
+    /// One entry per generated `.can` file: `(rel_path, urn)`. Aggregated
     /// across entries to produce the install index.
     index_entries: Vec<(String, String)>,
 }
@@ -356,9 +356,9 @@ struct EntryResult {
 /// to keep the file diff-stable across re-runs.
 fn write_install_index(path: &Path, index: &InstallIndex) -> Result<(), InstallError> {
     let mut out = String::new();
-    out.push_str("# Generated by `oneway install`. Do not edit.\n");
+    out.push_str("# Generated by `canon install`. Do not edit.\n");
     out.push_str(
-        "# Each entry maps a `bindgen/`-relative `.ow` file to the WIT interface URN it was generated from.\n\n",
+        "# Each entry maps a `bindgen/`-relative `.can` file to the WIT interface URN it was generated from.\n\n",
     );
     for (rel, urn) in &index.entries {
         out.push_str(&format!("{:?} = {:?}\n", rel, urn));
@@ -377,8 +377,8 @@ fn write_install_index(path: &Path, index: &InstallIndex) -> Result<(), InstallE
 /// prefix, and write the generated source under `<bindgen_root>/`.
 ///
 /// The bindgen's own output path includes a `src/` segment
-/// (`<ns>/src/<pkg>/<iface>.ow`, matching the layout of a shipped
-/// Oneway package). We strip it here because `bindgen/` is the source
+/// (`<ns>/src/<pkg>/<iface>.can`, matching the layout of a shipped
+/// Canon package). We strip it here because `bindgen/` is the source
 /// root for installed bindings — there's no manifest at
 /// `bindgen/<ns>/`, so the inner `src/` is redundant.
 fn install_wit_entry(
@@ -416,7 +416,7 @@ fn install_wit_entry(
     let mut index_entries = Vec::new();
     for file in emitted {
         // Skip interfaces the bindgen couldn't represent (resources,
-        // async-only fns, …) — mirrors the `oneway bindgen` CLI behavior.
+        // async-only fns, …) — mirrors the `canon bindgen` CLI behavior.
         if has_no_decls(&file.content) {
             skipped.extend(file.skipped);
             continue;
@@ -426,7 +426,7 @@ fn install_wit_entry(
         // `<bindgen_root>/<ns>/`.
         let rel = strip_src_segment(&file.relative_path).ok_or_else(|| {
             InstallError(format!(
-                "import `{}`: bindgen produced an unexpected path `{}` (expected `<ns>/src/<pkg>/<iface>.ow`)",
+                "import `{}`: bindgen produced an unexpected path `{}` (expected `<ns>/src/<pkg>/<iface>.can`)",
                 import_key, file.relative_path
             ))
         })?;
@@ -440,7 +440,7 @@ fn install_wit_entry(
                 "import `{}`: WIT at `{}` produced interface at `{}`, which is not under `{}/`. The manifest key must be a path prefix of every emitted file.",
                 import_key,
                 wit_path.display(),
-                rel.trim_end_matches(".ow"),
+                rel.trim_end_matches(".can"),
                 import_key,
             )));
         }
@@ -453,7 +453,7 @@ fn install_wit_entry(
         }
 
         // Run the emitted source through the canonical formatter, same as
-        // `oneway bindgen` does. Keeps the on-disk artifact stable across
+        // `canon bindgen` does. Keeps the on-disk artifact stable across
         // future bindgen whitespace tweaks.
         let content =
             crate::formatter::format(&file.content).unwrap_or_else(|_| file.content.clone());
@@ -473,8 +473,8 @@ fn install_wit_entry(
 }
 
 /// Strip the `src/` segment that the bindgen inserts between the
-/// namespace and the package: `wasi/src/random/random.ow` →
-/// `wasi/random/random.ow`. Returns `None` if the input doesn't have
+/// namespace and the package: `wasi/src/random/random.can` →
+/// `wasi/random/random.can`. Returns `None` if the input doesn't have
 /// the expected `<ns>/src/...` shape (bindgen producing an unexpected
 /// layout is a programmer error, not a user error).
 fn strip_src_segment(rel: &str) -> Option<String> {
@@ -490,8 +490,8 @@ fn strip_src_segment(rel: &str) -> Option<String> {
     Some(out)
 }
 
-/// True when a generated file has no real Oneway declarations — only
-/// blank lines and `use` directives. Same predicate `oneway bindgen`
+/// True when a generated file has no real Canon declarations — only
+/// blank lines and `use` directives. Same predicate `canon bindgen`
 /// uses when deciding whether to skip writing a file; duplicated here
 /// because the bindgen module marks it private. If a future refactor
 /// promotes it, we'll switch to that.
@@ -510,14 +510,14 @@ mod tests {
     #[test]
     fn strip_src_segment_removes_src() {
         assert_eq!(
-            strip_src_segment("wasi/src/clocks/monotonic_clock.ow").as_deref(),
-            Some("wasi/clocks/monotonic_clock.ow"),
+            strip_src_segment("wasi/src/clocks/monotonic_clock.can").as_deref(),
+            Some("wasi/clocks/monotonic_clock.can"),
         );
     }
 
     #[test]
     fn strip_src_segment_rejects_unexpected_shape() {
-        assert_eq!(strip_src_segment("wasi/clocks/monotonic_clock.ow"), None);
-        assert_eq!(strip_src_segment("foo.ow"), None);
+        assert_eq!(strip_src_segment("wasi/clocks/monotonic_clock.can"), None);
+        assert_eq!(strip_src_segment("foo.can"), None);
     }
 }

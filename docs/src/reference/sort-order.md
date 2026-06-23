@@ -19,19 +19,19 @@ enforces alphabetical order.
 
 A product type:
 
-```oneway
+```canon
 User = Birthday * Username
 ```
 
 A union type:
 
-```oneway
+```canon
 Ord = Equal + Greater + Less
 ```
 
 Function declarations in a file:
 
-```oneway
+```canon
 add    = (User * ...) -> ...
 export = (User * ...) -> ...
 remove = (User * ...) -> ...
@@ -39,7 +39,7 @@ remove = (User * ...) -> ...
 
 Inline error union:
 
-```oneway
+```canon
 read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
@@ -47,7 +47,7 @@ read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
 
 Dispatch arms in variant order:
 
-```oneway
+```canon
 ord.(
     Equal   => ...,
     Greater => ...,
@@ -58,7 +58,7 @@ ord.(
 ## Checking Without Compiling
 
 ```sh
-oneway check path/to/file.ow
+canon check path/to/file.can
 ```
 
 This runs only the sort-order check, with no codegen. Useful as a quick

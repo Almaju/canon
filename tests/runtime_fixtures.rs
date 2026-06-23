@@ -1,25 +1,25 @@
 //! Fixture-based runtime tests.
 //!
-//! Walks `tests/runtime/*.ow` and runs each through the full pipeline
+//! Walks `tests/runtime/*.can` and runs each through the full pipeline
 //! (lexer → parser → checker → codegen → runtime), comparing stdout
 //! against a sibling golden `.stdout` file.
 //!
 //! This is the "does this program actually run and produce the right
 //! output?" layer — complementary to `tests/checker_fixtures.rs`
-//! (which only goes as far as the checker) and `tests/oneway/*` (which
-//! uses the Oneway-language test framework with `TestResult`).
+//! (which only goes as far as the checker) and `tests/canon/*` (which
+//! uses the Canon-language test framework with `TestResult`).
 //!
-//! Implementation note: we shell out to the freshly-built `oneway`
-//! binary via `CARGO_BIN_EXE_oneway` rather than calling
-//! `oneway::runtime::run_component` directly. The runtime inherits
+//! Implementation note: we shell out to the freshly-built `canon`
+//! binary via `CARGO_BIN_EXE_canon` rather than calling
+//! `canon::runtime::run_component` directly. The runtime inherits
 //! stdio from its host process, so the only reliable way to capture
 //! it is through a child process. Shelling out also matches how real
 //! users invoke the compiler, which is a useful integration-test
 //! property in its own right.
 //!
 //! Adding a new runtime fixture:
-//!   1. Drop a `.ow` file into `tests/runtime/`.
-//!   2. Run `just update-fixtures` (or set `ONEWAY_UPDATE_FIXTURES=1`)
+//!   1. Drop a `.can` file into `tests/runtime/`.
+//!   2. Run `just update-fixtures` (or set `CANON_UPDATE_FIXTURES=1`)
 //!      to generate the sibling `.stdout`.
 //!   3. Review the generated file and commit both.
 
@@ -40,11 +40,11 @@ fn runtime_fixtures() {
 
     let mut failures: Vec<String> = Vec::new();
     for fixture in &fixtures {
-        let output = run_oneway_subcommand("run", fixture, &[]);
+        let output = run_canon_subcommand("run", fixture, &[]);
 
         if output.exit_code != Some(0) {
             failures.push(format!(
-                "{}: `oneway run` exited with {:?}\nstdout:\n{}\nstderr:\n{}",
+                "{}: `canon run` exited with {:?}\nstdout:\n{}\nstderr:\n{}",
                 fixture.display(),
                 output.exit_code,
                 indent(&output.stdout, "  | "),

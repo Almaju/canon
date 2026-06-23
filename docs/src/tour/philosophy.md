@@ -3,7 +3,7 @@
 > *There is one way to do everything.*
 
 Most modern languages give you ten ways to do the same thing and then ask
-you to pick. Oneway picks for you. If there's a best practice, it's the
+you to pick. Canon picks for you. If there's a best practice, it's the
 *only* practice — and the compiler enforces it.
 
 ## Alphabetical Order, Everywhere
@@ -25,10 +25,10 @@ bytes.
 
 ## Types Are the Documentation
 
-Oneway has **no local variables, no `let`**, and **no parameter names**.
+Canon has **no local variables, no `let`**, and **no parameter names**.
 The shape of a function is described entirely by its types.
 
-```oneway
+```canon
 compare = (OtherUser * User) -> Ord {
     User.Birthday.compare(OtherUser.Birthday)
 }
@@ -39,7 +39,7 @@ to as `OtherUser` (its type). If you need to disambiguate two parameters of
 the same type, you define a newtype — that newtype becomes the
 documentation:
 
-```oneway
+```canon
 User      = Birthday * Username
 OtherUser = User
 ```
@@ -54,7 +54,7 @@ requires a `File` value; making an HTTP request requires a `Url`; running
 an HTTP server requires an `HttpServer`. The values that carry the effect
 are ordinary arguments:
 
-```oneway
+```canon
 read = (File) -> Result<String, IoError>
 get  = (Url)  -> Result<String, HttpError>
 ```
@@ -73,15 +73,15 @@ usually to introduce a newtype or rename a method.
 
 ## Batteries-Included
 
-Oneway ships opinionated stdlib modules for the major application
+Canon ships opinionated stdlib modules for the major application
 domains — `HttpServer`, `File`, `Url`, `Clock`, `Random`, and more —
 each backed by a standard `wasi:*` interface or, where that interface's
-canonical ABI isn't ready yet, by a temporary `oneway:builtins/*` host
+canonical ABI isn't ready yet, by a temporary `canon:builtins/*` host
 bridge. The user gets a single curated import per domain
 (`use std/HttpServer`, `use std/File`, …); the community is free to
 publish additional bindings under any path.
 
-Under the hood, every stdlib module is written in ordinary Oneway on top
+Under the hood, every stdlib module is written in ordinary Canon on top
 of [`extern Wasm`](./extern.md) declarations. There is no privileged
-path — anyone can write the same bindings; Oneway just ships them so
+path — anyone can write the same bindings; Canon just ships them so
 users don't have to.

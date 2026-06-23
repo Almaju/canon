@@ -1,6 +1,6 @@
-# Oneway
+# Canon
 
-Oneway is a new programming language. The reference implementation transpiles to Rust — Oneway inherits Rust's ownership model and zero-cost abstractions, while presenting a much smaller surface area to the programmer.
+Canon is a new programming language. The reference implementation transpiles to Rust — Canon inherits Rust's ownership model and zero-cost abstractions, while presenting a much smaller surface area to the programmer.
 
 The guiding rule: wherever ordering is discretionary, the compiler enforces alphabetical order. Components of product types, variants of unions, function declarations, dispatch arms, imports — all alphabetical. Ordering is never a meaningful change.
 
@@ -21,63 +21,63 @@ main = (Stdout) -> Unit {
 }
 ```
 
-Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Effects are passed in as capabilities (`Stdout`, `Filesystem`, …). Imports are file-based — `use Foo` imports the type declared in `foo.ow` from the current module folder.
+Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Effects are passed in as capabilities (`Stdout`, `Filesystem`, …). Imports are file-based — `use Foo` imports the type declared in `foo.can` from the current module folder.
 
 ---
 
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
 ```
 
-The script downloads a prebuilt `oneway` binary for your platform (macOS arm64/x86_64, Linux arm64/x86_64) and installs it to `~/.oneway/bin/oneway`. Add that directory to your PATH as instructed by the installer.
+The script downloads a prebuilt `canon` binary for your platform (macOS arm64/x86_64, Linux arm64/x86_64) and installs it to `~/.canon/bin/canon`. Add that directory to your PATH as instructed by the installer.
 
 Pin to a specific version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh -s v0.1.0
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
 ```
 
 Update an existing install in place:
 
 ```sh
-oneway upgrade            # install the latest release
-oneway upgrade v0.2.0     # install a specific release
-oneway upgrade --check    # only check whether a newer release is available
+canon upgrade            # install the latest release
+canon upgrade v0.2.0     # install a specific release
+canon upgrade --check    # only check whether a newer release is available
 ```
 
-> **Note:** `oneway run` and `oneway build` shell out to `rustc` to compile the generated Rust. Install Rust from [rustup.rs](https://rustup.rs) if you don't already have it.
+> **Note:** `canon run` and `canon build` shell out to `rustc` to compile the generated Rust. Install Rust from [rustup.rs](https://rustup.rs) if you don't already have it.
 
 ---
 
 ## Usage
 
 ```sh
-oneway run hello.ow              # compile and run
-oneway run --addr 127.0.0.1:8080 # serve as a wasi:http/handler
-oneway build hello.ow            # compile to a WASM component (.wasm)
-oneway check hello.ow            # check sort order and types
-oneway test hello_test.ow        # run `() -> TestResult` functions
-oneway fmt hello.ow              # format source (use --check to verify only)
-oneway inspect wat hello.ow      # print generated WAT
-oneway inspect ast hello.ow      # print the parsed AST
-oneway inspect tokens hello.ow   # print lexer tokens
-oneway bindgen file.wit          # generate Oneway bindings from WIT
-oneway upgrade                   # update to the latest release
-oneway --version
-oneway help
+canon run hello.can              # compile and run
+canon run --addr 127.0.0.1:8080 # serve as a wasi:http/handler
+canon build hello.can            # compile to a WASM component (.wasm)
+canon check hello.can            # check sort order and types
+canon test hello_test.can        # run `() -> TestResult` functions
+canon fmt hello.can              # format source (use --check to verify only)
+canon inspect wat hello.can      # print generated WAT
+canon inspect ast hello.can      # print the parsed AST
+canon inspect tokens hello.can   # print lexer tokens
+canon bindgen file.wit          # generate Canon bindings from WIT
+canon upgrade                   # update to the latest release
+canon --version
+canon help
 ```
 
 A first program:
 
 ```sh
-cat > hello.ow <<'EOF'
+cat > hello.can <<'EOF'
 main = (Stdout) -> Unit {
     "hello".print(Stdout)
 }
 EOF
-oneway run hello.ow
+canon run hello.can
 ```
 
 ---
@@ -86,10 +86,10 @@ oneway run hello.ow
 
 | Path | Description |
 |------|-------------|
-| [`src/`](src/) | The `oneway` compiler (lexer, parser, checker, codegen) |
-| [`std/`](std/) | Standard library (`.ow` interfaces + Rust FFI) |
+| [`src/`](src/) | The `canon` compiler (lexer, parser, checker, codegen) |
+| [`std/`](std/) | Standard library (`.can` interfaces + Rust FFI) |
 | [`docs/`](docs/) | Documentation site (mdBook) |
-| [`examples/`](examples/) | Example `.ow` programs |
+| [`examples/`](examples/) | Example `.can` programs |
 | [`tests/`](tests/) | Integration tests |
 | [`editors/`](editors/) | Tree-sitter grammar and Zed extension |
 | [`DESIGN.md`](DESIGN.md) | Language specification |
@@ -102,7 +102,7 @@ For contributors. End users should install the prebuilt binary via the script ab
 
 ```sh
 just build        # build a debug binary
-just install      # build and install the release binary to ~/.cargo/bin/oneway
+just install      # build and install the release binary to ~/.cargo/bin/canon
 just test         # run the test suite
 just examples     # compile and run every example
 just example hello  # run a single example by name

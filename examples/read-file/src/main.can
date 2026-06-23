@@ -1,0 +1,9 @@
+use canon/std/fs/File
+use canon/std/fs/Path
+
+main = () -> Unit {
+    Path("Cargo.toml")
+        .File()?
+        .read()?
+        .print()
+}

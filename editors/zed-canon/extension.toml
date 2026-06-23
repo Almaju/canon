@@ -1,0 +1,15 @@
+id = "canon"
+name = "Canon"
+version = "0.3.0"
+schema_version = 1
+authors = ["Canon Contributors"]
+description = "Canon language support for Zed"
+
+[language_servers.canon-lsp]
+name = "Canon LSP"
+languages = ["Canon"]
+
+[grammars.canon]
+repository = "https://github.com/Almaju/canon"
+path = "editors/tree-sitter-canon"
+commit = "da7a9c4d1b9f7aa25e56a43a08bed921f957e377"

@@ -1,7 +1,7 @@
-//! Oneway source code formatter.
+//! Canon source code formatter.
 //!
-//! Parses an `.ow` source file and emits it in canonical format.
-//! The formatter enforces "one way" to write Oneway code — consistent
+//! Parses an `.can` source file and emits it in canonical format.
+//! The formatter enforces "one way" to write Canon code — consistent
 //! spacing, indentation, and line breaking.
 
 use crate::ast::*;
@@ -11,7 +11,7 @@ use crate::parser::Parser;
 
 const MAX_WIDTH: usize = 100;
 
-/// Format an Oneway source string, returning the canonically formatted version.
+/// Format an Canon source string, returning the canonically formatted version.
 pub fn format(source: &str) -> Result<String> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
@@ -598,7 +598,7 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
 /// Re-escape a string literal's contents for emission. The lexer
 /// stores the decoded value (with `\n`, `\t`, `\\`, `\"` already
 /// translated to their raw bytes); the formatter has to put those
-/// escapes back so the emitted source is parseable Oneway again.
+/// escapes back so the emitted source is parseable Canon again.
 fn escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

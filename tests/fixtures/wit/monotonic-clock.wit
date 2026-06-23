@@ -1,6 +1,6 @@
 package wasi:clocks@0.3.0-rc-2026-03-15;
 
-/// A minimal monotonic-clock WIT for exercising `oneway bindgen`.
+/// A minimal monotonic-clock WIT for exercising `canon bindgen`.
 interface monotonic-clock {
     /// An instant in time, in nanoseconds.
     type instant = u64;

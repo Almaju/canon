@@ -38,7 +38,7 @@ Examples of unacceptable behavior:
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported by opening a
-[GitHub Security Advisory](https://github.com/almaju/oneway/security/advisories/new)
+[GitHub Security Advisory](https://github.com/almaju/canon/security/advisories/new)
 (which is private) or by contacting the maintainers through GitHub.
 
 All complaints will be reviewed and investigated promptly and fairly. Community

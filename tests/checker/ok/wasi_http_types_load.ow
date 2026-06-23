@@ -1,9 +1,0 @@
-use oneway/std/http/Headers
-use oneway/std/http/Method
-use oneway/std/http/Request
-use oneway/std/http/Response
-use oneway/std/http/Status
-
-main = () -> Unit {
-    Status(200).print()
-}

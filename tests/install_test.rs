@@ -1,8 +1,8 @@
-//! End-to-end tests for `oneway install`.
+//! End-to-end tests for `canon install`.
 //!
 //! Each test stands up a temporary project directory containing an
-//! `oneway.toml` (with an `[imports]` table) and one or more vendored
-//! `.wit` files, runs `oneway::install::install` against the project
+//! `canon.toml` (with an `[imports]` table) and one or more vendored
+//! `.wit` files, runs `canon::install::install` against the project
 //! root, and asserts on what landed under `bindgen/`.
 //!
 //! These tests don't exercise the loader yet — that's slice 2b. Here we
@@ -11,9 +11,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use oneway::install;
-use oneway::install::EnsureOutcome;
-use oneway::loader;
+use canon::install;
+use canon::install::EnsureOutcome;
+use canon::loader;
 
 /// Build a unique tmpdir under `target/install-test-tmp/<name>`. The
 /// `target/` directory is already gitignored by Cargo, and using a
@@ -45,7 +45,7 @@ fn vendor_wit(project_root: &Path, fixture_relative: &str, dest_name: &str) {
 }
 
 fn write_manifest(project_root: &Path, contents: &str) {
-    fs::write(project_root.join("oneway.toml"), contents).expect("write manifest");
+    fs::write(project_root.join("canon.toml"), contents).expect("write manifest");
 }
 
 #[test]
@@ -68,7 +68,7 @@ version = "0.1.0"
     // The fixture defines a single `monotonic-clock` interface within
     // the `wasi:clocks` package. Expect one binding file at the
     // snake-cased path plus the install index sidecar.
-    let expected_binding = root.join("bindgen/wasi/clocks/monotonic_clock.ow");
+    let expected_binding = root.join("bindgen/wasi/clocks/monotonic_clock.can");
     let expected_index = root.join("bindgen/_install.toml");
     assert!(
         expected_binding.exists(),
@@ -101,7 +101,7 @@ version = "0.1.0"
 
     // The index sidecar should map this file to the correct URN.
     let index_content = fs::read_to_string(&expected_index).expect("read index");
-    assert!(index_content.contains("\"wasi/clocks/monotonic_clock.ow\""));
+    assert!(index_content.contains("\"wasi/clocks/monotonic_clock.can\""));
     assert!(index_content.contains("wasi:clocks/monotonic-clock@"));
 }
 
@@ -149,7 +149,7 @@ version = "0.1.0"
     );
 
     let outcome = install::install(&root).expect("install with broad prefix should succeed");
-    let expected = root.join("bindgen/wasi/clocks/monotonic_clock.ow");
+    let expected = root.join("bindgen/wasi/clocks/monotonic_clock.can");
     assert!(
         expected.exists(),
         "expected `{}` to be written; got {:?}",
@@ -232,9 +232,9 @@ version = "0.1.0"
 #[test]
 fn loader_resolves_use_against_installed_bindgen() {
     // The end-to-end story for slices 2a+2b: a user declares a WIT
-    // import in their manifest, runs `oneway install` to materialize
+    // import in their manifest, runs `canon install` to materialize
     // the bindings under `bindgen/`, and then their program can `use`
-    // the bound interface as if it were any other Oneway module.
+    // the bound interface as if it were any other Canon module.
     //
     // We stand up that exact shape on disk and assert that
     // `loader::load_module` resolves the `use` line against the
@@ -254,13 +254,13 @@ version = "0.1.0"
 
     install::install(&root).expect("install should succeed");
 
-    // Write a source file in src/main.ow that imports the binding by
+    // Write a source file in src/main.can that imports the binding by
     // its installed module path. We don't actually need the body to
     // type-check end-to-end — just to load — so the file holds a
     // single `use` line.
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
-    let entry = src_dir.join("main.ow");
+    let entry = src_dir.join("main.can");
     fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
@@ -299,7 +299,7 @@ version = "0.1.0"
 
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
-    let entry = src_dir.join("main.ow");
+    let entry = src_dir.join("main.can");
     fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
@@ -313,7 +313,7 @@ version = "0.1.0"
         .items
         .iter()
         .filter_map(|item| match item {
-            oneway::ast::Item::Function(f) => f
+            canon::ast::Item::Function(f) => f
                 .extern_wasm
                 .as_ref()
                 .map(|ew| (f.name.name.clone(), ew.path.clone())),
@@ -358,8 +358,8 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     // A local sibling module the entry will `use`.
-    fs::write(src_dir.join("sibling.ow"), "Marker = Int\n").expect("write sibling");
-    let entry = src_dir.join("main.ow");
+    fs::write(src_dir.join("sibling.can"), "Marker = Int\n").expect("write sibling");
+    let entry = src_dir.join("main.can");
     fs::write(&entry, "use sibling\n").expect("write entry");
 
     let result =
@@ -369,23 +369,23 @@ version = "0.1.0"
         .items
         .iter()
         .filter_map(|item| match item {
-            oneway::ast::Item::TypeDef(t) => Some(t.name.name.clone()),
+            canon::ast::Item::TypeDef(t) => Some(t.name.name.clone()),
             _ => None,
         })
         .collect();
     assert!(
         names.iter().any(|n| n == "Marker"),
-        "expected `Marker` from sibling.ow to be loaded; got names {names:?}",
+        "expected `Marker` from sibling.can to be loaded; got names {names:?}",
     );
 }
 
 #[test]
-fn ensure_installed_no_project_when_outside_any_oneway_toml() {
-    // A path with no `oneway.toml` ancestor produces `NoProject` and
-    // does nothing. This is the case for loose `.ow` files outside any
+fn ensure_installed_no_project_when_outside_any_canon_toml() {
+    // A path with no `canon.toml` ancestor produces `NoProject` and
+    // does nothing. This is the case for loose `.can` files outside any
     // project (e.g. our own `tests/runtime/` fixtures).
     let root = tmpdir("ensure_no_project");
-    let loose = root.join("loose.ow");
+    let loose = root.join("loose.can");
     fs::write(&loose, "main = () -> Unit { Unit() }\n").unwrap();
 
     let outcome = install::ensure_installed(&loose).expect("ensure_installed should not fail");
@@ -441,7 +441,7 @@ version = "0.1.0"
         "should have written something"
     );
     assert!(root
-        .join("bindgen/wasi/clocks/monotonic_clock.ow")
+        .join("bindgen/wasi/clocks/monotonic_clock.can")
         .is_file());
 }
 
@@ -496,7 +496,7 @@ version = "0.1.0"
     // `filetime` dependency for this single test — a 1.1s sleep is
     // acceptable in the suite (this test is the only one paying it).
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    let manifest_path = root.join("oneway.toml");
+    let manifest_path = root.join("canon.toml");
     fs::write(&manifest_path, manifest_src).unwrap();
 
     let outcome = install::ensure_installed(&root).unwrap();
@@ -525,8 +525,8 @@ version = "0.1.0"
     let first_content = fs::read_to_string(&first.written[0]).expect("read after first install");
 
     // Run install again; should rewrite the same files with the same
-    // content. (Idempotence matters because `oneway install` will
-    // eventually be invoked implicitly from `oneway build`.)
+    // content. (Idempotence matters because `canon install` will
+    // eventually be invoked implicitly from `canon build`.)
     let second = install::install(&root).expect("second install");
     assert_eq!(first.written, second.written);
     let second_content = fs::read_to_string(&second.written[0]).expect("read after second install");

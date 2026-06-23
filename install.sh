@@ -1,19 +1,19 @@
 #!/usr/bin/env sh
 #
-# Install the `oneway` compiler.
+# Install the `canon` compiler.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/almaju/oneway/main/install.sh | sh -s v0.1.0
+#   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
 #
 # Env vars:
-#   ONEWAY_INSTALL  override install prefix (default: $HOME/.oneway)
-#   ONEWAY_VERSION  override version (default: latest release)
+#   CANON_INSTALL  override install prefix (default: $HOME/.canon)
+#   CANON_VERSION  override version (default: latest release)
 
 set -eu
 
-REPO="almaju/oneway"
-INSTALL_DIR="${ONEWAY_INSTALL:-$HOME/.oneway}"
+REPO="almaju/canon"
+INSTALL_DIR="${CANON_INSTALL:-$HOME/.canon}"
 BIN_DIR="$INSTALL_DIR/bin"
 
 reset="\033[0m"
@@ -57,7 +57,7 @@ arch="$(uname -m)"
 case "$os" in
     Darwin) os_target="apple-darwin" ;;
     Linux)  os_target="unknown-linux-gnu" ;;
-    *) die "error: unsupported OS \`$os\` (oneway provides binaries for macOS and Linux)" ;;
+    *) die "error: unsupported OS \`$os\` (canon provides binaries for macOS and Linux)" ;;
 esac
 
 case "$arch" in
@@ -69,7 +69,7 @@ esac
 target="${arch_target}-${os_target}"
 
 # Resolve version
-version="${ONEWAY_VERSION:-${1:-latest}}"
+version="${CANON_VERSION:-${1:-latest}}"
 
 if [ "$version" = "latest" ]; then
     info "Resolving latest release from github.com/${REPO}…"
@@ -88,15 +88,15 @@ case "$version" in
     *) version="v${version}" ;;
 esac
 
-archive="oneway-${version}-${target}.tar.gz"
+archive="canon-${version}-${target}.tar.gz"
 url="https://github.com/${REPO}/releases/download/${version}/${archive}"
 sha_url="${url}.sha256"
 
-info "Installing oneway ${version} for ${target}…"
+info "Installing canon ${version} for ${target}…"
 info "Source:  ${url}"
-info "Target:  ${BIN_DIR}/oneway"
+info "Target:  ${BIN_DIR}/canon"
 
-tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t oneway-install)"
+tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t canon-install)"
 trap 'rm -rf "$tmpdir"' EXIT INT TERM
 
 fetch "$url" "$tmpdir/$archive"
@@ -122,14 +122,14 @@ fi
 mkdir -p "$BIN_DIR"
 tar -xzf "$tmpdir/$archive" -C "$tmpdir"
 
-extracted="$tmpdir/oneway-${version}-${target}"
-[ -f "$extracted/oneway" ] || die "error: archive did not contain expected \`oneway\` binary"
+extracted="$tmpdir/canon-${version}-${target}"
+[ -f "$extracted/canon" ] || die "error: archive did not contain expected \`canon\` binary"
 
-mv "$extracted/oneway" "$BIN_DIR/oneway"
-chmod +x "$BIN_DIR/oneway"
+mv "$extracted/canon" "$BIN_DIR/canon"
+chmod +x "$BIN_DIR/canon"
 
 ok ""
-ok "  ✓ Installed oneway ${version} to ${BIN_DIR}/oneway"
+ok "  ✓ Installed canon ${version} to ${BIN_DIR}/canon"
 ok ""
 
 # Detect shell rc file and offer PATH instructions
@@ -142,7 +142,7 @@ esac
 
 case ":${PATH:-}:" in
     *":$BIN_DIR:"*)
-        info "${BIN_DIR} is already on your PATH. Try: oneway help"
+        info "${BIN_DIR} is already on your PATH. Try: canon help"
         ;;
     *)
         info "Add ${BIN_DIR} to your PATH:"
@@ -160,5 +160,5 @@ case ":${PATH:-}:" in
 esac
 
 echo
-info "Note: \`oneway run\` and \`oneway build\` require \`rustc\` to be installed."
+info "Note: \`canon run\` and \`canon build\` require \`rustc\` to be installed."
 info "      Install Rust from https://rustup.rs if you don't have it."

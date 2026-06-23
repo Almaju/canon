@@ -42,6 +42,6 @@ So `foo.bar()?` is `((foo.bar)())?`.
 `::<T>` after a method name pins a generic method's type parameter when
 the compiler cannot infer it from context:
 
-```oneway
+```canon
 Json.parse::<List<Int>>("[1, 2, 3]")?
 ```

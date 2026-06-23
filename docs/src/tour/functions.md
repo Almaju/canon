@@ -2,7 +2,7 @@
 
 A function is declared as:
 
-```oneway
+```canon
 name = (Components) -> ReturnType {
     body
 }
@@ -12,7 +12,7 @@ The components inside the parentheses form a product — the function's input. A
 
 ## A First Function
 
-```oneway
+```canon
 Greeting = String
 
 shout = (Greeting) -> String {
@@ -36,7 +36,7 @@ expression is the return value. There are no semicolons.
 - Non-final lines whose results are discarded are valid (they exist for
   side effects or `?` propagation).
 
-```oneway
+```canon
 readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
     File.read(Path)?
         .parse()?
@@ -51,7 +51,7 @@ multiple operations is method chaining. That is the intended style.
 
 Inside a function body, each component is referenced by **its type name**:
 
-```oneway
+```canon
 format = (Greeting * Name) -> String {
     Greeting
 }
@@ -59,7 +59,7 @@ format = (Greeting * Name) -> String {
 
 When two components share the same type, introduce a newtype alias — product members must be distinct types:
 
-```oneway
+```canon
 OtherInt = Int
 
 add = (Int * OtherInt) -> Int {
@@ -72,7 +72,7 @@ add = (Int * OtherInt) -> Int {
 Functions in the same file must be declared in alphabetical order.
 This is a compile-time requirement, not a convention:
 
-```oneway
+```canon
 add    = (User * ...) -> ...
 export = (User * ...) -> ...
 remove = (User * ...) -> ...
@@ -82,7 +82,7 @@ remove = (User * ...) -> ...
 
 There is no special syntax. Use `Option<T>`:
 
-```oneway
+```canon
 print = (Option<Color> * String) -> Unit {
     ...
 }
@@ -90,7 +90,7 @@ print = (Option<Color> * String) -> Unit {
 
 This allows both forms at the call site:
 
-```oneway
+```canon
 "hello".print()
 "hello".print(Red())
 ```
@@ -100,7 +100,7 @@ This allows both forms at the call site:
 Functions are first-class values. Refer to one by its qualified name
 and pass it where a matching signature is expected:
 
-```oneway
+```canon
 Numbers = Int^*
 
 doubleAll = (Numbers) -> Numbers {
@@ -113,7 +113,7 @@ doubleAll = (Numbers) -> Numbers {
 For one-off operations, write a lambda literal with its **full signature**.
 There is no signature inference:
 
-```oneway
+```canon
 tripleAll = (Numbers) -> Numbers {
     Numbers.map((Int) -> Int { Int.mul(Int(3)) })
 }
@@ -127,7 +127,7 @@ Lambda syntax mirrors function declaration syntax: `(Components) -> ReturnType
 A function can be parameterized by a type. Declare type parameters with
 `<...>` before the parameter list, optionally with a trait constraint:
 
-```oneway
+```canon
 print = <T: Print>(List<T>) -> Unit {
     ...
 }
@@ -136,7 +136,7 @@ print = <T: Print>(List<T>) -> Unit {
 When calling a generic function whose type parameter can't be inferred from
 context, pin it with `::<...>` (turbofish) after the function name:
 
-```oneway
+```canon
 Json.parse::<List<Int>>("[1, 2, 3]")?
 ```
 
@@ -150,7 +150,7 @@ return position without an annotation.
 `main` is the program's entry point. It takes no parameters and is lifted
 as the component's `wasi:cli/run.run` export:
 
-```oneway
+```canon
 main = () -> Unit {
     "hello".print()
 }

@@ -1,0 +1,5 @@
+use canon/std/time/Instant
+
+main = () -> Unit {
+    Instant().print()
+}

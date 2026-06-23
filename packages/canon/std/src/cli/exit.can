@@ -1,0 +1,5 @@
+Exit = Int
+
+bindings "canon:builtins/cli@0.1.0#exit-with-code"
+
+exit = (Int) -> Unit

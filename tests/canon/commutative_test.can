@@ -1,0 +1,25 @@
+use canon/std/TestResult
+
+Greeting = String
+
+Name = String
+
+greet = (Greeting * Name) -> Greeting {
+    Greeting
+}
+
+testCallableBothWays = () -> TestResult {
+    Greeting("hello").greet(Name("world"))
+    Name("world").greet(Greeting("hello"))
+    Pass()
+}
+
+testCanonicalDirection = () -> TestResult {
+    Greeting("hello").greet(Name("world"))
+    Pass()
+}
+
+testNonCanonicalDirection = () -> TestResult {
+    Name("world").greet(Greeting("hello"))
+    Pass()
+}

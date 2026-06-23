@@ -1,7 +1,0 @@
-use oneway/std/Json
-use oneway/std/MalformedJson
-
-main = () -> Result<Unit, MalformedJson> {
-    Json("{\"hello\":\"world\",\"answer\":42}")?.print()
-    Ok(Unit())
-}

@@ -6,11 +6,11 @@
 //! - `async_analysis::analyse` correctly identifies the set of suspending
 //!   functions via direct triggers + bottom-up call-graph propagation.
 
-use oneway::ast::{resolve_new_syntax, Expr, Item, Module};
-use oneway::checker::{self, auto_await};
-use oneway::codegen::async_analysis;
-use oneway::lexer::Scanner;
-use oneway::parser::Parser;
+use canon::ast::{resolve_new_syntax, Expr, Item, Module};
+use canon::checker::{self, auto_await};
+use canon::codegen::async_analysis;
+use canon::lexer::Scanner;
+use canon::parser::Parser;
 
 fn parse(source: &str) -> Module {
     let mut scanner = Scanner::new(source);
@@ -22,7 +22,7 @@ fn parse(source: &str) -> Module {
     // test source produces FunctionDefs with `extern_wasm` populated
     // — the rest of the test infrastructure (async_analysis,
     // auto_await) expects that shape.
-    oneway::loader::apply_bindings_directive(&mut module.items);
+    canon::loader::apply_bindings_directive(&mut module.items);
     module
 }
 
@@ -42,7 +42,7 @@ fn future_is_a_known_generic_type_in_extern_decl() {
     // type-alias). This test asserts that recognising the name no longer
     // produces an "unknown type" error.
     let source = r#"
-bindings "oneway:builtins/x@0.1.0"
+bindings "canon:builtins/x@0.1.0"
 
 futureString = () -> Future<String>
 
@@ -62,7 +62,7 @@ main = () -> Unit {
 #[test]
 fn stream_is_a_known_generic_type_in_extern_decl() {
     let source = r#"
-bindings "oneway:builtins/x@0.1.0"
+bindings "canon:builtins/x@0.1.0"
 
 tick = () -> Stream<Int>
 
@@ -86,7 +86,7 @@ fn auto_await_wraps_future_receiver_in_method_call() {
     // call, the auto-await transform should wrap the receiver in
     // `Expr::Await`.
     let source = r#"
-bindings "oneway:builtins/x@0.1.0"
+bindings "canon:builtins/x@0.1.0"
 
 wait = (Network) -> Future<String>
 
@@ -252,7 +252,7 @@ fn auto_await_wraps_future_argument_at_method_call() {
     // exact. `slowFetch()` returns `Future<String>` (after the loader's
     // wrap rule), the param is `String`, so the arg gets wrapped.
     let source = r#"
-bindings "oneway:builtins/x@0.1.0"
+bindings "canon:builtins/x@0.1.0"
 
 slowFetch = () -> Future<String>
 
@@ -316,7 +316,7 @@ fn auto_await_does_not_wrap_arg_when_param_expects_future() {
     // auto-await: the callee is asking for the unforced future. This is the
     // conservative-match property of `future_inner_matches`.
     let source = r#"
-bindings "oneway:builtins/x@0.1.0"
+bindings "canon:builtins/x@0.1.0"
 
 slowFetch = () -> Future<String>
 
@@ -452,7 +452,7 @@ main = (Stdout) -> Unit {
 fn async_analysis_with_no_extern_async_returns_empty_for_sync_extern() {
     // A non-`.async` extern (synchronous) should not poison the async set.
     let source = r#"
-bindings "oneway:builtins/x@0.1.0"
+bindings "canon:builtins/x@0.1.0"
 
 syncRead = (Filesystem) -> String
 

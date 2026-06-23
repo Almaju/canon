@@ -1,6 +1,6 @@
 # Effects and Values
 
-Oneway does not have a separate effect or capability system. Effects
+Canon does not have a separate effect or capability system. Effects
 emerge naturally from the values you construct and thread through your
 program.
 
@@ -11,7 +11,7 @@ them toward what you need**. There are no service singletons, no manager
 objects. Access to a resource is represented by holding a value of the
 corresponding type.
 
-```oneway
+```canon
 use std/File
 use std/Path
 
@@ -30,7 +30,7 @@ system.
 `print = (String) -> Unit` is a built-in that writes to stdout. No
 capability token, no parameter to thread — any `String` can be printed:
 
-```oneway
+```canon
 "hello".print()
 42.print()
 ```
@@ -52,7 +52,7 @@ to a database, listening on a socket — the relevant value appears in
 its signature. This is not enforced by a capability type system; it is
 the natural consequence of needing the value to do the work:
 
-```oneway
+```canon
 save = (Database * User) -> Result<Unit, DbError>
 ```
 
@@ -64,7 +64,7 @@ functions that need it.
 
 ## Async
 
-There is no `async` keyword and no `.await` in Oneway source. Both are
+There is no `async` keyword and no `.await` in Canon source. Both are
 inferred by the compiler. A function is **suspending** if it (1) is
 declared `extern Wasm.async(…)`, (2) consumes a `Future<T>` or iterates
 a `Stream<T>`, or (3) transitively calls a suspending function. The
@@ -76,7 +76,7 @@ compiler inserts an implicit `await`. You write neither keyword.
 
 ## Domain Examples
 
-```oneway
+```canon
 # Current time
 use std/Now
 Now().print()

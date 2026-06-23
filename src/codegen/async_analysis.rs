@@ -1,6 +1,6 @@
 //! Async inference — bottom-up fixpoint over the call graph.
 //!
-//! A Oneway function is **suspending** (i.e. compiled as `async` at the
+//! A Canon function is **suspending** (i.e. compiled as `async` at the
 //! Component Model boundary) if any of the following hold:
 //!
 //!   1. It is declared `extern Wasm.async("…")`.
@@ -281,7 +281,7 @@ fn collect_calls_expr(expr: &Expr, out: &mut Vec<FuncKey>) {
     }
 }
 
-/// Best-effort syntactic guess at the receiver's Oneway type *name*. Used
+/// Best-effort syntactic guess at the receiver's Canon type *name*. Used
 /// only for call-graph keying; full type information is unavailable at
 /// this AST-only layer. Conservative — returns `None` (free-function key)
 /// when the shape isn't obvious.

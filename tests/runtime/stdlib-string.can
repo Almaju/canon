@@ -1,0 +1,14 @@
+bindings "canon:builtins/strings@0.1.0"
+
+toLowercase = (String) -> String
+
+toUppercase = (String) -> String
+
+main = () -> Unit {
+    "Hello, World"
+        .toUppercase()
+        .print()
+    "GoodBye"
+        .toLowercase()
+        .print()
+}

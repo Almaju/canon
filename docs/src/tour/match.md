@@ -5,7 +5,7 @@ a union — the value is the receiver, and the arms go inside `.( )`.
 
 ## Basic Form
 
-```oneway
+```canon
 Bool = False + True
 
 main = () -> Unit {
@@ -24,7 +24,7 @@ appear as a sub-expression.
 Dispatch arms follow the union's variant order — which is itself
 alphabetical. Every variant must be spelled out:
 
-```oneway
+```canon
 Ord = Equal + Greater + Less
 
 classify = (Int) -> Sign {
@@ -41,7 +41,7 @@ classify = (Int) -> Sign {
 For union variants that carry a payload, bind it with parentheses. Use
 `_` inside the parens to ignore the payload:
 
-```oneway
+```canon
 List(7, 8, 9).first().(
     None    => "empty".print(),
     Some(_) => "non-empty".print(),

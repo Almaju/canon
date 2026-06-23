@@ -1,10 +1,10 @@
-//! Case conversion between WIT and Oneway identifier conventions.
+//! Case conversion between WIT and Canon identifier conventions.
 //!
-//! WIT uses kebab-case for everything; Oneway uses camelCase for values
+//! WIT uses kebab-case for everything; Canon uses camelCase for values
 //! and PascalCase for types. File paths are snake_case (matching the
 //! existing `kebab_case` helper in `loader.rs`, which produces e.g.
 //! `http-server` for `HttpServer` — for WIT input we use `_` instead of
-//! `-` to keep the resulting paths legal Oneway module identifiers).
+//! `-` to keep the resulting paths legal Canon module identifiers).
 
 /// `monotonic-clock` → `monotonicClock`. `get-random-u64` → `getRandomU64`.
 pub fn kebab_to_camel(s: &str) -> String {
@@ -34,7 +34,7 @@ pub fn kebab_to_pascal(s: &str) -> String {
 }
 
 /// `monotonic-clock` → `monotonic_clock`. Used for the file stem so the
-/// resulting `wasi/clocks/monotonic_clock.ow` is a legal Oneway module
+/// resulting `wasi/clocks/monotonic_clock.can` is a legal Canon module
 /// path (kebab is fine in filenames but `-` is not legal in identifiers,
 /// and the loader translates between the two in only one direction).
 pub fn kebab_to_snake(s: &str) -> String {
@@ -47,7 +47,7 @@ pub fn kebab_to_snake(s: &str) -> String {
 /// `getRandomU64` stays `get-random-u64`, not `get-random-u-6-4`).
 ///
 /// Used by the loader to reconstruct the WIT function name from the
-/// Oneway-side camelCase identifier when patching `extern Wasm` paths
+/// Canon-side camelCase identifier when patching `extern Wasm` paths
 /// against the install index.
 pub fn camel_to_kebab(s: &str) -> String {
     let mut out = String::new();
@@ -83,14 +83,14 @@ pub fn split_interface_id(id: &str) -> Option<(String, String, String, Option<St
 /// Build the on-disk relative path for an interface's generated file.
 ///
 /// `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15`
-///   → `wasi/src/clocks/monotonic_clock.ow`
+///   → `wasi/src/clocks/monotonic_clock.can`
 ///
-/// The `src/` directory mirrors the layout every shipped Oneway package
+/// The `src/` directory mirrors the layout every shipped Canon package
 /// uses (manifest at root, sources under `src/`). The bindgen output is
 /// meant to land directly in a real package, so it emits the same shape.
 pub fn interface_file_path(ns: &str, pkg: &str, iface: &str) -> String {
     format!(
-        "{}/src/{}/{}.ow",
+        "{}/src/{}/{}.can",
         kebab_to_snake(ns),
         kebab_to_snake(pkg),
         kebab_to_snake(iface),
@@ -170,7 +170,7 @@ mod tests {
     fn file_path() {
         assert_eq!(
             interface_file_path("wasi", "clocks", "monotonic-clock"),
-            "wasi/src/clocks/monotonic_clock.ow"
+            "wasi/src/clocks/monotonic_clock.can"
         );
     }
 }

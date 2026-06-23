@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::OnewayError;
+use crate::error::CanonError;
 use std::collections::{HashMap, HashSet};
 
 pub mod auto_await;
@@ -10,7 +10,7 @@ const BUILTIN_TYPES: &[&str] = &[
     "False",
     "Float",
     // Opaque, non-copyable, non-printable primitive that backs every WIT
-    // `resource` type. Generated `oneway/wasi/...` bindings declare each
+    // `resource` type. Generated `canon/wasi/...` bindings declare each
     // resource as `Foo = Handle`. Users never write `Handle` directly —
     // they receive `Foo` values from binding constructors and thread them
     // through binding methods. The own/borrow distinction WIT exposes is
@@ -32,7 +32,7 @@ const BUILTIN_TYPES: &[&str] = &[
 ];
 
 // `Random` used to live here as a capability marker, but the stdlib now
-// owns it as a data-carrying newtype (`Random = Int`, see `std/random.ow`)
+// owns it as a data-carrying newtype (`Random = Int`, see `std/random.can`)
 // constructed via `Random()`. Random bytes aren't a capability in any
 // meaningful sense — they're just data — so this matches the new layering
 // where `std/` defines user-facing types and `wasi/` provides the FFI.
@@ -53,7 +53,7 @@ const ZERO_DATA_BUILTINS: &[&str] = &["False", "True", "Unit"];
 /// `compile_parallel` / `compile_race` paths. They appear in source as if
 /// they were ordinary calls (`parallel(a, b)`, `race(a, b)`) but the
 /// checker accepts them without resolving the bindings declaration in
-/// `packages/oneway/std/src/concurrent.ow` — the declaration's PascalCase
+/// `packages/canon/std/src/concurrent.can` — the declaration's PascalCase
 /// first parameter (`Future<T>`) would otherwise force the checker to
 /// look them up as methods on `Future`, which the `Constructor(…)` call
 /// shape doesn't support. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
@@ -121,7 +121,7 @@ impl SymbolTable {
     }
 }
 
-pub fn check(module: &Module) -> Vec<OnewayError> {
+pub fn check(module: &Module) -> Vec<CanonError> {
     check_with_entry(module, 0)
 }
 
@@ -130,7 +130,7 @@ pub fn check(module: &Module) -> Vec<OnewayError> {
 /// `entry_items_start`. Items before that index originated from `use`
 /// imports and follow their own ordering — they are not the entry file's
 /// concern.
-pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<OnewayError> {
+pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonError> {
     let mut errors = Vec::new();
     let symbols = collect_symbols(module, &mut errors);
 
@@ -174,7 +174,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<Oneway
         // CLI program: `main` exists, no HTTP entry. Existing behaviour.
         (true, 0) => {}
         // Library or malformed: neither entry shape is present.
-        (false, 0) => errors.push(OnewayError::CheckError {
+        (false, 0) => errors.push(CanonError::CheckError {
             message: "no entry point defined: expected either a `main` function or a free \
                       function returning `Response` (HTTP handler). See \
                       `WASI-HTTP-HANDLER.md` §Entry-point selection."
@@ -182,7 +182,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<Oneway
             span: module.span,
         }),
         // Mixed worlds: a component exports exactly one world.
-        (true, _) => errors.push(OnewayError::CheckError {
+        (true, _) => errors.push(CanonError::CheckError {
             message: format!(
                 "mixed worlds: this module defines `main` (CLI entry) and also `{}` returning \
                   `Response` (HTTP entry). A component exports exactly one world. Remove one. \
@@ -192,7 +192,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<Oneway
             span: http_entries[0].span,
         }),
         // Ambiguous HTTP entry.
-        (false, n) if n > 1 => errors.push(OnewayError::CheckError {
+        (false, n) if n > 1 => errors.push(CanonError::CheckError {
             message: format!(
                 "ambiguous HTTP entry: `{}` and `{}` both return `Response`. Exactly one \
                   free function may be the entry. Refactor helpers to return a non-world type. \
@@ -205,7 +205,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<Oneway
         // codegen path for `wasi:http/handler` is slice 1b — not yet
         // implemented. Surface this so users see a clear diagnostic
         // instead of an internal codegen crash.
-        (false, 1) => errors.push(OnewayError::CheckError {
+        (false, 1) => errors.push(CanonError::CheckError {
             message: format!(
                 "HTTP handler `{}` is well-formed, but the codegen path for \
                   `wasi:http/handler` is not yet implemented (slice 1b of the migration; \
@@ -226,7 +226,7 @@ fn check_ordering(
     module: &Module,
     entry_items_start: usize,
     http_entry_name: Option<&str>,
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
 ) {
     let entry_items = &module.items[entry_items_start..];
     // Union variants and product fields are checked in check_type_expr (covers
@@ -256,7 +256,7 @@ fn check_ordering(
     // file's ordering. `main` is also exempt: it's the entry point, a
     // distinguished role rather than a regular free function, and forcing
     // it into alphabetical position with peers (or with synthesised mains
-    // produced by `oneway test`) is arbitrary.
+    // produced by `canon test`) is arbitrary.
     let free_funcs: Vec<(&str, crate::error::Span)> = entry_items
         .iter()
         .filter_map(|item| {
@@ -292,7 +292,7 @@ fn check_ordering(
         match item {
             Item::Use(u) => {
                 if seen_non_use {
-                    errors.push(OnewayError::CheckError {
+                    errors.push(CanonError::CheckError {
                         message: format!(
                             "`use {}` must appear before any type or function definitions",
                             u.name.name
@@ -321,13 +321,13 @@ fn check_ordering(
 fn check_sorted_named(
     kind: &str,
     items: &[(&str, crate::error::Span)],
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
 ) {
     for window in items.windows(2) {
         let (prev, _) = window[0];
         let (next, span) = window[1];
         if next < prev {
-            errors.push(OnewayError::CheckError {
+            errors.push(CanonError::CheckError {
                 message: format!(
                     "{}s must be in alphabetical order — `{}` should come before `{}`",
                     kind, next, prev
@@ -338,7 +338,7 @@ fn check_sorted_named(
     }
 }
 
-fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTable {
+fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
     let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES
         .iter()
@@ -371,7 +371,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
             let name = td.name.name.clone();
             let already_known = types.contains(&name) || generic_types.contains(&name);
             if already_known {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: format!("duplicate type definition `{}`", name),
                     span: td.name.span,
                 });
@@ -577,7 +577,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<OnewayError>) -> SymbolTabl
 fn check_self_constructor_signature(
     func: &FunctionDef,
     receiver_name: &str,
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
 ) {
     // Collect this constructor's generic param names so we can accept
     // return types like `HttpServer<S>` when S is a declared generic.
@@ -612,7 +612,7 @@ fn check_self_constructor_signature(
         _ => false,
     };
     if !valid {
-        errors.push(OnewayError::CheckError {
+        errors.push(CanonError::CheckError {
             message: format!(
                 "constructor `{}` must return `{}`, `Result<{}, E>`, or `Option<{}>`",
                 receiver_name, receiver_name, receiver_name, receiver_name
@@ -622,7 +622,7 @@ fn check_self_constructor_signature(
     }
 }
 
-fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<OnewayError>) {
+fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     let mut generic_scope: HashSet<String> = td
         .generic_params
         .iter()
@@ -640,12 +640,12 @@ fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<OnewayEr
 fn check_function(
     func: &FunctionDef,
     symbols: &SymbolTable,
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
     main_found: &mut bool,
 ) {
     if func.name.name == "main" {
         if *main_found {
-            errors.push(OnewayError::CheckError {
+            errors.push(CanonError::CheckError {
                 message: "duplicate `main` definition".to_string(),
                 span: func.span,
             });
@@ -653,7 +653,7 @@ fn check_function(
         *main_found = true;
 
         if func.receiver.is_some() {
-            errors.push(OnewayError::CheckError {
+            errors.push(CanonError::CheckError {
                 message: "`main` is the entry point and must not have a receiver".to_string(),
                 span: func.span,
             });
@@ -678,7 +678,7 @@ fn check_function(
 
     if let Some(recv) = &func.receiver {
         if !symbols.knows_type(&recv.name) && !generic_scope.contains(&recv.name) {
-            errors.push(OnewayError::CheckError {
+            errors.push(CanonError::CheckError {
                 message: format!("unknown receiver type `{}`", recv.name),
                 span: recv.span,
             });
@@ -700,7 +700,7 @@ fn check_type_expr(
     ty: &TypeExpr,
     symbols: &SymbolTable,
     generic_scope: &HashSet<String>,
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
 ) {
     match ty {
         TypeExpr::Named {
@@ -711,10 +711,10 @@ fn check_type_expr(
             if name == "Self" {
                 // allowed in method bodies / trait declarations; not validated here
             } else if name.starts_with("__extern__") {
-                // extern type alias body — the Rust path isn't an Oneway type
+                // extern type alias body — the Rust path isn't an Canon type
             } else if generic_scope.contains(name) {
                 if !generics.is_empty() {
-                    errors.push(OnewayError::CheckError {
+                    errors.push(CanonError::CheckError {
                         message: format!(
                             "type parameter `{}` cannot be applied to type arguments",
                             name
@@ -723,7 +723,7 @@ fn check_type_expr(
                     });
                 }
             } else if !symbols.knows_type(name) {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: format!("unknown type `{}`", name),
                     span: *span,
                 });
@@ -828,10 +828,10 @@ fn check_block(
     return_ty: &TypeExpr,
     scope: &ExprScope,
     symbols: &SymbolTable,
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
 ) {
     if block.exprs.is_empty() {
-        errors.push(OnewayError::CheckError {
+        errors.push(CanonError::CheckError {
             message: "function body must contain at least one expression".to_string(),
             span: block.span,
         });
@@ -849,7 +849,7 @@ fn check_block(
         _ => "<complex>".to_string(),
     };
     if last_ty != return_ty_name && last_ty != "<unknown>" {
-        errors.push(OnewayError::CheckError {
+        errors.push(CanonError::CheckError {
             message: format!(
                 "function returns `{}` but last expression has type `{}`",
                 return_ty_name, last_ty
@@ -863,13 +863,13 @@ fn check_expr(
     expr: &Expr,
     scope: &ExprScope,
     symbols: &SymbolTable,
-    errors: &mut Vec<OnewayError>,
+    errors: &mut Vec<CanonError>,
 ) {
     match expr {
         Expr::Ident(ident) => {
             if is_capability_type(&ident.name) {
                 if !scope.contains(&ident.name) {
-                    errors.push(OnewayError::CheckError {
+                    errors.push(CanonError::CheckError {
                         message: format!(
                             "capability `{}` must be received as a parameter — capabilities cannot be conjured",
                             ident.name
@@ -883,7 +883,7 @@ fn check_expr(
                     || scope.contains(&ident.name)
                     || ident.name == "Self";
                 if !known {
-                    errors.push(OnewayError::CheckError {
+                    errors.push(CanonError::CheckError {
                         message: format!("unknown name `{}`", ident.name),
                         span: ident.span,
                     });
@@ -910,7 +910,7 @@ fn check_expr(
                 && !matches_free_func
                 && !is_concurrent_combinator
             {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: format!("unknown type `{}` in constructor", name.name),
                     span: name.span,
                 });
@@ -922,7 +922,7 @@ fn check_expr(
                     .get(&(name.name.clone(), "Self".to_string()))
                     .is_some_and(|sig| sig.arity == 0);
                 if !is_zero_data_builtin && !has_zero_arg_ctor {
-                    errors.push(OnewayError::CheckError {
+                    errors.push(CanonError::CheckError {
                         message: format!(
                             "constructor `{}()` is not allowed — empty constructors are disallowed",
                             name.name
@@ -985,7 +985,7 @@ fn check_expr(
                             symbols,
                         ));
             if !known {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: format!(
                         "no method `{}` on type `{}` with {} argument(s)",
                         method.name, recv_ty, effective_arity
@@ -1041,7 +1041,7 @@ fn check_expr(
                                 }
                             }
                             if !matched {
-                                errors.push(OnewayError::CheckError {
+                                errors.push(CanonError::CheckError {
                                     message: format!(
                                         "pattern `{}` is not a variant of `{}`",
                                         variant_name, scrutinee_ty
@@ -1078,7 +1078,7 @@ fn check_expr(
                 }
             }
             if arms.is_empty() {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: "dispatch expression must have at least one arm".to_string(),
                     span: *span,
                 });
@@ -1125,7 +1125,7 @@ fn check_expr(
                 // like `print` on a newtype value isn't a field but is a
                 // valid method-as-value reference via the alias chain.
             }
-            // Case 2: first-class method reference (extern or Oneway-defined)
+            // Case 2: first-class method reference (extern or Canon-defined)
             if symbols
                 .methods
                 .contains_key(&(recv_ty_for_lookup.clone(), field.name.clone()))
@@ -1140,7 +1140,7 @@ fn check_expr(
             // a product (or newtype), be specific about it being a missing
             // field; otherwise use the generic message.
             if is_product {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: format!(
                         "type `{}` has no field `{}`",
                         recv_ty_for_lookup, field.name
@@ -1148,7 +1148,7 @@ fn check_expr(
                     span: *span,
                 });
             } else {
-                errors.push(OnewayError::CheckError {
+                errors.push(CanonError::CheckError {
                     message: format!(
                         "field access `.{}` on `{}` — not a product field and no method `{}` found",
                         field.name, recv_ty_for_lookup, field.name
@@ -1390,7 +1390,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 sig.return_ty.clone()
             } else if name.name == "parallel" {
                 // `parallel(a, b)` returns `Future<List<T>>` per
-                // `oneway/std/concurrent`; the auto-await collapses
+                // `canon/std/concurrent`; the auto-await collapses
                 // `Future<List<T>>` → `List<T>` at any consuming site,
                 // so we report `List` here to keep method-chain typing
                 // (`.toJsonArray()`, `.get(i)`, etc.) flowing.
@@ -1531,12 +1531,12 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             field.name.clone()
         }
         // A JSON literal expression has type `Json` (declared in
-        // `oneway/std/json.ow` as `Json = String`). The checker resolves
+        // `canon/std/json.can` as `Json = String`). The checker resolves
         // method dispatch on `Json` through the normal newtype-aliasing
         // path, so `.print` (on String), `.concat` (on String), and
         // `Json`-specific methods all line up.
         //
-        // Requires `use oneway/std/Json` to be in scope at the call site
+        // Requires `use canon/std/Json` to be in scope at the call site
         // — same shape as any other stdlib type. JSON literal syntax
         // is first-class, but its *type name* is part of the stdlib.
         Expr::JsonLit { .. } => "Json".to_string(),

@@ -8,7 +8,7 @@
 - [Hello, World](./getting-started/hello-world.md)
 - [Building and Running](./getting-started/building-and-running.md)
 
-# A Tour of Oneway
+# A Tour of Canon
 
 - [Philosophy](./tour/philosophy.md)
 - [Types](./tour/types.md)

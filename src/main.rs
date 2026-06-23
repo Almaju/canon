@@ -1,12 +1,12 @@
-use oneway::ast::{resolve_new_syntax, FunctionDef, Item, TypeExpr};
-use oneway::checker;
-use oneway::codegen;
-use oneway::error::OnewayError;
-use oneway::formatter;
-use oneway::lexer::Scanner;
-use oneway::loader::{self, LoadResult, LoadedSource};
-use oneway::manifest;
-use oneway::parser::Parser;
+use canon::ast::{resolve_new_syntax, FunctionDef, Item, TypeExpr};
+use canon::checker;
+use canon::codegen;
+use canon::error::CanonError;
+use canon::formatter;
+use canon::lexer::Scanner;
+use canon::loader::{self, LoadResult, LoadedSource};
+use canon::manifest;
+use canon::parser::Parser;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,10 +34,10 @@ fn main() {
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
-        "lsp" => oneway::lsp::run(),
+        "lsp" => canon::lsp::run(),
         "upgrade" => cmd_upgrade(&rest),
         "--version" | "-V" => {
-            println!("oneway {}", VERSION);
+            println!("canon {}", VERSION);
         }
         "help" | "--help" | "-h" => print_help(),
         other => {
@@ -50,37 +50,37 @@ fn main() {
 }
 
 fn print_help() {
-    println!("oneway {} \u{2014} the Oneway language compiler", VERSION);
+    println!("canon {} \u{2014} the Canon language compiler", VERSION);
     println!();
-    println!("Usage: oneway <command> [args]");
+    println!("Usage: canon <command> [args]");
     println!();
-    println!("A target is either a package directory (containing `oneway.toml`");
-    println!("and `src/main.ow`), a workspace directory (manifest with a");
-    println!("`[workspace]` table), or a single `.ow` file. When omitted, defaults");
+    println!("A target is either a package directory (containing `canon.toml`");
+    println!("and `src/main.can`), a workspace directory (manifest with a");
+    println!("`[workspace]` table), or a single `.can` file. When omitted, defaults");
     println!("to the current directory.");
     println!();
     println!("Commands:");
     println!("  run [target] [-p name] [--addr <ip:port>] [args...]");
-    println!("                            Compile and run an Oneway program.");
+    println!("                            Compile and run an Canon program.");
     println!(
         "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
-    println!("  test <file.ow>            Run `() -> TestResult` functions as tests");
-    println!("  fmt [path...] [--check]   Format Oneway source files or directories");
-    println!("  inspect <stage> <file.ow> Print an intermediate pipeline stage");
+    println!("  test <file.can>            Run `() -> TestResult` functions as tests");
+    println!("  fmt [path...] [--check]   Format Canon source files or directories");
+    println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
     println!("                              stages: tokens | ast | wat");
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
     println!(
-        "                            Generate Oneway bindings from a WIT package or WASM component"
+        "                            Generate Canon bindings from a WIT package or WASM component"
     );
     println!("  install [target]          Materialize bindings declared in `[imports]`");
     println!(
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  upgrade [version]         Update oneway to the latest (or given) release");
+    println!("  upgrade [version]         Update canon to the latest (or given) release");
     println!("  upgrade --check           Check whether a newer release is available");
     println!("  --version, -V             Print version");
     println!("  help                      Print this message");
@@ -106,22 +106,22 @@ fn read_source(file_path: &str) -> String {
     }
 }
 
-/// A single buildable compilation target: a package (`oneway.toml` +
-/// `src/main.ow`) or a loose `.ow` file in single-file mode.
+/// A single buildable compilation target: a package (`canon.toml` +
+/// `src/main.can`) or a loose `.can` file in single-file mode.
 struct BuildSpec {
-    /// Entry `.ow` file the loader will read.
+    /// Entry `.can` file the loader will read.
     entry: PathBuf,
     /// Where `build/` lives for this target. For a workspace member, this
     /// points at the workspace's shared `build/` (Cargo-style `target/`).
     output_dir: PathBuf,
     /// Stem used for output artifacts (`<stem>.wasm`, `<stem>.wit`). For a
     /// package it's the last `/`-separated segment of the manifest `name`
-    /// (e.g. `oneway/std` -> `std`). For a loose file it's the file stem.
+    /// (e.g. `canon/std` -> `std`). For a loose file it's the file stem.
     output_stem: String,
     /// Path the user typed (or the workspace member's display path), used
     /// as the context in error messages.
     label: String,
-    /// Full manifest `name` (e.g. `"oneway/std"`). Empty for file-mode
+    /// Full manifest `name` (e.g. `"canon/std"`). Empty for file-mode
     /// targets. Used by `-p <name>` filtering.
     name: String,
 }
@@ -134,11 +134,11 @@ impl BuildSpec {
 
 /// A resolved compile target.
 ///
-/// `oneway run|build|check` accept any of:
+/// `canon run|build|check` accept any of:
 ///
-/// - a **package directory** (containing `oneway.toml` and `src/main.ow`),
-/// - a **single `.ow` file** (anonymous single-file package), or
-/// - a **workspace directory** (containing `oneway.toml` with a
+/// - a **package directory** (containing `canon.toml` and `src/main.can`),
+/// - a **single `.can` file** (anonymous single-file package), or
+/// - a **workspace directory** (containing `canon.toml` with a
 ///   `[workspace]` table) which aggregates one or more member packages.
 enum Target {
     /// One package or one loose file.
@@ -160,7 +160,7 @@ struct ParsedTargetArgs {
     /// workspace target.
     package: Option<String>,
     /// Remaining positional arguments after the target path. Only used
-    /// by `oneway run` (passed through to the program).
+    /// by `canon run` (passed through to the program).
     program_args: Vec<String>,
 }
 
@@ -224,7 +224,7 @@ fn apply_package_filter(target: Target, filter: Option<&str>) -> Target {
             process::exit(1);
         }
         Target::Workspace { members, label } => {
-            // Match against the full manifest name (`oneway/std`) or its
+            // Match against the full manifest name (`canon/std`) or its
             // last segment (`std`). Workspace members in this repo use
             // flat names, but we accept both for parity with `cargo -p`.
             let matched: Vec<BuildSpec> = members
@@ -266,12 +266,12 @@ fn resolve_target(path_arg: Option<&str>) -> Target {
 }
 
 fn resolve_dir_target(path: &Path, arg: &str) -> Target {
-    let manifest_path = path.join("oneway.toml");
+    let manifest_path = path.join("canon.toml");
     if !manifest_path.exists() {
-        eprintln!("error: `{}` is a directory but has no `oneway.toml`", arg);
+        eprintln!("error: `{}` is a directory but has no `canon.toml`", arg);
         eprintln!(
-            "hint: a package directory must contain an `oneway.toml` manifest; \
-             pass a `.ow` file directly to compile in single-file mode"
+            "hint: a package directory must contain an `canon.toml` manifest; \
+             pass a `.can` file directly to compile in single-file mode"
         );
         process::exit(1);
     }
@@ -297,7 +297,7 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
 }
 
 /// Walk up from `start` (exclusive) looking for an ancestor whose
-/// `oneway.toml` carries a `[workspace]` table. Returns the workspace
+/// `canon.toml` carries a `[workspace]` table. Returns the workspace
 /// root directory, or `None` if there isn't one.
 ///
 /// Failure to read or parse an ancestor's manifest is silent here: we
@@ -307,7 +307,7 @@ fn find_parent_workspace(start: &Path) -> Option<PathBuf> {
     let mut current = start.canonicalize().ok()?;
     while let Some(parent) = current.parent() {
         let parent = parent.to_path_buf();
-        let manifest = parent.join("oneway.toml");
+        let manifest = parent.join("canon.toml");
         if manifest.exists() {
             if let Ok(src) = fs::read_to_string(&manifest) {
                 if let Ok(m) = manifest::parse(&src) {
@@ -351,14 +351,14 @@ fn resolve_package_spec(
     m: &manifest::Manifest,
     workspace_root: Option<&Path>,
 ) -> BuildSpec {
-    let entry = pkg_root.join("src").join("main.ow");
+    let entry = pkg_root.join("src").join("main.can");
     if !entry.exists() {
         eprintln!(
             "error: package `{}` has no entry point at `{}`",
             if m.name.is_empty() { label } else { &m.name },
             entry.display()
         );
-        eprintln!("hint: create `src/main.ow` with a `main` function");
+        eprintln!("hint: create `src/main.can` with a `main` function");
         process::exit(1);
     }
     let output_stem = m.name.rsplit('/').next().unwrap_or(&m.name);
@@ -389,10 +389,10 @@ fn resolve_file_spec(path: &Path, arg: &str) -> BuildSpec {
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("oneway")
+        .unwrap_or("canon")
         .to_string();
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    // File mode keeps a per-stem subdir so a directory full of `.ow`
+    // File mode keeps a per-stem subdir so a directory full of `.can`
     // files (e.g. `tests/runtime/`) doesn't have its artifacts collide.
     let output_dir = dir.join("build").join(&stem);
     BuildSpec {
@@ -406,7 +406,7 @@ fn resolve_file_spec(path: &Path, arg: &str) -> BuildSpec {
 
 /// Resolve a workspace's `members = [...]` directive to concrete
 /// `BuildSpec`s. A single literal `"*"` expands to every immediate
-/// subdirectory of the workspace root that contains an `oneway.toml`.
+/// subdirectory of the workspace root that contains an `canon.toml`.
 /// Otherwise each entry is treated as a relative path from the workspace
 /// root. Members are returned sorted alphabetically by label.
 fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String]) -> Vec<BuildSpec> {
@@ -425,7 +425,7 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String])
             };
             for d in read.flatten() {
                 let p = d.path();
-                if p.is_dir() && p.join("oneway.toml").exists() {
+                if p.is_dir() && p.join("canon.toml").exists() {
                     paths.push(p);
                 }
             }
@@ -439,9 +439,9 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String])
                 );
                 process::exit(1);
             }
-            if !p.join("oneway.toml").exists() {
+            if !p.join("canon.toml").exists() {
                 eprintln!(
-                    "error: workspace member `{}` has no `oneway.toml`",
+                    "error: workspace member `{}` has no `canon.toml`",
                     p.display()
                 );
                 process::exit(1);
@@ -456,7 +456,7 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String])
     if paths.is_empty() {
         if had_glob {
             eprintln!(
-                "warning: workspace `{}` matched no members (no subdir of `{}` contains an `oneway.toml`)",
+                "warning: workspace `{}` matched no members (no subdir of `{}` contains an `canon.toml`)",
                 ws_label,
                 ws_root.display()
             );
@@ -469,7 +469,7 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String])
         .into_iter()
         .map(|p| {
             let label = p.to_string_lossy().into_owned();
-            let manifest_path = p.join("oneway.toml");
+            let manifest_path = p.join("canon.toml");
             let m = read_manifest(&manifest_path);
             if m.workspace.is_some() {
                 eprintln!(
@@ -484,7 +484,7 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String])
         .collect()
 }
 
-/// `oneway inspect <stage> <file.ow>` — print one intermediate pipeline
+/// `canon inspect <stage> <file.can>` — print one intermediate pipeline
 /// stage to stdout. Replaces the old `tokens` / `ast` / `emit` triple:
 /// each command was the same shape (load file, run pipeline up to a
 /// point, dump it) so they collapse cleanly into a single verb with a
@@ -521,7 +521,7 @@ fn cmd_inspect(args: &[String]) {
     let file_path = match file_path {
         Some(p) => p,
         None => {
-            eprintln!("error: missing <file.ow>");
+            eprintln!("error: missing <file.can>");
             print_inspect_help();
             process::exit(1);
         }
@@ -542,13 +542,13 @@ fn cmd_inspect(args: &[String]) {
 }
 
 fn print_inspect_help() {
-    println!("Usage: oneway inspect <stage> <file.ow>");
+    println!("Usage: canon inspect <stage> <file.can>");
     println!();
     println!("  <stage>     One of:");
     println!("                tokens    Lexer output");
     println!("                ast       Parser output (Module debug dump)");
     println!("                wat       Generated WebAssembly Text");
-    println!("  <file.ow>   Source file to inspect.");
+    println!("  <file.can>   Source file to inspect.");
 }
 
 fn inspect_tokens(file_path: &str) {
@@ -620,15 +620,15 @@ fn cmd_bindgen(args: &[String]) {
                 }
             },
             "--help" | "-h" => {
-                println!("Usage: oneway bindgen <wit-or-wasm> [-o <dir>]");
+                println!("Usage: canon bindgen <wit-or-wasm> [-o <dir>]");
                 println!();
                 println!("  <wit-or-wasm>   A `.wit` file, a directory of `.wit` files, or a");
                 println!("                  WebAssembly Component `.wasm` whose embedded WIT will");
                 println!("                  be extracted.");
                 println!("  -o <dir>        Output root (default: current directory).");
                 println!();
-                println!("Bindings are written as `<dir>/<namespace>/<package>/<interface>.ow`,");
-                println!("e.g. `wasi/clocks/monotonic_clock.ow`.");
+                println!("Bindings are written as `<dir>/<namespace>/<package>/<interface>.can`,");
+                println!("e.g. `wasi/clocks/monotonic_clock.can`.");
                 return;
             }
             other if other.starts_with('-') => {
@@ -657,7 +657,7 @@ fn cmd_bindgen(args: &[String]) {
         }
     };
     let out_path = out_dir.as_deref().map(Path::new);
-    match oneway::bindgen::run(Path::new(&input), out_path) {
+    match canon::bindgen::run(Path::new(&input), out_path) {
         Ok(outcome) => {
             if outcome.written.is_empty() {
                 eprintln!("warning: no interfaces found in `{}`", input);
@@ -682,14 +682,14 @@ fn cmd_install(args: &[String]) {
     for arg in args {
         match arg.as_str() {
             "--help" | "-h" => {
-                println!("Usage: oneway install [target]");
+                println!("Usage: canon install [target]");
                 println!();
-                println!("  target       The project directory (containing `oneway.toml`).");
+                println!("  target       The project directory (containing `canon.toml`).");
                 println!("               Defaults to the current directory.");
                 println!();
                 println!("For every entry in the manifest's `[imports]` table, materializes");
-                println!("the corresponding Oneway bindings into `<target>/bindgen/`. WIT");
-                println!("sources (`*.wit`) become Oneway source under `<ns>/<pkg>/<iface>.ow`.");
+                println!("the corresponding Canon bindings into `<target>/bindgen/`. WIT");
+                println!("sources (`*.wit`) become Canon source under `<ns>/<pkg>/<iface>.can`.");
                 println!("Wasm-component sources (`*.wasm`) are recorded as deferred.");
                 return;
             }
@@ -715,11 +715,11 @@ fn cmd_install(args: &[String]) {
         .as_deref()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    match oneway::install::install(&target_path) {
+    match canon::install::install(&target_path) {
         Ok(outcome) => {
             if outcome.written.is_empty() && outcome.skipped.is_empty() {
                 println!(
-                    "no `[imports]` entries in `{}/oneway.toml` \u{2014} nothing to install",
+                    "no `[imports]` entries in `{}/canon.toml` \u{2014} nothing to install",
                     target_path.display()
                 );
             } else {
@@ -746,10 +746,10 @@ fn cmd_fmt(args: &[String]) {
         match arg.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: oneway fmt [path...] [--check]");
+                println!("Usage: canon fmt [path...] [--check]");
                 println!();
-                println!("  path         A `.ow` file or a directory. Directories are walked");
-                println!("               recursively. With no arguments, formats every `.ow`");
+                println!("  path         A `.can` file or a directory. Directories are walked");
+                println!("               recursively. With no arguments, formats every `.can`");
                 println!("               file under the current directory.");
                 println!("  --check      Check whether files are formatted (exit 1 if not).");
                 return;
@@ -762,13 +762,13 @@ fn cmd_fmt(args: &[String]) {
         }
     }
 
-    // No args — default to the current directory so `oneway fmt` can be
+    // No args — default to the current directory so `canon fmt` can be
     // run from a project root with no further ceremony.
     if inputs.is_empty() {
         inputs.push(".".to_string());
     }
 
-    // Expand directories into their `.ow` files. File arguments pass
+    // Expand directories into their `.can` files. File arguments pass
     // through unchanged. When the user explicitly passed only file
     // paths, a parse error aborts; when any input was a directory we
     // soldier on past individual parse failures (one bad file in 100
@@ -788,7 +788,7 @@ fn cmd_fmt(args: &[String]) {
     files.dedup();
 
     if files.is_empty() {
-        eprintln!("error: no `.ow` files found");
+        eprintln!("error: no `.can` files found");
         process::exit(1);
     }
 
@@ -830,7 +830,7 @@ fn cmd_fmt(args: &[String]) {
     }
 }
 
-/// Recursively collect every `.ow` file under `dir`, skipping common
+/// Recursively collect every `.can` file under `dir`, skipping common
 /// generated/build directories (`target`, `node_modules`, `.git`).
 fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
@@ -851,7 +851,7 @@ fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
                 continue;
             }
             collect_ow_files(&path, out);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("ow") {
+        } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
             out.push(path);
         }
     }
@@ -980,10 +980,10 @@ fn build_spec(spec: &BuildSpec) -> bool {
     true
 }
 
-/// `oneway test <file.ow>` — discover and run all `() -> TestResult`
+/// `canon test <file.can>` — discover and run all `() -> TestResult`
 /// functions defined in the entry file.
 ///
-/// Test files look like normal Oneway modules:
+/// Test files look like normal Canon modules:
 ///
 /// ```text
 /// use std/TestResult
@@ -1015,7 +1015,7 @@ fn cmd_test(args: &[String]) {
         let item = &loaded.module.items[loaded.entry_items_start + idx];
         if let Item::Function(f) = item {
             eprintln!(
-                "error[{}:{}:{}]: test files must not define `main` — `oneway test` synthesises one",
+                "error[{}:{}:{}]: test files must not define `main` — `canon test` synthesises one",
                 file_path, f.span.line, f.span.column
             );
         }
@@ -1041,7 +1041,7 @@ fn cmd_test(args: &[String]) {
     // Synthesise a `main` that runs each test, parse it, and splice the
     // resulting items into the loaded module. Parsing the synthesised
     // source (rather than building AST by hand) keeps this code small
-    // and means the runtime sees ordinary Oneway expressions.
+    // and means the runtime sees ordinary Canon expressions.
     let synthesised = synthesise_test_main(&tests);
     let synth_items = match parse_synthesised(&synthesised) {
         Ok(items) => items,
@@ -1067,7 +1067,7 @@ fn cmd_test(args: &[String]) {
 
     println!("running {} test(s) from {}", tests.len(), file_path);
     let component_bytes = codegen::generate(&loaded.module);
-    oneway::runtime::run_component(&component_bytes, &[]);
+    canon::runtime::run_component(&component_bytes, &[]);
 }
 
 /// A test is a free, zero-arg function whose return type is the named
@@ -1108,7 +1108,7 @@ fn synthesise_test_main(tests: &[String]) -> String {
     src
 }
 
-fn parse_synthesised(source: &str) -> Result<Vec<Item>, OnewayError> {
+fn parse_synthesised(source: &str) -> Result<Vec<Item>, CanonError> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
@@ -1117,9 +1117,9 @@ fn parse_synthesised(source: &str) -> Result<Vec<Item>, OnewayError> {
     Ok(module.items)
 }
 
-/// `oneway run [target] [-p name] [--addr <ip:port>] [args...]`
+/// `canon run [target] [-p name] [--addr <ip:port>] [args...]`
 ///
-/// Compiles the target Oneway package or file, then either:
+/// Compiles the target Canon package or file, then either:
 ///
 ///   * runs it as a `wasi:cli/command` (the default), forwarding any
 ///     trailing arguments as program arguments; or
@@ -1173,13 +1173,13 @@ fn cmd_run(args: &[String]) {
         Target::Build(spec) => spec,
         Target::Workspace { label, members, .. } => {
             eprintln!(
-                "error: `oneway run` on workspace `{}` is ambiguous — pick a member",
+                "error: `canon run` on workspace `{}` is ambiguous — pick a member",
                 label
             );
             if !members.is_empty() {
                 eprintln!("hint: try one of:");
                 for m in &members {
-                    eprintln!("  oneway run {}", m.label);
+                    eprintln!("  canon run {}", m.label);
                 }
             }
             process::exit(1);
@@ -1205,10 +1205,10 @@ fn cmd_run(args: &[String]) {
                 eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
                 process::exit(1);
             });
-            oneway::runtime::serve_component(&component_bytes, bind_addr);
+            canon::runtime::serve_component(&component_bytes, bind_addr);
         }
         None => {
-            oneway::runtime::run_component(&component_bytes, &program_args);
+            canon::runtime::run_component(&component_bytes, &program_args);
         }
     }
 }
@@ -1224,12 +1224,12 @@ fn load_or_exit(file_path: &str) -> LoadResult {
 /// than exiting. Used by workspace iteration so one member's load failure
 /// doesn't terminate the whole run.
 fn load_or_print(file_path: &str) -> Option<LoadResult> {
-    // Auto-install: if the file lives inside an Oneway project whose
+    // Auto-install: if the file lives inside an Canon project whose
     // `[imports]` are out-of-date with what's materialized under
-    // `bindgen/`, run `oneway install` first so the binding files exist
-    // before the loader looks for them. This is what makes `oneway run`
-    // / `oneway check` / `oneway build` work without a separate
-    // `oneway install` step in normal use. Errors during the auto-step
+    // `bindgen/`, run `canon install` first so the binding files exist
+    // before the loader looks for them. This is what makes `canon run`
+    // / `canon check` / `canon build` work without a separate
+    // `canon install` step in normal use. Errors during the auto-step
     // are printed to stderr and treated as load failures.
     if !auto_install(file_path) {
         return None;
@@ -1249,10 +1249,10 @@ fn load_or_print(file_path: &str) -> Option<LoadResult> {
 /// install was actually run we print a brief note to stderr so the user
 /// knows what happened.
 fn auto_install(file_path: &str) -> bool {
-    match oneway::install::ensure_installed(Path::new(file_path)) {
-        Ok(oneway::install::EnsureOutcome::NoProject) => true,
-        Ok(oneway::install::EnsureOutcome::UpToDate) => true,
-        Ok(oneway::install::EnsureOutcome::Installed(outcome)) => {
+    match canon::install::ensure_installed(Path::new(file_path)) {
+        Ok(canon::install::EnsureOutcome::NoProject) => true,
+        Ok(canon::install::EnsureOutcome::UpToDate) => true,
+        Ok(canon::install::EnsureOutcome::Installed(outcome)) => {
             if !outcome.written.is_empty() {
                 eprintln!(
                     "installed {} binding file(s) into bindgen/",
@@ -1272,7 +1272,7 @@ fn auto_install(file_path: &str) -> bool {
 }
 
 /// Enforce canonical formatting across every user-authored source file
-/// loaded for this build. Oneway's guiding rule is "one way" — the
+/// loaded for this build. Canon's guiding rule is "one way" — the
 /// compiler refuses to proceed if any source isn't already in canonical
 /// form. Bundled packages are skipped (they ship with the compiler).
 ///
@@ -1304,12 +1304,12 @@ fn enforce_format(loaded: &LoadResult) -> bool {
         eprintln!("  {}", src.path.display());
     }
     eprintln!();
-    eprintln!("hint: run `oneway fmt` to fix them in place.");
+    eprintln!("hint: run `canon fmt` to fix them in place.");
     false
 }
 
-const INSTALL_URL: &str = "https://raw.githubusercontent.com/almaju/oneway/main/install.sh";
-const RELEASES_LATEST_URL: &str = "https://github.com/almaju/oneway/releases/latest";
+const INSTALL_URL: &str = "https://raw.githubusercontent.com/almaju/canon/main/install.sh";
+const RELEASES_LATEST_URL: &str = "https://github.com/almaju/canon/releases/latest";
 
 fn cmd_upgrade(args: &[String]) {
     let mut check_only = false;
@@ -1318,7 +1318,7 @@ fn cmd_upgrade(args: &[String]) {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: oneway upgrade [version] [--check]");
+                println!("Usage: canon upgrade [version] [--check]");
                 println!();
                 println!(
                     "  version      Install a specific release (e.g. v0.2.0). Defaults to latest."
@@ -1350,10 +1350,10 @@ fn cmd_upgrade(args: &[String]) {
         };
         let current = format!("v{}", VERSION);
         if normalize_tag(&latest) == normalize_tag(&current) {
-            println!("oneway is up to date ({})", current);
+            println!("canon is up to date ({})", current);
         } else {
             println!(
-                "A new version is available: {} (current: {})\nRun `oneway upgrade` to update.",
+                "A new version is available: {} (current: {})\nRun `canon upgrade` to update.",
                 latest, current
             );
         }
@@ -1363,7 +1363,7 @@ fn cmd_upgrade(args: &[String]) {
     let curl = which("curl");
     let wget = which("wget");
     if curl.is_none() && wget.is_none() {
-        eprintln!("error: `oneway upgrade` requires `curl` or `wget` to be installed");
+        eprintln!("error: `canon upgrade` requires `curl` or `wget` to be installed");
         process::exit(1);
     }
 
@@ -1484,7 +1484,7 @@ fn shell_escape(s: &str) -> String {
     }
 }
 
-fn print_error(file_path: &str, err: &OnewayError) {
+fn print_error(file_path: &str, err: &CanonError) {
     let span = err.span();
     eprintln!(
         "error[{}:{}:{}]: {}",

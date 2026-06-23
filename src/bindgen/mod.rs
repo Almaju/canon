@@ -1,4 +1,4 @@
-//! `oneway bindgen` — generate Oneway source from a WIT package or a
+//! `canon bindgen` — generate Canon source from a WIT package or a
 //! WebAssembly Component.
 //!
 //! Entry points:
@@ -22,7 +22,7 @@ pub use naming::camel_to_kebab;
 
 /// Top-level error type for the bindgen pipeline. Stays a plain `String`
 /// for now — there's no callers that need structured matching yet, and
-/// the existing `OnewayError` is span-bound which doesn't apply here.
+/// the existing `CanonError` is span-bound which doesn't apply here.
 #[derive(Debug)]
 pub struct BindgenError(pub String);
 
@@ -163,12 +163,12 @@ fn parse_wit_directory(dir: &Path) -> Result<Resolve, BindgenError> {
     Ok(resolve)
 }
 
-/// Outcome of a successful `oneway bindgen` invocation.
+/// Outcome of a successful `canon bindgen` invocation.
 pub struct RunOutcome {
     /// Paths that were written.
     pub written: Vec<PathBuf>,
     /// Items the generator skipped because their shape isn't yet
-    /// representable in Oneway. Surfaced to stderr by the CLI.
+    /// representable in Canon. Surfaced to stderr by the CLI.
     pub skipped: Vec<String>,
 }
 
@@ -183,7 +183,7 @@ pub fn run(input: &Path, out_dir: Option<&Path>) -> Result<RunOutcome, BindgenEr
     let mut written = Vec::new();
     let mut skipped = Vec::new();
     for file in emitted {
-        // Skip interfaces that produced no real Oneway output. Two cases
+        // Skip interfaces that produced no real Canon output. Two cases
         // count as "no output":
         //   * Truly empty content (everything was filtered).
         //   * Content that is *only* `use` lines — those get accumulated
@@ -203,12 +203,12 @@ pub fn run(input: &Path, out_dir: Option<&Path>) -> Result<RunOutcome, BindgenEr
                 BindgenError(format!("could not create `{}`: {e}", parent.display()))
             })?;
         }
-        // Run the emitted Oneway source through the same formatter the
+        // Run the emitted Canon source through the same formatter the
         // compiler enforces on every build. Keeps regenerated bindings
         // canonical even when the emitter's whitespace heuristics drift.
         // If the emitted source somehow fails to parse, fall back to the
         // raw content rather than refusing to write — the user will see
-        // the failure on the next `oneway check`.
+        // the failure on the next `canon check`.
         let content =
             crate::formatter::format(&file.content).unwrap_or_else(|_| file.content.clone());
         fs::write(&path, content.as_bytes())

@@ -1,6 +1,6 @@
-# Contributing to Oneway
+# Contributing to Canon
 
-Thanks for your interest in Oneway! This document covers everything you need
+Thanks for your interest in Canon! This document covers everything you need
 to build the compiler, run tests, and submit a pull request.
 
 ## Prerequisites
@@ -13,8 +13,8 @@ to build the compiler, run tests, and submit a pull request.
 ## Getting the code
 
 ```sh
-git clone https://github.com/almaju/oneway.git
-cd oneway
+git clone https://github.com/almaju/canon.git
+cd canon
 ```
 
 ## Building
@@ -63,12 +63,12 @@ just install-hooks
 | `src/parser/` | AST construction |
 | `src/checker/` | Type checker and sort-order validation |
 | `src/codegen/` | Rust code generation |
-| `src/formatter.rs` | Source formatter (`oneway fmt`) |
+| `src/formatter.rs` | Source formatter (`canon fmt`) |
 | `src/lsp/` | Language server |
 | `src/ast.rs` | AST node definitions |
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading |
-| `std/` | Standard library (`.ow` declarations + Rust FFI) |
+| `std/` | Standard library (`.can` declarations + Rust FFI) |
 | `examples/` | Example programs — always keep these passing |
 | `tests/` | Integration tests |
 | `docs/` | mdBook documentation site |
@@ -87,7 +87,7 @@ dependency-free.
 
 ### Fixing a compiler bug
 
-Open an issue first if the bug is non-trivial, and include the `.ow` snippet
+Open an issue first if the bug is non-trivial, and include the `.can` snippet
 that triggers it. Write a failing test in `tests/` before fixing the bug so
 the fix is verifiable.
 
@@ -99,7 +99,7 @@ intentionally conservative.
 
 ### Adding a standard library item
 
-Add the `.ow` declaration in `std/` and, if it needs Rust FFI backing, the
+Add the `.can` declaration in `std/` and, if it needs Rust FFI backing, the
 corresponding `.rs` file. Update `docs/src/reference/stdlib.md` and add an
 example to `examples/` if the feature warrants one.
 
@@ -124,5 +124,5 @@ merged.
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/almaju/oneway/discussions) or
+Open a [GitHub Discussion](https://github.com/almaju/canon/discussions) or
 file an issue.

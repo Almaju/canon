@@ -1,0 +1,13 @@
+use canon/std/Json
+use canon/std/MalformedJson
+
+main = () -> Result<Unit, MalformedJson> {
+    "{\"answer\":"
+        .concat(42.ToJson())
+        .concat(",\"label\":")
+        .concat("life".ToJson())
+        .concat("}")
+        .Json()?
+        .print()
+    Ok(Unit())
+}

@@ -1,0 +1,5 @@
+bindings "canon:builtins/concurrent@0.1.0"
+
+parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
+
+race = <T>(Future<T> * Future<T>) -> Future<T>

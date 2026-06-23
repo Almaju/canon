@@ -1,0 +1,22 @@
+use canon/std/Json
+
+main = () -> Unit {
+    42
+        .ToJson()
+        .print()
+    "hello"
+        .ToJson()
+        .print()
+    1.5
+        .ToJson()
+        .print()
+    True()
+        .ToJson()
+        .print()
+    False()
+        .ToJson()
+        .print()
+    "with \"quotes\" and \nnewline"
+        .ToJson()
+        .print()
+}

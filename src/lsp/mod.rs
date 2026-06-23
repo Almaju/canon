@@ -1,11 +1,11 @@
-/// Minimal LSP server for the Oneway programming language.
+/// Minimal LSP server for the Canon programming language.
 ///
 /// Communicates over stdin/stdout using JSON-RPC 2.0 with Content-Length framing.
-/// No external dependencies — only std and the `oneway` library crate.
+/// No external dependencies — only std and the `canon` library crate.
 use crate::ast::{resolve_new_syntax, FunctionDef, Item, Module, TypeDef, TypeExpr};
 use crate::bindgen::camel_to_kebab;
 use crate::checker;
-use crate::error::OnewayError;
+use crate::error::CanonError;
 use crate::formatter;
 use crate::install::{parse_install_index, INSTALL_INDEX_FILENAME};
 use crate::lexer::Scanner;
@@ -56,7 +56,7 @@ impl LspServer {
             match read_message(&mut reader) {
                 Ok(msg) => self.handle_message(&msg),
                 Err(e) => {
-                    eprintln!("oneway-lsp: read error: {}", e);
+                    eprintln!("canon-lsp: read error: {}", e);
                     break;
                 }
             }
@@ -94,14 +94,14 @@ impl LspServer {
             Some("textDocument/definition") => self.handle_definition(msg, id),
             Some("textDocument/formatting") => self.handle_formatting(msg, id),
             Some(m) => {
-                eprintln!("oneway-lsp: unhandled method: {}", m);
+                eprintln!("canon-lsp: unhandled method: {}", m);
                 // If it has an id, respond with method-not-found
                 if let Some(id) = id {
                     send_error(&id, -32601, "method not found");
                 }
             }
             None => {
-                eprintln!("oneway-lsp: message has no method field");
+                eprintln!("canon-lsp: message has no method field");
             }
         }
     }
@@ -124,7 +124,7 @@ impl LspServer {
                 "documentFormattingProvider": true
             }},
             "serverInfo": {{
-                "name": "oneway-lsp",
+                "name": "canon-lsp",
                 "version": "{}"
             }}
         }}"#,
@@ -141,7 +141,7 @@ impl LspServer {
 
     fn handle_did_open(&mut self, msg: &str) {
         if let Some(uri) = json_get_nested_string(msg, "textDocument", "uri") {
-            if !uri.ends_with(".ow") {
+            if !uri.ends_with(".can") {
                 return;
             }
             if let Some(text) = json_get_nested_string(msg, "textDocument", "text") {
@@ -158,7 +158,7 @@ impl LspServer {
 
     fn handle_did_change(&mut self, msg: &str) {
         if let Some(uri) = json_get_nested_string(msg, "textDocument", "uri") {
-            if !uri.ends_with(".ow") {
+            if !uri.ends_with(".can") {
                 return;
             }
             // Full document text is in contentChanges[0].text
@@ -176,7 +176,7 @@ impl LspServer {
 
     fn handle_did_save(&mut self, msg: &str) {
         if let Some(uri) = json_get_nested_string(msg, "textDocument", "uri") {
-            if !uri.ends_with(".ow") {
+            if !uri.ends_with(".can") {
                 return;
             }
             // If the save notification includes text, use it
@@ -227,12 +227,12 @@ impl LspServer {
                 diags.push(',');
             }
             let span = err.span();
-            // LSP uses 0-based lines/columns; Oneway uses 1-based.
+            // LSP uses 0-based lines/columns; Canon uses 1-based.
             let line = if span.line > 0 { span.line - 1 } else { 0 };
             let col = if span.column > 0 { span.column - 1 } else { 0 };
             let end_col = col + (span.end.saturating_sub(span.start) as u32).max(1);
             diags.push_str(&format!(
-                r#"{{"range":{{"start":{{"line":{},"character":{}}},"end":{{"line":{},"character":{}}}}},"severity":1,"source":"oneway","message":"{}"}}"#,
+                r#"{{"range":{{"start":{{"line":{},"character":{}}},"end":{{"line":{},"character":{}}}}},"severity":1,"source":"canon","message":"{}"}}"#,
                 line, col, line, end_col,
                 json_escape(err.message())
             ));
@@ -383,7 +383,7 @@ impl LspServer {
 
         // Phase 0b: if the current file is a bindgen-generated file,
         // jump straight to the matching WIT declaration. The bindgen
-        // `.ow` file is a derived artifact — the WIT is the authoritative
+        // `.can` file is a derived artifact — the WIT is the authoritative
         // source of truth, so go-to-def lands the user on the spec
         // rather than on the regenerable shim. Falls through to the
         // ordinary lookup if the WIT can't be resolved (no install index,
@@ -492,7 +492,7 @@ impl LspServer {
 /// local imports.
 ///
 /// `bundled` is `Some` when the `use` path resolves into a shipped package
-/// (`oneway/std`, `oneway/wasi`, …) and `None` for local-file imports. The
+/// (`canon/std`, `canon/wasi`, …) and `None` for local-file imports. The
 /// compiler's own loader makes the same split — we must too, otherwise the
 /// LSP and the compiler disagree about what `Foo` is.
 fn collect_import_items(
@@ -508,7 +508,7 @@ fn collect_import_items(
 
     // Bundled-package resolution: pull the embedded source out of the
     // loader. This is the same registry the compiler uses, so the LSP and
-    // the compiler never disagree on what `use oneway/std/Foo` means.
+    // the compiler never disagree on what `use canon/std/Foo` means.
     if let Some(file) = bundled {
         let Some(imported) = parse_source(file.source) else {
             return;
@@ -575,7 +575,7 @@ fn parse_use_path(path: &str) -> (&str, Option<&'static BundledFile>) {
 /// If provided, all `use` imports are resolved relative to it and their
 /// definitions are loaded into the module before checking — giving the
 /// checker full knowledge of imported types and methods.
-fn check_source(source: &str, file_path: &str) -> Vec<OnewayError> {
+fn check_source(source: &str, file_path: &str) -> Vec<CanonError> {
     // 1. Parse the in-memory source.
     let mut scanner = Scanner::new(source);
     let tokens = match scanner.scan_tokens() {
@@ -590,8 +590,8 @@ fn check_source(source: &str, file_path: &str) -> Vec<OnewayError> {
     resolve_new_syntax(&mut current);
 
     // 2. Collect items from every `use` import, recursively following
-    //    transitive imports (e.g. `use oneway/std/HttpServer` brings in
-    //    `use oneway/std/Request` etc.). A `seen` set prevents cycles. The
+    //    transitive imports (e.g. `use canon/std/HttpServer` brings in
+    //    `use canon/std/Request` etc.). A `seen` set prevents cycles. The
     //    full use path is preserved through `parse_use_path` so the
     //    embedded packages and on-disk files don't collide.
     let mut imported_items: Vec<crate::ast::Item> = Vec::new();
@@ -669,42 +669,42 @@ fn lookup_hover_info(module: &Module, name: &str) -> Option<String> {
 fn builtin_hover(name: &str) -> Option<String> {
     let desc = match name {
         // Core numeric / text types
-        "Int"    => "```oneway\nInt\n```\nA 64-bit signed integer.",
-        "Float"  => "```oneway\nFloat\n```\nA 64-bit floating-point number.",
-        "Hex"    => "```oneway\nHex\n```\nA 64-bit unsigned integer displayed in hexadecimal.",
-        "String" => "```oneway\nString = Byte^*\n```\nA UTF-8 string.",
-        "Byte"   => "```oneway\nByte\n```\nA single byte (u8).",
-        "Bytes"  => "```oneway\nBytes = Byte^*\n```\nA byte sequence.",
+        "Int"    => "```canon\nInt\n```\nA 64-bit signed integer.",
+        "Float"  => "```canon\nFloat\n```\nA 64-bit floating-point number.",
+        "Hex"    => "```canon\nHex\n```\nA 64-bit unsigned integer displayed in hexadecimal.",
+        "String" => "```canon\nString = Byte^*\n```\nA UTF-8 string.",
+        "Byte"   => "```canon\nByte\n```\nA single byte (u8).",
+        "Bytes"  => "```canon\nBytes = Byte^*\n```\nA byte sequence.",
         // Unit / Never
-        "Unit"  => "```oneway\nUnit\n```\nThe singleton type with exactly one value: `Unit`.",
-        "Never" => "```oneway\nNever\n```\nThe uninhabited type — a function returning `Never` does not return.",
+        "Unit"  => "```canon\nUnit\n```\nThe singleton type with exactly one value: `Unit`.",
+        "Never" => "```canon\nNever\n```\nThe uninhabited type — a function returning `Never` does not return.",
         // Bool and its variants
-        "Bool"  => "```oneway\nBool = False + True\n```\nThe built-in boolean type.",
-        "False" => "```oneway\nFalse\n```\nVariant of `Bool`. The falsy value.",
-        "True"  => "```oneway\nTrue\n```\nVariant of `Bool`. The truthy value.",
+        "Bool"  => "```canon\nBool = False + True\n```\nThe built-in boolean type.",
+        "False" => "```canon\nFalse\n```\nVariant of `Bool`. The falsy value.",
+        "True"  => "```canon\nTrue\n```\nVariant of `Bool`. The truthy value.",
         // Ord and its variants
-        "Ord"     => "```oneway\nOrd = Equal + Greater + Less\n```\nComparison result.",
-        "Equal"   => "```oneway\nEqual\n```\nVariant of `Ord`.",
-        "Greater" => "```oneway\nGreater\n```\nVariant of `Ord`.",
-        "Less"    => "```oneway\nLess\n```\nVariant of `Ord`.",
+        "Ord"     => "```canon\nOrd = Equal + Greater + Less\n```\nComparison result.",
+        "Equal"   => "```canon\nEqual\n```\nVariant of `Ord`.",
+        "Greater" => "```canon\nGreater\n```\nVariant of `Ord`.",
+        "Less"    => "```canon\nLess\n```\nVariant of `Ord`.",
         // Generic containers
-        "List"   => "```oneway\nList<T>\n```\nAn ordered sequence of values of type `T`.",
-        "Map"    => "```oneway\nMap<K, V>\n```\nA sorted key-value map. `K` must implement `Ord`.",
-        "Set"    => "```oneway\nSet<T>\n```\nA sorted set of values. `T` must implement `Ord`.",
-        "Option" => "```oneway\nOption<T> = None + Some<T>\n```\nAn optional value.",
-        "Some"   => "```oneway\nSome<T>\n```\nVariant of `Option<T>` — value is present.",
-        "None"   => "```oneway\nNone\n```\nVariant of `Option<T>` — value is absent.",
-        "Result" => "```oneway\nResult<T, E> = Err<E> + Ok<T>\n```\nA fallible computation.",
-        "Ok"     => "```oneway\nOk<T>\n```\nVariant of `Result<T, E>` — success.",
-        "Err"    => "```oneway\nErr<E>\n```\nVariant of `Result<T, E>` — failure.",
+        "List"   => "```canon\nList<T>\n```\nAn ordered sequence of values of type `T`.",
+        "Map"    => "```canon\nMap<K, V>\n```\nA sorted key-value map. `K` must implement `Ord`.",
+        "Set"    => "```canon\nSet<T>\n```\nA sorted set of values. `T` must implement `Ord`.",
+        "Option" => "```canon\nOption<T> = None + Some<T>\n```\nAn optional value.",
+        "Some"   => "```canon\nSome<T>\n```\nVariant of `Option<T>` — value is present.",
+        "None"   => "```canon\nNone\n```\nVariant of `Option<T>` — value is absent.",
+        "Result" => "```canon\nResult<T, E> = Err<E> + Ok<T>\n```\nA fallible computation.",
+        "Ok"     => "```canon\nOk<T>\n```\nVariant of `Result<T, E>` — success.",
+        "Err"    => "```canon\nErr<E>\n```\nVariant of `Result<T, E>` — failure.",
         // Capabilities
-        "Clock"      => "```oneway\nClock\n```\nCapability for reading the current time (non-suspending).",
-        "Filesystem" => "```oneway\nFilesystem\n```\nCapability for filesystem I/O (suspending — makes the function async).",
-        "Network"    => "```oneway\nNetwork\n```\nCapability for network I/O (suspending — makes the function async).",
+        "Clock"      => "```canon\nClock\n```\nCapability for reading the current time (non-suspending).",
+        "Filesystem" => "```canon\nFilesystem\n```\nCapability for filesystem I/O (suspending — makes the function async).",
+        "Network"    => "```canon\nNetwork\n```\nCapability for network I/O (suspending — makes the function async).",
 
-        "Stderr"     => "```oneway\nStderr\n```\nCapability for writing to stderr (non-suspending).",
-        "Stdin"      => "```oneway\nStdin\n```\nCapability for reading from stdin (non-suspending).",
-        "Stdout"     => "```oneway\nStdout\n```\nCapability for writing to stdout (non-suspending).",
+        "Stderr"     => "```canon\nStderr\n```\nCapability for writing to stderr (non-suspending).",
+        "Stdin"      => "```canon\nStdin\n```\nCapability for reading from stdin (non-suspending).",
+        "Stdout"     => "```canon\nStdout\n```\nCapability for writing to stdout (non-suspending).",
         _ => return None,
     };
     Some(desc.to_string())
@@ -716,7 +716,7 @@ fn variant_hover(td: &TypeDef, name: &str) -> Option<String> {
         for v in variants {
             if let Some(vname) = v.simple_name() {
                 if vname == name {
-                    let info = format!("```oneway\n{}\n```\nVariant of `{}`", name, td.name.name);
+                    let info = format!("```canon\n{}\n```\nVariant of `{}`", name, td.name.name);
                     return Some(info);
                 }
             }
@@ -739,7 +739,7 @@ fn effective_function_name(func: &FunctionDef) -> &str {
 fn format_type_def_hover(td: &TypeDef) -> String {
     let generics = format_generic_params(&td.generic_params);
     let body = format_type_expr(&td.body);
-    format!("```oneway\n{}{} = {}\n```", td.name.name, generics, body)
+    format!("```canon\n{}{} = {}\n```", td.name.name, generics, body)
 }
 
 fn format_function_hover(func: &FunctionDef) -> String {
@@ -770,7 +770,7 @@ fn format_function_hover(func: &FunctionDef) -> String {
     } else {
         sig.push_str(&format!(" = ({}) -> {}", params.join(", "), ret));
     }
-    format!("```oneway\n{}\n```", sig)
+    format!("```canon\n{}\n```", sig)
 }
 
 fn format_generic_params(params: &[crate::ast::GenericParam]) -> String {
@@ -855,7 +855,7 @@ fn path_to_uri(path: &str) -> String {
 // -----------------------------------------------------------------------
 // Slice 5: go-to-definition from a bindgen file → WIT source.
 //
-// `oneway install` writes bindgen output with bare `extern Wasm`
+// `canon install` writes bindgen output with bare `extern Wasm`
 // markers; the canonical-ABI URN lives in `<bindgen>/_install.toml`.
 // The WIT file itself — the actual source-of-truth definition the
 // bindgen was generated from — is reachable through the project
@@ -969,8 +969,8 @@ fn urn_for_bindgen_file(current_file: &str) -> Option<String> {
 /// points at either a single `.wit` (return that) or a directory (look
 /// for `<pkg>.wit` inside).
 ///
-/// For bundled bindgen files (the compiler's own `oneway/std`), the
-/// project root we walk up to is `packages/oneway/std/`, whose
+/// For bundled bindgen files (the compiler's own `canon/std`), the
+/// project root we walk up to is `packages/canon/std/`, whose
 /// manifest's `[imports]` declares `"wasi" = "../../../wit-vendor/wasi"`.
 /// The lookup resolves relative to that manifest's directory, landing
 /// in the repo-root `wit-vendor/`.
@@ -982,7 +982,7 @@ fn wit_file_for_urn(urn: &str, current_file: &str) -> Option<(PathBuf, String)> 
     let target = format!("{}/{}", ns, pkg);
 
     let project_root = find_project_root_from(&PathBuf::from(current_file))?;
-    let manifest_src = std::fs::read_to_string(project_root.join("oneway.toml")).ok()?;
+    let manifest_src = std::fs::read_to_string(project_root.join("canon.toml")).ok()?;
     let manifest = manifest::parse(&manifest_src).ok()?;
 
     for (key, source) in &manifest.imports {
@@ -1076,7 +1076,7 @@ fn find_wit_decl(wit_path: &Path, kebab_name: &str) -> Option<(u32, u32)> {
 }
 
 /// Walk up from `start` looking for the nearest directory that contains
-/// an `oneway.toml`. Mirrors `loader::find_project_root` (which is
+/// an `canon.toml`. Mirrors `loader::find_project_root` (which is
 /// private to that module — duplicated here rather than exported to
 /// keep the loader API surface narrow).
 fn find_project_root_from(start: &Path) -> Option<PathBuf> {
@@ -1086,14 +1086,14 @@ fn find_project_root_from(start: &Path) -> Option<PathBuf> {
         start
     };
     loop {
-        if cur.join("oneway.toml").is_file() {
+        if cur.join("canon.toml").is_file() {
             return Some(cur.to_path_buf());
         }
         cur = cur.parent()?;
     }
 }
 
-/// Resolve the filesystem path of a `.ow` file for a local `use X`
+/// Resolve the filesystem path of a `.can` file for a local `use X`
 /// declaration. Checks the entry file's sibling directory first, then
 /// the module form. Stdlib imports go through [`stdlib_file_stem`]
 /// instead — the loader's `name → file_stem` mapping is non-trivial and
@@ -1103,13 +1103,13 @@ fn resolve_local_ow_file(type_name: &str, current_file: &str) -> Option<String> 
     let stem = kebab_case(type_name);
     let dir = Path::new(current_file).parent().unwrap_or(Path::new("."));
 
-    // 1. Local file: <dir>/<stem>.ow
-    let local = dir.join(format!("{}.ow", stem));
+    // 1. Local file: <dir>/<stem>.can
+    let local = dir.join(format!("{}.can", stem));
     if local.exists() {
         return local.to_str().map(|s| s.to_string());
     }
-    // 2. Local module dir: <dir>/<stem>/main.ow
-    let local_mod = dir.join(&stem).join("main.ow");
+    // 2. Local module dir: <dir>/<stem>/main.can
+    let local_mod = dir.join(&stem).join("main.can");
     if local_mod.exists() {
         return local_mod.to_str().map(|s| s.to_string());
     }
@@ -1117,7 +1117,7 @@ fn resolve_local_ow_file(type_name: &str, current_file: &str) -> Option<String> 
 }
 
 /// Compose the on-disk path of a bundled file. Used so go-to-definition
-/// on a `use oneway/std/Foo` import can navigate to the actual file in
+/// on a `use canon/std/Foo` import can navigate to the actual file in
 /// the source tree. Returns `None` if the use path doesn't match any
 /// bundled package, or if the build-time absolute path no longer exists
 /// (e.g. when running from an installed binary).
@@ -1782,7 +1782,7 @@ mod tests {
     fn end_to_end_resolves_function_in_bindgen_file_to_wit() {
         // Full slice-5 contract:
         //   1. tmp project with manifest + vendored WIT directory
-        //   2. run install — produces `bindgen/wasi/.../monotonic_clock.ow` + index
+        //   2. run install — produces `bindgen/wasi/.../monotonic_clock.can` + index
         //   3. resolve_to_wit_declaration(<that file>, "now")
         //      should land us on the `now: func…` line in the WIT
         let root = tmpdir("e2e_resolve");
@@ -1792,7 +1792,7 @@ mod tests {
             .join("tests/fixtures/wit/monotonic-clock.wit");
         fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
         fs::write(
-            root.join("oneway.toml"),
+            root.join("canon.toml"),
             r#"
         name = "my-app"
         version = "0.1.0"
@@ -1804,7 +1804,7 @@ mod tests {
         .unwrap();
         crate::install::install(&root).expect("install");
 
-        let bindgen_file = root.join("bindgen/wasi/clocks/monotonic_clock.ow");
+        let bindgen_file = root.join("bindgen/wasi/clocks/monotonic_clock.can");
         assert!(bindgen_file.is_file());
         let bindgen_str = bindgen_file.to_string_lossy().to_string();
 
@@ -1831,7 +1831,7 @@ mod tests {
             .join("tests/fixtures/wit/monotonic-clock.wit");
         fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
         fs::write(
-            root.join("oneway.toml"),
+            root.join("canon.toml"),
             r#"
         name = "my-app"
         version = "0.1.0"
@@ -1843,7 +1843,7 @@ mod tests {
         .unwrap();
         crate::install::install(&root).expect("install");
 
-        let bindgen_file = root.join("bindgen/wasi/clocks/monotonic_clock.ow");
+        let bindgen_file = root.join("bindgen/wasi/clocks/monotonic_clock.can");
         let (_, line, _) =
             resolve_to_wit_declaration(&bindgen_file.to_string_lossy(), "getResolution")
                 .expect("camel name should resolve via kebab conversion");
@@ -1867,7 +1867,7 @@ mod tests {
             .join("tests/fixtures/wit/monotonic-clock.wit");
         fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
         fs::write(
-            root.join("oneway.toml"),
+            root.join("canon.toml"),
             r#"
 name = "my-app"
 version = "0.1.0"
@@ -1880,7 +1880,7 @@ version = "0.1.0"
 
         // A source file with a `bindings` directive on the second line.
         let source = "use whatever\nbindings \"wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15\"\n\nnow = () -> Instant\n";
-        let src_path = root.join("src.ow");
+        let src_path = root.join("src.can");
         fs::write(&src_path, source).unwrap();
 
         // Line 1 (0-indexed) is the bindings directive.
@@ -1901,7 +1901,7 @@ version = "0.1.0"
         // Cursor on a `bindings "<urn>#<fn>"` line resolves to the
         // specific function inside the WIT interface, not the interface
         // declaration. This is the per-decl override form used in
-        // `json.ow` for trait-overloaded `ToJson` declarations.
+        // `json.can` for trait-overloaded `ToJson` declarations.
         let root = tmpdir("click_bindings_fn");
         let vendor_dir = root.join("vendor");
         fs::create_dir_all(&vendor_dir).unwrap();
@@ -1909,7 +1909,7 @@ version = "0.1.0"
             .join("tests/fixtures/wit/monotonic-clock.wit");
         fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
         fs::write(
-            root.join("oneway.toml"),
+            root.join("canon.toml"),
             r#"
 name = "my-app"
 version = "0.1.0"
@@ -1921,7 +1921,7 @@ version = "0.1.0"
         .unwrap();
 
         let source = "bindings \"wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#get-resolution\"\n\nresolution = () -> Duration\n";
-        let src_path = root.join("src.ow");
+        let src_path = root.join("src.can");
         fs::write(&src_path, source).unwrap();
 
         let (_, line, _) =
@@ -1943,11 +1943,11 @@ version = "0.1.0"
         // ordinary go-to-def path.
         let root = tmpdir("click_non_bindings");
         fs::write(
-            root.join("oneway.toml"),
+            root.join("canon.toml"),
             "name = \"x\"\nversion = \"0.1.0\"\n",
         )
         .unwrap();
-        let src_path = root.join("src.ow");
+        let src_path = root.join("src.can");
         let source = "use wasi/clocks/monotonic_clock\n";
         fs::write(&src_path, source).unwrap();
 
@@ -1957,18 +1957,18 @@ version = "0.1.0"
 
     #[test]
     fn returns_none_for_non_bindgen_file() {
-        // A regular `.ow` file (not under any `bindgen/` directory) should
+        // A regular `.can` file (not under any `bindgen/` directory) should
         // resolve to nothing — the LSP will then fall back to its
         // ordinary in-file / follow-imports lookup.
         let root = tmpdir("non_bindgen");
         fs::write(
-            root.join("oneway.toml"),
+            root.join("canon.toml"),
             "name = \"my-app\"\nversion = \"0.1.0\"\n",
         )
         .unwrap();
         let src_dir = root.join("src");
         fs::create_dir_all(&src_dir).unwrap();
-        let main = src_dir.join("main.ow");
+        let main = src_dir.join("main.can");
         fs::write(&main, "main = () -> Unit { Unit() }\n").unwrap();
 
         let result = resolve_to_wit_declaration(&main.to_string_lossy(), "main");

@@ -1,12 +1,12 @@
 [package]
-name = "oneway"
+name = "canon"
 version = "0.3.0"
 edition = "2021"
-description = "The Oneway programming language compiler"
-default-run = "oneway"
+description = "The Canon programming language compiler"
+default-run = "canon"
 
 [[bin]]
-name = "oneway"
+name = "canon"
 path = "src/main.rs"
 
 [dependencies]
@@ -29,10 +29,10 @@ tokio         = { version = "1", features = ["rt-multi-thread", "macros", "time"
 
 # WASI HTTP P3 — drives `wasi:http/handler.handle` exports through hyper.
 # We disable `default-features` to drop `default-send-request` (which pulls
-# in rustls + webpki); `oneway run --addr` only needs the *server* side today.
+# in rustls + webpki); `canon run --addr` only needs the *server* side today.
 # The outbound request path can be re-enabled when we wire `wasi:http/client`
-# imports for the Oneway HTTP client (which is currently the
-# `oneway:builtins/http` bridge).
+# imports for the Canon HTTP client (which is currently the
+# `canon:builtins/http` bridge).
 wasmtime-wasi-http = { version = "45", default-features = false, features = ["p3"] }
 
 # hyper-side HTTP. `hyper` provides the wire protocol, `hyper-util` the

@@ -5,10 +5,10 @@
 //! `fail` set must produce stderr that matches a sibling `.stderr`
 //! golden file exactly.
 //!
-//! Adding a new positive test: drop an `.ow` file into `ok/`.
+//! Adding a new positive test: drop an `.can` file into `ok/`.
 //! Adding a new negative test:
-//!   1. Drop an `.ow` file into `fail/`.
-//!   2. Run `ONEWAY_UPDATE_FIXTURES=1 cargo test --test checker_fixtures`
+//!   1. Drop an `.can` file into `fail/`.
+//!   2. Run `CANON_UPDATE_FIXTURES=1 cargo test --test checker_fixtures`
 //!      (or `just update-fixtures`) to generate the golden `.stderr`.
 //!   3. Review the generated `.stderr` and commit both files.
 //!

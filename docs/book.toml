@@ -1,17 +1,17 @@
 [book]
-title = "The Oneway Programming Language"
+title = "The Canon Programming Language"
 description = "A maximally opinionated, strict, functional-leaning systems language"
-authors = ["The Oneway Project"]
+authors = ["The Canon Project"]
 language = "en"
 src = "src"
 
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/Almaju/oneway"
-edit-url-template = "https://github.com/Almaju/oneway/edit/main/docs/{path}"
+git-repository-url = "https://github.com/Almaju/canon"
+edit-url-template = "https://github.com/Almaju/canon/edit/main/docs/{path}"
 additional-css = ["theme/custom.css"]
-additional-js = ["theme/oneway-highlight.js"]
+additional-js = ["theme/canon-highlight.js"]
 no-section-label = false
 
 [output.html.fold]

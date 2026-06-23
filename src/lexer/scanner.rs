@@ -1,4 +1,4 @@
-use crate::error::{OnewayError, Result, Span};
+use crate::error::{CanonError, Result, Span};
 use crate::lexer::token::{Token, TokenKind};
 
 pub struct Scanner<'a> {
@@ -347,8 +347,8 @@ impl<'a> Scanner<'a> {
         Span::new(self.pos, self.pos, self.line, self.column)
     }
 
-    fn err_at(&self, line: u32, column: u32, msg: &str) -> OnewayError {
-        OnewayError::LexError {
+    fn err_at(&self, line: u32, column: u32, msg: &str) -> CanonError {
+        CanonError::LexError {
             message: msg.to_string(),
             span: Span::new(self.pos, self.pos, line, column),
         }

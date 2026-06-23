@@ -1,0 +1,11 @@
+bindings "canon:builtins/math@0.1.0"
+
+OtherInt = Int
+
+min = (Int * OtherInt) -> Int
+
+main = () -> Unit {
+    5
+        .min(3)
+        .print()
+}

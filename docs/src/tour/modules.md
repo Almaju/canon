@@ -1,31 +1,31 @@
 # Modules
 
-Oneway's module system is file-based and conventionally driven. There is
+Canon's module system is file-based and conventionally driven. There is
 no `mod` declaration, no manifest of what's in scope.
 
 ## File Rules
 
-- Files are named `kebab-case.ow` — `http-server.ow` declares `HttpServer`,
-  `user-role.ow` declares `UserRole`, `foo.ow` declares `Foo`.
+- Files are named `kebab-case.can` — `http-server.can` declares `HttpServer`,
+  `user-role.can` declares `UserRole`, `foo.can` declares `Foo`.
 - A file's name **must match** the type it declares.
 - A **module is a folder**. There is no `mod` keyword.
-- The entry point is `main.ow`. A library's root is `lib.ow`.
+- The entry point is `main.can`. A library's root is `lib.can`.
 
 ## Imports
 
 To use a type defined in a sibling file, write:
 
-```oneway
+```canon
 use Foo
 ```
 
-This imports `Foo` from `foo.ow` (or from the corresponding folder if
+This imports `Foo` from `foo.can` (or from the corresponding folder if
 `Foo` is a module). No paths, no aliasing.
 
 To import from the embedded standard library, prefix the path with
 `std/`:
 
-```oneway
+```canon
 use std/File
 use std/Url
 ```
@@ -40,13 +40,13 @@ order.
 
 ```
 examples/multifile/
-├── greeter.ow
-└── main.ow
+├── greeter.can
+└── main.can
 ```
 
-`greeter.ow`:
+`greeter.can`:
 
-```oneway
+```canon
 Greeter = String
 
 shout = (Greeter) -> String {
@@ -54,9 +54,9 @@ shout = (Greeter) -> String {
 }
 ```
 
-`main.ow`:
+`main.can`:
 
-```oneway
+```canon
 use Greeter
 
 main = () -> Unit {

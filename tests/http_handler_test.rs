@@ -1,6 +1,6 @@
 //! End-to-end integration test for the dynamic HTTP handler ABI.
 //!
-//! Spawns a child `oneway run` process that binds an HTTP server with
+//! Spawns a child `canon run` process that binds an HTTP server with
 //! a `handleRequest = (String) -> String` user function defined, then
 //! opens a TCP connection to it, sends an HTTP request, and asserts
 //! that the response body matches what the handler returned.
@@ -24,17 +24,17 @@ const TEST_PORT_SSE: u16 = 38422;
 
 #[test]
 fn dynamic_handler_round_trip() {
-    let workdir = std::env::temp_dir().join(format!("oneway_http_test_{}", std::process::id()));
+    let workdir = std::env::temp_dir().join(format!("canon_http_test_{}", std::process::id()));
     std::fs::create_dir_all(&workdir).unwrap();
-    let ow_path = workdir.join("handler.ow");
+    let ow_path = workdir.join("handler.can");
     std::fs::write(
         &ow_path,
         format!(
-            r#"use oneway/std/IoError
-use oneway/std/http/HttpServer
-use oneway/std/http/HttpStatus
-use oneway/std/http/Port
-use oneway/std/http/RoutePath
+            r#"use canon/std/IoError
+use canon/std/http/HttpServer
+use canon/std/http/HttpStatus
+use canon/std/http/Port
+use canon/std/http/RoutePath
 
 handleRequest = (String) -> String {{
     "echoed via dynamic handler"
@@ -51,14 +51,14 @@ main = () -> Result<Unit, IoError> {{
     )
     .unwrap();
 
-    let oneway_bin = PathBuf::from(env!("CARGO_BIN_EXE_oneway"));
-    let mut child = Command::new(&oneway_bin)
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let mut child = Command::new(&canon_bin)
         .arg("run")
         .arg(&ow_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn `oneway run`");
+        .expect("failed to spawn `canon run`");
 
     // Poll the port until it accepts connections. Cap at ~5s.
     let start = Instant::now();
@@ -120,17 +120,17 @@ main = () -> Result<Unit, IoError> {{
 /// `text/event-stream` flows end-to-end with a single payload.
 #[test]
 fn dynamic_handler_sse_content_type() {
-    let workdir = std::env::temp_dir().join(format!("oneway_http_sse_test_{}", std::process::id()));
+    let workdir = std::env::temp_dir().join(format!("canon_http_sse_test_{}", std::process::id()));
     std::fs::create_dir_all(&workdir).unwrap();
-    let ow_path = workdir.join("handler.ow");
+    let ow_path = workdir.join("handler.can");
     std::fs::write(
         &ow_path,
         format!(
-            r#"use oneway/std/IoError
-use oneway/std/http/HttpServer
-use oneway/std/http/HttpStatus
-use oneway/std/http/Port
-use oneway/std/http/RoutePath
+            r#"use canon/std/IoError
+use canon/std/http/HttpServer
+use canon/std/http/HttpStatus
+use canon/std/http/Port
+use canon/std/http/RoutePath
 
 handleRequest = (String) -> String {{
     "Content-Type: text/event-stream\r\n\r\ndata: hello\n\ndata: world\n\n"
@@ -147,14 +147,14 @@ main = () -> Result<Unit, IoError> {{
     )
     .unwrap();
 
-    let oneway_bin = PathBuf::from(env!("CARGO_BIN_EXE_oneway"));
-    let mut child = Command::new(&oneway_bin)
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let mut child = Command::new(&canon_bin)
         .arg("run")
         .arg(&ow_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn `oneway run`");
+        .expect("failed to spawn `canon run`");
 
     let start = Instant::now();
     let addr = format!("127.0.0.1:{}", TEST_PORT_SSE);

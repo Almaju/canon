@@ -9,7 +9,7 @@ machinery is real, but it has been welded to the *syntax* of the language,
 and once syntax is involved every function has to declare which world it
 lives in.
 
-Oneway takes a different position: **async is a property of types, never of
+Canon takes a different position: **async is a property of types, never of
 syntax**. There is no `async` keyword. There is no `.await`. There is no
 function color the programmer has to track. You write synchronous-looking
 code, the compiler infers everything else.
@@ -36,7 +36,7 @@ two different things:
    to call it from async context, what do I do." This is a property of
    the *language*, and it is optional.
 
-Oneway accepts (1) — we ship to WASM, we have no choice — and rejects (2)
+Canon accepts (1) — we ship to WASM, we have no choice — and rejects (2)
 as much as the underlying machinery permits.
 
 ## The Rules
@@ -44,11 +44,11 @@ as much as the underlying machinery permits.
 The full rule is short enough to fit on one page:
 
 1. **The user never writes `async`. The user never writes `await`.** These
-   keywords do not exist in the Oneway grammar.
+   keywords do not exist in the Canon grammar.
 
 2. **Async-ness enters the program through one door:** a [binding file](
    ./extern.md). If the WIT interface declares `async func read(…) -> …`,
-   the mechanical WIT → Oneway mapping gives the binding a `Future<T>`
+   the mechanical WIT → Canon mapping gives the binding a `Future<T>`
    return type. That is the *only* way `Future` ever appears in source.
 
 3. **`Future<T>` and `Stream<T>` are real types**, and the type checker
@@ -78,7 +78,7 @@ This program performs an HTTP GET and prints the response body. Under the
 hood, `wasi:http/outgoing-handler` is an async interface — every step of
 the chain returns a `Future`:
 
-```oneway
+```canon
 use std/Url
 
 main = () -> Unit {
@@ -120,7 +120,7 @@ forward it. This means:
   thing" generates an industry of workarounds: `block_on`, `spawn_blocking`,
   threadpools, `Handle::current()`, and so on.
 
-Oneway doesn't have this problem because the calling convention at the
+Canon doesn't have this problem because the calling convention at the
 source level is the same for both cases. `f(x)` is `f(x)`. The compiler
 makes the calling convention right at codegen time, based on whether `f`
 ended up in the suspending set.
@@ -132,10 +132,10 @@ the *runtime* — the thing that polls futures — is not part of the
 language. Library authors have to pick (or paper over the difference with
 feature flags), and downstream consumers inherit the choice.
 
-Oneway has no library-author-visible runtime. The runtime is `wasmtime`'s
+Canon has no library-author-visible runtime. The runtime is `wasmtime`'s
 implementation of WASI Preview 3's async semantics, which is fixed by the
 Component Model spec, not by the language. There is no executor to pick
-because there is no executor anyone in Oneway's world chooses.
+because there is no executor anyone in Canon's world chooses.
 
 ### The Slogan Doesn't Match Reality
 
@@ -147,7 +147,7 @@ doesn't increase; ceremony does.
 
 What you actually need to reason about — *can this function block? does it
 require an executor? does it propagate cancellation?* — is captured by
-**the type signature**, not by a keyword somewhere in the body. Oneway
+**the type signature**, not by a keyword somewhere in the body. Canon
 keeps the type signature (the `Future<T>` in the binding) and drops the
 keyword.
 
@@ -158,9 +158,9 @@ keyword.
 | Rust | `async fn`, `.await` | Yes | tokio / async-std / smol |
 | JavaScript | `async`, `await` | Yes (in practice) | platform-fixed |
 | Go | none — goroutines + channels | No (sync surface) | green-thread scheduler in every binary |
-| Oneway | none | No (sync surface) | WASI Preview 3 (host-provided) |
+| Canon | none | No (sync surface) | WASI Preview 3 (host-provided) |
 
-Oneway is in the "Go column" on developer experience — synchronous-looking
+Canon is in the "Go column" on developer experience — synchronous-looking
 code, no keywords — without paying Go's price (a green-thread scheduler
 baked into every binary). The win comes from targeting WASM exclusively:
 the Component Model gives us async at the *ABI*, so we don't need to
@@ -176,7 +176,7 @@ The answer, consistent with [domain-first design](./effects.md), is **as
 ordinary stdlib types, not keywords**. The shapes planned for the standard
 library are:
 
-```oneway
+```canon
 # Sequential — each call awaits before the next starts
 [urlA, urlB].map(get)              # Future<List<Body>>, sequential
 
@@ -209,8 +209,8 @@ position that expects its payload. The surface remains keyword-free.
 > lifted async-stackful). Both are recognised by name in the codegen —
 > see `compile_parallel` / `compile_race` in `src/codegen/wasm/mod.rs`
 > — and emit the canonical-ABI multi-subtask wait sequence inline; no
-> host bridge is needed. Pinned by `tests/runtime/parallel_two_echoes.ow`
-> and `tests/runtime/race_two_echoes.ow`.
+> host bridge is needed. Pinned by `tests/runtime/parallel_two_echoes.can`
+> and `tests/runtime/race_two_echoes.can`.
 
 ## Streams
 
@@ -219,7 +219,7 @@ sequence of values produced over time. The same auto-detection rule
 applies: a method that returns a `Stream<T>`, used at a position that
 expects iteration, becomes a suspending iteration loop.
 
-```oneway
+```canon
 # Hypothetical: tail -f, where lines() returns Stream<String>
 Path("./log.txt").File()?.lines().each((String) -> Unit {
     String.print()
@@ -230,7 +230,7 @@ The user writes `.each`. The compiler sees `Stream<String>` and generates
 the Component Model stream-poll loop. There is no `for await … of`.
 
 > Status: the stdlib surface is declared in
-> `packages/oneway/std/src/stream.ow` (`map`, `filter`, `take`, `concat`,
+> `packages/canon/std/src/stream.can` (`map`, `filter`, `take`, `concat`,
 > `toList`, `toString`) and the checker accepts it. Codegen for stream-
 > carrying imports is the open piece: `build_extern_component_params`
 > currently returns `None` on `Stream<T>` params/returns so the imports
@@ -241,7 +241,7 @@ the Component Model stream-poll loop. There is no `for await … of`.
 
 ## Cancellation
 
-The Component Model has `subtask.cancel`. Oneway doesn't expose it as a
+The Component Model has `subtask.cancel`. Canon doesn't expose it as a
 primitive — cancellation is a consequence of using `Race<…>` (the losing
 branches are cancelled) or of dropping a `Stream<T>` mid-iteration. There
 is no `cancel()` method to call directly. If you want a future to be
@@ -253,7 +253,7 @@ on objects.
 
 ## Where the User Actually Sees Async
 
-In normal Oneway code: **nowhere**. The keyword doesn't exist, the
+In normal Canon code: **nowhere**. The keyword doesn't exist, the
 `Future<T>` and `Stream<T>` types are inferred from binding signatures and
 collapsed at use sites, and the runtime is fixed.
 
@@ -266,7 +266,7 @@ Three places it leaks:
    inferred type couldn't be unified with `String`, the error message
    will mention `Future`. (In practice the auto-await rule fires before
    the error reaches the user, but pathological cases exist.)
-3. **`oneway inspect`** — when you ask the compiler what it inferred, you
+3. **`canon inspect`** — when you ask the compiler what it inferred, you
    can see which functions are suspending and which aren't.
 
 For day-to-day code, the model is what it should be: a sequence of method

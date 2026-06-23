@@ -98,6 +98,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
+name = "canon"
+version = "0.3.0"
+dependencies = [
+ "bytes",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "tokio",
+ "wasm-encoder 0.250.0",
+ "wasmparser 0.250.0",
+ "wasmtime",
+ "wasmtime-wasi",
+ "wasmtime-wasi-http",
+ "wit-component 0.250.0",
+ "wit-parser 0.250.0",
+]
+
+[[package]]
 name = "cap-fs-ext"
 version = "3.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1174,25 +1193,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "oneway"
-version = "0.3.0"
-dependencies = [
- "bytes",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "tokio",
- "wasm-encoder 0.250.0",
- "wasmparser 0.250.0",
- "wasmtime",
- "wasmtime-wasi",
- "wasmtime-wasi-http",
- "wit-component 0.250.0",
- "wit-parser 0.250.0",
-]
 
 [[package]]
 name = "percent-encoding"

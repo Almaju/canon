@@ -1,6 +1,6 @@
 # Coming from Rust
 
-Oneway's compiler is written in Rust and the language inherits Rust-style
+Canon's compiler is written in Rust and the language inherits Rust-style
 ownership analysis, but it does **not** transpile to Rust. Programs
 compile to WebAssembly Components (WASI Preview 3). If you already know
 Rust, this page is the fastest path in — the cheat sheet is the
@@ -8,7 +8,7 @@ syntax-level mapping, not a runtime mapping.
 
 ## Cheat Sheet
 
-| Rust                                       | Oneway                                  |
+| Rust                                       | Canon                                  |
 |--------------------------------------------|-----------------------------------------|
 | `struct User { birthday: ..., username: ... }` | `User = Birthday * Username`        |
 | `enum Bool { False, True }`                | `Bool = False + True`                  |
@@ -24,14 +24,14 @@ syntax-level mapping, not a runtime mapping.
 | `let x = ...;`                             | No equivalent — declare a newtype       |
 | `if cond { a } else { b }`                 | `cond.( False => b, True => a )`        |
 | `pub fn`                                   | Everything is public                    |
-| `mod foo;`                                 | No `mod` — `foo.ow` declares `Foo`      |
+| `mod foo;`                                 | No `mod` — `foo.can` declares `Foo`      |
 | `use crate::foo::Foo;`                     | `use Foo`                               |
 | `use serde_json::Value;` (third-party)     | `use std/Foo` for stdlib, plus `extern Wasm` for raw imports |
 | `fn(...) -> T` (function type)             | `(params) -> T` (also a trait declaration) |
 | `&T` / `&mut T` / `Box<T>` / `Rc<T>`       | Inferred by the compiler                |
 | `async fn`, `.await`                       | Inferred — no source-level keyword      |
 
-## Things Rust Has That Oneway Doesn't
+## Things Rust Has That Canon Doesn't
 
 - **Lifetimes and borrow sigils** (`'a`, `&`, `&mut`). Ownership is
   inferred from usage.
@@ -45,7 +45,7 @@ syntax-level mapping, not a runtime mapping.
   declarations and `Future<T>`/`Stream<T>` consumption — both keywords
   are absent at the source level.
 
-## Things Oneway Has That Rust Doesn't
+## Things Canon Has That Rust Doesn't
 
 - **Mandatory alphabetical declaration order.** Compiler-enforced.
 - **Domain-first I/O.** Effects flow through ordinary values (`File`,
@@ -54,25 +54,25 @@ syntax-level mapping, not a runtime mapping.
 - **Inline error unions.** `Result<Bytes, IoError + NotFound>` without
   declaring a wrapper enum at every call site.
 - **No-comments policy.** The compiler rejects them.
-- **Portable build artifact.** `oneway build` emits a `.wasm` Component;
+- **Portable build artifact.** `canon build` emits a `.wasm` Component;
   no native linker, no per-platform binaries.
 
 ## Build Artifacts
 
 | Command                         | Output                                                      |
 |---------------------------------|-------------------------------------------------------------|
-| `oneway run`                    | Builds the current package and runs it through `wasmtime`    |
-| `oneway run hello.ow`           | Single-file mode: same, but for one loose `.ow` file         |
-| `oneway run my-ws -p foo`       | Runs workspace member `foo` (`cargo run -p foo`)             |
-| `oneway build`                  | `build/<name>.wasm` + sibling `.wit` for the current package |
-| `oneway build my-ws`            | Builds every member of a workspace into its shared `build/`  |
-| `oneway build hello.ow`         | `build/hello/hello.wasm` + sibling `.wit` (single-file mode) |
-| `oneway inspect wat hello.ow`   | WAT (WebAssembly Text) for the **core** module               |
-| `oneway check`                  | Type + sort-order check on the current package, no codegen   |
+| `canon run`                    | Builds the current package and runs it through `wasmtime`    |
+| `canon run hello.can`           | Single-file mode: same, but for one loose `.can` file         |
+| `canon run my-ws -p foo`       | Runs workspace member `foo` (`cargo run -p foo`)             |
+| `canon build`                  | `build/<name>.wasm` + sibling `.wit` for the current package |
+| `canon build my-ws`            | Builds every member of a workspace into its shared `build/`  |
+| `canon build hello.can`         | `build/hello/hello.wasm` + sibling `.wit` (single-file mode) |
+| `canon inspect wat hello.can`   | WAT (WebAssembly Text) for the **core** module               |
+| `canon check`                  | Type + sort-order check on the current package, no codegen   |
 
-A package looks like `oneway.toml` + `src/main.ow` + `build/` — the
+A package looks like `canon.toml` + `src/main.can` + `build/` — the
 same three-sibling shape as `Cargo.toml` + `src/` + `target/`. A
-workspace looks like `oneway.toml` (`[workspace] members = ["*"]`) +
+workspace looks like `canon.toml` (`[workspace] members = ["*"]`) +
 member packages + a shared `build/` at the workspace root — the same
 shape as Cargo workspaces. There is no `rustc`/`cargo` invocation
 anywhere in the build path; the output `.wasm` is a portable
@@ -80,10 +80,10 @@ WebAssembly Component.
 
 ## When in Doubt
 
-- Look at the [`examples/`](https://github.com/Almaju/oneway/tree/main/examples)
+- Look at the [`examples/`](https://github.com/Almaju/canon/tree/main/examples)
   directory in the repo.
-- Read [`DESIGN.md`](https://github.com/Almaju/oneway/blob/main/DESIGN.md)
+- Read [`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md)
   — it's the authoritative spec.
-- Read [`WASM.md`](https://github.com/Almaju/oneway/blob/main/WASM.md)
+- Read [`WASM.md`](https://github.com/Almaju/canon/blob/main/WASM.md)
   for the WASM-backend status and known gaps.
-- `oneway inspect wat path/to/file.ow` prints the WAT the compiler produces.
+- `canon inspect wat path/to/file.can` prints the WAT the compiler produces.

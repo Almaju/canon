@@ -1,0 +1,21 @@
+use canon/std/TestResult
+
+Greeting = String
+
+Name = String
+
+Show = () -> String
+
+Show = (Greeting) -> String {
+    "HELLO!"
+}
+
+Show = (Name) -> String {
+    "Alice"
+}
+
+testShowExists = () -> TestResult {
+    Greeting("hi").Show()
+    Name("Alice").Show()
+    Pass()
+}

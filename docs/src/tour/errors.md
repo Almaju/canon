@@ -3,7 +3,7 @@
 Errors are values, carried by the standard `Result<T, E>` type. The error
 slot is a regular type, so it can be a union written inline:
 
-```oneway
+```canon
 read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
@@ -21,7 +21,7 @@ The postfix `?` operator propagates failure. It works on both
   `T`.
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
-```oneway
+```canon
 main = () -> Result<Unit, Unit> {
     Ok(42)?.print()
     Some(7).(
@@ -52,7 +52,7 @@ legitimately fail.
 Because `?` is postfix, error-propagating pipelines read top-down,
 left-to-right:
 
-```oneway
+```canon
 readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
     File.read(Path)?
         .parse()?
@@ -70,7 +70,7 @@ constructor is fallible](literals.md#validated-constructors).
 A type with a declared constructor that returns `Result<Self, E>`
 forces callers to handle the failure mode:
 
-```oneway
+```canon
 Url("https://example.com")?.get()?.print()
 ```
 
@@ -91,4 +91,4 @@ The exception is opaque wrappers around foreign error types: when
 binding to a Component Model interface whose error shape is a single
 string or an opaque resource, it's pragmatic to keep the wrapper opaque
 (e.g., `HttpError = String`) until the underlying error space gets
-decomposed into proper Oneway variants.
+decomposed into proper Canon variants.

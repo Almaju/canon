@@ -1,1 +1,1 @@
-error[tests/checker/fail/type_definition_ordering_violation.ow:3:1]: type definitions must be in alphabetical order — `Apple` should come before `Zebra`
+error[tests/checker/fail/type_definition_ordering_violation.can:3:1]: type definitions must be in alphabetical order — `Apple` should come before `Zebra`

@@ -1,4 +1,4 @@
-/// Oneway WASM codegen — emits a core module which is then wrapped into a
+/// Canon WASM codegen — emits a core module which is then wrapped into a
 /// **Component Model** component (WASI Preview 3) by `component::wrap`.
 ///
 /// The core module:
@@ -9,7 +9,7 @@
 ///     `stream-drop-writable`, and `future-drop-readable`. `print_str`
 ///     stitches them into the native WASI P3 stdout sequence so the
 ///     produced `.wasm` is portable to any compliant Component Model
-///     runtime (no `oneway:*` host bridge required for output).
+///     runtime (no `canon:*` host bridge required for output).
 ///   - Exports `"run" (func (result i32))` — the entry point that the wrapper
 ///     lifts as `wasi:cli/run.run`. The i32 result is the canonical-ABI
 ///     discriminant for `result<_, _>`: 0 = Ok, 1 = Err.
@@ -102,7 +102,7 @@ fn parse_extern_path(path: &str) -> Option<(String, String, String)> {
 /// Walks the module's items, collects every `extern Wasm` function, parses the
 /// path, derives the WASM signature, and assigns each a function index. The
 /// resulting list is sorted by `(core_namespace, fn_name)` so the output is
-/// deterministic across runs (matching Oneway's "alphabetical" ethos).
+/// deterministic across runs (matching Canon's "alphabetical" ethos).
 fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
     let type_defs = build_type_defs_map(ast);
     let mut raw: Vec<ExternImport> = Vec::new();
@@ -114,13 +114,13 @@ fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         let Some((component_ns, core_ns, fn_name)) = parse_extern_path(&ext.path) else {
             continue;
         };
-        // `oneway:builtins/concurrent` is a *synthetic* interface — the
+        // `canon:builtins/concurrent` is a *synthetic* interface — the
         // codegen recognises `parallel(…)` and `race(…)` as built-in
         // combinators and emits the multi-subtask wait sequence inline
         // (see `compile_parallel` / `compile_race`). It has no host
         // implementation; skipping it from the import collection prevents
         // the linker from looking for one.
-        if component_ns.starts_with("oneway:builtins/concurrent") {
+        if component_ns.starts_with("canon:builtins/concurrent") {
             continue;
         }
 
@@ -380,7 +380,7 @@ fn scalar_val_type_to_primitive(vt: ValType, signed: bool) -> wasm_encoder::Prim
     }
 }
 
-/// Coarse mapping from a Oneway type expression to its WASM stack types.
+/// Coarse mapping from a Canon type expression to its WASM stack types.
 /// Mirrors the `Ty::val_types` logic for the cases that show up in extern
 /// declarations (scalars, strings, Unit, products of those).
 fn type_expr_val_types(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> Vec<ValType> {
@@ -420,7 +420,7 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
             // as type-only proof that the caller holds the capability.
             // `HttpServer<S>` and `HttpClient` are *value types* with state,
             // not capability markers — they're flat-scalar/string aliases
-            // declared in the stdlib (`std/http-server-wasm.ow`).
+            // declared in the stdlib (`std/http-server-wasm.can`).
             "Stdout" | "Stderr" | "Stdin" | "Network" | "Clock" | "Filesystem" => vec![],
             _ => {
                 if let Some(body) = type_defs.get(name) {
@@ -449,22 +449,22 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
 // The interface + function names are duplicated in `runtime.rs` for the
 // host-side lookup. Keep them in sync if you ever rename either.
 #[allow(dead_code)]
-pub(super) const HTTP_HANDLER_INTERFACE: &str = "oneway:http-handler/handler@0.1.0";
+pub(super) const HTTP_HANDLER_INTERFACE: &str = "canon:http-handler/handler@0.1.0";
 #[allow(dead_code)]
 pub(super) const HTTP_HANDLER_FN_NAME: &str = "handle-request";
 
 // ── Global index constants ──────────────────────────────────────────────────────────
 // The bump pointer is now an *imported* mutable global so it can be shared
 // between the user core module and the component wrapper's `cabi_realloc`
-// helper. Both bump from the same pointer, which keeps Oneway-allocated heap
+// helper. Both bump from the same pointer, which keeps Canon-allocated heap
 // data and host-allocated string returns in a single coherent heap.
 const GLOBAL_BUMP_PTR: u32 = 0;
 
-// ── WASM representation of an Oneway expression ──────────────────────────────
+// ── WASM representation of an Canon expression ──────────────────────────────
 
 /// What a compiled expression leaves on the WASM stack.
 ///
-/// The `Named*` variants carry the Oneway type name so method dispatch can
+/// The `Named*` variants carry the Canon type name so method dispatch can
 /// find the right user-defined function.
 #[derive(Clone, Debug, PartialEq)]
 enum Ty {
@@ -509,8 +509,8 @@ impl Ty {
         }
     }
 
-    /// The Oneway type name, if known (used for method dispatch).
-    fn oneway_name(&self) -> Option<&str> {
+    /// The Canon type name, if known (used for method dispatch).
+    fn canon_name(&self) -> Option<&str> {
         match self {
             Ty::NamedStr(n) | Ty::NamedPtr(n) | Ty::NamedPtrStr(n, _, _) => Some(n.as_str()),
             _ => None,
@@ -524,7 +524,7 @@ impl Ty {
 
 // ── Local scope ───────────────────────────────────────────────────────────────
 
-/// Maps Oneway parameter names to their local variable index + repr.
+/// Maps Canon parameter names to their local variable index + repr.
 ///
 /// Extra locals (indices after params, declared via `extra_locals_decl()`):
 ///   pc+0, pc+1  (i32): rptr, rlen   — for Str match results
@@ -716,9 +716,9 @@ pub(super) enum IndirectReturnShape {
     /// `Url`, `HttpError`). Return area: 12 bytes — byte 0 holds the WIT
     /// discriminant (0=ok, 1=err); bytes 4–7 the payload ptr; bytes 8–11
     /// the payload len. After the call the codegen flips the discriminant
-    /// Oneway's alphabetical convention (Err=0, Ok=1) and pushes the
+    /// Canon's alphabetical convention (Err=0, Ok=1) and pushes the
     /// area pointer as `Ty::NamedPtrStr(union, ok_name, err_name)`. The
-    /// three names preserve Oneway-level types through `?` and dispatch
+    /// three names preserve Canon-level types through `?` and dispatch
     /// so subsequent method calls find their externs (e.g. `.read()`
     /// after `Path(…).File()?`) and the Err arm of a `match` can type
     /// the bound payload (e.g. `Err(e) =>` where `e: IoError`).
@@ -742,11 +742,11 @@ pub(super) struct ExternImport {
     /// The full path string from the source program, kept verbatim for error
     /// messages and debugging.
     pub(super) full_path: String,
-    /// Component-level import name, e.g. `"oneway:builtins/math@0.1.0"`.
+    /// Component-level import name, e.g. `"canon:builtins/math@0.1.0"`.
     /// Multiple functions can share the same `component_namespace` — they end
     /// up as members of the same imported instance.
     pub(super) component_namespace: String,
-    /// Core-module import-module name, e.g. `"oneway:builtins/math"` (no
+    /// Core-module import-module name, e.g. `"canon:builtins/math"` (no
     /// version). Multiple `ExternImport`s sharing this name are all served by
     /// the same synthetic core instance built inside the component wrapper.
     pub(super) core_namespace: String,
@@ -757,7 +757,7 @@ pub(super) struct ExternImport {
     /// and clears `results`.
     pub(super) params: Vec<ValType>,
     pub(super) results: Vec<ValType>,
-    /// Logical component-level parameters, one entry per Oneway argument
+    /// Logical component-level parameters, one entry per Canon argument
     /// (receiver-first if present), with their `ParamKind`. The component
     /// wrapper uses this list to build the imported instance's function type.
     pub(super) component_params: Vec<ParamKind>,
@@ -815,7 +815,7 @@ struct WasmGen<'m> {
     //
     // The waitable intrinsics implement the canonical-ABI async-wait
     // sequence emitted by `emit_async_call` for the not-Returned status
-    // path. They're imported as `oneway:async/waitable.<name>` (a
+    // path. They're imported as `canon:async/waitable.<name>` (a
     // compiler-synthesised module-import name); `component::wrap` builds
     // a synthetic core instance from the canon section that exports the
     // matching functions. They're imported unconditionally so the import
@@ -920,7 +920,7 @@ impl<'m> WasmGen<'m> {
     /// Returns the core-module function index of the synthesised
     /// handler wrapper when present. The component wrapper in
     /// `wasm/component.rs` aliases and lifts this as the
-    /// `oneway:http-handler/handler.handle-request` export.
+    /// `canon:http-handler/handler.handle-request` export.
     pub(super) fn handler_wrapper_func_idx(&self) -> Option<u32> {
         self.fn_handler_wrapper
     }
@@ -1434,7 +1434,7 @@ impl<'m> WasmGen<'m> {
             // `collect_extern_imports`.
             let type_idx = self.get_or_add_wasm_type(&ext.params, &ext.results);
             // Find the AST function so we can pull its receiver type and
-            // Oneway return type — needed for proper method dispatch.
+            // Canon return type — needed for proper method dispatch.
             let Some(func) = self.ast.items.iter().find_map(|item| {
                 if let Item::Function(f) = item {
                     if let Some(e) = &f.extern_wasm {
@@ -1452,12 +1452,12 @@ impl<'m> WasmGen<'m> {
                 func.receiver.as_ref().map(|r| r.name.clone()),
                 func.name.name.clone(),
             );
-            // The Oneway-side result type depends on the indirect-return
+            // The Canon-side result type depends on the indirect-return
             // shape: a bare `String` return is `Ty::Str`, while a
             // `Result<Ok, Err>` (both string-aliased) becomes
             // `Ty::NamedPtrStr("Result", ok_name, err_name)` so `?` and
             // dispatch arms can extract the string payload with the right
-            // Oneway-level type on either branch.
+            // Canon-level type on either branch.
             let surface_result_ty = match &ext.indirect_return {
                 Some(IndirectReturnShape::String) => {
                     // Preserve any String-alias name (e.g. `HttpServer`,
@@ -2056,7 +2056,7 @@ impl<'m> WasmGen<'m> {
 
     /// Builds the `run` function exported by the core module.
     ///
-    /// Inlines the body of `main` (Oneway's entry point), drops any value
+    /// Inlines the body of `main` (Canon's entry point), drops any value
     /// it leaves on the stack, and delivers `result::ok` via
     /// `task.return(0)`. The core signature is `() -> ()` because the
     /// component-level `run` is lifted *async stackful*: results are
@@ -2320,7 +2320,7 @@ impl<'m> WasmGen<'m> {
                             align: 2,
                             memory_index: 0,
                         }));
-                        // Preserve the Oneway-level type of the Ok payload
+                        // Preserve the Canon-level type of the Ok payload
                         // so subsequent method calls dispatch correctly
                         // (e.g. `.read()` on `File` after
                         // `Path(…).File()?`). `Ty::Str` for a bare
@@ -2461,7 +2461,7 @@ impl<'m> WasmGen<'m> {
             "List" => self.build_list_literal(args, scope, f),
             // ── Concurrency combinators (synthetic) ───────────────────
             // `parallel(a, b)` and `race(a, b)` are declared in
-            // `packages/oneway/std/src/concurrent.ow` but have NO host
+            // `packages/canon/std/src/concurrent.can` but have NO host
             // bridge — the codegen recognises them by name and emits the
             // canonical-ABI multi-subtask wait sequence inline. They're
             // also filtered out of `collect_extern_imports` so no wasm
@@ -2590,7 +2590,7 @@ impl<'m> WasmGen<'m> {
         }
     }
 
-    /// Quick static inference of an expression's Oneway-level type *name*,
+    /// Quick static inference of an expression's Canon-level type *name*,
     /// used to look up methods/constructors before compiling. Returns
     /// `Some("String")` for string literals, `Some("Int")` for ints, etc.;
     /// `None` when the static shape isn't obvious without full type checking.
@@ -3126,9 +3126,9 @@ impl<'m> WasmGen<'m> {
     ) -> Ty {
         let recv_ty = self.compile_expr(receiver, scope, f);
 
-        // Check user func table first: look up by Oneway type name. Scalars
+        // Check user func table first: look up by Canon type name. Scalars
         // (`Int`, `Float`, `Bool`, `String`) don't carry their name on the
-        // `Ty` enum, so we map them back to a canonical Oneway type name here
+        // `Ty` enum, so we map them back to a canonical Canon type name here
         // — this lets `extern Wasm` declarations with scalar receivers (e.g.
         // `min = (Int * …)`) resolve from a call site like `5.min(…)`.
         //
@@ -3136,7 +3136,7 @@ impl<'m> WasmGen<'m> {
         // on the stack and have type `Ty::Unit`. We recover their type name
         // from the AST identifier so calls like `Random.randomInt` resolve.
         let type_name = recv_ty
-            .oneway_name()
+            .canon_name()
             .map(|s| s.to_string())
             .or_else(|| match &recv_ty {
                 Ty::I64 => Some("Int".to_string()),
@@ -3228,7 +3228,7 @@ impl<'m> WasmGen<'m> {
                 info.result_ty.clone()
             }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
-                // Flip the WIT discriminant (byte 0) into Oneway's tag
+                // Flip the WIT discriminant (byte 0) into Canon's tag
                 // convention by XOR-ing with 1, and store back as a full
                 // i32 so bytes 1–3 (which were undefined padding from the
                 // host) become zero.
@@ -3418,7 +3418,7 @@ impl<'m> WasmGen<'m> {
     // codegen emits a non-blocking async call for each arg (capturing
     // subtask handle + ret-area into named locals), then runs the
     // canonical-ABI multi-subtask wait sequence in the same function.
-    // No host bridge is involved — the `oneway:async/waitable` canon
+    // No host bridge is involved — the `canon:async/waitable` canon
     // intrinsics (`set-new`, `join`, `set-wait`, `set-drop`,
     // `subtask-drop`, `subtask-cancel`) handle everything.
 
@@ -4044,7 +4044,7 @@ impl<'m> WasmGen<'m> {
             // ── String length ───────────────────────────────────────
             //
             // Stack: [ptr, len] → [len_i64]. Drops the pointer; the
-            // length is the i32 byte-count promoted to i64 (Oneway `Int`).
+            // length is the i32 byte-count promoted to i64 (Canon `Int`).
             ("length" | "len", _) if recv_ty.is_str_like() => {
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // save len
                 f.instruction(&Instruction::Drop); // drop ptr
@@ -4059,7 +4059,7 @@ impl<'m> WasmGen<'m> {
             // raw `i32.load8_u` (wasmtime translates an OOB load into a
             // memory-out-of-bounds trap, which surfaces as a Rust panic
             // through wasmtime's runtime). For a string-as-bytes view of
-            // a String — this is the primitive that makes Oneway-side
+            // a String — this is the primitive that makes Canon-side
             // string parsing possible.
             ("byteAt", _) if recv_ty.is_str_like() => {
                 // Receiver on stack: [ptr, len]. Compile index arg next.
@@ -4997,7 +4997,7 @@ impl<'m> WasmGen<'m> {
         //         canonical-ABI builtins `print_str` stitches into the
         //         native WASI P3 stdout sequence.
         //   - one function per user `extern Wasm` declaration (sorted)
-        //   - oneway:async/waitable.*: 6 canonical async/task helpers
+        //   - canon:async/waitable.*: 6 canonical async/task helpers
         //   - env.memory, env.bump_ptr: shared linear memory + bump
         //         pointer used by `$alloc` and the host's `cabi_realloc`.
         let mut imports = ImportSection::new();
@@ -5044,37 +5044,37 @@ impl<'m> WasmGen<'m> {
         // satisfies these. Names are kebab-case to match the canon
         // operator names.
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "set-new",
             EntityType::Function(TY_HANDLE_RETURN), // () -> i32
         );
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "join",
             EntityType::Function(TY_PRINT_STR), // (i32, i32) -> ()
         );
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "set-wait",
             EntityType::Function(ty_waitable_set_wait), // (i32, i32) -> i32
         );
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "set-drop",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "subtask-drop",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "task-return",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> () — result<_,_> tag
         );
         imports.import(
-            "oneway:async/waitable",
+            "canon:async/waitable",
             "subtask-cancel",
             EntityType::Function(ty_subtask_cancel), // (i32) -> (i32)
         );

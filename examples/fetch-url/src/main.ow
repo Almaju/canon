@@ -1,8 +1,0 @@
-use oneway/std/http/HttpError
-use oneway/std/http/Url
-
-main = () -> Unit {
-    Url("http://example.com")?
-        .get()?
-        .print()
-}

@@ -1,7 +1,7 @@
-# Oneway Language — Contributor Commands
+# Canon Language — Contributor Commands
 #
 # These are development helpers for working on the compiler itself.
-# End users install the `oneway` binary and invoke it directly.
+# End users install the `canon` binary and invoke it directly.
 #
 # See README.md § Building from Source for details.
 
@@ -14,7 +14,7 @@ default:
 build:
     cargo build
 
-# Build and install the release binary to ~/.cargo/bin/oneway
+# Build and install the release binary to ~/.cargo/bin/canon
 install:
     cargo install --path . --force
 
@@ -23,7 +23,7 @@ install:
 # `cargo test` runs every integration harness:
 #   * tests/checker_fixtures.rs — checker ok/fail fixtures (golden .stderr)
 #   * tests/runtime_fixtures.rs — full-pipeline programs (golden .stdout)
-#   * tests/oneway_tests.rs     — Oneway-language tests (TestResult)
+#   * tests/canon_tests.rs     — Canon-language tests (TestResult)
 #   * tests/checker_api.rs      — Rust tests of compiler internals
 #   * library unit tests        — anything inside src/
 #
@@ -40,18 +40,18 @@ test:
 
 # `TRYBUILD=overwrite` from Rust's trybuild crate.
 update-fixtures:
-    ONEWAY_UPDATE_FIXTURES=1 cargo test --tests
+    CANON_UPDATE_FIXTURES=1 cargo test --tests
 
-# Lightweight convenience runner for Oneway-language tests with pretty
+# Lightweight convenience runner for Canon-language tests with pretty
 # per-file output. The same tests run under `cargo test` via the
-# `tests/oneway_tests.rs` harness — use that for CI, use this for
+# `tests/canon_tests.rs` harness — use that for CI, use this for
 
 # faster local iteration on a single test file.
 test-ow: build
     #!/usr/bin/env sh
     set -e
     pass=0; fail=0; files=0
-    for f in tests/oneway/*_test.ow; do
+    for f in tests/canon/*_test.can; do
         [ -f "$f" ] || continue
         files=$((files + 1))
         printf "\n=== %s ===\n" "$f"
@@ -82,7 +82,7 @@ examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
     for d in examples/*/; do
-        [ -f "$d/oneway.toml" ] || continue
+        [ -f "$d/canon.toml" ] || continue
         label=$(basename "$d")
         printf "%-20s" "$label"
         # Skip examples that do not pass the checker (stdlib gap, etc.)
@@ -124,8 +124,8 @@ examples: build
 example name:
     #!/usr/bin/env sh
     set -e
-    if [ ! -f "examples/{{ name }}/oneway.toml" ]; then
-        echo "No example package at examples/{{ name }}/ (need an oneway.toml there)" >&2
+    if [ ! -f "examples/{{ name }}/canon.toml" ]; then
+        echo "No example package at examples/{{ name }}/ (need an canon.toml there)" >&2
         exit 1
     fi
     exec cargo run --quiet -- run "examples/{{ name }}"
@@ -133,9 +133,9 @@ example name:
 # Regenerate the embedded WASI bindings from the vendored WIT files
 # under wit-vendor/. Run after upgrading the WASI version or after
 # changing the bindgen emitter. Commit the resulting
-# packages/oneway/std/bindgen/ tree.
+# packages/canon/std/bindgen/ tree.
 regen-bindings: build
-    cargo run --quiet -- install packages/oneway/std
+    cargo run --quiet -- install packages/canon/std
 
 # Format compiler source
 fmt:
@@ -172,9 +172,9 @@ build-extension:
     #!/usr/bin/env sh
     set -e
     echo "Building grammar WASM (requires Docker)..."
-    cd editors/tree-sitter-oneway && tree-sitter build --wasm
-    cp editors/tree-sitter-oneway/tree-sitter-oneway.wasm editors/zed-oneway/grammars/oneway.wasm
+    cd editors/tree-sitter-canon && tree-sitter build --wasm
+    cp editors/tree-sitter-canon/tree-sitter-canon.wasm editors/zed-canon/grammars/canon.wasm
     echo "Building extension WASM..."
-    cd editors/zed-oneway && cargo build --release --target wasm32-wasip1
-    cp editors/zed-oneway/target/wasm32-wasip1/release/oneway_zed.wasm editors/zed-oneway/extension.wasm
-    echo "Done. Commit editors/zed-oneway/grammars/oneway.wasm and editors/zed-oneway/extension.wasm"
+    cd editors/zed-canon && cargo build --release --target wasm32-wasip1
+    cp editors/zed-canon/target/wasm32-wasip1/release/canon_zed.wasm editors/zed-canon/extension.wasm
+    echo "Done. Commit editors/zed-canon/grammars/canon.wasm and editors/zed-canon/extension.wasm"

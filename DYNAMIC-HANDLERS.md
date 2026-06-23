@@ -1,8 +1,8 @@
 # Dynamic HTTP Handlers — Design
 
 > **SUPERSEDED.** This document targets a custom
-> `oneway:http-handler/handler@0.1.0` interface built on top of the
-> `oneway:builtins/http-server` host bridge. That architecture is no
+> `canon:http-handler/handler@0.1.0` interface built on top of the
+> `canon:builtins/http-server` host bridge. That architecture is no
 > longer the plan — see `WASI-HTTP-HANDLER.md` for the current
 > direction (standard `wasi:http/handler` export, runnable on any
 > compliant host). The slicing below remains useful as a reference
@@ -106,7 +106,7 @@ ABI works.
    `Expr::Ident`. The checker rejects it because it's not a known
    value. Teach `check_expr`'s `Ident` branch to accept it when
    `symbols.methods` contains an entry under any receiver with that
-   method name (i.e. it's the name of a defined function). The Oneway
+   method name (i.e. it's the name of a defined function). The Canon
    type carried by the ident is the function type
    `(String) -> String`.
 
@@ -133,11 +133,11 @@ ABI works.
    user-function's core index, mirroring how `run_component_fn` is
    built (`component.rs` ~line 470).
 
-4. **Stdlib — `withHandler`** (`packages/oneway/std/src/http/http-server.ow`).
+4. **Stdlib — `withHandler`** (`packages/canon/std/src/http/http-server.can`).
    New method:
 
    ```
-   extern Wasm("oneway:builtins/http-server@0.1.0#with-handler")
+   extern Wasm("canon:builtins/http-server@0.1.0#with-handler")
    withHandler = (HttpServer * String) -> HttpServer
    ```
 
@@ -164,7 +164,7 @@ ABI works.
    `wasmtime-45.0.0/src/runtime/component/concurrent.rs` for the
    `Accessor::with` shape we already use in `serve`.
 
-**Test (`tests/runtime/http_handler_echo.ow`):**
+**Test (`tests/runtime/http_handler_echo.can`):**
 
 ```
 handleRequest = (String) -> String {
@@ -250,7 +250,7 @@ main = (Network) -> Unit {
    handler_id`. On a request, the host calls
    `__http_dispatch(handler_id, body)` and returns the result.
 
-**Test (`tests/runtime/http_handler_routing.ow`):** two routes, one
+**Test (`tests/runtime/http_handler_routing.can`):** two routes, one
 returns "ROOT", another returns "STATUS". Harness hits both endpoints
 and asserts.
 
@@ -344,8 +344,8 @@ honest (different return shape).
 | `src/codegen/wasm/mod.rs` | Add `handler_funcs: Vec<String>` field; new pre-pass `collect_handler_funcs`; reserve a stable export name |
 | `src/codegen/wasm/component.rs` | Emit `handle-request` export alongside `run`; lift from the user function's core fn-idx |
 | `src/runtime.rs` | `mod host_builtin_http_server`: thread `Accessor::with` into `run_server`; per-connection, look up `handle-request` export and call it |
-| `packages/oneway/std/src/http/http-server.ow` | Add `withHandler = (HttpServer * String) -> HttpServer` extern |
-| `tests/runtime/http_handler_echo.ow` + `.stdout` | End-to-end test: bind, send request, assert echoed body |
+| `packages/canon/std/src/http/http-server.can` | Add `withHandler = (HttpServer * String) -> HttpServer` extern |
+| `tests/runtime/http_handler_echo.can` + `.stdout` | End-to-end test: bind, send request, assert echoed body |
 | `tests/common/mod.rs` | New helper: `serve_once_and_request(port: u16, body: &str) -> String` (test harness only) |
 
 Estimate: **one focused session** for slice 1 alone, given that the

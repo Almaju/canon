@@ -1,0 +1,12 @@
+use HttpError
+use InvalidUrl
+
+Url = String
+
+bindings "canon:builtins/url@0.1.0#parse"
+
+Url = (String) -> Result<Url, InvalidUrl>
+
+bindings "canon:builtins/http@0.1.0"
+
+get = (Url) -> Result<String, HttpError>

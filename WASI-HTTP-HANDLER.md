@@ -1,15 +1,15 @@
 # WASI HTTP Handler — Design
 
 Status: **design in progress, implementation not started**. This
-document defines the target architecture for HTTP-handling Oneway
+document defines the target architecture for HTTP-handling Canon
 programs and supersedes the slicing plan in `DYNAMIC-HANDLERS.md`
 (see [Why the previous plan is wrong](#why-the-previous-plan-is-wrong)).
 
-The goal in one sentence: **Oneway programs that handle HTTP
+The goal in one sentence: **Canon programs that handle HTTP
 requests should compile to standard `wasi:http/handler`-exporting
 components, runnable by any compliant host** (`wasmtime serve`,
 Fermyon Spin, Cloudflare Workers, browser polyfills, our own
-`oneway run --addr`). No custom `oneway:builtins/*` interfaces on
+`canon run --addr`). No custom `canon:builtins/*` interfaces on
 the wire.
 
 The work fits inside a broader cleanup: replacing magic-named entry
@@ -21,10 +21,10 @@ entry-point selection**. See [Entry-point selection](#entry-point-selection).
 ## Target user-facing shape
 
 ```ow
-use oneway/std/http/Headers
-use oneway/std/http/Request
-use oneway/std/http/Response
-use oneway/std/http/Status
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
 
 home = (Request) -> Response {
     Response(Headers(), Status(200))
@@ -43,11 +43,11 @@ Key properties of this shape:
 
 - **`Request` and `Response` are resource handles** — opaque to
   the guest, owned by the host's resource table. The stdlib wraps
-  the resource methods so users see ordinary Oneway methods.
+  the resource methods so users see ordinary Canon methods.
 
 - **No `HttpServer` builder, no `.serve()`, no port choice in the
   guest.** Those concerns belong to the host. The user configures
-  the listener at the runner: `oneway run --addr 127.0.0.1:8080`,
+  the listener at the runner: `canon run --addr 127.0.0.1:8080`,
   `wasmtime serve my-app.wasm`, etc.
 
 - **Helpers that return `Response` would conflict with `home`** —
@@ -59,7 +59,7 @@ Key properties of this shape:
 
 ## Entry-point selection
 
-This is bigger than HTTP. Oneway's existing `main` is the one
+This is bigger than HTTP. Canon's existing `main` is the one
 piece of the language that violates "types-are-identity": it's
 a magic name borrowed from C tradition. Adding `handle` for HTTP
 would compound the wart. The replacement, in one rule:
@@ -86,7 +86,7 @@ Rules:
    exactly one world.
 3. **Zero matches** means the module is a library, not a program.
    It can be `use`d from another module; it cannot be run with
-   `oneway run`.
+   `canon run`.
 4. The entry function's parameters declare the program's
    capability requirements. For a CLI program, valid parameter
    types are host-provided capabilities (`Stdout`, `Filesystem`,
@@ -164,7 +164,7 @@ The guest **imports** `wasi:http/types` (so it can construct
 `Response`, `Headers`, write the body) and **exports**
 `wasi:http/handler` (so the host can dispatch to it).
 
-The Oneway-side names map mechanically: `request` → `Request`,
+The Canon-side names map mechanically: `request` → `Request`,
 `response` → `Response`, `headers` → `Headers`, `method` →
 `Method`, `status-code` → `Status` (the `-code` suffix drops
 because the WIT type is already inside a status-coded interface).
@@ -174,15 +174,15 @@ because the WIT type is already inside a status-coded interface).
 ## Why the previous plan is wrong
 
 `DYNAMIC-HANDLERS.md` proposes a custom interface
-`oneway:http-handler/handler@0.1.0` carrying
+`canon:http-handler/handler@0.1.0` carrying
 `handle-request: func(body: string) -> string`. This was a
 reasonable bootstrap when the goal was "make handlers work at all
-on the existing `oneway:builtins/http-server` host bridge."
+on the existing `canon:builtins/http-server` host bridge."
 
 It's wrong as a long-term shape:
 
-1. **It's not portable.** Only Oneway's own runtime knows what
-   `oneway:http-handler/handler@0.1.0` is. `wasmtime serve` and
+1. **It's not portable.** Only Canon's own runtime knows what
+   `canon:http-handler/handler@0.1.0` is. `wasmtime serve` and
    every other host model the world as `wasi:http/handler`.
 2. **It's `string → string`.** Real handlers need method, path,
    headers, status codes, streaming bodies — none of which fit in
@@ -192,7 +192,7 @@ It's wrong as a long-term shape:
    is a guest export the host calls per request." The latter is
    the standard, so the former goes.
 
-Anything we build on the `oneway:http-handler/handler@0.1.0`
+Anything we build on the `canon:http-handler/handler@0.1.0`
 foundation has to be thrown away once we adopt
 `wasi:http/handler`. We should skip the throwaway step.
 
@@ -241,7 +241,7 @@ The CLAUDE.md gap "WIT `resource` / `own<T>` / `borrow<T>` in
 `extern Wasm` signatures" tracks this work for *imports* (the guest
 calling host-provided resource methods). The *export* side reuses
 the same lowering. Bindgen-side scaffolding (`Foo = Handle`
-newtypes in `packages/oneway/wasi/*`) already exists for the type
+newtypes in `packages/canon/wasi/*`) already exists for the type
 declarations.
 
 ### Prereq C — Sub-u64 integer widths
@@ -263,7 +263,7 @@ resource-heavy (some of its arms carry strings).
 ### Prereq E — Structured-record / variant returns
 
 `method`, `error-code` are WIT `variant`s. The codegen already
-lowers Oneway unions; the new piece is making them ABI-compatible
+lowers Canon unions; the new piece is making them ABI-compatible
 with the WASI `method`/`error-code` shapes specifically. Mostly
 mechanical once resources + integers work.
 
@@ -274,22 +274,22 @@ mechanical once resources + integers work.
 Each slice ends with a green `tests/runtime/` test against the
 real `wasi:http/handler` export. No transitional WIT shapes.
 
-### Slice 0 — Oneway-side API skeleton ✦ this session
+### Slice 0 — Canon-side API skeleton ✦ this session
 
-**Deliverable:** the curated stdlib types exist as Oneway source.
+**Deliverable:** the curated stdlib types exist as Canon source.
 The checker accepts a program that imports and uses them, even
 though codegen can't yet build the resulting component.
 
-- `packages/oneway/std/src/http/method.ow` — `Method` union with
+- `packages/canon/std/src/http/method.can` — `Method` union with
   variants matching the WIT.
-- `packages/oneway/std/src/http/status.ow` — `Status = Int` newtype.
-- `packages/oneway/std/src/http/headers.ow` — `Headers = Handle`,
+- `packages/canon/std/src/http/status.can` — `Status = Int` newtype.
+- `packages/canon/std/src/http/headers.can` — `Headers = Handle`,
   empty constructor + `set` for appending fields.
-- `packages/oneway/std/src/http/request.ow` — `Request = Handle`
+- `packages/canon/std/src/http/request.can` — `Request = Handle`
   with method declarations for `.method()`, `.path()`, `.body()`.
-- `packages/oneway/std/src/http/response.ow` — `Response = Handle`
+- `packages/canon/std/src/http/response.can` — `Response = Handle`
   with the WIT constructor.
-- `tests/checker/ok/wasi_http_handler.ow` — checker-only fixture:
+- `tests/checker/ok/wasi_http_handler.can` — checker-only fixture:
   a small handler using the new types.
 
 Both checker fixtures and stdlib files use `extern Wasm` headers
@@ -318,13 +318,13 @@ Landed:
 - HTTP entry is exempt from the alphabetical-ordering check on
   free functions (same exemption as `main`).
 - Fixtures: three new fail-fixtures under `tests/checker/fail/`
-  pin each diagnostic; `tests/checker/ok/wasi_http_types_load.ow`
+  pin each diagnostic; `tests/checker/ok/wasi_http_types_load.can`
   still covers the stdlib-type smoke test.
 
 Left for slice 1b:
 - Actually emit a `wasi:http/service` world.
 - Resource lowering for `request` / `response`.
-- The runtime test (`oneway run` an HTTP program end-to-end).
+- The runtime test (`canon run` an HTTP program end-to-end).
 
 ### Slice 1b — minimal `wasi:http/service` world emission
 
@@ -349,16 +349,16 @@ Work:
   No method calls on resources yet.
 - Remove the "codegen not yet implemented" diagnostic from
   `check_with_entry` once codegen handles HTTP entries cleanly.
-- Move `tests/checker/fail/http_handler_codegen_pending.ow` to
-  `tests/checker/ok/wasi_http_handler.ow` (deleting its `.stderr`).
+- Move `tests/checker/fail/http_handler_codegen_pending.can` to
+  `tests/checker/ok/wasi_http_handler.can` (deleting its `.stderr`).
 
-**Test:** `tests/runtime/wasi_http_handler_smoke.ow` — defines a
+**Test:** `tests/runtime/wasi_http_handler_smoke.can` — defines a
 handler that ignores its `Request` parameter and returns a
 hard-coded 200 response. Harness sends one HTTP request, asserts
 status 200.
 
 This is the slice that delivers user-visible value first: any
-Oneway program with a `Response`-returning function can now run
+Canon program with a `Response`-returning function can now run
 on any WASI HTTP host.
 
 ### Slice 2 — request introspection (read path)
@@ -375,7 +375,7 @@ Work:
   whole body into a `String`, like `consume-body` + `stream.read`
   in a loop).
 
-**Test:** `tests/runtime/wasi_http_handler_echo.ow` — the handler
+**Test:** `tests/runtime/wasi_http_handler_echo.can` — the handler
 reads the body and echoes it. Harness asserts request and response
 bodies match.
 
@@ -392,19 +392,19 @@ Work:
   takes `(Status, String)` and handles the writable-body dance
   internally.
 
-**Test:** `tests/runtime/wasi_http_handler_routing.ow` — a minimal
+**Test:** `tests/runtime/wasi_http_handler_routing.can` — a minimal
 router. Two routes return different status codes and bodies.
 
 ### Slice 4 — local runner & cleanup
 
 **Deliverable:**
-- `oneway run --addr 127.0.0.1:8080` works end-to-end against a
+- `canon run --addr 127.0.0.1:8080` works end-to-end against a
   user's `(Request) -> Response` program.
-- The old `oneway:builtins/http-server` host bridge is deleted
+- The old `canon:builtins/http-server` host bridge is deleted
   from `src/runtime.rs`.
-- `packages/oneway/std/src/http/http-server.ow`,
-  `http-response-body.ow`, `port.ow`, `route-path.ow`,
-  `http-status.ow`, `body.ow`, `request.ow` (old) are deleted —
+- `packages/canon/std/src/http/http-server.can`,
+  `http-response-body.can`, `port.can`, `route-path.can`,
+  `http-status.can`, `body.can`, `request.can` (old) are deleted —
   no replacement (the new model has no equivalent; the host owns
   the server).
 - `examples/http-server/` is rewritten in the new shape.
@@ -440,7 +440,7 @@ constructor and the four-line SSE formatter that replaces the current
    - **Reachability-based**: the entry is the function that isn't
      called from any other top-level function. Subtle (a typo
      turns the wrong function into the entry); not adopted.
-   - **Alphabetical-first**: matches the rest of Oneway, but
+   - **Alphabetical-first**: matches the rest of Canon, but
      silent selection by name is fragile; not adopted.
 
    We're going with strict. Migrate-time pain is real; future
@@ -452,7 +452,7 @@ constructor and the four-line SSE formatter that replaces the current
    one module," handled by rule 2.
 
 3. **Outbound HTTP (`wasi:http/client`).** Today the
-   `oneway:builtins/http` bridge does this. Migrating it to
+   `canon:builtins/http` bridge does this. Migrating it to
    `wasi:http/outgoing-handler` is parallel work — same resource +
    sub-u64 prereqs, but on the import side. Not in scope for this
    doc; see CLAUDE.md gap rows for the codegen tracking.
@@ -471,7 +471,7 @@ constructor and the four-line SSE formatter that replaces the current
    large variant (DNS errors, TLS errors, connection errors, …).
    The stdlib should probably collapse this into a single
    `HttpError = String` newtype carrying a debug-rendered message
-   on the Oneway side. The full variant is overkill for guests
+   on the Canon side. The full variant is overkill for guests
    that just want "something went wrong, here's the message."
 
 ---
@@ -480,12 +480,12 @@ constructor and the four-line SSE formatter that replaces the current
 
 | File | Change |
 |---|---|
-| `packages/oneway/std/src/http/method.ow` | **New.** `Method` union with WIT-aligned variants. |
-| `packages/oneway/std/src/http/status.ow` | **New.** `Status = Int` newtype (replaces the redundant `HttpStatus`; old file stays until slice 4). |
-| `packages/oneway/std/src/http/headers.ow` | **New.** `Headers = Handle`, empty constructor, `set`. |
-| `packages/oneway/std/src/http/response.ow` | **New.** `Response = Handle`, WIT constructor binding. |
-| `packages/oneway/std/src/http/request.ow` | **Replace stub.** `Request = Handle` + method/path/body bindings. |
-| `tests/checker/ok/wasi_http_types_load.ow` | **New.** Loadability smoke test — imports each new type and uses `Status` in a trivial `main` so today's checker accepts it. A proper handler-shaped fixture lands with slice 1, when the entry-point rule is implemented. |
+| `packages/canon/std/src/http/method.can` | **New.** `Method` union with WIT-aligned variants. |
+| `packages/canon/std/src/http/status.can` | **New.** `Status = Int` newtype (replaces the redundant `HttpStatus`; old file stays until slice 4). |
+| `packages/canon/std/src/http/headers.can` | **New.** `Headers = Handle`, empty constructor, `set`. |
+| `packages/canon/std/src/http/response.can` | **New.** `Response = Handle`, WIT constructor binding. |
+| `packages/canon/std/src/http/request.can` | **Replace stub.** `Request = Handle` + method/path/body bindings. |
+| `tests/checker/ok/wasi_http_types_load.can` | **New.** Loadability smoke test — imports each new type and uses `Status` in a trivial `main` so today's checker accepts it. A proper handler-shaped fixture lands with slice 1, when the entry-point rule is implemented. |
 | `DESIGN.md` (§Entry Point) | **Update.** Replace the `main`-is-magic description with the type-driven rule. |
 | `CLAUDE.md` (§Known codegen gaps) | **Update.** Replace the "Dynamic HTTP handlers" row with a pointer to this doc. |
 | `WASM.md` (§Capability map) | **Update.** Point the `HttpServer` row at this doc. |

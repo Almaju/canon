@@ -1,7 +1,7 @@
 # Streams & Server-Sent Events — Design
 
 Status: **design agreed, implementation not started**. This document
-defines how Oneway programs produce values *over time* — concretely:
+defines how Canon programs produce values *over time* — concretely:
 how they construct a `Stream<T>` and hand it to a sink (an HTTP response
 body, a file, a socket). Server-Sent Events fall out as a four-line
 formatter on top.
@@ -16,7 +16,7 @@ combination of:
 Both already fall out of decisions that DESIGN.md committed to —
 `Stream<T>` as a language primitive and `Response` as a value carrying
 its body. The work in this doc is wiring the canonical-ABI lowering for
-`Stream<T>` plus a curated `oneway/std/Stream` combinator surface.
+`Stream<T>` plus a curated `canon/std/Stream` combinator surface.
 
 ---
 
@@ -25,15 +25,15 @@ its body. The work in this doc is wiring the canonical-ABI lowering for
 A clock-driven SSE endpoint:
 
 ```ow
-use oneway/std/Stream
-use oneway/std/http/Headers
-use oneway/std/http/Request
-use oneway/std/http/Response
-use oneway/std/http/Status
-use oneway/std/http/eventStream
-use oneway/std/http/formatSse
-use oneway/std/time/Duration
-use oneway/std/time/ticks
+use canon/std/Stream
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
+use canon/std/http/eventStream
+use canon/std/http/formatSse
+use canon/std/time/Duration
+use canon/std/time/ticks
 
 home = (Request) -> Response {
     Response(
@@ -51,13 +51,13 @@ Using only slice-0 primitives (no clock source yet) the same shape
 looks like:
 
 ```ow
-use oneway/std/Stream
-use oneway/std/http/Headers
-use oneway/std/http/Request
-use oneway/std/http/Response
-use oneway/std/http/Status
-use oneway/std/http/eventStream
-use oneway/std/http/formatSse
+use canon/std/Stream
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
+use canon/std/http/eventStream
+use canon/std/http/formatSse
 
 home = (Request) -> Response {
     Response(
@@ -77,12 +77,12 @@ proves the type surface compiles.
 What's in this snippet, by layer:
 
 - `eventStream = () -> Headers` — convenience constructor in
-  `oneway/std/http/sse.ow` returning `Headers().set("content-type", "text/event-stream")`.
-- `formatSse = (String) -> String` — `"data: ".concat(String).concat("\n\n")`. Also in `sse.ow`.
+  `canon/std/http/sse.can` returning `Headers().set("content-type", "text/event-stream")`.
+- `formatSse = (String) -> String` — `"data: ".concat(String).concat("\n\n")`. Also in `sse.can`.
 - `ticks = (Duration) -> Stream<Instant>` — stream source in
-  `oneway/std/time`. Yields a new `Instant` per duration. Async by
+  `canon/std/time`. Yields a new `Instant` per duration. Async by
   virtue of returning `Stream<T>`.
-- `.map`, `.take` — pure Oneway combinators in `oneway/std/Stream`.
+- `.map`, `.take` — pure Canon combinators in `canon/std/Stream`.
 - `Response : (Headers * Status * Stream<String>) -> Response` — the
   curated constructor. Internally drives `wasi:http/types`'
   `writable-body` from the supplied stream.
@@ -120,17 +120,17 @@ has a checklist:
    canonical-ABI boundary, exactly like every other WIT resource. The
    compiler emits `resource.drop` at end-of-scope. From the source's
    point of view it's an opaque `Handle` with methods bound by
-   `oneway/std/Stream`.
+   `canon/std/Stream`.
 
-3. **Combinators are pure Oneway**, hand-written in
-   `packages/oneway/std/src/stream.ow`, layered over
-   `oneway/wasi/io/streams`. The standard `oneway/std` ↔ `oneway/wasi`
+3. **Combinators are pure Canon**, hand-written in
+   `packages/canon/std/src/stream.can`, layered over
+   `canon/wasi/io/streams`. The standard `canon/std` ↔ `canon/wasi`
    split applies — no privileged shape for stream combinators.
 
 4. **Stream sources come from bindings**, never from magic. `ticks`,
    `fileLines`, `socketRecv` are all `extern Wasm` declarations in
-   their respective `oneway/std` files (wrapping the matching
-   `oneway/wasi/*` binding). Holding a `Stream<Instant>` *is* the
+   their respective `canon/std` files (wrapping the matching
+   `canon/wasi/*` binding). Holding a `Stream<Instant>` *is* the
    capability to iterate ticks — domain-first, same as `File`, `Url`,
    etc.
 
@@ -145,20 +145,20 @@ has a checklist:
 
 7. **SSE is not a primitive.** No `SseEvent` type, no `SseFrame` union,
    no `[event]`/`[id]`/`[retry]` machinery in the core stdlib. Two
-   helpers in `oneway/std/http/sse.ow` (`eventStream`, `formatSse`)
+   helpers in `canon/std/http/sse.can` (`eventStream`, `formatSse`)
    cover the 99% case. If anyone needs richer frames later (custom
    `event:` names, `id:` tags), they write their own four-line
    formatter — same composition pattern.
 
 ---
 
-## The `oneway/std/Stream` surface
+## The `canon/std/Stream` surface
 
 Decided shape. Subject to bikeshed on names but not on structure:
 
 ```ow
-# packages/oneway/std/src/stream.ow
-bindings "oneway:builtins/stream@0.1.0"
+# packages/canon/std/src/stream.can
+bindings "canon:builtins/stream@0.1.0"
 
 # `Stream<T>` is a built-in generic type in the checker (see
 # BUILTIN_GENERIC_TYPES in src/checker/mod.rs) — do NOT re-declare it
@@ -186,7 +186,7 @@ toString = (Stream<String>) -> String
 
 Implementation notes:
 
-- The actual stdlib file (`packages/oneway/std/src/stream.ow`) uses a
+- The actual stdlib file (`packages/canon/std/src/stream.can`) uses a
   single `bindings "<urn>"` directive at the top + camelCase
   declarations. The loader's `apply_bindings_directive` rewrites each
   camelCase function-type alias into a `FunctionDef` with `extern_wasm`
@@ -196,7 +196,7 @@ Implementation notes:
 - **PascalCase constructors (`Stream(list)`) are deferred to slice 2.**
   The bindings directive only auto-promotes lowercase names; PascalCase
   body-less aliases stay as function-type aliases, not callable
-  constructors. Once slice 2 lands pure-Oneway combinators with
+  constructors. Once slice 2 lands pure-Canon combinators with
   bodies, a curated `Stream = <T>(List<T>) -> Stream<T> { streamOf(…) }`
   wrapper can sit alongside.
 - `scan` and `generate` are dropped from the slice-0 surface. `scan` is
@@ -222,16 +222,16 @@ is peeled — `Stream<T>` stays as-is. Stream consumption (the
 auto-iteration that makes the surrounding function suspending) is
 still handled at call sites via `.each` / `.next` recognition in
 `async_analysis::expr_has_async_trigger`, per the `auto_await` module
-docstring. Pinned by `tests/checker/ok/stream_compose.ow`.
+docstring. Pinned by `tests/checker/ok/stream_compose.can`.
 
 Stream sources outside the core file live with their domain:
 
 | Source | Module | Returns |
 |---|---|---|
-| `ticks(Duration)` | `oneway/std/time` | `Stream<Instant>` |
-| `fileLines(File)` | `oneway/std/fs` | `Stream<String>` |
-| `socketRecv(Socket)` | `oneway/std/net` (future) | `Stream<Bytes>` |
-| `requestBody(Request)` | `oneway/std/http` | `Stream<Bytes>` |
+| `ticks(Duration)` | `canon/std/time` | `Stream<Instant>` |
+| `fileLines(File)` | `canon/std/fs` | `Stream<String>` |
+| `socketRecv(Socket)` | `canon/std/net` (future) | `Stream<Bytes>` |
+| `requestBody(Request)` | `canon/std/http` | `Stream<Bytes>` |
 
 Each is one line in its respective file — an `extern Wasm` declaration
 backed by the matching WIT stream-returning function.
@@ -262,23 +262,23 @@ The codegen pieces:
 3. **Combinator implementation strategy.** Two options, pick one
    during implementation:
    - **Option A (host-backed):** each combinator (`map`, `filter`,
-     `take`) is an `extern Wasm` binding in `oneway/std/Stream`
+     `take`) is an `extern Wasm` binding in `canon/std/Stream`
      calling a host helper that wraps the input stream with a
      transformer. Lowest-cost at the canonical-ABI boundary, but
      pushes work into the host runtime.
-   - **Option B (guest-implemented):** each combinator is pure Oneway
+   - **Option B (guest-implemented):** each combinator is pure Canon
      calling `[method]stream.read` in a loop, formatting / filtering /
      counting, and writing into a fresh output stream. Heavier in
      terms of canonical-ABI traffic, but lives entirely in the guest —
      no host extensions, fully portable.
 
    Recommendation: **Option B for the first cut**. Portability matters;
-   `wasmtime serve` shouldn't need to know about Oneway's combinators.
+   `wasmtime serve` shouldn't need to know about Canon's combinators.
    Optimisation passes can fuse adjacent guest combinators later.
 
 4. **`Response` constructor wiring.** The curated
    `(Headers * Status * Stream<String>) -> Response` constructor in
-   `oneway/std/http/response.ow`:
+   `canon/std/http/response.can`:
    - Calls the WIT `[constructor]response(status, headers)` to get
      the response handle.
    - Calls `[method]response.body` to get the writable-body handle.
@@ -292,7 +292,7 @@ The codegen pieces:
 
    The pipe step is the only nontrivial wiring; it's a small
    guest-side function (`Stream<String>` → write loop into
-   `stream<u8>`) that ships in `oneway/std/http/response.ow`. No host
+   `stream<u8>`) that ships in `canon/std/http/response.can`. No host
    help required.
 
 ---
@@ -304,20 +304,20 @@ by what unblocks user-visible value fastest.
 
 ### Slice 0 — stdlib skeleton ✅ landed
 
-Deliverable: the `oneway/std/Stream` source file exists with the
+Deliverable: the `canon/std/Stream` source file exists with the
 declared shape. The checker accepts a program that imports and uses
 the new types.
 
 Shipped:
 
-- `packages/oneway/std/src/stream.ow` — `bindings
-  "oneway:builtins/stream@0.1.0"` directive with camelCase combinator
+- `packages/canon/std/src/stream.can` — `bindings
+  "canon:builtins/stream@0.1.0"` directive with camelCase combinator
   declarations (`streamOf`, `empty`, `map`, `filter`, `take`, `concat`,
   `toList`, `toString`). The bindings directive auto-promotes each
   camelCase alias into a `FunctionDef` with `extern_wasm` populated.
-- `packages/oneway/std/src/http/sse.ow` — `eventStream` and `formatSse`
-  helpers. Headers re-export comes from the sibling `headers.ow`.
-- `tests/checker/ok/stream_compose.ow` — exercises
+- `packages/canon/std/src/http/sse.can` — `eventStream` and `formatSse`
+  helpers. Headers re-export comes from the sibling `headers.can`.
+- `tests/checker/ok/stream_compose.can` — exercises
   `.streamOf().map().filter().take().concat().toString().print()`.
 - One-line checker fix in `src/checker/mod.rs::method_return_summary`:
   stop peeling `Stream<T>` (was over-aggressive; broke method-chain
@@ -365,19 +365,19 @@ Work shape for slice 1b:
   consolidate.
 
 Test: an `extern Wasm` declaration for `wasi:io/streams.read` is
-callable from a tiny Oneway program and returns a byte buffer the guest
+callable from a tiny Canon program and returns a byte buffer the guest
 can read.
 
 Strategic note: slice 1a is the smallest landable proof; the work in
 slice 1b is what actually unblocks a user-runnable streaming program.
 
-### Slice 2 — `oneway/std/Stream` combinators (guest-side)
+### Slice 2 — `canon/std/Stream` combinators (guest-side)
 
 Deliverable: `map`, `filter`, `take`, `concat`, `empty`, `Stream`
-sources all work. Implementation is pure Oneway looping over
+sources all work. Implementation is pure Canon looping over
 `[method]stream.read` and writing into a fresh outgoing stream.
 
-Test: `tests/runtime/stream_compose.ow` — build a stream from a list,
+Test: `tests/runtime/stream_compose.can` — build a stream from a list,
 map it, take the first 3 elements, materialise via `toString`. Assert
 the result.
 
@@ -391,7 +391,7 @@ go through `Stream("…")` sugar.
 Dependencies: WASI-HTTP-HANDLER.md slices 1b–3 (the handler export
 itself).
 
-Test: `tests/runtime/wasi_http_handler_streamed_body.ow` — handler
+Test: `tests/runtime/wasi_http_handler_streamed_body.can` — handler
 returns `Response(Headers(), Status(200), Stream(List("a", "b", "c")))`.
 Harness asserts the wire body is `"abc"`.
 
@@ -399,17 +399,17 @@ Harness asserts the wire body is `"abc"`.
 
 Deliverable:
 
-- `packages/oneway/std/src/http/sse.ow` — `eventStream` and
+- `packages/canon/std/src/http/sse.can` — `eventStream` and
   `formatSse`.
-- `oneway/std/time/ticks` — stream source backed by WASI clocks.
+- `canon/std/time/ticks` — stream source backed by WASI clocks.
 
-Test: `tests/runtime/wasi_http_handler_sse.ow` — handler streams 3
+Test: `tests/runtime/wasi_http_handler_sse.can` — handler streams 3
 clock ticks formatted as SSE frames. Harness reads the response
 incrementally and asserts each `data: …\n\n` frame arrives with
 roughly the right delay between them.
 
 This is the slice that delivers the user-visible promise. After it,
-"Oneway can do real SSE" is true.
+"Canon can do real SSE" is true.
 
 ### Slice 5 — cleanup
 
@@ -463,8 +463,8 @@ This is the slice that delivers the user-visible promise. After it,
 
 | File | Change |
 |---|---|
-| `packages/oneway/std/src/stream.ow` | **New.** Declarations from the surface table above; bodies as `# todo` stubs. |
-| `tests/checker/ok/stream_compose.ow` | **New.** A small program importing `Stream`, calling `.map`, `.take`, `.concat`. Confirms the checker accepts the type surface. |
+| `packages/canon/std/src/stream.can` | **New.** Declarations from the surface table above; bodies as `# todo` stubs. |
+| `tests/checker/ok/stream_compose.can` | **New.** A small program importing `Stream`, calling `.map`, `.take`, `.concat`. Confirms the checker accepts the type surface. |
 | `STREAMING.md` | **New.** This file. |
 | `WASI-HTTP-HANDLER.md` | **Update.** Slice 5 ("async bodies & streaming") deprecation-pointers to here. |
 | `CLAUDE.md` | **Update.** Recently-closed gap row "SSE / streaming-response Content-Type" gets a deprecation note pointing to this doc; a new open-gap row tracks the slice-1/2 codegen work. |

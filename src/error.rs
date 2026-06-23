@@ -20,9 +20,9 @@ impl Span {
     }
 }
 
-/// The set of all error kinds produced by the Oneway compiler.
+/// The set of all error kinds produced by the Canon compiler.
 #[derive(Debug, Clone)]
-pub enum OnewayError {
+pub enum CanonError {
     /// An error produced during lexical analysis.
     LexError { message: String, span: Span },
     /// An error produced during parsing.
@@ -33,39 +33,39 @@ pub enum OnewayError {
     CodegenError { message: String, span: Span },
 }
 
-impl OnewayError {
+impl CanonError {
     /// Returns a reference to the span associated with this error.
     pub fn span(&self) -> &Span {
         match self {
-            OnewayError::LexError { span, .. } => span,
-            OnewayError::ParseError { span, .. } => span,
-            OnewayError::CheckError { span, .. } => span,
-            OnewayError::CodegenError { span, .. } => span,
+            CanonError::LexError { span, .. } => span,
+            CanonError::ParseError { span, .. } => span,
+            CanonError::CheckError { span, .. } => span,
+            CanonError::CodegenError { span, .. } => span,
         }
     }
 
     /// Returns a reference to the message associated with this error.
     pub fn message(&self) -> &str {
         match self {
-            OnewayError::LexError { message, .. } => message,
-            OnewayError::ParseError { message, .. } => message,
-            OnewayError::CheckError { message, .. } => message,
-            OnewayError::CodegenError { message, .. } => message,
+            CanonError::LexError { message, .. } => message,
+            CanonError::ParseError { message, .. } => message,
+            CanonError::CheckError { message, .. } => message,
+            CanonError::CodegenError { message, .. } => message,
         }
     }
 
     /// Returns the name of the compiler phase that produced this error.
     fn phase(&self) -> &'static str {
         match self {
-            OnewayError::LexError { .. } => "lex error",
-            OnewayError::ParseError { .. } => "parse error",
-            OnewayError::CheckError { .. } => "check error",
-            OnewayError::CodegenError { .. } => "codegen error",
+            CanonError::LexError { .. } => "lex error",
+            CanonError::ParseError { .. } => "parse error",
+            CanonError::CheckError { .. } => "check error",
+            CanonError::CodegenError { .. } => "codegen error",
         }
     }
 }
 
-impl fmt::Display for OnewayError {
+impl fmt::Display for CanonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let span = self.span();
         write!(
@@ -79,7 +79,7 @@ impl fmt::Display for OnewayError {
     }
 }
 
-impl std::error::Error for OnewayError {}
+impl std::error::Error for CanonError {}
 
-/// A convenience `Result` type that uses `OnewayError` as the error variant.
-pub type Result<T> = std::result::Result<T, OnewayError>;
+/// A convenience `Result` type that uses `CanonError` as the error variant.
+pub type Result<T> = std::result::Result<T, CanonError>;
