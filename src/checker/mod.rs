@@ -1323,7 +1323,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "List"
         && matches!(
             (method, arg_count),
-            ("length", 0) | ("first", 0) | ("map", 1) | ("toJsonArray", 0)
+            ("length", 0) | ("first", 0) | ("get", 1) | ("map", 1) | ("toJsonArray", 0)
         )
     {
         return true;
@@ -1543,6 +1543,7 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "length") => "Int".to_string(),
         ("List", "map") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
+        ("List", "get") => "Option".to_string(),
         ("List", "toJsonArray") => "Json".to_string(),
         ("Map", "empty") => "Map".to_string(),
         ("Map", "get") => "Option".to_string(),

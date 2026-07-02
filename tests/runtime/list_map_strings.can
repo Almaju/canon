@@ -1,0 +1,12 @@
+use canon/std/Json
+
+main = () -> Unit {
+    List("alpha", "beta")
+        .map((String) -> String { String.concat("!") })
+        .toJsonArray()
+        .print()
+    List("xx", "yyy", "z").map((String) -> Int { String.length() }).get(1).(
+        * (None) -> Unit { "none".print() }
+        * (Some<Int>) -> Unit { Int.print() }
+    )
+}
