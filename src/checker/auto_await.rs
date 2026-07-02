@@ -455,7 +455,7 @@ fn infer_raw_type(expr: &Expr, returns: &MethodReturnMap) -> TypeExpr {
                 TypeExpr::Named {
                     name,
                     mut generics,
-                    span,
+                    span: _,
                 } if (name == "Future" || name == "Stream") && generics.len() == 1 => {
                     generics.remove(0)
                 }

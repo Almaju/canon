@@ -108,25 +108,351 @@ pub(super) const WASI_CLI_RUN: &str = "wasi:cli/run@0.3.0-rc-2026-03-15";
 /// WASI Preview 3 http/handler interface name. Emitted as the
 /// component-level export for programs whose entry has a
 /// `(Request) -> Response` signature. See `WASI-HTTP-HANDLER.md`.
-#[allow(dead_code)]
 pub(super) const WASI_HTTP_HANDLER: &str = "wasi:http/handler@0.3.0-rc-2026-03-15";
 
-/// Slice 1b stub: HTTP-entry programs route here. The full pipeline
-/// (core module emission → `wit-component` wrapping → validation) is
-/// being landed across sub-slices; today we panic with a clear message
-/// so users see the same diagnostic as the checker's slice-1a guard,
-/// not an internal crash.
+/// The vendored WASI Preview 3 WIT sources needed to resolve the
+/// `wasi:http/service` world. `http.wit` pulls in `wasi:clocks` via a
+/// `use`; the world imports interfaces from `wasi:cli` and
+/// `wasi:random`; and `wasi:cli`'s own worlds reference
+/// `wasi:filesystem` and `wasi:sockets` — so the whole vendored set
+/// must be in the `Resolve`. Order matters: dependencies before
+/// dependents.
+const WIT_WASI_CLOCKS: &str = include_str!("../../../wit-vendor/wasi/clocks.wit");
+const WIT_WASI_FILESYSTEM: &str = include_str!("../../../wit-vendor/wasi/filesystem.wit");
+const WIT_WASI_SOCKETS: &str = include_str!("../../../wit-vendor/wasi/sockets.wit");
+const WIT_WASI_CLI: &str = include_str!("../../../wit-vendor/wasi/cli.wit");
+const WIT_WASI_RANDOM: &str = include_str!("../../../wit-vendor/wasi/random.wit");
+const WIT_WASI_HTTP: &str = include_str!("../../../wit-vendor/wasi/http.wit");
+
+/// The core-module import namespace for `wasi:http/types` functions and
+/// intrinsics. This is the `<iface>@<ver>` name `wit-component` matches
+/// import clauses against when componentising.
+const WASI_HTTP_TYPES_MODULE: &str = "wasi:http/types@0.3.0-rc-2026-03-15";
+
+/// Slice 1b: HTTP-entry programs route here. Unlike the CLI path (which
+/// hand-rolls every component section via `wasm-encoder`), the HTTP path
+/// delegates all canonical-ABI type emission to `wit-component`:
 ///
-/// Replaces the checker's "codegen not yet implemented" diagnostic with
-/// a runtime-side equivalent once we drop that diagnostic in 1b.0.
+///   1. Build a self-contained core module (own memory, own
+///      `cabi_realloc`) that imports the handful of `wasi:http/types`
+///      functions and canonical-ABI intrinsics it needs, and exports
+///      `wasi:http/handler@…#handle` with the canonical core signature.
+///   2. Embed the parsed `wasi:http/service` world as component-type
+///      metadata (`wit_component::embed_component_metadata`).
+///   3. Run the result through `wit_component::ComponentEncoder`, which
+///      emits every resource/variant/option lift & lower for us.
+///
+/// The emitted handler currently ignores the user function's body and
+/// returns an empty-bodied 200 response — the slice-1b contract from
+/// `WASI-HTTP-HANDLER.md` ("the export contract has to match WASI HTTP
+/// exactly; the body can be trivial"). Request introspection and
+/// response composition are slices 2–3.
 pub(super) fn wrap_http_service(_module: &OModule) -> Vec<u8> {
-    eprintln!(
-        "error: HTTP-handler codegen (slice 1b of the migration) is not yet \
-         implemented. The entry-point detection and stdlib types are in place; \
-         the `wasi:http/service` world emission is being landed next. See \
-         WASI-HTTP-HANDLER.md §\"Implementation slicing\"."
+    let mut resolve = wit_parser::Resolve::default();
+    for (name, source) in [
+        ("clocks.wit", WIT_WASI_CLOCKS),
+        ("filesystem.wit", WIT_WASI_FILESYSTEM),
+        ("sockets.wit", WIT_WASI_SOCKETS),
+        ("random.wit", WIT_WASI_RANDOM),
+        ("cli.wit", WIT_WASI_CLI),
+        ("http.wit", WIT_WASI_HTTP),
+    ] {
+        resolve
+            .push_source(name, source)
+            .unwrap_or_else(|e| panic!("vendored {name} does not parse: {e:?}"));
+    }
+    let http_pkg = resolve
+        .package_names
+        .iter()
+        .find_map(|(name, id)| (name.namespace == "wasi" && name.name == "http").then_some(*id))
+        .expect("wasi:http package present in resolve");
+    let world = resolve
+        .select_world(&[http_pkg], Some("service"))
+        .expect("wasi:http declares a `service` world");
+
+    let mut core = build_http_service_core_module();
+    wit_component::embed_component_metadata(
+        &mut core,
+        &resolve,
+        world,
+        wit_component::StringEncoding::UTF8,
+    )
+    .expect("embed wasi:http/service metadata");
+
+    wit_component::ComponentEncoder::default()
+        .validate(true)
+        .module(&core)
+        .expect("core module matches the wasi:http/service world")
+        .encode()
+        .expect("component encoding succeeds")
+}
+
+/// Builds the core module behind `wrap_http_service`.
+///
+/// Imports (all from `wasi:http/types@…`):
+///   - `[constructor]fields` — fresh empty headers, `() -> i32`.
+///   - `[static]response.new` — canonical-ABI flat signature
+///     `(headers: i32, contents-disc: i32, contents-handle: i32,
+///     trailers: i32, retptr: i32) -> ()`. The `tuple<response,
+///     future<result<_, error-code>>>` return is 2 flat results, over
+///     the 1-result limit, so the host writes it through `retptr`.
+///   - `[future-new-1][static]response.new` — canonical intrinsic
+///     creating the trailers future (`future<result<option<trailers>,
+///     error-code>>` is future #1 in `response.new`'s signature: the
+///     contents stream is #0, the transmission future in the return
+///     tuple is #2). Returns an i64 packing (readable | writable << 32).
+///   - `[async-lower][future-write-1][static]response.new` — writes
+///     `ok(none)` ("no trailers") into our writable half. The lower
+///     must be async: the host only consumes the trailers future after
+///     `handle` returns the response, so a sync write would deadlock
+///     the task. The async write parks as pending (`BLOCKED`) and
+///     completes when the host pipes the body; the writer handle is
+///     deliberately leaked because the canonical ABI forbids dropping
+///     an unwritten future writer, and dropping mid-write is invalid
+///     too. One leaked handle per request, bounded by the
+///     per-connection store lifetime.
+///   - `[future-drop-readable-2][static]response.new` — discards the
+///     transmission-result future out of `response.new`'s return tuple
+///     so the task exits with no outstanding waitables.
+///   - `[resource-drop]request` — drops the incoming request handle we
+///     don't inspect yet (slice 2 is request introspection).
+///
+/// Exports:
+///   - `memory`, `cabi_realloc` — canonical-ABI plumbing.
+///   - `wasi:http/handler@…#handle` — sync-lifted `(i32) -> i32`:
+///     request handle in, ret-area pointer out. The canonical shape of
+///     `result<own<response>, error-code>` puts the discriminant byte at
+///     +0 and the payload at +8 (the error-code variant's
+///     `option<u64>` payloads force 8-byte alignment).
+fn build_http_service_core_module() -> Vec<u8> {
+    use wasm_encoder::{
+        CodeSection, EntityType, ExportSection, Function, FunctionSection, ImportSection,
+        MemorySection, MemoryType, Module, TypeSection,
+    };
+
+    // Fixed scratch addresses in the module's own memory. The canonical
+    // ABI only writes through pointers we hand it, so plain constants
+    // are fine — no allocator interplay.
+    const RESPONSE_NEW_RET: i32 = 16; // tuple<response, future> — two i32s
+    const HANDLE_RET: i32 = 32; // result<own<response>, error-code>
+    const TRAILERS_VALUE: i32 = 64; // ok(none) — all zeroes, never written to
+    const BUMP_START: i32 = 1024; // cabi_realloc allocations start here
+
+    // ── Types ────────────────────────────────────────────────────────
+    // 0: () -> i32            [constructor]fields
+    // 1: (i32 x5) -> ()       [static]response.new
+    // 2: () -> i64            [future-new-1][static]response.new
+    // 3: (i32) -> ()          drops (future half, resource)
+    // 4: (i32, i32) -> i32    [async-lower][future-write-1]…
+    // 5: (i32 x4) -> i32      cabi_realloc
+    // 6: (i32) -> i32         handle export
+    let mut types = TypeSection::new();
+    types.ty().function([], [ValType::I32]);
+    types.ty().function([ValType::I32; 5], []);
+    types.ty().function([], [ValType::I64]);
+    types.ty().function([ValType::I32], []);
+    types.ty().function([ValType::I32; 2], [ValType::I32]);
+    types.ty().function([ValType::I32; 4], [ValType::I32]);
+    types.ty().function([ValType::I32], [ValType::I32]);
+
+    // ── Imports (function index space 0..=5) ─────────────────────────
+    let mut imports = ImportSection::new();
+    let fn_fields_ctor: u32 = 0;
+    let fn_response_new: u32 = 1;
+    let fn_future_new: u32 = 2;
+    let fn_future_write: u32 = 3;
+    let fn_future_drop_readable: u32 = 4;
+    let fn_request_drop: u32 = 5;
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[constructor]fields",
+        EntityType::Function(0),
     );
-    std::process::exit(1);
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[static]response.new",
+        EntityType::Function(1),
+    );
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[future-new-1][static]response.new",
+        EntityType::Function(2),
+    );
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[async-lower][future-write-1][static]response.new",
+        EntityType::Function(4),
+    );
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[future-drop-readable-2][static]response.new",
+        EntityType::Function(3),
+    );
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[resource-drop]request",
+        EntityType::Function(3),
+    );
+
+    // ── Defined functions ────────────────────────────────────────────
+    let fn_cabi_realloc: u32 = 6;
+    let fn_handle: u32 = 7;
+    let mut funcs = FunctionSection::new();
+    funcs.function(5); // cabi_realloc
+    funcs.function(6); // handle
+
+    let mut memories = MemorySection::new();
+    memories.memory(MemoryType {
+        minimum: 1,
+        maximum: None,
+        memory64: false,
+        shared: false,
+        page_size_log2: None,
+    });
+
+    let mut exports = ExportSection::new();
+    exports.export("memory", ExportKind::Memory, 0);
+    exports.export("cabi_realloc", ExportKind::Func, fn_cabi_realloc);
+    exports.export(
+        &format!("{WASI_HTTP_HANDLER}#handle"),
+        ExportKind::Func,
+        fn_handle,
+    );
+
+    let mut codes = CodeSection::new();
+
+    // cabi_realloc: bump allocator over a global-free design — the bump
+    // pointer lives at memory address 0..4 (never handed to the ABI).
+    // aligned = (bump + align - 1) & -align; bump = aligned + new_size.
+    {
+        let mut f = Function::new([(2, ValType::I32)]); // locals 4: aligned, 5: bump
+        let mem = MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        };
+        // bump = max(load(0), BUMP_START)  — load(0) is 0 on first use.
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::LocalTee(5));
+        f.instruction(&Instruction::I32Const(BUMP_START));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Const(BUMP_START));
+        f.instruction(&Instruction::I32GtU);
+        f.instruction(&Instruction::Select);
+        // aligned = (bump + align - 1) & -align
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::LocalTee(4));
+        // store(0, aligned + new_size)
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(5));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Store(mem));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::End);
+        codes.function(&f);
+    }
+
+    // handle(request: i32) -> i32 (ret-area pointer)
+    {
+        // locals: 1 = headers, 2 = future pair (i64), 3 = trailers
+        // reader, 4 = trailers writer, 5 = response, 6 = tx future
+        let mut f = Function::new([(1, ValType::I32), (1, ValType::I64), (4, ValType::I32)]);
+        let (headers, pair, reader, writer, response, tx_future) =
+            (1u32, 2u32, 3u32, 4u32, 5u32, 6u32);
+        let mem = MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        };
+
+        // headers = [constructor]fields()
+        f.instruction(&Instruction::Call(fn_fields_ctor));
+        f.instruction(&Instruction::LocalSet(headers));
+
+        // (reader, writer) = future.new — readable in the low 32 bits,
+        // writable in the high 32 (same packing the stdout stream path
+        // relies on).
+        f.instruction(&Instruction::Call(fn_future_new));
+        f.instruction(&Instruction::LocalTee(pair));
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(reader));
+        f.instruction(&Instruction::LocalGet(pair));
+        f.instruction(&Instruction::I64Const(32));
+        f.instruction(&Instruction::I64ShrU);
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(writer));
+
+        // Park the "no trailers" value (`ok(none)` — all zero bytes at
+        // TRAILERS_VALUE) as a pending async write. The host completes
+        // it when it consumes the response body. The returned status
+        // (BLOCKED) is dropped; the writer is leaked, see the doc
+        // comment above.
+        f.instruction(&Instruction::LocalGet(writer));
+        f.instruction(&Instruction::I32Const(TRAILERS_VALUE));
+        f.instruction(&Instruction::Call(fn_future_write));
+        f.instruction(&Instruction::Drop);
+
+        // response.new(headers, contents = none, trailers = reader, ret)
+        f.instruction(&Instruction::LocalGet(headers));
+        f.instruction(&Instruction::I32Const(0)); // option<stream> disc: none
+        f.instruction(&Instruction::I32Const(0)); // option<stream> payload (unused)
+        f.instruction(&Instruction::LocalGet(reader));
+        f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET));
+        f.instruction(&Instruction::Call(fn_response_new));
+
+        // Unpack tuple<response, future<…>> from the ret area.
+        f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::LocalSet(response));
+        f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET + 4));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::LocalSet(tx_future));
+
+        // Release what we can: the transmission-result future and the
+        // un-inspected request. (The trailers writer stays alive
+        // backing the pending write above.)
+        f.instruction(&Instruction::LocalGet(tx_future));
+        f.instruction(&Instruction::Call(fn_future_drop_readable));
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::Call(fn_request_drop));
+
+        // result<own<response>, error-code>: ok discriminant byte at
+        // +0, response handle at +8 (payload alignment is 8 because
+        // error-code carries option<u64> cases).
+        f.instruction(&Instruction::I32Const(HANDLE_RET));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Const(HANDLE_RET + 8));
+        f.instruction(&Instruction::LocalGet(response));
+        f.instruction(&Instruction::I32Store(mem));
+
+        f.instruction(&Instruction::I32Const(HANDLE_RET));
+        f.instruction(&Instruction::End);
+        codes.function(&f);
+    }
+
+    let mut m = Module::new();
+    m.section(&types);
+    m.section(&imports);
+    m.section(&funcs);
+    m.section(&memories);
+    m.section(&exports);
+    m.section(&codes);
+    m.finish()
 }
 
 /// Builds the Component Model component. Returns the binary `.wasm`.
@@ -398,8 +724,7 @@ pub(super) fn wrap(
             WASI_CLI_STDOUT_COMPONENT_IMPORT,
             ComponentTypeRef::Instance(0),
         );
-        let mut next_instance: u32 = 1;
-        for iface_name in by_iface.keys() {
+        for (next_instance, iface_name) in (1u32..).zip(by_iface.keys()) {
             let ty_idx = extern_iface_type_idx[iface_name];
             // The component-level import name should include the version. We
             // derive it from the first function's `component_namespace`,
@@ -407,7 +732,6 @@ pub(super) fn wrap(
             let component_name = by_iface[iface_name][0].component_namespace.as_str();
             imports.import(component_name, ComponentTypeRef::Instance(ty_idx));
             extern_iface_instance_idx.insert(*iface_name, next_instance);
-            next_instance += 1;
         }
         c.section(&imports);
     }
@@ -674,10 +998,8 @@ pub(super) fn wrap(
     let stdout_synth_inst: u32 = 1;
     let mut extern_synth_inst: BTreeMap<&str, u32> = BTreeMap::new();
     {
-        let mut next: u32 = 2;
-        for iface_name in by_iface.keys() {
+        for (next, iface_name) in (2u32..).zip(by_iface.keys()) {
             extern_synth_inst.insert(*iface_name, next);
-            next += 1;
         }
     }
     let waitable_synth_inst: u32 = 2 + by_iface.len() as u32;

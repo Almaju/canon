@@ -1,8 +1,13 @@
 # WASI HTTP Handler — Design
 
-Status: **design in progress, implementation not started**. This
-document defines the target architecture for HTTP-handling Canon
-programs and supersedes the slicing plan in `DYNAMIC-HANDLERS.md`
+Status: **slices 0–1b landed** (stdlib types, entry detection, and the
+`wasi:http/service` world emission — a `(Request) -> Response` program
+compiles to a standard component and serves HTTP end-to-end under
+`canon run --addr`; pinned by `tests/wasi_http_service_test.rs`).
+Slices 2–4 (request introspection, response composition, runner
+cleanup) are next. This document defines the target architecture for
+HTTP-handling Canon programs and supersedes the slicing plan in
+`DYNAMIC-HANDLERS.md`
 (see [Why the previous plan is wrong](#why-the-previous-plan-is-wrong)).
 
 The goal in one sentence: **Canon programs that handle HTTP
@@ -326,7 +331,7 @@ Left for slice 1b:
 - Resource lowering for `request` / `response`.
 - The runtime test (`canon run` an HTTP program end-to-end).
 
-### Slice 1b — minimal `wasi:http/service` world emission
+### Slice 1b — minimal `wasi:http/service` world emission (landed)
 
 **Deliverable:** the codegen detects a `(Request) -> Response`
 free function and emits a `wasi:http/service` world with that
@@ -335,6 +340,30 @@ can be trivial — e.g. always return a 200 with empty body — but
 the export contract has to match WASI HTTP exactly. `wasmtime
 serve` should be able to instantiate the component without
 complaint.
+
+Landed (see `wrap_http_service` / `build_http_service_core_module`
+in `src/codegen/wasm/component.rs`):
+- The HTTP path routes through `wit_component::ComponentEncoder`
+  (per the slice-1b architectural note in `CLAUDE.md`) instead of
+  hand-rolled component sections: a self-contained core module +
+  `embed_component_metadata` against the vendored
+  `wit-vendor/wasi/http.wit`, and the encoder emits all resource /
+  variant / future lowering.
+- The trailers future `response.new` requires is created with the
+  `[future-new-N]` canonical intrinsic; "no trailers" is parked as
+  an `[async-lower]` `future.write` of `ok(none)` (a sync write
+  would deadlock — the host only reads trailers after `handle`
+  returns). The writer handle is leaked by design; the canonical
+  ABI forbids dropping an unwritten future writer.
+- Host side, `dispatch_request` (in `src/runtime.rs`) now consumes
+  the guest response body *inside* the `run_concurrent` scope —
+  the pipe tasks feeding the body channels are only polled while
+  the store is driven. Full-body buffering for now; streaming is
+  `STREAMING.md` slice 3.
+- Checker slice-1a "codegen not yet implemented" diagnostic
+  removed; the fixture moved to `tests/checker/ok/wasi_http_handler.can`.
+- Pinned end-to-end by `tests/wasi_http_service_test.rs` (compile →
+  `canon run --addr` → TCP request → assert 200, twice).
 
 Work:
 - Read the entry from the AST in `src/codegen/wasm/mod.rs::assign_func_indices`

@@ -342,12 +342,10 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
 }
 
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
-    let canonical = entry
-        .canonicalize()
-        .map_err(|err| CanonError::CheckError {
-            message: format!("could not resolve `{}`: {}", entry.display(), err),
-            span: Span::default(),
-        })?;
+    let canonical = entry.canonicalize().map_err(|err| CanonError::CheckError {
+        message: format!("could not resolve `{}`: {}", entry.display(), err),
+        span: Span::default(),
+    })?;
     let dir = canonical.parent().unwrap_or_else(|| Path::new("."));
     let project_root = find_project_root(dir);
     let project_install_index = project_root

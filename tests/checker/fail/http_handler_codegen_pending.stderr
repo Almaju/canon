@@ -1,1 +1,0 @@
-error[tests/checker/fail/http_handler_codegen_pending.can:6:1]: HTTP handler `home` is well-formed, but the codegen path for `wasi:http/handler` is not yet implemented (slice 1b of the migration; see `WASI-HTTP-HANDLER.md`). The stdlib types and the entry-detection rule are landed; the world-emission and resource-lowering work is pending.

@@ -5427,12 +5427,12 @@ pub fn generate(module: &OModule) -> Vec<u8> {
     // `wit-component` (the resource + variant surface in
     // `wasi:http/types` is too large to maintain by hand).
     //
-    // The checker has already validated which entry shape applies and
-    // emitted a diagnostic for HTTP entries (slice 1a). When that
-    // diagnostic was downgraded as part of slice 1b, this dispatch
-    // becomes the authoritative entry-world router.
+    // The checker has already validated which entry shape applies
+    // (slice 1a); this dispatch is the authoritative entry-world router.
     if has_http_entry(module) {
-        return component::wrap_http_service(module);
+        let bytes = component::wrap_http_service(module);
+        validate(&bytes);
+        return bytes;
     }
 
     let core = generate_core_module(module);

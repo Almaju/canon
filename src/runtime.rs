@@ -428,27 +428,57 @@ async fn dispatch_request(
     let (wasi_req, io_fut) = Request::from_http(req);
 
     let mut guard = store.lock().await;
-    let handle_result = guard
-        .run_concurrent(async |store| service.handle(store, wasi_req).await)
-        .await??;
+    // The whole request lifecycle — calling the guest, converting the
+    // returned response resource, and consuming its body — must happen
+    // inside one `run_concurrent` scope. The guest's body/trailers
+    // reach us through host-side pipe tasks registered on the store,
+    // and those tasks are only polled while `run_concurrent` drives
+    // the store. Collecting the body outside the scope would hang
+    // forever on a body channel nobody is feeding.
+    //
+    // Buffering the full body here caps us at non-streaming responses;
+    // when `Stream<T>` response bodies land (STREAMING.md slice 3),
+    // this becomes a keep-driving loop that feeds hyper incrementally.
+    let response = guard
+        .run_concurrent(async |store| -> wasmtime::Result<_> {
+            match service.handle(store, wasi_req).await? {
+                Ok(resp) => {
+                    // `into_http` wires the guest's body stream into a
+                    // hyper-compatible body. The `async { Ok(()) }`
+                    // future is the host-side completion signal; we
+                    // have no late-stage processing to report.
+                    let resp = store.with(|mut s| resp.into_http(&mut s, async { Ok(()) }))?;
+                    let (parts, body) = resp.into_parts();
+                    let collected = body
+                        .collect()
+                        .await
+                        .map_err(|e| wasmtime::Error::msg(format!("guest body: {e:?}")))?;
+                    let body = http_body_util::Full::new(collected.to_bytes())
+                        .map_err(|never| match never {})
+                        .boxed_unsync();
+                    Ok(http::Response::from_parts(parts, body))
+                }
+                Err(err) => Ok(error_response(err)),
+            }
+        })
+        .await
+        .and_then(|inner| inner)
+        .map_err(|e| {
+            // Hyper reports a failed service closure as an opaque
+            // "error from user's Service"; log the underlying wasmtime
+            // error (trap, missing export, canonical-ABI violation)
+            // here where it's still visible.
+            eprintln!("canon run --addr: handler dispatch failed: {e:?}");
+            e
+        })?;
 
-    // Drive the request-body-processing future to completion alongside
-    // the response read so the guest sees `Ok(())` (body fully
-    // consumed) rather than a dangling future error. We discard the
-    // outcome — the guest already returned its response by this point.
+    // Drive the request-body-processing future to completion so the
+    // guest sees `Ok(())` (body fully consumed) rather than a dangling
+    // future error. We discard the outcome — the guest already
+    // returned its response by this point.
     let _ = io_fut.await;
 
-    match handle_result {
-        Ok(resp) => {
-            // `into_http` wires the guest's writable body stream into a
-            // hyper-compatible `UnsyncBoxBody`. The `async { Ok(()) }`
-            // future is the host-side completion signal; we have no
-            // late-stage processing to report, so it resolves to `Ok`
-            // immediately.
-            resp.into_http(&mut *guard, async { Ok(()) })
-        }
-        Err(err) => Ok(error_response(err)),
-    }
+    Ok(response)
 }
 
 /// Renders an `error-code` returned by the guest as a `500` response so

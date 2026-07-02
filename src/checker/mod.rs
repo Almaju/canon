@@ -201,21 +201,9 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             ),
             span: http_entries[1].span,
         }),
-        // Exactly one HTTP entry. Type surface is well-formed, but the
-        // codegen path for `wasi:http/handler` is slice 1b — not yet
-        // implemented. Surface this so users see a clear diagnostic
-        // instead of an internal codegen crash.
-        (false, 1) => errors.push(CanonError::CheckError {
-            message: format!(
-                "HTTP handler `{}` is well-formed, but the codegen path for \
-                  `wasi:http/handler` is not yet implemented (slice 1b of the migration; \
-                  see `WASI-HTTP-HANDLER.md`). The stdlib types and the entry-detection \
-                  rule are landed; the world-emission and resource-lowering work is \
-                  pending.",
-                http_entries[0].name.name
-            ),
-            span: http_entries[0].span,
-        }),
+        // Exactly one HTTP entry: a well-formed `wasi:http/service`
+        // program. Codegen routes it through `wrap_http_service`.
+        (false, 1) => {}
         _ => unreachable!(),
     }
 
@@ -859,12 +847,7 @@ fn check_block(
     }
 }
 
-fn check_expr(
-    expr: &Expr,
-    scope: &ExprScope,
-    symbols: &SymbolTable,
-    errors: &mut Vec<CanonError>,
-) {
+fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     match expr {
         Expr::Ident(ident) => {
             if is_capability_type(&ident.name) {
