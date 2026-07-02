@@ -59,22 +59,37 @@ const FIRST_EXTERN_IMPORT_FN: u32 = 5; // first index of a user `extern Wasm` im
 // ── HTTP-mode import indices ─────────────────────────────────────────
 // In HTTP encoder mode (`http_mode`, see `compile_http`) the import
 // space is fixed: the five stdout builtins keep indices 0..4 (under
-// `wit-component` naming conventions), then seven `wasi:http/types`
-// functions/intrinsics. No extern-Wasm or waitable imports exist in
-// this mode; defined functions start at 12.
+// `wit-component` naming conventions), then the `wasi:http/types`
+// functions/intrinsics plus the task-return intrinsic for the
+// async-stackful `handle` lift. No extern-Wasm or waitable imports
+// exist in this mode; defined functions start at `HTTP_BASE_DEFINED`.
 const FN_HTTP_FIELDS_CTOR: u32 = 5; // [constructor]fields          () -> i32
 const FN_HTTP_RESPONSE_NEW: u32 = 6; // [static]response.new        (i32 x5) -> ()
 const FN_HTTP_FUTURE_NEW: u32 = 7; // [future-new-1][static]response.new  () -> i64
-const FN_HTTP_FUTURE_WRITE: u32 = 8; // [async-lower][future-write-1]…     (i32,i32) -> i32
+const FN_HTTP_FUTURE_WRITE: u32 = 8; // [future-write-1]… (sync)    (i32,i32) -> i32
 const FN_HTTP_FUTURE_DROP_READABLE: u32 = 9; // [future-drop-readable-2]…  (i32) -> ()
-const FN_HTTP_REQUEST_DROP: u32 = 10; // [resource-drop]request      (i32) -> ()
-const FN_HTTP_SET_STATUS: u32 = 11; // [method]response.set-status-code (i32,i32) -> i32
-const HTTP_BASE_DEFINED: u32 = 12;
+const FN_HTTP_FUTURE_DROP_WRITABLE: u32 = 10; // [future-drop-writable-1]… (i32) -> ()
+const FN_HTTP_REQUEST_DROP: u32 = 11; // [resource-drop]request      (i32) -> ()
+const FN_HTTP_SET_STATUS: u32 = 12; // [method]response.set-status-code (i32,i32) -> i32
+const FN_HTTP_STREAM_NEW: u32 = 13; // [stream-new-0][static]response.new () -> i64
+const FN_HTTP_STREAM_WRITE: u32 = 14; // [stream-write-0]… (sync)   (i32,i32,i32) -> i32
+const FN_HTTP_STREAM_DROP_WRITABLE: u32 = 15; // [stream-drop-writable-0]… (i32) -> ()
+const FN_HTTP_TASK_RETURN: u32 = 16; // [task-return]handle
+const HTTP_BASE_DEFINED: u32 = 17;
 
 // Fixed scratch addresses used by HTTP-mode response construction.
-// 0..32 is the shared int buffer, '\n' at 32, string data from 64 —
-// the window 40..56 is guaranteed zero and untouched.
-const MEM_HTTP_RET: u32 = 16; // response.new tuple ret; reused for handle's result
+// `build_http_response` runs *inside* the user function; the sync
+// body/trailer writes must happen *after* `task.return` hands the
+// response to the host (they block until the host consumes them), so
+// construction stashes the write-phase state at fixed addresses for
+// the `handle` wrapper to pick up. Addresses 0..16 are otherwise
+// unused (the int buffer is 16..32, '\n' at 32, strings from 64) and
+// no user code runs between the stores and the loads.
+const MEM_HTTP_BODY_WRITER: u32 = 0; // contents-stream writer (0 = no body)
+const MEM_HTTP_BODY_PTR: u32 = 4;
+const MEM_HTTP_BODY_LEN: u32 = 8;
+const MEM_HTTP_TRAILERS_WRITER: u32 = 12;
+const MEM_HTTP_RET: u32 = 16; // response.new tuple ret (int-buffer reuse is safe)
 const MEM_HTTP_TRAILERS_ZERO: u32 = 40; // `ok(none)` — all zero bytes, never written
 
 // ── Type index constants (pre-defined) ──────────────────────────────
@@ -3087,43 +3102,55 @@ impl<'m> WasmGen<'m> {
         Ty::NamedPtr("Option".to_string())
     }
 
-    /// HTTP mode: compile `Response(Headers_expr * Status_expr)` into
-    /// the real `wasi:http/types` construction sequence:
+    /// HTTP mode: compile `Response(Body * Headers * Status)` (or the
+    /// body-less `Response(Headers * Status)`) into the
+    /// `wasi:http/types` construction sequence.
     ///
-    ///   1. compile the headers expression → fields handle (i32)
-    ///   2. compile the status expression → Int (i64), wrapped to i32
-    ///   3. `future.new` for the trailers future; park an
-    ///      `[async-lower]` write of `ok(none)` (see the slice-1b notes
-    ///      in CLAUDE.md — a sync write deadlocks, an unwritten writer
-    ///      can't be dropped, so the writer handle is leaked)
-    ///   4. `response.new(headers, none-contents, reader)` → indirect
-    ///      tuple return at `MEM_HTTP_RET`
-    ///   5. drop the transmission future; `set-status-code(resp, status)`
-    ///
-    /// Leaves the response handle on the stack as
-    /// `Ty::NamedPtr("Response")`.
+    /// Construction happens in two phases because the `handle` export
+    /// is async-stackful: everything that *creates* handles runs here,
+    /// inside the user function, but the body/trailer *writes* are
+    /// sync canonical-ABI calls that block until the host consumes
+    /// them — they can only run after `task.return` has delivered the
+    /// response. So this function stashes the write-phase state
+    /// (contents writer + body bytes + trailers writer) at fixed
+    /// memory addresses, and `build_http_handle_wrapper` performs the
+    /// writes after `task.return`.
     fn build_http_response(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
         let mem = MemArg {
             offset: 0,
             align: 2,
             memory_index: 0,
         };
-        // Normalise `Response(H * S)` (one ProductValue) and
-        // `Response(H, S)` (positional) into an expression list.
-        // Field order is alphabetical by construction: Headers, Status.
+        // Normalise `Response(a * b * c)` and `Response(a, b, c)`.
+        // Field order is alphabetical by construction:
+        // (Body, Headers, Status) or (Headers, Status).
         let exprs: Vec<Expr> = match args {
             [Expr::ProductValue { fields, .. }] => fields.clone(),
             _ => args.to_vec(),
         };
-        // Headers first — its handle parks on the operand stack while
-        // the status expression (arbitrary user code) runs above it.
-        match exprs.first() {
+        let has_body = exprs.len() >= 3;
+        let (body_expr, headers_expr, status_expr) = if has_body {
+            (exprs.first(), exprs.get(1), exprs.get(2))
+        } else {
+            (None, exprs.first(), exprs.get(1))
+        };
+
+        // ── Phase 1: user expressions (parked on the operand stack —
+        // each may be arbitrary user code, so nothing can live in
+        // scratch locals until all three are compiled). ──────────────
+        if let Some(e) = body_expr {
+            let ty = self.compile_expr(e, scope, f);
+            if !ty.is_str_like() {
+                // Wrong shape — degrade to an empty body.
+                self.drop_value(ty, f);
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::I32Const(0));
+            }
+        }
+        match headers_expr {
             Some(e) => {
                 let ty = self.compile_expr(e, scope, f);
                 if !matches!(ty, Ty::I32 | Ty::Ptr | Ty::NamedPtr(_)) {
-                    // Wrong shape (e.g. an unsupported `.set` chain
-                    // evaporated to Unit) — degrade to fresh empty
-                    // headers rather than corrupting the stack.
                     self.drop_value(ty, f);
                     f.instruction(&Instruction::Call(FN_HTTP_FIELDS_CTOR));
                 }
@@ -3132,7 +3159,7 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::Call(FN_HTTP_FIELDS_CTOR));
             }
         }
-        match exprs.get(1) {
+        match status_expr {
             Some(e) => {
                 let ty = self.compile_expr(e, scope, f);
                 if matches!(ty, Ty::I64) {
@@ -3146,28 +3173,64 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::I32Const(200));
             }
         }
-        // All user code is done; peel into scratch locals.
+        // Peel into locals — no user code from here on.
         f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // status
         f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // headers
+        if has_body {
+            // [bptr, blen] → fixed body slots.
+            f.instruction(&Instruction::LocalSet(scope.map_elem_ptr())); // blen
+            f.instruction(&Instruction::LocalSet(scope.addr_scratch())); // bptr
+            f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_PTR as i32));
+            f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+            f.instruction(&Instruction::I32Store(mem));
+            f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_LEN as i32));
+            f.instruction(&Instruction::LocalGet(scope.map_elem_ptr()));
+            f.instruction(&Instruction::I32Store(mem));
+        }
 
-        // Trailers future: reader in the low 32 bits, writer high.
+        // ── Phase 2: handle creation ─────────────────────────────────
+        // Trailers future — reader (low 32) goes to response.new,
+        // writer (high 32) to the fixed slot for the post-return write.
         f.instruction(&Instruction::Call(FN_HTTP_FUTURE_NEW));
         f.instruction(&Instruction::LocalTee(scope.tmp_i64()));
         f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(scope.addr_scratch())); // reader
+        f.instruction(&Instruction::LocalSet(scope.addr_scratch())); // trailers reader
+        f.instruction(&Instruction::I32Const(MEM_HTTP_TRAILERS_WRITER as i32));
         f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
         f.instruction(&Instruction::I64Const(32));
         f.instruction(&Instruction::I64ShrU);
         f.instruction(&Instruction::I32WrapI64);
-        // Park the "no trailers" write; status dropped, writer leaked.
-        f.instruction(&Instruction::I32Const(MEM_HTTP_TRAILERS_ZERO as i32));
-        f.instruction(&Instruction::Call(FN_HTTP_FUTURE_WRITE));
-        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::I32Store(mem));
 
-        // response.new(headers, contents = none, trailers = reader, ret)
+        // Contents stream (only with a body): reader to response.new,
+        // writer to the fixed slot. Without a body the slot holds 0
+        // and the wrapper skips the write.
+        if has_body {
+            f.instruction(&Instruction::Call(FN_HTTP_STREAM_NEW));
+            f.instruction(&Instruction::LocalTee(scope.tmp_i64()));
+            f.instruction(&Instruction::I32WrapI64);
+            f.instruction(&Instruction::LocalSet(scope.map_elem_ptr())); // contents reader
+            f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
+            f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+            f.instruction(&Instruction::I64Const(32));
+            f.instruction(&Instruction::I64ShrU);
+            f.instruction(&Instruction::I32WrapI64);
+            f.instruction(&Instruction::I32Store(mem));
+        } else {
+            f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::I32Store(mem));
+        }
+
+        // response.new(headers, contents, trailers-reader, ret)
         f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32Const(0));
+        if has_body {
+            f.instruction(&Instruction::I32Const(1)); // option<stream>: some
+            f.instruction(&Instruction::LocalGet(scope.map_elem_ptr()));
+        } else {
+            f.instruction(&Instruction::I32Const(0)); // none
+            f.instruction(&Instruction::I32Const(0));
+        }
         f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
         f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
         f.instruction(&Instruction::Call(FN_HTTP_RESPONSE_NEW));
@@ -3181,8 +3244,8 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::Call(FN_HTTP_FUTURE_DROP_READABLE));
 
         // Apply the status (response.new defaults to 200); the bare
-        // `result` discriminant is dropped — a rejected code leaves the
-        // default, which is the sane degradation.
+        // `result` discriminant is dropped — a rejected code leaves
+        // the default, which is the sane degradation.
         f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
         f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
         f.instruction(&Instruction::Call(FN_HTTP_SET_STATUS));
@@ -3193,35 +3256,75 @@ impl<'m> WasmGen<'m> {
     }
 
     /// HTTP mode: the core export behind
-    /// `wasi:http/handler@…#handle`. Canonical core signature
-    /// `(request: i32) -> i32` — request handle in, ret-area pointer
-    /// out. Calls the user's compiled `(Request) -> Response` function,
-    /// drops the request handle (nothing introspects it yet — slice 2),
-    /// and writes `ok(response)` into the ret area (discriminant byte
-    /// at +0, handle at +8; the `error-code` variant's `option<u64>`
-    /// payloads force 8-byte alignment).
+    /// `[async-lift-stackful]wasi:http/handler@…#handle`. Core
+    /// signature `(request: i32) -> ()` — the result is delivered via
+    /// `[task-return]handle` mid-function, after which the task keeps
+    /// running to perform the blocking body/trailer writes:
+    ///
+    ///   1. call the user's `(Request) -> Response` function,
+    ///   2. drop the request handle (introspection is slice 2),
+    ///   3. `task.return(ok(response))` — the host starts sending,
+    ///   4. sync `stream.write` of the body bytes (blocks until the
+    ///      host consumes), then `stream.drop-writable` (ends the
+    ///      body),
+    ///   5. sync `future.write` of `ok(none)` trailers, then
+    ///      `future.drop-writable`.
+    ///
+    /// Step 4/5 state comes from the fixed memory slots
+    /// `build_http_response` filled. No handles leak.
     fn build_http_handle_wrapper(&self, user_fn_idx: u32) -> Function {
+        let mem = MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        };
         let mut f = Function::new([(1, ValType::I32)]); // local 1: response
         f.instruction(&Instruction::LocalGet(0));
         f.instruction(&Instruction::Call(user_fn_idx));
         f.instruction(&Instruction::LocalSet(1));
         f.instruction(&Instruction::LocalGet(0));
         f.instruction(&Instruction::Call(FN_HTTP_REQUEST_DROP));
-        f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
+
+        // task.return(ok(response)) — `result<own<response>, error-code>`
+        // lowered flat as the joined slots of both arms; the ok arm
+        // uses (disc = 0, handle) and pads the six error-code slots.
+        f.instruction(&Instruction::I32Const(0)); // ok
+        f.instruction(&Instruction::LocalGet(1)); // response handle
         f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32Store8(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
-        f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Store(MemArg {
-            offset: 8,
-            align: 2,
-            memory_index: 0,
-        }));
-        f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
+        f.instruction(&Instruction::I64Const(0));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::Call(FN_HTTP_TASK_RETURN));
+
+        // ── Post-return: body ────────────────────────────────────────
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_PTR as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_LEN as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::Call(FN_HTTP_STREAM_WRITE));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::Call(FN_HTTP_STREAM_DROP_WRITABLE));
+        f.instruction(&Instruction::End);
+
+        // ── Post-return: trailers (`ok(none)` — zero bytes) ──────────
+        f.instruction(&Instruction::I32Const(MEM_HTTP_TRAILERS_WRITER as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_TRAILERS_ZERO as i32));
+        f.instruction(&Instruction::Call(FN_HTTP_FUTURE_WRITE));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::I32Const(MEM_HTTP_TRAILERS_WRITER as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::Call(FN_HTTP_FUTURE_DROP_WRITABLE));
+
         f.instruction(&Instruction::End);
         f
     }
@@ -6289,6 +6392,19 @@ impl<'m> WasmGen<'m> {
             &[ValType::I32, ValType::I32, ValType::I32],
         );
         let ty_response_new = self.get_or_add_wasm_type(&[ValType::I32; 5], &[]);
+        let ty_task_return_handle = self.get_or_add_wasm_type(
+            &[
+                ValType::I32,
+                ValType::I32,
+                ValType::I32,
+                ValType::I64,
+                ValType::I32,
+                ValType::I32,
+                ValType::I32,
+                ValType::I32,
+            ],
+            &[],
+        );
         let ty_cabi_realloc = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
 
         // The entry function: the free `(Request) -> Response` the
@@ -6382,12 +6498,17 @@ impl<'m> WasmGen<'m> {
         );
         imports.import(
             http,
-            "[async-lower][future-write-1][static]response.new",
+            "[future-write-1][static]response.new",
             EntityType::Function(ty_i32x2_to_i32),
         );
         imports.import(
             http,
             "[future-drop-readable-2][static]response.new",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        imports.import(
+            http,
+            "[future-drop-writable-1][static]response.new",
             EntityType::Function(TY_PRINT_BOOL),
         );
         imports.import(
@@ -6400,6 +6521,32 @@ impl<'m> WasmGen<'m> {
             "[method]response.set-status-code",
             EntityType::Function(ty_i32x2_to_i32),
         );
+        imports.import(
+            http,
+            "[stream-new-0][static]response.new",
+            EntityType::Function(TY_STDOUT_STREAM_NEW),
+        );
+        imports.import(
+            http,
+            "[stream-write-0][static]response.new",
+            EntityType::Function(TY_STDOUT_STREAM_WRITE),
+        );
+        imports.import(
+            http,
+            "[stream-drop-writable-0][static]response.new",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        // task.return for the async-stackful `handle` lift. The
+        // `result<own<response>, error-code>` result lowers flat to
+        // the *joined* slots of both arms:
+        // (disc, own-handle/err-disc, then error-code's joined payload
+        // slots i32,i64,i32,i32,i32,i32). The ok arm only uses the
+        // first two; the rest are padding zeros.
+        imports.import(
+            "[export]wasi:http/handler@0.3.0-rc-2026-03-15",
+            "[task-return]handle",
+            EntityType::Function(ty_task_return_handle),
+        );
         m.section(&imports);
 
         // ── Function section ─────────────────────────────────────────
@@ -6408,7 +6555,7 @@ impl<'m> WasmGen<'m> {
         funcs.function(TY_PRINT_INT);
         funcs.function(TY_PRINT_BOOL);
         funcs.function(TY_ALLOC);
-        funcs.function(TY_ALLOC); // fn_start slot = handle wrapper, (i32) -> i32
+        funcs.function(TY_PRINT_BOOL); // fn_start slot = handle wrapper, (i32) -> ()
         funcs.function(list_to_json_array_ty);
         funcs.function(print_float_ty);
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
@@ -6453,7 +6600,10 @@ impl<'m> WasmGen<'m> {
         exports.export("memory", ExportKind::Memory, 0);
         exports.export("cabi_realloc", ExportKind::Func, cabi_realloc_idx);
         exports.export(
-            &format!("{}#handle", component::WASI_HTTP_HANDLER),
+            &format!(
+                "[async-lift-stackful]{}#handle",
+                component::WASI_HTTP_HANDLER
+            ),
             ExportKind::Func,
             self.fn_start,
         );

@@ -1,8 +1,9 @@
+use canon/std/http/Body
 use canon/std/http/Headers
 use canon/std/http/Request
 use canon/std/http/Response
 use canon/std/http/Status
 
 home = (Request) -> Response {
-    Response(Headers(), Status(200))
+    Response(Body("hello"), Headers(), Status(200))
 }

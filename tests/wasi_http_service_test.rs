@@ -31,13 +31,14 @@ fn wasi_http_service_smoke() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"use canon/std/http/Headers
+        r#"use canon/std/http/Body
+use canon/std/http/Headers
 use canon/std/http/Request
 use canon/std/http/Response
 use canon/std/http/Status
 
 home = (Request) -> Response {
-    Response(Headers(), Status(201))
+    Response(Body("created: ".concat("ok")), Headers(), Status(201))
 }
 "#,
     )
@@ -82,11 +83,11 @@ home = (Request) -> Response {
     }
 
     // Two sequential requests on separate connections: the second one
-    // guards against per-request state corruption (each request leaks
-    // one trailers-future writer by design; that must not affect
-    // subsequent requests). The 201 pins the static-status extraction
-    // from the handler body (`Status(201)` above), not the
-    // `response.new` default.
+    // guards against per-request state corruption. The 201 pins the
+    // *runtime* status from the compiled handler body, and the body
+    // assertion pins the string-body path (contents stream written
+    // after `task.return`, then closed — a hung/chunked response fails
+    // the read).
     for attempt in 1..=2 {
         let response = send_request(&addr).unwrap_or_else(|e| {
             let _ = child.kill();
@@ -95,6 +96,10 @@ home = (Request) -> Response {
         assert!(
             response.starts_with("HTTP/1.1 201"),
             "request {attempt}: expected HTTP 201, got:\n{response}"
+        );
+        assert!(
+            response.ends_with("created: ok"),
+            "request {attempt}: expected the concat-built body, got:\n{response}"
         );
     }
 

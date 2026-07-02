@@ -1,8 +1,9 @@
+use Body
 use Headers
 use Status
 
 Response = Handle
 
-bindings "wasi:http/types@0.3.0-rc-2026-03-15#[constructor]response"
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[static]response.new"
 
-Response = (Headers * Status) -> Response
+Response = (Body * Headers * Status) -> Response

@@ -1,1 +1,1 @@
-error[tests/checker/fail/mixed_worlds_main_and_handler.can:6:1]: mixed worlds: this module defines `main` (CLI entry) and also `home` returning `Response` (HTTP entry). A component exports exactly one world. Remove one. See `WASI-HTTP-HANDLER.md` §Entry-point selection.
+error[tests/checker/fail/mixed_worlds_main_and_handler.can:7:1]: mixed worlds: this module defines `main` (CLI entry) and also `home` returning `Response` (HTTP entry). A component exports exactly one world. Remove one. See `WASI-HTTP-HANDLER.md` §Entry-point selection.
