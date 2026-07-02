@@ -147,7 +147,45 @@ const WASI_HTTP_TYPES_MODULE: &str = "wasi:http/types@0.3.0-rc-2026-03-15";
 /// `WASI-HTTP-HANDLER.md` ("the export contract has to match WASI HTTP
 /// exactly; the body can be trivial"). Request introspection and
 /// response composition are slices 2–3.
-pub(super) fn wrap_http_service(_module: &OModule) -> Vec<u8> {
+/// Extracts a literal status code from the HTTP entry's body — the
+/// `Status(<int>)` argument of the `Response(…)` constructor, however
+/// deep it sits in the final expression. First step of slice 3
+/// (response composition): the emitted handler honours the declared
+/// status while full body compilation is still pending. Falls back to
+/// 200 when the body doesn't contain a literal.
+fn extract_static_status(module: &OModule) -> Option<u16> {
+    use crate::ast::{entry_world_of, EntryWorld, Expr};
+
+    fn find_status(expr: &Expr) -> Option<u16> {
+        match expr {
+            Expr::Constructor { name, args, .. } if name.name == "Status" => {
+                if let Some(Expr::IntLit { value, .. }) = args.first() {
+                    return u16::try_from(*value).ok();
+                }
+                None
+            }
+            Expr::Constructor { args, .. } => args.iter().find_map(find_status),
+            Expr::ProductValue { fields, .. } => fields.iter().find_map(find_status),
+            Expr::MethodCall { receiver, args, .. } => {
+                find_status(receiver).or_else(|| args.iter().find_map(find_status))
+            }
+            _ => None,
+        }
+    }
+
+    module.items.iter().find_map(|item| match item {
+        Item::Function(func)
+            if func.receiver.is_none()
+                && entry_world_of(&func.return_ty) == Some(EntryWorld::Http) =>
+        {
+            func.body.exprs.last().and_then(find_status)
+        }
+        _ => None,
+    })
+}
+
+pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
+    let status = extract_static_status(module).unwrap_or(200);
     let mut resolve = wit_parser::Resolve::default();
     for (name, source) in [
         ("clocks.wit", WIT_WASI_CLOCKS),
@@ -170,7 +208,7 @@ pub(super) fn wrap_http_service(_module: &OModule) -> Vec<u8> {
         .select_world(&[http_pkg], Some("service"))
         .expect("wasi:http declares a `service` world");
 
-    let mut core = build_http_service_core_module();
+    let mut core = build_http_service_core_module(status);
     wit_component::embed_component_metadata(
         &mut core,
         &resolve,
@@ -224,7 +262,7 @@ pub(super) fn wrap_http_service(_module: &OModule) -> Vec<u8> {
 ///     `result<own<response>, error-code>` puts the discriminant byte at
 ///     +0 and the payload at +8 (the error-code variant's
 ///     `option<u64>` payloads force 8-byte alignment).
-fn build_http_service_core_module() -> Vec<u8> {
+fn build_http_service_core_module(status: u16) -> Vec<u8> {
     use wasm_encoder::{
         CodeSection, EntityType, ExportSection, Function, FunctionSection, ImportSection,
         MemorySection, MemoryType, Module, TypeSection,
@@ -263,6 +301,7 @@ fn build_http_service_core_module() -> Vec<u8> {
     let fn_future_write: u32 = 3;
     let fn_future_drop_readable: u32 = 4;
     let fn_request_drop: u32 = 5;
+    let fn_set_status: u32 = 6;
     imports.import(
         WASI_HTTP_TYPES_MODULE,
         "[constructor]fields",
@@ -293,10 +332,15 @@ fn build_http_service_core_module() -> Vec<u8> {
         "[resource-drop]request",
         EntityType::Function(3),
     );
+    imports.import(
+        WASI_HTTP_TYPES_MODULE,
+        "[method]response.set-status-code",
+        EntityType::Function(4),
+    );
 
     // ── Defined functions ────────────────────────────────────────────
-    let fn_cabi_realloc: u32 = 6;
-    let fn_handle: u32 = 7;
+    let fn_cabi_realloc: u32 = 7;
+    let fn_handle: u32 = 8;
     let mut funcs = FunctionSection::new();
     funcs.function(5); // cabi_realloc
     funcs.function(6); // handle
@@ -417,6 +461,16 @@ fn build_http_service_core_module() -> Vec<u8> {
         f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET + 4));
         f.instruction(&Instruction::I32Load(mem));
         f.instruction(&Instruction::LocalSet(tx_future));
+
+        // Apply the entry's declared status (`response.new` defaults
+        // to 200). `set-status-code` returns a bare `result` — one
+        // flat i32 discriminant we don't inspect (a rejected status
+        // would leave the default in place, which is the sane
+        // degradation).
+        f.instruction(&Instruction::LocalGet(response));
+        f.instruction(&Instruction::I32Const(status as i32));
+        f.instruction(&Instruction::Call(fn_set_status));
+        f.instruction(&Instruction::Drop);
 
         // Release what we can: the transmission-result future and the
         // un-inspected request. (The trailers writer stays alive

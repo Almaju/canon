@@ -37,7 +37,7 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 home = (Request) -> Response {
-    Response(Headers(), Status(200))
+    Response(Headers(), Status(201))
 }
 "#,
     )
@@ -84,15 +84,17 @@ home = (Request) -> Response {
     // Two sequential requests on separate connections: the second one
     // guards against per-request state corruption (each request leaks
     // one trailers-future writer by design; that must not affect
-    // subsequent requests).
+    // subsequent requests). The 201 pins the static-status extraction
+    // from the handler body (`Status(201)` above), not the
+    // `response.new` default.
     for attempt in 1..=2 {
         let response = send_request(&addr).unwrap_or_else(|e| {
             let _ = child.kill();
             panic!("request {attempt} failed: {e}");
         });
         assert!(
-            response.starts_with("HTTP/1.1 200"),
-            "request {attempt}: expected HTTP 200, got:\n{response}"
+            response.starts_with("HTTP/1.1 201"),
+            "request {attempt}: expected HTTP 201, got:\n{response}"
         );
     }
 
