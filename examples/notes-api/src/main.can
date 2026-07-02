@@ -1,0 +1,28 @@
+use canon/std/http/Body
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
+
+indexBody = () -> Body {
+    Body("[{\"id\":1,\"title\":\"ship canon v1\"},{\"id\":2,\"title\":\"write the docs\"}]")
+}
+
+notFound = () -> Body {
+    Body("{\"error\":\"not found\"}")
+}
+
+noteOne = () -> Body {
+    Body("{\"id\":1,\"title\":\"ship canon v1\"}")
+}
+
+noteTwo = () -> Body {
+    Body("{\"id\":2,\"title\":\"write the docs\"}")
+}
+
+serve = (Request) -> Response {
+    Request.path().(
+        * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
+        * (Some<String>) -> Response { String.eq("/notes").( * (False) -> Response { String.eq("/notes/1").( * (False) -> Response { String.eq("/notes/2").( * (False) -> Response { Response(notFound(), Headers(), Status(404)) } * (True) -> Response { Response(noteTwo(), Headers(), Status(200)) }) } * (True) -> Response { Response(noteOne(), Headers(), Status(200)) }) } * (True) -> Response { Response(indexBody(), Headers(), Status(200)) }) }
+    )
+}

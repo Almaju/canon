@@ -1199,12 +1199,30 @@ fn cmd_run(args: &[String]) {
     }
     let component_bytes = codegen::generate(&loaded.module);
 
+    // HTTP-entry programs (a free `(Request) -> Response` function)
+    // compile to a `wasi:http/service` component — there is no
+    // `wasi:cli/run` to invoke. Serve them instead: on `--addr` when
+    // given, else on a default local address so plain `canon run`
+    // does the obvious thing.
+    let is_http = loaded.module.items.iter().any(|item| match item {
+        Item::Function(func) => {
+            func.receiver.is_none()
+                && canon::ast::entry_world_of(&func.return_ty) == Some(canon::ast::EntryWorld::Http)
+        }
+        _ => false,
+    });
+
     match addr {
         Some(raw) => {
             let bind_addr: std::net::SocketAddr = raw.parse().unwrap_or_else(|e| {
                 eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
                 process::exit(1);
             });
+            canon::runtime::serve_component(&component_bytes, bind_addr);
+        }
+        None if is_http => {
+            let bind_addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("static addr");
+            eprintln!("HTTP handler detected — serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
             canon::runtime::serve_component(&component_bytes, bind_addr);
         }
         None => {

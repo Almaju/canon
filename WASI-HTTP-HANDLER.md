@@ -1,11 +1,15 @@
 # WASI HTTP Handler — Design
 
-Status: **slices 0–1b landed** (stdlib types, entry detection, and the
-`wasi:http/service` world emission — a `(Request) -> Response` program
-compiles to a standard component and serves HTTP end-to-end under
-`canon run --addr`; pinned by `tests/wasi_http_service_test.rs`).
-Slices 2–4 (request introspection, response composition, runner
-cleanup) are next. This document defines the target architecture for
+Status: **slices 0–3 substantially landed.** A `(Request) -> Response`
+program compiles to a standard `wasi:http/service` component with the
+user's body fully compiled (`WasmGen::compile_http`, HTTP encoder
+mode): dynamic status, string response bodies over a real contents
+stream (async-stackful `handle` lift, sync writes after
+`task.return`), and `Request.path()` introspection for routing.
+Pinned by `tests/wasi_http_service_test.rs`; showcased by
+`examples/notes-api`. Remaining: `request.method()` /
+request-body reads, response headers (`fields.append`), and the
+slice-4 legacy-path cleanup. This document defines the target architecture for
 HTTP-handling Canon programs and supersedes the slicing plan in
 `DYNAMIC-HANDLERS.md`
 (see [Why the previous plan is wrong](#why-the-previous-plan-is-wrong)).
