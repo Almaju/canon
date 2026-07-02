@@ -3,11 +3,11 @@ use Method
 
 Request = Handle
 
-bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.method"
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.get-method"
 
 method = (Request) -> Method
 
-bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.path-with-query"
+bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.get-path-with-query"
 
 path = (Request) -> Option<String>
 

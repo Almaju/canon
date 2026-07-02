@@ -75,7 +75,8 @@ const FN_HTTP_STREAM_NEW: u32 = 13; // [stream-new-0][static]response.new () -> 
 const FN_HTTP_STREAM_WRITE: u32 = 14; // [stream-write-0]… (sync)   (i32,i32,i32) -> i32
 const FN_HTTP_STREAM_DROP_WRITABLE: u32 = 15; // [stream-drop-writable-0]… (i32) -> ()
 const FN_HTTP_TASK_RETURN: u32 = 16; // [task-return]handle
-const HTTP_BASE_DEFINED: u32 = 17;
+const FN_HTTP_GET_PATH: u32 = 17; // [method]request.get-path-with-query (i32,i32) -> ()
+const HTTP_BASE_DEFINED: u32 = 18;
 
 // Fixed scratch addresses used by HTTP-mode response construction.
 // `build_http_response` runs *inside* the user function; the sync
@@ -5384,6 +5385,49 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
+            // ── HTTP mode: request introspection ─────────────────────────────
+            // `request.path()` — `[method]request.get-path-with-query`
+            // returns `option<string>` through an indirect ret-area
+            // (disc byte at +0, ptr/len at +4/+8). Re-shaped into a
+            // Canon `Option` struct (i32 tag at +0, payload at +4/+8)
+            // so the ordinary `(None, Some<String>)` dispatch works.
+            ("path", Ty::NamedPtr(ref n)) if n == "Request" && self.http_mode => {
+                // Stack: [request]. Methods take a borrow — passing our
+                // own handle index is the standard convention.
+                f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
+                f.instruction(&Instruction::Call(FN_HTTP_GET_PATH));
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                for off in [4u64, 8] {
+                    f.instruction(&Instruction::LocalGet(scope.rbool()));
+                    f.instruction(&Instruction::I32Const(MEM_HTTP_RET as i32));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: off,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::I32Store(MemArg {
+                        offset: off,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                }
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr("Option".to_string())
+            }
             // ── Fallback: drop receiver + args, return Unit ────────────────────
             _ => {
                 self.drop_value(recv_ty, f);
@@ -6546,6 +6590,11 @@ impl<'m> WasmGen<'m> {
             "[export]wasi:http/handler@0.3.0-rc-2026-03-15",
             "[task-return]handle",
             EntityType::Function(ty_task_return_handle),
+        );
+        imports.import(
+            http,
+            "[method]request.get-path-with-query",
+            EntityType::Function(TY_PRINT_STR),
         );
         m.section(&imports);
 
