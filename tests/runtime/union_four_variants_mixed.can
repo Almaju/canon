@@ -1,0 +1,44 @@
+Count = Int
+
+Empty = Unit
+
+Name = String
+
+Ratio = Float
+
+Shape = Count
+  + Empty
+  + Name
+  + Ratio
+
+makeCount = () -> Shape {
+    Count(42)
+}
+
+makeEmpty = () -> Shape {
+    Empty()
+}
+
+makeName = () -> Shape {
+    Name("alex")
+}
+
+makeRatio = () -> Shape {
+    Ratio(2.5)
+}
+
+show = (Shape) -> Unit {
+    Shape.(
+        * (Count) -> Unit { Count.print() }
+        * (Empty) -> Unit { "empty".print() }
+        * (Name) -> Unit { Name.print() }
+        * (Ratio) -> Unit { Ratio.print() }
+    )
+}
+
+main = () -> Unit {
+    makeCount().show()
+    makeEmpty().show()
+    makeName().show()
+    makeRatio().show()
+}

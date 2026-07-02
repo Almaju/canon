@@ -1,0 +1,10 @@
+Label = String
+
+Price = Float
+
+Quote = Label * Price
+
+main = () -> Unit {
+    Quote(Label("widget") * Price(19.99)).Label.print()
+    Quote(Label("widget") * Price(19.99)).Price.print()
+}

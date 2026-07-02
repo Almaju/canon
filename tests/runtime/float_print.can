@@ -1,0 +1,23 @@
+main = () -> Unit {
+    0.0.print()
+    2.5.print()
+    3.25
+        .mul(4.0)
+        .print()
+    1.5
+        .sub(4.0)
+        .print()
+    100.125.print()
+    7.0.print()
+    0.000001.print()
+    1.0
+        .div(0.0)
+        .print()
+    0.0
+        .div(0.0)
+        .print()
+    0.0
+        .sub(1.0)
+        .div(0.0)
+        .print()
+}
