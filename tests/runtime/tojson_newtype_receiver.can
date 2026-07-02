@@ -1,0 +1,12 @@
+use canon/std/Json
+
+Foo = String
+
+main = () -> Unit {
+    "x"
+        .ToJson()
+        .print()
+    Foo("x")
+        .ToJson()
+        .print()
+}

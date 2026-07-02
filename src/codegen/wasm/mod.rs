@@ -3550,8 +3550,17 @@ impl<'m> WasmGen<'m> {
                 },
                 _ => None,
             });
-        let key = (type_name.clone(), method.to_string());
-        if let Some(info) = self.func_table.get(&key).cloned() {
+        // Try the receiver's own type name first, then every name in
+        // its newtype alias chain — `Foo("x").ToJson()` with `Foo =
+        // String` must find a `ToJson` declared on `String`.
+        if let Some(name) = &type_name {
+            for alias in self.collect_alias_chain(name) {
+                let key = (Some(alias), method.to_string());
+                if let Some(info) = self.func_table.get(&key).cloned() {
+                    return self.emit_func_table_call(&info, args, scope, f);
+                }
+            }
+        } else if let Some(info) = self.func_table.get(&(None, method.to_string())).cloned() {
             return self.emit_func_table_call(&info, args, scope, f);
         }
 
