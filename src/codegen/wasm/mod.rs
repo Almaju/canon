@@ -624,6 +624,15 @@ impl LocalScope {
     fn par_seen_b(&self) -> u32 {
         self.param_count + 18
     }
+
+    /// Single i32 scratch holding a store-target address for the
+    /// duration of one `store_payload_at_offset` string store. Only
+    /// ever live between adjacent instructions (never across a nested
+    /// `compile_expr`), so it can't be clobbered by nested
+    /// constructors the way `alloc_ptr` can.
+    fn addr_scratch(&self) -> u32 {
+        self.param_count + 19
+    }
 }
 
 /// Local declarations appended after the function params.
@@ -635,7 +644,8 @@ fn extra_locals_decl() -> Vec<(u32, ValType)> {
         (2, ValType::I32), // arm_payload_ptr, arm_payload_ptr + 1 (len)
         (2, ValType::I32), // str_scratch_ptr, str_scratch_ptr + 1 (len)
         (8, ValType::I32), // par_subtask_a/b, par_retarea_a/b, par_set,
-                           // par_event_ptr, par_seen_a/b (parallel/race state)
+        // par_event_ptr, par_seen_a/b (parallel/race state)
+        (1, ValType::I32), // addr_scratch (store-target address)
     ]
 }
 
@@ -2941,21 +2951,31 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::Call(self.fn_alloc));
         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
 
-        // ── Lay out each field ────────────────────────────────────────
-        // Push base, compile field value, store at offset. The store
-        // helper accepts `[addr, value]` (scalar) or `[addr, ptr, len]`
-        // (string) on the stack and emits the appropriate i32/i64 stores.
-        for (i, (_field_name, field_repr, field_offset)) in layout.iter().enumerate() {
-            let Some(expr) = field_exprs.get(i) else {
-                break;
-            };
+        // ── Pre-push base copies on the operand stack ─────────────────
+        // A nested constructor inside any field expression (`Some("hi")`,
+        // an inner product, …) reassigns `scope.alloc_ptr()`, so the
+        // local can't be trusted after the first `compile_expr`. Values
+        // already on the operand stack, however, sit safely below a
+        // nested expression's own stack activity. So: one copy per
+        // stored field (consumed bottom-up by the stores below) plus
+        // one at the very bottom that survives as the result.
+        let n_fields = layout.len().min(field_exprs.len());
+        for _ in 0..=n_fields {
             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-            let _val_ty = self.compile_expr(expr, scope, f);
+        }
+
+        // ── Lay out each field ────────────────────────────────────────
+        // The store helper accepts `[addr, value]` (scalar) or
+        // `[addr, ptr, len]` (string) and consumes the address copy
+        // pre-pushed above.
+        for (i, (_field_name, field_repr, field_offset)) in layout.iter().take(n_fields).enumerate()
+        {
+            let _val_ty = self.compile_expr(&field_exprs[i], scope, f);
             self.store_payload_at_offset(*field_offset, field_repr, scope, f);
         }
 
         // ── Result ────────────────────────────────────────────────────
-        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        // The bottom-most base copy is still on the stack.
         Ty::NamedPtr(product_name.to_string())
     }
 
@@ -4790,15 +4810,17 @@ impl<'m> WasmGen<'m> {
         }
     }
 
-    /// Store a single payload value into the struct at `scope.alloc_ptr() + offset`.
+    /// Store a single payload value into the struct at `address + offset`,
+    /// where `address` is taken from the operand stack (NOT from
+    /// `scope.alloc_ptr()` — that local is clobbered whenever the value
+    /// expression contains a nested constructor).
     ///
     /// Stack contract on entry depends on `payload_ty`:
     ///   * Scalars (`Ty::I64`/`F64`/`I32`/`Ptr`/`NamedPtr`/`NamedPtrStr`):
     ///     `[address, value]` — one i32/i64 `store` consumes both.
-    ///   * Strings (`Ty::Str`/`NamedStr`): `[address, ptr, len]`. We drop
-    ///     the redundant address (we'll re-load it from `scope.alloc_ptr()`
-    ///     for each store) and emit two i32 stores: `ptr` at `offset` and
-    ///     `len` at `offset + 4`.
+    ///   * Strings (`Ty::Str`/`NamedStr`): `[address, ptr, len]` — two
+    ///     i32 stores: `ptr` at `offset` and `len` at `offset + 4`,
+    ///     both against the on-stack address.
     ///   * `Ty::Unit`: just drops the address. There's no payload.
     fn store_payload_at_offset(
         &self,
@@ -4823,16 +4845,19 @@ impl<'m> WasmGen<'m> {
                 }));
             }
             Ty::Str | Ty::NamedStr(_) => {
-                // Stack: [addr, ptr, len]. Stash ptr+len, drop addr, then
-                // re-load alloc_ptr twice for the two stores. We use
-                // `tmp_i32`/`tmp_i32_b` because `rptr`/`rlen` (the
-                // string scratch pair) are still holding the value the
-                // caller pushed via `load_from_scratch`.
+                // Stack: [addr, ptr, len]. Stash ptr+len in `tmp_i32`/
+                // `tmp_i32_b` (`rptr`/`rlen` may still hold the value
+                // the caller pushed via `load_from_scratch`), stash the
+                // on-stack addr in `addr_scratch`, then emit the two
+                // stores against it. No re-load of `alloc_ptr`: the
+                // on-stack address is the only one guaranteed to point
+                // at the struct being built when the payload expression
+                // contained nested allocations.
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // len
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // ptr
-                f.instruction(&Instruction::Drop); // discard redundant addr
-                                                   // Store ptr at +offset
-                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalSet(scope.addr_scratch()));
+                // Store ptr at +offset
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
                 f.instruction(&Instruction::I32Store(MemArg {
                     offset: offset as u64,
@@ -4840,7 +4865,7 @@ impl<'m> WasmGen<'m> {
                     memory_index: 0,
                 }));
                 // Store len at +offset+4
-                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
                 f.instruction(&Instruction::I32Store(MemArg {
                     offset: (offset + 4) as u64,

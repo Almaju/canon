@@ -1,0 +1,15 @@
+City = String
+
+Home = City * Zip
+
+Label = String
+
+Profile = Home * Label
+
+Zip = Int
+
+main = () -> Unit {
+    Profile(Home(City("paris") * Zip(75)) * Label("primary")).Label.print()
+    Profile(Home(City("paris") * Zip(75)) * Label("primary")).Home.City.print()
+    Profile(Home(City("paris") * Zip(75)) * Label("primary")).Home.Zip.print()
+}
