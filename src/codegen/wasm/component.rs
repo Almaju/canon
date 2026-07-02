@@ -127,65 +127,22 @@ const WIT_WASI_HTTP: &str = include_str!("../../../wit-vendor/wasi/http.wit");
 /// The core-module import namespace for `wasi:http/types` functions and
 /// intrinsics. This is the `<iface>@<ver>` name `wit-component` matches
 /// import clauses against when componentising.
-const WASI_HTTP_TYPES_MODULE: &str = "wasi:http/types@0.3.0-rc-2026-03-15";
+pub(super) const WASI_HTTP_TYPES_MODULE: &str = "wasi:http/types@0.3.0-rc-2026-03-15";
 
-/// Slice 1b: HTTP-entry programs route here. Unlike the CLI path (which
-/// hand-rolls every component section via `wasm-encoder`), the HTTP path
-/// delegates all canonical-ABI type emission to `wit-component`:
+/// HTTP-entry programs route here. Unlike the CLI path (which
+/// hand-rolls every component section via `wasm-encoder`), the HTTP
+/// path delegates all canonical-ABI type emission to `wit-component`:
 ///
-///   1. Build a self-contained core module (own memory, own
-///      `cabi_realloc`) that imports the handful of `wasi:http/types`
-///      functions and canonical-ABI intrinsics it needs, and exports
-///      `wasi:http/handler@…#handle` with the canonical core signature.
+///   1. `super::generate_http_core_module` compiles the user program
+///      into a self-contained core module (own memory, own
+///      `cabi_realloc`, `wit-component` import naming) whose
+///      `wasi:http/handler@…#handle` export calls the user's compiled
+///      `(Request) -> Response` function — see `WasmGen::compile_http`.
 ///   2. Embed the parsed `wasi:http/service` world as component-type
 ///      metadata (`wit_component::embed_component_metadata`).
 ///   3. Run the result through `wit_component::ComponentEncoder`, which
 ///      emits every resource/variant/option lift & lower for us.
-///
-/// The emitted handler currently ignores the user function's body and
-/// returns an empty-bodied 200 response — the slice-1b contract from
-/// `WASI-HTTP-HANDLER.md` ("the export contract has to match WASI HTTP
-/// exactly; the body can be trivial"). Request introspection and
-/// response composition are slices 2–3.
-/// Extracts a literal status code from the HTTP entry's body — the
-/// `Status(<int>)` argument of the `Response(…)` constructor, however
-/// deep it sits in the final expression. First step of slice 3
-/// (response composition): the emitted handler honours the declared
-/// status while full body compilation is still pending. Falls back to
-/// 200 when the body doesn't contain a literal.
-fn extract_static_status(module: &OModule) -> Option<u16> {
-    use crate::ast::{entry_world_of, EntryWorld, Expr};
-
-    fn find_status(expr: &Expr) -> Option<u16> {
-        match expr {
-            Expr::Constructor { name, args, .. } if name.name == "Status" => {
-                if let Some(Expr::IntLit { value, .. }) = args.first() {
-                    return u16::try_from(*value).ok();
-                }
-                None
-            }
-            Expr::Constructor { args, .. } => args.iter().find_map(find_status),
-            Expr::ProductValue { fields, .. } => fields.iter().find_map(find_status),
-            Expr::MethodCall { receiver, args, .. } => {
-                find_status(receiver).or_else(|| args.iter().find_map(find_status))
-            }
-            _ => None,
-        }
-    }
-
-    module.items.iter().find_map(|item| match item {
-        Item::Function(func)
-            if func.receiver.is_none()
-                && entry_world_of(&func.return_ty) == Some(EntryWorld::Http) =>
-        {
-            func.body.exprs.last().and_then(find_status)
-        }
-        _ => None,
-    })
-}
-
 pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
-    let status = extract_static_status(module).unwrap_or(200);
     let mut resolve = wit_parser::Resolve::default();
     for (name, source) in [
         ("clocks.wit", WIT_WASI_CLOCKS),
@@ -208,7 +165,7 @@ pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
         .select_world(&[http_pkg], Some("service"))
         .expect("wasi:http declares a `service` world");
 
-    let mut core = build_http_service_core_module(status);
+    let mut core = super::generate_http_core_module(module);
     wit_component::embed_component_metadata(
         &mut core,
         &resolve,
@@ -223,290 +180,6 @@ pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
         .expect("core module matches the wasi:http/service world")
         .encode()
         .expect("component encoding succeeds")
-}
-
-/// Builds the core module behind `wrap_http_service`.
-///
-/// Imports (all from `wasi:http/types@…`):
-///   - `[constructor]fields` — fresh empty headers, `() -> i32`.
-///   - `[static]response.new` — canonical-ABI flat signature
-///     `(headers: i32, contents-disc: i32, contents-handle: i32,
-///     trailers: i32, retptr: i32) -> ()`. The `tuple<response,
-///     future<result<_, error-code>>>` return is 2 flat results, over
-///     the 1-result limit, so the host writes it through `retptr`.
-///   - `[future-new-1][static]response.new` — canonical intrinsic
-///     creating the trailers future (`future<result<option<trailers>,
-///     error-code>>` is future #1 in `response.new`'s signature: the
-///     contents stream is #0, the transmission future in the return
-///     tuple is #2). Returns an i64 packing (readable | writable << 32).
-///   - `[async-lower][future-write-1][static]response.new` — writes
-///     `ok(none)` ("no trailers") into our writable half. The lower
-///     must be async: the host only consumes the trailers future after
-///     `handle` returns the response, so a sync write would deadlock
-///     the task. The async write parks as pending (`BLOCKED`) and
-///     completes when the host pipes the body; the writer handle is
-///     deliberately leaked because the canonical ABI forbids dropping
-///     an unwritten future writer, and dropping mid-write is invalid
-///     too. One leaked handle per request, bounded by the
-///     per-connection store lifetime.
-///   - `[future-drop-readable-2][static]response.new` — discards the
-///     transmission-result future out of `response.new`'s return tuple
-///     so the task exits with no outstanding waitables.
-///   - `[resource-drop]request` — drops the incoming request handle we
-///     don't inspect yet (slice 2 is request introspection).
-///
-/// Exports:
-///   - `memory`, `cabi_realloc` — canonical-ABI plumbing.
-///   - `wasi:http/handler@…#handle` — sync-lifted `(i32) -> i32`:
-///     request handle in, ret-area pointer out. The canonical shape of
-///     `result<own<response>, error-code>` puts the discriminant byte at
-///     +0 and the payload at +8 (the error-code variant's
-///     `option<u64>` payloads force 8-byte alignment).
-fn build_http_service_core_module(status: u16) -> Vec<u8> {
-    use wasm_encoder::{
-        CodeSection, EntityType, ExportSection, Function, FunctionSection, ImportSection,
-        MemorySection, MemoryType, Module, TypeSection,
-    };
-
-    // Fixed scratch addresses in the module's own memory. The canonical
-    // ABI only writes through pointers we hand it, so plain constants
-    // are fine — no allocator interplay.
-    const RESPONSE_NEW_RET: i32 = 16; // tuple<response, future> — two i32s
-    const HANDLE_RET: i32 = 32; // result<own<response>, error-code>
-    const TRAILERS_VALUE: i32 = 64; // ok(none) — all zeroes, never written to
-    const BUMP_START: i32 = 1024; // cabi_realloc allocations start here
-
-    // ── Types ────────────────────────────────────────────────────────
-    // 0: () -> i32            [constructor]fields
-    // 1: (i32 x5) -> ()       [static]response.new
-    // 2: () -> i64            [future-new-1][static]response.new
-    // 3: (i32) -> ()          drops (future half, resource)
-    // 4: (i32, i32) -> i32    [async-lower][future-write-1]…
-    // 5: (i32 x4) -> i32      cabi_realloc
-    // 6: (i32) -> i32         handle export
-    let mut types = TypeSection::new();
-    types.ty().function([], [ValType::I32]);
-    types.ty().function([ValType::I32; 5], []);
-    types.ty().function([], [ValType::I64]);
-    types.ty().function([ValType::I32], []);
-    types.ty().function([ValType::I32; 2], [ValType::I32]);
-    types.ty().function([ValType::I32; 4], [ValType::I32]);
-    types.ty().function([ValType::I32], [ValType::I32]);
-
-    // ── Imports (function index space 0..=5) ─────────────────────────
-    let mut imports = ImportSection::new();
-    let fn_fields_ctor: u32 = 0;
-    let fn_response_new: u32 = 1;
-    let fn_future_new: u32 = 2;
-    let fn_future_write: u32 = 3;
-    let fn_future_drop_readable: u32 = 4;
-    let fn_request_drop: u32 = 5;
-    let fn_set_status: u32 = 6;
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[constructor]fields",
-        EntityType::Function(0),
-    );
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[static]response.new",
-        EntityType::Function(1),
-    );
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[future-new-1][static]response.new",
-        EntityType::Function(2),
-    );
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[async-lower][future-write-1][static]response.new",
-        EntityType::Function(4),
-    );
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[future-drop-readable-2][static]response.new",
-        EntityType::Function(3),
-    );
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[resource-drop]request",
-        EntityType::Function(3),
-    );
-    imports.import(
-        WASI_HTTP_TYPES_MODULE,
-        "[method]response.set-status-code",
-        EntityType::Function(4),
-    );
-
-    // ── Defined functions ────────────────────────────────────────────
-    let fn_cabi_realloc: u32 = 7;
-    let fn_handle: u32 = 8;
-    let mut funcs = FunctionSection::new();
-    funcs.function(5); // cabi_realloc
-    funcs.function(6); // handle
-
-    let mut memories = MemorySection::new();
-    memories.memory(MemoryType {
-        minimum: 1,
-        maximum: None,
-        memory64: false,
-        shared: false,
-        page_size_log2: None,
-    });
-
-    let mut exports = ExportSection::new();
-    exports.export("memory", ExportKind::Memory, 0);
-    exports.export("cabi_realloc", ExportKind::Func, fn_cabi_realloc);
-    exports.export(
-        &format!("{WASI_HTTP_HANDLER}#handle"),
-        ExportKind::Func,
-        fn_handle,
-    );
-
-    let mut codes = CodeSection::new();
-
-    // cabi_realloc: bump allocator over a global-free design — the bump
-    // pointer lives at memory address 0..4 (never handed to the ABI).
-    // aligned = (bump + align - 1) & -align; bump = aligned + new_size.
-    {
-        let mut f = Function::new([(2, ValType::I32)]); // locals 4: aligned, 5: bump
-        let mem = MemArg {
-            offset: 0,
-            align: 2,
-            memory_index: 0,
-        };
-        // bump = max(load(0), BUMP_START)  — load(0) is 0 on first use.
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32Load(mem));
-        f.instruction(&Instruction::LocalTee(5));
-        f.instruction(&Instruction::I32Const(BUMP_START));
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::I32Const(BUMP_START));
-        f.instruction(&Instruction::I32GtU);
-        f.instruction(&Instruction::Select);
-        // aligned = (bump + align - 1) & -align
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::I32And);
-        f.instruction(&Instruction::LocalTee(4));
-        // store(0, aligned + new_size)
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(5));
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::I32Store(mem));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::End);
-        codes.function(&f);
-    }
-
-    // handle(request: i32) -> i32 (ret-area pointer)
-    {
-        // locals: 1 = headers, 2 = future pair (i64), 3 = trailers
-        // reader, 4 = trailers writer, 5 = response, 6 = tx future
-        let mut f = Function::new([(1, ValType::I32), (1, ValType::I64), (4, ValType::I32)]);
-        let (headers, pair, reader, writer, response, tx_future) =
-            (1u32, 2u32, 3u32, 4u32, 5u32, 6u32);
-        let mem = MemArg {
-            offset: 0,
-            align: 2,
-            memory_index: 0,
-        };
-
-        // headers = [constructor]fields()
-        f.instruction(&Instruction::Call(fn_fields_ctor));
-        f.instruction(&Instruction::LocalSet(headers));
-
-        // (reader, writer) = future.new — readable in the low 32 bits,
-        // writable in the high 32 (same packing the stdout stream path
-        // relies on).
-        f.instruction(&Instruction::Call(fn_future_new));
-        f.instruction(&Instruction::LocalTee(pair));
-        f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(reader));
-        f.instruction(&Instruction::LocalGet(pair));
-        f.instruction(&Instruction::I64Const(32));
-        f.instruction(&Instruction::I64ShrU);
-        f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(writer));
-
-        // Park the "no trailers" value (`ok(none)` — all zero bytes at
-        // TRAILERS_VALUE) as a pending async write. The host completes
-        // it when it consumes the response body. The returned status
-        // (BLOCKED) is dropped; the writer is leaked, see the doc
-        // comment above.
-        f.instruction(&Instruction::LocalGet(writer));
-        f.instruction(&Instruction::I32Const(TRAILERS_VALUE));
-        f.instruction(&Instruction::Call(fn_future_write));
-        f.instruction(&Instruction::Drop);
-
-        // response.new(headers, contents = none, trailers = reader, ret)
-        f.instruction(&Instruction::LocalGet(headers));
-        f.instruction(&Instruction::I32Const(0)); // option<stream> disc: none
-        f.instruction(&Instruction::I32Const(0)); // option<stream> payload (unused)
-        f.instruction(&Instruction::LocalGet(reader));
-        f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET));
-        f.instruction(&Instruction::Call(fn_response_new));
-
-        // Unpack tuple<response, future<…>> from the ret area.
-        f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET));
-        f.instruction(&Instruction::I32Load(mem));
-        f.instruction(&Instruction::LocalSet(response));
-        f.instruction(&Instruction::I32Const(RESPONSE_NEW_RET + 4));
-        f.instruction(&Instruction::I32Load(mem));
-        f.instruction(&Instruction::LocalSet(tx_future));
-
-        // Apply the entry's declared status (`response.new` defaults
-        // to 200). `set-status-code` returns a bare `result` — one
-        // flat i32 discriminant we don't inspect (a rejected status
-        // would leave the default in place, which is the sane
-        // degradation).
-        f.instruction(&Instruction::LocalGet(response));
-        f.instruction(&Instruction::I32Const(status as i32));
-        f.instruction(&Instruction::Call(fn_set_status));
-        f.instruction(&Instruction::Drop);
-
-        // Release what we can: the transmission-result future and the
-        // un-inspected request. (The trailers writer stays alive
-        // backing the pending write above.)
-        f.instruction(&Instruction::LocalGet(tx_future));
-        f.instruction(&Instruction::Call(fn_future_drop_readable));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::Call(fn_request_drop));
-
-        // result<own<response>, error-code>: ok discriminant byte at
-        // +0, response handle at +8 (payload alignment is 8 because
-        // error-code carries option<u64> cases).
-        f.instruction(&Instruction::I32Const(HANDLE_RET));
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32Store8(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
-        f.instruction(&Instruction::I32Const(HANDLE_RET + 8));
-        f.instruction(&Instruction::LocalGet(response));
-        f.instruction(&Instruction::I32Store(mem));
-
-        f.instruction(&Instruction::I32Const(HANDLE_RET));
-        f.instruction(&Instruction::End);
-        codes.function(&f);
-    }
-
-    let mut m = Module::new();
-    m.section(&types);
-    m.section(&imports);
-    m.section(&funcs);
-    m.section(&memories);
-    m.section(&exports);
-    m.section(&codes);
-    m.finish()
 }
 
 /// Builds the Component Model component. Returns the binary `.wasm`.
