@@ -1,0 +1,7 @@
+main = () -> Unit {
+    Int(1).print()
+    Int(5)
+        .add(Int(2))
+        .print()
+    Float(2.5).print()
+}

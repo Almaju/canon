@@ -907,6 +907,11 @@ struct WasmGen<'m> {
     /// Index of the user-defined `handleRequest` function in the core
     /// function space. Populated alongside `fn_handler_wrapper`.
     user_handler_func_idx: Option<u32>,
+    /// True while compiling the body of a function whose declared
+    /// return type is Result-shaped (one i32 pointer at the core
+    /// level). Gates `?`'s early-return-on-Err: in any other context
+    /// (e.g. `main`), `?` extracts unconditionally as before.
+    cur_fn_returns_result: bool,
 }
 
 impl<'m> WasmGen<'m> {
@@ -959,6 +964,7 @@ impl<'m> WasmGen<'m> {
             fn_handler_wrapper: None,
             fn_user_start: base_defined + 7,
             user_handler_func_idx: None,
+            cur_fn_returns_result: false,
         }
     }
 
@@ -2353,7 +2359,17 @@ impl<'m> WasmGen<'m> {
         let _ = params; // params are implicit in the function type
         let mut f = Function::new(extra_locals_decl());
         let body = func.body.clone();
+        // `?` may early-return the whole Result value, but only when
+        // the enclosing function itself returns a Result-shaped value
+        // (one i32 pointer at the core level). Record that for the
+        // duration of this body.
+        let ret = self.resolve_return_ty(func);
+        self.cur_fn_returns_result = matches!(
+            &ret,
+            Ty::NamedPtrStr(n, _, _) | Ty::NamedPtr(n) if n == "Result"
+        );
         let result = self.compile_block_return(&body, &scope, &mut f);
+        self.cur_fn_returns_result = false;
         // The function's WASM type already declares the result type;
         // the value should already be on the stack.
         let _ = result;
@@ -2559,15 +2575,32 @@ impl<'m> WasmGen<'m> {
             // ── Try operator `?` ───────────────────────────────────────────────
             Expr::Try { inner, .. } => {
                 let inner_ty = self.compile_expr(inner, scope, f);
-                // Phase 3 simplification: `?` extracts the Ok/Some payload
-                // unconditionally (no early Err/None return yet). The
-                // payload width is determined by the inner type:
+                // `?` extracts the Ok/Some payload; when the enclosing
+                // function itself returns a Result (same core shape:
+                // one i32 pointer), an Err short-circuits by returning
+                // the whole Result value unchanged. In non-Result
+                // contexts (e.g. `main`) extraction is unconditional,
+                // as before. Payload width by inner type:
                 //   - `Ty::NamedPtrStr(_, _, _)` → `(i32 ptr, i32 len)` at offsets 4 and 8.
                 //   - `Ty::NamedPtr("Result"|"Option")` → `i64` at offset 4 (legacy).
                 match &inner_ty {
                     Ty::NamedPtrStr(_, ok_name, _) => {
                         let ok_name = ok_name.clone();
                         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+                        if self.cur_fn_returns_result {
+                            // tag == 0 (Err) → return the Result as-is.
+                            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                            f.instruction(&Instruction::I32Load(MemArg {
+                                offset: 0,
+                                align: 2,
+                                memory_index: 0,
+                            }));
+                            f.instruction(&Instruction::I32Eqz);
+                            f.instruction(&Instruction::If(BlockType::Empty));
+                            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                            f.instruction(&Instruction::Return);
+                            f.instruction(&Instruction::End);
+                        }
                         f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 4,
@@ -2594,6 +2627,19 @@ impl<'m> WasmGen<'m> {
                     }
                     Ty::NamedPtr(n) if n == "Result" || n == "Option" => {
                         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+                        if self.cur_fn_returns_result && n == "Result" {
+                            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                            f.instruction(&Instruction::I32Load(MemArg {
+                                offset: 0,
+                                align: 2,
+                                memory_index: 0,
+                            }));
+                            f.instruction(&Instruction::I32Eqz);
+                            f.instruction(&Instruction::If(BlockType::Empty));
+                            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                            f.instruction(&Instruction::Return);
+                            f.instruction(&Instruction::End);
+                        }
                         f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                         f.instruction(&Instruction::I64Load(MemArg {
                             offset: 4,
@@ -2690,6 +2736,46 @@ impl<'m> WasmGen<'m> {
             }
             // Unit
             "Unit" => Ty::Unit,
+            // Primitive identity constructors: `Int(1)`, `Float(2.5)`,
+            // `String("x")`. The argument already has the target
+            // representation — compiling it IS the construction. The
+            // zero-arg forms produce the type's zero value.
+            "Int" | "Float" | "String" => {
+                if let Some(a) = args.first() {
+                    let ty = self.compile_expr(a, scope, f);
+                    match (name, &ty) {
+                        // Tolerate `Int(bool)` / `Float(int)` shape
+                        // drift by widening rather than corrupting the
+                        // stack.
+                        ("Int", Ty::I32) => {
+                            f.instruction(&Instruction::I64ExtendI32S);
+                            Ty::I64
+                        }
+                        ("Float", Ty::I64) => {
+                            f.instruction(&Instruction::F64ConvertI64S);
+                            Ty::F64
+                        }
+                        _ => ty,
+                    }
+                } else {
+                    match name {
+                        "Int" => {
+                            f.instruction(&Instruction::I64Const(0));
+                            Ty::I64
+                        }
+                        "Float" => {
+                            f.instruction(&Instruction::F64Const(0.0.into()));
+                            Ty::F64
+                        }
+                        _ => {
+                            let (ptr, len) = self.strings.intern("");
+                            f.instruction(&Instruction::I32Const(ptr as i32));
+                            f.instruction(&Instruction::I32Const(len as i32));
+                            Ty::Str
+                        }
+                    }
+                }
+            }
             // Option built-ins
             "None" => self.build_option_none(f),
             "Some" => {
