@@ -1,0 +1,17 @@
+pick = (Int) -> Option<String> {
+    Int.eq(0).(
+        * (False) -> Option<String> { Some("payload") }
+        * (True) -> Option<String> { None() }
+    )
+}
+
+main = () -> Unit {
+    1.pick().(
+        * (None) -> Unit { "none".print() }
+        * (Some<String>) -> Unit { String.print() }
+    )
+    0.pick().(
+        * (None) -> Unit { "none".print() }
+        * (Some<String>) -> Unit { String.print() }
+    )
+}
