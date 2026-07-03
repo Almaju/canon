@@ -358,6 +358,14 @@ impl Parser {
                 }
             }
             self.expect(TokenKind::RParen, "expected `)` to close function type")?;
+            // `(T)` with no `->` following is type *grouping*, not a
+            // function type — the formatter parenthesises function-typed
+            // product members (`Stream<T> * ((T) -> Bool)`), so the
+            // parens must round-trip. Only the single-type, non-generic
+            // form qualifies as a group.
+            if !self.check(TokenKind::Arrow) && generic_params.is_empty() && params.len() == 1 {
+                return Ok(params.pop().unwrap());
+            }
             self.expect(TokenKind::Arrow, "expected `->` in function type")?;
             let return_ty = self.parse_type_postfix()?;
             let end = self.previous_span();
@@ -864,9 +872,43 @@ impl Parser {
     fn parse_match_arm(&mut self) -> Result<MatchArm> {
         let start = self.current_span();
         // Each arm is: (VariantType) -> ReturnType { body }
+        // or a literal-pattern arm: ("literal") / (123) -> ReturnType { body }
         self.expect(TokenKind::LParen, "expected `(` to begin dispatch arm")?;
-        // Parse the single variant type — may have generics: Err<String>, Ok<Int>, Branch
-        let param_ty = self.parse_type_atom()?;
+        // A literal token in pattern position makes this a literal arm
+        // (equality dispatch on a `String` / `Int` scrutinee). The
+        // `param_ty` records the matching primitive type name so every
+        // type-shaped consumer of the arm stays well-formed.
+        let (param_ty, literal) = match self.peek().kind {
+            TokenKind::StringLit => {
+                let tok = self.advance();
+                (
+                    TypeExpr::Named {
+                        name: "String".to_string(),
+                        generics: Vec::new(),
+                        span: tok.span,
+                    },
+                    Some(ArmLiteral::Str(tok.lexeme.clone())),
+                )
+            }
+            TokenKind::IntLit => {
+                let tok = self.advance().clone();
+                let value: i64 = tok.lexeme.parse().map_err(|_| CanonError::ParseError {
+                    message: format!("invalid integer literal `{}`", tok.lexeme),
+                    span: tok.span,
+                })?;
+                (
+                    TypeExpr::Named {
+                        name: "Int".to_string(),
+                        generics: Vec::new(),
+                        span: tok.span,
+                    },
+                    Some(ArmLiteral::Int(value)),
+                )
+            }
+            // Parse the single variant type — may have generics:
+            // Err<String>, Ok<Int>, Branch
+            _ => (self.parse_type_atom()?, None),
+        };
         self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
         self.expect(TokenKind::Arrow, "expected `->` in dispatch arm")?;
         let return_ty = self.parse_type_expr()?;
@@ -874,6 +916,7 @@ impl Parser {
         let end = self.previous_span();
         Ok(MatchArm {
             param_ty,
+            literal,
             return_ty,
             body,
             span: span_join(start, end),

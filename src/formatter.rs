@@ -25,8 +25,11 @@ pub fn format(source: &str) -> Result<String> {
 fn emit_module(module: &Module) -> String {
     let mut sections: Vec<String> = Vec::new();
 
-    // Use declarations grouped at the top.
-    let uses: Vec<String> = module
+    // Use declarations grouped at the top, in canonical (alphabetical)
+    // order. Ordering everywhere in Canon is mechanical, so the
+    // formatter *fixes* it — the checker's ordering errors are the
+    // backstop for unformatted code, not a hand-sorting chore.
+    let mut uses: Vec<String> = module
         .items
         .iter()
         .filter_map(|item| {
@@ -37,16 +40,21 @@ fn emit_module(module: &Module) -> String {
             }
         })
         .collect();
+    uses.sort();
 
     if !uses.is_empty() {
         sections.push(uses.join("\n"));
     }
 
-    // All other items, each separated by a blank line.
-    for item in &module.items {
-        if !matches!(item, Item::Use(_)) {
-            sections.push(emit_item(item));
-        }
+    // All other items, each separated by a blank line, in canonical
+    // declaration order (see `sort_items`).
+    let others: Vec<&Item> = module
+        .items
+        .iter()
+        .filter(|item| !matches!(item, Item::Use(_)))
+        .collect();
+    for item in sort_items(&others) {
+        sections.push(emit_item(item));
     }
 
     let mut out = sections.join("\n\n");
@@ -54,6 +62,83 @@ fn emit_module(module: &Module) -> String {
         out.push('\n');
     }
     out
+}
+
+/// Canonical top-level declaration order, applied per segment between
+/// `bindings` directives — a `bindings` header governs the
+/// declarations that follow it, so no declaration may cross one.
+/// Within a segment, type definitions sort alphabetically among the
+/// type-definition slots and functions sort alphabetically among the
+/// function slots (the same subsequence rule the checker enforces, so
+/// sorted output always passes `check_ordering`). Two functions are
+/// exempt and keep their position, mirroring the checker's exemptions:
+/// `main` and an HTTP entry (a free function returning `Response` /
+/// `Result<Response, _>`).
+fn sort_items<'a>(items: &[&'a Item]) -> Vec<&'a Item> {
+    let mut out: Vec<&'a Item> = Vec::with_capacity(items.len());
+    let mut segment: Vec<&'a Item> = Vec::new();
+    for item in items {
+        if matches!(item, Item::Bindings(_)) {
+            flush_sorted_segment(&mut segment, &mut out);
+            out.push(item);
+        } else {
+            segment.push(item);
+        }
+    }
+    flush_sorted_segment(&mut segment, &mut out);
+    out
+}
+
+fn flush_sorted_segment<'a>(segment: &mut Vec<&'a Item>, out: &mut Vec<&'a Item>) {
+    let mut type_defs: Vec<&'a Item> = segment
+        .iter()
+        .copied()
+        .filter(|i| matches!(i, Item::TypeDef(_)))
+        .collect();
+    type_defs.sort_by_key(|i| match i {
+        Item::TypeDef(td) => td.name.name.clone(),
+        _ => String::new(),
+    });
+    let mut funcs: Vec<&'a Item> = segment
+        .iter()
+        .copied()
+        .filter(|i| matches!(i, Item::Function(f) if !is_pinned_entry(f)))
+        .collect();
+    funcs.sort_by_key(|i| match i {
+        Item::Function(f) => (
+            f.name.name.clone(),
+            f.receiver
+                .as_ref()
+                .map(|r| r.name.clone())
+                .unwrap_or_default(),
+        ),
+        _ => (String::new(), String::new()),
+    });
+    let mut ti = 0;
+    let mut fi = 0;
+    for item in segment.drain(..) {
+        match item {
+            Item::TypeDef(_) => {
+                out.push(type_defs[ti]);
+                ti += 1;
+            }
+            Item::Function(f) if !is_pinned_entry(f) => {
+                out.push(funcs[fi]);
+                fi += 1;
+            }
+            other => out.push(other),
+        }
+    }
+}
+
+/// Mirrors the checker's ordering exemptions (`check_ordering`): the
+/// entry point is a distinguished role, not a regular free function,
+/// so the formatter leaves it wherever the author put it.
+fn is_pinned_entry(f: &FunctionDef) -> bool {
+    if f.receiver.is_some() {
+        return false;
+    }
+    f.name.name == "main" || entry_world_of(&f.return_ty) == Some(EntryWorld::Http)
 }
 
 fn emit_item(item: &Item) -> String {
@@ -306,7 +391,9 @@ fn flatten_into(expr: &Expr, parts: &mut Vec<ChainPart>) {
             scrutinee, arms, ..
         } => {
             flatten_into(scrutinee, parts);
-            parts.push(ChainPart::Dispatch { arms: arms.clone() });
+            parts.push(ChainPart::Dispatch {
+                arms: sort_arms(arms),
+            });
         }
         Expr::Try { inner, .. } => {
             flatten_into(inner, parts);
@@ -416,7 +503,7 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
             for arm in arms.iter() {
                 out.push_str(&arm_pad);
                 out.push_str("* ");
-                out.push_str(&emit_arm_inline(arm));
+                out.push_str(&emit_arm(arm, indent + 1));
                 out.push('\n');
             }
             out.push_str(&close_pad);
@@ -483,7 +570,7 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
                 for arm in arms.iter() {
                     out.push_str(&arm_pad);
                     out.push_str("* ");
-                    out.push_str(&emit_arm_inline(arm));
+                    out.push_str(&emit_arm(arm, indent + 2));
                     out.push('\n');
                 }
                 out.push_str(&close_pad);
@@ -582,8 +669,16 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
     }
 }
 
+fn emit_arm_pattern(arm: &MatchArm) -> String {
+    match &arm.literal {
+        Some(ArmLiteral::Str(s)) => format!("\"{}\"", escape_string(s)),
+        Some(ArmLiteral::Int(v)) => v.to_string(),
+        None => emit_type_expr(&arm.param_ty),
+    }
+}
+
 fn emit_arm_inline(arm: &MatchArm) -> String {
-    let ty = emit_type_expr(&arm.param_ty);
+    let pat = emit_arm_pattern(arm);
     let ret = emit_type_expr(&arm.return_ty);
     let body = arm
         .body
@@ -592,7 +687,70 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
         .map(emit_inline)
         .collect::<Vec<_>>()
         .join(" ");
-    format!("({}) -> {} {{ {} }}", ty, ret, body)
+    format!("({}) -> {} {{ {} }}", pat, ret, body)
+}
+
+/// Render a dispatch arm at the given indent level. Short arms whose
+/// bodies contain no nested dispatch stay on one line; an arm that
+/// nests another dispatch — or whose inline form would overflow
+/// `MAX_WIDTH` — breaks its body onto indented lines, so route-style
+/// nested dispatch reads as a tree instead of one opaque line.
+fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
+    let inline = emit_arm_inline(arm);
+    let nested = arm.body.exprs.iter().any(contains_dispatch);
+    if !nested && arm_indent * 4 + 2 + inline.len() <= MAX_WIDTH {
+        return inline;
+    }
+    let pat = emit_arm_pattern(arm);
+    let ret = emit_type_expr(&arm.return_ty);
+    let body_pad = "    ".repeat(arm_indent + 1);
+    let close_pad = "    ".repeat(arm_indent);
+    let body = arm
+        .body
+        .exprs
+        .iter()
+        .map(|e| format!("{}{}", body_pad, emit_expr(e, arm_indent + 1)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("({}) -> {} {{\n{}\n{}}}", pat, ret, body, close_pad)
+}
+
+/// Does this expression (or any sub-expression) contain a dispatch?
+fn contains_dispatch(expr: &Expr) -> bool {
+    match expr {
+        Expr::Match { .. } => true,
+        Expr::MethodCall { receiver, args, .. } => {
+            contains_dispatch(receiver) || args.iter().any(contains_dispatch)
+        }
+        Expr::Try { inner, .. } => contains_dispatch(inner),
+        Expr::Await { inner, .. } => contains_dispatch(inner),
+        Expr::FieldAccess { receiver, .. } => contains_dispatch(receiver),
+        Expr::Constructor { args, .. } => args.iter().any(contains_dispatch),
+        Expr::ProductValue { fields, .. } => fields.iter().any(contains_dispatch),
+        Expr::Lambda { body, .. } => body.exprs.iter().any(contains_dispatch),
+        _ => false,
+    }
+}
+
+/// Canonical dispatch-arm order: literal arms first (alphabetical for
+/// strings, ascending for ints), then type arms alphabetically — which
+/// puts a literal dispatch's catch-all last, and sorts a union
+/// dispatch's arms into variant (alphabetical) order. Arm order never
+/// carries meaning (union arms are matched by variant name, literal
+/// arms by equality), so sorting is safe here and makes the ordering
+/// rule auto-fixable via `canon fmt` instead of a hand-edit.
+fn sort_arms(arms: &[MatchArm]) -> Vec<MatchArm> {
+    let mut sorted: Vec<MatchArm> = arms.to_vec();
+    sorted.sort_by_key(arm_sort_key);
+    sorted
+}
+
+fn arm_sort_key(arm: &MatchArm) -> (u8, i64, String) {
+    match &arm.literal {
+        Some(ArmLiteral::Int(v)) => (0, *v, String::new()),
+        Some(ArmLiteral::Str(s)) => (0, 0, s.clone()),
+        None => (1, 0, emit_type_expr(&arm.param_ty)),
+    }
 }
 
 /// Re-escape a string literal's contents for emission. The lexer
@@ -696,6 +854,71 @@ mod tests {
         assert_format(
             "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\").shout().print(Stdout)\n}\n",
             "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\")\n        .shout()\n        .print(Stdout)\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_sorts_use_imports_and_free_functions() {
+        assert_format(
+            "use Zeta\nuse Alpha\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
+            "use Alpha\nuse Zeta\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_sorts_type_definitions() {
+        assert_format(
+            "Zed = Int\n\nAlpha = Int\n\nmain = () -> Unit {\n    \"x\".print()\n}\n",
+            "Alpha = Int\n\nZed = Int\n\nmain = () -> Unit {\n    \"x\".print()\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_main_is_pinned_not_sorted() {
+        // `main` is exempt from alphabetical order (a distinguished
+        // role, mirroring the checker) — it keeps its position while
+        // its peers sort around it.
+        assert_idempotent(
+            "main = () -> Unit {\n    \"hi\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_bindings_directive_bounds_sorting() {
+        // A `bindings` header governs the declarations after it, so
+        // sorting never moves a declaration across one.
+        assert_idempotent("Zed = Int\n\nbindings \"canon:builtins/x@0.1.0\"\n\nAlpha = Int\n");
+    }
+
+    #[test]
+    fn test_dispatch_arms_sorted() {
+        // Union arms sort into variant (alphabetical) order.
+        assert_format(
+            "main = () -> Unit {\n    True().(\n        * (True) -> Unit { \"yes\".print() }\n        * (False) -> Unit { \"no\".print() }\n    )\n}\n",
+            "main = () -> Unit {\n    True().(\n        * (False) -> Unit { \"no\".print() }\n        * (True) -> Unit { \"yes\".print() }\n    )\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_literal_dispatch_arms_sorted_catchall_last() {
+        // Literal arms sort alphabetically; the catch-all sorts last.
+        assert_format(
+            "route = (String) -> String {\n    String.(\n        * (String) -> String { \"other\" }\n        * (\"/b\") -> String { \"b\" }\n        * (\"/a\") -> String { \"a\" }\n    )\n}\n\nmain = () -> Unit {\n    \"/a\".route().print()\n}\n",
+            "route = (String) -> String {\n    String.(\n        * (\"/a\") -> String { \"a\" }\n        * (\"/b\") -> String { \"b\" }\n        * (String) -> String { \"other\" }\n    )\n}\n\nmain = () -> Unit {\n    \"/a\"\n        .route()\n        .print()\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_literal_dispatch_int_arms_idempotent() {
+        assert_idempotent(
+            "describe = (Int) -> Unit {\n    Int.(\n        * (0) -> Unit { \"zero\".print() }\n        * (1) -> Unit { \"one\".print() }\n        * (Int) -> Unit { Int.print() }\n    )\n}\n\nmain = () -> Unit {\n    0.describe()\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_literal_dispatch_string_escapes_round_trip() {
+        assert_idempotent(
+            "kind = (String) -> String {\n    String.(\n        * (\"line\\none\") -> String { \"escaped\" }\n        * (String) -> String { \"plain\" }\n    )\n}\n\nmain = () -> Unit {\n    \"x\".kind().print()\n}\n",
         );
     }
 

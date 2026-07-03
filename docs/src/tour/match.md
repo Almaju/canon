@@ -50,6 +50,29 @@ List(7, 8, 9).first().(
 )
 ```
 
+## Literal Dispatch
+
+Dispatch also works by **equality on `String` and `Int`** scrutinees:
+arms may be literals, and the final arm is a mandatory catch-all naming
+the scrutinee's type. Literal arms can never be exhaustive, so totality
+comes from the catch-all:
+
+```canon
+route = (String) -> String {
+    String.(
+        * ("/notes") -> String { "index" }
+        * ("/notes/1") -> String { "note one" }
+        * (String) -> String { "not found: ".concat(String) }
+    )
+}
+```
+
+Literal arms follow canonical order — alphabetical for strings,
+ascending for ints — and `canon fmt` sorts them for you. Inside every
+arm body the scrutinee is in scope under its type name, just like a
+bound payload. Newtype scrutinees work too: a `Path = String` value
+dispatches with a `(Path)` catch-all.
+
 ## Why No `if`?
 
 `if cond then a else b` is a dispatch on `Bool`. Since you already need

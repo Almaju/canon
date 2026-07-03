@@ -258,9 +258,24 @@ impl Expr {
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub param_ty: TypeExpr, // variant type, e.g. Err<String>, Ok<Int>, Branch, Leaf
+    /// `Some` for a literal-pattern arm (`* ("/notes") -> …` /
+    /// `* (404) -> …`) dispatching on a `String` / `Int` scrutinee.
+    /// When set, `param_ty` holds the scrutinee's primitive type name
+    /// (`String` / `Int`) so type-shaped consumers stay well-formed;
+    /// the literal is what the arm actually matches. A `None` arm in a
+    /// literal dispatch is the mandatory catch-all.
+    pub literal: Option<ArmLiteral>,
     pub return_ty: TypeExpr, // arm return type (same across all arms)
     pub body: Block,
     pub span: Span,
+}
+
+/// A literal pattern in a dispatch arm. Equality-dispatch is limited to
+/// the two primitive kinds with unambiguous literal syntax.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArmLiteral {
+    Int(i64),
+    Str(String),
 }
 
 #[derive(Debug, Clone)]

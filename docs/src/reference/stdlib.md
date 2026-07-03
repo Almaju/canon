@@ -254,7 +254,10 @@ as well-formed JSON and returns it back as a `Json` value, or a
 The validator is **written in pure Canon** — a recursive-descent
 parser over `String.byteAt(i)` / `.length()` / `.substring(a, b)` /
 `.eq(other)`, threading position through a custom `ParseStep =
-ParseFail + ParsePos` union. It handles the full JSON grammar:
+ParseFail + ParsePos` union. Indexing is 1-based everywhere in Canon
+(`byteAt(1)` is the first byte, `list.get(1)` the first element) and
+`substring(a, b)` is inclusive on both ends — one origin, matching
+positional product access `.1`. It handles the full JSON grammar:
 keywords (`true`/`false`/`null`), numbers (including negative,
 decimal, exponent), strings (with escapes), arrays, objects, and
 arbitrary nesting. Rejects trailing characters and trailing commas.

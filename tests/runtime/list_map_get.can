@@ -1,9 +1,9 @@
 main = () -> Unit {
-    List(1, 2, 3).map((Int) -> Int { Int.mul(2) }).get(0).(
+    List(1, 2, 3).map((Int) -> Int { Int.mul(2) }).get(1).(
         * (None) -> Unit { "none".print() }
         * (Some<Int>) -> Unit { Int.print() }
     )
-    List(1, 2, 3).map((Int) -> Int { Int.mul(2) }).get(2).(
+    List(1, 2, 3).map((Int) -> Int { Int.mul(2) }).get(3).(
         * (None) -> Unit { "none".print() }
         * (Some<Int>) -> Unit { Int.print() }
     )

@@ -846,8 +846,15 @@ fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let name = name.to_string_lossy();
         if path.is_dir() {
             // Skip a few well-known directories that have no business
-            // being formatted: build artefacts, deps, VCS metadata.
-            if matches!(name.as_ref(), "target" | "node_modules" | ".git") {
+            // being formatted: build artefacts, deps, VCS metadata, and
+            // `bindgen/` output (derived by `canon install`, regenerated
+            // wholesale — like `target/`, formatting it only creates
+            // churn against the generator). An explicit
+            // `canon fmt path/to/bindgen/file.can` still works.
+            if matches!(
+                name.as_ref(),
+                "target" | "node_modules" | ".git" | "bindgen"
+            ) {
                 continue;
             }
             collect_ow_files(&path, out);
@@ -906,7 +913,18 @@ fn check_spec(spec: &BuildSpec) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
-    println!("All checks passed.");
+    // Dead-code lint: non-fatal, printed to stderr. Canon's "always
+    // clean" rule — unreachable declarations are flagged here and
+    // promoted to a failure in CI workflows that grep for warnings.
+    let warnings = checker::lint_dead_code(&loaded.module, loaded.entry_items_start);
+    for w in &warnings {
+        eprintln!("warning[{}]: {}", spec.entry_str(), w);
+    }
+    if warnings.is_empty() {
+        println!("All checks passed.");
+    } else {
+        println!("All checks passed ({} warning(s)).", warnings.len());
+    }
     true
 }
 
