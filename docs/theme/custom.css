@@ -43,6 +43,17 @@ code {
     border-bottom: 1px solid var(--table-border-color);
     background: var(--bg);
     font-size: 0.95em;
+    /* Above the fixed .nav-chapters edge arrows, which otherwise
+       capture clicks on the first tab. */
+    position: relative;
+    z-index: 102;
+}
+
+/* The wide-screen prev/next hover zones span the full viewport height
+   (top: 0), which puts them over the tab strip. Start them below the
+   menu bar + tabs instead. */
+.nav-wide-wrapper .nav-chapters {
+    top: calc(var(--menu-bar-height) + 3.5rem);
 }
 
 .canon-tabs a {

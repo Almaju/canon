@@ -23,16 +23,17 @@
 
     // Path of the current page relative to the book root, e.g.
     // "tour/types.html". Derived from mdBook's `path_to_root` global
-    // ("../" per directory level).
+    // ("../" per directory level). A directory URL (the site served at
+    // "/" or "/canon/") is the book root, where index.html is the
+    // first chapter — the trailing segment there is the deploy prefix,
+    // not a chapter, so it must not be taken as the path.
     function currentRelPath() {
         var toRoot = typeof path_to_root !== 'undefined' ? path_to_root : '';
         var depth = (toRoot.match(/\.\.\//g) || []).length;
-        var segments = document.location.pathname.split('/').filter(Boolean);
-        var rel = segments.slice(segments.length - 1 - depth).join('/');
-        if (rel === '' || /\/$/.test(document.location.pathname)) {
-            rel = rel ? rel + '/index.html' : 'index.html';
-        }
-        return rel;
+        var parts = document.location.pathname.split('/');
+        var last = parts.pop();
+        if (last === '') return 'index.html';
+        return parts.slice(parts.length - depth).concat([last]).join('/');
     }
 
     function sectionOf(relPath) {
