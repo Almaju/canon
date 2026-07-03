@@ -129,19 +129,6 @@ const WIT_WASI_HTTP: &str = include_str!("../../../wit-vendor/wasi/http.wit");
 /// import clauses against when componentising.
 pub(super) const WASI_HTTP_TYPES_MODULE: &str = "wasi:http/types@0.3.0-rc-2026-03-15";
 
-/// HTTP-entry programs route here. Unlike the CLI path (which
-/// hand-rolls every component section via `wasm-encoder`), the HTTP
-/// path delegates all canonical-ABI type emission to `wit-component`:
-///
-///   1. `super::generate_http_core_module` compiles the user program
-///      into a self-contained core module (own memory, own
-///      `cabi_realloc`, `wit-component` import naming) whose
-///      `wasi:http/handler@…#handle` export calls the user's compiled
-///      `(Request) -> Response` function — see `WasmGen::compile_http`.
-///   2. Embed the parsed `wasi:http/service` world as component-type
-///      metadata (`wit_component::embed_component_metadata`).
-///   3. Run the result through `wit_component::ComponentEncoder`, which
-///      emits every resource/variant/option lift & lower for us.
 /// The vendored WASI WIT packages, parsed once. Shared between the
 /// HTTP world emission and the WIT-informed extern lowering (which
 /// consults the true WIT signature of every `wasi:*` extern import to
@@ -203,12 +190,12 @@ fn wit_prim(resolve: &wit_parser::Resolve, t: &wit_parser::Type) -> Option<Primi
 /// Inner `None` entries are non-primitive shapes (strings, options,
 /// …) the caller should leave to the existing lowering. Outer `None`
 /// when the URN doesn't resolve (unknown interface or function).
-pub(super) fn vendored_extern_prim_sig(
-    urn: &str,
-) -> Option<(
+pub(super) type ExternPrimSig = (
     Vec<Option<PrimitiveValType>>,
     Option<Option<PrimitiveValType>>,
-)> {
+);
+
+pub(super) fn vendored_extern_prim_sig(urn: &str) -> Option<ExternPrimSig> {
     let resolve = vendored_resolve();
     let (iface_ver, fn_name) = urn.split_once('#')?;
     let iface_full = iface_ver.split_once('@').map_or(iface_ver, |(i, _)| i);
@@ -229,6 +216,19 @@ pub(super) fn vendored_extern_prim_sig(
     Some((params, result))
 }
 
+/// HTTP-entry programs route here. Unlike the CLI path (which
+/// hand-rolls every component section via `wasm-encoder`), the HTTP
+/// path delegates all canonical-ABI type emission to `wit-component`:
+///
+///   1. `super::generate_http_core_module` compiles the user program
+///      into a self-contained core module (own memory, own
+///      `cabi_realloc`, `wit-component` import naming) whose
+///      `wasi:http/handler@…#handle` export calls the user's compiled
+///      `(Request) -> Response` function — see `WasmGen::compile_http`.
+///   2. Embed the parsed `wasi:http/service` world as component-type
+///      metadata (`wit_component::embed_component_metadata`).
+///   3. Run the result through `wit_component::ComponentEncoder`, which
+///      emits every resource/variant/option lift & lower for us.
 pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
     let resolve = vendored_resolve();
     let http_pkg = resolve
