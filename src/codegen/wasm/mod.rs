@@ -79,7 +79,8 @@ const FN_HTTP_STREAM_DROP_WRITABLE: u32 = 15; // [stream-drop-writable-0]… (i3
 const FN_HTTP_TASK_RETURN: u32 = 16; // [task-return]handle
 const FN_HTTP_GET_PATH: u32 = 17; // [method]request.get-path-with-query (i32,i32) -> ()
 const FN_HTTP_FIELDS_APPEND: u32 = 18; // [method]fields.append (i32 x6) -> ()
-const HTTP_BASE_DEFINED: u32 = 19;
+const FN_HTTP_GET_METHOD: u32 = 19; // [method]request.get-method (i32,i32) -> ()
+const HTTP_BASE_DEFINED: u32 = 20;
 
 // ── Web-mode import indices ──────────────────────────────────────────
 // In web encoder mode (`compile_web`, see `WEB-TARGET.md`) the import
@@ -5882,6 +5883,58 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
+            // `request.method()` — `[method]request.get-method` returns
+            // the WIT `method` variant through a 12-byte ret area (disc
+            // byte at +0; the `other(string)` payload at +4/+8). Canon
+            // surfaces it as a plain `String` ("GET", "POST", …) so
+            // routing is the same literal dispatch used for paths and
+            // web-app messages — no 10-arm union dispatch at every call
+            // site. Static cases map to interned strings; `other`
+            // passes its payload through verbatim.
+            ("method", Ty::NamedPtr(ref n)) if n == "Request" && self.http_mode => {
+                // Stack: [request].
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalTee(scope.rbool()));
+                f.instruction(&Instruction::Call(FN_HTTP_GET_METHOD));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                // Defaults to the `other` payload (valid when disc = 9,
+                // overwritten below for every static discriminant).
+                for (off, local) in [(4u64, scope.map_elem_ptr()), (8, scope.addr_scratch())] {
+                    f.instruction(&Instruction::LocalGet(scope.rbool()));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: off,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::LocalSet(local));
+                }
+                // WIT declaration order (wit-vendor/wasi/http.wit).
+                const METHOD_NAMES: [&str; 9] = [
+                    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
+                ];
+                for (disc, name) in METHOD_NAMES.iter().enumerate() {
+                    let (ptr, len) = self.strings.intern(name);
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                    f.instruction(&Instruction::I32Const(disc as i32));
+                    f.instruction(&Instruction::I32Eq);
+                    f.instruction(&Instruction::If(BlockType::Empty));
+                    f.instruction(&Instruction::I32Const(ptr as i32));
+                    f.instruction(&Instruction::LocalSet(scope.map_elem_ptr()));
+                    f.instruction(&Instruction::I32Const(len as i32));
+                    f.instruction(&Instruction::LocalSet(scope.addr_scratch()));
+                    f.instruction(&Instruction::End);
+                }
+                f.instruction(&Instruction::LocalGet(scope.map_elem_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                Ty::Str
+            }
             // `headers.set(name, value)` — `[method]fields.append`. The
             // stdlib binds `set` to `append`: on a freshly-constructed
             // `fields` every `set` is the first write for its name, so
@@ -7299,6 +7352,11 @@ impl<'m> WasmGen<'m> {
             http,
             "[method]fields.append",
             EntityType::Function(ty_fields_append),
+        );
+        imports.import(
+            http,
+            "[method]request.get-method",
+            EntityType::Function(TY_PRINT_STR),
         );
         m.section(&imports);
 
