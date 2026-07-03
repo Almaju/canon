@@ -103,9 +103,11 @@ log lines.
 use canon/std/Now
 
 main = () -> Unit {
-    Now().print()      # e.g. 2026-05-23T22:30:35Z
+    Now().print()
 }
 ```
+
+Prints an RFC 3339 timestamp, e.g. `2026-05-23T22:30:35Z`.
 
 ```canon
 Now = String
@@ -198,7 +200,7 @@ HttpServer = String
 HttpServer = (Port) -> HttpServer
 get        = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
 post       = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
-serve      = (HttpServer) -> Result<Unit, IoError>    # async
+serve      = (HttpServer) -> Result<Unit, IoError>
 ```
 
 ### Status
@@ -277,12 +279,12 @@ label = (Int) -> Json {
 }
 
 main = () -> Result<Unit, MalformedJson> {
-    Json("[1, 2, 3]")?.print()                                # validate + echo
-    42.ToJson().print()                                         # 42
-    "hi".ToJson().print()                                       # "hi"
-    42.label().print()                                          # {"answer":42,"doubled":84,"ok":true}
-    {"a": 1, "b": [true, false, null]}.print()                  # static literal
-    {"escaped": "a \"b\" c"}.print()                            # quoted strings escape
+    Json("[1, 2, 3]")?.print()
+    42.ToJson().print()
+    "hi".ToJson().print()
+    42.label().print()
+    {"a": 1, "b": [true, false, null]}.print()
+    {"escaped": "a \"b\" c"}.print()
     Ok(Unit())
 }
 ```

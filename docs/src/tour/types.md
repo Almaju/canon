@@ -12,9 +12,12 @@ The case difference distinguishes a method from a trait implementation
 declared on the same type:
 
 ```canon
-Type.print  // method
-Type.Print  // implementation of the `Print` trait
+Type.print
+Type.Print
 ```
+
+The first is a method call; the second invokes the type's
+implementation of the `Print` trait.
 
 ## Unions (`+`)
 
@@ -56,9 +59,11 @@ indices:
 ```canon
 Byte = Bit^8
 
-byte.1   // first Bit
-byte.2   // second Bit
+byte.1
+byte.2
 ```
+
+`.1` is the first `Bit`, `.2` the second.
 
 ## Newtypes
 

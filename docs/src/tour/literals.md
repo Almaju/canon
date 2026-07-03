@@ -32,34 +32,30 @@ Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
 String literals exist to avoid the parsing ambiguity of bare `String(...)`
 with spaces and punctuation.
 
-## Singleton Values
+## Zero-Data Constructors
 
-A singleton type — one with no underlying composition — has one value,
-referenced by writing the type name:
+A type with no underlying composition — `Unit`, `True`, `False`, a
+payload-less union variant — is constructed with empty parens:
 
 ```canon
-Unit      // the sole value of type Unit
-On        // the sole value of type On
+Unit()
+True()
+None()
 ```
 
-## No Empty Constructors
-
-`String()`, `Int()`, `User()` — calling any constructor with zero
-arguments is a compile-time error. If a value can legitimately be
-"missing", that absence belongs in the type as `Option<T>`. Otherwise the
-type requires its data.
-
-For factory-style construction (an empty list, etc.), use an explicit
-method like `List.empty` or `String.empty`.
+The `()` unambiguously signals *producing a value*: `value.Field`
+(no parens) reads a field, `Type()` constructs. In type position the
+bare name is still the type — `-> Unit` — and after `.` a bare
+PascalCase name is always a field access.
 
 ## Constructing a Product
 
-The argument to a product's constructor is its components joined with
-value-level `*`:
+Product constructors take their components joined with value-level `*`
+(positional comma form also accepted):
 
 ```canon
-user = User(Birthday(...) * Username("ahanot"))
-red  = Hex(0xFF0000)
+User(Birthday("1990") * Username("ahanot"))
+Hex(0xFF0000)
 ```
 
 `*` is overloaded across the two levels: at the type level it forms a

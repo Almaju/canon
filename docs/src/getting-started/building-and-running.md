@@ -80,15 +80,19 @@ polyfills, edge runtimes, etc.
 
 ## Serve as an HTTP Handler
 
+A program whose entry is `(Request) -> Response` compiles to a
+`wasi:http/service` component, and `canon run` serves it instead of
+running it once:
+
 ```sh
-canon run --addr 127.0.0.1:8080            # current directory
-canon run hello.can --addr 127.0.0.1:8080   # single-file mode
+canon run                                  # serves on 127.0.0.1:8080
+canon run --addr 0.0.0.0:9000              # explicit address
+canon run hello.can --addr 127.0.0.1:8080  # single-file mode
 ```
 
-With `--addr`, the same `run` verb instantiates the component as a
-`wasi:http/handler` instead of running it once as a command. The runtime
-opens a TCP listener at the given address and dispatches each incoming
-HTTP/1.1 request to the guest's `handle` export.
+The runtime opens a TCP listener and dispatches each incoming HTTP/1.1
+request to the guest's `handle` export. See
+[Serving HTTP](../tour/http.md).
 
 ## Inspect Compiler Stages
 
@@ -129,7 +133,8 @@ canon test mymod_test.can
 ```
 
 Discovers every `() -> TestResult` function in the file and prints a
-`[ ok ]` / `[FAIL]` line per test. See the
+`[ ok ]` / `[FAIL]` line per test. The process exits `1` when any test
+fails, so `canon test` slots straight into CI. See the
 [testing notes in `CLAUDE.md`](https://github.com/Almaju/canon/blob/main/CLAUDE.md#testing)
 for the full conventions.
 

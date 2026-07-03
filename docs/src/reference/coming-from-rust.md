@@ -22,7 +22,7 @@ syntax-level mapping, not a runtime mapping.
 | `?` operator                               | `?` operator (same semantics)           |
 | `match x { ... }`                          | `x.( ... )`                             |
 | `let x = ...;`                             | No equivalent — declare a newtype       |
-| `if cond { a } else { b }`                 | `cond.( False => b, True => a )`        |
+| `if cond { a } else { b }`                 | `cond.( * (False) -> R { b } * (True) -> R { a } )` |
 | `pub fn`                                   | Everything is public                    |
 | `mod foo;`                                 | No `mod` — `foo.can` declares `Foo`      |
 | `use crate::foo::Foo;`                     | `use Foo`                               |

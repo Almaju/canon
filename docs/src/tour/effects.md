@@ -76,34 +76,41 @@ compiler inserts an implicit `await`. You write neither keyword.
 
 ## Domain Examples
 
+Current time (RFC 3339) and Unix seconds:
+
 ```canon
-# Current time
-use canon/std/Now
 Now().print()
+Unix().print()
+```
 
-# Random integer
-use canon/std/Random
+A random integer:
+
+```canon
 Random().print()
+```
 
-# HTTP GET — start with a Url
-use canon/std/HttpError
-use canon/std/Url
+An HTTP GET — start with a `Url`:
+
+```canon
 Url("http://example.com")?.get()?.print()
+```
 
-# Read a file — start with a Path
-use canon/std/File
-use canon/std/Path
+Read a file — start with a `Path`:
+
+```canon
 Path("./Cargo.toml").File()?.read()?.print()
+```
 
-# HTTP server — wrap a Port, register routes, serve
-use canon/std/HttpServer
-use canon/std/HttpStatus
-use canon/std/Port
-use canon/std/RoutePath
-HttpServer(Port(3000))
-    .get(HttpStatus(200), RoutePath("/"), "hello")
-    .serve()
+Serve HTTP — declare a `(Request) -> Response` function and the
+program *is* the server (see [Serving HTTP](./http.md)):
+
+```canon
+home = (Request) -> Response {
+    Response(Body("hello"), Headers(), Status(200))
+}
 ```
 
 The pattern is always the same: construct a real value, transform it,
 use it. No singletons. No service locators. No permission tokens.
+(Each snippet needs the matching `use canon/std/…` imports at the top
+of the file; Canon has no comments, so the prose lives out here.)

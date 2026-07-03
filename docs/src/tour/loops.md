@@ -5,8 +5,8 @@ through higher-order methods on collections or recursion.
 
 ## Higher-Order Methods
 
-For most collection work, use methods on the collection itself — `map`,
-`fold`, `length`, `first`, and friends:
+For most collection work, use methods on the collection itself —
+`map`, `get`, `length`, `first`:
 
 ```canon
 List(10, 20, 30)

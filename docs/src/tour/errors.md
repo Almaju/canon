@@ -25,8 +25,8 @@ The postfix `?` operator propagates failure. It works on both
 main = () -> Result<Unit, Unit> {
     Ok(42)?.print()
     Some(7).(
-        None    => "absent".print(),
-        Some(_) => "present".print(),
+        * (None) -> Unit { "absent".print() }
+        * (Some<Int>) -> Unit { "present".print() }
     )
     Ok(Unit())
 }
@@ -66,7 +66,7 @@ failure short-circuits the whole function.
 ## Validated Construction
 
 The same `?` shows up at the construction site for types whose
-constructor is fallible](literals.md#validated-constructors).
+[constructor is fallible](literals.md#validated-constructors).
 A type with a declared constructor that returns `Result<Self, E>`
 forces callers to handle the failure mode:
 

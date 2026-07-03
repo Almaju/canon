@@ -49,9 +49,9 @@ Dispatch arms in variant order:
 
 ```canon
 ord.(
-    Equal   => ...,
-    Greater => ...,
-    Less    => ...,
+    * (Equal) -> R { ... }
+    * (Greater) -> R { ... }
+    * (Less) -> R { ... }
 )
 ```
 

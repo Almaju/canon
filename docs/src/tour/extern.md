@@ -35,8 +35,17 @@ namespace : package / interface @ version # function
 - The `#function` selects one function inside the interface.
 
 The Canon signature declares how the function is called from Canon. The
-compiler resolves Canon types against the WIT-level types: `Int` is
-`s64`, `String` is `string`, `Result<T, E>` is `result<T, E>`, and so on.
+compiler resolves Canon types against the WIT-level types: `Int` maps
+to the WIT integer at its declared width (`u8` through `s64` — for
+`wasi:*` imports the vendored WIT is consulted, so narrow widths are
+honoured at the ABI), `String` is `string`, `Result<T, E>` is
+`result<T, E>`, and so on.
+
+Hand-written `extern Wasm("<urn>")` is the explicit form. Generated
+binding files use the equivalent `bindings "<urn>"` directive at the
+top of the file, with each function below it declared as a bare
+function-type alias — see
+[Using WASI Interfaces](../reference/wasi.md).
 
 ## Extern Types
 
@@ -84,13 +93,16 @@ You write no `async` keyword, no `await`, no `.await`. A `Future<T>`
 returned by a suspending call is implicitly awaited when used in a
 position that expects `T`.
 
-## No Project Manifest
+## The Manifest's Role
 
-There is no `Cargo.toml`, no `package.json`, no per-project dependency
-file. The set of imports a program needs is fully determined by its
-`extern Wasm` declarations and resolved at component-instantiation time
-by the host. `canon build` produces a `.wasm` plus a sibling `.wit`
-describing the component's world.
+A package's `canon.toml` declares WIT *sources* under `[imports]`
+(a `.wit` file, a directory, or a `.wasm` component) and
+`canon install` materializes them into `bindgen/` as Canon binding
+files. The compiled component's import list is then fully determined
+by the `extern Wasm`/`bindings` declarations the program actually
+uses, and resolved at component-instantiation time by the host.
+`canon build` produces a `.wasm` plus a sibling `.wit` describing the
+component's world.
 
 ## Generating Bindings from WIT
 
@@ -119,13 +131,17 @@ Idiomatic Canon code does not write `extern Wasm` directly. Instead, it
 imports individual types from the embedded standard library:
 
 ```canon
-use canon/std/Instant       # Instant()  — monotonic clock     — wasi/clocks/monotonic_clock
-use canon/std/File          # File / read                       — canon:builtins/filesystem
-use canon/std/HttpServer    # HttpServer / get / post / serve   — canon:builtins/http-server
-use canon/std/Now           # Now()      — RFC 3339 wall-clock — canon:builtins/clock
-use canon/std/Random        # Random()   — random Int          — wasi/random/random
-use canon/std/Url           # Url + get on Url                   — canon:builtins/url + canon:builtins/http
+use canon/std/File
+use canon/std/Instant
+use canon/std/Now
+use canon/std/Random
+use canon/std/Url
 ```
+
+(`Instant()` — monotonic clock via `wasi/clocks/monotonic_clock`;
+`Random()` — random `Int` via `wasi/random/random`; `File`/`read` —
+`canon:builtins/filesystem`; `Now()` — RFC 3339 wall clock;
+`Url` + `get` — `canon:builtins/url` + `canon:builtins/http`.)
 
 Each `use canon/std/X` brings in the named type along with its constructor and
 methods. Behind the scenes those modules are written in ordinary Canon
@@ -153,10 +169,11 @@ methods. The bridge swap is invisible.
 - **No direct OS handles.** A Canon program cannot embed a raw
   `std::fs::File` or a `tokio::net::TcpStream`; it sees the corresponding
   `wasi:*` resource handle instead. This is the price of portability.
-- **Phase-5 interfaces are scaffolded.** Where a `wasi:*` interface isn't
-  yet usable from the canonical ABI, Canon ships an
-  `canon:builtins/*` stand-in. The user-facing API doesn't change when
-  the bridge is later swapped for native WASI.
+- **Some interfaces are still bridged.** Where a `wasi:*` interface
+  isn't yet usable from the canonical ABI (resources + streams, e.g.
+  filesystem descriptors), Canon ships a `canon:builtins/*` stand-in.
+  The user-facing API doesn't change when the bridge is later swapped
+  for native WASI — the remaining set is tracked in `V1.md`.
 - **Hosts must support WASI Preview 3.** `canon run` embeds `wasmtime`
   with the P3 + component-model-async feature gates; other hosts will
   need equivalent support.

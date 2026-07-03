@@ -10,8 +10,8 @@ Bool = False + True
 
 main = () -> Unit {
     True().(
-        False => "no".print(),
-        True  => "yes".print(),
+        * (False) -> Unit { "no".print() }
+        * (True) -> Unit { "yes".print() }
     )
 }
 ```
@@ -27,24 +27,26 @@ alphabetical. Every variant must be spelled out:
 ```canon
 Ord = Equal + Greater + Less
 
-classify = (Int) -> Sign {
-    Int.compare(Int(0)).(
-        Equal   => Zero,
-        Greater => Positive,
-        Less    => Negative,
+classify = (Ord) -> Sign {
+    Ord.(
+        * (Equal) -> Sign { Zero() }
+        * (Greater) -> Sign { Positive() }
+        * (Less) -> Sign { Negative() }
     )
 }
 ```
 
 ## Matching Constructors with Payloads
 
-For union variants that carry a payload, bind it with parentheses. Use
-`_` inside the parens to ignore the payload:
+Each arm is written as `* (Pattern) -> ArmReturnType { body }`. For
+union variants that carry a payload, name the payload's type in angle
+brackets; inside the arm body the value is referenced by that type
+name:
 
 ```canon
 List(7, 8, 9).first().(
-    None    => "empty".print(),
-    Some(_) => "non-empty".print(),
+    * (None) -> Unit { "empty".print() }
+    * (Some<Int>) -> Unit { Int.print() }
 )
 ```
 

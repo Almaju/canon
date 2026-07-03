@@ -173,33 +173,29 @@ A common follow-up: *if there's no `async` keyword, how do I express "fire
 off two HTTP requests in parallel, then combine the results"?*
 
 The answer, consistent with [domain-first design](./effects.md), is **as
-ordinary stdlib types, not keywords**. The shapes planned for the standard
-library are:
+ordinary stdlib functions, not keywords** (`use canon/std/concurrent`):
 
 ```canon
-# Sequential — each call awaits before the next starts
-[urlA, urlB].map(get)              # Future<List<Body>>, sequential
-
-# Parallel — fan out, await all, return tuple/list
-Parallel(get(urlA), get(urlB))     # Future<Body * Body>
-
-# First-to-finish wins (others cancelled)
-Race(get(urlA), get(urlB))         # Future<Body>
+parallel("a".slowEcho(), "b".slowEcho()).toJsonArray().print()
+race("a".slowEcho(), "b".slowEcho()).print()
 ```
 
-These are not language features — they're constructors that take futures
+`parallel(a, b)` fans out, awaits both, and returns the results in
+arg-order as a `Future<List<T>>`; `race(a, b)` returns the first to
+finish and cancels the loser. Both sides must produce the same payload
+type:
+
+```
+parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
+race     = <T>(Future<T> * Future<T>) -> Future<T>
+```
+
+These are not language features — they're functions that take futures
 and return composed futures. The user never writes `await` on the result;
 the auto-await rule fires the moment the composed future is used in a
 position that expects its payload. The surface remains keyword-free.
 
-> Status: **shipped**. The actual stdlib surface is slightly narrower
-> than the sketch above to keep the canonical-ABI lowering tractable —
-> both sides must produce the same payload type:
->
-> ```
-> parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
-> race     = <T>(Future<T> * Future<T>) -> Future<T>
-> ```
+> Implementation notes:
 >
 > `parallel(a, b)` joins two subtasks to a fresh waitable-set, loops on
 > `waitable-set.wait` until both events fire, then builds a `List<T>`
@@ -219,8 +215,10 @@ sequence of values produced over time. The same auto-detection rule
 applies: a method that returns a `Stream<T>`, used at a position that
 expects iteration, becomes a suspending iteration loop.
 
+A hypothetical `tail -f`, where `lines()` would return
+`Stream<String>`:
+
 ```canon
-# Hypothetical: tail -f, where lines() returns Stream<String>
 Path("./log.txt").File()?.lines().each((String) -> Unit {
     String.print()
 })
