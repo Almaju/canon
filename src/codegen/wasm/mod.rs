@@ -1122,11 +1122,13 @@ struct WasmGen<'m> {
     /// Index of the user-defined `handleRequest` function in the core
     /// function space. Populated alongside `fn_handler_wrapper`.
     user_handler_func_idx: Option<u32>,
-    /// True while compiling the body of a function whose declared
-    /// return type is Result-shaped (one i32 pointer at the core
-    /// level). Gates `?`'s early-return-on-Err: in any other context
+    /// `Some("Result")` / `Some("Option")` while compiling the body
+    /// of a function whose declared return type is that shape (one
+    /// i32 pointer at the core level). Gates `?`'s early return: an
+    /// `Err`/`None` propagates unchanged when the inner and enclosing
+    /// kinds match (both tag 0 at offset 0); in any other context
     /// (e.g. `main`), `?` extracts unconditionally as before.
-    cur_fn_returns_result: bool,
+    cur_fn_early_return: Option<&'static str>,
     /// HTTP encoder mode: the module is self-contained (own memory,
     /// own bump global, exported `cabi_realloc`), imports follow
     /// `wit-component` naming conventions, and the entry export is
@@ -1185,7 +1187,7 @@ impl<'m> WasmGen<'m> {
             fn_handler_wrapper: None,
             fn_user_start: base_defined + 7,
             user_handler_func_idx: None,
-            cur_fn_returns_result: false,
+            cur_fn_early_return: None,
             http_mode: false,
         }
     }
@@ -1796,7 +1798,11 @@ impl<'m> WasmGen<'m> {
                 Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
                     Ty::NamedPtrStr("Result".to_string(), ok_name.clone(), err_name.clone())
                 }
-                Some(IndirectReturnShape::OptionString) => Ty::NamedPtr("Option".to_string()),
+                Some(IndirectReturnShape::OptionString) => Ty::NamedPtrStr(
+                    "Option".to_string(),
+                    "String".to_string(),
+                    "String".to_string(),
+                ),
                 Some(IndirectReturnShape::ListString) => Ty::List,
                 Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
                     Ty::NamedPtr(product.clone())
@@ -1868,6 +1874,21 @@ impl<'m> WasmGen<'m> {
                 let result_ty = match classify_return(&func.return_ty, &results, &self.type_defs) {
                     Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
                         Ty::NamedPtrStr("Result".to_string(), ok_name, err_name)
+                    }
+                    // `Option<String-alias>` bodies keep the payload's
+                    // string-ness in the surface type so `?` extracts a
+                    // (ptr, len) pair instead of misreading the slot as
+                    // one i64. Dispatch is unaffected — it keys on the
+                    // container name, exactly like the Result case.
+                    Some(IndirectReturnShape::OptionString) => {
+                        let payload = match &func.return_ty {
+                            TypeExpr::Named { generics, .. } if !generics.is_empty() => {
+                                named_type_name(&generics[0])
+                                    .unwrap_or_else(|| "String".to_string())
+                            }
+                            _ => "String".to_string(),
+                        };
+                        Ty::NamedPtrStr("Option".to_string(), payload.clone(), payload)
                     }
                     _ => self.resolve_return_ty(func),
                 };
@@ -2646,17 +2667,18 @@ impl<'m> WasmGen<'m> {
         let _ = params; // params are implicit in the function type
         let mut f = Function::new(extra_locals_decl());
         let body = func.body.clone();
-        // `?` may early-return the whole Result value, but only when
-        // the enclosing function itself returns a Result-shaped value
-        // (one i32 pointer at the core level). Record that for the
-        // duration of this body.
+        // `?` may early-return the whole Result/Option value, but only
+        // when the enclosing function itself returns the same shape
+        // (one i32 pointer at the core level). Record which kind for
+        // the duration of this body.
         let ret = self.resolve_return_ty(func);
-        self.cur_fn_returns_result = matches!(
-            &ret,
-            Ty::NamedPtrStr(n, _, _) | Ty::NamedPtr(n) if n == "Result"
-        );
+        self.cur_fn_early_return = match &ret {
+            Ty::NamedPtrStr(n, _, _) | Ty::NamedPtr(n) if n == "Result" => Some("Result"),
+            Ty::NamedPtr(n) if n == "Option" => Some("Option"),
+            _ => None,
+        };
         let result = self.compile_block_return(&body, &scope, &mut f);
-        self.cur_fn_returns_result = false;
+        self.cur_fn_early_return = None;
         // The function's WASM type already declares the result type;
         // the value should already be on the stack.
         let _ = result;
@@ -2871,10 +2893,11 @@ impl<'m> WasmGen<'m> {
                 //   - `Ty::NamedPtrStr(_, _, _)` → `(i32 ptr, i32 len)` at offsets 4 and 8.
                 //   - `Ty::NamedPtr("Result"|"Option")` → `i64` at offset 4 (legacy).
                 match &inner_ty {
-                    Ty::NamedPtrStr(_, ok_name, _) => {
+                    Ty::NamedPtrStr(container, ok_name, _) => {
+                        let container = container.clone();
                         let ok_name = ok_name.clone();
                         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
-                        if self.cur_fn_returns_result {
+                        if self.cur_fn_early_return == Some(container.as_str()) {
                             // tag == 0 (Err) → return the Result as-is.
                             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                             f.instruction(&Instruction::I32Load(MemArg {
@@ -2914,7 +2937,7 @@ impl<'m> WasmGen<'m> {
                     }
                     Ty::NamedPtr(n) if n == "Result" || n == "Option" => {
                         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
-                        if self.cur_fn_returns_result && n == "Result" {
+                        if self.cur_fn_early_return == Some(n.as_str()) {
                             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                             f.instruction(&Instruction::I32Load(MemArg {
                                 offset: 0,
