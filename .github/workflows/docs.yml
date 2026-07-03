@@ -42,11 +42,17 @@ jobs:
         working-directory: docs
         run: mdbook build
 
+      - name: Assemble site (landing at /, book under /doc/)
+        run: |
+          mkdir -p site/doc
+          cp -r docs/landing/. site/
+          cp -r docs/book/. site/doc/
+
       - name: Upload artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/book
+          path: site
 
   deploy:
     name: deploy

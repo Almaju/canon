@@ -11,7 +11,7 @@ See `DESIGN.md` for the full language specification.
 | Path | Description |
 |---|---|
 | `.github/` | CI workflows (docs deployment, release pipeline) |
-| `docs/` | mdBook documentation site (`book.toml`, `src/`) |
+| `docs/` | Documentation site: mdBook (`book.toml`, `src/`, `theme/`) plus the static landing page (`landing/index.html`, self-contained). The docs workflow deploys the landing at the site root and the book under `/doc/`; `landing/404.html` redirects old root-level book URLs to `/doc/`. |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Lexer — tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | Parser — AST construction (`parser.rs`) |

@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canon — every program has exactly one form</title>
+<meta name="description" content="Canon is a maximally opinionated programming language that compiles straight to WebAssembly components. No let, no if, no comments — and everything in alphabetical order.">
+<meta property="og:title" content="Canon">
+<meta property="og:description" content="A maximally opinionated language that compiles straight to WebAssembly components. No let, no if, no comments.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0a0a'/%3E%3Ctext x='16' y='22' font-family='ui-monospace,Menlo,monospace' font-size='17' font-weight='700' fill='%23e8a24b' text-anchor='middle'%3E*%3C/text%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0a;
+    --panel: #0e0e0f;
+    --border: #1e1e21;
+    --border-hi: #2c2c31;
+    --text: #ededed;
+    --muted: #a1a1aa;
+    --dim: #63636b;
+    --accent: #e8a24b;
+    --accent-dim: rgba(232, 162, 75, .55);
+    /* code */
+    --c-type: #8ad4c0;
+    --c-op: #e8a24b;
+    --c-str: #a9c181;
+    --c-num: #d699b6;
+    --c-punct: #7c7c85;
+    --c-comment: #55555e;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  code, pre, .mono {
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  ::selection { background: rgba(232, 162, 75, .28); }
+
+  .wrap { max-width: 1024px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── nav ─────────────────────────────────────────────── */
+
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10, 10, 10, .72);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  }
+
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+  }
+
+  .wordmark {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .04em;
+  }
+  .wordmark .glyph { color: var(--accent); margin-right: .55em; }
+
+  .nav-links { display: flex; align-items: center; gap: 4px; }
+
+  .nav-links a {
+    font-size: 14px;
+    color: var(--muted);
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: color .15s, background .15s;
+  }
+  .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.05); }
+
+  /* ── hero ────────────────────────────────────────────── */
+
+  .hero {
+    position: relative;
+    padding: 108px 0 48px;
+    text-align: center;
+  }
+
+  .hero::before {
+    /* dot grid, faded out toward the edges */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size: 26px 26px;
+    -webkit-mask-image: radial-gradient(ellipse 68% 78% at 50% 32%, #000 30%, transparent 72%);
+    mask-image: radial-gradient(ellipse 68% 78% at 50% 32%, #000 30%, transparent 72%);
+    pointer-events: none;
+  }
+
+  .hero::after {
+    /* warm glow */
+    content: "";
+    position: absolute;
+    top: -220px;
+    left: 50%;
+    width: 780px;
+    height: 560px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(232, 162, 75, .08), transparent 62%);
+    pointer-events: none;
+  }
+
+  .hero > .wrap { position: relative; z-index: 1; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    color: var(--muted);
+    border: 1px solid var(--border-hi);
+    border-radius: 999px;
+    padding: 5px 14px;
+    background: rgba(255,255,255,.02);
+  }
+  .badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent-dim);
+  }
+
+  h1 {
+    margin: 28px auto 0;
+    max-width: 18ch;
+    text-wrap: balance;
+    font-size: clamp(40px, 7vw, 72px);
+    font-weight: 700;
+    line-height: 1.06;
+    letter-spacing: -.035em;
+    background: linear-gradient(180deg, #ffffff 30%, #9d9da6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .sub {
+    margin: 24px auto 0;
+    max-width: 34rem;
+    font-size: 17.5px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+  .sub code {
+    font-size: .88em;
+    color: var(--text);
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1.5px 6px;
+  }
+
+  .cta-row {
+    margin-top: 36px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14.5px;
+    font-weight: 500;
+    padding: 10px 22px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .btn-primary { background: #ededed; color: #0a0a0a; }
+  .btn-primary:hover { background: #fff; }
+  .btn-ghost { border-color: var(--border-hi); color: var(--muted); }
+  .btn-ghost:hover { border-color: #45454d; color: var(--text); }
+
+  .install {
+    margin: 40px auto 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 620px;
+    border: 1px solid var(--border-hi);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 12px 14px 12px 18px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    text-align: left;
+    overflow: hidden;
+  }
+  .install .cmd {
+    color: var(--muted);
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .install .cmd::-webkit-scrollbar { display: none; }
+  .install .cmd .p { color: var(--accent); margin-right: .6em; user-select: none; }
+  .install .cmd .hl { color: var(--text); }
+
+  .copy {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px; height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .copy:hover { color: var(--text); border-color: var(--border-hi); }
+  .copy svg { width: 14px; height: 14px; }
+
+  /* ── code window ─────────────────────────────────────── */
+
+  .window {
+    border: 1px solid var(--border-hi);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #101012, #0c0c0d);
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,.4),
+      0 24px 60px -24px rgba(0,0,0,.8),
+      0 0 120px -40px rgba(232, 162, 75, .14);
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .window-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .window-bar .b { width: 11px; height: 11px; border-radius: 50%; background: #232327; }
+  .window-bar .name {
+    margin-left: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    color: var(--dim);
+  }
+
+  .window pre {
+    padding: 22px 24px;
+    font-size: 13.5px;
+    line-height: 1.75;
+    overflow-x: auto;
+    color: var(--text);
+  }
+
+  .hero-window { max-width: 620px; margin: 56px auto 0; }
+
+  /* canon syntax */
+  .t { color: var(--c-type); }
+  .o { color: var(--c-op); }
+  .s { color: var(--c-str); }
+  .n { color: var(--c-num); }
+  .p { color: var(--c-punct); }
+  .cm { color: var(--c-comment); font-style: italic; }
+
+  /* ── manifesto strip ─────────────────────────────────── */
+
+  .manifesto {
+    padding: 96px 0 88px;
+    text-align: center;
+  }
+  .manifesto p {
+    font-size: clamp(24px, 4.4vw, 40px);
+    font-weight: 600;
+    letter-spacing: -.03em;
+    line-height: 1.35;
+    color: var(--dim);
+    max-width: 22ch;
+    margin: 0 auto;
+  }
+  .manifesto .yes { color: var(--text); }
+  .manifesto .mark { color: var(--accent); }
+
+  /* ── sections ────────────────────────────────────────── */
+
+  section { border-top: 1px solid var(--border); }
+
+  .section-inner { padding: 88px 0; }
+
+  .kicker {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h2 {
+    margin-top: 14px;
+    font-size: clamp(26px, 3.6vw, 36px);
+    font-weight: 650;
+    letter-spacing: -.028em;
+    line-height: 1.15;
+  }
+
+  .lede {
+    margin-top: 14px;
+    max-width: 33rem;
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .lede code {
+    font-size: .88em;
+    color: var(--text);
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1.5px 6px;
+  }
+
+  /* grid of principles */
+  .grid {
+    margin-top: 48px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--border);
+    gap: 1px;
+  }
+
+  .cell {
+    background: var(--bg);
+    padding: 28px 26px 30px;
+    transition: background .2s;
+  }
+  .cell:hover { background: var(--panel); }
+
+  .cell .glyph {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 15px;
+    color: var(--accent);
+  }
+  .cell h3 {
+    margin-top: 12px;
+    font-size: 15.5px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .cell p {
+    margin-top: 8px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .cell p code {
+    font-size: .9em;
+    color: var(--text);
+  }
+
+  /* split section */
+  .split {
+    margin-top: 48px;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 48px;
+    align-items: center;
+  }
+
+  .split .copytext h3 {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -.02em;
+  }
+  .split .copytext p {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .split .copytext code {
+    font-size: .88em;
+    color: var(--text);
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1.5px 6px;
+  }
+
+  .term {
+    margin-top: 20px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 12px 16px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .term .p { color: var(--accent); user-select: none; }
+  .term .out { color: var(--dim); }
+
+  /* cli strip */
+  .cli-strip {
+    padding: 56px 0;
+    text-align: center;
+  }
+  .cli-strip .tools {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px;
+    color: var(--dim);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 0;
+  }
+  .cli-strip .tools span { color: var(--muted); padding: 0 14px; }
+  .cli-strip .tools span b { color: var(--text); font-weight: 500; }
+  .cli-strip .tools span + span { border-left: 1px solid var(--border); }
+  .cli-strip .note { margin-top: 16px; font-size: 13.5px; color: var(--dim); }
+
+  /* closing cta */
+  .closing {
+    padding: 104px 0;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .closing::before {
+    content: "";
+    position: absolute;
+    bottom: -260px;
+    left: 50%;
+    width: 720px;
+    height: 420px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(232, 162, 75, .09), transparent 62%);
+    pointer-events: none;
+  }
+  .closing h2 { margin: 0 auto; max-width: 22ch; text-wrap: balance; }
+  .closing .cta-row { margin-top: 32px; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--border); }
+  .footer-inner {
+    padding: 32px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 13.5px;
+    color: var(--dim);
+  }
+  .footer-inner .wordmark { font-size: 13.5px; color: var(--muted); }
+  .footer-links { display: flex; gap: 22px; }
+  .footer-links a { color: var(--dim); transition: color .15s; }
+  .footer-links a:hover { color: var(--text); }
+
+  @media (max-width: 880px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .split { grid-template-columns: 1fr; gap: 32px; }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .hero { padding-top: 76px; }
+    .section-inner { padding: 64px 0; }
+    .nav-links .wide { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="./"><span class="glyph">*</span>canon</a>
+    <div class="nav-links">
+      <a href="doc/">Docs</a>
+      <a class="wide" href="doc/tour/philosophy.html">Tour</a>
+      <a class="wide" href="https://github.com/Almaju/canon/blob/main/DESIGN.md">Design</a>
+      <a href="https://github.com/Almaju/canon">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge"><span class="dot"></span>Compiles straight to WebAssembly components</span>
+
+    <h1>Every program has exactly one form.</h1>
+
+    <p class="sub">
+      Canon is a maximally opinionated programming language.
+      No <code>let</code>, no <code>if</code>, no comments, no local variables —
+      and wherever ordering is discretionary, the compiler enforces
+      alphabetical order.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="doc/">Read the docs</a>
+      <a class="btn btn-ghost" href="https://github.com/Almaju/canon">GitHub&thinsp;&nearr;</a>
+    </div>
+
+    <div class="install">
+      <div class="cmd" id="install-cmd"><span class="p">$</span>curl -fsSL <span class="hl">https://raw.githubusercontent.com/almaju/canon/main/install.sh</span> | sh</div>
+      <button class="copy" id="copy-btn" aria-label="Copy install command" title="Copy">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3.5v5A1.5 1.5 0 0 0 4 10h1.5"/></svg>
+      </button>
+    </div>
+
+    <div class="window hero-window">
+      <div class="window-bar">
+        <span class="b"></span><span class="b"></span><span class="b"></span>
+        <span class="name">hello.can</span>
+      </div>
+      <pre><code><span class="t">Bool</span> <span class="o">=</span> <span class="t">False</span> <span class="o">+</span> <span class="t">True</span>
+
+main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</span> <span class="t">Unit</span> <span class="p">{</span>
+    <span class="t">List</span><span class="p">(</span><span class="n">1</span><span class="p">,</span> <span class="n">2</span><span class="p">,</span> <span class="n">3</span><span class="p">)</span>
+        <span class="p">.</span>map<span class="p">((</span><span class="t">Int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Int</span> <span class="p">{</span> <span class="t">Int</span><span class="p">.</span>mul<span class="p">(</span><span class="n">2</span><span class="p">)</span> <span class="p">})</span>
+        <span class="p">.</span>length<span class="p">()</span>
+        <span class="p">.</span>print<span class="p">()</span>
+<span class="p">}</span></code></pre>
+    </div>
+  </div>
+</header>
+
+<div class="manifesto wrap">
+  <p>
+    No <span class="yes">let</span><span class="mark">.</span>
+    No <span class="yes">if</span><span class="mark">.</span>
+    No <span class="yes">comments</span><span class="mark">.</span><br>
+    Nothing left to argue about<span class="mark">.</span>
+  </p>
+</div>
+
+<section id="principles">
+  <div class="wrap section-inner">
+    <span class="kicker">The rules</span>
+    <h2>Small surface. Sharp edges.</h2>
+    <p class="lede">
+      Style is not a choice, so a diff only ever shows meaning.
+      What most languages leave to taste, Canon decides once — in the compiler.
+    </p>
+
+    <div class="grid">
+      <div class="cell">
+        <span class="glyph">a→z</span>
+        <h3>Alphabetical, enforced</h3>
+        <p>Product fields, union variants, functions, dispatch arms, imports — everything sorts. <code>canon fmt</code> does it; the checker is the backstop.</p>
+      </div>
+      <div class="cell">
+        <span class="glyph">*(&hellip;)</span>
+        <h3>Branching is dispatch</h3>
+        <p>There is no <code>if</code>. A union is a set of cases and a dispatch handles all of them. Forgetting one is a type error, not a 3&thinsp;a.m. page.</p>
+      </div>
+      <div class="cell">
+        <span class="glyph">.wasm</span>
+        <h3>WebAssembly, natively</h3>
+        <p>Every build is a standard WASI&nbsp;P3 component — no external toolchain, no transpile step. <code>canon run</code> executes it on embedded wasmtime.</p>
+      </div>
+      <div class="cell">
+        <span class="glyph">(A * B)</span>
+        <h3>No privileged receiver</h3>
+        <p>Functions are defined over compositions of types. <code>a.f(b)</code> and <code>b.f(a)</code> are the same call — composition is commutative.</p>
+      </div>
+      <div class="cell">
+        <span class="glyph">-&gt; R</span>
+        <h3>Effects are capabilities</h3>
+        <p>A function that touches the world says so in its signature. Effects are passed in as values — purity is the default, not a discipline.</p>
+      </div>
+      <div class="cell">
+        <span class="glyph">§ 1</span>
+        <h3>One-based, on purpose</h3>
+        <p>Indexing starts at 1 and ranges include both ends, everywhere. The convention you explain to no one.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="http">
+  <div class="wrap section-inner">
+    <span class="kicker">The web</span>
+    <h2>A server is a function.</h2>
+    <p class="lede">
+      Canon picks the entry point by its type. Define <code>(Request) -&gt; Response</code>
+      and the compiler emits a standard <code>wasi:http/service</code> component —
+      routing is just dispatch on the path.
+    </p>
+
+    <div class="split">
+      <div class="copytext">
+        <h3>Routes without a router</h3>
+        <p>
+          Literal dispatch branches on the request path; the required
+          catch-all arm means an unhandled route can’t exist. The same
+          program serves locally and runs on any component host.
+        </p>
+        <div class="term"><span class="p">$</span> canon run notes.can --addr 127.0.0.1:8080<br><span class="out">serving wasi:http/service on 127.0.0.1:8080</span></div>
+      </div>
+
+      <div class="window">
+        <div class="window-bar">
+          <span class="b"></span><span class="b"></span><span class="b"></span>
+          <span class="name">notes.can</span>
+        </div>
+        <pre><code>serve <span class="o">=</span> <span class="p">(</span><span class="t">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span>
+    <span class="t">Request</span><span class="p">.</span>path<span class="p">().(</span>
+        <span class="o">*</span> <span class="p">(</span><span class="t">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span> notFound<span class="p">()</span> <span class="p">}</span>
+        <span class="o">*</span> <span class="p">(</span><span class="t">Some&lt;String&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span>
+            <span class="t">String</span><span class="p">.(</span>
+                <span class="o">*</span> <span class="p">(</span><span class="s">"/notes"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span> index<span class="p">()</span> <span class="p">}</span>
+                <span class="o">*</span> <span class="p">(</span><span class="t">String</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span> notFound<span class="p">()</span> <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+<span class="p">}</span></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap cli-strip">
+    <div class="tools">
+      <span><b>canon</b> run</span><span><b>canon</b> build</span><span><b>canon</b> check</span><span><b>canon</b> test</span><span><b>canon</b> fmt</span><span><b>canon</b> bindgen</span><span><b>canon</b> lsp</span>
+    </div>
+    <p class="note">One binary. The formatter has no options.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap closing">
+    <span class="kicker">Get started</span>
+    <h2>Learn the whole language in an afternoon.</h2>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="doc/getting-started/installation.html">Get started</a>
+      <a class="btn btn-ghost" href="doc/tour/philosophy.html">Take the tour</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <a class="wordmark" href="./"><span class="glyph">*</span>canon</a>
+    <div class="footer-links">
+      <a href="doc/">Docs</a>
+      <a href="https://github.com/Almaju/canon/blob/main/DESIGN.md">Design spec</a>
+      <a href="https://github.com/Almaju/canon">GitHub</a>
+      <a href="https://github.com/Almaju/canon/blob/main/LICENSE">MIT</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById("copy-btn").addEventListener("click", function () {
+    var btn = this;
+    navigator.clipboard.writeText(
+      "curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh"
+    ).then(function () {
+      btn.style.color = "var(--accent)";
+      btn.style.borderColor = "var(--accent-dim)";
+      setTimeout(function () {
+        btn.style.color = "";
+        btn.style.borderColor = "";
+      }, 1200);
+    });
+  });
+</script>
+
+</body>
+</html>
