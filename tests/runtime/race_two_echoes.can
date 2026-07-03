@@ -5,5 +5,8 @@ bindings "canon:builtins/http-server@0.1.0"
 slowEcho = (String) -> Future<String>
 
 main = () -> Unit {
-    race("first".slowEcho(), "second".slowEcho()).print()
+    "first"
+        .slowEcho()
+        .race("second".slowEcho())
+        .print()
 }

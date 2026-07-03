@@ -1,6 +1,6 @@
 use crate::ast::{
-    extract_receiver_from_params, resolve_new_syntax, BindingsDecl, Block, ExternWasm, FunctionDef,
-    Item, Module, Param, TypeExpr,
+    extract_receiver_from_params, resolve_new_syntax, BindingsDecl, Block, Expr, ExternWasm,
+    FunctionDef, Item, Module, Param, TypeExpr,
 };
 use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
@@ -415,12 +415,102 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
             other => other_items.push(other),
         }
     }
+    inject_json_prelude(&use_items, &other_items, dir, ctx)?;
     for u in use_items {
         process_use(&u, dir, ctx)?;
     }
     let start = ctx.items.len();
     ctx.items.extend(other_items);
     Ok(start)
+}
+
+/// JSON prelude: `canon/std/Json` loads automatically — like Rust's
+/// prelude, JSON support doesn't need an explicit import. A fully static
+/// JSON literal is constant-folded and needs nothing at all (the checker
+/// knows `Json = String` intrinsically), so the stdlib module is pulled
+/// in only when the program actually reaches for its machinery:
+/// interpolation inside a literal (`{"n":Int}` converts via `ToJson`),
+/// the validating `Json(...)` constructor, or an explicit `.ToJson()` /
+/// `.Json()` call. Skipped when the file imports or defines `Json`
+/// itself.
+fn inject_json_prelude(
+    use_items: &[crate::ast::UseDecl],
+    other_items: &[Item],
+    dir: &Path,
+    ctx: &mut LoadCtx,
+) -> Result<()> {
+    let already_in_scope = use_items
+        .iter()
+        .any(|u| u.name.name == "Json" || u.name.name.ends_with("/Json"))
+        || other_items.iter().any(|item| match item {
+            Item::TypeDef(td) => td.name.name == "Json",
+            Item::Function(f) => f.name.name == "Json" && f.extern_wasm.is_some(),
+            _ => false,
+        });
+    if already_in_scope || !items_use_json_machinery(other_items) {
+        return Ok(());
+    }
+    let synthetic = crate::ast::UseDecl {
+        name: crate::ast::Ident {
+            name: "canon/std/Json".to_string(),
+            span: Span::default(),
+        },
+        span: Span::default(),
+    };
+    process_use(&synthetic, dir, ctx)
+}
+
+fn items_use_json_machinery(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Function(f) => f.body.exprs.iter().any(expr_uses_json_machinery),
+        _ => false,
+    })
+}
+
+fn expr_uses_json_machinery(expr: &Expr) -> bool {
+    use crate::ast::JsonLitPart;
+    match expr {
+        Expr::JsonLit { parts, .. } => parts.iter().any(|p| match p {
+            JsonLitPart::Static(_) => false,
+            JsonLitPart::Interp(e) => {
+                // The interpolation itself needs `ToJson`, whatever the
+                // inner expression is.
+                let _ = e;
+                true
+            }
+        }),
+        Expr::Constructor { name, args, .. } => {
+            name.name == "Json" || args.iter().any(expr_uses_json_machinery)
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            method.name == "ToJson"
+                || method.name == "Json"
+                || expr_uses_json_machinery(receiver)
+                || args.iter().any(expr_uses_json_machinery)
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_uses_json_machinery(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| arm.body.exprs.iter().any(expr_uses_json_machinery))
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_uses_json_machinery(inner),
+        Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_json_machinery),
+        Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_json_machinery),
+        Expr::FieldAccess { receiver, .. } => expr_uses_json_machinery(receiver),
+        Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => false,
+    }
 }
 
 fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
@@ -561,6 +651,7 @@ fn load_source(source: &str, dir: &Path, wit_urn: Option<&str>, ctx: &mut LoadCt
             other => other_items.push(other),
         }
     }
+    inject_json_prelude(&use_items, &other_items, dir, ctx)?;
     for u in use_items {
         process_use(&u, dir, ctx)?;
     }

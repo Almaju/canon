@@ -215,8 +215,17 @@ fn transform_expr(expr: &mut Expr, ctx: &Ctx<'_>) {
     auto_await_call_args(expr, ctx);
 
     // After the recursive walk, look for the auto-await opportunity at *this*
-    // node: a method call whose receiver is `Future<T>`.
-    if let Expr::MethodCall { receiver, .. } = expr {
+    // node: a method call whose receiver is `Future<T>`. The concurrency
+    // combinators are the one exception — `a.parallel(b)` / `a.race(b)`
+    // *want* the un-awaited futures on both sides; the codegen drives the
+    // subtasks through the canonical-ABI waitable-set sequence itself.
+    if let Expr::MethodCall {
+        receiver, method, ..
+    } = expr
+    {
+        if matches!(method.name.as_str(), "parallel" | "race") {
+            return;
+        }
         let recv_raw = infer_raw_type(receiver, ctx.returns);
         if is_future(&recv_raw) {
             // Wrap `receiver` in `Expr::Await(receiver)`. The codegen treats

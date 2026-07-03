@@ -5,5 +5,5 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 home = (Request) -> Response {
-    Response(Body("hello"), Headers(), Status(200))
+    Response(Body("hello") * Headers() * Status(200))
 }

@@ -15,7 +15,7 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 greet = (Request) -> Response {
-    Response(Body("hello from canon"), Headers(), Status(200))
+    Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
 
@@ -64,7 +64,10 @@ use canon/std/fs/File
 use canon/std/fs/Path
 
 main = () -> Unit {
-    Path("./data.json").File()?.read()?.print()
+    Path("./data.json")
+        .File()?
+        .read()?
+        .print()
 }
 ```
 
@@ -74,8 +77,6 @@ A CLI program, with branching (dispatch on a union — Canon's only
 control-flow construct) and iteration (methods on collections):
 
 ```canon
-Bool = False + True
-
 main = () -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })
@@ -90,6 +91,8 @@ main = () -> Unit {
 
 - Functions are `name = (Components) -> Return { body }`; the last
   expression is the return value.
+- `Bool` is an ordinary union, `False + True` — dispatch applies the
+  value to one handler arm per variant.
 - Any component can be the dot-receiver at the call site
   (`a.compare(b)` and `b.compare(a)` are the same call).
 - `T()` constructs a value; `value.Field` (no parens) reads a field.

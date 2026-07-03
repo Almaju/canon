@@ -1,0 +1,10 @@
+label = (Int) -> Json {
+    {"answer":Int,"doubled":Int.mul(2)}
+}
+
+main = () -> Unit {
+    42
+        .label()
+        .print()
+    {"ok":True()}.print()
+}

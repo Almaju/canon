@@ -30,30 +30,30 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 indexBody = () -> Body {
-    Body("[{\"id\":1,\"title\":\"ship canon v1\"},{\"id\":2,\"title\":\"write the docs\"}]")
+    Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
 }
 
 notFound = () -> Body {
-    Body("{\"error\":\"not found\"}")
+    Body({"error":"not found"})
 }
 
 noteOne = () -> Body {
-    Body("{\"id\":1,\"title\":\"ship canon v1\"}")
+    Body({"id":1,"title":"ship canon v1"})
 }
 
 noteTwo = () -> Body {
-    Body("{\"id\":2,\"title\":\"write the docs\"}")
+    Body({"id":2,"title":"write the docs"})
 }
 
 serve = (Request) -> Response {
     Request.path().(
-        * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
+        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
         * (Some<String>) -> Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOne(), Headers(), Status(200)) }
-                * ("/notes/2") -> Response { Response(noteTwo(), Headers(), Status(200)) }
-                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
+                * ("/notes/1") -> Response { Response(noteOne() * Headers() * Status(200)) }
+                * ("/notes/2") -> Response { Response(noteTwo() * Headers() * Status(200)) }
+                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -68,6 +68,9 @@ serve = (Request) -> Response {
 - **Helpers return values, not worlds.** Only `serve` may return
   `Response`, so the note bodies are `() -> Body` functions —
   the layering the rule enforces.
+- **JSON literals.** The bodies are JSON object/array literals —
+  ordinary expressions that evaluate to the encoded text, so a static
+  body costs no imports and no serializer.
 - **Request introspection.** `Request.path()` returns
   `Option<String>`; dispatch on `(None, Some<String>)` extracts the
   live path.

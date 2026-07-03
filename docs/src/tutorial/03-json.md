@@ -4,44 +4,45 @@ A notes API should serve notes, plural, as JSON. In this chapter the
 service grows its real routes: `/notes` returns a JSON array, `/notes/1`
 returns a single note, everything else gets a JSON error.
 
-## JSON Bodies Are Strings
+## JSON Is a Literal
 
-In an HTTP handler, a JSON body is exactly what it is on the wire: a
-`String` with escaped quotes.
+JSON is part of Canon's syntax. An object or array literal is an
+ordinary expression, and it evaluates to the encoded JSON text — a
+`String`-shaped value holding exactly the bytes the client will
+receive:
 
 ```canon
 notFound = () -> Body {
-    Body("{\"error\":\"not found\"}")
+    Body({"error":"not found"})
 }
 ```
 
-No serializer, no schema, no middleware — you are looking at the bytes
-the client will receive.
-
-> The stdlib does have a JSON module — `canon/std/Json` gives you a
-> validating `Json` constructor, JSON literal syntax like
-> `{"answer": Int}`, and a `ToJson` trait — but it's currently backed by
-> host functions that the `wasi:http/service` world can't satisfy, so it
-> is **CLI-only for now**. Import it in a handler program and the
-> compiler tells you exactly that. Plain strings are today's honest
-> answer for HTTP, and they carry us surprisingly far.
-
-## Composing an Array
-
-The index route needs `[note, note]`. `List<String>.toJsonArray()` joins
-already-encoded JSON fragments into an array — it's a compiler builtin,
-so it works fine inside a handler:
+No serializer, no schema, no middleware — and no escaped quotes. The
+literal *is* the wire format. Arrays work the same way, and literals
+nest:
 
 ```canon
-List("{\"title\":\"ship canon v1\"}", "{\"title\":\"write the docs\"}")
-    .toJsonArray()
+indexBody = () -> Body {
+    Body([{"title":"ship canon v1"},{"title":"write the docs"}])
+}
 ```
 
-produces:
+> Note the spacing: `{"error":"not found"}`, not `{"error": "not
+> found"}`. JSON literals are code, so `canon fmt` owns their layout
+> like everything else's — compact, no spaces after `:` or `,`.
 
-```json
-[{"title":"ship canon v1"},{"title":"write the docs"}]
-```
+And there's nothing to import: JSON is part of the prelude, like
+`Option` and `Result`. A static literal compiles down to a plain
+string; when a program reaches for the JSON *machinery* — the
+validating `Json(...)` constructor, or **interpolation** like
+`{"answer":Int.mul(2)}`, which converts values through their `ToJson`
+instance — the compiler pulls in `canon/std/Json` automatically.
+
+One honest limitation: the `ToJson` instances are currently backed by
+host functions that the `wasi:http/service` world can't satisfy, so
+interpolation is **CLI-only for now** — use it in a handler and the
+build fails with an error naming exactly which imports the HTTP world
+can't provide. Inside a handler, keep literals fully static.
 
 ## The Full Program
 
@@ -53,25 +54,25 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 indexBody = () -> Body {
-    Body(List("{\"title\":\"ship canon v1\"}", "{\"title\":\"write the docs\"}").toJsonArray())
+    Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 
 notFound = () -> Body {
-    Body("{\"error\":\"not found\"}")
+    Body({"error":"not found"})
 }
 
 noteOneBody = () -> Body {
-    Body("{\"title\":\"ship canon v1\"}")
+    Body({"title":"ship canon v1"})
 }
 
 serve = (Request) -> Response {
     Request.path().(
-        * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
+        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
         * (Some<String>) -> Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOneBody(), Headers(), Status(200)) }
-                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
+                * ("/notes/1") -> Response { Response(noteOneBody() * Headers() * Status(200)) }
+                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -97,9 +98,10 @@ through the whole language.
 
 ## The Smell We Just Introduced
 
-`"{\"title\":\"ship canon v1\"}"` appears twice — once alone, once
-inside the index list. The note *data* and the note *encoding* are
-tangled together in string literals, in the same file as the routing.
+`{"title":"ship canon v1"}` appears twice — once alone, once inside the
+index array. The note *data* and the note *encoding* are tangled
+together in literals, in the same file as the routing. And because the
+literals are static, adding a third note means editing two places.
 
 In most languages you'd now reach for a `Note` class and a serializer.
 Canon's version of that move is a **newtype and a function in their own

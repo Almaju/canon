@@ -43,7 +43,8 @@ method chain:
 
 ```canon
 readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
-    File.read(Path)?
+    File
+        .read(Path)?
         .parse()?
         .validate()
 }
@@ -171,18 +172,31 @@ so `IoError + NotFound` *is* the same type everywhere it appears.
 ## JSON Literals
 
 JSON object and array literals are first-class expressions producing
-`Json` values (requires `use canon/std/Json`):
+`Json` values. No import is required — like `Option` and `Result`,
+JSON support is part of the prelude: the compiler knows
+`Json = String` intrinsically, and the loader pulls in
+`canon/std/Json` automatically the moment a program uses its
+machinery (interpolation, the validating `Json(...)` constructor, or
+`.ToJson()`):
 
 ```canon
 label = (Int) -> Json {
-    {"answer": Int, "doubled": Int.mul(2), "ok": True()}
+    {"answer":Int,"doubled":Int.mul(2),"ok":True()}
 }
 ```
 
 - **Static** members (strings, numbers, `true`/`false`/`null`, nested
-  static literals) are baked into a constant at parse time.
+  static literals) are baked into a constant at parse time. A fully
+  static literal is just a constant — it imposes no imports and no
+  host requirements, so it works in every world (including
+  `wasi:http/service` handlers).
 - **Interpolated** members are ordinary Canon expressions converted at
-  runtime via their `ToJson` instance.
+  runtime via their `ToJson` instance. The instances are host-backed
+  (`canon:builtins/json`), which the HTTP world can't satisfy yet — a
+  handler program using interpolation fails at build with an error
+  naming the unsatisfiable imports.
+- Literal layout is canonical like all Canon code: no spaces after `:`
+  or `,` — `{"k":v}`, not `{"k": v}`. `canon fmt` enforces it.
 
 ## Operator and Sigil Glossary
 
@@ -199,4 +213,4 @@ label = (Int) -> Json {
 | `.( )` | dispatch on a union |
 | `?` | propagate `Result` / `Option` failure |
 | `"..."` | string literal |
-| `{"k": v}` / `[v]` | JSON literal |
+| `{"k":v}` / `[v]` | JSON literal |

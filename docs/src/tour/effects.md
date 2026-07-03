@@ -12,11 +12,14 @@ objects. Access to a resource is represented by holding a value of the
 corresponding type.
 
 ```canon
-use canon/std/File
-use canon/std/Path
+use canon/std/fs/File
+use canon/std/fs/Path
 
 main = () -> Unit {
-    Path("./data.json").File()?.read()?.print()
+    Path("./data.json")
+        .File()?
+        .read()?
+        .print()
 }
 ```
 
@@ -106,7 +109,7 @@ program *is* the server (see [Serving HTTP](./http.md)):
 
 ```canon
 home = (Request) -> Response {
-    Response(Body("hello"), Headers(), Status(200))
+    Response(Body("hello") * Headers() * Status(200))
 }
 ```
 

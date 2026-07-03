@@ -16,7 +16,7 @@ use canon/std/TestResult
 testRenderWrapsTitle = () -> TestResult {
     Note("ship it")
         .render()
-        .eq("{\"title\":\"ship it\"}")
+        .eq({"title":"ship it"})
         .assert("render should wrap the title in a JSON object")
 }
 ```
@@ -39,6 +39,7 @@ the test exercises the code the server runs, not a copy.
 
 ```canon
 TestResult = Fail + Pass
+
 assert = (Bool * String) -> TestResult
 ```
 

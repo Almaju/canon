@@ -26,7 +26,7 @@ its return type and emits a standard `wasi:http/service` component:
 
 ```
 serve = (Request) -> Response {
-    Response(Body("hello"), Headers(), Status(200))
+    Response(Body("hello") * Headers() * Status(200))
 }
 ```
 
