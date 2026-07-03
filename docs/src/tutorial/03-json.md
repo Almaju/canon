@@ -31,14 +31,18 @@ indexBody = () -> Body {
 > found"}`. JSON literals are code, so `canon fmt` owns their layout
 > like everything else's — compact, no spaces after `:` or `,`.
 
-JSON literals can also **interpolate** Canon expressions —
-`{"answer":Int.mul(2)}` — which converts each value through its
-`ToJson` instance from `canon/std/Json`. Those instances are currently
-backed by host functions that the `wasi:http/service` world can't
-satisfy, so interpolation is **CLI-only for now**: import
-`canon/std/Json` in a handler program and the compiler tells you
-exactly that. Inside a handler, keep literals fully static — a static
-literal compiles down to a plain string and needs no imports at all.
+And there's nothing to import: JSON is part of the prelude, like
+`Option` and `Result`. A static literal compiles down to a plain
+string; when a program reaches for the JSON *machinery* — the
+validating `Json(...)` constructor, or **interpolation** like
+`{"answer":Int.mul(2)}`, which converts values through their `ToJson`
+instance — the compiler pulls in `canon/std/Json` automatically.
+
+One honest limitation: the `ToJson` instances are currently backed by
+host functions that the `wasi:http/service` world can't satisfy, so
+interpolation is **CLI-only for now** — use it in a handler and the
+build fails with an error naming exactly which imports the HTTP world
+can't provide. Inside a handler, keep literals fully static.
 
 ## The Full Program
 

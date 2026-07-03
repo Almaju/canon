@@ -330,6 +330,8 @@ The shipped packages `canon/std` and `canon/wasi` are pre-installed and bundled 
 
 Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use canon/std/JsonValue` and `use canon/std/JsonArray`.
 
+**The prelude.** A handful of core names need no import at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`). This mirrors Rust's prelude: the standard vocabulary is ambient, everything else is an explicit import.
+
 Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. `use canon/std/Json` never carries an `@version`.
 
 ### Visibility

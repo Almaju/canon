@@ -3259,15 +3259,10 @@ impl<'m> WasmGen<'m> {
             }
             // List constructor: List(e1, e2, e3, ...)
             "List" => self.build_list_literal(args, scope, f),
-            // ── Concurrency combinators (synthetic) ───────────────────
-            // `parallel(a, b)` and `race(a, b)` are declared in
-            // `packages/canon/std/src/concurrent.can` but have NO host
-            // bridge — the codegen recognises them by name and emits the
-            // canonical-ABI multi-subtask wait sequence inline. They're
-            // also filtered out of `collect_extern_imports` so no wasm
-            // import is generated for them.
-            "parallel" => self.compile_parallel(args, scope, f),
-            "race" => self.compile_race(args, scope, f),
+            // NOTE: the concurrency combinators (`parallel` / `race`) are
+            // *methods* — `a.parallel(b)` — handled at the top of
+            // `compile_method_call`. The checker rejects the bare call
+            // form, so no Constructor arm exists for them here.
             // User-defined types
             _ => {
                 // 1. Union variant constructor (e.g. `Branch(...)`, `Leaf`).
@@ -4232,6 +4227,20 @@ impl<'m> WasmGen<'m> {
         scope: &LocalScope,
         f: &mut Function,
     ) -> Ty {
+        // Concurrency combinators: `a.parallel(b)` / `a.race(b)`. The
+        // receiver and argument are *un-awaited* async calls (the
+        // auto-await pass exempts these two methods); compile_parallel /
+        // compile_race emit the non-blocking call for each side
+        // themselves, so the receiver must NOT be compiled here.
+        if matches!(method, "parallel" | "race") && args.len() == 1 {
+            let combined = [receiver.clone(), args[0].clone()];
+            return if method == "parallel" {
+                self.compile_parallel(&combined, scope, f)
+            } else {
+                self.compile_race(&combined, scope, f)
+            };
+        }
+
         let recv_ty = self.compile_expr(receiver, scope, f);
 
         // Check user func table first: look up by Canon type name. Scalars

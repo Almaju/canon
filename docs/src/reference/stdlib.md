@@ -291,12 +291,12 @@ because they need character escaping and shortest-round-trip number
 formatting that aren't yet expressible in pure Canon.
 
 **Literal syntax.** JSON object and array literals are first-class
-expressions:
+expressions, and the module is part of the **prelude**: nothing to
+import — the loader pulls `canon/std/Json` in automatically when a
+program uses interpolation, the `Json(...)` validator, or `.ToJson()`
+(a fully static literal is a plain constant and needs nothing at all):
 
 ```canon
-use canon/std/Json
-use canon/std/MalformedJson
-
 label = (Int) -> Json {
     {"answer":Int,"doubled":Int.mul(2),"ok":True()}
 }

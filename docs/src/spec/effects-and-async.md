@@ -73,12 +73,20 @@ The consequences worth stating precisely:
 
 ## Concurrency
 
-Fan-out is expressed as ordinary stdlib functions over futures
-(`use canon/std/concurrent`), not keywords:
+Fan-out is expressed as combinator methods on the futures themselves,
+not keywords — the same commutative method-call shape as every other
+Canon call:
 
 ```canon
-parallel("a".slowEcho(), "b".slowEcho()).toJsonArray().print()
-race("a".slowEcho(), "b".slowEcho()).print()
+"a"
+    .slowEcho()
+    .parallel("b".slowEcho())
+    .toJsonArray()
+    .print()
+"a"
+    .slowEcho()
+    .race("b".slowEcho())
+    .print()
 ```
 
 ```
@@ -86,9 +94,10 @@ parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
 race     = <T>(Future<T> * Future<T>) -> Future<T>
 ```
 
-`parallel` awaits both and returns results in argument order; `race`
-returns the first and cancels the loser. The auto-await rule fires when
-the composed future is consumed — still no keyword.
+`a.parallel(b)` awaits both and returns results in receiver-then-argument
+order; `a.race(b)` returns the first and cancels the loser. There is no
+bare call form — `parallel(a, b)` is a compile error. The auto-await
+rule fires when the composed future is consumed — still no keyword.
 
 **Cancellation** has no primitive. It is a consequence of composition:
 `race` cancels its losing branch; dropping a `Stream<T>` mid-iteration

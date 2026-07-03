@@ -753,6 +753,18 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         }
     }
 
+    // JSON prelude: a JSON literal types as `Json` even when the module
+    // never mentions `canon/std/Json` (the loader auto-injects the stdlib
+    // module only when interpolation / the `Json` validator / `ToJson` is
+    // actually used — a fully static literal is a plain constant). For the
+    // static case the checker still needs `Json` to be a known type whose
+    // alias chain reaches `String`, so `{"k":"v"}.print()` and a `-> Json`
+    // annotation work import-free. A user- or stdlib-defined `Json` wins.
+    if !types.contains("Json") && !generic_types.contains("Json") {
+        types.insert("Json".to_string());
+        aliases.insert("Json".to_string(), "String".to_string());
+    }
+
     // Free functions: every `FunctionDef` with no receiver and a name
     // distinct from `main` and `Self`. These can be invoked with constructor
     // syntax (`Foo()`, `bar(x)`); the checker accepts them in that role and
@@ -1272,19 +1284,30 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 .free_funcs
                 .get(&name.name)
                 .is_some_and(|sig| sig.arity == args.len());
-            let is_concurrent_combinator =
-                CONCURRENT_COMBINATORS.contains(&name.name.as_str()) && args.len() == 2;
-            if !symbols.knows_type(&name.name)
-                && !is_variant
-                && !matches_free_func
-                && !is_concurrent_combinator
-            {
+            // The concurrency combinators are methods, not bare calls —
+            // `a.parallel(b)`, not `parallel(a, b)`. Canon has no bare
+            // free-function call form anywhere else; steer to the method
+            // spelling instead of reporting an unknown type.
+            if CONCURRENT_COMBINATORS.contains(&name.name.as_str()) && !matches_free_func {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{0}(…)` is not a call form — combinators are methods on the first future: `a.{0}(b)`",
+                        name.name
+                    ),
+                    span: name.span,
+                });
+                for arg in args {
+                    check_expr(arg, scope, symbols, errors);
+                }
+                return;
+            }
+            if !symbols.knows_type(&name.name) && !is_variant && !matches_free_func {
                 errors.push(CanonError::CheckError {
                     message: format!("unknown type `{}` in constructor", name.name),
                     span: name.span,
                 });
             }
-            if args.is_empty() && !is_variant && !matches_free_func && !is_concurrent_combinator {
+            if args.is_empty() && !is_variant && !matches_free_func {
                 let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
                 let has_zero_arg_ctor = symbols
                     .methods
@@ -1344,15 +1367,21 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // chain of each. This lets methods declared on `String`/`Int`/…
             // be invoked on user aliases (`Path`, `Now`, `Url`, …) without
             // redeclaring them.
-            let known =
-                method_known_via_aliases(&recv_ty_specific, &method.name, effective_arity, symbols)
-                    || (recv_ty_specific != recv_ty
-                        && method_known_via_aliases(
-                            &recv_ty,
-                            &method.name,
-                            effective_arity,
-                            symbols,
-                        ));
+            // Concurrency combinators are compiler builtins invoked as
+            // methods on the first future: `a.parallel(b)` / `a.race(b)`.
+            // The receiver's static type is a `Future<T>` produced by an
+            // async call, which ordinary method lookup can't see.
+            let is_concurrent_combinator =
+                CONCURRENT_COMBINATORS.contains(&method.name.as_str()) && effective_arity == 1;
+            let known = is_concurrent_combinator
+                || method_known_via_aliases(
+                    &recv_ty_specific,
+                    &method.name,
+                    effective_arity,
+                    symbols,
+                )
+                || (recv_ty_specific != recv_ty
+                    && method_known_via_aliases(&recv_ty, &method.name, effective_arity, symbols));
             if !known {
                 errors.push(CanonError::CheckError {
                     message: format!(
@@ -1755,7 +1784,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::IntLit { .. } => "Int".to_string(),
         Expr::FloatLit { .. } => "Float".to_string(),
         Expr::HexLit { .. } => "Hex".to_string(),
-        Expr::Constructor { name, args, .. } => {
+        Expr::Constructor { name, .. } => {
             // Variants widen to their parent union (e.g. `Some(x)` typed as
             // `Option`); free-function constructors take their declared
             // return type; everything else is treated as the type name
@@ -1764,29 +1793,6 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 parent.clone()
             } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
                 sig.return_ty.clone()
-            } else if name.name == "parallel" {
-                // `parallel(a, b)` returns `Future<List<T>>` per
-                // `canon/std/concurrent`; the auto-await collapses
-                // `Future<List<T>>` → `List<T>` at any consuming site,
-                // so we report `List` here to keep method-chain typing
-                // (`.toJsonArray()`, `.get(i)`, etc.) flowing.
-                "List".to_string()
-            } else if name.name == "race" {
-                // `race(a, b) -> Future<T>` collapses to `T`; the type
-                // of the args is `Future<T>` where T is what the inner
-                // async call returns. Probe the first arg's type and
-                // strip one layer of `Future<…>` if visible.
-                args.first()
-                    .map(|a| {
-                        // For a `.slowEcho()` MethodCall whose method is
-                        // a Future-returning async extern, the static type
-                        // analysis below returns whatever the method's
-                        // synthesised return type is. The auto-await
-                        // transform peels the outer Future for us in most
-                        // call shapes; here we just take the arg's type.
-                        expr_type_name_in_scope(a, symbols)
-                    })
-                    .unwrap_or_else(|| "<unknown>".to_string())
             } else {
                 name.name.clone()
             }
@@ -1794,6 +1800,22 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::MethodCall {
             receiver, method, ..
         } => {
+            if method.name == "parallel" {
+                // `a.parallel(b)` returns `Future<List<T>>`; the
+                // auto-await collapses `Future<List<T>>` → `List<T>` at
+                // any consuming site, so we report `List` here to keep
+                // method-chain typing (`.toJsonArray()`, `.get(i)`, etc.)
+                // flowing.
+                return "List".to_string();
+            }
+            if method.name == "race" {
+                // `a.race(b) -> Future<T>` collapses to `T`. The receiver
+                // is `Future<T>` where T is what the inner async call
+                // returns; the auto-await transform peels the outer
+                // Future in most call shapes, so the receiver's static
+                // type name is the best available answer.
+                return expr_type_name_in_scope(receiver, symbols);
+            }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             if let Some(sig) = symbols.methods.get(&(recv_ty.clone(), method.name.clone())) {
                 return sig.return_ty.clone();
