@@ -196,6 +196,20 @@ pub(super) type ExternPrimSig = (
 );
 
 pub(super) fn vendored_extern_prim_sig(urn: &str) -> Option<ExternPrimSig> {
+    let (resolve, func) = vendored_func(urn)?;
+    let params = func
+        .params
+        .iter()
+        .map(|p| wit_prim(resolve, &p.ty))
+        .collect();
+    let result = func.result.as_ref().map(|t| wit_prim(resolve, t));
+    Some((params, result))
+}
+
+/// Navigates a `wasi:*` extern URN to its function in the vendored WIT.
+fn vendored_func(
+    urn: &str,
+) -> Option<(&'static wit_parser::Resolve, &'static wit_parser::Function)> {
     let resolve = vendored_resolve();
     let (iface_ver, fn_name) = urn.split_once('#')?;
     let iface_full = iface_ver.split_once('@').map_or(iface_ver, |(i, _)| i);
@@ -207,13 +221,30 @@ pub(super) fn vendored_extern_prim_sig(urn: &str) -> Option<ExternPrimSig> {
         .find_map(|(name, id)| (name.namespace == ns && name.name == pkg).then_some(*id))?;
     let iface_id = *resolve.packages[pkg_id].interfaces.get(iface_name)?;
     let func = resolve.interfaces[iface_id].functions.get(fn_name)?;
-    let params = func
-        .params
-        .iter()
-        .map(|p| wit_prim(resolve, &p.ty))
-        .collect();
-    let result = func.result.as_ref().map(|t| wit_prim(resolve, t));
-    Some((params, result))
+    Some((resolve, func))
+}
+
+/// WIT record-of-scalars return info for a `wasi:*` extern: the WIT
+/// type name (kebab) plus each field's kebab name and primitive type
+/// in declaration order. `None` unless the function returns a named
+/// record whose fields are all primitives.
+pub(super) fn vendored_extern_record_return(
+    urn: &str,
+) -> Option<(String, Vec<(String, PrimitiveValType)>)> {
+    let (resolve, func) = vendored_func(urn)?;
+    let wit_parser::Type::Id(id) = func.result.as_ref()? else {
+        return None;
+    };
+    let td = &resolve.types[*id];
+    let wit_parser::TypeDefKind::Record(rec) = &td.kind else {
+        return None;
+    };
+    let name = td.name.clone()?;
+    let mut fields = Vec::new();
+    for field in &rec.fields {
+        fields.push((field.name.clone(), wit_prim(resolve, &field.ty)?));
+    }
+    Some((name, fields))
 }
 
 /// HTTP-entry programs route here. Unlike the CLI path (which
@@ -473,6 +504,27 @@ pub(super) fn wrap(
                         let idx = next_local_ty;
                         next_local_ty += 1;
                         Some(idx)
+                    }
+                    Some(IndirectReturnShape::ScalarRecord {
+                        wit_name, fields, ..
+                    }) => {
+                        // Records referenced by imported functions must
+                        // be *named* — define the record, then export
+                        // it under the WIT type name and reference the
+                        // exported alias (same pattern as the stdout
+                        // `error-code` enum above).
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .record(fields.iter().map(|fld| {
+                                (fld.wit_name.as_str(), ComponentValType::Primitive(fld.prim))
+                            }));
+                        let anon = next_local_ty;
+                        next_local_ty += 1;
+                        iface_ty.export(wit_name, ComponentTypeRef::Type(TypeBounds::Eq(anon)));
+                        let named = next_local_ty;
+                        next_local_ty += 1;
+                        Some(named)
                     }
                     None => None,
                 };

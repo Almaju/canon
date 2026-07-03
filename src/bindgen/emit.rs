@@ -504,7 +504,10 @@ fn emit_function(
     // compounds that would otherwise slip through.
     let compound_narrow = |t: &Type| has_narrow_int(resolve, t) && !is_plain_int(resolve, t);
     if func.params.iter().any(|p| compound_narrow(&p.ty))
-        || func.result.as_ref().is_some_and(compound_narrow)
+        || func
+            .result
+            .as_ref()
+            .is_some_and(|t| compound_narrow(t) && !is_scalar_record(resolve, t))
     {
         return Err("sub-u64 integer inside a compound shape (codegen gap)".into());
     }
@@ -608,6 +611,33 @@ fn is_bare_result(resolve: &Resolve, t: &Type) -> bool {
 /// tuples, results) so e.g. `option<u32>` or `record { x: u8 }` are
 /// detected. Resources and futures/streams are already filtered
 /// upstream and treated as terminal misses.
+/// True when `t` is a named record whose fields are all scalar
+/// primitives — the shape the codegen's `ScalarRecord` indirect
+/// return decodes (see `IndirectReturnShape::ScalarRecord`).
+fn is_scalar_record(resolve: &Resolve, t: &Type) -> bool {
+    let Type::Id(id) = t else { return false };
+    match &resolve.types[*id].kind {
+        TypeDefKind::Type(inner) => is_scalar_record(resolve, inner),
+        TypeDefKind::Record(rec) => rec.fields.iter().all(|f| {
+            matches!(
+                f.ty,
+                Type::Bool
+                    | Type::U8
+                    | Type::U16
+                    | Type::U32
+                    | Type::U64
+                    | Type::S8
+                    | Type::S16
+                    | Type::S32
+                    | Type::S64
+                    | Type::F32
+                    | Type::F64
+            )
+        }),
+        _ => false,
+    }
+}
+
 /// True when `t` is (an alias chain to) a plain WIT integer type —
 /// the shape the WIT-informed extern lowering handles directly.
 fn is_plain_int(resolve: &Resolve, t: &Type) -> bool {

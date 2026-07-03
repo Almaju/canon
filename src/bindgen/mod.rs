@@ -10,7 +10,7 @@
 //!     was emitted. Used by `main.rs`.
 
 mod emit;
-mod naming;
+pub mod naming;
 
 use std::fs;
 use std::path::{Path, PathBuf};

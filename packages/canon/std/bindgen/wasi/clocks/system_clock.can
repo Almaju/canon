@@ -9,3 +9,5 @@ InstantNanoseconds = Int
 InstantSeconds = Int
 
 getResolution = () -> Duration
+
+now = () -> Instant

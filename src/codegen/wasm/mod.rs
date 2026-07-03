@@ -216,11 +216,53 @@ fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             }
         }
 
+        // Record-of-scalars returns (e.g. `instant`): the vendored WIT
+        // tells us the exact canonical layout; the decode rebuilds the
+        // Canon product. Takes precedence over `classify_return`, which
+        // would otherwise misread the product's flat i32 pointer repr
+        // as a scalar.
+        let mut record_shape: Option<IndirectReturnShape> = None;
+        if component_ns.starts_with("wasi:") {
+            if let (Some((wit_name, wit_fields)), Some(product)) = (
+                component::vendored_extern_record_return(&ext.path),
+                named_type_name(&func.return_ty),
+            ) {
+                let mut off = 0u32;
+                let mut max_align = 1u32;
+                let mut fields = Vec::new();
+                for (fname, prim) in &wit_fields {
+                    let (fsize, falign) = prim_size_align(*prim);
+                    off = off.div_ceil(falign) * falign;
+                    max_align = max_align.max(falign);
+                    fields.push(RecordField {
+                        wit_name: fname.clone(),
+                        canon_name: format!(
+                            "{}{}",
+                            product,
+                            crate::bindgen::naming::kebab_to_pascal(fname)
+                        ),
+                        prim: *prim,
+                        offset: off,
+                    });
+                    off += fsize;
+                }
+                let size = off.div_ceil(max_align) * max_align;
+                record_shape = Some(IndirectReturnShape::ScalarRecord {
+                    wit_name,
+                    product,
+                    fields,
+                    size,
+                });
+                results = vec![ValType::I32];
+            }
+        }
+
         // Determine the result shape. We support: nothing, a single flat
         // scalar, a bare `string`, or `result<string-alias, string-alias>`.
         // Anything else is too exotic for the current canonical-ABI
         // lowerings.
-        let indirect_return = classify_return(&func.return_ty, &results, &type_defs);
+        let indirect_return =
+            record_shape.or_else(|| classify_return(&func.return_ty, &results, &type_defs));
         match (&indirect_return, results.len()) {
             (None, 0) | (None, 1) => {}
             (Some(_), _) => {
@@ -462,6 +504,17 @@ fn push_param_kind(
 fn is_narrow_prim(p: wasm_encoder::PrimitiveValType) -> bool {
     use wasm_encoder::PrimitiveValType as P;
     matches!(p, P::U8 | P::U16 | P::U32 | P::S8 | P::S16 | P::S32)
+}
+
+/// Canonical-ABI size and alignment of a scalar primitive.
+fn prim_size_align(p: wasm_encoder::PrimitiveValType) -> (u32, u32) {
+    use wasm_encoder::PrimitiveValType as P;
+    match p {
+        P::Bool | P::U8 | P::S8 => (1, 1),
+        P::U16 | P::S16 => (2, 2),
+        P::U32 | P::S32 | P::F32 | P::Char => (4, 4),
+        _ => (8, 8),
+    }
 }
 
 fn scalar_val_type_to_primitive(vt: ValType, signed: bool) -> wasm_encoder::PrimitiveValType {
@@ -879,6 +932,36 @@ pub(super) enum IndirectReturnShape {
     /// Canon's `List<String>` representation, so the pair is pushed
     /// directly as `Ty::List`.
     ListString,
+    /// A record whose fields are all scalar primitives (e.g.
+    /// `wasi:clocks/system_clock#now`'s `instant`). The host writes
+    /// the canonical record layout into the ret area; the decode
+    /// copies each field into a fresh Canon product struct (the
+    /// bindgen renders the record as `Product = ProductFieldA *
+    /// ProductFieldB` with `Int`-newtype fields), widening narrow
+    /// ints to i64 on the way.
+    ScalarRecord {
+        /// WIT type name in kebab (`"instant"`) — the component-level
+        /// record type is exported under this name.
+        wit_name: String,
+        /// Canon product type name (`"Instant"`).
+        product: String,
+        /// Per-field decode info, in WIT declaration order.
+        fields: Vec<RecordField>,
+        /// Canonical size of the record (ret-area allocation).
+        size: u32,
+    },
+}
+
+/// One field of a `ScalarRecord` indirect return.
+#[derive(Clone, Debug)]
+pub(super) struct RecordField {
+    /// WIT field name in kebab (`"nanoseconds"`).
+    pub(super) wit_name: String,
+    /// Canon product field name (`"InstantNanoseconds"`).
+    pub(super) canon_name: String,
+    pub(super) prim: wasm_encoder::PrimitiveValType,
+    /// Byte offset within the canonical record layout.
+    pub(super) offset: u32,
 }
 
 impl IndirectReturnShape {
@@ -889,6 +972,7 @@ impl IndirectReturnShape {
             IndirectReturnShape::ResultStringString { .. } => 12,
             IndirectReturnShape::OptionString => 12,
             IndirectReturnShape::ListString => 8,
+            IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }
 }
@@ -1714,6 +1798,9 @@ impl<'m> WasmGen<'m> {
                 }
                 Some(IndirectReturnShape::OptionString) => Ty::NamedPtr("Option".to_string()),
                 Some(IndirectReturnShape::ListString) => Ty::List,
+                Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
+                    Ty::NamedPtr(product.clone())
+                }
                 None => result_ty,
             };
             let info = FuncInfo {
@@ -4180,6 +4267,101 @@ impl<'m> WasmGen<'m> {
                     memory_index: 0,
                 }));
                 Ty::List
+            }
+            IndirectReturnShape::ScalarRecord {
+                product, fields, ..
+            } => {
+                // Copy each canonical field into a fresh Canon product
+                // struct, widening narrow ints to i64. The ret area is
+                // still in the `alloc_ptr` local ($alloc the function
+                // doesn't touch codegen locals).
+                use wasm_encoder::PrimitiveValType as P;
+                let layout = self.product_field_layout(&product);
+                let total: u32 = layout
+                    .iter()
+                    .map(|(n, _, _)| self.field_byte_size(n))
+                    .sum::<u32>()
+                    .max(4);
+                f.instruction(&Instruction::I32Const(total as i32));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                for field in &fields {
+                    let Some((_, repr, canon_off)) =
+                        layout.iter().find(|(n, _, _)| n == &field.canon_name)
+                    else {
+                        continue;
+                    };
+                    f.instruction(&Instruction::LocalGet(scope.rbool()));
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    let off = field.offset as u64;
+                    match field.prim {
+                        P::U64 | P::S64 => {
+                            f.instruction(&Instruction::I64Load(MemArg {
+                                offset: off,
+                                align: 3,
+                                memory_index: 0,
+                            }));
+                        }
+                        P::F64 => {
+                            f.instruction(&Instruction::F64Load(MemArg {
+                                offset: off,
+                                align: 3,
+                                memory_index: 0,
+                            }));
+                        }
+                        P::U32 | P::S32 | P::U16 | P::S16 | P::U8 | P::S8 | P::Bool | P::Char => {
+                            match field.prim {
+                                P::U16 | P::S16 => {
+                                    f.instruction(&Instruction::I32Load16U(MemArg {
+                                        offset: off,
+                                        align: 1,
+                                        memory_index: 0,
+                                    }));
+                                }
+                                P::U8 | P::S8 | P::Bool => {
+                                    f.instruction(&Instruction::I32Load8U(MemArg {
+                                        offset: off,
+                                        align: 0,
+                                        memory_index: 0,
+                                    }));
+                                }
+                                _ => {
+                                    f.instruction(&Instruction::I32Load(MemArg {
+                                        offset: off,
+                                        align: 2,
+                                        memory_index: 0,
+                                    }));
+                                }
+                            }
+                            if matches!(field.prim, P::S8 | P::S16 | P::S32) {
+                                f.instruction(&Instruction::I64ExtendI32S);
+                            } else {
+                                f.instruction(&Instruction::I64ExtendI32U);
+                            }
+                        }
+                        _ => {
+                            f.instruction(&Instruction::I64Const(0));
+                        }
+                    }
+                    match repr {
+                        Ty::F64 => {
+                            f.instruction(&Instruction::F64Store(MemArg {
+                                offset: *canon_off as u64,
+                                align: 3,
+                                memory_index: 0,
+                            }));
+                        }
+                        _ => {
+                            f.instruction(&Instruction::I64Store(MemArg {
+                                offset: *canon_off as u64,
+                                align: 3,
+                                memory_index: 0,
+                            }));
+                        }
+                    }
+                }
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr(product)
             }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
                 // Flip the WIT discriminant (byte 0) into Canon's tag
