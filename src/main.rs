@@ -1132,7 +1132,7 @@ fn synthesise_test_main(tests: &[String]) -> String {
         ));
         src.push_str("    )");
         if i > 0 {
-            src.push_str(")");
+            src.push(')');
         }
     }
     src.push_str(".eq(0).(\n");
