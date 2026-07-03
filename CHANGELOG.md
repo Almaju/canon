@@ -46,6 +46,31 @@ the VS Code Marketplace by CI and attached to every release as a
 `.vsix`. The Zed extension is registry-ready (repository metadata,
 v0.4.0). Publishing runbook in `editors/PUBLISHING.md`.
 
+**JSON prelude.** JSON literals need no import — like `Option` and
+`Result`, JSON is ambient. A static literal (`{"k":"v"}`) is a
+compile-time constant with `String`'s methods, valid in every world
+including HTTP handlers; the loader pulls in `canon/std/Json`
+automatically when a program uses interpolation, the validating
+`Json(...)` constructor, or `.ToJson()`. Interpolation inside an HTTP
+handler now fails at build with a clear unsatisfiable-imports error
+instead of silently serving an empty body.
+
+**`parallel`/`race` are methods.** The combinators use the ordinary
+commutative method-call shape — `a.parallel(b)` / `a.race(b)` — and
+the bare `parallel(a, b)` call form (the only bare free-function call
+in the language) is now a compile error steering to the method
+spelling.
+
+**Docs are compiler-checked prose.** Every ```` ```canon ```` block in
+the book was run through the real `canon check`/`canon fmt`: product
+constructors use the value-level `*` form everywhere (the comma form
+never was part of the language), the JSON tutorial and `notes-api`
+example build bodies from JSON literals instead of escape-heavy
+strings, the stdlib reference's import paths match the loader
+(`fs/`, `http/`, `time/` sub-namespaces), stale HTTP-capability
+claims were corrected, and 31 non-canonically-formatted snippets now
+match `canon fmt` output exactly.
+
 ### Language — Breaking Changes
 
 **Domain-first value model replaces capability system.**
