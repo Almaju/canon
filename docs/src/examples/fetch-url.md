@@ -25,6 +25,7 @@ $ canon run examples/fetch-url
 
 ```canon
 Url = (String) -> Result<Url, InvalidUrl>
+
 get = (Url) -> Result<String, HttpError>
 ```
 

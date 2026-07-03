@@ -20,7 +20,9 @@ shout = (Greeting) -> String {
 }
 
 main = () -> Unit {
-    Greeting("howdy").shout().print()
+    Greeting("howdy")
+        .shout()
+        .print()
 }
 ```
 
@@ -38,7 +40,8 @@ expression is the return value. There are no semicolons.
 
 ```canon
 readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
-    File.read(Path)?
+    File
+        .read(Path)?
         .parse()?
         .validate()
 }
@@ -62,8 +65,8 @@ When two components share the same type, introduce a newtype alias — product m
 ```canon
 OtherInt = Int
 
-add = (Int * OtherInt) -> Int {
-    Int.plus(OtherInt)
+sum = (Int * OtherInt) -> Int {
+    Int.add(OtherInt)
 }
 ```
 

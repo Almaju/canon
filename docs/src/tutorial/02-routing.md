@@ -42,11 +42,13 @@ notFound = () -> Body {
 
 serve = (Request) -> Response {
     Request.path().(
-        * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
+        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
         * (Some<String>) -> Response {
             String.(
-                * ("/notes") -> Response { Response(Body("all the notes"), Headers(), Status(200)) }
-                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+                * ("/notes") -> Response {
+                    Response(Body("all the notes") * Headers() * Status(200))
+                }
+                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )

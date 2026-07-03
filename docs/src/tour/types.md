@@ -24,9 +24,13 @@ implementation of the `Print` trait.
 A union expresses "this or that":
 
 ```canon
-Bit  = Off + On
+Bit = Off + On
+
 Bool = False + True
-Ord  = Equal + Greater + Less
+
+Ord = Equal
+  + Greater
+  + Less
 ```
 
 Variants must be listed in alphabetical order. There is no separate `enum`
@@ -71,6 +75,7 @@ Aliasing a type creates a distinct new type that wraps the original:
 
 ```canon
 Birthday = String
+
 Username = String
 ```
 
@@ -136,10 +141,14 @@ Recursive type definitions are allowed and **boxed automatically**:
 
 ```canon
 Branch = Left * Right * Value
-Left   = Tree
-Right  = Tree
-Tree   = Branch + Leaf
-Value  = Int
+
+Left = Tree
+
+Right = Tree
+
+Tree = Branch + Leaf
+
+Value = Int
 ```
 
 There is no user-visible `Box<T>`. The compiler chooses an indirection

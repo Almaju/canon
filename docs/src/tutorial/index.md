@@ -30,8 +30,8 @@ compilation model. Each chapter introduces exactly one idea:
    rule: a function returning `Response` *is* an HTTP service.
 2. **[Routing Is Dispatch](./02-routing.md)** — no route DSL; routing is
    the same union dispatch used everywhere else.
-3. **[JSON, Without a Framework](./03-json.md)** — compose JSON bodies
-   from strings and `toJsonArray`.
+3. **[JSON, Without a Framework](./03-json.md)** — JSON bodies are
+   JSON literals; no serializer, no middleware.
 4. **[Growing Into Modules](./04-modules.md)** — a real package: a `Note`
    type in its own file, imported with `use`.
 5. **[Testing the API](./05-testing.md)** — `canon test` and the

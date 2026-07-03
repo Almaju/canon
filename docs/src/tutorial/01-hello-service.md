@@ -10,7 +10,7 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 serve = (Request) -> Response {
-    Response(Body("hello from canon"), Headers(), Status(200))
+    Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
 
@@ -52,12 +52,16 @@ Two consequences you'll run into later:
 
 ## The Response
 
-`Response` is an ordinary product type, so its constructor takes its
-components — in alphabetical order, like every Canon product:
+`Response` is an ordinary product type (`Body * Headers * Status`), so
+its constructor takes a value-level product — the components joined
+with `*`, in alphabetical order, like every Canon product:
 
 ```canon
-Response(Body("hello from canon"), Headers(), Status(200))
+Response(Body("hello from canon") * Headers() * Status(200))
 ```
+
+`*` is the same operator at both levels: it composes product *types* in
+declarations and product *values* at construction sites.
 
 - `Body` is a newtype over `String` — the response body.
 - `Headers()` constructs an empty header set.

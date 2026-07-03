@@ -13,7 +13,7 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 greet = (Request) -> Response {
-    Response(Body("hello from canon"), Headers(), Status(200))
+    Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
 
@@ -37,7 +37,7 @@ return a world type — helpers must return ordinary values:
 
 ```canon
 notFound = () -> Body {
-    Body("{\"error\":\"not found\"}")
+    Body({"error":"not found"})
 }
 ```
 
@@ -56,11 +56,11 @@ mandatory `(String)` catch-all as the 404:
 ```canon
 serve = (Request) -> Response {
     Request.path().(
-        * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
+        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
         * (Some<String>) -> Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
-                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
+                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -73,14 +73,16 @@ in scope under its type name inside every arm.
 
 ## Response composition
 
-`Response(Body * Headers * Status)` — fields in alphabetical order,
-like every Canon product:
+`Response` is the product `Body * Headers * Status`, so a response is
+constructed as a value-level product — components joined with `*`, in
+alphabetical order, like every Canon product:
 
 - **`Body`** is a `String` newtype. The compiled component streams it
   through a real `wasi:http` contents stream with a correct
   `Content-Length`.
-- **`Headers()`** constructs an empty header set. (Setting individual
-  headers is not wired up yet.)
+- **`Headers()`** constructs an empty header set;
+  `.set(name, value)` adds a header and returns the set, so headers
+  chain: `Headers().set("content-type", "application/json")`.
 - **`Status`** is an `Int` newtype and can be computed: dispatch to a
   `Status(404)` arm, or build it from any expression.
 
@@ -114,6 +116,8 @@ compliant WASI HTTP host instantiates. `canon run` hosts it on the
 embedded wasmtime, but the `.wasm` itself is not tied to Canon's
 runtime in any way.
 
+Also available on the request: `Request.method()` returns the HTTP
+verb as a `String`, so REST routing is literal dispatch on the method.
 Not wired up yet (tracked in `WASI-HTTP-HANDLER.md`): reading the
-request method, headers, and body; setting response headers; and
-streaming response bodies (`STREAMING.md`).
+request *headers* and *body*, and streaming response bodies
+(`STREAMING.md`).

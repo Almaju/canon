@@ -42,7 +42,7 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 home = (Request) -> Response {
-    Response(Body("created: ".concat("ok")), Headers(), Status(201))
+    Response(Body("created: ".concat("ok")) * Headers() * Status(201))
 }
 "#,
     )
@@ -130,7 +130,7 @@ use canon/std/http/Response
 use canon/std/http/Status
 
 home = (Request) -> Response {
-    Response(Body("<h1>hi</h1>"), Headers().set("content-type", "text/html").set("x-canon", "1"), Status(200))
+    Response(Body("<h1>hi</h1>") * Headers().set("content-type", "text/html").set("x-canon", "1") * Status(200))
 }
 "#,
     )
@@ -218,9 +218,9 @@ use canon/std/http/Status
 
 serve = (Request) -> Response {
     Request.method().(
-        * ("GET") -> Response { Response(Body("got GET"), Headers(), Status(200)) }
-        * ("POST") -> Response { Response(Body("got POST"), Headers(), Status(201)) }
-        * (String) -> Response { Response(Body("no ".concat(String)), Headers(), Status(405)) }
+        * ("GET") -> Response { Response(Body("got GET") * Headers() * Status(200)) }
+        * ("POST") -> Response { Response(Body("got POST") * Headers() * Status(201)) }
+        * (String) -> Response { Response(Body("no ".concat(String)) * Headers() * Status(405)) }
     )
 }
 "#,

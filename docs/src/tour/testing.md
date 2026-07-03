@@ -12,7 +12,8 @@ A test is any function with the signature `() -> TestResult`:
 use canon/std/TestResult
 
 testAddPositive = () -> TestResult {
-    1.add(2)
+    1
+        .add(2)
         .eq(3)
         .assert("1 + 2 should be 3")
 }
@@ -23,6 +24,7 @@ Canon:
 
 ```canon
 Fail = String
+
 Pass = Unit
 
 TestResult = Fail + Pass
@@ -76,7 +78,7 @@ render = (Note) -> String {
 testRenderWrapsTitle = () -> TestResult {
     Note("ship it")
         .render()
-        .eq("{\"title\":\"ship it\"}")
+        .eq({"title":"ship it"})
         .assert("render should wrap the title in a JSON object")
 }
 ```

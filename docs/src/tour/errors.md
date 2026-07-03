@@ -54,7 +54,8 @@ left-to-right:
 
 ```canon
 readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
-    File.read(Path)?
+    File
+        .read(Path)?
         .parse()?
         .validate()
 }

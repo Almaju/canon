@@ -53,8 +53,12 @@ Two ideas in eight lines:
   what you write where other languages write a comment, a variable name,
   or a wrapper class.
 - **`render` is the serializer.** It builds the JSON encoding of one
-  note by chaining `concat`. Note the receiver: inside the body, the
-  note is referenced as `Note` — components are named by their types.
+  note by chaining `concat`. A JSON *literal* can't do this job yet:
+  interpolating a value (`{"title":Note}`) rides `canon/std/Json`'s
+  host-backed `ToJson`, which the HTTP world can't satisfy — so dynamic
+  encoding in a handler is honest string concatenation, escapes and
+  all. Note the receiver: inside the body, the note is referenced as
+  `Note` — components are named by their types.
 
 ## The Entry, Rewritten
 
@@ -73,7 +77,7 @@ indexBody = () -> Body {
 }
 
 notFound = () -> Body {
-    Body("{\"error\":\"not found\"}")
+    Body({"error":"not found"})
 }
 
 noteOneBody = () -> Body {
@@ -82,21 +86,24 @@ noteOneBody = () -> Body {
 
 serve = (Request) -> Response {
     Request.path().(
-        * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
+        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
         * (Some<String>) -> Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOneBody(), Headers(), Status(200)) }
-                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
+                * ("/notes/1") -> Response { Response(noteOneBody() * Headers() * Status(200)) }
+                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )
 }
 ```
 
-The behaviour is identical to chapter 3 — same routes, same bytes — but
-the JSON encoding now lives in exactly one place, next to the type it
-encodes:
+`indexBody` composes the array dynamically now:
+`List<String>.toJsonArray()` is a compiler builtin that joins
+already-encoded JSON fragments into an array, so the static array
+literal from chapter 3 gives way to encoding each `Note` once. The
+behaviour is identical — same routes, same bytes — but the JSON
+encoding now lives in exactly one place, next to the type it encodes:
 
 ```sh
 $ canon run notes-api

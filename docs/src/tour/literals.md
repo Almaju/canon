@@ -27,6 +27,7 @@ A handful of literals desugar to their constructors:
 | `1.0`       | `Float(1.0)`      |
 | `"abc"`     | `String("abc")`   |
 | `0xFF0000`  | `Hex(0xFF0000)`   |
+| `{"k":v}`, `[v]` | a `Json` value ([JSON literals](../spec/expressions.md#json-literals)) |
 
 Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
 String literals exist to avoid the parsing ambiguity of bare `String(...)`
@@ -50,8 +51,7 @@ PascalCase name is always a field access.
 
 ## Constructing a Product
 
-Product constructors take their components joined with value-level `*`
-(positional comma form also accepted):
+Product constructors take their components joined with value-level `*`:
 
 ```canon
 User(Birthday("1990") * Username("ahanot"))
