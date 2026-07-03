@@ -170,19 +170,25 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
 
     check_ordering(module, entry_items_start, http_entry_name, &mut errors);
 
-    match (main_found, http_entries.len()) {
-        // CLI program: `main` exists, no HTTP entry. Existing behaviour.
-        (true, 0) => {}
-        // Library or malformed: neither entry shape is present.
-        (false, 0) => errors.push(CanonError::CheckError {
-            message: "no entry point defined: expected either a `main` function or a free \
-                      function returning `Response` (HTTP handler). See \
-                      `WASI-HTTP-HANDLER.md` §Entry-point selection."
+    // Detect the web-app entry triple (`init` / `update` / `view`,
+    // see `WEB-TARGET.md`). Scanned over the entry file's items, same
+    // as HTTP entries.
+    let web_entry = crate::ast::find_web_entry(&module.items[entry_items_start..]);
+
+    match (main_found, http_entries.len(), web_entry.is_some()) {
+        // CLI program: `main` exists, no other entry. Existing behaviour.
+        (true, 0, false) => {}
+        // Library or malformed: no entry shape is present.
+        (false, 0, false) => errors.push(CanonError::CheckError {
+            message: "no entry point defined: expected a `main` function, a free function \
+                      returning `Response` (HTTP handler), or an `init`/`update`/`view` \
+                      triple (web app). See `WASI-HTTP-HANDLER.md` §Entry-point selection \
+                      and `WEB-TARGET.md`."
                 .to_string(),
             span: module.span,
         }),
         // Mixed worlds: a component exports exactly one world.
-        (true, _) => errors.push(CanonError::CheckError {
+        (true, n, _) if n > 0 => errors.push(CanonError::CheckError {
             message: format!(
                 "mixed worlds: this module defines `main` (CLI entry) and also `{}` returning \
                   `Response` (HTTP entry). A component exports exactly one world. Remove one. \
@@ -191,8 +197,24 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             ),
             span: http_entries[0].span,
         }),
+        (true, 0, true) => errors.push(CanonError::CheckError {
+            message: "mixed worlds: this module defines `main` (CLI entry) and also the \
+                      `init`/`update`/`view` triple (web app). A component exports exactly \
+                      one world. Remove one. See `WEB-TARGET.md`."
+                .to_string(),
+            span: module.span,
+        }),
+        (false, n, true) if n > 0 => errors.push(CanonError::CheckError {
+            message: format!(
+                "mixed worlds: this module defines `{}` returning `Response` (HTTP entry) \
+                  and also the `init`/`update`/`view` triple (web app). A component exports \
+                  exactly one world. Remove one. See `WEB-TARGET.md`.",
+                http_entries[0].name.name
+            ),
+            span: http_entries[0].span,
+        }),
         // Ambiguous HTTP entry.
-        (false, n) if n > 1 => errors.push(CanonError::CheckError {
+        (false, n, false) if n > 1 => errors.push(CanonError::CheckError {
             message: format!(
                 "ambiguous HTTP entry: `{}` and `{}` both return `Response`. Exactly one \
                   free function may be the entry. Refactor helpers to return a non-world type. \
@@ -203,7 +225,10 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         }),
         // Exactly one HTTP entry: a well-formed `wasi:http/service`
         // program. Codegen routes it through `wrap_http_service`.
-        (false, 1) => {}
+        (false, 1, false) => {}
+        // Web app: the triple is present and no other world competes.
+        // Codegen routes it through `compile_web`.
+        (false, 0, true) => {}
         _ => unreachable!(),
     }
 

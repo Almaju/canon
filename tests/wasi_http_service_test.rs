@@ -23,6 +23,9 @@ use std::time::{Duration, Instant};
 /// Distinct from the ports in `http_handler_test.rs` so the test
 /// binaries can run in parallel.
 const TEST_PORT: u16 = 38431;
+/// Separate port for the headers test — the two tests in this binary
+/// may run concurrently.
+const HEADERS_TEST_PORT: u16 = 38432;
 
 #[test]
 fn wasi_http_service_smoke() {
@@ -105,6 +108,92 @@ home = (Request) -> Response {
 
     let _ = child.kill();
     let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
+/// Response headers: `Headers().set(name, value)` chains compile to
+/// real `[method]fields.append` calls, so the values reach the wire.
+/// Pins the slice-2 headers wiring (previously `.set` silently
+/// degraded to empty headers).
+#[test]
+fn wasi_http_service_response_headers() {
+    let workdir = std::env::temp_dir().join(format!("canon_wasi_http_hdr_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let src_path = workdir.join("service.can");
+    std::fs::write(
+        &src_path,
+        r#"use canon/std/http/Body
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
+
+home = (Request) -> Response {
+    Response(Body("<h1>hi</h1>"), Headers().set("content-type", "text/html").set("x-canon", "1"), Status(200))
+}
+"#,
+    )
+    .unwrap();
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let addr = format!("127.0.0.1:{HEADERS_TEST_PORT}");
+    let mut child = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&src_path)
+        .arg("--addr")
+        .arg(&addr)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn `canon run --addr`");
+
+    let start = Instant::now();
+    let mut bound = false;
+    while start.elapsed() < Duration::from_secs(10) {
+        if TcpStream::connect(&addr).is_ok() {
+            bound = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if !bound {
+        let _ = child.kill();
+        let out = child.wait_with_output().ok();
+        let diag = out
+            .map(|o| {
+                format!(
+                    "stdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                )
+            })
+            .unwrap_or_default();
+        panic!("server never bound {addr}\n{diag}");
+    }
+
+    let response = send_request(&addr).unwrap_or_else(|e| {
+        let _ = child.kill();
+        panic!("request failed: {e}");
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+    let head = response
+        .split("\r\n\r\n")
+        .next()
+        .unwrap_or(&response)
+        .to_ascii_lowercase();
+    assert!(
+        head.contains("content-type: text/html"),
+        "expected content-type header from Headers().set, got:\n{response}"
+    );
+    assert!(
+        head.contains("x-canon: 1"),
+        "expected second chained header, got:\n{response}"
+    );
+    assert!(
+        response.ends_with("<h1>hi</h1>"),
+        "expected the html body, got:\n{response}"
+    );
     let _ = std::fs::remove_dir_all(&workdir);
 }
 

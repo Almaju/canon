@@ -1,0 +1,25 @@
+use canon/std/web/Html
+use canon/std/web/Msg
+
+Model = Int
+
+init = () -> Model {
+    Model(0)
+}
+
+update = (Model * String) -> Model {
+    String.(
+        * ("Decrement") -> Model { Model(Model.sub(1)) }
+        * ("Increment") -> Model { Model(Model.add(1)) }
+        * (String) -> Model { Model }
+    )
+}
+
+view = (Model) -> Html {
+    "Canon Counter"
+        .h1()
+        .concat(Msg("Decrement").button("-"))
+        .concat(Model.toText().span())
+        .concat(Msg("Increment").button("+"))
+        .div()
+}

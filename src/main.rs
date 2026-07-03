@@ -978,6 +978,30 @@ fn build_spec(spec: &BuildSpec) -> bool {
         return false;
     }
     let component_bytes = codegen::generate(&loaded.module);
+
+    // Web apps get the three-file bundle instead of a `.wasm` + `.wit`
+    // pair — the output is a directory you can serve as-is (or open
+    // via `canon run`, which serves it for you).
+    if canon::ast::find_web_entry(&loaded.module.items).is_some() {
+        if let Err(e) =
+            canon::webhost::write_bundle(&spec.output_dir, &spec.output_stem, &component_bytes)
+        {
+            eprintln!("error: {e}");
+            return false;
+        }
+        println!(
+            "Compiled to: {}",
+            spec.output_dir
+                .join(format!("{}.wasm", spec.output_stem))
+                .display()
+        );
+        println!(
+            "Web bundle : {} (index.html + canon-web.js — serve the directory, or `canon run`)",
+            spec.output_dir.display()
+        );
+        return true;
+    }
+
     let wit_text = codegen::generate_wit(&loaded.module);
     let wasm_path = spec.output_dir.join(format!("{}.wasm", spec.output_stem));
     let wit_path = spec.output_dir.join(format!("{}.wit", spec.output_stem));
@@ -1251,6 +1275,24 @@ fn cmd_run(args: &[String]) {
         process::exit(1);
     }
     let component_bytes = codegen::generate(&loaded.module);
+
+    // Web-app programs (the `init`/`update`/`view` triple, see
+    // `WEB-TARGET.md`) compile to a browser-run core module — nothing
+    // for the embedded wasmtime to execute. Serve the three-file
+    // bundle over HTTP instead so the browser can load it.
+    if canon::ast::find_web_entry(&loaded.module.items).is_some() {
+        let bind_addr: std::net::SocketAddr = match &addr {
+            Some(raw) => raw.parse().unwrap_or_else(|e| {
+                eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
+                process::exit(1);
+            }),
+            None => "127.0.0.1:8080".parse().expect("static addr"),
+        };
+        if addr.is_none() {
+            eprintln!("web app detected — serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+        }
+        canon::webhost::serve_bundle(bind_addr, &spec.output_stem, component_bytes);
+    }
 
     // HTTP-entry programs (a free `(Request) -> Response` function)
     // compile to a `wasi:http/service` component — there is no

@@ -1,1 +1,1 @@
-error[tests/checker/fail/missing_main.can:0:0]: no entry point defined: expected either a `main` function or a free function returning `Response` (HTTP handler). See `WASI-HTTP-HANDLER.md` §Entry-point selection.
+error[tests/checker/fail/missing_main.can:0:0]: no entry point defined: expected a `main` function, a free function returning `Response` (HTTP handler), or an `init`/`update`/`view` triple (web app). See `WASI-HTTP-HANDLER.md` §Entry-point selection and `WEB-TARGET.md`.

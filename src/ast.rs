@@ -324,6 +324,57 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
     }
 }
 
+/// The Elm-architecture entry triple that makes a program a web app
+/// (see `WEB-TARGET.md`): a free `init = () -> Model`, an
+/// `update = (Model * String) -> Model`, and a `view = (Model) -> Html`.
+/// `Model` is the user's own type; `Html` comes from `canon/std/web`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebEntry {
+    /// The model type name — `view`'s receiver as written in source.
+    pub model: String,
+}
+
+/// Detects the web-app entry triple among `items`. Unlike the HTTP
+/// world, the web world can't key on a return type alone — every view
+/// helper returns `Html` — so detection keys on the conventional
+/// names `init` / `update` / `view` plus their shapes:
+///
+///   - `view`: a method (receiver = the model type) with no extra
+///     params returning `Html`,
+///   - `init`: a free zero-param function,
+///   - `update`: a method on the same receiver type as `view` with
+///     exactly one `String` param (the message).
+///
+/// Returns `None` unless all three line up.
+pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
+    let funcs = |name: &'static str| {
+        items.iter().filter_map(move |item| match item {
+            Item::Function(f) if f.name.name == name && f.extern_wasm.is_none() => Some(f),
+            _ => None,
+        })
+    };
+    let view = funcs("view").find(|f| {
+        f.receiver.is_some()
+            && f.params.is_empty()
+            && matches!(&f.return_ty, TypeExpr::Named { name, generics, .. }
+                        if name == "Html" && generics.is_empty())
+    })?;
+    let model = view.receiver.as_ref()?.name.clone();
+    funcs("init").find(|f| {
+        f.receiver.is_none()
+            && f.params.is_empty()
+            && matches!(&f.return_ty, TypeExpr::Named { name, .. } if *name == model)
+    })?;
+    funcs("update").find(|f| {
+        f.receiver.as_ref().map(|r| r.name.as_str()) == Some(model.as_str())
+            && f.params.len() == 1
+            && matches!(&f.params[0].ty, TypeExpr::Named { name, generics, .. }
+                        if name == "String" && generics.is_empty())
+            && matches!(&f.return_ty, TypeExpr::Named { name, .. } if *name == model)
+    })?;
+    Some(WebEntry { model })
+}
+
 /// Extract the receiver type from the first component of a parameter list.
 /// In the new syntax `name = (A * B * C) -> ...`, A is the receiver and B, C are params.
 /// For a single param `name = (A) -> ...`, A is the receiver with no extra params.

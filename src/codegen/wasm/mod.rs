@@ -78,7 +78,30 @@ const FN_HTTP_STREAM_WRITE: u32 = 14; // [stream-write-0]… (sync)   (i32,i32,i
 const FN_HTTP_STREAM_DROP_WRITABLE: u32 = 15; // [stream-drop-writable-0]… (i32) -> ()
 const FN_HTTP_TASK_RETURN: u32 = 16; // [task-return]handle
 const FN_HTTP_GET_PATH: u32 = 17; // [method]request.get-path-with-query (i32,i32) -> ()
-const HTTP_BASE_DEFINED: u32 = 18;
+const FN_HTTP_FIELDS_APPEND: u32 = 18; // [method]fields.append (i32 x6) -> ()
+const HTTP_BASE_DEFINED: u32 = 19;
+
+// ── Web-mode import indices ──────────────────────────────────────────
+// In web encoder mode (`compile_web`, see `WEB-TARGET.md`) the import
+// space is just the five stdout builtins at 0..4 — the bundled JS host
+// (`canon-web.js`) stubs them onto `console.log`. Defined functions
+// start right after.
+const WEB_BASE_DEFINED: u32 = 5;
+
+/// Flat core shape of a web app's model value (what the user's `init`
+/// returns), used by the export wrappers to normalize the model to
+/// the single opaque i64 the JS host threads through `update`/`view`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WebModelShape {
+    /// `Int`-aliased model — already i64.
+    I64,
+    /// `Float`-aliased model — reinterpreted to i64.
+    F64,
+    /// Product/union/option model — a heap pointer, zero-extended.
+    Ptr,
+    /// `String`-aliased model — (ptr, len) boxed into an 8-byte cell.
+    Str,
+}
 
 // Fixed scratch addresses used by HTTP-mode response construction.
 // `build_http_response` runs *inside* the user function; the sync
@@ -1254,6 +1277,50 @@ impl<'m> WasmGen<'m> {
         gen.fn_list_to_json_array = HTTP_BASE_DEFINED + 5;
         gen.fn_print_float = HTTP_BASE_DEFINED + 6;
         gen.fn_user_start = HTTP_BASE_DEFINED + 7;
+        gen.fn_waitable_set_new = u32::MAX;
+        gen.fn_waitable_join = u32::MAX;
+        gen.fn_waitable_set_wait = u32::MAX;
+        gen.fn_waitable_set_drop = u32::MAX;
+        gen.fn_subtask_drop = u32::MAX;
+        gen.fn_task_return = u32::MAX;
+        gen.fn_subtask_cancel = u32::MAX;
+        gen
+    }
+
+    /// Constructor for web encoder mode (`WEB-TARGET.md`). The browser
+    /// host implements only the stdout print stubs, so any extern
+    /// import is a hard error at this stage.
+    fn new_web(ast: &'m OModule) -> Self {
+        let mut gen = Self::new(ast);
+        gen.extern_imports.retain(|ext| {
+            !ext.component_namespace
+                .starts_with("canon:builtins/concurrent")
+        });
+        if !gen.extern_imports.is_empty() {
+            let names: Vec<String> = gen
+                .extern_imports
+                .iter()
+                .map(|e| e.full_path.clone())
+                .collect();
+            eprintln!(
+                "error: web-app programs can't use extern imports yet — the browser host \
+                 implements only the print surface. Found: {}. (Extending the web host's \
+                 import surface is tracked in WEB-TARGET.md.)",
+                names.join(", ")
+            );
+            std::process::exit(1);
+        }
+        // Defined functions start right after the five stdout imports.
+        // The three export wrappers (init/update/view) take the slots
+        // after `alloc`; `fn_start` doubles as the init-wrapper index.
+        gen.fn_print_str = WEB_BASE_DEFINED;
+        gen.fn_print_int = WEB_BASE_DEFINED + 1;
+        gen.fn_print_bool = WEB_BASE_DEFINED + 2;
+        gen.fn_alloc = WEB_BASE_DEFINED + 3;
+        gen.fn_start = WEB_BASE_DEFINED + 4; // init wrapper; update/view at +5/+6
+        gen.fn_list_to_json_array = WEB_BASE_DEFINED + 7;
+        gen.fn_print_float = WEB_BASE_DEFINED + 8;
+        gen.fn_user_start = WEB_BASE_DEFINED + 9;
         gen.fn_waitable_set_new = u32::MAX;
         gen.fn_waitable_join = u32::MAX;
         gen.fn_waitable_set_wait = u32::MAX;
@@ -2631,8 +2698,9 @@ impl<'m> WasmGen<'m> {
     /// The host-side `cabi_realloc` uses the same heap and honours the
     /// caller's requested alignment explicitly.
     fn build_alloc(&self) -> Function {
-        let mut f = Function::new([(1, ValType::I32)]); // local 1: aligned_ptr
-                                                        // aligned_ptr = (bump_ptr + 3) & ~3
+        // locals: 1 = aligned_ptr, 2 = new bump (allocation end)
+        let mut f = Function::new([(2, ValType::I32)]);
+        // aligned_ptr = (bump_ptr + 3) & ~3
         f.instruction(&Instruction::GlobalGet(GLOBAL_BUMP_PTR));
         f.instruction(&Instruction::I32Const(3));
         f.instruction(&Instruction::I32Add);
@@ -2642,7 +2710,32 @@ impl<'m> WasmGen<'m> {
         // bump_ptr = aligned_ptr + size
         f.instruction(&Instruction::LocalGet(0));
         f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalTee(2));
         f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+        // Grow memory when the allocation end passes the current
+        // size. Long-lived instances (web apps dispatching events,
+        // HTTP handlers) outlive the initial two pages; short-lived
+        // CLI runs never hit this branch. A failed grow is ignored —
+        // the subsequent store traps, which is the honest failure.
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::MemorySize(0));
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::I32Shl);
+        f.instruction(&Instruction::I32GtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // pages = (end - mem_bytes + 65535) >> 16
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::MemorySize(0));
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::I32Shl);
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::I32Const(65535));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::I32ShrU);
+        f.instruction(&Instruction::MemoryGrow(0));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::End);
         // return aligned_ptr
         f.instruction(&Instruction::LocalGet(1));
         f.instruction(&Instruction::End);
@@ -5789,6 +5882,49 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
+            // `headers.set(name, value)` — `[method]fields.append`. The
+            // stdlib binds `set` to `append`: on a freshly-constructed
+            // `fields` every `set` is the first write for its name, so
+            // append gives set semantics with the simpler single-value
+            // WIT shape. The `result<_, header-error>` lands in a fresh
+            // 20-byte ret area (disc at +0, `other(option<string>)`
+            // payload from +4) and is deliberately ignored — a rejected
+            // name/value degrades to "header absent", the same posture
+            // as `set-status-code`.
+            ("set", Ty::NamedPtr(ref n)) if n == "Headers" && self.http_mode => {
+                // Stack: [hdrs]. The two args are arbitrary user code —
+                // park both strings on the operand stack before touching
+                // any scratch local.
+                for a in args.iter().take(2) {
+                    let ty = self.compile_expr(a, scope, f);
+                    if !ty.is_str_like() {
+                        self.drop_value(ty, f);
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Const(0));
+                    }
+                }
+                for _ in args.len()..2 {
+                    f.instruction(&Instruction::I32Const(0));
+                    f.instruction(&Instruction::I32Const(0));
+                }
+                // Peel [hdrs, nptr, nlen, vptr, vlen] into locals — no
+                // user code runs from here on.
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // vlen
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // vptr
+                f.instruction(&Instruction::LocalSet(scope.addr_scratch())); // nlen
+                f.instruction(&Instruction::LocalSet(scope.map_elem_ptr())); // nptr
+                f.instruction(&Instruction::LocalSet(scope.rbool())); // hdrs
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.map_elem_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(20));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::Call(FN_HTTP_FIELDS_APPEND));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr("Headers".to_string())
+            }
             // ── Fallback: drop receiver + args, return Unit ────────────────────
             _ => {
                 self.drop_value(recv_ty, f);
@@ -6998,6 +7134,7 @@ impl<'m> WasmGen<'m> {
             &[ValType::I32, ValType::I32, ValType::I32],
         );
         let ty_response_new = self.get_or_add_wasm_type(&[ValType::I32; 5], &[]);
+        let ty_fields_append = self.get_or_add_wasm_type(&[ValType::I32; 6], &[]);
         let ty_task_return_handle = self.get_or_add_wasm_type(
             &[
                 ValType::I32,
@@ -7158,6 +7295,11 @@ impl<'m> WasmGen<'m> {
             "[method]request.get-path-with-query",
             EntityType::Function(TY_PRINT_STR),
         );
+        imports.import(
+            http,
+            "[method]fields.append",
+            EntityType::Function(ty_fields_append),
+        );
         m.section(&imports);
 
         // ── Function section ─────────────────────────────────────────
@@ -7269,6 +7411,382 @@ impl<'m> WasmGen<'m> {
 
         m.finish()
     }
+
+    /// Web encoder mode (`WEB-TARGET.md`): emits a self-contained core
+    /// module (own memory, own bump global) exporting the Elm-triple
+    /// ABI the bundled JS host (`canon-web.js`) drives:
+    ///
+    ///   init()                       -> i64        opaque model
+    ///   update(model, msg_ptr, len)  -> i64        msg is UTF-8 in guest memory
+    ///   view(model)                  -> (i32, i32) UTF-8 HTML (ptr, len)
+    ///   alloc(size)                  -> i32        lets JS place the msg bytes
+    ///   memory
+    ///
+    /// The model is whatever the user's `init` returns, normalized to
+    /// one opaque i64 the host threads back into `update`/`view` (see
+    /// `WebModelShape`). The only imports are the five stdout print
+    /// intrinsics, which the JS host maps onto `console.log` — so
+    /// `.print()` debugging works in the browser console.
+    fn compile_web(&mut self) -> Vec<u8> {
+        // Pre-passes — identical to `compile()`.
+        self.build_type_defs();
+        self.build_variant_info();
+        self.collect_all_strings();
+        self.assign_func_indices();
+        assert!(
+            self.fn_handler_wrapper.is_none(),
+            "handleRequest (legacy dynamic handler) can't coexist with a web entry"
+        );
+
+        let web = crate::ast::find_web_entry(&self.ast.items)
+            .expect("checker guarantees a web entry exists");
+        let model = web.model;
+
+        // Dynamic type registrations shared with `compile()` plus the
+        // three wrapper shapes.
+        let list_to_json_array_ty =
+            self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
+        let print_float_ty = self.get_or_add_wasm_type(&[ValType::F64], &[]);
+        let _list_map_loop_ty = self.get_or_add_wasm_type(
+            &[ValType::I32, ValType::I32, ValType::I32],
+            &[ValType::I32, ValType::I32, ValType::I32],
+        );
+        let ty_init_wrapper = self.get_or_add_wasm_type(&[], &[ValType::I64]);
+        let ty_update_wrapper =
+            self.get_or_add_wasm_type(&[ValType::I64, ValType::I32, ValType::I32], &[ValType::I64]);
+        let ty_view_wrapper =
+            self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
+
+        // The entry triple's compiled indices and the model's flat
+        // core shape (from `init`'s result signature).
+        let init_info = self
+            .func_table
+            .get(&(None, "init".to_string()))
+            .cloned()
+            .expect("web entry `init` missing from func table");
+        let update_info = self
+            .func_table
+            .get(&(Some(model.clone()), "update".to_string()))
+            .cloned()
+            .expect("web entry `update` missing from func table");
+        let view_info = self
+            .func_table
+            .get(&(Some(model.clone()), "view".to_string()))
+            .cloned()
+            .expect("web entry `view` missing from func table");
+        let sig_of = |type_idx: u32| -> &(Vec<ValType>, Vec<ValType>) {
+            &self.user_type_sigs[(type_idx - TY_USER_START) as usize]
+        };
+        let init_results = sig_of(init_info.type_idx).1.clone();
+        let model_shape = match init_results.as_slice() {
+            [ValType::I64] => WebModelShape::I64,
+            [ValType::F64] => WebModelShape::F64,
+            [ValType::I32] => WebModelShape::Ptr,
+            [ValType::I32, ValType::I32] => WebModelShape::Str,
+            other => {
+                eprintln!(
+                    "error: unsupported web model shape {other:?} — the model must be a \
+                     product, union, Int, Float, or String-aliased type"
+                );
+                std::process::exit(1);
+            }
+        };
+        let model_flat: &[ValType] = match model_shape {
+            WebModelShape::I64 => &[ValType::I64],
+            WebModelShape::F64 => &[ValType::F64],
+            WebModelShape::Ptr => &[ValType::I32],
+            WebModelShape::Str => &[ValType::I32, ValType::I32],
+        };
+        let (update_params, update_results) = sig_of(update_info.type_idx).clone();
+        let expected_update: Vec<ValType> = model_flat
+            .iter()
+            .chain(&[ValType::I32, ValType::I32])
+            .cloned()
+            .collect();
+        if update_params != expected_update || update_results != init_results {
+            eprintln!(
+                "error: web entry shape mismatch — `update` must be \
+                 `({model} * String) -> {model}` with the same model type `init` returns"
+            );
+            std::process::exit(1);
+        }
+        let (view_params, view_results) = sig_of(view_info.type_idx).clone();
+        if view_params != model_flat || view_results != [ValType::I32, ValType::I32] {
+            eprintln!(
+                "error: web entry shape mismatch — `view` must be `({model}) -> Html` \
+                 with the same model type `init` returns"
+            );
+            std::process::exit(1);
+        }
+
+        let mut m = Module::new();
+
+        // ── Type section — same fixed TY_* prefix as `compile()` ─────
+        let mut types = TypeSection::new();
+        types.ty().function([ValType::I32, ValType::I32], []); // 0
+        types.ty().function([ValType::I64], []); // 1
+        types.ty().function([ValType::I32], []); // 2
+        types.ty().function([], []); // 3
+        types.ty().function([ValType::I32], [ValType::I32]); // 4
+        types.ty().function([ValType::I32], [ValType::I32]); // 5
+        types.ty().function([], [ValType::I64]); // 6
+        types
+            .ty()
+            .function([ValType::I32, ValType::I32, ValType::I32], [ValType::I32]); // 7
+        types.ty().function([], [ValType::I32]); // 8
+        let user_sigs: Vec<_> = self.user_type_sigs.clone();
+        for (params, results) in &user_sigs {
+            types
+                .ty()
+                .function(params.iter().cloned(), results.iter().cloned());
+        }
+        m.section(&types);
+
+        // ── Import section: the five stdout print intrinsics only ────
+        const STDOUT_MODULE: &str = "wasi:cli/stdout@0.3.0-rc-2026-03-15";
+        let mut imports = ImportSection::new();
+        imports.import(
+            STDOUT_MODULE,
+            "write-via-stream",
+            EntityType::Function(TY_STDOUT_WRITE_VIA_STREAM),
+        );
+        imports.import(
+            STDOUT_MODULE,
+            "[stream-new-0]write-via-stream",
+            EntityType::Function(TY_STDOUT_STREAM_NEW),
+        );
+        imports.import(
+            STDOUT_MODULE,
+            "[stream-write-0]write-via-stream",
+            EntityType::Function(TY_STDOUT_STREAM_WRITE),
+        );
+        imports.import(
+            STDOUT_MODULE,
+            "[stream-drop-writable-0]write-via-stream",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        imports.import(
+            STDOUT_MODULE,
+            "[future-drop-readable-1]write-via-stream",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        m.section(&imports);
+
+        // ── Function section — order matches the WEB_BASE_DEFINED map ─
+        let mut funcs = FunctionSection::new();
+        funcs.function(TY_PRINT_STR);
+        funcs.function(TY_PRINT_INT);
+        funcs.function(TY_PRINT_BOOL);
+        funcs.function(TY_ALLOC);
+        funcs.function(ty_init_wrapper);
+        funcs.function(ty_update_wrapper);
+        funcs.function(ty_view_wrapper);
+        funcs.function(list_to_json_array_ty);
+        funcs.function(print_float_ty);
+        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut user_func_defs: Vec<(u32, u32)> = self
+            .func_table
+            .values()
+            .filter(|info| info.func_idx >= self.fn_user_start)
+            .filter(|info| seen_idx.insert(info.func_idx))
+            .map(|info| (info.func_idx, info.type_idx))
+            .collect();
+        user_func_defs.sort_by_key(|(idx, _)| *idx);
+        for (_, type_idx) in &user_func_defs {
+            funcs.function(*type_idx);
+        }
+        m.section(&funcs);
+
+        // ── Memory / globals: self-contained ─────────────────────────
+        let mut memories = MemorySection::new();
+        memories.memory(MemoryType {
+            minimum: 2,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        m.section(&memories);
+        let mut globals = GlobalSection::new();
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &ConstExpr::i32_const(MEM_HEAP_START as i32),
+        );
+        m.section(&globals);
+
+        // ── Exports — the JS-host ABI ────────────────────────────────
+        let mut exports = ExportSection::new();
+        exports.export("memory", ExportKind::Memory, 0);
+        exports.export("alloc", ExportKind::Func, self.fn_alloc);
+        exports.export("init", ExportKind::Func, self.fn_start);
+        exports.export("update", ExportKind::Func, self.fn_start + 1);
+        exports.export("view", ExportKind::Func, self.fn_start + 2);
+        m.section(&exports);
+
+        // ── Code section — order must match the function section ─────
+        let mut codes = CodeSection::new();
+        codes.function(&self.build_print_str());
+        codes.function(&self.build_print_int());
+        codes.function(&self.build_print_bool());
+        codes.function(&self.build_alloc());
+        codes.function(&self.build_web_init_wrapper(init_info.func_idx, model_shape));
+        codes.function(&self.build_web_update_wrapper(update_info.func_idx, model_shape));
+        codes.function(&self.build_web_view_wrapper(view_info.func_idx, model_shape));
+        codes.function(&self.build_list_to_json_array());
+        codes.function(&self.build_print_float());
+        let ordered_funcs: Vec<FunctionDef> = {
+            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
+            for item in self.ast.items.iter() {
+                if let Item::Function(func) = item {
+                    if func.extern_wasm.is_some() {
+                        continue;
+                    }
+                    let key = (
+                        func.receiver.as_ref().map(|r| r.name.clone()),
+                        func.name.name.clone(),
+                    );
+                    if let Some(info) = self.func_table.get(&key) {
+                        pairs.push((info.func_idx, func.clone()));
+                    }
+                }
+            }
+            pairs.sort_by_key(|(idx, _)| *idx);
+            pairs.into_iter().map(|(_, f)| f).collect()
+        };
+        for func in ordered_funcs {
+            let compiled = self.build_user_function(&func);
+            codes.function(&compiled);
+        }
+        m.section(&codes);
+
+        // ── Data ─────────────────────────────────────────────────────
+        let mut data = DataSection::new();
+        data.active(0, &ConstExpr::i32_const(MEM_INT_BUF_END as i32), [b'\n']);
+        if !self.strings.data.is_empty() {
+            data.active(
+                0,
+                &ConstExpr::i32_const(MEM_STR_START as i32),
+                self.strings.data.clone(),
+            );
+        }
+        m.section(&data);
+
+        m.finish()
+    }
+
+    /// Normalize the model value(s) on the stack into the opaque i64
+    /// handed to the JS host. `base` is the index of three scratch i32
+    /// locals the caller declared (used only for the `Str` boxing).
+    fn emit_web_model_wrap(&self, f: &mut Function, shape: WebModelShape, base: u32) {
+        let mem = MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        };
+        match shape {
+            WebModelShape::I64 => {}
+            WebModelShape::Ptr => {
+                f.instruction(&Instruction::I64ExtendI32U);
+            }
+            WebModelShape::F64 => {
+                f.instruction(&Instruction::I64ReinterpretF64);
+            }
+            WebModelShape::Str => {
+                // [ptr, len] → box into a fresh 8-byte cell.
+                f.instruction(&Instruction::LocalSet(base + 1)); // len
+                f.instruction(&Instruction::LocalSet(base)); // ptr
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalTee(base + 2));
+                f.instruction(&Instruction::LocalGet(base));
+                f.instruction(&Instruction::I32Store(mem));
+                f.instruction(&Instruction::LocalGet(base + 2));
+                f.instruction(&Instruction::LocalGet(base + 1));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(base + 2));
+                f.instruction(&Instruction::I64ExtendI32U);
+            }
+        }
+    }
+
+    /// Push the model back in its user-function shape from the opaque
+    /// i64 in local `model_local`. `base` as in `emit_web_model_wrap`.
+    fn emit_web_model_unwrap(
+        &self,
+        f: &mut Function,
+        shape: WebModelShape,
+        model_local: u32,
+        base: u32,
+    ) {
+        match shape {
+            WebModelShape::I64 => {
+                f.instruction(&Instruction::LocalGet(model_local));
+            }
+            WebModelShape::Ptr => {
+                f.instruction(&Instruction::LocalGet(model_local));
+                f.instruction(&Instruction::I32WrapI64);
+            }
+            WebModelShape::F64 => {
+                f.instruction(&Instruction::LocalGet(model_local));
+                f.instruction(&Instruction::F64ReinterpretI64);
+            }
+            WebModelShape::Str => {
+                f.instruction(&Instruction::LocalGet(model_local));
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(base + 2));
+                f.instruction(&Instruction::LocalGet(base + 2));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(base + 2));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+            }
+        }
+    }
+
+    /// `init() -> i64` — call the user's `init`, normalize the model.
+    fn build_web_init_wrapper(&self, init_idx: u32, shape: WebModelShape) -> Function {
+        let mut f = Function::new([(3, ValType::I32)]); // locals 0..2 (no params)
+        f.instruction(&Instruction::Call(init_idx));
+        self.emit_web_model_wrap(&mut f, shape, 0);
+        f.instruction(&Instruction::End);
+        f
+    }
+
+    /// `update(model: i64, msg_ptr: i32, msg_len: i32) -> i64`.
+    fn build_web_update_wrapper(&self, update_idx: u32, shape: WebModelShape) -> Function {
+        let mut f = Function::new([(3, ValType::I32)]); // locals 3..5 after params
+        self.emit_web_model_unwrap(&mut f, shape, 0, 3);
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::Call(update_idx));
+        self.emit_web_model_wrap(&mut f, shape, 3);
+        f.instruction(&Instruction::End);
+        f
+    }
+
+    /// `view(model: i64) -> (i32, i32)` — UTF-8 HTML (ptr, len).
+    fn build_web_view_wrapper(&self, view_idx: u32, shape: WebModelShape) -> Function {
+        let mut f = Function::new([(3, ValType::I32)]); // locals 1..3 after the param
+        self.emit_web_model_unwrap(&mut f, shape, 0, 1);
+        f.instruction(&Instruction::Call(view_idx));
+        f.instruction(&Instruction::End);
+        f
+    }
 }
 
 /// Builds the self-contained HTTP core module for
@@ -7276,6 +7794,15 @@ impl<'m> WasmGen<'m> {
 pub(super) fn generate_http_core_module(module: &OModule) -> Vec<u8> {
     let mut gen = WasmGen::new_http(module);
     gen.compile_http()
+}
+
+/// Builds the self-contained web-app core module (`WEB-TARGET.md`).
+/// Unlike the CLI/HTTP worlds this is a plain core module, not a
+/// component — browsers instantiate core wasm directly and the
+/// bundled JS host (`canon-web.js`) is the "component wrapper".
+pub fn generate_web_core_module(module: &OModule) -> Vec<u8> {
+    let mut gen = WasmGen::new_web(module);
+    gen.compile_web()
 }
 
 // ── Arm-type helpers ──────────────────────────────────────────────────────────
@@ -7479,6 +8006,14 @@ pub fn generate(module: &OModule) -> Vec<u8> {
     // (slice 1a); this dispatch is the authoritative entry-world router.
     if has_http_entry(module) {
         let bytes = component::wrap_http_service(module);
+        validate(&bytes);
+        return bytes;
+    }
+
+    // Web-app entries (the `init`/`update`/`view` triple) emit a raw
+    // core module — the JS host is the wrapper. See `WEB-TARGET.md`.
+    if crate::ast::find_web_entry(&module.items).is_some() {
+        let bytes = generate_web_core_module(module);
         validate(&bytes);
         return bytes;
     }
