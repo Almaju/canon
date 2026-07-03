@@ -141,6 +141,12 @@ pub fn run_component(bytes: &[u8], args: &[&str]) {
 
     runtime.block_on(async move {
         if let Err(err) = run_component_async(bytes, args).await {
+            // A guest `wasi:cli/exit#exit(-with-code)` call surfaces as
+            // an `I32Exit` trap — that's a normal termination request,
+            // not an error. Propagate the code.
+            if let Some(exit) = err.downcast_ref::<wasmtime_wasi::I32Exit>() {
+                std::process::exit(exit.0);
+            }
             eprintln!("error: {err:?}");
             std::process::exit(1);
         }
@@ -262,7 +268,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     host_builtin_clock::add_to_linker(&mut linker)?;
     host_builtin_string::add_to_linker(&mut linker)?;
     host_builtin_filesystem::add_to_linker(&mut linker)?;
-    host_builtin_cli::add_to_linker(&mut linker)?;
     host_builtin_http::add_to_linker(&mut linker)?;
     host_builtin_http_server::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
@@ -1777,52 +1782,5 @@ mod host_builtin_url {
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
         canon::builtins::url::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-}
-
-/// `canon:builtins/cli` — a thin shim for command-line concerns that
-/// either aren't yet served by `wasmtime_wasi::p3` (e.g. timezone) or
-/// trip current codegen gaps (e.g. `wasi:cli/exit#exit-with-code` uses a
-/// `u8` parameter, and Canon always lowers `Int` as `u64`). Bridging
-/// through `s64` here sidesteps the width mismatch.
-///
-/// When the underlying codegen learns to honor sub-u64 WIT widths, the
-/// stdlib wrapper switches its `extern Wasm` path to point at
-/// `wasi:cli/exit` directly and this shim retires.
-mod host_builtin_cli {
-    use super::State;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface cli {
-                /// Terminate the program with the given exit code.
-                /// Maps directly onto `wasi:cli/exit#exit-with-code` but
-                /// takes the code as `s64` so it lines up with Canon's
-                /// canonical `Int` lowering. Values are clamped to the
-                /// 0..=255 range expected by POSIX-shaped hosts.
-                exit-with-code: func(status-code: s64);
-            }
-            world host-shim {
-                import cli;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::cli::Host for State {
-        fn exit_with_code(&mut self, status_code: i64) {
-            // POSIX exit codes are 8-bit; clamp to that range to match
-            // every embedder's expectations. `std::process::exit` skips
-            // wasmtime's cleanup paths, which is the right semantics here:
-            // the guest asked to terminate immediately.
-            let code: i32 = status_code.clamp(0, 255) as i32;
-            std::process::exit(code);
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::cli::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }

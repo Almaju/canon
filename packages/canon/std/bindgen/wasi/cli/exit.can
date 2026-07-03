@@ -1,0 +1,3 @@
+bindings "wasi:cli/exit@0.3.0-rc-2026-03-15"
+
+exitWithCode = (Int) -> Unit

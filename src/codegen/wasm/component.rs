@@ -142,20 +142,95 @@ pub(super) const WASI_HTTP_TYPES_MODULE: &str = "wasi:http/types@0.3.0-rc-2026-0
 ///      metadata (`wit_component::embed_component_metadata`).
 ///   3. Run the result through `wit_component::ComponentEncoder`, which
 ///      emits every resource/variant/option lift & lower for us.
-pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
-    let mut resolve = wit_parser::Resolve::default();
-    for (name, source) in [
-        ("clocks.wit", WIT_WASI_CLOCKS),
-        ("filesystem.wit", WIT_WASI_FILESYSTEM),
-        ("sockets.wit", WIT_WASI_SOCKETS),
-        ("random.wit", WIT_WASI_RANDOM),
-        ("cli.wit", WIT_WASI_CLI),
-        ("http.wit", WIT_WASI_HTTP),
-    ] {
+/// The vendored WASI WIT packages, parsed once. Shared between the
+/// HTTP world emission and the WIT-informed extern lowering (which
+/// consults the true WIT signature of every `wasi:*` extern import to
+/// honour narrow integer widths).
+pub(super) fn vendored_resolve() -> &'static wit_parser::Resolve {
+    static RESOLVE: std::sync::OnceLock<wit_parser::Resolve> = std::sync::OnceLock::new();
+    RESOLVE.get_or_init(|| {
+        let mut resolve = wit_parser::Resolve::default();
+        // `exit-with-code` is `@unstable(feature = cli-exit-with-code)`
+        // in the vendored WIT; the runtime opts into it too (see
+        // `LinkOptions::cli_exit_with_code` in `src/runtime.rs`). Keep
+        // this a targeted opt-in — `all_features` would also pull the
+        // unstable `wasi:clocks/timezone` import into the embedded
+        // `wasi:http/service` world, which hosts don't provide.
+        resolve.features.insert("cli-exit-with-code".to_string());
+        for (name, source) in [
+            ("clocks.wit", WIT_WASI_CLOCKS),
+            ("filesystem.wit", WIT_WASI_FILESYSTEM),
+            ("sockets.wit", WIT_WASI_SOCKETS),
+            ("random.wit", WIT_WASI_RANDOM),
+            ("cli.wit", WIT_WASI_CLI),
+            ("http.wit", WIT_WASI_HTTP),
+        ] {
+            resolve
+                .push_source(name, source)
+                .unwrap_or_else(|e| panic!("vendored {name} does not parse: {e:?}"));
+        }
         resolve
-            .push_source(name, source)
-            .unwrap_or_else(|e| panic!("vendored {name} does not parse: {e:?}"));
+    })
+}
+
+/// Resolves a WIT type to its primitive value type, following `type
+/// x = y` alias chains. `None` for strings and every compound shape.
+fn wit_prim(resolve: &wit_parser::Resolve, t: &wit_parser::Type) -> Option<PrimitiveValType> {
+    use wit_parser::Type as T;
+    match t {
+        T::Bool => Some(PrimitiveValType::Bool),
+        T::U8 => Some(PrimitiveValType::U8),
+        T::U16 => Some(PrimitiveValType::U16),
+        T::U32 => Some(PrimitiveValType::U32),
+        T::U64 => Some(PrimitiveValType::U64),
+        T::S8 => Some(PrimitiveValType::S8),
+        T::S16 => Some(PrimitiveValType::S16),
+        T::S32 => Some(PrimitiveValType::S32),
+        T::S64 => Some(PrimitiveValType::S64),
+        T::F32 => Some(PrimitiveValType::F32),
+        T::F64 => Some(PrimitiveValType::F64),
+        T::Id(id) => match &resolve.types[*id].kind {
+            wit_parser::TypeDefKind::Type(inner) => wit_prim(resolve, inner),
+            _ => None,
+        },
+        _ => None,
     }
+}
+
+/// Looks up a `wasi:*` extern URN
+/// (`"wasi:cli/exit@<ver>#exit-with-code"`) in the vendored WIT and
+/// returns the primitive value types of its parameters and result.
+/// Inner `None` entries are non-primitive shapes (strings, options,
+/// …) the caller should leave to the existing lowering. Outer `None`
+/// when the URN doesn't resolve (unknown interface or function).
+pub(super) fn vendored_extern_prim_sig(
+    urn: &str,
+) -> Option<(
+    Vec<Option<PrimitiveValType>>,
+    Option<Option<PrimitiveValType>>,
+)> {
+    let resolve = vendored_resolve();
+    let (iface_ver, fn_name) = urn.split_once('#')?;
+    let iface_full = iface_ver.split_once('@').map_or(iface_ver, |(i, _)| i);
+    let (ns_pkg, iface_name) = iface_full.split_once('/')?;
+    let (ns, pkg) = ns_pkg.split_once(':')?;
+    let pkg_id = resolve
+        .package_names
+        .iter()
+        .find_map(|(name, id)| (name.namespace == ns && name.name == pkg).then_some(*id))?;
+    let iface_id = *resolve.packages[pkg_id].interfaces.get(iface_name)?;
+    let func = resolve.interfaces[iface_id].functions.get(fn_name)?;
+    let params = func
+        .params
+        .iter()
+        .map(|p| wit_prim(resolve, &p.ty))
+        .collect();
+    let result = func.result.as_ref().map(|t| wit_prim(resolve, t));
+    Some((params, result))
+}
+
+pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
+    let resolve = vendored_resolve();
     let http_pkg = resolve
         .package_names
         .iter()
@@ -168,7 +243,7 @@ pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
     let mut core = super::generate_http_core_module(module);
     wit_component::embed_component_metadata(
         &mut core,
-        &resolve,
+        resolve,
         world,
         wit_component::StringEncoding::UTF8,
     )
@@ -939,6 +1014,11 @@ fn extern_params_to_component(ext: &ExternImport) -> Vec<(String, ComponentValTy
 
 fn extern_result_to_component(ext: &ExternImport) -> Option<ComponentValType> {
     let vt = ext.results.first()?;
+    // WIT-informed result type wins when present (exact width and
+    // signedness from the vendored WIT).
+    if let Some(prim) = ext.component_result {
+        return Some(ComponentValType::Primitive(prim));
+    }
     let signed = !ext.component_namespace.starts_with("wasi:");
     Some(ComponentValType::Primitive(match vt {
         wasm_encoder::ValType::I32 if signed => PrimitiveValType::S32,

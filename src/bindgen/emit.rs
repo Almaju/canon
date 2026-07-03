@@ -493,19 +493,20 @@ fn emit_function(
         return Err("bare `result` (codegen gap, no ok/err payloads)".into());
     }
 
-    // Codegen gap: Canon has a single `Int` type and always lowers it as
-    // `u64` (8 bytes) in the canonical ABI. WIT distinguishes u8/u16/u32/
-    // s8/s16/s32 from s64/u64, and the host rejects any import whose
-    // canonical-ABI signature mismatches. Until codegen learns to honor
-    // the WIT-declared width, skip functions that use the narrow forms
-    // anywhere in params or return.
-    let narrow_in_params = func.params.iter().any(|p| has_narrow_int(resolve, &p.ty));
-    let narrow_in_return = func
-        .result
-        .as_ref()
-        .is_some_and(|t| has_narrow_int(resolve, t));
-    if narrow_in_params || narrow_in_return {
-        return Err("sub-u64 integer width (codegen lowers all `Int` as u64)".into());
+    // Narrow integer widths (u8..u32, s8..s32) are supported when they
+    // appear as *top-level* scalars — the codegen's WIT-informed extern
+    // lowering (see `collect_extern_imports` in
+    // `src/codegen/wasm/mod.rs`) reads the true width from the vendored
+    // WIT and inserts i64↔i32 conversions at call sites. Narrow ints
+    // buried inside compounds (records, options, lists, …) still ride
+    // on the unsupported compound shape and are skipped by the shape
+    // checks around this one; the explicit check left here is only for
+    // compounds that would otherwise slip through.
+    let compound_narrow = |t: &Type| has_narrow_int(resolve, t) && !is_plain_int(resolve, t);
+    if func.params.iter().any(|p| compound_narrow(&p.ty))
+        || func.result.as_ref().is_some_and(compound_narrow)
+    {
+        return Err("sub-u64 integer inside a compound shape (codegen gap)".into());
     }
 
     let camel = kebab_to_camel(name);
@@ -588,6 +589,26 @@ fn is_bare_result(resolve: &Resolve, t: &Type) -> bool {
 /// tuples, results) so e.g. `option<u32>` or `record { x: u8 }` are
 /// detected. Resources and futures/streams are already filtered
 /// upstream and treated as terminal misses.
+/// True when `t` is (an alias chain to) a plain WIT integer type —
+/// the shape the WIT-informed extern lowering handles directly.
+fn is_plain_int(resolve: &Resolve, t: &Type) -> bool {
+    match t {
+        Type::U8
+        | Type::U16
+        | Type::U32
+        | Type::U64
+        | Type::S8
+        | Type::S16
+        | Type::S32
+        | Type::S64 => true,
+        Type::Id(id) => match &resolve.types[*id].kind {
+            TypeDefKind::Type(inner) => is_plain_int(resolve, inner),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 fn has_narrow_int(resolve: &Resolve, t: &Type) -> bool {
     match t {
         Type::U8 | Type::U16 | Type::U32 | Type::S8 | Type::S16 | Type::S32 => true,

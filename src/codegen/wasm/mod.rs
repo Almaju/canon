@@ -171,6 +171,50 @@ fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         };
         let mut params = func_wasm_params_for(func, &type_defs);
         let mut results = func_wasm_results_for(func, &type_defs);
+        let mut component_params = component_params;
+        let mut component_result: Option<wasm_encoder::PrimitiveValType> = None;
+        let mut narrow_params: Vec<bool> = Vec::new();
+        let mut narrow_result_signed: Option<bool> = None;
+
+        // WIT-informed lowering: for `wasi:*` imports the vendored WIT
+        // is the source of truth for integer widths and signedness —
+        // Canon's single `Int` erases both. Narrow widths (u8..u32,
+        // s8..s32) lower to core i32; `emit_func_table_call` inserts
+        // the i64↔i32 conversions at call sites.
+        if component_ns.starts_with("wasi:") {
+            if let Some((wit_params, wit_result)) = component::vendored_extern_prim_sig(&ext.path) {
+                let mut flat = 0usize;
+                for (i, kind) in component_params.iter_mut().enumerate() {
+                    let slots = match kind {
+                        ParamKind::Scalar(_) => 1,
+                        ParamKind::String => 2,
+                    };
+                    let mut converts = false;
+                    if let (ParamKind::Scalar(_), Some(Some(prim))) = (&*kind, wit_params.get(i)) {
+                        *kind = ParamKind::Scalar(*prim);
+                        if is_narrow_prim(*prim)
+                            && flat < params.len()
+                            && params[flat] == ValType::I64
+                        {
+                            params[flat] = ValType::I32;
+                            converts = true;
+                        }
+                    }
+                    narrow_params.push(converts);
+                    flat += slots;
+                }
+                if let Some(Some(prim)) = wit_result {
+                    if results.len() == 1 {
+                        component_result = Some(prim);
+                        if is_narrow_prim(prim) && results[0] == ValType::I64 {
+                            results[0] = ValType::I32;
+                            use wasm_encoder::PrimitiveValType as P;
+                            narrow_result_signed = Some(matches!(prim, P::S8 | P::S16 | P::S32));
+                        }
+                    }
+                }
+            }
+        }
 
         // Determine the result shape. We support: nothing, a single flat
         // scalar, a bare `string`, or `result<string-alias, string-alias>`.
@@ -224,6 +268,9 @@ fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             params,
             results,
             component_params,
+            component_result,
+            narrow_params,
+            narrow_result_signed,
             indirect_return,
             is_async: ext.is_async,
             func_idx: 0, // filled in below after sorting
@@ -402,6 +449,13 @@ fn push_param_kind(
         }
         _ => None, // unsupported (list, record, generic, …)
     }
+}
+
+/// True for WIT integer widths below 64 bits — these lower to core
+/// `i32` while Canon's `Int` is `i64`, so call sites wrap/extend.
+fn is_narrow_prim(p: wasm_encoder::PrimitiveValType) -> bool {
+    use wasm_encoder::PrimitiveValType as P;
+    matches!(p, P::U8 | P::U16 | P::U32 | P::S8 | P::S16 | P::S32)
 }
 
 fn scalar_val_type_to_primitive(vt: ValType, signed: bool) -> wasm_encoder::PrimitiveValType {
@@ -727,6 +781,14 @@ struct FuncInfo {
     /// pass its pointer as an extra last arg, and decode the result
     /// according to `shape` after the call.
     indirect_return: Option<IndirectReturnShape>,
+    /// Per-component-parameter conversion flags for extern functions
+    /// (empty for user body functions): true where the WIT-informed
+    /// lowering narrowed Canon's i64 `Int` slot to core i32, so the
+    /// call site must `i32.wrap_i64` that argument.
+    narrow_params: Vec<bool>,
+    /// `Some(signed)` when the extern's result narrowed from i64 to
+    /// i32 — the call site extends back to Canon's i64.
+    narrow_result_signed: Option<bool>,
     /// `true` for `extern Wasm.async` functions. Call sites use the
     /// component-model async-lower calling convention: the args go flat
     /// on the stack (as in sync), but the function returns an `i32`
@@ -837,6 +899,18 @@ pub(super) struct ExternImport {
     /// (receiver-first if present), with their `ParamKind`. The component
     /// wrapper uses this list to build the imported instance's function type.
     pub(super) component_params: Vec<ParamKind>,
+    /// The WIT-declared primitive result type, when the vendored WIT
+    /// knows better than the Canon-derived guess (narrow ints, exact
+    /// signedness). `extern_result_to_component` prefers this.
+    pub(super) component_result: Option<wasm_encoder::PrimitiveValType>,
+    /// Per-component-parameter: true when the WIT-informed override
+    /// changed the core slot from Canon's i64 `Int` to a narrow i32 —
+    /// call sites must `i32.wrap_i64` that argument. Bool params are
+    /// i32 on both sides and never set this.
+    pub(super) narrow_params: Vec<bool>,
+    /// `Some(signed)` when the result slot narrowed from i64 to i32 —
+    /// call sites extend back (sign- or zero-extending).
+    pub(super) narrow_result_signed: Option<bool>,
     /// Indirect-return shape, if the result type doesn't fit in a single
     /// flat WASM value. `None` means the function returns a flat scalar (or
     /// nothing). `Some(shape)` means the core signature appends an `i32`
@@ -1624,6 +1698,8 @@ impl<'m> WasmGen<'m> {
                 func_idx: ext.func_idx,
                 type_idx,
                 result_ty: surface_result_ty,
+                narrow_params: ext.narrow_params.clone(),
+                narrow_result_signed: ext.narrow_result_signed,
                 indirect_return: ext.indirect_return.clone(),
                 is_async: ext.is_async,
             };
@@ -1695,6 +1771,8 @@ impl<'m> WasmGen<'m> {
                     func_idx: idx,
                     type_idx,
                     result_ty,
+                    narrow_params: Vec::new(),
+                    narrow_result_signed: None,
                     indirect_return: None,
                     is_async: false,
                 };
@@ -3963,14 +4041,39 @@ impl<'m> WasmGen<'m> {
         scope: &LocalScope,
         f: &mut Function,
     ) -> Ty {
-        for a in args {
+        // Narrow-width conversions (WIT-informed lowering). Canon's
+        // `Int` is i64 everywhere; a `wasi:*` extern whose WIT declares
+        // u8/u16/u32/s8/s16/s32 has a core i32 slot instead. The
+        // receiver (when present) is already on the stack — component
+        // param 0 with everything else still unpushed, so its wrap must
+        // happen before the args compile.
+        let recv_count = info.narrow_params.len().saturating_sub(args.len());
+        let narrow_at = |i: usize| info.narrow_params.get(i).copied().unwrap_or(false);
+        if recv_count == 1 && narrow_at(0) {
+            f.instruction(&Instruction::I32WrapI64);
+        }
+        for (i, a) in args.iter().enumerate() {
             let _ = self.compile_expr(a, scope, f);
+            if narrow_at(recv_count + i) {
+                f.instruction(&Instruction::I32WrapI64);
+            }
         }
         if info.is_async {
             return self.emit_async_call(info, scope, f);
         }
         let Some(shape) = info.indirect_return.clone() else {
             f.instruction(&Instruction::Call(info.func_idx));
+            // Widen a narrow scalar result back to Canon's i64 `Int`,
+            // zero- or sign-extending per the WIT signedness.
+            match info.narrow_result_signed {
+                Some(true) => {
+                    f.instruction(&Instruction::I64ExtendI32S);
+                }
+                Some(false) => {
+                    f.instruction(&Instruction::I64ExtendI32U);
+                }
+                None => {}
+            }
             return info.result_ty.clone();
         };
 

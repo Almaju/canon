@@ -1,0 +1,222 @@
+use wasi/clocks/types
+
+DNSErrorPayload = DNSErrorPayloadInfoCode * DNSErrorPayloadRcode
+
+DNSErrorPayloadInfoCode = Option<Int>
+
+DNSErrorPayloadRcode = Option<String>
+
+ErrorCode = ErrorCodeConfigurationError
+  + ErrorCodeConnectionLimitReached
+  + ErrorCodeConnectionReadTimeout
+  + ErrorCodeConnectionRefused
+  + ErrorCodeConnectionTerminated
+  + ErrorCodeConnectionTimeout
+  + ErrorCodeConnectionWriteTimeout
+  + ErrorCodeDNSError
+  + ErrorCodeDNSTimeout
+  + ErrorCodeDestinationIPProhibited
+  + ErrorCodeDestinationIPUnroutable
+  + ErrorCodeDestinationNotFound
+  + ErrorCodeDestinationUnavailable
+  + ErrorCodeHTTPProtocolError
+  + ErrorCodeHTTPRequestBodySize
+  + ErrorCodeHTTPRequestDenied
+  + ErrorCodeHTTPRequestHeaderSectionSize
+  + ErrorCodeHTTPRequestHeaderSize
+  + ErrorCodeHTTPRequestLengthRequired
+  + ErrorCodeHTTPRequestMethodInvalid
+  + ErrorCodeHTTPRequestTrailerSectionSize
+  + ErrorCodeHTTPRequestTrailerSize
+  + ErrorCodeHTTPRequestURIInvalid
+  + ErrorCodeHTTPRequestURITooLong
+  + ErrorCodeHTTPResponseBodySize
+  + ErrorCodeHTTPResponseContentCoding
+  + ErrorCodeHTTPResponseHeaderSectionSize
+  + ErrorCodeHTTPResponseHeaderSize
+  + ErrorCodeHTTPResponseIncomplete
+  + ErrorCodeHTTPResponseTimeout
+  + ErrorCodeHTTPResponseTrailerSectionSize
+  + ErrorCodeHTTPResponseTrailerSize
+  + ErrorCodeHTTPResponseTransferCoding
+  + ErrorCodeHTTPUpgradeFailed
+  + ErrorCodeInternalError
+  + ErrorCodeLoopDetected
+  + ErrorCodeTLSAlertReceived
+  + ErrorCodeTLSCertificateError
+  + ErrorCodeTLSProtocolError
+
+ErrorCodeConfigurationError = Unit
+
+ErrorCodeConnectionLimitReached = Unit
+
+ErrorCodeConnectionReadTimeout = Unit
+
+ErrorCodeConnectionRefused = Unit
+
+ErrorCodeConnectionTerminated = Unit
+
+ErrorCodeConnectionTimeout = Unit
+
+ErrorCodeConnectionWriteTimeout = Unit
+
+ErrorCodeDNSError = DNSErrorPayload
+
+ErrorCodeDNSTimeout = Unit
+
+ErrorCodeDestinationIPProhibited = Unit
+
+ErrorCodeDestinationIPUnroutable = Unit
+
+ErrorCodeDestinationNotFound = Unit
+
+ErrorCodeDestinationUnavailable = Unit
+
+ErrorCodeHTTPProtocolError = Unit
+
+ErrorCodeHTTPRequestBodySize = Option<Int>
+
+ErrorCodeHTTPRequestDenied = Unit
+
+ErrorCodeHTTPRequestHeaderSectionSize = Option<Int>
+
+ErrorCodeHTTPRequestHeaderSize = Option<FieldSizePayload>
+
+ErrorCodeHTTPRequestLengthRequired = Unit
+
+ErrorCodeHTTPRequestMethodInvalid = Unit
+
+ErrorCodeHTTPRequestTrailerSectionSize = Option<Int>
+
+ErrorCodeHTTPRequestTrailerSize = FieldSizePayload
+
+ErrorCodeHTTPRequestURIInvalid = Unit
+
+ErrorCodeHTTPRequestURITooLong = Unit
+
+ErrorCodeHTTPResponseBodySize = Option<Int>
+
+ErrorCodeHTTPResponseContentCoding = Option<String>
+
+ErrorCodeHTTPResponseHeaderSectionSize = Option<Int>
+
+ErrorCodeHTTPResponseHeaderSize = FieldSizePayload
+
+ErrorCodeHTTPResponseIncomplete = Unit
+
+ErrorCodeHTTPResponseTimeout = Unit
+
+ErrorCodeHTTPResponseTrailerSectionSize = Option<Int>
+
+ErrorCodeHTTPResponseTrailerSize = FieldSizePayload
+
+ErrorCodeHTTPResponseTransferCoding = Option<String>
+
+ErrorCodeHTTPUpgradeFailed = Unit
+
+ErrorCodeInternalError = Option<String>
+
+ErrorCodeLoopDetected = Unit
+
+ErrorCodeTLSAlertReceived = TLSAlertReceivedPayload
+
+ErrorCodeTLSCertificateError = Unit
+
+ErrorCodeTLSProtocolError = Unit
+
+FieldName = String
+
+FieldSizePayload = FieldSizePayloadFieldName * FieldSizePayloadFieldSize
+
+FieldSizePayloadFieldName = Option<String>
+
+FieldSizePayloadFieldSize = Option<Int>
+
+FieldValue = List<Int>
+
+Fields = Handle
+
+HeaderError = HeaderErrorForbidden
+  + HeaderErrorImmutable
+  + HeaderErrorInvalidSyntax
+  + HeaderErrorOther
+  + HeaderErrorSizeExceeded
+
+HeaderErrorForbidden = Unit
+
+HeaderErrorImmutable = Unit
+
+HeaderErrorInvalidSyntax = Unit
+
+HeaderErrorOther = Option<String>
+
+HeaderErrorSizeExceeded = Unit
+
+Headers = Fields
+
+Method = MethodConnect
+  + MethodDelete
+  + MethodGet
+  + MethodHead
+  + MethodOptions
+  + MethodOther
+  + MethodPatch
+  + MethodPost
+  + MethodPut
+  + MethodTrace
+
+MethodConnect = Unit
+
+MethodDelete = Unit
+
+MethodGet = Unit
+
+MethodHead = Unit
+
+MethodOptions = Unit
+
+MethodOther = String
+
+MethodPatch = Unit
+
+MethodPost = Unit
+
+MethodPut = Unit
+
+MethodTrace = Unit
+
+Request = Handle
+
+RequestOptions = Handle
+
+RequestOptionsError = RequestOptionsErrorImmutable
+  + RequestOptionsErrorNotSupported
+  + RequestOptionsErrorOther
+
+RequestOptionsErrorImmutable = Unit
+
+RequestOptionsErrorNotSupported = Unit
+
+RequestOptionsErrorOther = Option<String>
+
+Response = Handle
+
+Scheme = SchemeHTTP
+  + SchemeHTTPS
+  + SchemeOther
+
+SchemeHTTP = Unit
+
+SchemeHTTPS = Unit
+
+SchemeOther = String
+
+StatusCode = Int
+
+TLSAlertReceivedPayload = TLSAlertReceivedPayloadAlertId * TLSAlertReceivedPayloadAlertMessage
+
+TLSAlertReceivedPayloadAlertId = Option<Int>
+
+TLSAlertReceivedPayloadAlertMessage = Option<String>
+
+Trailers = Fields

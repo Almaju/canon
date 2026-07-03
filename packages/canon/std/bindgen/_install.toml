@@ -2,6 +2,7 @@
 # Each entry maps a `bindgen/`-relative `.can` file to the WIT interface URN it was generated from.
 
 "wasi/cli/environment.can" = "wasi:cli/environment@0.3.0-rc-2026-03-15"
+"wasi/cli/exit.can" = "wasi:cli/exit@0.3.0-rc-2026-03-15"
 "wasi/cli/terminal_input.can" = "wasi:cli/terminal-input@0.3.0-rc-2026-03-15"
 "wasi/cli/terminal_output.can" = "wasi:cli/terminal-output@0.3.0-rc-2026-03-15"
 "wasi/cli/types.can" = "wasi:cli/types@0.3.0-rc-2026-03-15"
@@ -10,6 +11,7 @@
 "wasi/clocks/timezone.can" = "wasi:clocks/timezone@0.3.0-rc-2026-03-15"
 "wasi/clocks/types.can" = "wasi:clocks/types@0.3.0-rc-2026-03-15"
 "wasi/filesystem/types.can" = "wasi:filesystem/types@0.3.0-rc-2026-03-15"
+"wasi/http/types.can" = "wasi:http/types@0.3.0-rc-2026-03-15"
 "wasi/random/insecure.can" = "wasi:random/insecure@0.3.0-rc-2026-03-15"
 "wasi/random/random.can" = "wasi:random/random@0.3.0-rc-2026-03-15"
 "wasi/sockets/ip_name_lookup.can" = "wasi:sockets/ip-name-lookup@0.3.0-rc-2026-03-15"
