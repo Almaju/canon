@@ -16,6 +16,10 @@
 //!     prefix + the first input's value, then clears the input.
 //!   - `data-msg-input="SetFilter:"` on an input/select — a `change`
 //!     sends the prefix + the current value.
+//!   - `data-fetch="URL"` + `data-fetch-msg="Loaded:"` — clicking
+//!     GETs the URL and sends prefix + response body. This is the
+//!     host-mediated effect that lets a (pure) web app talk to a
+//!     Canon backend without any guest-side fetch import.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -76,6 +80,15 @@ pub const CANON_WEB_JS: &str = r#""use strict";
     }
 
     root.addEventListener("click", (e) => {
+      const ft = e.target.closest("[data-fetch]");
+      if (ft && root.contains(ft)) {
+        e.preventDefault();
+        fetch(ft.dataset.fetch)
+          .then((r) => r.text())
+          .then((body) => send((ft.dataset.fetchMsg || "") + body))
+          .catch((err) => console.error("canon-web: fetch failed:", err));
+        return;
+      }
       const t = e.target.closest("[data-msg]");
       if (t && root.contains(t)) {
         e.preventDefault();

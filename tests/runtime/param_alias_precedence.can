@@ -1,0 +1,21 @@
+Attr = String
+
+Tag = String
+
+wrap = (Attr * String * Tag) -> String {
+    "<"
+        .concat(Tag)
+        .concat(" ")
+        .concat(Attr)
+        .concat(">")
+        .concat(String)
+        .concat("</")
+        .concat(Tag)
+        .concat(">")
+}
+
+main = () -> Unit {
+    Attr("class=\"x\"")
+        .wrap("inner", Tag("div"))
+        .print()
+}

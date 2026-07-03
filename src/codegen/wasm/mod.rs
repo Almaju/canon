@@ -2848,13 +2848,25 @@ impl<'m> WasmGen<'m> {
         // it by either the newtype name like `Json` or the underlying
         // type name like `String`) but we don't allocate a separate
         // slot for it.
+        // Exact declared names always win; alias-chain names (the
+        // newtype's underlying types) only fill slots no exact name
+        // claims, receiver-first. Without this precedence, a later
+        // param whose newtype erases to the same underlying type
+        // clobbers an earlier exact param — in
+        // `elAttr = (Attr * String * Tag)`, `Tag`'s alias registration
+        // used to steal the body's `String` references.
+        let mut alias_pending: Vec<(String, u32, Ty)> = Vec::new();
         let skip_receiver_slot = is_self_ctor(func);
         if let Some(recv) = &func.receiver {
             if !skip_receiver_slot {
                 let repr = self.resolve_repr(&recv.name);
                 let vt = repr.val_types();
-                for alias in self.collect_alias_chain(&recv.name) {
-                    scope.vars.insert(alias, (local_idx, repr.clone()));
+                let mut chain = self.collect_alias_chain(&recv.name).into_iter();
+                if let Some(exact) = chain.next() {
+                    scope.vars.insert(exact, (local_idx, repr.clone()));
+                }
+                for alias in chain {
+                    alias_pending.push((alias, local_idx, repr.clone()));
                 }
                 local_idx += vt.len() as u32;
                 params.extend(vt);
@@ -2864,8 +2876,12 @@ impl<'m> WasmGen<'m> {
             if let TypeExpr::Named { name, .. } = &param.ty {
                 let repr = self.resolve_repr(name);
                 let vt = repr.val_types();
-                for alias in self.collect_alias_chain(name) {
-                    scope.vars.insert(alias, (local_idx, repr.clone()));
+                let mut chain = self.collect_alias_chain(name).into_iter();
+                if let Some(exact) = chain.next() {
+                    scope.vars.insert(exact, (local_idx, repr.clone()));
+                }
+                for alias in chain {
+                    alias_pending.push((alias, local_idx, repr.clone()));
                 }
                 // For a Self-ctor, also register the receiver-type name
                 // (`Json` for `Self = (String) -> ...`) as an alias of
@@ -2881,6 +2897,9 @@ impl<'m> WasmGen<'m> {
                 local_idx += vt.len() as u32;
                 params.extend(vt);
             }
+        }
+        for (alias, idx, repr) in alias_pending {
+            scope.vars.entry(alias).or_insert((idx, repr));
         }
         scope.param_count = local_idx;
         (params, scope)
@@ -6292,10 +6311,13 @@ impl<'m> WasmGen<'m> {
     /// link of an equality if/else chain (string compare via
     /// `emit_str_eq`, int compare via `i64.eq`), and the mandatory
     /// catch-all arm sits in the innermost `else`. Inside every arm
-    /// body the scrutinee is bound under its type name(s) — the
-    /// catch-all's pattern name, the scrutinee's newtype name, and the
-    /// primitive base — mirroring the alias-chain rule
-    /// `build_local_scope` applies to receivers.
+    /// body the scrutinee is bound under the catch-all's pattern name
+    /// and the scrutinee's own type name. The bare primitive name
+    /// (`String`) is bound only when the scrutinee *is* a bare string —
+    /// a newtype-wrapped scrutinee (`Prefix(msg.substring(1, 4))`)
+    /// binds `Prefix`, leaving the enclosing function's `String` param
+    /// visible in arm bodies; distinguishing the two is exactly why
+    /// the user wrapped it.
     fn emit_literal_dispatch(
         &mut self,
         scrut_ty: Ty,
@@ -6318,7 +6340,9 @@ impl<'m> WasmGen<'m> {
         }
 
         if scrut_ty.is_str_like() {
-            bound_names.push("String".to_string());
+            if scrut_ty.canon_name().is_none() {
+                bound_names.push("String".to_string());
+            }
             // Stash the scrutinee (ptr, len) where neither the compare
             // scratch nor arm bodies' builtins will clobber it.
             f.instruction(&Instruction::LocalSet(scope.lit_scrut_ptr() + 1));
