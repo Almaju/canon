@@ -1,9 +1,3 @@
-use canon/std/http/Headers
-use canon/std/http/Method
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 main = () -> Unit {
     Status(200).print()
 }

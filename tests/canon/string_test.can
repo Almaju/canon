@@ -1,5 +1,3 @@
-use canon/std/TestResult
-
 testStringConcat = () -> TestResult {
     "hello".concat(" world")
     Pass()

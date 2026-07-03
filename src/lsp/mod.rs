@@ -1211,7 +1211,7 @@ fn collect_definitions(module: &Module) -> Vec<DefInfo> {
             // `bindings` items don't introduce new symbols (the loader
             // synthesizes FunctionDefs for the function-type aliases
             // beneath the directive).
-            Item::Use(_) | Item::Bindings(_) => {}
+            Item::Use(_) | Item::Alias(_) | Item::Bindings(_) => {}
         }
     }
     defs

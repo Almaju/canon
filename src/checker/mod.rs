@@ -146,7 +146,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             // BindingsDecl item is left in the module purely as a
             // breadcrumb for tooling (formatter, LSP) and has nothing
             // for the checker to enforce.
-            Item::Use(_) | Item::Bindings(_) => {}
+            Item::Use(_) | Item::Alias(_) | Item::Bindings(_) => {}
         }
     }
 
@@ -409,7 +409,7 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
                 collect_type_names(&td.body, &mut out);
                 (td.name.name.clone(), out)
             }
-            Item::Use(_) | Item::Bindings(_) => continue,
+            Item::Use(_) | Item::Alias(_) | Item::Bindings(_) => continue,
         };
         if !refs.contains_key(&name) {
             declared_order.push(name.clone());

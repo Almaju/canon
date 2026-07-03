@@ -10,9 +10,6 @@ Canon's test framework wants.
 Add `src/note_test.can`:
 
 ```canon
-use Note
-use canon/std/TestResult
-
 testRenderWrapsTitle = () -> TestResult {
     Note("ship it")
         .render()
@@ -32,7 +29,7 @@ running 1 test(s) from notes-api/src/note_test.can
 A test is **any function with the signature `() -> TestResult`** —
 discovery is by type, not by name, the same signature-driven selection
 that picks the program's entry point. The test file is an ordinary
-module: `use Note` imports the real `note.can` sitting next to it, so
+module: referencing `Note` loads the real `note.can` sitting next to it, so
 the test exercises the code the server runs, not a copy.
 
 ## Anatomy of the Assertion

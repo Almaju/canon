@@ -45,8 +45,7 @@ use wit_parser::Resolve;
 /// Inline WIT package with two stream-bearing functions. Both
 /// signatures are the minimum-viable shape for slice 1: a producer
 /// that returns `stream<u8>` and a consumer that takes one.
-const STREAMS_WIT: &str = r#"
-package test:streams@0.1.0;
+const STREAMS_WIT: &str = r#"package test:streams@0.1.0;
 
 interface api {
     /// Produce a stream of bytes. At the canonical ABI this lowers to

@@ -30,7 +30,7 @@ serve = (Request) -> Response {
 }
 ```
 
-Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Imports are file-based — `use Foo` imports the type declared in `foo.can` from the current module folder; `use canon/std/Foo` pulls from the bundled standard library.
+Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. There are no imports — referencing a type resolves it automatically, from your own files first and the bundled standard library second.
 
 ---
 

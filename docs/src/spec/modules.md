@@ -1,111 +1,77 @@
-# Modules and Packages
+# Modules, Packages, and Name Resolution
 
 ## Files and Modules
 
 - Source files are named in **kebab-case**: `note.can`,
-  `http-server.can`, `io-error.can`.
-- A file **must declare the type it is named after**: `http-server.can`
-  declares `HttpServer`. The kebab-case name is the mechanical
-  conversion of the PascalCase type name.
-- A **module is a folder**. There is no `mod` declaration; directory
-  structure is the module structure.
-- A package's entry point is `src/main.can`; a library's root is
-  `lib.can`.
+  `http-server.can`. A file declares one primary type, whose
+  PascalCase name is the file stem's PascalCase form.
+- There are no import statements. A file's referenced names resolve
+  automatically (below); folders organize files without scoping them.
 
-## Imports
+## Name Resolution
+
+An unresolved PascalCase reference (a type position, a constructor
+call, a PascalCase method or field name) resolves in this order:
+
+1. **Declarations already in the program** — the file's own
+   declarations and everything previously loaded.
+2. **The entry's directory tree** — any `.can` file declaring the name
+   (generated and output directories — `bindgen/`, `build/`,
+   `target/` — are skipped). If two files declare it, the program does
+   not compile until one is renamed or an alias disambiguates.
+3. **The bundled standard library's curated (`src/`) modules** — by
+   declaration name, or by the file-naming convention (`Stream` finds
+   `stream.can` even though the file only declares combinators).
+
+The most local wins: your package shadows std. Names that resolve
+nowhere are reported by the checker as unknown types with proper
+spans. Interpolated JSON literals implicitly reference `ToJson`, which
+is how `canon/std/Json` loads without ever being named (the
+[prelude](./expressions.md#json-literals)).
+
+Loading a file brings **all** of its declarations (its type, its
+functions, its trait impls) plus, transitively, whatever that file's
+own references resolve to.
+
+## Alias Declarations
+
+`Local = seg/…/Name` is the one explicit import form — an ordinary
+declaration whose right-hand side is a path:
 
 ```canon
-use Foo
-use acme/image/Decoder
-use canon/std/Json
-use models/User
+HttpStatus = std/http/Status
+
+now = wasi/clocks/monotonic_clock/now
 ```
 
-| Import | Resolves to |
-|---|---|
-| `use Foo` | sibling file `foo.can` (or `foo/main.can`) |
-| `use models/User` | subfolder file `models/user.can` |
-| `use canon/std/Json` | package import: `<namespace>/<package>/<Type>` |
-| `use acme/image/Decoder` | third-party package: same shape, no privileged path |
+- The final segment names the declaration; the segments before it
+  locate the file (kebab-case of a PascalCase name, or the literal
+  segment before a camelCase one).
+- `std/…` addresses the bundled standard library. Other prefixes
+  resolve against the project's `bindgen/` tree (from the manifest's
+  `[imports]`) and bundled packages.
+- A PascalCase alias may **rename**: `HttpStatus = std/http/Status`
+  declares `HttpStatus` as an alias of the loaded `Status`. A
+  camelCase (function) alias must keep its own name.
+- **Bindgen output is reachable only through aliases.** Generated
+  binding files never join name resolution — the collision-heavy,
+  machine-written FFI layer stays in the basement.
 
-There is exactly **one resolution rule**. For `use a/b/…/Z`:
+Alias declarations sort alphabetically at the top of the file
+(`canon fmt` does it).
 
-1. If the leading segments name a declared dependency in the project's
-   manifest (or a bundled package like `canon/std`), resolve as a
-   **package import**: find the package, then the file matching `Z`'s
-   kebab-case form inside it.
-2. Otherwise resolve as a **local import**: walk the segments as
-   directories relative to the current file and load `z.can` or
-   `z/main.can`.
+## Packages
 
-Each `use` names exactly one type — no wildcards, no aliasing — and
-brings that type **with its constructor and methods**. Using both
-`JsonValue` and `JsonArray` means writing both imports. `use` lines are
-[alphabetically ordered](./ordering.md).
+A package is a directory with a `canon.toml` manifest and a `src/`
+tree. The package is the unit of name resolution and of type-name
+uniqueness. The manifest's `[deps]` table declares which packages are
+in scope — the manifest, not the source file, is where vocabulary is
+granted (the same shape as the capability story: the entry signature
+is the authority manifest, `canon.toml` is the vocabulary manifest).
+`[imports]` declares WIT sources that `canon install` materializes
+under `bindgen/`.
 
-Version pins live in the manifest, never in source: `use canon/std/Json`
-carries no `@version`.
-
-## Visibility
-
-Everything is **public**. There is no `pub`, no private modifier. The
-one place encapsulation matters — protecting a type's invariants — is
-handled by [validated constructors](./types.md#validated-constructors):
-declaring a constructor replaces the implicit total one, and only
-functions in the type's own file can touch the raw representation.
-
-## Package Manifests
-
-Every package has a `canon.toml`:
-
-```toml
-name    = "my-app"
-version = "0.1.0"
-
-[deps]
-"canon/std" = "0.1.x"
-
-[imports]
-"wasi" = "./wit/wasi"
-```
-
-- **`[deps]`** declares Canon-package dependencies by semver constraint.
-- **`[imports]`** maps a path prefix to a WIT source — a `.wit` file, a
-  directory of them, or a `.wasm` component. `canon install`
-  materializes these into `bindgen/` as binding files
-  ([Compilation and the ABI](./compilation.md#binding-files)).
-- Both tables are alphabetical by key. The manifest parser accepts a
-  fixed TOML subset (top-level strings plus the two tables); full TOML
-  is a non-goal.
-
-When a dependency's component must be fetched rather than host-provided,
-its own manifest carries `from = "<url>"` and a mandatory `sha256`.
-Fetching is `canon install`'s job — `canon build` never touches the
-network; a cache miss offline is a hard error. Fetched components are
-cached content-addressed at `~/.canon/cache/<sha256>.wasm` and inlined
-into the output `.wasm` at build time, producing a self-contained
-binary. **The manifest is the lockfile** — there is no separate
-`canon.lock`.
-
-## Workspaces
-
-A directory whose `canon.toml` has a `[workspace]` table aggregates
-member packages, Cargo-style:
-
-```toml
-[workspace]
-members = ["*"]
-```
-
-`members = ["*"]` means "every immediate subdirectory containing an
-`canon.toml`"; explicit lists work too. Members share the workspace's
-`build/` directory. Nested workspaces are not allowed. `canon build`
-builds every member; `canon run -p foo` selects one.
-
-## Bundled Packages
-
-`canon/std` ships inside the compiler binary — pre-installed, but
-indistinguishable from any other package at the language level: it has a
-manifest, declares its WIT imports, and its bindings are generated by
-the same `canon install` mechanism user packages use. There is no
-privileged stdlib path.
+The bundled `canon/std` package is pre-installed and addressed as
+`std` in alias paths. Its curated modules resolve by name like your
+own files; its `bindgen/` tree follows the alias-only rule like
+everyone else's.

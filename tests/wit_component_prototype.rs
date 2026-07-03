@@ -27,8 +27,7 @@ use wit_parser::Resolve;
 /// Inline WIT package. Single function with one string param and one
 /// string return — enough to exercise the canonical-ABI string lift
 /// and lower without needing resources, variants, or sub-u64 ints.
-const HELLO_WIT: &str = r#"
-package test:hello@0.1.0;
+const HELLO_WIT: &str = r#"package test:hello@0.1.0;
 
 interface api {
     greet: func(name: string) -> string;
@@ -54,8 +53,7 @@ world hello {
 /// accept it against the real `wasi:http/service` too — the encoder
 /// doesn't care about the specific package or function names, only the
 /// structural shapes of the types it has to lift/lower.
-const HTTP_LIKE_WIT: &str = r#"
-package test:httplike@0.1.0;
+const HTTP_LIKE_WIT: &str = r#"package test:httplike@0.1.0;
 
 interface types {
     resource request;

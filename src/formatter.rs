@@ -25,25 +25,25 @@ pub fn format(source: &str) -> Result<String> {
 fn emit_module(module: &Module) -> String {
     let mut sections: Vec<String> = Vec::new();
 
-    // Use declarations grouped at the top, in canonical (alphabetical)
+    // Alias declarations grouped at the top, in canonical (alphabetical)
     // order. Ordering everywhere in Canon is mechanical, so the
     // formatter *fixes* it — the checker's ordering errors are the
     // backstop for unformatted code, not a hand-sorting chore.
-    let mut uses: Vec<String> = module
+    let mut aliases: Vec<String> = module
         .items
         .iter()
         .filter_map(|item| {
-            if let Item::Use(u) = item {
-                Some(format!("use {}", u.name.name))
+            if let Item::Alias(a) = item {
+                Some(format!("{} = {}", a.local.name, a.path.join("/")))
             } else {
                 None
             }
         })
         .collect();
-    uses.sort();
+    aliases.sort();
 
-    if !uses.is_empty() {
-        sections.push(uses.join("\n"));
+    if !aliases.is_empty() {
+        sections.push(aliases.join("\n"));
     }
 
     // All other items, each separated by a blank line, in canonical
@@ -51,7 +51,7 @@ fn emit_module(module: &Module) -> String {
     let others: Vec<&Item> = module
         .items
         .iter()
-        .filter(|item| !matches!(item, Item::Use(_)))
+        .filter(|item| !matches!(item, Item::Use(_) | Item::Alias(_)))
         .collect();
     for item in sort_items(&others) {
         sections.push(emit_item(item));
@@ -144,6 +144,7 @@ fn is_pinned_entry(f: &FunctionDef) -> bool {
 fn emit_item(item: &Item) -> String {
     match item {
         Item::Use(u) => format!("use {}", u.name.name),
+        Item::Alias(a) => format!("{} = {}", a.local.name, a.path.join("/")),
         Item::Bindings(b) => format!("bindings \"{}\"", b.urn),
         Item::TypeDef(td) => emit_type_def(td),
         Item::Function(f) => emit_function(f),
@@ -854,18 +855,18 @@ mod tests {
     }
 
     #[test]
-    fn test_use_declarations() {
+    fn test_alias_declarations() {
         assert_format(
-            "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\").shout().print(Stdout)\n}\n",
-            "use Greeter\n\nmain = (Stdout) -> Unit {\n    Greeter(\"hi\")\n        .shout()\n        .print(Stdout)\n}\n",
+            "now = wasi/clocks/monotonic_clock/now\n\nmain = () -> Unit {\n    now().print()\n}\n",
+            "now = wasi/clocks/monotonic_clock/now\n\nmain = () -> Unit {\n    now().print()\n}\n",
         );
     }
 
     #[test]
-    fn test_sorts_use_imports_and_free_functions() {
+    fn test_sorts_alias_imports_and_free_functions() {
         assert_format(
-            "use Zeta\nuse Alpha\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
-            "use Alpha\nuse Zeta\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n",
+            "Zeta = std/http/Status\nHttpStatus = std/http/Status\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
+            "HttpStatus = std/http/Status\nZeta = std/http/Status\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n",
         );
     }
 

@@ -4,9 +4,6 @@
 — an HTTP GET in one chain, built on a **validated constructor**.
 
 ```canon
-use canon/std/http/HttpError
-use canon/std/http/Url
-
 main = () -> Unit {
     Url("http://example.com")?
         .get()?

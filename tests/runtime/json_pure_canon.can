@@ -1,6 +1,3 @@
-use canon/std/Json
-use canon/std/MalformedJson
-
 show = (Result) -> Unit {
     Result.(
         * (Err<MalformedJson>) -> Unit { "FAIL".print() }

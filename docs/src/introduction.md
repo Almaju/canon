@@ -8,12 +8,6 @@ at build time, no runtime of its own to ship.
 Here is a complete HTTP service:
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 greet = (Request) -> Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
@@ -60,9 +54,6 @@ value, which you can only get from a `Path`, which you can only build
 from a `String`. The type chain *is* the access control:
 
 ```canon
-use canon/std/fs/File
-use canon/std/fs/Path
-
 main = () -> Unit {
     Path("./data.json")
         .File()?

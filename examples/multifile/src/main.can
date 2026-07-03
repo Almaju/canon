@@ -1,5 +1,3 @@
-use Greeter
-
 main = () -> Unit {
     Greeter("hi")
         .shout()

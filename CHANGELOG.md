@@ -46,6 +46,18 @@ the VS Code Marketplace by CI and attached to every release as a
 `.vsix`. The Zed extension is registry-ready (repository metadata,
 v0.4.0). Publishing runbook in `editors/PUBLISHING.md`.
 
+**`use` is gone — names resolve automatically.** Referencing a type
+*is* importing it: unknown PascalCase names resolve against the
+program's own directory tree first (a folder is a shelf, not a scope;
+type names are unique per package), then the bundled std's curated
+modules. The one explicit form is an alias declaration — an ordinary
+`Name = path` declaration (`HttpStatus = std/http/Status`,
+`now = wasi/clocks/monotonic_clock/now`) — used for renames,
+collisions, and as the only doorway into machine-generated bindgen
+output, which never joins name resolution. The `use` keyword now
+produces a parse error pointing at the new forms; `canon bindgen`
+emits alias declarations.
+
 **JSON prelude.** JSON literals need no import — like `Option` and
 `Result`, JSON is ambient. A static literal (`{"k":"v"}`) is a
 compile-time constant with `String`'s methods, valid in every world

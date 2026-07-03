@@ -131,11 +131,6 @@ Idiomatic Canon code does not write `extern Wasm` directly. Instead, it
 imports individual types from the embedded standard library:
 
 ```canon
-use canon/std/Random
-use canon/std/fs/File
-use canon/std/http/Url
-use canon/std/time/Instant
-use canon/std/time/Now
 ```
 
 (`Instant()` — monotonic clock via `wasi/clocks/monotonic_clock`;
@@ -143,7 +138,7 @@ use canon/std/time/Now
 `canon:builtins/filesystem`; `Now()` — RFC 3339 wall clock;
 `Url` + `get` — `canon:builtins/url` + `canon:builtins/http`.)
 
-Each `use canon/std/X` brings in the named type along with its constructor and
+Referencing a stdlib type brings it in along with its constructor and
 methods. Behind the scenes those modules are written in ordinary Canon
 on top of the generated `wasi/…` bindings; there is no privileged path.
 
@@ -161,7 +156,7 @@ You'll see two namespaces in `extern Wasm` paths:
   interface as that interface's canonical-ABI shape (async, streams,
   resources) becomes available.
 
-From a user's perspective both look identical: `use canon/std/Foo` and call
+From a user's perspective both look identical: reference `Foo` and call
 methods. The bridge swap is invisible.
 
 ## Tradeoffs

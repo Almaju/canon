@@ -1,6 +1,3 @@
-use canon/std/Json
-use canon/std/MalformedJson
-
 main = () -> Result<Unit, MalformedJson> {
     Json("[1, 2, 3]")?.print()
     Json("{\"a\":1,\"b\":[true,false,null]}")?.print()

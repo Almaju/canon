@@ -3,7 +3,8 @@
 One file was fine for three routes. Now we'll give the project a real
 package layout and pull the note logic into its own module — meeting
 Canon's module system, which is small enough to explain in one sentence:
-*a file declares the type it's named after, and `use` imports it.*
+*a file declares the type it's named after, and referencing the type
+loads the file.*
 
 ## From File to Package
 
@@ -62,16 +63,10 @@ Two ideas in eight lines:
 
 ## The Entry, Rewritten
 
-`src/main.can` imports the module and gets out of the data business:
+`src/main.can` just *refers* to `Note` and gets out of the data
+business — there is nothing to import:
 
 ```canon
-use Note
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 indexBody = () -> Body {
     Body(List(Note("ship canon v1").render(), Note("write the docs").render()).toJsonArray())
 }
@@ -111,15 +106,15 @@ $ curl localhost:8080/notes
 [{"title":"ship canon v1"},{"title":"write the docs"}]
 ```
 
-## What `use` Did
+## What Just Happened
 
-- `use Note` loads `note.can` from the same directory and brings in the
-  `Note` type **with its methods** — that's why `main.can` can call
-  `.render()` without importing it separately. One import per type; no
-  wildcards; no `mod` declarations. A folder is a module.
-- `use` lines, like everything else, are alphabetical. `Note` sorts
-  before `canon/std/…` — the compiler will tell you if you get it
-  wrong.
+- Referencing `Note` loaded `note.can` **with its methods** — that's
+  why `main.can` can call `.render()`. No import line, no `mod`
+  declaration: the package's files are one flat namespace, and folders
+  just organize them.
+- Type names are unique per package — two files declaring `Note` is a
+  compile error naming both. The name *is* the identity; the kebab-case
+  filename is how the compiler shelves it.
 - Note the substitutability: `render` chains `.concat(Note)` where
   `concat` expects a `String` — a newtype flows into its underlying
   type without unwrapping. Same reason `Body(Note(…).render())` works.

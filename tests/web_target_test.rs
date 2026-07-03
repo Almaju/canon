@@ -18,10 +18,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use wasmtime::{Engine, Instance, Linker, Module, Store, TypedFunc};
 
-const COUNTER_SRC: &str = r#"use canon/std/web/Html
-use canon/std/web/Msg
-
-Model = Int
+const COUNTER_SRC: &str = r#"Model = Int
 
 init = () -> Model {
     Model(0)

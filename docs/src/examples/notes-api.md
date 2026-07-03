@@ -23,12 +23,6 @@ HTTP/1.1 404 Not Found
 ## The Source
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 indexBody = () -> Body {
     Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
 }

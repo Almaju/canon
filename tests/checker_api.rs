@@ -37,8 +37,7 @@ fn parse(source: &str) -> canon::ast::Module {
 /// the imported one for alphabetical order.
 #[test]
 fn method_ordering_only_within_entry_file() {
-    let source = r#"
-HttpRequest = String
+    let source = r#"HttpRequest = String
 
 path = (HttpRequest) -> String {
     HttpRequest
@@ -75,8 +74,7 @@ main = () -> Unit {
 /// are observationally identical on well-formed input.
 #[test]
 fn check_and_check_with_entry_zero_agree() {
-    let source = r#"
-main = () -> Unit {
+    let source = r#"main = () -> Unit {
     "hi".print()
 }
 "#;
@@ -91,8 +89,7 @@ main = () -> Unit {
 /// in signatures) is not.
 #[test]
 fn dead_code_lint_flags_unreachable_declarations() {
-    let source = r#"
-Greeting = String
+    let source = r#"Greeting = String
 
 deadHelper = (Int) -> Int {
     Int.add(1)
@@ -125,8 +122,7 @@ main = () -> Unit {
 /// through the union's own definition (Ord -> Equal/Greater/Less).
 #[test]
 fn dead_code_lint_walks_type_definitions() {
-    let source = r#"
-Equal = Unit
+    let source = r#"Equal = Unit
 
 Greater = Unit
 
@@ -155,8 +151,7 @@ main = () -> Unit {
 /// public declaration is exported surface.
 #[test]
 fn dead_code_lint_skips_libraries() {
-    let source = r#"
-helper = (Int) -> Int {
+    let source = r#"helper = (Int) -> Int {
     Int.add(1)
 }
 "#;

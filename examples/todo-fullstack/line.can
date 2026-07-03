@@ -1,6 +1,3 @@
-use canon/std/web/Html
-use canon/std/web/Msg
-
 Line = String
 
 flip = (Line) -> Line {

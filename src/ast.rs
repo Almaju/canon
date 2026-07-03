@@ -11,7 +11,18 @@ pub struct Module {
 pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
+    /// Internal only — the parser no longer produces `use` items (the
+    /// keyword was removed; names resolve automatically). The loader
+    /// still synthesizes `UseDecl`s to drive its file-loading machinery.
     Use(UseDecl),
+    /// An alias declaration: `Local = seg/seg/Name`. The only explicit
+    /// import form — brings one declaration from another file into
+    /// scope, optionally under a new PascalCase local name. This is how
+    /// bindgen output is reached (`now = wasi/clocks/monotonic_clock/now`)
+    /// and how name collisions are disambiguated
+    /// (`HttpStatus = std/http/Status`). Consumed by the loader; never
+    /// reaches the checker.
+    Alias(AliasDecl),
     /// A file-level `bindings "<urn>"` directive. Declares that all
     /// camelCase function-type aliases in this file are actually
     /// external bindings backed by `<urn>` in the WebAssembly Component
@@ -41,6 +52,20 @@ pub struct BindingsDecl {
 #[derive(Debug, Clone)]
 pub struct UseDecl {
     pub name: Ident,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct AliasDecl {
+    /// The local name being declared (left-hand side).
+    pub local: Ident,
+    /// Path segments of the right-hand side, e.g.
+    /// `["wasi", "clocks", "monotonic_clock", "now"]`. The final
+    /// segment is the declaration being imported; the segments before
+    /// it locate the file (for a PascalCase final segment the file is
+    /// its kebab-case form; for a camelCase one the preceding segment
+    /// names the file directly).
+    pub path: Vec<String>,
     pub span: Span,
 }
 

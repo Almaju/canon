@@ -9,8 +9,6 @@ no runner configuration.
 A test is any function with the signature `() -> TestResult`:
 
 ```canon
-use canon/std/TestResult
-
 testAddPositive = () -> TestResult {
     1
         .add(2)
@@ -65,8 +63,6 @@ Without local variables, a test is a single chain that ends in a
 `TestResult` — typically `.eq(expected).assert(message)`:
 
 ```canon
-use canon/std/TestResult
-
 Note = String
 
 render = (Note) -> String {

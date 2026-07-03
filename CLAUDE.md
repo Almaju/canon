@@ -280,5 +280,5 @@ List(1, 2, 3).map((Int) -> Int { Int.mul(2) }) # lambda
 ```
 
 - No local variables, no `let`, no `if`/`else`, no comments in the language.
-- `use Foo` imports from `foo.can` in the same module directory (or the corresponding folder for modules).
+- There is no `use`: names resolve automatically (own files → bundled std src). Alias declarations (`HttpStatus = std/http/Status`, `now = wasi/clocks/monotonic_clock/now`) disambiguate and reach bindgen output — bindgen never joins name resolution.
 - See `DESIGN.md` for the complete specification.

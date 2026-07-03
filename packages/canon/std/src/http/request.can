@@ -1,5 +1,3 @@
-use HttpError
-
 Request = Handle
 
 bindings "wasi:http/types@0.3.0-rc-2026-03-15#[method]request.get-method"

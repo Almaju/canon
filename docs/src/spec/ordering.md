@@ -32,7 +32,7 @@ Two consequences worth internalizing:
 
 - `notFound` sorts before `noteOneBody` (`F` < `e` byte-wise), even
   though a dictionary would order them the other way.
-- `use Note` sorts before `use canon/std/Json` (`N` < `c`), so local
+- Alias declarations sort alphabetically at the top of the file, so local
   type imports typically precede package imports.
 
 When in doubt, don't compute it — `canon fmt` and the checker's error

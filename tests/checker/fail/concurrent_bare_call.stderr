@@ -1,3 +1,3 @@
-error[tests/checker/fail/concurrent_bare_call.can:8:5]: `parallel(…)` is not a call form — combinators are methods on the first future: `a.parallel(b)`
-error[tests/checker/fail/concurrent_bare_call.can:9:5]: `race(…)` is not a call form — combinators are methods on the first future: `a.race(b)`
-error[tests/checker/fail/concurrent_bare_call.can:9:5]: no method `print` on type `race` with 0 argument(s)
+error[tests/checker/fail/concurrent_bare_call.can:6:5]: `parallel(…)` is not a call form — combinators are methods on the first future: `a.parallel(b)`
+error[tests/checker/fail/concurrent_bare_call.can:7:5]: `race(…)` is not a call form — combinators are methods on the first future: `a.race(b)`
+error[tests/checker/fail/concurrent_bare_call.can:7:5]: no method `print` on type `race` with 0 argument(s)

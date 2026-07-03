@@ -79,8 +79,6 @@ hood, `wasi:http/outgoing-handler` is an async interface — every step of
 the chain returns a `Future`:
 
 ```canon
-use canon/std/http/Url
-
 main = () -> Unit {
     Url("https://example.com")?
         .get()?

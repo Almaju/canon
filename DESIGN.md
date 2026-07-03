@@ -15,11 +15,11 @@ Wherever ordering is discretionary, Canon requires **alphabetical order**. This 
 - Arms of a dispatch (in the order of the union's variants — which are themselves alphabetical)
 - Trait composition: `Show = Debug * PrintString`
 - Error unions inside `Result`: `Result<T, IoError + NotFound + PermissionDenied>`
-- Imports: multiple `use` statements at the top of a file
+- Alias declarations at the top of a file
 
 The reasoning: ordering is a constant source of bikeshedding and diff noise. By forcing one canonical order, code reads the same way no matter who wrote it, and reordering is never a meaningful change.
 
-Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts `use` imports, type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
+Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts alias declarations, type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
 
 One caveat worth knowing: alphabetical order is a *source-level* canon, never a wire format. Union variants are numbered by their alphabetical position internally, so adding a variant renumbers everything after it. Serialized values must therefore always carry variant *names*, not indices; at the Component Model boundary the WIT file's declared order governs the ABI, and the compiler maps between the two.
 
@@ -310,7 +310,6 @@ The case difference disambiguates trait implementations from regular functions: 
 ```
 use Foo
 use acme/image/Decoder
-use canon/std/Json
 use models/User
 ```
 
@@ -318,7 +317,7 @@ use models/User
 |---|---|
 | `use Foo` | local: `foo.can` or `foo/main.can` relative to this file |
 | `use models/User` | local: subfolder lookup, `models/user.can` |
-| `use canon/std/Json` | package: `<namespace>/<package>/<Type>` |
+| `std/Json` (alias path) | package: `std/<Type>` |
 | `use acme/image/Decoder` | third-party: same shape, no privileged path |
 
 There is exactly one `use` resolution rule. Given `use a/b/c/…/Z`:
@@ -328,11 +327,11 @@ There is exactly one `use` resolution rule. Given `use a/b/c/…/Z`:
 
 The shipped packages `canon/std` and `canon/wasi` are pre-installed and bundled with the compiler binary, but indistinguishable from any other package at the language level — they appear in the cache and must be listed as deps to be used.
 
-Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use canon/std/JsonValue` and `use canon/std/JsonArray`.
+Resolution is per-name — there are no wildcard imports; every type a program mentions is loaded individually, and nothing it doesn't mention is.
 
-**The prelude.** A handful of core names need no import at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`). This mirrors Rust's prelude: the standard vocabulary is ambient, everything else is an explicit import.
+**Name resolution replaces imports.** There is no `use`. Referencing a type *is* importing it: an unknown PascalCase name resolves against the program's own files first (the entry's directory tree — a folder is a shelf, not a scope; type names are unique per package), then the bundled standard library's curated modules. The most local wins. The one explicit form is an alias declaration — an ordinary `Name = path` declaration — used to disambiguate collisions or rename (`HttpStatus = std/http/Status`) and as the only doorway into machine-generated bindgen output (`now = wasi/clocks/monotonic_clock/now`), which never participates in name resolution. The prelude falls out for free: `Bool`, `Option`, `Result`, `List`, the primitives are intrinsic, and `{"k":"v"}` types as `Json` with `canon/std/Json` loading the moment a program touches its machinery (interpolation, the `Json(...)` validator, `.ToJson()`).
 
-Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. `use canon/std/Json` never carries an `@version`.
+Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. source never carries an `@version`.
 
 ### Visibility
 

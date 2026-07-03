@@ -297,12 +297,66 @@ pub struct LoadedSource {
     pub source: String,
 }
 
+impl LoadCtx {
+    /// Declaration index for a directory tree: name → files declaring
+    /// it. Built once per directory, cached for the load. Skips
+    /// generated/output trees (`bindgen/`, `build/`, `target/`,
+    /// `node_modules/`) and hidden directories.
+    fn dir_index(&mut self, dir: &Path) -> &std::collections::HashMap<String, Vec<PathBuf>> {
+        if !self.dir_indexes.contains_key(dir) {
+            let mut map: std::collections::HashMap<String, Vec<PathBuf>> =
+                std::collections::HashMap::new();
+            let mut stack = vec![dir.to_path_buf()];
+            while let Some(d) = stack.pop() {
+                let Ok(entries) = fs::read_dir(&d) else {
+                    continue;
+                };
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if path.is_dir() {
+                        if !name.starts_with('.')
+                            && !matches!(
+                                name.as_str(),
+                                "bindgen" | "build" | "target" | "node_modules"
+                            )
+                        {
+                            stack.push(path);
+                        }
+                    } else if name.ends_with(".can") {
+                        if let Ok(src) = fs::read_to_string(&path) {
+                            for decl in scan_decl_names(&src) {
+                                let files = map.entry(decl).or_default();
+                                if !files.contains(&path) {
+                                    files.push(path.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for files in map.values_mut() {
+                files.sort();
+            }
+            self.dir_indexes.insert(dir.to_path_buf(), map);
+        }
+        &self.dir_indexes[dir]
+    }
+}
+
 struct LoadCtx {
     seen: HashSet<PathBuf>,
     /// Deduplicates bundled imports so a single package is loaded once even
     /// when multiple files transitively `use` it. Keyed by absolute bundled
     /// file path (`pkg.name + "/" + file.path`).
     seen_bundled: HashSet<String>,
+    /// Every top-level declaration name loaded so far — consulted by
+    /// name resolution so already-satisfied references don't re-resolve.
+    declared: HashSet<String>,
+    /// Cached per-directory declaration indexes for sibling resolution:
+    /// dir → (name → files declaring it).
+    dir_indexes:
+        std::collections::HashMap<PathBuf, std::collections::HashMap<String, Vec<PathBuf>>>,
     items: Vec<Item>,
     /// User-authored sources accumulated during load (entry + transitive
     /// local `use` imports). Mirrors `seen` but keeps each file's full
@@ -357,6 +411,8 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
     let mut ctx = LoadCtx {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
+        declared: HashSet::new(),
+        dir_indexes: std::collections::HashMap::new(),
         items: Vec::new(),
         local_sources: Vec::new(),
         project_root,
@@ -407,110 +463,466 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
     apply_bindings_directive(&mut module.items);
     resolve_new_syntax(&mut module);
 
-    let mut use_items = Vec::new();
+    let mut alias_items = Vec::new();
     let mut other_items = Vec::new();
     for item in module.items {
         match item {
-            Item::Use(u) => use_items.push(u),
+            Item::Alias(a) => alias_items.push(a),
+            Item::Use(_) => {}
             other => other_items.push(other),
         }
     }
-    inject_json_prelude(&use_items, &other_items, dir, ctx)?;
-    for u in use_items {
-        process_use(&u, dir, ctx)?;
+    ctx.declared.extend(decl_names(&other_items));
+    for a in &alias_items {
+        ctx.declared.insert(a.local.name.clone());
     }
+    let renames = resolve_local_aliases(&alias_items, dir, ctx)?;
+    resolve_referenced_names(&other_items, dir, ctx)?;
     let start = ctx.items.len();
     ctx.items.extend(other_items);
+    ctx.items.extend(renames);
     Ok(start)
 }
 
-/// JSON prelude: `canon/std/Json` loads automatically — like Rust's
-/// prelude, JSON support doesn't need an explicit import. A fully static
-/// JSON literal is constant-folded and needs nothing at all (the checker
-/// knows `Json = String` intrinsically), so the stdlib module is pulled
-/// in only when the program actually reaches for its machinery:
-/// interpolation inside a literal (`{"n":Int}` converts via `ToJson`),
-/// the validating `Json(...)` constructor, or an explicit `.ToJson()` /
-/// `.Json()` call. Skipped when the file imports or defines `Json`
-/// itself.
-fn inject_json_prelude(
-    use_items: &[crate::ast::UseDecl],
-    other_items: &[Item],
-    dir: &Path,
-    ctx: &mut LoadCtx,
-) -> Result<()> {
-    let already_in_scope = use_items
-        .iter()
-        .any(|u| u.name.name == "Json" || u.name.name.ends_with("/Json"))
-        || other_items.iter().any(|item| match item {
-            Item::TypeDef(td) => td.name.name == "Json",
-            Item::Function(f) => f.name.name == "Json" && f.extern_wasm.is_some(),
-            _ => false,
-        });
-    if already_in_scope || !items_use_json_machinery(other_items) {
-        return Ok(());
-    }
-    let synthetic = crate::ast::UseDecl {
-        name: crate::ast::Ident {
-            name: "canon/std/Json".to_string(),
-            span: Span::default(),
-        },
-        span: Span::default(),
-    };
-    process_use(&synthetic, dir, ctx)
+// ── Name resolution ─────────────────────────────────────────────────────
+//
+// There is no `use`. A file's referenced names resolve automatically:
+//
+//   1. names declared in the file itself (or already loaded),
+//   2. sibling files in the same directory tree (a folder is a shelf,
+//      not a scope — the kebab-case file for the name, or any file that
+//      declares it),
+//   3. the bundled standard library's `src/` tree.
+//
+// Bindgen output (`bindgen/` trees, bundled or project-local) never
+// participates in name resolution — generated FFI shims are reached
+// only through explicit alias declarations
+// (`now = wasi/clocks/monotonic_clock/now`), which also disambiguate
+// genuine collisions (`HttpStatus = std/http/Status`).
+
+/// Names the compiler knows intrinsically — never resolved to files.
+const RESOLUTION_BUILTINS: &[&str] = &[
+    "Bit", "Bool", "Byte", "Bytes", "Err", "False", "Float", "Future", "Handle", "Hex", "Int",
+    "List", "Map", "None", "Ok", "Option", "Result", "Self", "Set", "Some", "String", "True",
+    "Unit",
+];
+
+fn is_resolution_builtin(name: &str) -> bool {
+    RESOLUTION_BUILTINS.contains(&name)
 }
 
-fn items_use_json_machinery(items: &[Item]) -> bool {
-    items.iter().any(|item| match item {
-        Item::Function(f) => f.body.exprs.iter().any(expr_uses_json_machinery),
-        _ => false,
+/// Top-level declaration names in a set of items (types, functions,
+/// alias locals). These never need resolving.
+fn decl_names(items: &[Item]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for item in items {
+        match item {
+            Item::TypeDef(td) => {
+                out.insert(td.name.name.clone());
+            }
+            Item::Function(f) => {
+                out.insert(f.name.name.clone());
+            }
+            Item::Alias(a) => {
+                out.insert(a.local.name.clone());
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Scan a Canon source for its top-level declaration names without
+/// parsing: a declaration is a line starting in column 0 with an
+/// identifier followed by `=`. Cheap enough to run over whole
+/// directories and the bundled registry.
+fn scan_decl_names(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in source.lines() {
+        let bytes = line.as_bytes();
+        if bytes.first().is_none_or(|b| !b.is_ascii_alphabetic()) {
+            continue;
+        }
+        let end = bytes
+            .iter()
+            .position(|b| !b.is_ascii_alphanumeric())
+            .unwrap_or(bytes.len());
+        if line[end..].trim_start().starts_with('=') {
+            out.push(line[..end].to_string());
+        }
+    }
+    out
+}
+
+/// Lazily-built index of the bundled packages' `src/` declarations:
+/// name → every (package, file) that declares it. Bindgen files
+/// (those carrying a `wit_urn`) are excluded by design.
+fn std_src_index(
+) -> &'static std::collections::HashMap<String, Vec<(&'static BundledPackage, &'static BundledFile)>>
+{
+    use std::sync::OnceLock;
+    static INDEX: OnceLock<
+        std::collections::HashMap<String, Vec<(&'static BundledPackage, &'static BundledFile)>>,
+    > = OnceLock::new();
+    INDEX.get_or_init(|| {
+        let mut map: std::collections::HashMap<
+            String,
+            Vec<(&'static BundledPackage, &'static BundledFile)>,
+        > = std::collections::HashMap::new();
+        for pkg in BUNDLED_PACKAGES.iter() {
+            for file in pkg.files.iter() {
+                if file.wit_urn.is_some() {
+                    continue;
+                }
+                let mut names = scan_decl_names(file.source);
+                // The file-naming convention also names the file's
+                // primary type: `stream.can` answers for `Stream` even
+                // when the file only declares that type's *functions*
+                // (combinator modules over builtin generics).
+                if let Some(stem) = file
+                    .path
+                    .rsplit('/')
+                    .next()
+                    .and_then(|f| f.strip_suffix(".can"))
+                {
+                    names.push(crate::bindgen::naming::kebab_to_pascal(stem));
+                }
+                for name in names {
+                    let entry = map.entry(name).or_default();
+                    if !entry.iter().any(|(_, f)| f.path == file.path) {
+                        entry.push((pkg, file));
+                    }
+                }
+            }
+        }
+        map
     })
 }
 
-fn expr_uses_json_machinery(expr: &Expr) -> bool {
+/// Collect every name a set of items *references* — type positions,
+/// constructor calls, PascalCase method/field names (trait calls and
+/// type-as-method constructors), and the `ToJson` conversions implied
+/// by interpolated JSON literals.
+fn collect_referenced_names(items: &[Item], out: &mut std::collections::BTreeSet<String>) {
+    for item in items {
+        match item {
+            // A typedef's union body *introduces* its variant names
+            // (implicit unit variants) rather than referencing them —
+            // `Ord = Equal + Greater + Less` must not go looking for an
+            // `equal.can`. Generic arguments inside variants are still
+            // real references (`Some<Content>`).
+            Item::TypeDef(td) => match &td.body {
+                TypeExpr::Union { variants, .. } => {
+                    for v in variants {
+                        if let TypeExpr::Named { generics, .. } = v {
+                            for g in generics {
+                                collect_type_names(g, out);
+                            }
+                        } else {
+                            collect_type_names(v, out);
+                        }
+                    }
+                }
+                other => collect_type_names(other, out),
+            },
+            Item::Function(f) => {
+                if let Some(recv) = &f.receiver {
+                    out.insert(recv.name.clone());
+                }
+                for p in &f.params {
+                    collect_type_names(&p.ty, out);
+                }
+                collect_type_names(&f.return_ty, out);
+                for e in &f.body.exprs {
+                    collect_expr_names_res(e, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_type_names(ty: &TypeExpr, out: &mut std::collections::BTreeSet<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            out.insert(name.clone());
+            for g in generics {
+                collect_type_names(g, out);
+            }
+        }
+        TypeExpr::Union { variants, .. } => {
+            for v in variants {
+                collect_type_names(v, out);
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                collect_type_names(f, out);
+            }
+        }
+        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => collect_type_names(ty, out),
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                collect_type_names(p, out);
+            }
+            collect_type_names(return_ty, out);
+        }
+    }
+}
+
+fn collect_expr_names_res(expr: &Expr, out: &mut std::collections::BTreeSet<String>) {
     use crate::ast::JsonLitPart;
     match expr {
-        Expr::JsonLit { parts, .. } => parts.iter().any(|p| match p {
-            JsonLitPart::Static(_) => false,
-            JsonLitPart::Interp(e) => {
-                // The interpolation itself needs `ToJson`, whatever the
-                // inner expression is.
-                let _ = e;
-                true
+        Expr::Ident(id) => {
+            if id
+                .name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase())
+            {
+                out.insert(id.name.clone());
             }
-        }),
+        }
         Expr::Constructor { name, args, .. } => {
-            name.name == "Json" || args.iter().any(expr_uses_json_machinery)
+            out.insert(name.name.clone());
+            for a in args {
+                collect_expr_names_res(a, out);
+            }
         }
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             ..
         } => {
-            method.name == "ToJson"
-                || method.name == "Json"
-                || expr_uses_json_machinery(receiver)
-                || args.iter().any(expr_uses_json_machinery)
+            if method
+                .name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase())
+            {
+                out.insert(method.name.clone());
+            }
+            for ta in type_args {
+                collect_type_names(ta, out);
+            }
+            collect_expr_names_res(receiver, out);
+            for a in args {
+                collect_expr_names_res(a, out);
+            }
+        }
+        Expr::FieldAccess {
+            receiver, field, ..
+        } => {
+            if field
+                .name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase())
+            {
+                out.insert(field.name.clone());
+            }
+            collect_expr_names_res(receiver, out);
         }
         Expr::Match {
             scrutinee, arms, ..
         } => {
-            expr_uses_json_machinery(scrutinee)
-                || arms
-                    .iter()
-                    .any(|arm| arm.body.exprs.iter().any(expr_uses_json_machinery))
+            collect_expr_names_res(scrutinee, out);
+            for arm in arms {
+                collect_type_names(&arm.param_ty, out);
+                collect_type_names(&arm.return_ty, out);
+                for e in &arm.body.exprs {
+                    collect_expr_names_res(e, out);
+                }
+            }
         }
-        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_uses_json_machinery(inner),
-        Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_json_machinery),
-        Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_json_machinery),
-        Expr::FieldAccess { receiver, .. } => expr_uses_json_machinery(receiver),
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            ..
+        } => {
+            for p in params {
+                collect_type_names(&p.ty, out);
+            }
+            collect_type_names(return_ty, out);
+            for e in &body.exprs {
+                collect_expr_names_res(e, out);
+            }
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    out.insert("ToJson".to_string());
+                    collect_expr_names_res(e, out);
+                }
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => collect_expr_names_res(inner, out),
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                collect_expr_names_res(f, out);
+            }
+        }
+        Expr::StringLit { .. }
         | Expr::IntLit { .. }
         | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        | Expr::HexLit { .. } => {}
     }
+}
+
+/// Candidate `use`-machinery paths for an alias declaration's RHS.
+/// `std/time/Instant` → primary `canon/std/time/Instant` (file =
+/// kebab of the final PascalCase segment); `wasi/clocks/types/Instant`
+/// needs the fallback, where the segment *before* the name is the file.
+fn alias_candidate_paths(a: &crate::ast::AliasDecl) -> (String, Option<String>) {
+    let mut segs = a.path.clone();
+    if segs.first().map(String::as_str) == Some("std") {
+        segs[0] = "canon/std".to_string();
+    }
+    let last = segs.last().cloned().unwrap_or_default();
+    let is_pascal = last.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+    if is_pascal {
+        let primary = segs.join("/");
+        let fallback = (segs.len() > 1).then(|| segs[..segs.len() - 1].join("/"));
+        (primary, fallback)
+    } else {
+        // camelCase function alias: the file is the preceding segment.
+        (segs[..segs.len() - 1].join("/"), None)
+    }
+}
+
+fn synthetic_use(path: String) -> crate::ast::UseDecl {
+    crate::ast::UseDecl {
+        name: crate::ast::Ident {
+            name: path,
+            span: Span::default(),
+        },
+        span: Span::default(),
+    }
+}
+
+/// Process alias declarations for a local (on-disk) file, and return
+/// any synthetic rename typedefs (`HttpStatus = Status`) to append.
+fn resolve_local_aliases(
+    aliases: &[crate::ast::AliasDecl],
+    dir: &Path,
+    ctx: &mut LoadCtx,
+) -> Result<Vec<Item>> {
+    let mut extra = Vec::new();
+    for a in aliases {
+        let (primary, fallback) = alias_candidate_paths(a);
+        let res = process_use(&synthetic_use(primary), dir, ctx);
+        if res.is_err() {
+            if let Some(fb) = fallback {
+                process_use(&synthetic_use(fb), dir, ctx)?;
+            } else {
+                res?;
+            }
+        }
+        extra.extend(alias_rename_item(a)?);
+    }
+    Ok(extra)
+}
+
+/// If the alias renames (`Local = …/Name` with `Local != Name`), emit a
+/// typedef `Local = Name` so the local name works everywhere the
+/// original does. Only PascalCase (type) aliases can rename.
+fn alias_rename_item(a: &crate::ast::AliasDecl) -> Result<Vec<Item>> {
+    let last = a.path.last().cloned().unwrap_or_default();
+    if a.local.name == last {
+        return Ok(Vec::new());
+    }
+    let is_pascal = last.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+    if !is_pascal {
+        return Err(CanonError::CheckError {
+            message: format!(
+                "function alias `{}` cannot rename `{}` — declare it under its own name",
+                a.local.name, last
+            ),
+            span: a.span,
+        });
+    }
+    Ok(vec![Item::TypeDef(crate::ast::TypeDef {
+        name: a.local.clone(),
+        generic_params: Vec::new(),
+        body: TypeExpr::Named {
+            name: last,
+            generics: Vec::new(),
+            span: a.span,
+        },
+        span: a.span,
+    })])
+}
+
+/// Resolve a local file's referenced names: sibling directory tree
+/// first, then the bundled std `src/` index. Unresolved names are left
+/// for the checker to report.
+fn resolve_referenced_names(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
+    let mut refs = std::collections::BTreeSet::new();
+    collect_referenced_names(items, &mut refs);
+    let own = decl_names(items);
+    for name in refs {
+        if is_resolution_builtin(&name) || own.contains(&name) || ctx.declared.contains(&name) {
+            continue;
+        }
+        // 1. Sibling files in the entry's directory tree.
+        let local_matches = ctx.dir_index(dir).get(&name).cloned().unwrap_or_default();
+        match local_matches.len() {
+            0 => {}
+            1 => {
+                load_into(&local_matches[0], ctx)?;
+                continue;
+            }
+            _ => {
+                return Err(CanonError::CheckError {
+                    message: format!(
+                        "`{}` is declared in more than one file here: {} — rename one, or \
+                         disambiguate with an alias declaration",
+                        name,
+                        local_matches
+                            .iter()
+                            .map(|p| p.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    span: Span::default(),
+                });
+            }
+        }
+        // 2. Bundled std src.
+        if let Some(cands) = std_src_index().get(&name) {
+            if cands.len() > 1 {
+                return Err(CanonError::CheckError {
+                    message: format!(
+                        "`{}` is ambiguous in the standard library ({}) — disambiguate with an \
+                         alias declaration like `{} = std/…/{}`",
+                        name,
+                        cands
+                            .iter()
+                            .map(|(p, f)| format!("{}/{}", p.name, f.path))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        name,
+                        name
+                    ),
+                    span: Span::default(),
+                });
+            }
+            let (pkg, file) = cands[0];
+            let key = format!("{}/{}", pkg.name, file.path);
+            if ctx.seen_bundled.insert(key) {
+                load_bundled_source(pkg, file, ctx)?;
+            }
+        }
+        // Not found anywhere: the checker reports unknown types with
+        // proper spans; many names (builtin methods, trait calls on
+        // local types) simply have nothing to load.
+    }
+    Ok(())
 }
 
 fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
@@ -643,22 +1055,26 @@ fn load_source(source: &str, dir: &Path, wit_urn: Option<&str>, ctx: &mut LoadCt
     apply_bindings_directive(&mut module.items);
     resolve_new_syntax(&mut module);
 
-    let mut use_items = Vec::new();
+    let mut alias_items = Vec::new();
     let mut other_items = Vec::new();
     for item in module.items {
         match item {
-            Item::Use(u) => use_items.push(u),
+            Item::Alias(a) => alias_items.push(a),
+            Item::Use(_) => {}
             other => other_items.push(other),
         }
     }
-    inject_json_prelude(&use_items, &other_items, dir, ctx)?;
-    for u in use_items {
-        process_use(&u, dir, ctx)?;
+    ctx.declared.extend(decl_names(&other_items));
+    for a in &alias_items {
+        ctx.declared.insert(a.local.name.clone());
     }
+    let renames = resolve_local_aliases(&alias_items, dir, ctx)?;
+    resolve_referenced_names(&other_items, dir, ctx)?;
     if let Some(urn) = wit_urn {
         patch_extern_paths(&mut other_items, urn);
     }
     ctx.items.extend(other_items);
+    ctx.items.extend(renames);
     Ok(())
 }
 
@@ -681,21 +1097,68 @@ fn load_bundled_source(
     apply_bindings_directive(&mut module.items);
     resolve_new_syntax(&mut module);
 
-    let mut use_items = Vec::new();
+    let mut alias_items = Vec::new();
     let mut other_items = Vec::new();
     for item in module.items {
         match item {
-            Item::Use(u) => use_items.push(u),
+            Item::Alias(a) => alias_items.push(a),
+            Item::Use(_) => {}
             other => other_items.push(other),
         }
     }
-    for u in use_items {
-        process_bundled_use(pkg, current, &u, ctx)?;
+    ctx.declared.extend(decl_names(&other_items));
+    for a in &alias_items {
+        ctx.declared.insert(a.local.name.clone());
     }
+    let mut renames = Vec::new();
+    for a in &alias_items {
+        let (primary, fallback) = alias_candidate_paths(a);
+        let res = process_bundled_use(pkg, current, &synthetic_use(primary), ctx);
+        if res.is_err() {
+            if let Some(fb) = fallback {
+                process_bundled_use(pkg, current, &synthetic_use(fb), ctx)?;
+            } else {
+                res?;
+            }
+        }
+        renames.extend(alias_rename_item(a)?);
+    }
+    resolve_bundled_names(pkg, &other_items, ctx)?;
     if let Some(urn) = current.wit_urn {
         patch_extern_paths(&mut other_items, urn);
     }
     ctx.items.extend(other_items);
+    ctx.items.extend(renames);
+    Ok(())
+}
+
+/// Resolve a bundled file's referenced names against its own package's
+/// `src/` declarations (the same flat-namespace rule local files get).
+fn resolve_bundled_names(
+    pkg: &'static BundledPackage,
+    items: &[Item],
+    ctx: &mut LoadCtx,
+) -> Result<()> {
+    let mut refs = std::collections::BTreeSet::new();
+    collect_referenced_names(items, &mut refs);
+    let own = decl_names(items);
+    for name in refs {
+        if is_resolution_builtin(&name) || own.contains(&name) || ctx.declared.contains(&name) {
+            continue;
+        }
+        let Some(cands) = std_src_index().get(&name) else {
+            continue;
+        };
+        let in_pkg: Vec<_> = cands.iter().filter(|(p, _)| p.name == pkg.name).collect();
+        if in_pkg.len() != 1 {
+            continue; // absent or ambiguous — leave to the checker
+        }
+        let (p, file) = *in_pkg[0];
+        let key = format!("{}/{}", p.name, file.path);
+        if ctx.seen_bundled.insert(key) {
+            load_bundled_source(p, file, ctx)?;
+        }
+    }
     Ok(())
 }
 

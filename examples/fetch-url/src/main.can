@@ -1,6 +1,3 @@
-use canon/std/http/HttpError
-use canon/std/http/Url
-
 main = () -> Unit {
     Url("http://example.com")?
         .get()?

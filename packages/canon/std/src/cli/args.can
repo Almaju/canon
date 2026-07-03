@@ -1,4 +1,4 @@
-use wasi/cli/environment
+getArguments = wasi/cli/environment/getArguments
 
 Args = () -> List<String> {
     getArguments()

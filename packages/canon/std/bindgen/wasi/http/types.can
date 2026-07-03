@@ -1,4 +1,4 @@
-use wasi/clocks/types
+Duration = wasi/clocks/types/Duration
 
 DNSErrorPayload = DNSErrorPayloadInfoCode * DNSErrorPayloadRcode
 

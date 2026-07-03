@@ -1,0 +1,3 @@
+ErrorCode = wasi/http/types/ErrorCode
+Request = wasi/http/types/Request
+Response = wasi/http/types/Response

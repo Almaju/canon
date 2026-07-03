@@ -1,4 +1,4 @@
-use wasi/cli/environment
+getInitialCwd = wasi/cli/environment/getInitialCwd
 
 Cwd = () -> Option<String> {
     getInitialCwd()

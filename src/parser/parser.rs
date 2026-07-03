@@ -34,27 +34,14 @@ impl Parser {
         let start_span = self.current_span();
 
         if self.check(TokenKind::KwUse) {
-            self.advance();
-            let first = self.expect(TokenKind::Ident, "expected module name after `use`")?;
-            let mut path = first.lexeme.clone();
-            let mut end_span = first.span;
-            while self.check(TokenKind::Slash) {
-                self.advance(); // consume /
-                let seg = self.expect(
-                    TokenKind::Ident,
-                    "expected identifier after `/` in use path",
-                )?;
-                path.push('/');
-                path.push_str(&seg.lexeme);
-                end_span = seg.span;
-            }
-            return Ok(Item::Use(UseDecl {
-                name: Ident {
-                    name: path,
-                    span: span_join(start_span, end_span),
-                },
-                span: span_join(start_span, end_span),
-            }));
+            return Err(CanonError::ParseError {
+                message: "`use` was removed — names resolve automatically (same folder, then \
+                          deps, then std). For bindgen/FFI declarations or to disambiguate a \
+                          collision, declare an alias: `Name = std/http/Status` or \
+                          `now = wasi/clocks/monotonic_clock/now`."
+                    .to_string(),
+                span: start_span,
+            });
         }
 
         // `bindings "<urn>"` directive. The string carries the WIT
@@ -87,6 +74,37 @@ impl Parser {
         };
 
         self.expect(TokenKind::Eq, "expected `=` in top-level definition")?;
+
+        // Alias declaration: `Local = seg/seg/Name`. Distinguished from a
+        // typedef by the `/` after the first right-hand-side identifier —
+        // a slash can appear nowhere else in a declaration's right side.
+        if self.check(TokenKind::Ident)
+            && self.pos + 1 < self.tokens.len()
+            && self.tokens[self.pos + 1].kind == TokenKind::Slash
+        {
+            let mut path = vec![self.advance().lexeme.clone()];
+            let mut end_span = self.previous_span();
+            while self.check(TokenKind::Slash) {
+                self.advance();
+                let seg = self.expect(
+                    TokenKind::Ident,
+                    "expected identifier after `/` in alias path",
+                )?;
+                path.push(seg.lexeme.clone());
+                end_span = seg.span;
+            }
+            if !pre_eq_generics.is_empty() {
+                return Err(CanonError::ParseError {
+                    message: "alias declarations cannot take generic parameters".to_string(),
+                    span: first_ident.span,
+                });
+            }
+            return Ok(Item::Alias(AliasDecl {
+                local: first_ident,
+                path,
+                span: span_join(start_span, end_span),
+            }));
+        }
 
         if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
             if !pre_eq_generics.is_empty() {

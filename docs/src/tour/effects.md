@@ -12,9 +12,6 @@ objects. Access to a resource is represented by holding a value of the
 corresponding type.
 
 ```canon
-use canon/std/fs/File
-use canon/std/fs/Path
-
 main = () -> Unit {
     Path("./data.json")
         .File()?
@@ -115,5 +112,5 @@ home = (Request) -> Response {
 
 The pattern is always the same: construct a real value, transform it,
 use it. No singletons. No service locators. No permission tokens.
-(Each snippet needs the matching `use canon/std/…` imports at the top
-of the file; Canon has no comments, so the prose lives out here.)
+(The snippets are complete as written — the types resolve by name;
+Canon has no comments, so the prose lives out here.)

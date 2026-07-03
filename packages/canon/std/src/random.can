@@ -1,4 +1,4 @@
-use wasi/random/random
+getRandomU64 = wasi/random/random/getRandomU64
 
 Random = Int
 

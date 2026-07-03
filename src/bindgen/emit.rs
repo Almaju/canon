@@ -103,7 +103,8 @@ fn emit_interface(
         // a local decl — record the source interface so we emit a `use`.
         if let Some(source_iface) = external_alias_source(resolve, *type_id, self_iface_id) {
             if let Some(use_path) = interface_use_path(resolve, source_iface) {
-                external_use_paths.insert(use_path);
+                let pascal = kebab_to_pascal(name);
+                external_use_paths.insert(format!("{pascal} = {use_path}/{pascal}"));
             }
             continue;
         }
@@ -151,7 +152,7 @@ fn emit_interface(
         }
     }
 
-    // Emit `use` lines first (alphabetical — BTreeSet already sorted),
+    // Emit alias declarations first (alphabetical — BTreeSet already sorted),
     // then the file-level `bindings "<urn>"` directive (only when the
     // file actually contains function declarations — binding-less type
     // files like `wasi/clocks/types.can` don't need it), then type
@@ -161,8 +162,8 @@ fn emit_interface(
     // tells the loader to convert the camelCase function-type aliases
     // beneath into bound FunctionDefs without each one needing its own
     // `extern Wasm` marker.
-    for use_path in &external_use_paths {
-        let _ = writeln!(content, "use {}", use_path);
+    for alias_line in &external_use_paths {
+        let _ = writeln!(content, "{}", alias_line);
     }
     if !external_use_paths.is_empty() {
         content.push('\n');
@@ -813,7 +814,8 @@ fn render_type_id(
     if let (Some(name), TypeOwner::Interface(owner)) = (&td.name, &td.owner) {
         if *owner != self_iface {
             if let Some(path) = interface_use_path(resolve, *owner) {
-                external_use_paths.insert(path);
+                let pascal = kebab_to_pascal(name);
+                external_use_paths.insert(format!("{pascal} = {path}/{pascal}"));
             }
         }
         return Ok(kebab_to_pascal(name));

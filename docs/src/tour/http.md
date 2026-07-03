@@ -6,12 +6,6 @@ router registration, no port in the program — the function *is* the
 service, and the host decides how to run it.
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 greet = (Request) -> Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }

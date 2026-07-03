@@ -1,4 +1,4 @@
-use wasi/clocks/system_clock
+now = wasi/clocks/system_clock/now
 
 Unix = Int
 

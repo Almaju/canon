@@ -1,5 +1,3 @@
-use canon/std/Stream
-
 main = () -> Unit {
     List("a", "b", "c")
         .streamOf()
@@ -9,4 +7,8 @@ main = () -> Unit {
         .concat(List("d").streamOf())
         .toString()
         .print()
+}
+
+streamed = (List) -> Stream<String> {
+    List.streamOf()
 }

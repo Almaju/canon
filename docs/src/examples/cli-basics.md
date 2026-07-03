@@ -7,8 +7,6 @@ setup, no context objects — construct the value, use it.
 ## `now` — Wall-Clock Time
 
 ```canon
-use canon/std/time/Now
-
 main = () -> Unit {
     Now().print()
 }
@@ -26,8 +24,6 @@ inherited straight through the alias.
 ## `clock` — Monotonic Time
 
 ```canon
-use canon/std/time/Instant
-
 main = () -> Unit {
     Instant().print()
 }
@@ -41,8 +37,6 @@ works: `Instant().sub(start)` is a duration. There's also
 ## `random` — A Random Integer
 
 ```canon
-use canon/std/Random
-
 main = () -> Unit {
     Random().print()
 }
@@ -56,8 +50,6 @@ story](../tour/effects.md) in miniature.
 ## `exit-code` — Honest Process Exits
 
 ```canon
-use canon/std/cli/Exit
-
 main = () -> Unit {
     "exiting cleanly".print()
     Exit(0).exit()

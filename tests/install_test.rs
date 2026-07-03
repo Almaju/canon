@@ -54,8 +54,7 @@ fn install_emits_one_file_per_interface() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -111,8 +110,7 @@ fn install_rejects_mismatched_manifest_key() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -139,8 +137,7 @@ fn install_accepts_broader_prefix_key() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -163,8 +160,7 @@ fn install_reports_missing_wit_source() {
     let root = tmpdir("missing_wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -187,8 +183,7 @@ fn install_defers_wasm_component_entries() {
     // skipped without being read in this slice.
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -213,8 +208,7 @@ fn install_on_manifest_without_imports_is_a_no_op() {
     let root = tmpdir("no_imports");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 "#,
     );
@@ -243,8 +237,7 @@ fn loader_resolves_use_against_installed_bindgen() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -254,14 +247,14 @@ version = "0.1.0"
 
     install::install(&root).expect("install should succeed");
 
-    // Write a source file in src/main.can that imports the binding by
-    // its installed module path. We don't actually need the body to
-    // type-check end-to-end — just to load — so the file holds a
-    // single `use` line.
+    // Write a source file in src/main.can that reaches the binding via
+    // an alias declaration — the only doorway into bindgen output. We
+    // don't actually need the body to type-check end-to-end — just to
+    // load.
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
+    fs::write(&entry, "now = wasi/clocks/monotonic_clock/now\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
@@ -286,8 +279,7 @@ fn loader_patches_bare_extern_wasm_with_urn_from_install_index() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -300,7 +292,7 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
+    fs::write(&entry, "now = wasi/clocks/monotonic_clock/now\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 
@@ -342,25 +334,22 @@ version = "0.1.0"
 
 #[test]
 fn loader_falls_back_to_local_when_bindgen_does_not_exist() {
-    // Project that has a manifest but no `[imports]` entry for the path
-    // being imported. The loader must NOT short-circuit on the bindgen
-    // lookup; it must continue to local-relative resolution exactly as
-    // it did before slice 2b. This protects pre-slice-2b projects from
-    // any regression.
+    // Project that has a manifest but no `[imports]` entries. A name
+    // referenced by the entry must resolve against sibling files by
+    // *declaration name* — the file's own name doesn't matter.
     let root = tmpdir("loader_falls_back");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 "#,
     );
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
-    // A local sibling module the entry will `use`.
+    // A local sibling module the entry references by name.
     fs::write(src_dir.join("sibling.can"), "Marker = Int\n").expect("write sibling");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use sibling\n").expect("write entry");
+    fs::write(&entry, "main = () -> Unit {\n    Marker(3).print()\n}\n").expect("write entry");
 
     let result =
         loader::load_module(&entry).expect("loader should fall through to local resolution");
@@ -402,8 +391,7 @@ fn ensure_installed_no_project_when_manifest_has_no_imports() {
     let root = tmpdir("ensure_no_imports");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 "#,
     );
@@ -422,8 +410,7 @@ fn ensure_installed_installs_when_bindgen_missing() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -451,8 +438,7 @@ fn ensure_installed_up_to_date_after_first_install() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -479,8 +465,7 @@ version = "0.1.0"
 fn ensure_installed_reinstalls_when_manifest_is_touched() {
     let root = tmpdir("ensure_manifest_touched");
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    let manifest_src = r#"
-name = "my-app"
+    let manifest_src = r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
@@ -512,8 +497,7 @@ fn install_is_idempotent() {
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
     write_manifest(
         &root,
-        r#"
-name = "my-app"
+        r#"name = "my-app"
 version = "0.1.0"
 
 [imports]
