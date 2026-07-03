@@ -5,6 +5,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### V1 milestone (2026-07)
+
+The V1 roadmap (`V1.md`) is complete, with resources/streams for the
+CLI world explicitly deferred to V1.1. Highlights:
+
+**HTTP services are standard components.** A free `(Request) ->
+Response` function compiles to a `wasi:http/service` component: the
+user body is fully compiled (dispatch, helpers, prints), status codes
+are runtime values, string bodies ride a real contents stream behind
+an async-stackful `handle` lift, and `Request.path()` enables routing.
+`canon run` serves HTTP entries on `127.0.0.1:8080` by default.
+Flagship example: `examples/notes-api`.
+
+**Language correctness.** Nested constructors no longer corrupt
+products; `Float` prints and flows through unions/products; N-variant
+dispatch is pinned; `list.map` really applies its lambda (Int and
+String elements, cross-type) and `list.get(i)` landed;
+`Bool.and/or/not` chains work; `?` short-circuits on `Err` *and*
+`None` with string payloads intact; `Int(1)`/`Float(2.5)` explicit
+constructors work; method lookup follows newtype alias chains.
+
+**WASI surface.** WIT-informed extern lowering reads the vendored WIT
+for every `wasi:*` import: narrow ints (u8–u32) wrap/extend at call
+sites, `option<string>`/`list<string>`/record-of-scalars indirect
+returns decode into Canon values. New stdlib: `cli/Exit` (real
+`wasi:cli/exit`, exit codes propagate), `cli/Args`, `cli/Cwd`,
+`time/Unix` (wall clock). The `canon:builtins/cli` bridge is deleted.
+
+**Tooling & docs.** `canon test` exits nonzero on failure with
+single-line `[FAIL]` banners; `TESTPLAN.md` maps every construct to
+its pinning fixture with ranked holes; new "Serving HTTP" tour
+chapter; stale doc paths fixed.
+
 ### Language — Breaking Changes
 
 **Domain-first value model replaces capability system.**
