@@ -11,3 +11,4 @@ pub mod lsp;
 pub mod manifest;
 pub mod parser;
 pub mod runtime;
+pub mod webhost;

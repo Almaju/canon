@@ -1,0 +1,33 @@
+use Todos
+use canon/std/http/Body
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
+
+corsHeaders = () -> Headers {
+    Headers()
+        .set("access-control-allow-origin", "*")
+        .set("content-type", "text/plain")
+}
+
+serve = (Request) -> Response {
+    Request.method().(
+        * ("GET") -> Response {
+            Request.path().(
+                * (None) -> Response { Response(Body("bad request"), corsHeaders(), Status(400)) }
+                * (Some<String>) -> Response {
+                    String.(
+                        * ("/todos") -> Response {
+                            Response(Body(seed().String), corsHeaders(), Status(200))
+                        }
+                        * (String) -> Response {
+                            Response(Body("not found"), corsHeaders(), Status(404))
+                        }
+                    )
+                }
+            )
+        }
+        * (String) -> Response { Response(Body("method not allowed"), corsHeaders(), Status(405)) }
+    )
+}

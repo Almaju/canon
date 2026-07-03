@@ -133,4 +133,4 @@ The workflow:
 
 ## Status
 
-Experimental, but past the V1 milestone (see [`V1.md`](V1.md)): programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly. The V1.1 headline is resources + streams for the CLI world (filesystem descriptors, component composition).
+Experimental, but past the V1 milestone (see [`V1.md`](V1.md)): programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); browser frontends compile from the `init`/`update`/`view` triple (see [`WEB-TARGET.md`](WEB-TARGET.md) and [`examples/todo-fullstack`](examples/todo-fullstack) — one language, both sides of the stack, shared types); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly. The V1.1 headline is resources + streams for the CLI world (filesystem descriptors, component composition).

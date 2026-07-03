@@ -625,7 +625,11 @@ fn emit_base_inline(expr: &Expr) -> String {
         Expr::FieldAccess {
             receiver, field, ..
         } => {
-            format!("{}.{}", emit_base_inline(receiver), field.name)
+            // The receiver may itself be a method chain
+            // (`Counter(1).bump().Int`) — `emit_base_inline` renders
+            // chain shapes as empty strings, so route through the
+            // chain-aware inline emitter.
+            format!("{}.{}", emit_inline(receiver), field.name)
         }
         Expr::JsonLit { parts, .. } => {
             // Reconstruct the source-level JSON literal by emitting each

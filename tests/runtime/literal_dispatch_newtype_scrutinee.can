@@ -1,0 +1,17 @@
+Prefix = String
+
+route = (Int * String) -> Int {
+    Prefix(String.substring(1, 4)).(
+        * ("Add:") -> Int { Int.add(String.length()) }
+        * (Prefix) -> Int { Int }
+    )
+}
+
+main = () -> Unit {
+    10
+        .route("Add:xyz")
+        .print()
+    10
+        .route("Nope")
+        .print()
+}

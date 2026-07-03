@@ -414,6 +414,7 @@ The world registry:
 |---|---|---|
 | `Unit`, `ExitCode`, `Result<Unit, _>`, `Result<ExitCode, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Response`, `Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
+| the `init`/`update`/`view` triple (see below) | web app (browser) | `init` / `update` / `view` |
 
 A CLI program:
 
@@ -430,6 +431,21 @@ home = (Request) -> Response {
     Response(Body("hello"), Headers(), Status(200))
 }
 ```
+
+A web app (browser frontend) — the one world that can't key on a
+single return type, because every view helper returns `Html`. It is
+selected by the **Elm-architecture triple**, names and shapes
+together:
+
+```
+init = () -> Model               # the starting state
+update = (Model * String) -> Model   # fold a message into the state
+view = (Model) -> Html           # render the whole page
+```
+
+`Model` is any user type. The program compiles to a wasm module plus
+a generated JS host that owns the browser event loop; the guest stays
+pure. See `WEB-TARGET.md`.
 
 A CLI entry takes no parameters — output goes through the built-in
 `.print()`, which the compiler wires to `wasi:cli/stdout` in the
