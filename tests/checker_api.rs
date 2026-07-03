@@ -85,3 +85,86 @@ main = () -> Unit {
     let b = check_with_entry(&module, 0);
     assert_eq!(format!("{:?}", a), format!("{:?}", b));
 }
+
+/// Dead-code lint: a helper never called from the entry point is
+/// flagged; everything reachable (transitively, including types named
+/// in signatures) is not.
+#[test]
+fn dead_code_lint_flags_unreachable_declarations() {
+    let source = r#"
+Greeting = String
+
+deadHelper = (Int) -> Int {
+    Int.add(1)
+}
+
+greet = (Greeting) -> Unit {
+    Greeting.print()
+}
+
+main = () -> Unit {
+    Greeting("hi").greet()
+}
+"#;
+    let module = parse(source);
+    let warnings = checker::lint_dead_code(&module, 0);
+    assert_eq!(
+        warnings.len(),
+        1,
+        "expected exactly one warning: {:?}",
+        warnings
+    );
+    assert!(
+        warnings[0].contains("`deadHelper`"),
+        "warning should name the dead function: {:?}",
+        warnings
+    );
+}
+
+/// A union named only in a signature keeps its variant typedefs alive
+/// through the union's own definition (Ord -> Equal/Greater/Less).
+#[test]
+fn dead_code_lint_walks_type_definitions() {
+    let source = r#"
+Equal = Unit
+
+Greater = Unit
+
+Less = Unit
+
+Ord = Equal + Greater + Less
+
+describe = (Ord) -> String {
+    Ord.(
+        * (Equal) -> String { "equal" }
+        * (Greater) -> String { "greater" }
+        * (Less) -> String { "less" }
+    )
+}
+
+main = () -> Unit {
+    Equal().describe().print()
+}
+"#;
+    let module = parse(source);
+    let warnings = checker::lint_dead_code(&module, 0);
+    assert!(warnings.is_empty(), "no dead code expected: {:?}", warnings);
+}
+
+/// Modules without an entry point (libraries) are not linted — every
+/// public declaration is exported surface.
+#[test]
+fn dead_code_lint_skips_libraries() {
+    let source = r#"
+helper = (Int) -> Int {
+    Int.add(1)
+}
+"#;
+    let module = parse(source);
+    let warnings = checker::lint_dead_code(&module, 0);
+    assert!(
+        warnings.is_empty(),
+        "libraries are not linted: {:?}",
+        warnings
+    );
+}

@@ -29,7 +29,9 @@ use wasm_encoder::{
     MemorySection, MemoryType, Module, TypeSection, ValType,
 };
 
-use crate::ast::{Block, Expr, FunctionDef, Item, MatchArm, Module as OModule, TypeExpr};
+use crate::ast::{
+    ArmLiteral, Block, Expr, FunctionDef, Item, MatchArm, Module as OModule, TypeExpr,
+};
 
 mod component;
 
@@ -809,6 +811,23 @@ impl LocalScope {
     fn map_elem_ptr(&self) -> u32 {
         self.param_count + 22
     }
+
+    /// Adjacent i32 pair holding the scrutinee `(ptr, len)` across a
+    /// string literal-dispatch compare chain (`* ("/notes") -> …`).
+    /// Kept distinct from `arm_payload_ptr` and the eq-compare scratch
+    /// (`rptr`/`rbool`/`tmp_i32`/`tmp_i32_b`) so each successive
+    /// compare — and the scrutinee binding inside arm bodies — reads
+    /// an unclobbered value. Same single-slot nesting caveat as
+    /// `arm_payload_ptr`: a literal dispatch nested inside another
+    /// literal dispatch's arm body reuses the pair.
+    fn lit_scrut_ptr(&self) -> u32 {
+        self.param_count + 24
+    }
+
+    /// i64 sibling of `lit_scrut_ptr` for `Int` literal dispatch.
+    fn lit_scrut_i64(&self) -> u32 {
+        self.param_count + 26
+    }
 }
 
 /// Local declarations appended after the function params.
@@ -825,6 +844,8 @@ fn extra_locals_decl() -> Vec<(u32, ValType)> {
         (1, ValType::F64), // tmp_f64
         (1, ValType::I64), // map_elem_i64 (list.map current element)
         (2, ValType::I32), // map_elem_ptr, map_elem_ptr + 1 (len)
+        (2, ValType::I32), // lit_scrut_ptr, lit_scrut_ptr + 1 (len)
+        (1, ValType::I64), // lit_scrut_i64 (Int literal-dispatch scrutinee)
     ]
 }
 
@@ -5444,8 +5465,12 @@ impl<'m> WasmGen<'m> {
                     }
                 }
                 if !arg_pushed {
-                    f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Const(1));
                 }
+                // Canon indexing is 1-based (like positional product
+                // access `byte.1`): byteAt(1) is the first byte.
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Sub);
                 // Stack: [ptr, len, index_i64]. Want: load byte at ptr+index.
                 f.instruction(&Instruction::I32WrapI64);
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // index_i32
@@ -5462,19 +5487,24 @@ impl<'m> WasmGen<'m> {
             }
             // ── String substring ────────────────────────────────────
             //
-            // `s.substring(start, end)` returns the half-open slice
-            // `[start, end)` as a fresh String. Allocates a new buffer
-            // and copies the bytes — the result is independent of the
-            // receiver's lifetime (heap is bump-allocated, so neither
-            // outlives the other; copying makes mutation safe if it
-            // ever lands).
+            // `s.substring(start, end)` returns the 1-based, inclusive
+            // slice `[start, end]` as a fresh String — `substring(1, 4)`
+            // is the first four bytes, pairing with 1-based `byteAt`.
+            // Internally start is shifted down once and the old
+            // half-open arithmetic does the rest (`len = end - (start-1)`).
+            // Allocates a new buffer and copies the bytes — the result
+            // is independent of the receiver's lifetime (heap is
+            // bump-allocated, so neither outlives the other; copying
+            // makes mutation safe if it ever lands).
             ("substring" | "slice", _) if recv_ty.is_str_like() && args.len() == 2 => {
                 // Compile start, then end (both `Int`).
                 let ty0 = self.compile_expr(&args[0], scope, f);
                 if !matches!(ty0, Ty::I64) {
                     self.drop_value(ty0, f);
-                    f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Const(1));
                 }
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Sub);
                 let ty1 = self.compile_expr(&args[1], scope, f);
                 if !matches!(ty1, Ty::I64) {
                     self.drop_value(ty1, f);
@@ -5531,67 +5561,7 @@ impl<'m> WasmGen<'m> {
                     f.instruction(&Instruction::I32Const(0));
                     return Ty::I32;
                 }
-                // Save into locals.
-                f.instruction(&Instruction::LocalSet(scope.rlen())); // len2
-                f.instruction(&Instruction::LocalSet(scope.rbool())); // ptr2
-                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // len1
-                f.instruction(&Instruction::LocalSet(scope.rptr())); // ptr1
-                                                                     // If len1 != len2, push 0 and skip. Otherwise compare bytes.
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-                f.instruction(&Instruction::LocalGet(scope.rlen()));
-                f.instruction(&Instruction::I32Ne);
-                f.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
-                f.instruction(&Instruction::I32Const(0));
-                f.instruction(&Instruction::Else);
-                // Equal-length compare. Use tmp_i32_b as the running
-                // result (1 = still-equal). Walk bytes; on mismatch,
-                // set result=0 and break out.
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
-                f.instruction(&Instruction::Block(BlockType::Empty));
-                f.instruction(&Instruction::Loop(BlockType::Empty));
-                // if len == 0: break
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-                f.instruction(&Instruction::I32Eqz);
-                f.instruction(&Instruction::BrIf(1));
-                // if load8(p1) != load8(p2): result=0, break
-                f.instruction(&Instruction::LocalGet(scope.rptr()));
-                f.instruction(&Instruction::I32Load8U(MemArg {
-                    offset: 0,
-                    align: 0,
-                    memory_index: 0,
-                }));
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::I32Load8U(MemArg {
-                    offset: 0,
-                    align: 0,
-                    memory_index: 0,
-                }));
-                f.instruction(&Instruction::I32Ne);
-                f.instruction(&Instruction::If(BlockType::Empty));
-                f.instruction(&Instruction::I32Const(0));
-                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
-                f.instruction(&Instruction::Br(2)); // break outer block
-                f.instruction(&Instruction::End);
-                // p1++, p2++, len--
-                f.instruction(&Instruction::LocalGet(scope.rptr()));
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Add);
-                f.instruction(&Instruction::LocalSet(scope.rptr()));
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Add);
-                f.instruction(&Instruction::LocalSet(scope.rbool()));
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Sub);
-                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
-                f.instruction(&Instruction::Br(0)); // continue
-                f.instruction(&Instruction::End); // end loop
-                f.instruction(&Instruction::End); // end block
-                                                  // Push result.
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
-                f.instruction(&Instruction::End); // end outer if
+                self.emit_str_eq(scope, f);
                 Ty::I32
             }
             // ── List methods ───────────────────────────────────────────────────
@@ -5660,8 +5630,13 @@ impl<'m> WasmGen<'m> {
                 let idx_ty = self.compile_expr(&args[0], scope, f);
                 if !matches!(idx_ty, Ty::I64) {
                     self.drop_value(idx_ty, f);
-                    f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Const(1));
                 }
+                // 1-based: get(1) is the first element. `get(0)` shifts
+                // to -1, wraps to a huge u64, and fails the unsigned
+                // bounds check below — a clean `None`.
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Sub);
                 // Stack: [ptr, len, idx]. All user code is done; peel.
                 f.instruction(&Instruction::LocalSet(scope.tmp_i64())); // idx
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // len
@@ -5865,6 +5840,76 @@ impl<'m> WasmGen<'m> {
 
     // ── Match / dispatch ────────────────────────────────────────────────────────
 
+    /// Byte-wise string equality. Expects `[ptr1, len1, ptr2, len2]`
+    /// (four i32s) on the operand stack; leaves a single i32 (0/1).
+    /// Length mismatch is the fast-fail path; equal lengths walk a
+    /// byte-by-byte compare loop. Clobbers `rptr`, `rlen`, `rbool`,
+    /// `tmp_i32`, and `tmp_i32_b`. Shared by the `String.eq` builtin
+    /// and string literal-dispatch compare chains.
+    fn emit_str_eq(&self, scope: &LocalScope, f: &mut Function) {
+        // Save into locals.
+        f.instruction(&Instruction::LocalSet(scope.rlen())); // len2
+        f.instruction(&Instruction::LocalSet(scope.rbool())); // ptr2
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // len1
+        f.instruction(&Instruction::LocalSet(scope.rptr())); // ptr1
+                                                             // If len1 != len2, push 0 and skip. Otherwise compare bytes.
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::I32Ne);
+        f.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::Else);
+        // Equal-length compare. Use tmp_i32_b as the running
+        // result (1 = still-equal). Walk bytes; on mismatch,
+        // set result=0 and break out.
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        // if len == 0: break
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::BrIf(1));
+        // if load8(p1) != load8(p2): result=0, break
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::I32Load8U(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Load8U(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Ne);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::Br(2)); // break outer block
+        f.instruction(&Instruction::End);
+        // p1++, p2++, len--
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+        f.instruction(&Instruction::Br(0)); // continue
+        f.instruction(&Instruction::End); // end loop
+        f.instruction(&Instruction::End); // end block
+                                          // Push result.
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::End); // end outer if
+    }
+
     fn compile_match(
         &mut self,
         scrutinee: &Expr,
@@ -5879,6 +5924,12 @@ impl<'m> WasmGen<'m> {
             .first()
             .map(|a| self.resolve_type_expr_repr(&a.return_ty))
             .unwrap_or(Ty::Unit);
+
+        // Literal-pattern dispatch on a String / Int scrutinee: an
+        // equality-compare chain instead of a discriminant switch.
+        if arms.iter().any(|a| a.literal.is_some()) {
+            return self.emit_literal_dispatch(scrut_ty, arms, &arm_result_ty, scope, f);
+        }
 
         // Bool dispatch (i32 on stack, 0=False, 1=True)
         if scrut_ty == Ty::I32 {
@@ -6047,6 +6098,116 @@ impl<'m> WasmGen<'m> {
     /// `Fail.String.print()` then compiles like any other string
     /// expression — the newtype unwrap is a static-type retype
     /// (`newtype_unwrap_ty`), and `.print()` is the built-in.
+    /// Compile a literal-pattern dispatch: the scrutinee is stashed in
+    /// the dedicated `lit_scrut_*` locals, each literal arm becomes one
+    /// link of an equality if/else chain (string compare via
+    /// `emit_str_eq`, int compare via `i64.eq`), and the mandatory
+    /// catch-all arm sits in the innermost `else`. Inside every arm
+    /// body the scrutinee is bound under its type name(s) — the
+    /// catch-all's pattern name, the scrutinee's newtype name, and the
+    /// primitive base — mirroring the alias-chain rule
+    /// `build_local_scope` applies to receivers.
+    fn emit_literal_dispatch(
+        &mut self,
+        scrut_ty: Ty,
+        arms: &[MatchArm],
+        result_ty: &Ty,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let catch_all = arms.iter().find(|a| a.literal.is_none());
+        let lit_arms: Vec<&MatchArm> = arms.iter().filter(|a| a.literal.is_some()).collect();
+
+        let mut bound_names: Vec<String> = Vec::new();
+        if let Some(arm) = catch_all {
+            if let Some(n) = arm_type_name(arm) {
+                bound_names.push(n.to_string());
+            }
+        }
+        if let Some(n) = scrut_ty.canon_name() {
+            bound_names.push(n.to_string());
+        }
+
+        if scrut_ty.is_str_like() {
+            bound_names.push("String".to_string());
+            // Stash the scrutinee (ptr, len) where neither the compare
+            // scratch nor arm bodies' builtins will clobber it.
+            f.instruction(&Instruction::LocalSet(scope.lit_scrut_ptr() + 1));
+            f.instruction(&Instruction::LocalSet(scope.lit_scrut_ptr()));
+            let mut arm_scope = scope.clone();
+            for n in &bound_names {
+                arm_scope
+                    .vars
+                    .insert(n.clone(), (scope.lit_scrut_ptr(), scrut_ty.clone()));
+            }
+            for arm in &lit_arms {
+                match &arm.literal {
+                    Some(ArmLiteral::Str(value)) => {
+                        let (lptr, llen) = self.strings.intern(value);
+                        f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                        f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr() + 1));
+                        f.instruction(&Instruction::I32Const(lptr as i32));
+                        f.instruction(&Instruction::I32Const(llen as i32));
+                        self.emit_str_eq(scope, f);
+                    }
+                    // Kind mismatch is a checker error; emit a
+                    // never-taken link so the chain stays well-formed.
+                    _ => {
+                        f.instruction(&Instruction::I32Const(0));
+                    }
+                }
+                f.instruction(&Instruction::If(BlockType::Empty));
+                self.compile_arm_body_prebound(arm, result_ty, &arm_scope, f);
+                f.instruction(&Instruction::Else);
+            }
+            if let Some(arm) = catch_all {
+                self.compile_arm_body_prebound(arm, result_ty, &arm_scope, f);
+            }
+            for _ in 0..lit_arms.len() {
+                f.instruction(&Instruction::End);
+            }
+            return self.load_result(result_ty, scope, f);
+        }
+
+        if scrut_ty == Ty::I64 {
+            bound_names.push("Int".to_string());
+            f.instruction(&Instruction::LocalSet(scope.lit_scrut_i64()));
+            let mut arm_scope = scope.clone();
+            for n in &bound_names {
+                arm_scope
+                    .vars
+                    .insert(n.clone(), (scope.lit_scrut_i64(), scrut_ty.clone()));
+            }
+            for arm in &lit_arms {
+                match &arm.literal {
+                    Some(ArmLiteral::Int(v)) => {
+                        f.instruction(&Instruction::LocalGet(scope.lit_scrut_i64()));
+                        f.instruction(&Instruction::I64Const(*v));
+                        f.instruction(&Instruction::I64Eq);
+                    }
+                    _ => {
+                        f.instruction(&Instruction::I32Const(0));
+                    }
+                }
+                f.instruction(&Instruction::If(BlockType::Empty));
+                self.compile_arm_body_prebound(arm, result_ty, &arm_scope, f);
+                f.instruction(&Instruction::Else);
+            }
+            if let Some(arm) = catch_all {
+                self.compile_arm_body_prebound(arm, result_ty, &arm_scope, f);
+            }
+            for _ in 0..lit_arms.len() {
+                f.instruction(&Instruction::End);
+            }
+            return self.load_result(result_ty, scope, f);
+        }
+
+        // Unsupported scrutinee shape — the checker has already
+        // reported it; keep the stack balanced.
+        self.drop_value(scrut_ty, f);
+        Ty::Unit
+    }
+
     fn compile_arm_body(
         &mut self,
         arm: &MatchArm,
@@ -6055,8 +6216,23 @@ impl<'m> WasmGen<'m> {
         f: &mut Function,
     ) {
         let arm_scope = self.bind_arm_payload(&arm.param_ty, scope, f);
+        self.compile_arm_body_prebound(arm, result_ty, &arm_scope, f);
+    }
+
+    /// Body of `compile_arm_body` after payload binding: compile the
+    /// arm's block in an already-prepared scope and save the result to
+    /// the shared scratch locals. Literal dispatch calls this directly —
+    /// its scrutinee binding replaces the union payload extraction.
+    fn compile_arm_body_prebound(
+        &mut self,
+        arm: &MatchArm,
+        result_ty: &Ty,
+        arm_scope: &LocalScope,
+        f: &mut Function,
+    ) {
+        let scope = arm_scope;
         let body = arm.body.clone();
-        let ty = self.compile_block_return(&body, &arm_scope, f);
+        let ty = self.compile_block_return(&body, scope, f);
         // Save result to scratch locals so we can reload after if/else
         match result_ty {
             Ty::Str | Ty::NamedStr(_) => {

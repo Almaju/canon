@@ -55,6 +55,20 @@ ord.(
 )
 ```
 
+## Auto-Fixing
+
+The canonical order is mechanical, so you never sort by hand:
+
+```sh
+canon fmt path/to/file.can
+```
+
+`canon fmt` sorts `use` imports, type definitions, function
+declarations, and dispatch arms into canonical order (the entry point —
+`main` or the HTTP handler — keeps its position; it is a distinguished
+role, not a regular free function). The checker's ordering errors are
+the backstop for code that bypassed the formatter.
+
 ## Checking Without Compiling
 
 ```sh

@@ -5,5 +5,7 @@ eventStream = () -> Headers {
 }
 
 formatSse = (String) -> String {
-    "data: ".concat(String).concat("\n\n")
+    "data: "
+        .concat(String)
+        .concat("\n\n")
 }
