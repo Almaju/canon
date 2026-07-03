@@ -9,6 +9,12 @@ on:
       tag:
         description: "Tag to release (e.g. v0.1.0)"
         required: true
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -38,17 +44,19 @@ jobs:
             os: windows-latest
             exe: .exe
     steps:
-      - uses: actions/checkout@v4
-
       - name: Resolve tag
         id: tag
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
             echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
 
       - name: Install cross-compilation toolchain
         if: matrix.apt != ''
@@ -99,13 +107,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: Resolve tag
         id: tag
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
             echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"

@@ -57,7 +57,7 @@ just uninstall-hooks    # uninstall git hooks
 just build-extension    # build the Zed extension WASMs
 ```
 
-To cut a release, use the **bump** GitHub Actions workflow (`Actions → bump → Run workflow`). It handles the version bump, commit, tag, and triggers the cross-build release pipeline automatically.
+Releases are automatic: every push to `main` (except docs/markdown-only changes) runs the **auto-release** workflow, which bumps the patch version in `Cargo.toml`, commits, tags, and runs the cross-build release pipeline. Users pick up new releases with `canon update` (alias of `canon upgrade`). For a minor/major bump, either land a commit that raises the version in `Cargo.toml` yourself (auto-release tags that exact version instead of patch-bumping), or use the **bump** GitHub Actions workflow (`Actions → bump → Run workflow`). Both `auto-release` and `bump` invoke `release.yml` via `workflow_call` — tags pushed with `GITHUB_TOKEN` never trigger tag-push workflows, so the chain must be explicit.
 
 ## Testing
 

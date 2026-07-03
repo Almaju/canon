@@ -35,7 +35,7 @@ fn main() {
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
         "lsp" => canon::lsp::run(),
-        "upgrade" => cmd_upgrade(&rest),
+        "upgrade" | "update" => cmd_upgrade(&rest),
         "--version" | "-V" => {
             println!("canon {}", VERSION);
         }
@@ -80,8 +80,9 @@ fn print_help() {
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  upgrade [version]         Update canon to the latest (or given) release");
-    println!("  upgrade --check           Check whether a newer release is available");
+    println!("  update [version]          Update canon to the latest (or given) release");
+    println!("  update --check            Check whether a newer release is available");
+    println!("                            (alias: upgrade)");
     println!("  --version, -V             Print version");
     println!("  help                      Print this message");
 }
@@ -1389,7 +1390,7 @@ fn cmd_upgrade(args: &[String]) {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: canon upgrade [version] [--check]");
+                println!("Usage: canon update [version] [--check]   (alias: upgrade)");
                 println!();
                 println!(
                     "  version      Install a specific release (e.g. v0.2.0). Defaults to latest."

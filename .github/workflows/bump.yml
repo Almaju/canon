@@ -38,3 +38,14 @@ jobs:
           git tag "v${{ inputs.version }}"
           git push origin HEAD
           git push origin "v${{ inputs.version }}"
+
+  # Tags pushed with GITHUB_TOKEN never trigger `on: push: tags` workflows,
+  # so the release build must be invoked explicitly.
+  release:
+    name: Build and publish
+    needs: bump
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: v${{ inputs.version }}
