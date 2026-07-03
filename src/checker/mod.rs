@@ -326,6 +326,209 @@ fn check_sorted_named(
     }
 }
 
+/// Dead-code lint: entry-file declarations not reachable from the
+/// entry point (`main` or the HTTP handler).
+///
+/// Canon has no private visibility and no comments — the code *is* the
+/// documentation — so unreachable declarations are pure noise and get
+/// flagged (see DESIGN.md § Dead Code). The walk is name-based and
+/// conservative: a method call `x.foo()` marks every declaration named
+/// `foo`, a type mention marks the type and (through its definition)
+/// its variants, and declarations sharing a name (trait impls,
+/// validated constructors) live or die together.
+///
+/// Returns human-readable warnings, one per unused name. Empty when
+/// the module has no entry point: a library's declarations are all
+/// exported surface, so there is nothing to flag. Only entry-file
+/// items (`entry_items_start..`) are reported — imported files are
+/// their own compilation concern.
+pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> {
+    let entry_items = &module.items[entry_items_start..];
+
+    let mut seeds: HashSet<String> = HashSet::new();
+    for item in entry_items {
+        if let Item::Function(func) = item {
+            if func.receiver.is_none()
+                && (func.name.name == "main"
+                    || entry_world_of(&func.return_ty) == Some(EntryWorld::Http))
+            {
+                seeds.insert(func.name.name.clone());
+            }
+        }
+    }
+    if seeds.is_empty() {
+        return Vec::new();
+    }
+
+    // name -> union of names referenced by every declaration of it.
+    let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut declared_order: Vec<String> = Vec::new();
+    for item in entry_items {
+        let (name, out) = match item {
+            Item::Function(func) => {
+                let mut out = HashSet::new();
+                if let Some(r) = &func.receiver {
+                    out.insert(r.name.clone());
+                }
+                for p in &func.params {
+                    collect_type_names(&p.ty, &mut out);
+                }
+                collect_type_names(&func.return_ty, &mut out);
+                for e in &func.body.exprs {
+                    collect_expr_names(e, &mut out);
+                }
+                (func.name.name.clone(), out)
+            }
+            Item::TypeDef(td) => {
+                let mut out = HashSet::new();
+                collect_type_names(&td.body, &mut out);
+                (td.name.name.clone(), out)
+            }
+            Item::Use(_) | Item::Bindings(_) => continue,
+        };
+        if !refs.contains_key(&name) {
+            declared_order.push(name.clone());
+        }
+        refs.entry(name).or_default().extend(out);
+    }
+
+    let mut reached: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = seeds.into_iter().collect();
+    while let Some(n) = queue.pop() {
+        if !reached.insert(n.clone()) {
+            continue;
+        }
+        if let Some(out) = refs.get(&n) {
+            for o in out {
+                if !reached.contains(o) {
+                    queue.push(o.clone());
+                }
+            }
+        }
+    }
+
+    declared_order
+        .iter()
+        .filter(|n| !reached.contains(*n))
+        .map(|n| {
+            format!(
+                "`{}` is never used — dead code is not allowed to accumulate; \
+                 delete it or wire it into the program",
+                n
+            )
+        })
+        .collect()
+}
+
+fn collect_type_names(ty: &TypeExpr, out: &mut HashSet<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            out.insert(name.clone());
+            for g in generics {
+                collect_type_names(g, out);
+            }
+        }
+        TypeExpr::Union { variants, .. } => {
+            for v in variants {
+                collect_type_names(v, out);
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                collect_type_names(f, out);
+            }
+        }
+        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => collect_type_names(ty, out),
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                collect_type_names(p, out);
+            }
+            collect_type_names(return_ty, out);
+        }
+    }
+}
+
+fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
+    match expr {
+        Expr::Ident(id) => {
+            out.insert(id.name.clone());
+        }
+        Expr::Constructor { name, args, .. } => {
+            out.insert(name.name.clone());
+            for a in args {
+                collect_expr_names(a, out);
+            }
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            ..
+        } => {
+            out.insert(method.name.clone());
+            collect_expr_names(receiver, out);
+            for t in type_args {
+                collect_type_names(t, out);
+            }
+            for a in args {
+                collect_expr_names(a, out);
+            }
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_expr_names(scrutinee, out);
+            for arm in arms {
+                collect_type_names(&arm.param_ty, out);
+                collect_type_names(&arm.return_ty, out);
+                for e in &arm.body.exprs {
+                    collect_expr_names(e, out);
+                }
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => collect_expr_names(inner, out),
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            ..
+        } => {
+            for p in params {
+                collect_type_names(&p.ty, out);
+            }
+            collect_type_names(return_ty, out);
+            for e in &body.exprs {
+                collect_expr_names(e, out);
+            }
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                collect_expr_names(f, out);
+            }
+        }
+        Expr::FieldAccess {
+            receiver, field, ..
+        } => {
+            collect_expr_names(receiver, out);
+            out.insert(field.name.clone());
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    collect_expr_names(e, out);
+                }
+            }
+        }
+        Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => {}
+    }
+}
+
 fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
     let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES

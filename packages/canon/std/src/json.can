@@ -41,7 +41,7 @@ checkTrailing = (ParseStep * String) -> ParseStep {
     ParseStep.(
         * (ParseFail) -> ParseStep { ParseFail }
         * (ParsePos) -> ParseStep {
-            ParsePos.Int.skipWs(String).eq(String.length()).(
+            ParsePos.Int.skipWs(String).eq(String.length().add(1)).(
                 * (False) -> ParseStep { ParseFail("trailing characters") }
                 * (True) -> ParseStep { ParsePos(ParsePos.Int) }
             )
@@ -50,7 +50,7 @@ checkTrailing = (ParseStep * String) -> ParseStep {
 }
 
 consumeArrayTail = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(44).(
                 * (False) -> ParseStep {
@@ -75,7 +75,7 @@ consumeArrayTail = (Int * String) -> ParseStep {
 }
 
 consumeColonAndValue = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(58).(
                 * (False) -> ParseStep { ParseFail("expected colon after key") }
@@ -87,7 +87,7 @@ consumeColonAndValue = (Int * String) -> ParseStep {
 }
 
 consumeObjectTail = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(44).(
                 * (False) -> ParseStep {
@@ -112,7 +112,7 @@ consumeObjectTail = (Int * String) -> ParseStep {
 }
 
 dispatchValue = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(123).(
                 * (False) -> ParseStep {
@@ -205,7 +205,7 @@ parseArray = (Int * String) -> ParseStep {
 }
 
 parseArrayItems = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(93).(
                 * (False) -> ParseStep { Int.parseValue(String).parseArrayTail(String) }
@@ -224,7 +224,7 @@ parseArrayTail = (ParseStep * String) -> ParseStep {
 }
 
 parseExp = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).isExpMarker().(
                 * (False) -> ParseStep { ParsePos(Int) }
@@ -243,10 +243,10 @@ parseExpAfter = (ParseStep * String) -> ParseStep {
 }
 
 parseFalse = (Int * String) -> ParseStep {
-    Int.add(5).le(String.length()).(
+    Int.add(4).le(String.length()).(
         * (False) -> ParseStep { ParseFail("expected false") }
         * (True) -> ParseStep {
-            String.substring(Int, Int.add(5)).eq("false").(
+            String.substring(Int, Int.add(4)).eq("false").(
                 * (False) -> ParseStep { ParseFail("expected false") }
                 * (True) -> ParseStep { ParsePos(Int.add(5)) }
             )
@@ -255,7 +255,7 @@ parseFalse = (Int * String) -> ParseStep {
 }
 
 parseFrac = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(46).(
                 * (False) -> ParseStep { ParsePos(Int) }
@@ -273,7 +273,7 @@ parseFracExp = (Int * String) -> ParseStep {
 }
 
 parseIntPart = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(48).(
                 * (False) -> ParseStep {
@@ -290,10 +290,10 @@ parseIntPart = (Int * String) -> ParseStep {
 }
 
 parseNull = (Int * String) -> ParseStep {
-    Int.add(4).le(String.length()).(
+    Int.add(3).le(String.length()).(
         * (False) -> ParseStep { ParseFail("expected null") }
         * (True) -> ParseStep {
-            String.substring(Int, Int.add(4)).eq("null").(
+            String.substring(Int, Int.add(3)).eq("null").(
                 * (False) -> ParseStep { ParseFail("expected null") }
                 * (True) -> ParseStep { ParsePos(Int.add(4)) }
             )
@@ -323,7 +323,7 @@ parseObjectColon = (ParseStep * String) -> ParseStep {
 }
 
 parseObjectItems = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(125).(
                 * (False) -> ParseStep { Int.parseString(String).parseObjectColon(String) }
@@ -342,7 +342,7 @@ parseObjectTail = (ParseStep * String) -> ParseStep {
 }
 
 parseString = (Int * String) -> ParseStep {
-    Int.eq(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(34).(
                 * (False) -> ParseStep { ParseFail("expected quote to start string") }
@@ -354,7 +354,7 @@ parseString = (Int * String) -> ParseStep {
 }
 
 parseStringBody = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).eq(34).(
                 * (False) -> ParseStep {
@@ -376,10 +376,10 @@ parseStringBody = (Int * String) -> ParseStep {
 }
 
 parseTrue = (Int * String) -> ParseStep {
-    Int.add(4).le(String.length()).(
+    Int.add(3).le(String.length()).(
         * (False) -> ParseStep { ParseFail("expected true") }
         * (True) -> ParseStep {
-            String.substring(Int, Int.add(4)).eq("true").(
+            String.substring(Int, Int.add(3)).eq("true").(
                 * (False) -> ParseStep { ParseFail("expected true") }
                 * (True) -> ParseStep { ParsePos(Int.add(4)) }
             )
@@ -394,7 +394,7 @@ parseValue = (Int * String) -> ParseStep {
 }
 
 requireDigits = (Int * String) -> ParseStep {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> ParseStep {
             String.byteAt(Int).isDigit().(
                 * (False) -> ParseStep { ParseFail("expected digit") }
@@ -406,7 +406,7 @@ requireDigits = (Int * String) -> ParseStep {
 }
 
 skipDigits = (Int * String) -> Int {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> Int {
             String.byteAt(Int).isDigit().(
                 * (False) -> Int { Int }
@@ -418,7 +418,7 @@ skipDigits = (Int * String) -> Int {
 }
 
 skipSign = (Int * String) -> Int {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> Int {
             String.byteAt(Int).isSign().(
                 * (False) -> Int { Int }
@@ -430,7 +430,7 @@ skipSign = (Int * String) -> Int {
 }
 
 skipWs = (Int * String) -> Int {
-    Int.ge(String.length()).(
+    Int.gt(String.length()).(
         * (False) -> Int {
             String.byteAt(Int).isWs().(
                 * (False) -> Int { Int }
@@ -442,7 +442,7 @@ skipWs = (Int * String) -> Int {
 }
 
 validateOnly = (String) -> ParseStep {
-    0
+    1
         .parseValue(String)
         .checkTrailing(String)
 }

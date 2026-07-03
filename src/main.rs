@@ -913,7 +913,18 @@ fn check_spec(spec: &BuildSpec) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
-    println!("All checks passed.");
+    // Dead-code lint: non-fatal, printed to stderr. Canon's "always
+    // clean" rule — unreachable declarations are flagged here and
+    // promoted to a failure in CI workflows that grep for warnings.
+    let warnings = checker::lint_dead_code(&loaded.module, loaded.entry_items_start);
+    for w in &warnings {
+        eprintln!("warning[{}]: {}", spec.entry_str(), w);
+    }
+    if warnings.is_empty() {
+        println!("All checks passed.");
+    } else {
+        println!("All checks passed ({} warning(s)).", warnings.len());
+    }
     true
 }
 

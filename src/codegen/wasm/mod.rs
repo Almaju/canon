@@ -5465,8 +5465,12 @@ impl<'m> WasmGen<'m> {
                     }
                 }
                 if !arg_pushed {
-                    f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Const(1));
                 }
+                // Canon indexing is 1-based (like positional product
+                // access `byte.1`): byteAt(1) is the first byte.
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Sub);
                 // Stack: [ptr, len, index_i64]. Want: load byte at ptr+index.
                 f.instruction(&Instruction::I32WrapI64);
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // index_i32
@@ -5483,19 +5487,24 @@ impl<'m> WasmGen<'m> {
             }
             // ── String substring ────────────────────────────────────
             //
-            // `s.substring(start, end)` returns the half-open slice
-            // `[start, end)` as a fresh String. Allocates a new buffer
-            // and copies the bytes — the result is independent of the
-            // receiver's lifetime (heap is bump-allocated, so neither
-            // outlives the other; copying makes mutation safe if it
-            // ever lands).
+            // `s.substring(start, end)` returns the 1-based, inclusive
+            // slice `[start, end]` as a fresh String — `substring(1, 4)`
+            // is the first four bytes, pairing with 1-based `byteAt`.
+            // Internally start is shifted down once and the old
+            // half-open arithmetic does the rest (`len = end - (start-1)`).
+            // Allocates a new buffer and copies the bytes — the result
+            // is independent of the receiver's lifetime (heap is
+            // bump-allocated, so neither outlives the other; copying
+            // makes mutation safe if it ever lands).
             ("substring" | "slice", _) if recv_ty.is_str_like() && args.len() == 2 => {
                 // Compile start, then end (both `Int`).
                 let ty0 = self.compile_expr(&args[0], scope, f);
                 if !matches!(ty0, Ty::I64) {
                     self.drop_value(ty0, f);
-                    f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Const(1));
                 }
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Sub);
                 let ty1 = self.compile_expr(&args[1], scope, f);
                 if !matches!(ty1, Ty::I64) {
                     self.drop_value(ty1, f);
@@ -5621,8 +5630,13 @@ impl<'m> WasmGen<'m> {
                 let idx_ty = self.compile_expr(&args[0], scope, f);
                 if !matches!(idx_ty, Ty::I64) {
                     self.drop_value(idx_ty, f);
-                    f.instruction(&Instruction::I64Const(0));
+                    f.instruction(&Instruction::I64Const(1));
                 }
+                // 1-based: get(1) is the first element. `get(0)` shifts
+                // to -1, wraps to a huge u64, and fails the unsigned
+                // bounds check below — a clean `None`.
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Sub);
                 // Stack: [ptr, len, idx]. All user code is done; peel.
                 f.instruction(&Instruction::LocalSet(scope.tmp_i64())); // idx
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // len

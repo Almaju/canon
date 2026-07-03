@@ -132,6 +132,8 @@ Bytes = Byte^*
 
 `T^*` is the Kleene star — zero or more repetitions of `T`. Together with `^N`, both repetition forms share the same operator and sit naturally in the `+` / `*` / `^` semiring.
 
+`List<T>` is not a separate concept: core defines **`List<T> = T^*`** — the nominal name and the algebraic form are the same type. `Bytes = Byte^*` therefore has every `List` method (`map`, `first`, `get`, …) with nothing to declare, and `List(…)` is simply the value-level constructor for the star (the algebraic form has no literal syntax of its own).
+
 Higher-level types like `Int`, `Float`, and `String` are defined from `Byte`/`Bytes`.
 
 ## Generics
@@ -328,7 +330,13 @@ This is deliberate. The language already enforces radical transparency — no co
 
 There is **no type inference**. Every type must be explicitly written.
 
-Additionally, every declared type must be *used*: if a function returns `Result<T, Err>` but no `Err` ever flows through, this is a compile-time error. Declared types must match inferred shape exactly.
+## Dead Code
+
+Canon stays clean by construction: a **program's** declarations must be reachable from its entry point. `canon check` walks the reference graph from `main` (or the HTTP handler) and flags every unreachable type and function — dead code is not allowed to accumulate. The lint is a warning at the command line and promoted to a failure in CI.
+
+Libraries are exempt: with no private visibility, every declaration in a library *is* exported surface, so there is nothing to flag — its dead code shows up downstream, in the programs that stopped calling it.
+
+(There is no "unused error variant" rule beyond this: [error union widening](#error-union-widening) makes it natural to declare exactly the errors that actually flow, and adding one later widens callers' unions without breakage.)
 
 ## Functions
 
@@ -382,6 +390,8 @@ Commutative calling is a *syntactic* freedom — it must never become a *semanti
 3. **Anything else is a compile error.** If two same-typed bare values could each fill two alias-related slots, the call is ambiguous — the caller must wrap one explicitly.
 
 For a non-symmetric function like `compare = (OtherUser * User) -> Ord`, this means `alice.compare(bob)` with two bare `User` values is a compile error (which argument is the `OtherUser`? the answer flips `Less` and `Greater`). The caller writes `alice.compare(OtherUser(bob))` — one wrap, and the binding is unambiguous in both the compiler's eyes and the reader's.
+
+**Repeated components (`T^N`) bind positionally.** When newtyping is overkill, a function may take a fixed repetition — `merge = (User^2) -> User`. Repetition components are *positional* (they are accessed as `.1`, `.2`, …), so binding is positional too: the receiver fills `.1` and the remaining arguments fill `.2`… in the order written. `alice.merge(bob)` puts `alice` at `.1`, full stop — commutative reordering does not apply to repeated components, because position *is* their identity. Use `T^N` when order is the honest semantic (pairs, coordinates), and distinct newtypes when the components mean different things.
 
 ### The Entry Point
 
@@ -495,7 +505,15 @@ This allows both forms at the call site:
 "hello".paint(Red(0xFF0000))
 ```
 
-Omitting an `Option<T>` component defaults it to `None`. This is the **one deliberate implicitness** in a language that otherwise forbids implicit anything (no `String()` defaulting to empty, no implicit nullability). It is owned as an exception, justified by ergonomics: the alternative — writing `None()` at every call site that doesn't care — would make optional parameters heavier than the boilerplate they replace.
+A component may be omitted at the call site **only when its type implements the `Default` trait**; the compiler inserts `T.Default()` for the missing component. `Default` is an ordinary trait with the shape `Default = <T>() -> T`, and core ships exactly one implementation:
+
+```
+Default = () -> Option<T> {
+    None()
+}
+```
+
+So omitting an `Option<Color>` argument means `None()` — but the defaulting is not a hidden special case for `Option`: it is opt-in, declared in source, and visible in the type. A user type that wants omission semantics implements `Default` for itself and accepts the same trade the language did: the absence at the call site is now meaningful. (Whether core should ever ship more `Default` impls than `Option`'s is deliberately conservative — defaults hide information, and `Option` is the one type whose *entire meaning* is "absence is fine".)
 
 ## No Local Bindings
 
@@ -831,6 +849,10 @@ Greeting("hi").Show()    # invokes the Greeting impl of Show
 Name("Alice").Show()     # invokes the Name impl of Show
 ```
 
+### Coherence
+
+A program may contain **at most one implementation per (trait, type) pair**. There is no preemptive orphan rule — any file in any package may implement any trait for any type — because Canon compiles whole programs: the build simply checks the final set of implementations and errors on an actual conflict, naming both defining files. The cost surfaces only when a conflict really exists (typically: adding a dependency that also implemented the trait), which beats forbidding whole classes of fine programs to guard against a conflict that might never happen.
+
 ### Multi-Method Traits
 
 A trait with multiple methods is just a product of single-method traits:
@@ -1119,6 +1141,10 @@ This is a deliberate design choice: types lie less than names.
 ## Strings
 
 A `String` is `Byte^*` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
+
+### Indexing Is 1-Based
+
+All indexing in Canon is **1-based**, everywhere, matching positional product access (`byte.1` is the first bit): `s.byteAt(1)` is the first byte, `list.get(1)` the first element, and `s.substring(start, end)` is the **inclusive** slice `[start, end]` — `s.substring(1, 4)` is the first four bytes. "Position past the end" is `length + 1`, so an exhausted parser position satisfies `pos.gt(s.length())`. Unconventional relative to C-family languages, deliberate here: one origin for `.1`, `byteAt`, and `get` beats two origins used consistently never.
 
 ### String Escape Sequences
 
