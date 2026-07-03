@@ -1,3 +1,5 @@
 bindings "wasi:cli/environment@0.3.0-rc-2026-03-15"
 
+getArguments = () -> List<String>
+
 getInitialCwd = () -> Option<String>

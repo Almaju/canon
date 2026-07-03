@@ -1,0 +1,5 @@
+use wasi/cli/environment
+
+Args = () -> List<String> {
+    getArguments()
+}

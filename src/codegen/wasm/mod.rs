@@ -344,6 +344,12 @@ fn classify_return(
                 err_name: named_type_name(&generics[1]).unwrap_or_else(|| "String".to_string()),
             });
         }
+        if name == "Option" && generics.len() == 1 && resolves_to_string(&generics[0], type_defs) {
+            return Some(IndirectReturnShape::OptionString);
+        }
+        if name == "List" && generics.len() == 1 && resolves_to_string(&generics[0], type_defs) {
+            return Some(IndirectReturnShape::ListString);
+        }
     }
     if matches!(flat_results, [ValType::I32, ValType::I32]) {
         return Some(IndirectReturnShape::String);
@@ -861,6 +867,18 @@ pub(super) enum IndirectReturnShape {
     /// after `Path(…).File()?`) and the Err arm of a `match` can type
     /// the bound payload (e.g. `Err(e) =>` where `e: IoError`).
     ResultStringString { ok_name: String, err_name: String },
+    /// `option<string>` return. Return area: 12 bytes — byte 0 the
+    /// discriminant (0=none, 1=some), bytes 4–7 the payload ptr, 8–11
+    /// the payload len. Decoded into a fresh Canon `Option` struct
+    /// (i32 tag at +0, payload at +4/+8) so ordinary
+    /// `(None, Some<String>)` dispatch works.
+    OptionString,
+    /// `list<string>` return. Return area: 8 bytes — (i32 list ptr,
+    /// i32 element count). The canonical-ABI element layout (8-byte
+    /// stride, i32 ptr + i32 len per element) is byte-identical to
+    /// Canon's `List<String>` representation, so the pair is pushed
+    /// directly as `Ty::List`.
+    ListString,
 }
 
 impl IndirectReturnShape {
@@ -869,6 +887,8 @@ impl IndirectReturnShape {
         match self {
             IndirectReturnShape::String => 8,
             IndirectReturnShape::ResultStringString { .. } => 12,
+            IndirectReturnShape::OptionString => 12,
+            IndirectReturnShape::ListString => 8,
         }
     }
 }
@@ -1692,6 +1712,8 @@ impl<'m> WasmGen<'m> {
                 Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
                     Ty::NamedPtrStr("Result".to_string(), ok_name.clone(), err_name.clone())
                 }
+                Some(IndirectReturnShape::OptionString) => Ty::NamedPtr("Option".to_string()),
+                Some(IndirectReturnShape::ListString) => Ty::List,
                 None => result_ty,
             };
             let info = FuncInfo {
@@ -4102,6 +4124,62 @@ impl<'m> WasmGen<'m> {
                     memory_index: 0,
                 }));
                 info.result_ty.clone()
+            }
+            IndirectReturnShape::OptionString => {
+                // Re-shape the canonical `option<string>` ret area
+                // (disc byte at +0, ptr/len at +4/+8) into a fresh
+                // Canon Option struct (i32 tag at +0, payload at
+                // +4/+8). `$alloc` doesn't touch the `alloc_ptr`
+                // *local*, which still points at the ret area.
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                for off in [4u64, 8] {
+                    f.instruction(&Instruction::LocalGet(scope.rbool()));
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: off,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::I32Store(MemArg {
+                        offset: off,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                }
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr("Option".to_string())
+            }
+            IndirectReturnShape::ListString => {
+                // (i32 list ptr at +0, i32 count at +4). The canonical
+                // element layout matches Canon's `List<String>` exactly
+                // — push the pair as-is.
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                Ty::List
             }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
                 // Flip the WIT discriminant (byte 0) into Canon's tag

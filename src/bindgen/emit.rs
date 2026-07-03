@@ -559,7 +559,26 @@ fn emit_function(
 /// current core codegen can't lower correctly.
 fn returns_list(resolve: &Resolve, result: &Option<Type>) -> bool {
     let Some(t) = result else { return false };
+    // `list<string>` returns are supported: the canonical element
+    // layout (8-byte stride, ptr+len) is byte-identical to Canon's
+    // `List<String>`, and codegen decodes the indirect return
+    // directly (`IndirectReturnShape::ListString`). Other element
+    // types still need per-width read-back and stay skipped.
+    if is_list_of_string(resolve, t) {
+        return false;
+    }
     is_list_shape(resolve, t)
+}
+
+fn is_list_of_string(resolve: &Resolve, t: &Type) -> bool {
+    match t {
+        Type::Id(id) => match &resolve.types[*id].kind {
+            TypeDefKind::Type(inner) => is_list_of_string(resolve, inner),
+            TypeDefKind::List(elem) => matches!(elem, Type::String),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// True when the function returns a WIT `result` with neither `ok` nor `err`

@@ -1,0 +1,16 @@
+use canon/std/Json
+use canon/std/cli/Args
+use canon/std/cli/Cwd
+
+main = () -> Unit {
+    Args()
+        .length()
+        .print()
+    Args()
+        .toJsonArray()
+        .print()
+    Cwd().(
+        * (None) -> Unit { "no cwd".print() }
+        * (Some<String>) -> Unit { "cwd: ".concat(String).print() }
+    )
+}

@@ -456,6 +456,24 @@ pub(super) fn wrap(
                         next_local_ty += 1;
                         Some(idx)
                     }
+                    Some(IndirectReturnShape::OptionString) => {
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .option(ComponentValType::Primitive(PrimitiveValType::String));
+                        let idx = next_local_ty;
+                        next_local_ty += 1;
+                        Some(idx)
+                    }
+                    Some(IndirectReturnShape::ListString) => {
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .list(ComponentValType::Primitive(PrimitiveValType::String));
+                        let idx = next_local_ty;
+                        next_local_ty += 1;
+                        Some(idx)
+                    }
                     None => None,
                 };
                 let mut fn_enc = iface_ty.ty().function();
