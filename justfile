@@ -167,6 +167,15 @@ uninstall-hooks:
     git config --unset core.hooksPath
     @echo "Git hooks uninstalled (reverted to default .git/hooks)"
 
+# Package the VS Code extension into a .vsix
+build-vscode-extension:
+    #!/usr/bin/env sh
+    set -e
+    cd editors/vscode-canon
+    npm install
+    npx vsce package --no-dependencies
+    echo "Done. Install with: code --install-extension editors/vscode-canon/canon-lang-<version>.vsix"
+
 # Build the Zed extension WASMs (requires Docker for the grammar WASM)
 build-extension:
     #!/usr/bin/env sh

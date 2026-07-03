@@ -1,0 +1,71 @@
+name: publish-vscode-extension
+
+# Publishes editors/vscode-canon to the VS Code Marketplace and Open VSX.
+#
+# Runs on every push to main that touches the extension (plus manual
+# dispatch), packages the .vsix, and publishes it when the version in
+# package.json is newer than what each registry already has. Publishing
+# requires two repository secrets (see editors/PUBLISHING.md):
+#   VSCE_PAT — Azure DevOps PAT with Marketplace > Manage scope
+#   OVSX_PAT — open-vsx.org access token
+# Without the secrets the workflow still packages the .vsix and uploads
+# it as a build artifact, so it stays green before publisher setup.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "editors/vscode-canon/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    defaults:
+      run:
+        working-directory: editors/vscode-canon
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Package .vsix
+        id: package
+        run: |
+          npm ci
+          npx vsce package --no-dependencies
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "vsix=$(ls *.vsix)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: canon-vsix
+          path: editors/vscode-canon/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: |
+          published=$(npx vsce show almaju.canon-lang --json 2>/dev/null | jq -r '.versions[0].version // empty' || true)
+          if [ "$published" = "${{ steps.package.outputs.version }}" ]; then
+            echo "version ${published} already on the Marketplace — skipping"
+          else
+            npx vsce publish --no-dependencies --packagePath "${{ steps.package.outputs.vsix }}"
+          fi
+
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: |
+          published=$(curl -fsSL https://open-vsx.org/api/almaju/canon-lang 2>/dev/null | jq -r '.version // empty' || true)
+          if [ "$published" = "${{ steps.package.outputs.version }}" ]; then
+            echo "version ${published} already on Open VSX — skipping"
+          else
+            npx ovsx publish "${{ steps.package.outputs.vsix }}" -p "$OVSX_PAT"
+          fi

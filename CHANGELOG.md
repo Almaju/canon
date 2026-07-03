@@ -38,6 +38,14 @@ single-line `[FAIL]` banners; `TESTPLAN.md` maps every construct to
 its pinning fixture with ranked holes; new "Serving HTTP" tour
 chapter; stale doc paths fixed.
 
+**Editor extensions.** New VS Code extension
+(`editors/vscode-canon`): TextMate highlighting plus the `canon lsp`
+language server (diagnostics, hover, go-to-definition, formatting),
+with automatic download of prebuilt compiler binaries; published to
+the VS Code Marketplace by CI and attached to every release as a
+`.vsix`. The Zed extension is registry-ready (repository metadata,
+v0.4.0). Publishing runbook in `editors/PUBLISHING.md`.
+
 ### Language — Breaking Changes
 
 **Domain-first value model replaces capability system.**
