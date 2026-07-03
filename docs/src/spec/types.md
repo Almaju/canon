@@ -87,6 +87,14 @@ Rules:
 zero or more `T`s. Both share the `^` operator and complete the
 semiring reading: sums, products, exponents.
 
+`List<T>` is not a separate concept: core defines **`List<T> = T^*`** —
+the nominal name and the algebraic form are the same type. `Bytes =
+Byte^*` therefore has every `List` method (`map`, `first`, `get`, …)
+with nothing to declare, and `List(…)` is simply the value-level
+constructor for the star. Indexing is **1-based** everywhere
+(`list.get(1)` is the first element, `byteAt(1)` the first byte) — one
+origin, matching positional product access `.1`.
+
 ## Generics
 
 Types may be parameterized with angle brackets — `List<T>`,
@@ -154,7 +162,21 @@ explicit lowercase function (`List.empty()`).
 ## No Type Inference
 
 Every type is written explicitly: function signatures, lambda
-signatures, dispatch arm types. Additionally, **declared types must be
-used** — a function returning `Result<T, E>` through which no `E` ever
-flows is a compile error. Declared shape and inferred shape must match
-exactly.
+signatures, dispatch arm types. Declared shape and checked shape must
+match exactly.
+
+## Dead Code
+
+A **program's** declarations must be reachable from its entry point:
+`canon check` walks the reference graph from `main` (or the HTTP
+handler) and warns on every unreachable type and function —
+
+```
+warning: `unused` is never used — dead code is not allowed to
+accumulate; delete it or wire it into the program
+```
+
+— a warning at the command line, promoted to a failure in CI.
+Libraries are exempt: with no private visibility, every declaration in
+a library *is* exported surface, so its dead code shows up downstream,
+in the programs that stopped calling it.

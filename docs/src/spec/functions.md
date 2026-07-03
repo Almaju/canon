@@ -45,6 +45,32 @@ components are passed as a product value:
 router.route(Handler(...) * Path("/api"))
 ```
 
+### The Binding Rule
+
+Commutative calling is a *syntactic* freedom — never a semantic
+ambiguity. Arguments (including the receiver) bind to components by:
+
+1. **Exact type match binds first.** A value typed `OtherUser` binds
+   only the `OtherUser` component.
+2. **Substitutability resolves what remains.** A bare `User` flows into
+   an alias-compatible slot (`OtherUser`) only when exactly one
+   unfilled component accepts it.
+3. **Anything else is a compile error.** If two same-typed bare values
+   could each fill two alias-related slots, the call is ambiguous and
+   the caller must wrap one explicitly: for
+   `compare = (OtherUser * User) -> Ord`, `alice.compare(bob)` is
+   rejected (which one is the `OtherUser`? the answer flips `Less` and
+   `Greater`) — write `alice.compare(OtherUser(bob))`.
+
+**Repeated components bind positionally.** A function over a fixed
+repetition — `merge = (User^2) -> User` — has positional components
+(`.1`, `.2`, …), so binding is positional too: the receiver fills `.1`,
+remaining arguments fill `.2`… in the order written. Commutative
+reordering does not apply, because position *is* the identity of a
+repeated component. Use `T^N` when order is the honest semantic
+(pairs, coordinates); use distinct newtypes when components mean
+different things.
+
 ## Optional Components
 
 No special syntax; optionality is `Option<T>` in the signature, and the
@@ -56,6 +82,14 @@ paint = (Option<Color> * String) -> Unit { ... }
 "hello".paint()
 "hello".paint(Red(0xFF0000))
 ```
+
+Omission is legal **only when the component's type implements the
+`Default` trait**; the compiler inserts `T.Default()` for the missing
+component. `Default = <T>() -> T` is an ordinary trait, and core ships
+exactly one implementation — `Option<T>`'s, which returns `None()`. So
+omitting an `Option<Color>` means `None()`, but the defaulting is not a
+special case: it is opt-in, declared in source, and a user type that
+wants omission semantics implements `Default` for itself.
 
 ## First-Class Functions and Lambdas
 

@@ -101,6 +101,47 @@ Dispatch also follows newtype alias chains: given
 `MessageContent = Option<Content>`, a `MessageContent` value dispatches
 on `(None, Some<Content>)` directly.
 
+**Shadowing.** An arm binding is an ordinary lexical binding: inside
+the arm body it shadows any outer component of the same type name. A
+function that already has a `String` component and dispatches over a
+`Result<String, E>` sees the *payload* as `String` inside the
+`Ok<String>` arm. When both values are needed in the same arm,
+disambiguate the outer one with a newtype alias before dispatching —
+the same rule as same-typed parameters.
+
+### Literal Dispatch
+
+Dispatch extends to **equality dispatch on `String` and `Int`**
+scrutinees: arms are literals, and the final arm is a **mandatory
+catch-all** naming the scrutinee's type:
+
+```canon
+route = (String) -> String {
+    String.(
+        * ("/notes") -> String { "index" }
+        * ("/notes/1") -> String { "note one" }
+        * (String) -> String { "not found: ".concat(String) }
+    )
+}
+```
+
+Rules:
+
+- The scrutinee must be `String` or `Int`, directly or through a
+  newtype alias chain (`Path = String` dispatches with a `(Path)`
+  catch-all).
+- Literal arms can never be exhaustive, so **totality comes from the
+  catch-all** — it is required, and it is always the last arm.
+- Literal arms follow canonical order — alphabetical for strings,
+  ascending for ints; duplicates are a compile error. `canon fmt` sorts
+  the arms automatically.
+- Inside every arm body (including literal arms) the scrutinee value is
+  in scope under its type name, exactly like a bound payload.
+
+Nested dispatch composes: dispatch on a union, then literal-dispatch
+the payload inside an arm — the shape of every HTTP route table (see
+[Serving HTTP](../tour/http.md)).
+
 ## The `?` Operator
 
 Postfix `?` propagates failure and absence:
@@ -115,6 +156,14 @@ short-circuited value (a `Result` whose error slot includes `E`, or an
 `Option`). Inline error unions compose at the signature:
 `Result<Unit, HttpError + InvalidUrl>` accepts short-circuits from both
 `Url(…)?` and `.get()?`.
+
+**Error union widening.** Inline error unions widen along
+`?`-propagation: a `Result<T, IoError>` propagates out of a function
+declared `Result<U, IoError + ParseError>` without ceremony — `?` lifts
+the error into the wider union whenever the callee's error variants are
+a subset of the caller's. Alphabetical enforcement makes the subset
+test purely syntactic: every union has exactly one canonical spelling,
+so `IoError + NotFound` *is* the same type everywhere it appears.
 
 `Option<T>` and `Result<T, E>` are deliberately distinct: `None` means
 *absent*, `Err` means *failed*.

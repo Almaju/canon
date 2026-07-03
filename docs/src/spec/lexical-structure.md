@@ -81,6 +81,6 @@ outside the source file.
 - Layout is **canonical**: `canon fmt` defines the one accepted
   formatting, and `canon check` / `canon run` refuse files that deviate
   from it. Formatting is therefore part of the language surface, not a
-  style choice — notably, a dispatch nested inside another dispatch's
-  arm is formatted onto a single line, while a body's top-level dispatch
-  is formatted multi-line.
+  style choice. The formatter also sorts everything the
+  [ordering rules](./ordering.md) cover, so it is the auto-fixer, not
+  just a pretty-printer.

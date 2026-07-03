@@ -48,7 +48,14 @@ noteTwo = () -> Body {
 serve = (Request) -> Response {
     Request.path().(
         * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
-        * (Some<String>) -> Response { String.eq("/notes").( * (False) -> Response { String.eq("/notes/1").( * (False) -> Response { String.eq("/notes/2").( * (False) -> Response { Response(notFound(), Headers(), Status(404)) } * (True) -> Response { Response(noteTwo(), Headers(), Status(200)) }) } * (True) -> Response { Response(noteOne(), Headers(), Status(200)) }) } * (True) -> Response { Response(indexBody(), Headers(), Status(200)) }) }
+        * (Some<String>) -> Response {
+            String.(
+                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
+                * ("/notes/1") -> Response { Response(noteOne(), Headers(), Status(200)) }
+                * ("/notes/2") -> Response { Response(noteTwo(), Headers(), Status(200)) }
+                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+            )
+        }
     )
 }
 ```
@@ -64,10 +71,11 @@ serve = (Request) -> Response {
 - **Request introspection.** `Request.path()` returns
   `Option<String>`; dispatch on `(None, Some<String>)` extracts the
   live path.
-- **Routing as dispatch.** No router DSL — route matching is ordinary
-  union dispatch over `String.eq` results. Verbose by design: when this
-  hurts, the signal is "extract helpers / add a stdlib routing
-  combinator", not "add syntax".
+- **Routing as dispatch.** No router DSL — the route table is
+  **literal dispatch** on the path: one arm per route, alphabetical,
+  with the mandatory `(String)` catch-all as the 404. Nested dispatch
+  composes: union dispatch on the `Option`, literal dispatch on the
+  payload inside the `Some` arm.
 - **Per-route status codes.** `Status` is a value; each arm computes
   its own.
 

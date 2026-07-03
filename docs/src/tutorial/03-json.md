@@ -67,7 +67,13 @@ noteOneBody = () -> Body {
 serve = (Request) -> Response {
     Request.path().(
         * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
-        * (Some<String>) -> Response { String.eq("/notes").( * (False) -> Response { String.eq("/notes/1").( * (False) -> Response { Response(notFound(), Headers(), Status(404)) } * (True) -> Response { Response(noteOneBody(), Headers(), Status(200)) }) } * (True) -> Response { Response(indexBody(), Headers(), Status(200)) }) }
+        * (Some<String>) -> Response {
+            String.(
+                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
+                * ("/notes/1") -> Response { Response(noteOneBody(), Headers(), Status(200)) }
+                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+            )
+        }
     )
 }
 ```
@@ -82,11 +88,12 @@ $ curl localhost:8080/other
 {"error":"not found"}
 ```
 
-Note the declaration order: `indexBody`, `notFound`, `noteOneBody`,
-`serve` — functions in a file must be alphabetical, and the compiler
-enforces it. (Reorder two of them and see.) This is the
-[ordering rule](../spec/ordering.md) that runs through the whole
-language.
+Note the ordering everywhere: the functions (`indexBody`, `notFound`,
+`noteOneBody`, `serve`) are alphabetical, and the literal route arms
+(`"/notes"`, `"/notes/1"`) are too, with the catch-all last. Both are
+enforced — and both are auto-fixed by `canon fmt`, so you never sort by
+hand. This is the [ordering rule](../spec/ordering.md) that runs
+through the whole language.
 
 ## The Smell We Just Introduced
 

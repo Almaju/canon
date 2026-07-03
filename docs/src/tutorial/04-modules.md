@@ -83,7 +83,13 @@ noteOneBody = () -> Body {
 serve = (Request) -> Response {
     Request.path().(
         * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
-        * (Some<String>) -> Response { String.eq("/notes").( * (False) -> Response { String.eq("/notes/1").( * (False) -> Response { Response(notFound(), Headers(), Status(404)) } * (True) -> Response { Response(noteOneBody(), Headers(), Status(200)) }) } * (True) -> Response { Response(indexBody(), Headers(), Status(200)) }) }
+        * (Some<String>) -> Response {
+            String.(
+                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
+                * ("/notes/1") -> Response { Response(noteOneBody(), Headers(), Status(200)) }
+                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
+            )
+        }
     )
 }
 ```

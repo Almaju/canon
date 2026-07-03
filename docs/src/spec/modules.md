@@ -15,11 +15,18 @@
 ## Imports
 
 ```canon
-use Foo                     # sibling: foo.can (or foo/main.can)
-use models/User             # subfolder: models/user.can
-use canon/std/Json          # package: <namespace>/<package>/<Type>
-use acme/image/Decoder      # third-party package: same shape
+use Foo
+use acme/image/Decoder
+use canon/std/Json
+use models/User
 ```
+
+| Import | Resolves to |
+|---|---|
+| `use Foo` | sibling file `foo.can` (or `foo/main.can`) |
+| `use models/User` | subfolder file `models/user.can` |
+| `use canon/std/Json` | package import: `<namespace>/<package>/<Type>` |
+| `use acme/image/Decoder` | third-party package: same shape, no privileged path |
 
 There is exactly **one resolution rule**. For `use a/b/…/Z`:
 

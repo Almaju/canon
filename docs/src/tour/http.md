@@ -48,22 +48,28 @@ exports exactly one world.
 ## Routing is dispatch
 
 `Request.path()` returns `Option<String>` — the live path and query.
-There is no route DSL; route matching is the same union dispatch used
-everywhere else in Canon:
+There is no route DSL; route matching is the same dispatch used
+everywhere else in Canon — union dispatch on the `Option`, then
+[literal dispatch](./match.md#literal-dispatch) on the path, with the
+mandatory `(String)` catch-all as the 404:
 
 ```canon
 serve = (Request) -> Response {
     Request.path().(
         * (None) -> Response { Response(notFound(), Headers(), Status(400)) }
         * (Some<String>) -> Response {
-            String.eq("/notes").(
-                * (False) -> Response { Response(notFound(), Headers(), Status(404)) }
-                * (True) -> Response { Response(indexBody(), Headers(), Status(200)) }
+            String.(
+                * ("/notes") -> Response { Response(indexBody(), Headers(), Status(200)) }
+                * (String) -> Response { Response(notFound(), Headers(), Status(404)) }
             )
         }
     )
 }
 ```
+
+Literal arms follow canonical order (alphabetical for strings,
+ascending for ints — `canon fmt` sorts them), and the scrutinee stays
+in scope under its type name inside every arm.
 
 ## Response composition
 

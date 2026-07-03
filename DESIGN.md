@@ -83,9 +83,11 @@ user.Username
 For repeated components (or anonymous sequences), positional access by 1-based index is used:
 
 ```
-byte.1   // first Bit
-byte.2   // second Bit
+byte.1
+byte.2
 ```
+
+`.1` is the first `Bit`, `.2` the second.
 
 #### Newtypes Are 1-Component Products
 
@@ -94,8 +96,10 @@ A newtype alias `A = B` (where `B` is a single named type) is a degenerate produ
 ```
 Greeting = String
 
-Greeting("hi").String   // unwrap to the underlying String
+Greeting("hi").String
 ```
+
+The `.String` access unwraps to the underlying `String`.
 
 This composes with method lookup through the alias chain: `Greeting("hi").print()` works because `print` is inherited from `String` (no need to unwrap first). Methods declared explicitly on the newtype shadow the inherited ones.
 
@@ -295,7 +299,7 @@ The case difference disambiguates trait implementations from regular functions: 
 
 ## File and Module Layout
 
-- **Files** use `snake_case.can` names (chosen for git/Linux compatibility).
+- **Files** use `kebab-case.can` names — the mechanical conversion of the declared type's PascalCase name (`http-server.can` declares `HttpServer`).
 - A file's name **must match** the type it declares: `foo.can` must declare a type named `Foo`.
 - A **module is a folder**. There is no `mod` declaration. Importing `Foo` from a sibling folder is enough.
 - The entry point is `main.can`; libraries live in `lib.can`.
@@ -303,11 +307,18 @@ The case difference disambiguates trait implementations from regular functions: 
 ### Imports
 
 ```
-use Foo                    # local: load `foo.can` or `foo/main.can` relative to this file
-use models/User            # local: subfolder lookup, `models/user.can`
-use canon/std/Json        # package: <namespace>/<package>/<Type>
-use acme/image/Decoder     # third-party: same shape, no privileged path
+use Foo
+use acme/image/Decoder
+use canon/std/Json
+use models/User
 ```
+
+| Import | Resolves to |
+|---|---|
+| `use Foo` | local: `foo.can` or `foo/main.can` relative to this file |
+| `use models/User` | local: subfolder lookup, `models/user.can` |
+| `use canon/std/Json` | package: `<namespace>/<package>/<Type>` |
+| `use acme/image/Decoder` | third-party: same shape, no privileged path |
 
 There is exactly one `use` resolution rule. Given `use a/b/c/…/Z`:
 
@@ -621,13 +632,15 @@ ord.(
 Each arm is a lambda whose single parameter is the variant type. Arms are separated by `*` (a product of handlers). The leading `*` before the first arm is optional — both forms are equivalent:
 
 ```
-# leading * on every arm (recommended for alignment)
 bool.(
     * (False) -> Unit { "no".print() }
     * (True)  -> Unit { "yes".print() }
 )
+```
 
-# leading * omitted from the first arm
+Leading `*` on every arm is the recommended form (it aligns). Omitting it from the first arm is also accepted:
+
+```
 bool.(
     (False) -> Unit { "no".print() }
     * (True)  -> Unit { "yes".print() }
@@ -750,19 +763,29 @@ Having a `File` value *is* the capability to read that file. You cannot get a `F
 
 This applies everywhere:
 
+Fetching from the network — start with a `Url`:
+
 ```
-# Fetching from the network — start with a Url
 Url("https://api.example.com/data")?.get()?.print
+```
 
-# Current time — call the Now constructor directly
+Current time — call the `Now` constructor directly:
+
+```
 Now().toRfc3339().print
+```
 
-# HTTP server — wrap a Port, register routes, serve
+HTTP server — wrap a `Port`, register routes, serve:
+
+```
 HttpServer(Port(3000))
     .get(HttpStatus(200), RoutePath("/"), "hello")
     .serve()
+```
 
-# JSON — start with a String
+JSON — start with a `String`:
+
+```
 "[1, 2, 3]".JsonValue()?.JsonArray()?.length().print
 ```
 
@@ -828,8 +851,10 @@ Because traits are types, they are written in `PascalCase`. The shape is read as
 
 A trait is implemented for a type by declaring a function with the trait's name (PascalCase) and the implementing type as a component. The implementing type is prepended to the trait's parameter list:
 
+The first `Show` line below is the trait declaration (no body); the following two implement it:
+
 ```
-Show = () -> String          # trait declaration (no body)
+Show = () -> String
 
 Show = (Greeting) -> String {
     "HELLO!"
@@ -845,9 +870,11 @@ This is distinguished from a regular function by case alone: `print` (camelCase)
 Call sites use ordinary commutative-call syntax:
 
 ```
-Greeting("hi").Show()    # invokes the Greeting impl of Show
-Name("Alice").Show()     # invokes the Name impl of Show
+Greeting("hi").Show()
+Name("Alice").Show()
 ```
+
+The first call invokes the `Greeting` impl of `Show`; the second, the `Name` impl.
 
 ### Coherence
 
@@ -1024,8 +1051,9 @@ The mapping is mechanical. Every shape on the left maps to exactly one shape on 
 
 WIT `resource` types are opaque, owning handles with methods and an implicit `drop`. Canon models them as a single-field product wrapping a builtin `Handle`:
 
+`canon/wasi/filesystem/types.can` (generated):
+
 ```
-# canon/wasi/filesystem/types.can  (generated)
 extern "wasi:filesystem/types@0.3.0"
 
 Descriptor = Handle
@@ -1046,16 +1074,26 @@ This means `canon/std/file.can` can wrap `canon/wasi/filesystem/types#Descriptor
 Idiomatic Canon code does not import binding files directly. Instead, it imports curated wrappers from `canon/std`. The wrappers are grouped into thematic sub-namespaces (`cli`, `fs`, `http`, `time`); the top level of `canon/std` is reserved for cross-cutting types (`IoError`, `Json`, `MalformedJson`, `Random`, `TestResult`).
 
 ```
-use canon/std/cli/Exit          # wraps canon:builtins/cli
-use canon/std/fs/File           # wraps canon/wasi/filesystem/types (or canon:builtins/* until P3 lands)
-use canon/std/fs/Path
-use canon/std/http/HttpServer   # wraps canon:builtins/http-server
-use canon/std/http/Url          # wraps canon:builtins/url + canon:builtins/http
-use canon/std/time/Instant      # wraps canon/wasi/clocks/monotonic_clock
-use canon/std/time/Now          # wraps canon/wasi/clocks/wall_clock (or canon:builtins/* until P3 lands)
-use canon/std/Random            # wraps canon/wasi/random/random
 use canon/std/IoError
+use canon/std/Random
+use canon/std/cli/Exit
+use canon/std/fs/File
+use canon/std/fs/Path
+use canon/std/http/HttpServer
+use canon/std/http/Url
+use canon/std/time/Instant
+use canon/std/time/Now
 ```
+
+| Wrapper | Wraps |
+|---|---|
+| `canon/std/cli/Exit` | `canon:builtins/cli` |
+| `canon/std/fs/File`, `canon/std/fs/Path` | `canon/wasi/filesystem/types` (or `canon:builtins/*` until P3 lands) |
+| `canon/std/http/HttpServer` | `canon:builtins/http-server` |
+| `canon/std/http/Url` | `canon:builtins/url` + `canon:builtins/http` |
+| `canon/std/time/Instant` | `canon/wasi/clocks/monotonic_clock` |
+| `canon/std/time/Now` | `canon/wasi/clocks/wall_clock` (or `canon:builtins/*` until P3 lands) |
+| `canon/std/Random` | `canon/wasi/random/random` |
 
 Each `use canon/std/<path>/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any namespace; the `canon/` namespace is reserved for packages shipped with the language.
 

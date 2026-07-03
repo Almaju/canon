@@ -92,8 +92,12 @@ This allows both forms at the call site:
 
 ```canon
 "hello".paint()
-"hello".paint(Red())
+"hello".paint(Red(0xFF0000))
 ```
+
+Omitting a component is legal only when its type implements the
+`Default` trait — core ships exactly one implementation, `Option<T>`'s,
+which fills the gap with `None()`.
 
 ## First-Class Functions
 
