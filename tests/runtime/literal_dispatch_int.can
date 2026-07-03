@@ -1,0 +1,13 @@
+describe = (Int) -> Unit {
+    Int.(
+        * (0) -> Unit { "zero".print() }
+        * (1) -> Unit { "one".print() }
+        * (Int) -> Unit { Int.print() }
+    )
+}
+
+main = () -> Unit {
+    0.describe()
+    1.describe()
+    42.describe()
+}

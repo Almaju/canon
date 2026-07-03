@@ -1,0 +1,26 @@
+Path = String
+
+classify = (Int) -> String {
+    Int.(
+        * (0) -> String { "zero" }
+        * (1) -> String { "one" }
+        * (Int) -> String { "many" }
+    )
+}
+
+route = (Path) -> String {
+    Path.(
+        * ("/") -> String { "home" }
+        * ("/notes") -> String { "index" }
+        * (Path) -> String { "not found" }
+    )
+}
+
+main = () -> Unit {
+    Path("/notes")
+        .route()
+        .print()
+    2
+        .classify()
+        .print()
+}

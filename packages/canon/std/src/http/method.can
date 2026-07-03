@@ -4,7 +4,14 @@ Get = Unit
 
 Head = Unit
 
-Method = Delete + Get + Head + Options + Other + Patch + Post + Put
+Method = Delete
+  + Get
+  + Head
+  + Options
+  + Other
+  + Patch
+  + Post
+  + Put
 
 Options = Unit
 

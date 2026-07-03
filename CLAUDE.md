@@ -258,6 +258,11 @@ True().(                                       # dispatch (branch on union)
     * (True)  -> Unit { "yes".print() }
 )
 
+path.(                                         # literal dispatch (String/Int scrutinee);
+    * ("/notes") -> Body { index() }           # the catch-all arm is required, always last
+    * (String) -> Body { notFound() }
+)
+
 List(1, 2, 3).map((Int) -> Int { Int.mul(2) }) # lambda
 ```
 

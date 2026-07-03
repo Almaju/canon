@@ -846,8 +846,15 @@ fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let name = name.to_string_lossy();
         if path.is_dir() {
             // Skip a few well-known directories that have no business
-            // being formatted: build artefacts, deps, VCS metadata.
-            if matches!(name.as_ref(), "target" | "node_modules" | ".git") {
+            // being formatted: build artefacts, deps, VCS metadata, and
+            // `bindgen/` output (derived by `canon install`, regenerated
+            // wholesale — like `target/`, formatting it only creates
+            // churn against the generator). An explicit
+            // `canon fmt path/to/bindgen/file.can` still works.
+            if matches!(
+                name.as_ref(),
+                "target" | "node_modules" | ".git" | "bindgen"
+            ) {
                 continue;
             }
             collect_ow_files(&path, out);

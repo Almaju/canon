@@ -847,6 +847,164 @@ fn check_block(
     }
 }
 
+/// Validate a literal-pattern dispatch: `scrutinee.( * ("a") -> R {…}
+/// * ("b") -> R {…} * (String) -> R {…} )`.
+///
+/// Rules (see DESIGN.md § Literal Dispatch):
+///   * The scrutinee must be `String` or `Int` (directly or through a
+///     newtype alias chain), matching the literal kind of every arm.
+///   * The final arm is a mandatory catch-all naming the scrutinee's
+///     type — literal arms can never be exhaustive, so totality comes
+///     from the catch-all.
+///   * Literal arms follow canonical order (alphabetical for strings,
+///     ascending for ints) with no duplicates — the same
+///     "one canonical spelling" rule as everywhere else.
+fn check_literal_dispatch(
+    arms: &[MatchArm],
+    scrutinee_ty: &str,
+    scope: &ExprScope,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+    span: crate::error::Span,
+) {
+    let generic_scope: HashSet<String> = HashSet::new();
+    let base = symbols.resolve_alias(scrutinee_ty);
+    let scrutinee_known = !scrutinee_ty.is_empty() && scrutinee_ty != "<unknown>";
+    if scrutinee_known && base != "String" && base != "Int" {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "literal dispatch requires a `String` or `Int` scrutinee — `{}` is neither",
+                scrutinee_ty
+            ),
+            span,
+        });
+    }
+    if !arms.iter().any(|a| a.literal.is_none()) {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "literal dispatch must end with a catch-all arm `({})` — \
+                 literal arms can never be exhaustive",
+                if scrutinee_known {
+                    scrutinee_ty
+                } else {
+                    "String"
+                }
+            ),
+            span,
+        });
+    }
+    for (i, arm) in arms.iter().enumerate() {
+        check_type_expr(&arm.return_ty, symbols, &generic_scope, errors);
+        match &arm.literal {
+            Some(ArmLiteral::Str(_)) if scrutinee_known && base == "Int" => {
+                errors.push(CanonError::CheckError {
+                    message: "string literal arm on an `Int` scrutinee".to_string(),
+                    span: arm.span,
+                });
+            }
+            Some(ArmLiteral::Int(_)) if scrutinee_known && base == "String" => {
+                errors.push(CanonError::CheckError {
+                    message: "integer literal arm on a `String` scrutinee".to_string(),
+                    span: arm.span,
+                });
+            }
+            Some(_) => {}
+            None => {
+                if i != arms.len() - 1 {
+                    errors.push(CanonError::CheckError {
+                        message: "the catch-all arm must be the last arm of a literal dispatch"
+                            .to_string(),
+                        span: arm.span,
+                    });
+                }
+                check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);
+                if let TypeExpr::Named {
+                    name, span: pspan, ..
+                } = &arm.param_ty
+                {
+                    if scrutinee_known
+                        && name != scrutinee_ty
+                        && symbols.resolve_alias(name) != base
+                    {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "catch-all arm `({})` does not match the scrutinee type `{}`",
+                                name, scrutinee_ty
+                            ),
+                            span: *pspan,
+                        });
+                    }
+                }
+            }
+        }
+        // The scrutinee value is in scope inside every arm body, under
+        // its own type name (and its primitive base, mirroring the
+        // receiver alias-chain rule in `build_local_scope`).
+        let mut inner_scope = ExprScope {
+            names: scope.names.clone(),
+        };
+        if scrutinee_known {
+            inner_scope.names.push(scrutinee_ty.to_string());
+            if base != scrutinee_ty {
+                inner_scope.names.push(base.to_string());
+            }
+        }
+        for expr in &arm.body.exprs {
+            check_expr(expr, &inner_scope, symbols, errors);
+        }
+    }
+    // Canonical order + no duplicates among the literal arms. Because
+    // order is enforced, a duplicate always ends up adjacent in valid
+    // code, so the windowed comparison covers both rules.
+    let lits: Vec<(&ArmLiteral, crate::error::Span)> = arms
+        .iter()
+        .filter_map(|a| a.literal.as_ref().map(|l| (l, a.span)))
+        .collect();
+    for w in lits.windows(2) {
+        let (prev, _) = &w[0];
+        let (next, nspan) = &w[1];
+        match (prev, next) {
+            (ArmLiteral::Str(a), ArmLiteral::Str(b)) => {
+                if b == a {
+                    errors.push(CanonError::CheckError {
+                        message: format!("duplicate literal arm `\"{}\"` in dispatch", b),
+                        span: *nspan,
+                    });
+                } else if b < a {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "literal dispatch arms must be in alphabetical order — \
+                             `\"{}\"` should come before `\"{}\"`",
+                            b, a
+                        ),
+                        span: *nspan,
+                    });
+                }
+            }
+            (ArmLiteral::Int(a), ArmLiteral::Int(b)) => {
+                if b == a {
+                    errors.push(CanonError::CheckError {
+                        message: format!("duplicate literal arm `{}` in dispatch", b),
+                        span: *nspan,
+                    });
+                } else if b < a {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "literal dispatch arms must be in ascending order — \
+                             `{}` should come before `{}`",
+                            b, a
+                        ),
+                        span: *nspan,
+                    });
+                }
+            }
+            // Mixed literal kinds: already reported against the
+            // scrutinee kind above.
+            _ => {}
+        }
+    }
+}
+
 fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     match expr {
         Expr::Ident(ident) => {
@@ -985,6 +1143,14 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             check_expr(scrutinee, scope, symbols, errors);
             let scrutinee_ty = expr_type_name_in_scope(scrutinee, symbols);
             let generic_scope: HashSet<String> = HashSet::new();
+            // Literal-pattern dispatch (`* ("/notes") -> …` on a String
+            // scrutinee, `* (404) -> …` on an Int) has its own rules —
+            // mandatory trailing catch-all, canonical literal order,
+            // no duplicates — and skips the union-variant machinery.
+            if arms.iter().any(|a| a.literal.is_some()) {
+                check_literal_dispatch(arms, &scrutinee_ty, scope, symbols, errors, *span);
+                return;
+            }
             for arm in arms {
                 // Validate param_ty and return_ty as type expressions
                 check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);

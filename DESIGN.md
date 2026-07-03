@@ -19,6 +19,10 @@ Wherever ordering is discretionary, Canon requires **alphabetical order**. This 
 
 The reasoning: ordering is a constant source of bikeshedding and diff noise. By forcing one canonical order, code reads the same way no matter who wrote it, and reordering is never a meaningful change.
 
+Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts `use` imports, type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
+
+One caveat worth knowing: alphabetical order is a *source-level* canon, never a wire format. Union variants are numbered by their alphabetical position internally, so adding a variant renumbers everything after it. Serialized values must therefore always carry variant *names*, not indices; at the Component Model boundary the WIT file's declared order governs the ABI, and the compiler maps between the two.
+
 ## Core Types
 
 The language has one primitive zero-data type: `Unit` — the type with exactly one value (the multiplicative identity — `T * Unit ≡ T`). `Never` completes the algebra as the type with zero values (the additive identity — `T + Never ≡ T`). Together with `+` and `*`, these form a type semiring.
@@ -369,6 +373,16 @@ router.route(Handler(...) * Path("/api"))
 
 This is a genuinely novel feature: in most languages, the receiver is a privileged position — *the* object you're calling the method on. In Canon, there is no privilege. A function is defined over a composition of types, and the caller enters it through whichever component reads most naturally in context.
 
+#### Binding Rule
+
+Commutative calling is a *syntactic* freedom — it must never become a *semantic* ambiguity. Arguments (including the receiver) bind to components by this rule:
+
+1. **Exact type match binds first.** A value whose type is exactly `OtherUser` binds only the `OtherUser` component.
+2. **Substitutability resolves what remains.** A value flows into an alias-compatible component (a `User` into an `OtherUser` slot) only when exactly one unfilled component accepts it.
+3. **Anything else is a compile error.** If two same-typed bare values could each fill two alias-related slots, the call is ambiguous — the caller must wrap one explicitly.
+
+For a non-symmetric function like `compare = (OtherUser * User) -> Ord`, this means `alice.compare(bob)` with two bare `User` values is a compile error (which argument is the `OtherUser`? the answer flips `Less` and `Greater`). The caller writes `alice.compare(OtherUser(bob))` — one wrap, and the binding is unambiguous in both the compiler's eyes and the reader's.
+
 ### The Entry Point
 
 A module becomes a runnable program when exactly one of its top-level free functions has a **return type matching a known WASI world's primary export**. That function is the entry. The compiler scans the module by signature, not by name — there is no magic `main`.
@@ -480,6 +494,8 @@ This allows both forms at the call site:
 "hello".paint()
 "hello".paint(Red(0xFF0000))
 ```
+
+Omitting an `Option<T>` component defaults it to `None`. This is the **one deliberate implicitness** in a language that otherwise forbids implicit anything (no `String()` defaulting to empty, no implicit nullability). It is owned as an exception, justified by ergonomics: the alternative — writing `None()` at every call site that doesn't care — would make optional parameters heavier than the boilerplate they replace.
 
 ## No Local Bindings
 
@@ -635,6 +651,31 @@ Tree.(
 )
 ```
 
+**Shadowing.** An arm binding is an ordinary lexical binding: inside the arm body it shadows any outer component of the same type name. A function that already has a `String` component and dispatches over a `Result<String, E>` sees the *payload* as `String` inside the `Ok<String>` arm. When both values are needed in the same arm, disambiguate the outer one with a newtype alias before dispatching — the same rule as same-typed parameters.
+
+### Literal Dispatch
+
+Dispatch extends to **equality dispatch on `String` and `Int`** scrutinees: arms may be literals, and the final arm is a **mandatory catch-all** naming the scrutinee's type. This is still dispatch — no `if`, no `match` keyword — extended to the two primitive kinds with unambiguous literal syntax:
+
+```
+route = (String) -> Response {
+    String.(
+        * ("/notes")   -> Response { index() }
+        * ("/notes/1") -> Response { noteOne() }
+        * (String)     -> Response { notFound() }
+    )
+}
+```
+
+Rules:
+
+- The scrutinee must be `String` or `Int`, directly or through a newtype alias chain (`Path = String` dispatches with a `(Path)` catch-all).
+- Literal arms can never be exhaustive, so **totality comes from the catch-all** — it is required, and it is always the last arm.
+- Literal arms follow canonical order: alphabetical for strings, ascending for ints. Duplicates are a compile error. (`canon fmt` sorts arms automatically.)
+- Inside every arm body the scrutinee value is in scope under its type name, exactly like a bound payload in union dispatch.
+
+The catch-all is the same shape as a union dispatch arm — `(String) -> R { … }` reads as "any other `String`". Nested dispatch composes: dispatch on a union, then literal-dispatch the payload inside an arm (see `examples/notes-api`).
+
 ### Loops
 
 There are no loop keywords (`while`, `for`). Iteration is expressed through higher-order methods on collections — `map`, `fold`, `for`, and friends — or through recursion.
@@ -650,6 +691,12 @@ read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
 ```
 
 This is more ergonomic than Rust's approach, where each call site typically needs a dedicated error enum.
+
+### Error Union Widening
+
+Inline error unions **widen** along `?`-propagation: a `Result<T, IoError>` propagates out of a function declared `Result<U, IoError + ParseError>` without ceremony — the error slot of the callee is a subset of the caller's, so `?` lifts the error into the wider union. Formally, `Result<T, E1>` flows into `Result<T, E2>` wherever `E1`'s variants are a subset of `E2`'s.
+
+Alphabetical enforcement makes this cheap: every union has exactly one canonical spelling, so union equality — and the subset test — is purely syntactic. `IoError + NotFound` *is* the same type everywhere it appears; there is no nominal wrapper to unify.
 
 ### The `?` Operator
 
@@ -723,6 +770,23 @@ save = (Database * User) -> Result<Unit, DbError>
 ```
 
 `user.save(database)` and `database.save(user)` are both valid (commutative calling). No `UserRepository`. No `DatabaseManager`. The `Database` value IS the access; having it means you can use it. You receive it because you had to construct it (from a connection string, a config, something real) and thread it to the functions that need it.
+
+### Capability Entry Points (planned)
+
+Today the type chain is *sequencing*, not access control: anyone can mint a `Path` from a `String`, and `Now()` is conjured from thin air. The planned completion of this design makes the claim literal, and it falls out of the compilation target: WASI **is** a capability system, and the entry point's signature becomes the program's authority manifest:
+
+```
+main = (Clock * FileSystem * Stdout) -> Unit {
+    ...
+}
+```
+
+- The compiler already selects the entry by signature shape and synthesises the component's world; under this design it derives the **imported WASI interfaces from the entry's parameter product**. A program whose `main` takes no `FileSystem` produces a component that cannot import `wasi:filesystem` — the sandbox is visible in the type signature.
+- Capability values (`Clock`, `FileSystem`, `Stdout`, `Network`, …) are **unforgeable**: they have no constructor and arrive only as components of the entry point, threaded from there like every other value. Constructing a `Path` stays free; *opening* it requires the `FileSystem` value only `main` received.
+- A zero-parameter `main = () -> Unit` stays valid — it declares a program with no ambient authority beyond `print` (see below).
+- Existing programs migrate incrementally: the effectful stdlib wrappers gain capability-taking forms, and the ambient forms (`Now()`, `Path.File()`) are deprecated once the entry-point plumbing lands.
+
+This subsumes the "no service singletons" discipline above: the reason no service object is conjured from thin air is that *nothing* is conjured from thin air — every authority is a value that entered through `main`'s signature.
 
 ### Async
 
