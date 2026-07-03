@@ -1,16 +1,77 @@
 # The Canon Programming Language
 
-Canon is a small, opinionated language that compiles to a **WebAssembly
-Component** targeting WASI Preview 3. Every program is a portable `.wasm`
-file that runs on any Component Model host — no Rust toolchain required at
-build or run time.
+Canon is a small, maximally opinionated language that compiles directly to
+**WebAssembly Components** targeting WASI Preview 3. Every program is a
+portable `.wasm` file that runs on any Component Model host — no toolchain
+at build time, no runtime of its own to ship.
 
-The guiding rule: **wherever ordering is discretionary, the compiler enforces
-alphabetical order**. Components of product types, variants of unions, method
-declarations, dispatch arms, imports — all alphabetical. Reordering is never a
-meaningful change.
+Here is a complete HTTP service:
+
+```canon
+use canon/std/http/Body
+use canon/std/http/Headers
+use canon/std/http/Request
+use canon/std/http/Response
+use canon/std/http/Status
+
+greet = (Request) -> Response {
+    Response(Body("hello from canon"), Headers(), Status(200))
+}
+```
+
+```sh
+$ canon run greet.can
+HTTP handler detected — serving on http://127.0.0.1:8080
+
+$ curl localhost:8080
+hello from canon
+```
+
+No framework, no router registration, no port wiring, not even a `main`.
+The compiler sees one function returning `Response`, so the program *is*
+an HTTP service — it compiles to a standard `wasi:http/service` component
+that any compliant host can serve.
+
+## Three Ideas
+
+**One way to do everything.** Wherever ordering is discretionary, the
+compiler enforces alphabetical order — product fields, union variants,
+function declarations, dispatch arms, imports. There is no `if`/`else`
+*and* `match`; there is dispatch. There is no `while` *and* `for` *and*
+recursion; there are collection methods and recursion. Two programmers
+writing the same program produce the same bytes.
+
+**Types are the only names.** Canon has no local variables, no `let`, no
+comments, no parameter names. A function's inputs are a product of types,
+referenced in the body by their type names:
+
+```canon
+compare = (OtherUser * User) -> Ord {
+    User.Birthday.compare(OtherUser.Birthday)
+}
+```
+
+If code needs explaining, the fix is a better type, not a comment. Names
+lie; types don't.
+
+**Having a value is having the capability.** There are no service
+singletons and no permission system. Reading a file requires a `File`
+value, which you can only get from a `Path`, which you can only build
+from a `String`. The type chain *is* the access control:
+
+```canon
+use canon/std/fs/File
+use canon/std/fs/Path
+
+main = () -> Unit {
+    Path("./data.json").File()?.read()?.print()
+}
+```
 
 ## What It Looks Like
+
+A CLI program, with branching (dispatch on a union — Canon's only
+control-flow construct) and iteration (methods on collections):
 
 ```canon
 Bool = False + True
@@ -20,51 +81,40 @@ main = () -> Unit {
         .map((Int) -> Int { Int.mul(2) })
         .length()
         .print()
+    True().(
+        * (False) -> Unit { "no".print() }
+        * (True) -> Unit { "yes".print() }
+    )
 }
 ```
 
-A few things to notice:
-
-- There is **no `let`**, no local variables, no `if`/`else`, no comments.
-- Functions are declared as `name = (Type) -> Ret { ... }` — any component can be the dot-receiver at the call site.
-- `main` takes no parameters and is lifted as `wasi:cli/run.run` in the emitted component.
-- Branching is dispatch on a union (`.( )`).
-- `.print` writes a `String` to stdout (lowered against `wasi:cli/stdout`). No capability token needed.
+- Functions are `name = (Components) -> Return { body }`; the last
+  expression is the return value.
+- Any component can be the dot-receiver at the call site
+  (`a.compare(b)` and `b.compare(a)` are the same call).
 - `T()` constructs a value; `value.Field` (no parens) reads a field.
-- Imports are file-based: `use Foo` imports the type declared in `foo.can`; `use canon/std/Foo` pulls from the embedded stdlib.
-
-## Domain-First Design
-
-Canon has no service singletons. Instead of asking permission from a `Filesystem` object, you start with a real value and transform it:
-
-```canon
-use canon/std/File
-use canon/std/Path
-
-main = () -> Unit {
-    Path("./data.json").File()?.read()?.print()
-}
-```
-
-Having a `File` value *is* the capability to read that file. The type chain enforces access naturally. The same principle applies to HTTP, JSON, time — you start with what you concretely have and transform it toward what you need.
-
-## Status
-
-Canon is an **experimental design exploration**. The compiler exists,
-examples run, and the design is stable enough to write about — but every
-detail is subject to change.
-
-The reference implementation lives in the same repository as this book. The
-authoritative design spec is
-[`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md); the
-WASM-backend status notes live in
-[`WASM.md`](https://github.com/Almaju/canon/blob/main/WASM.md).
+- `?` propagates `Result` errors and `Option` absence.
+- Async exists at the ABI, never in the source: no `async`, no `.await`
+  — the compiler infers suspension and lifts the component accordingly.
 
 ## How to Read This Book
 
-- **Getting Started** — install the toolchain and run your first program.
-- **A Tour of Canon** — every feature, one short chapter each.
-- **Reference** — sort-order rules, operator table, Rust comparison.
+The book is split into sections — use the tabs at the top:
 
-The chapters are short on purpose. Read straight through, or skip to whatever
-you need.
+- **Start** — install the toolchain and run your first program.
+- **Tour** — every language feature, one short chapter each. Read it
+  straight through; it's an afternoon.
+- **Tutorial** — build and ship a small JSON API, step by step. Start
+  here if you learn by doing.
+- **Specification** — the precise rules: lexical structure, the type
+  algebra, ordering, the compilation model and ABI.
+- **Examples** — annotated real programs from the repository.
+- **Reference** — the standard library, WASI interfaces, deployment.
+
+## Status
+
+Canon is an **experimental design exploration**. The compiler exists, the
+examples run, and the design is stable enough to write about — but every
+detail is subject to change. The reference implementation lives in the
+same repository as this book; the design notes behind it are in
+[`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md).

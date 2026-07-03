@@ -11,6 +11,23 @@
 // directly. We replace `innerHTML` ourselves rather than going through
 // `highlightBlock`, which avoids the auto-detection / no-highlight
 // short-circuit hljs 10.x applies to already-processed blocks.
+//
+// Color philosophy: almost every token in Canon is PascalCase (types,
+// constructors, variants, parameters referenced by type name), so
+// painting all PascalCase one color turns snippets into a monochrome
+// wall. Instead, bare PascalCase identifiers stay PLAIN (default text
+// color) and color goes to the tokens that carry the program's shape:
+//
+//   - definitions      `greet = (…) -> …`   -> hljs-title
+//   - calls            `.print()`, `.map()` -> hljs-title
+//   - constructors     `True()`, `Body("x")` -> hljs-type
+//                      (a PascalCase name followed by `(` CONSTRUCTS;
+//                       without `(` it observes — mirroring the
+//                       language's own rule)
+//   - core vocabulary  `Int`, `String`, …   -> hljs-built_in
+//   - literals         `True`, `None`, `Ok` -> hljs-literal
+//   - structure        `->`, `?`, `*`, `+`  -> hljs-operator
+//   - strings/numbers  as usual
 
 (function () {
     function defineCanon(hljs) {
@@ -18,17 +35,12 @@
             name: 'Canon',
             aliases: ['ow'],
             keywords: {
-                keyword: 'match mut use Self impl extern while for',
-                type:
-                    'Bit Bool Byte Bytes Clock Datetime Empty Filesystem ' +
-                    'Float Hex HttpClient HttpServer HttpError InvalidUrl ' +
-                    'IoError Int Json List Map MalformedJson Network Noop ' +
-                    'Option Ord Path Random Result Stderr Stdin Stdout ' +
-                    'String Url',
-                literal:
-                    'False True Off On None Some Ok Err ' +
-                    'Equal Greater Less Noop',
-                built_in: 'Rust'
+                keyword: 'bindings extern impl use',
+                literal: 'Err Fail None Ok Pass Some True False',
+                built_in:
+                    'Bool Byte Bytes Float Future Handle Hex Int Json ' +
+                    'List Map Never Option Ord Result Set Stream String ' +
+                    'TestResult Unit'
             },
             contains: [
                 {
@@ -46,20 +58,30 @@
                     ]
                 },
                 {
-                    // Trait/type identifiers (PascalCase) — anything not
-                    // already in the keyword/type/literal table.
+                    // Definition site: `name = …` at the start of a line
+                    // (functions, trait impls are PascalCase and excluded
+                    // on purpose — they read as types).
+                    className: 'title',
+                    begin: '^[ \\t]*[a-z][A-Za-z0-9_]*(?=[ \\t]*=)'
+                },
+                {
+                    // Call site: `.method(` — the dot rides along to
+                    // avoid a lookbehind (Safari compatibility).
+                    className: 'title',
+                    begin: '\\.[a-z][A-Za-z0-9_]*(?=\\()'
+                },
+                {
+                    // Constructor call: PascalCase followed by `(`.
+                    // Mirrors the language rule: `()` constructs, its
+                    // absence observes. Bare PascalCase stays plain.
                     className: 'type',
-                    begin: '\\b[A-Z][A-Za-z0-9_]*\\b'
+                    begin: '\\b[A-Z][A-Za-z0-9_]*(?=\\()'
                 },
                 {
-                    // Private-method sigil: `*helper`
-                    className: 'symbol',
-                    begin: '\\*[a-z][A-Za-z0-9_]*'
-                },
-                {
-                    // Arrows + propagation + turbofish + spread
+                    // Structural operators: arrows, propagation,
+                    // turbofish, sum/product/repetition, dispatch arms.
                     className: 'operator',
-                    begin: '(->|=>|::<|\\?|\\.\\.\\.)'
+                    begin: '(->|::<|\\?|\\^|\\*|\\+)'
                 }
             ]
         };

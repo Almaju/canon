@@ -135,8 +135,7 @@ canon test mymod_test.can
 Discovers every `() -> TestResult` function in the file and prints a
 `[ ok ]` / `[FAIL]` line per test. The process exits `1` when any test
 fails, so `canon test` slots straight into CI. See the
-[testing notes in `CLAUDE.md`](https://github.com/Almaju/canon/blob/main/CLAUDE.md#testing)
-for the full conventions.
+[Testing chapter](../tour/testing.md) for the full conventions.
 
 ## Language Server
 

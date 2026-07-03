@@ -80,7 +80,7 @@ like every Canon product:
 
 ## The capstone: notes-api
 
-[`examples/notes-api`](https://github.com/ahanot/canon/tree/main/examples/notes-api)
+[`examples/notes-api`](https://github.com/Almaju/canon/tree/main/examples/notes-api)
 puts all of it together — a JSON API with an index route, per-item
 routes, and a 404 fallback, in about forty lines with zero server
 boilerplate:
