@@ -83,7 +83,7 @@ remove = (User * ...) -> ...
 There is no special syntax. Use `Option<T>`:
 
 ```canon
-print = (Option<Color> * String) -> Unit {
+paint = (Option<Color> * String) -> Unit {
     ...
 }
 ```
@@ -91,8 +91,8 @@ print = (Option<Color> * String) -> Unit {
 This allows both forms at the call site:
 
 ```canon
-"hello".print()
-"hello".print(Red())
+"hello".paint()
+"hello".paint(Red())
 ```
 
 ## First-Class Functions

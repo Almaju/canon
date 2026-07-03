@@ -249,8 +249,8 @@ greet = (Greeting * Name) -> Greeting {        # function (free, commutative)
     Greeting
 }
 
-main = (Stdout) -> Unit {                      # entry point
-    "hello".print(Stdout)
+main = () -> Unit {                            # entry point
+    "hello".print()
 }
 
 True().(                                       # dispatch (branch on union)
@@ -262,6 +262,5 @@ List(1, 2, 3).map((Int) -> Int { Int.mul(2) }) # lambda
 ```
 
 - No local variables, no `let`, no `if`/`else`, no comments in the language.
-- Capabilities (`Stdout`, `Filesystem`, etc.) are passed explicitly.
 - `use Foo` imports from `foo.can` in the same module directory (or the corresponding folder for modules).
 - See `DESIGN.md` for the complete specification.

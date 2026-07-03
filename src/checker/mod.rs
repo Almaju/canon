@@ -1263,18 +1263,17 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "<unknown>" || receiver_ty == "Self" {
         return true;
     }
+    // `print` is strictly zero-arg. The legacy capability-passing form
+    // `.print(Stdout)` compiled to a silent no-op (the builtin only
+    // fires on zero args), so accepting it here was a
+    // checker-accepts-runs-wrong hole.
     if matches!(
         (receiver_ty, method, arg_count),
         ("String", "print", 0)
-            | ("String", "print", 1)
             | ("Int", "print", 0)
-            | ("Int", "print", 1)
             | ("Float", "print", 0)
-            | ("Float", "print", 1)
             | ("Hex", "print", 0)
-            | ("Hex", "print", 1)
             | ("Bool", "print", 0)
-            | ("Bool", "print", 1)
     ) {
         return true;
     }

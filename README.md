@@ -1,6 +1,6 @@
 # Canon
 
-Canon is a new programming language. The reference implementation transpiles to Rust — Canon inherits Rust's ownership model and zero-cost abstractions, while presenting a much smaller surface area to the programmer.
+Canon is a new programming language. The reference compiler emits **WebAssembly components** directly — every Canon program is a standard [WASI Preview 3](https://github.com/WebAssembly/WASI) component, runnable on any compliant host and automatically bound to the component-model ecosystem. The language itself presents a deliberately small surface area.
 
 The guiding rule: wherever ordering is discretionary, the compiler enforces alphabetical order. Components of product types, variants of unions, function declarations, dispatch arms, imports — all alphabetical. Ordering is never a meaningful change.
 
@@ -13,15 +13,24 @@ See [`DESIGN.md`](DESIGN.md) for the language specification.
 ```
 Bool = False + True
 
-main = (Stdout) -> Unit {
+main = () -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })
         .length()
-        .print(Stdout)
+        .print()
 }
 ```
 
-Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Effects are passed in as capabilities (`Stdout`, `Filesystem`, …). Imports are file-based — `use Foo` imports the type declared in `foo.can` from the current module folder.
+And an HTTP service is just a function — the compiler picks the entry by
+its return type and emits a standard `wasi:http/service` component:
+
+```
+serve = (Request) -> Response {
+    Response(Body("hello"), Headers(), Status(200))
+}
+```
+
+Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Imports are file-based — `use Foo` imports the type declared in `foo.can` from the current module folder; `use canon/std/Foo` pulls from the bundled standard library.
 
 ---
 
@@ -47,7 +56,7 @@ canon upgrade v0.2.0     # install a specific release
 canon upgrade --check    # only check whether a newer release is available
 ```
 
-> **Note:** `canon run` and `canon build` shell out to `rustc` to compile the generated Rust. Install Rust from [rustup.rs](https://rustup.rs) if you don't already have it.
+> **Note:** no external toolchain is required — the compiler produces the final `.wasm` in-process and `canon run` executes it on the embedded wasmtime runtime.
 
 ---
 
@@ -55,7 +64,7 @@ canon upgrade --check    # only check whether a newer release is available
 
 ```sh
 canon run hello.can              # compile and run
-canon run --addr 127.0.0.1:8080 # serve as a wasi:http/handler
+canon run --addr 127.0.0.1:8080 # serve an HTTP-entry program (default: 127.0.0.1:8080)
 canon build hello.can            # compile to a WASM component (.wasm)
 canon check hello.can            # check sort order and types
 canon test hello_test.can        # run `() -> TestResult` functions
@@ -73,8 +82,8 @@ A first program:
 
 ```sh
 cat > hello.can <<'EOF'
-main = (Stdout) -> Unit {
-    "hello".print(Stdout)
+main = () -> Unit {
+    "hello".print()
 }
 EOF
 canon run hello.can
@@ -87,7 +96,7 @@ canon run hello.can
 | Path | Description |
 |------|-------------|
 | [`src/`](src/) | The `canon` compiler (lexer, parser, checker, codegen) |
-| [`std/`](std/) | Standard library (`.can` interfaces + Rust FFI) |
+| [`packages/canon/std/`](packages/canon/std/) | Standard library (Canon wrappers over generated WASI bindings) |
 | [`docs/`](docs/) | Documentation site (mdBook) |
 | [`examples/`](examples/) | Example `.can` programs |
 | [`tests/`](tests/) | Integration tests |
@@ -124,4 +133,4 @@ The workflow:
 
 ## Status
 
-Experimental. Phase 18 of the v2 rewrite — lambdas and `List<T>` with `map` / `length` / `first` are in. The compiler is far from complete; the design is the artifact.
+Experimental, but past the V1 milestone (see [`V1.md`](V1.md)): programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly. The V1.1 headline is resources + streams for the CLI world (filesystem descriptors, component composition).

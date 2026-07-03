@@ -1,0 +1,83 @@
+# Using WASI Interfaces
+
+Every Canon program is a WebAssembly component, so talking to the
+outside world means importing **WIT interfaces**. Three layers are
+involved; you normally only touch the top one.
+
+## The layers
+
+1. **`use canon/std/…`** — curated wrappers with Canon idioms
+   (`Random()`, `Args()`, `Exit(1).exit()`). This is the layer
+   programs import. See the [Standard Library](./stdlib.md).
+2. **`use wasi/…`** — machine-generated bindings, one file per WIT
+   interface, produced by `canon install` from vendored WIT. The
+   stdlib wrappers consume these; user packages can too.
+3. **The WIT itself** — the contract any component-model host
+   understands.
+
+There is no privileged mechanism for the stdlib: it declares its WIT
+sources in its `canon.toml` and runs the same `canon install` any
+package would.
+
+## Declaring imports in `canon.toml`
+
+The `[imports]` table maps a path prefix to a WIT source — a `.wit`
+file, a directory of them, or a `.wasm` component to extract types
+from:
+
+```toml
+name    = "my-app"
+version = "0.1.0"
+
+[imports]
+"wasi" = "./wit/wasi"
+```
+
+Then materialize the bindings:
+
+```sh
+canon install          # writes bindgen/wasi/<pkg>/<interface>.can
+```
+
+Each generated file starts with a `bindings "<urn>"` directive and
+lists plain function-type aliases:
+
+```canon
+bindings "wasi:cli/environment@0.3.0-rc-2026-03-15"
+
+getArguments = () -> List<String>
+
+getInitialCwd = () -> Option<String>
+```
+
+The loader turns each alias into an external function bound to that
+WIT interface; your code imports and calls them like any Canon
+function. `canon bindgen <wit-or-wasm> -o <dir>` does the same
+one-shot, without a manifest.
+
+## Type mapping
+
+| WIT | Canon |
+|---|---|
+| `bool` | `Bool` |
+| integers (`u8`…`s64`) | `Int` (the compiler honours the exact WIT width at the ABI) |
+| `f32`/`f64` | `Float` |
+| `string` | `String` |
+| `list<T>` | `List<T>` |
+| `option<T>` | `Option<T>` |
+| `result<O, E>` | `Result<O, E>` |
+| `record` | a product of `Int`/`String`-newtype fields |
+| `enum` / `variant` | a union |
+| `resource` | a `Handle` newtype (opaque) |
+
+Functions whose shape the compiler can't lower yet are **skipped with
+a reason** at install time rather than emitted broken — notably
+resource *methods* and streams (tracked for V1.1 in `V1.md`). The
+skip list is printed by `canon install`.
+
+## What the compiled component imports
+
+`canon build` writes a `.wit` file next to the `.wasm` describing the
+world your component implements. Imports of `wasi:*` interfaces are
+fulfilled by any WASI 0.3 host; `canon run` fulfils them with the
+embedded wasmtime.

@@ -27,6 +27,8 @@
 # Reference
 
 - [Standard Library](./reference/stdlib.md)
+- [Using WASI Interfaces](./reference/wasi.md)
+- [Deploying Components](./reference/deploying.md)
 - [Sort Order](./reference/sort-order.md)
 - [Operators](./reference/operators.md)
 - [Coming from Rust](./reference/coming-from-rust.md)

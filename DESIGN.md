@@ -339,12 +339,12 @@ name = (components) -> ReturnType {
 The components inside the parentheses form a product — the function's input. When a function takes multiple inputs, they are composed with `*`, the same operator that composes product types elsewhere in the language:
 
 ```
-print = (Stdout * String) -> Unit {
-    Stdout.write(String)
+greet = (Greeting * Name) -> Line {
+    Line(Greeting.String.concat(Name.String))
 }
 ```
 
-Components follow the same alphabetical-order rule as product members: `(Stdout * String)` is valid because `Stdout` precedes `String`; `(String * Stdout)` would be a compile error.
+Components follow the same alphabetical-order rule as product members: `(Greeting * Name)` is valid because `Greeting` precedes `Name`; `(Name * Greeting)` would be a compile error.
 
 There are no commas in parameter lists, no positional arguments — only type composition. This is a deliberate unification: a function's input is a product type, described with the same `*` used everywhere else.
 
@@ -353,11 +353,11 @@ There are no commas in parameter lists, no positional arguments — only type co
 At the call site, **any component can appear before the dot**. The remaining components are passed inside the parentheses:
 
 ```
-"hello".print(Stdout)
-Stdout.print("hello")
+Greeting("hi ").greet(Name("ada"))
+Name("ada").greet(Greeting("hi "))
 ```
 
-Both calls are equivalent. This follows from the commutativity of `*` in product types — `Stdout * String` and `String * Stdout` describe the same composition. The dot is syntax sugar: it selects which component of the product the caller writes to the left.
+Both calls are equivalent. This follows from the commutativity of `*` in product types — `Greeting * Name` and `Name * Greeting` describe the same composition. The dot is syntax sugar: it selects which component of the product the caller writes to the left.
 
 For a function with more than two components, the remaining components are passed as a product value:
 
@@ -383,8 +383,8 @@ The world registry:
 A CLI program:
 
 ```
-hello = (Stdout) -> Unit {
-    "hello".print
+main = () -> Unit {
+    "hello".print()
 }
 ```
 
@@ -392,11 +392,15 @@ An HTTP service:
 
 ```
 home = (Request) -> Response {
-    Response(Headers(), Status(200))
+    Response(Body("hello"), Headers(), Status(200))
 }
 ```
 
-The function's parameters declare the program's capability requirements. For a CLI program, valid parameters are host-provided capabilities (`Stdout`, `Filesystem`, `Args`, …); for an HTTP service, the parameter is the incoming `Request`. The compiler validates that the parameter list is consistent with the selected world.
+A CLI entry takes no parameters — output goes through the built-in
+`.print()`, which the compiler wires to `wasi:cli/stdout` in the
+emitted component. An HTTP entry takes the incoming `Request`. The
+compiler validates that the parameter list is consistent with the
+selected world.
 
 Rules:
 
@@ -465,7 +469,7 @@ Green = Hex
 Red   = Hex
 Color = Blue + Green + Red
 
-print = (Option<Color> * String) -> Unit {
+paint = (Option<Color> * String) -> Unit {
     ...
 }
 ```
@@ -473,8 +477,8 @@ print = (Option<Color> * String) -> Unit {
 This allows both forms at the call site:
 
 ```
-"hello".print()
-"hello".print(Red(0xFF0000))
+"hello".paint()
+"hello".paint(Red(0xFF0000))
 ```
 
 ## No Local Bindings
@@ -585,14 +589,14 @@ Each arm is a lambda whose single parameter is the variant type. Arms are separa
 ```
 # leading * on every arm (recommended for alignment)
 bool.(
-    * (False) -> Unit { "no".print(Stdout) }
-    * (True)  -> Unit { "yes".print(Stdout) }
+    * (False) -> Unit { "no".print() }
+    * (True)  -> Unit { "yes".print() }
 )
 
 # leading * omitted from the first arm
 bool.(
-    (False) -> Unit { "no".print(Stdout) }
-    * (True)  -> Unit { "yes".print(Stdout) }
+    (False) -> Unit { "no".print() }
+    * (True)  -> Unit { "yes".print() }
 )
 ```
 

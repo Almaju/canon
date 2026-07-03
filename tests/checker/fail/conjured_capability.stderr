@@ -1,1 +1,2 @@
 error[tests/checker/fail/conjured_capability.can:2:16]: capability `Stdout` must be received as a parameter — capabilities cannot be conjured
+error[tests/checker/fail/conjured_capability.can:2:5]: no method `print` on type `String` with 1 argument(s)
