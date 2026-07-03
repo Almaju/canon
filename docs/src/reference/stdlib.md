@@ -222,8 +222,7 @@ migration.
 ## `TestResult`
 
 The Canon-language testing primitive. See the
-[testing notes](https://github.com/Almaju/canon/blob/main/CLAUDE.md#testing)
-for the full convention.
+[Testing chapter](../tour/testing.md) for the full convention.
 
 ```canon
 use canon/std/TestResult
