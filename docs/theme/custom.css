@@ -43,10 +43,12 @@ code {
     border-bottom: 1px solid var(--table-border-color);
     background: var(--bg);
     font-size: 0.95em;
-    /* Above the fixed .nav-chapters edge arrows, which otherwise
-       capture clicks on the first tab. */
+    /* Above the fixed .nav-chapters edge arrows (z-index auto), which
+       otherwise capture clicks on the first tab — but below the sticky
+       #menu-bar (z-index 101) so the strip slides underneath it when
+       scrolling instead of passing over it. */
     position: relative;
-    z-index: 102;
+    z-index: 100;
 }
 
 /* The wide-screen prev/next hover zones span the full viewport height
