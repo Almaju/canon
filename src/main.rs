@@ -1042,6 +1042,30 @@ fn cmd_test(args: &[String]) {
     // resulting items into the loaded module. Parsing the synthesised
     // source (rather than building AST by hand) keeps this code small
     // and means the runtime sees ordinary Canon expressions.
+    //
+    // The harness also needs `wasi:cli/exit#exit-with-code` so a
+    // failing run terminates the process with exit code 1. The binding
+    // is synthesised as source too and inserted into the *import
+    // region* of the module (before `entry_items_start`), where the
+    // alphabetical-ordering rule doesn't apply to it.
+    let exit_binding = "bindings \"wasi:cli/exit@0.3.0-rc-2026-03-15#exit-with-code\"\n\n\
+                        exitWithCode = (Int) -> Unit\n";
+    let mut exit_items = match parse_synthesised(exit_binding) {
+        Ok(items) => items,
+        Err(err) => {
+            eprintln!(
+                "internal error: synthesised exit binding failed to parse: {}",
+                err.message()
+            );
+            process::exit(1);
+        }
+    };
+    canon::loader::apply_bindings_directive(&mut exit_items);
+    for item in exit_items.into_iter().rev() {
+        loaded.module.items.insert(0, item);
+        loaded.entry_items_start += 1;
+    }
+
     let synthesised = synthesise_test_main(&tests);
     let synth_items = match parse_synthesised(&synthesised) {
         Ok(items) => items,
@@ -1086,24 +1110,35 @@ fn is_test_function(f: &FunctionDef) -> bool {
 fn synthesise_test_main(tests: &[String]) -> String {
     // ASCII markers keep the generated source clean of multi-byte escapes.
     //
-    // Each test's result is dispatched on. The `Fail` arm prints a single
-    // `[FAIL] testName: message` line by concatenating the per-test
-    // banner with the assertion's message (the `String` payload of
-    // `Fail = String`, unwrapped via `.String`). The `Pass` arm just
-    // prints `[ ok ] testName`.
-    let mut src = String::from("main = () -> Unit {\n");
-    for name in tests {
-        src.push_str(&format!("    {}().(\n", name));
+    // Each test's result is dispatched on: the `Fail` arm prints a
+    // `[FAIL] testName: message` line (the assertion message is the
+    // `String` payload of `Fail = String`) and yields 1; the `Pass` arm
+    // prints `[ ok ] testName` and yields 0. The per-test values are
+    // summed with `.add` and the total failure count drives
+    // `exit-with-code`: any failure exits 1, all-pass exits 0.
+    let mut src = String::from("main = () -> Unit {\n    ");
+    for (i, name) in tests.iter().enumerate() {
+        if i > 0 {
+            src.push_str(".add(");
+        }
+        src.push_str(&format!("{}().(\n", name));
         src.push_str(&format!(
-            "        * (Fail) -> Unit {{ \"[FAIL] {}: \".concat(Fail.String).print() }}\n",
+            "        * (Fail) -> Int {{ \"[FAIL] {}: \".concat(Fail.String).print() 1 }}\n",
             name
         ));
         src.push_str(&format!(
-            "        * (Pass) -> Unit {{ \"[ ok ] {}\".print() }}\n",
+            "        * (Pass) -> Int {{ \"[ ok ] {}\".print() 0 }}\n",
             name
         ));
-        src.push_str("    )\n");
+        src.push_str("    )");
+        if i > 0 {
+            src.push_str(")");
+        }
     }
+    src.push_str(".eq(0).(\n");
+    src.push_str("        * (False) -> Unit { 1.exitWithCode() }\n");
+    src.push_str("        * (True) -> Unit { 0.exitWithCode() }\n");
+    src.push_str("    )\n");
     src.push_str("}\n");
     src
 }

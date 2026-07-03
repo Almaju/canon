@@ -10,6 +10,73 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
+fn canon_test_exit_codes() {
+    // `canon test` exits 1 when any test fails and 0 when all pass —
+    // the synthesised main counts failures and drives
+    // `wasi:cli/exit#exit-with-code`.
+    let workdir = std::env::temp_dir().join(format!("canon_test_exit_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+
+    let failing = workdir.join("failing_test.can");
+    std::fs::write(
+        &failing,
+        r#"use canon/std/TestResult
+
+testBroken = () -> TestResult {
+    1
+        .add(2)
+        .eq(7)
+        .assert("math is broken")
+}
+
+testFine = () -> TestResult {
+    1
+        .add(2)
+        .eq(3)
+        .assert("math works")
+}
+"#,
+    )
+    .unwrap();
+    let out = Command::new(&canon_bin)
+        .arg("test")
+        .arg(&failing)
+        .output()
+        .expect("canon test spawns");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("[FAIL] testBroken: math is broken"),
+        "single-line failure banner, got:\n{stdout}"
+    );
+    assert!(stdout.contains("[ ok ] testFine"), "got:\n{stdout}");
+    assert_eq!(out.status.code(), Some(1), "failing suite exits 1");
+
+    let passing = workdir.join("passing_test.can");
+    std::fs::write(
+        &passing,
+        r#"use canon/std/TestResult
+
+testFine = () -> TestResult {
+    1
+        .add(2)
+        .eq(3)
+        .assert("math works")
+}
+"#,
+    )
+    .unwrap();
+    let out = Command::new(&canon_bin)
+        .arg("test")
+        .arg(&passing)
+        .output()
+        .expect("canon test spawns");
+    assert_eq!(out.status.code(), Some(0), "passing suite exits 0");
+
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
+#[test]
 fn exit_code_propagates() {
     let workdir = std::env::temp_dir().join(format!("canon_exit_test_{}", std::process::id()));
     std::fs::create_dir_all(&workdir).unwrap();

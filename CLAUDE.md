@@ -127,10 +127,10 @@ testAddPositive = () -> TestResult {
 
 - `TestResult = Fail + Pass`, with `Fail = String` carrying the assertion's failure message.
 - `assert = (Bool * String) -> TestResult` turns a `Bool` and a message into a `TestResult`. When the bool is `True`, returns `Pass()`; when `False`, returns `Fail(message)`.
-- The synthesised `main` dispatches each test on its result and prints a `[ ok ] testName` line on `Pass` or a `[FAIL] testName` line followed by the failure message on `Fail`. The message and banner are on separate lines because `String.concat` is currently a codegen stub — once concat lands they merge into one.
+- The synthesised `main` dispatches each test on its result and prints a `[ ok ] testName` line on `Pass` or a single `[FAIL] testName: message` line on `Fail`. Each dispatch yields 0/1; the failure count drives `wasi:cli/exit#exit-with-code` (any failure → exit 1), so `canon test` is honest to shells and CI.
 - Each test ends in a chain that produces a `TestResult` (typically `.eq(...).assert()`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
 - The synthesised `main` is exempt from free-function alphabetical ordering (main is the entry point, distinguished by role).
-- Runtime exit code is currently **always 0** even when tests print `[FAIL]`. The `tests/canon_tests.rs` harness parses stdout for `[FAIL]` to detect failures. Once exit-code threading lands, this parsing becomes redundant but harmless.
+- Exit codes are threaded: a failing suite exits 1, a passing one exits 0 (pinned by `tests/exit_code_test.rs::canon_test_exit_codes`). The `tests/canon_tests.rs` harness still parses stdout for `[FAIL]` as a belt-and-braces check.
 - `just test-ow` runs the same tests with pretty per-file output (faster local iteration); the canonical CI path is still `cargo test`.
 
 ### Examples are not tests
