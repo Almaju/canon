@@ -32,7 +32,7 @@ See `DESIGN.md` for the full language specification.
 | `examples/` | Example `.can` programs |
 | `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests (incl. `tests/fixtures/` & `tests/canon/`) |
-| `editors/` | Tree-sitter grammar and Zed extension |
+| `editors/` | Tree-sitter grammar, Zed extension, VS Code extension (publishing runbook in `editors/PUBLISHING.md`) |
 | `install.sh` | Installer script for prebuilt binaries |
 | `WEB-TARGET.md` | The web target — Elm-triple entry, browser ABI, JS host conventions |
 | `DESIGN.md` | Language specification — the source of truth for language semantics |
@@ -57,9 +57,10 @@ just clean              # cargo clean + remove compiled examples
 just install-hooks      # install git hooks (pre-commit)
 just uninstall-hooks    # uninstall git hooks
 just build-extension    # build the Zed extension WASMs
+just build-vscode-extension  # package the VS Code extension (.vsix)
 ```
 
-Releases are automatic: every push to `main` (except docs/markdown-only changes) runs the **auto-release** workflow, which bumps the patch version in `Cargo.toml`, commits, tags, and runs the cross-build release pipeline. Users pick up new releases with `canon update` (alias of `canon upgrade`). For a minor/major bump, either land a commit that raises the version in `Cargo.toml` yourself (auto-release tags that exact version instead of patch-bumping), or use the **bump** GitHub Actions workflow (`Actions → bump → Run workflow`). Both `auto-release` and `bump` invoke `release.yml` via `workflow_call` — tags pushed with `GITHUB_TOKEN` never trigger tag-push workflows, so the chain must be explicit.
+Releases are automatic: every push to `main` (except docs-, editors-, or markdown-only changes) runs the **auto-release** workflow, which bumps the patch version in `Cargo.toml`, commits, tags, and runs the cross-build release pipeline. Users pick up new releases with `canon update` (alias of `canon upgrade`). For a minor/major bump, either land a commit that raises the version in `Cargo.toml` yourself (auto-release tags that exact version instead of patch-bumping), or use the **bump** GitHub Actions workflow (`Actions → bump → Run workflow`). Both `auto-release` and `bump` invoke `release.yml` via `workflow_call` — tags pushed with `GITHUB_TOKEN` never trigger tag-push workflows, so the chain must be explicit. Pushes touching `editors/vscode-canon/` instead run **publish-vscode-extension**, which packages the `.vsix` and publishes it to the VS Code Marketplace / Open VSX when `package.json`'s version is new there (requires the `VSCE_PAT` / `OVSX_PAT` secrets — see `editors/PUBLISHING.md`); the release pipeline also attaches the `.vsix` to every GitHub release.
 
 ## Testing
 

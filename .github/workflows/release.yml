@@ -102,9 +102,42 @@ jobs:
             ${{ steps.package.outputs.archive }}
             ${{ steps.package.outputs.sha }}
 
+  vsix:
+    name: package vscode extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Package .vsix
+        working-directory: editors/vscode-canon
+        run: |
+          npm ci
+          npx vsce package --no-dependencies
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: canon-vsix
+          path: editors/vscode-canon/*.vsix
+
   release:
     name: publish release
-    needs: build
+    needs: [build, vsix]
     runs-on: ubuntu-latest
     steps:
       - name: Resolve tag
@@ -131,3 +164,4 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.sha256
+            dist/*.vsix

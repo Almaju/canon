@@ -1,0 +1,102 @@
+{
+  "name": "canon-lang",
+  "displayName": "Canon",
+  "description": "Canon language support — syntax highlighting, diagnostics, hover, go-to-definition, and format-on-save via the built-in canon LSP",
+  "version": "0.1.0",
+  "publisher": "almaju",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Almaju/canon"
+  },
+  "bugs": {
+    "url": "https://github.com/Almaju/canon/issues"
+  },
+  "homepage": "https://github.com/Almaju/canon",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "keywords": [
+    "canon",
+    "webassembly",
+    "wasm",
+    "component model",
+    "language"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:canon"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "canon",
+        "aliases": [
+          "Canon",
+          "canon"
+        ],
+        "extensions": [
+          ".can"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "canon",
+        "scopeName": "source.canon",
+        "path": "./syntaxes/canon.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Canon",
+      "properties": {
+        "canon.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the `canon` binary. When empty, the extension looks on PATH, then in ~/.cargo/bin, then offers to download a prebuilt binary from GitHub releases."
+        },
+        "canon.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace the communication between VS Code and the Canon language server."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "canon.restartServer",
+        "title": "Canon: Restart Language Server"
+      },
+      {
+        "command": "canon.downloadServer",
+        "title": "Canon: Download Language Server"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.js --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "watch": "esbuild src/extension.js --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "package": "npm run build && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "ovsx": "^1.0.2"
+  }
+}
