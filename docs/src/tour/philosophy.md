@@ -78,7 +78,7 @@ domains — `HttpServer`, `File`, `Url`, `Clock`, `Random`, and more —
 each backed by a standard `wasi:*` interface or, where that interface's
 canonical ABI isn't ready yet, by a temporary `canon:builtins/*` host
 bridge. The user gets a single curated import per domain
-(`use std/HttpServer`, `use std/File`, …); the community is free to
+(`use canon/std/HttpServer`, `use canon/std/File`, …); the community is free to
 publish additional bindings under any path.
 
 Under the hood, every stdlib module is written in ordinary Canon on top

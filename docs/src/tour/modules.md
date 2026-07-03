@@ -23,11 +23,11 @@ This imports `Foo` from `foo.can` (or from the corresponding folder if
 `Foo` is a module). No paths, no aliasing.
 
 To import from the embedded standard library, prefix the path with
-`std/`:
+`canon/std/`:
 
 ```canon
-use std/File
-use std/Url
+use canon/std/File
+use canon/std/Url
 ```
 
 See the [Standard Library](../reference/stdlib.md) reference for the

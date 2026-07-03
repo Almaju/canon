@@ -21,6 +21,7 @@
 - [Modules](./tour/modules.md)
 - [Traits](./tour/traits.md)
 - [Errors](./tour/errors.md)
+- [Serving HTTP](./tour/http.md)
 - [Extern Wasm](./tour/extern.md)
 
 # Reference

@@ -12,8 +12,8 @@ objects. Access to a resource is represented by holding a value of the
 corresponding type.
 
 ```canon
-use std/File
-use std/Path
+use canon/std/File
+use canon/std/Path
 
 main = () -> Unit {
     Path("./data.json").File()?.read()?.print()
@@ -78,28 +78,28 @@ compiler inserts an implicit `await`. You write neither keyword.
 
 ```canon
 # Current time
-use std/Now
+use canon/std/Now
 Now().print()
 
 # Random integer
-use std/Random
+use canon/std/Random
 Random().print()
 
 # HTTP GET — start with a Url
-use std/HttpError
-use std/Url
+use canon/std/HttpError
+use canon/std/Url
 Url("http://example.com")?.get()?.print()
 
 # Read a file — start with a Path
-use std/File
-use std/Path
+use canon/std/File
+use canon/std/Path
 Path("./Cargo.toml").File()?.read()?.print()
 
 # HTTP server — wrap a Port, register routes, serve
-use std/HttpServer
-use std/HttpStatus
-use std/Port
-use std/RoutePath
+use canon/std/HttpServer
+use canon/std/HttpStatus
+use canon/std/Port
+use canon/std/RoutePath
 HttpServer(Port(3000))
     .get(HttpStatus(200), RoutePath("/"), "hello")
     .serve()

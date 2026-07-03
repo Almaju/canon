@@ -31,15 +31,15 @@ A few things to notice:
 - Branching is dispatch on a union (`.( )`).
 - `.print` writes a `String` to stdout (lowered against `wasi:cli/stdout`). No capability token needed.
 - `T()` constructs a value; `value.Field` (no parens) reads a field.
-- Imports are file-based: `use Foo` imports the type declared in `foo.can`; `use std/Foo` pulls from the embedded stdlib.
+- Imports are file-based: `use Foo` imports the type declared in `foo.can`; `use canon/std/Foo` pulls from the embedded stdlib.
 
 ## Domain-First Design
 
 Canon has no service singletons. Instead of asking permission from a `Filesystem` object, you start with a real value and transform it:
 
 ```canon
-use std/File
-use std/Path
+use canon/std/File
+use canon/std/Path
 
 main = () -> Unit {
     Path("./data.json").File()?.read()?.print()
