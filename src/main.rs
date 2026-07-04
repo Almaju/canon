@@ -34,6 +34,7 @@ fn main() {
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
+        "publish" => cmd_publish(&rest),
         "lsp" => canon::lsp::run(),
         "upgrade" | "update" => cmd_upgrade(&rest),
         "--version" | "-V" => {
@@ -79,6 +80,11 @@ fn print_help() {
     println!(
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
+    println!("  install <ns>:<name>[@ver] Fetch a package from its registry and vendor it");
+    println!("                            under `deps/<ns>/<name>/` (see PACKAGES.md)");
+    println!("  publish <ns>:<name>[@ver] Publish the current directory's package to its");
+    println!("                            registry. Without a version, patch-bumps the");
+    println!("                            newest release (first publish is 0.1.0)");
     println!("  lsp                       Start the Language Server Protocol server");
     println!("  update [version]          Update canon to the latest (or given) release");
     println!("  update --check            Check whether a newer release is available");
@@ -772,6 +778,68 @@ fn cmd_install(args: &[String]) {
                 for note in &outcome.skipped {
                     eprintln!("skipped: {}", note);
                 }
+            }
+        }
+        Err(err) => {
+            eprintln!("error: {}", err);
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_publish(args: &[String]) {
+    let mut spec_arg: Option<String> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                println!("Usage: canon publish <namespace>:<name>[@<version>]");
+                println!();
+                println!("Publishes the package rooted at the current directory to its");
+                println!("registry: every `.can` file except the vendored `deps/` tree and");
+                println!("derived directories, wrapped as a Canon source artifact. The");
+                println!("dependency list is recorded from the `deps/` directives.");
+                println!();
+                println!("Without `@<version>`, the newest published release is patch-bumped");
+                println!("(a package with no releases starts at 0.1.0). Registries resolve");
+                println!("through the standard `wasm-pkg` config file (shared with `wkg`);");
+                println!("set CANON_REGISTRY_CONFIG to use an alternate config.");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown publish flag '{}'", other);
+                process::exit(1);
+            }
+            other => {
+                if spec_arg.is_some() {
+                    eprintln!(
+                        "error: multiple specs given ('{}' and '{}')",
+                        spec_arg.as_deref().unwrap(),
+                        other
+                    );
+                    process::exit(1);
+                }
+                spec_arg = Some(other.to_string());
+            }
+        }
+    }
+    let Some(spec_str) = spec_arg else {
+        eprintln!("error: missing package spec (`canon publish <namespace>:<name>[@<version>]`)");
+        process::exit(1);
+    };
+    let spec = match canon::registry::parse_spec(&spec_str) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            process::exit(1);
+        }
+    };
+    let cwd = PathBuf::from(".");
+    let root = canon::install::find_project_root(&cwd).unwrap_or(cwd);
+    match canon::registry::publish_to_registry(&spec, &root) {
+        Ok(outcome) => {
+            println!("published: {}", outcome.coordinate);
+            for f in &outcome.files {
+                println!("  + {}", f);
             }
         }
         Err(err) => {

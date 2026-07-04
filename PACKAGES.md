@@ -1,9 +1,9 @@
 # Package Management — Design (RFC)
 
-Status: **proposal — slices 1–2 implemented** (the `deps/` search root,
-the `package` directive, and registry-backed
-`canon install <ns>:<pkg>[@ver]`; see the slice table). This document
-defines how
+Status: **proposal — slices 1–3 implemented** (the `deps/` search root,
+the `package` directive, registry-backed
+`canon install <ns>:<pkg>[@ver]`, and `canon publish`; see the slice
+table). This document defines how
 Canon fetches, resolves, and publishes packages. When accepted it
 **supersedes DESIGN.md § Package Manifests** (`canon.toml` is deleted
 entirely) and amends § Imports. It assumes the in-flight removal of the
@@ -267,20 +267,33 @@ the review surface.
 ### `canon publish`
 
 1. The package is the `.can` files under the current directory,
-   excluding `deps/` and `.canon/`. No manifest to read — the argument
-   supplies `namespace:name@version`; bare `namespace:name` patch-bumps
-   the registry's latest (mirroring this repository's own auto-release
-   convention).
-2. The publisher's `deps/` directives are read and recorded as OCI
-   annotations — the machine-written dependency list consumers' step 3
-   uses. Humans still author nothing.
-3. `canon check` must pass; publishing a package that doesn't check is
-   refused.
-4. Layers pushed: **source** (a custom media type carrying the `.can`
-   tree — the layer Canon consumers use) and, when the package has an
-   entry point, the **compiled component** (standard Wasm OCI media
-   type — the layer the rest of the ecosystem uses). Pure libraries
-   publish source-only.
+   excluding `deps/` and derived trees (`bindgen/`, `.canon/`,
+   `target/`, hidden dirs). No manifest to read — the argument supplies
+   `namespace:name@version`; bare `namespace:name` patch-bumps the
+   registry's latest, or starts at `0.1.0` (mirroring this repository's
+   own auto-release convention).
+2. The publisher's `deps/` directives are read and recorded **inside
+   the artifact** (see the format note below) — the machine-written
+   dependency list consumers' step 3 uses. Humans still author nothing.
+3. Preflight: every file must parse and be canonically formatted; when
+   the package has a `main.can` entry the full checker runs too, and a
+   package that doesn't check is refused. (Pure libraries have no entry
+   point to check from; their errors surface in consumers, per
+   DESIGN.md's dead-code stance.)
+4. **Artifact format** (implementation refinement over the original
+   layers-plus-annotations sketch): a registry release is exactly one
+   wasm blob on every backend, so a Canon source package publishes as a
+   minimal wasm module whose custom sections carry the coordinate
+   (`canon:package`), the dependency list (`canon:deps`), and one
+   `canon:src/<rel-path>` section per source file. One digest-verified
+   artifact, identical semantics on OCI and `local` registries, dep
+   metadata in-band instead of in OCI annotations (which the `local`
+   backend has nowhere to store). `canon install` recognizes the
+   `canon:package` section and vendors the embedded source; artifacts
+   without it (WIT packages) take the bindgen path. When entry-point
+   packages learn to attach their compiled component, the same custom
+   sections ride on the real component instead of an empty module —
+   one artifact serves both Canon consumers and the wider ecosystem.
 5. Auth: Docker credential helpers, via `wasm-pkg-client`. `canon
    publish` to a namespace you can't write to fails with the registry's
    error.
