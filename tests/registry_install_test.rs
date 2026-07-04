@@ -1,4 +1,4 @@
-//! Registry-backed `canon install` — PACKAGES.md slice 2.
+//! Registry-backed `canon install`.
 //!
 //! Drives the real CLI end-to-end against a `local`-type registry (the
 //! filesystem backend `wasm-pkg-client` ships): the test encodes a

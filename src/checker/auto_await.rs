@@ -5,8 +5,8 @@
 //! in a position that expects `T` — most importantly as a method receiver.
 //!
 //! The user never writes `.await`; instead the compiler infers it from the
-//! type mismatch. See `DESIGN.md` § "Async" and `WASM.md` § "Auto-await
-//! rule" for the rationale.
+//! type mismatch. See the language spec (docs/src/spec/effects-and-async.md)
+//! and the compilation spec (docs/src/spec/compilation.md) for the rationale.
 //!
 //! ## Status (Phase 5, in progress)
 //!

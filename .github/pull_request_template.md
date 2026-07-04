@@ -8,6 +8,5 @@
 - [ ] `just ci` passes locally (`cargo fmt --check`, `cargo clippy`, `cargo test`)
 - [ ] `just examples` shows no new failures
 - [ ] Tests added or updated for the change
-- [ ] `DESIGN.md` updated if this changes language semantics
-- [ ] `CHANGELOG.md` updated under `[Unreleased]`
+- [ ] The spec (`docs/src/spec/`) updated if this changes language semantics
 - [ ] Documentation updated if this adds or changes user-facing behavior

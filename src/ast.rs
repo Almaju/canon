@@ -27,7 +27,7 @@ pub enum Item {
     /// A file-level `package "<ns>:<name>@<version>"` directive. Stamps
     /// a vendored source file with the identity and exact version of
     /// the package it came from — the `bindings` directive generalized
-    /// to whole packages (see PACKAGES.md).
+    /// to whole packages (see modules & packages, docs/src/spec/modules.md).
     ///
     /// Written by `canon install` at the top of every file it vendors
     /// under `deps/`; never typed by hand. The loader validates it
@@ -330,7 +330,7 @@ pub struct Ident {
 /// Which WASI world's primary export shape a function's return type
 /// matches, if any. Used by both the parser (to suppress receiver
 /// extraction for entry-shaped functions) and the checker (for the
-/// entry-detection rule documented in `WASI-HTTP-HANDLER.md`).
+/// entry-detection rule documented in the entry-point rule (docs/src/spec/functions.md)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryWorld {
     /// `wasi:cli/command`, exporting `wasi:cli/run.run`.
@@ -342,7 +342,7 @@ pub enum EntryWorld {
 /// Returns the WASI world whose primary export shape this return type
 /// matches, or `None` if it's not a world-shape type.
 ///
-/// Shape registry (matches the table in DESIGN.md §Entry Point):
+/// Shape registry (matches the table in the language spec (docs/src/spec/)):
 ///
 /// | Return type                              | World |
 /// |------------------------------------------|-------|
@@ -368,7 +368,7 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 }
 
 /// The Elm-architecture entry triple that makes a program a web app
-/// (see `WEB-TARGET.md`): a free `init = () -> Model`, an
+/// (see the web target, docs/src/reference/web-target.md): a free `init = () -> Model`, an
 /// `update = (Model * String) -> Model`, and a `view = (Model) -> Html`.
 /// `Model` is the user's own type; `Html` comes from `canon/std/web`.
 #[derive(Debug, Clone, PartialEq, Eq)]

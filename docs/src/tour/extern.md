@@ -118,8 +118,9 @@ canon bindgen path/to/my-component.wit -o .
 This writes `<ns>/<pkg>/<iface>.can` for each interface, alphabetically
 ordered, ready to reference. The mapping is mechanical: WIT records become
 products, variants become unions, `list<T>` becomes `List<T>`, kebab-case
-becomes Canon camelCase / PascalCase, and so on. See `DESIGN.md` for the
-full table.
+becomes Canon camelCase / PascalCase, and so on. See the
+[WIT ↔ Canon mapping](../spec/compilation.md#the-wit--canon-mapping) for
+the full table.
 
 The `wasi/…` bindings shipped with the compiler are produced this way
 from the WIT files vendored under `wit-vendor/wasi/`. Regenerate them
@@ -167,7 +168,7 @@ methods. The bridge swap is invisible.
   isn't yet usable from the canonical ABI (resources + streams, e.g.
   filesystem descriptors), Canon ships a `canon:builtins/*` stand-in.
   The user-facing API doesn't change when the bridge is later swapped
-  for native WASI. The remaining set is tracked in `V1.md`.
+  for native WASI.
 - **Hosts must support WASI Preview 3.** `canon run` embeds `wasmtime`
   with the P3 + component-model-async feature gates; other hosts will
   need equivalent support.

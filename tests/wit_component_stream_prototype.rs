@@ -5,8 +5,9 @@
 //! This is the streams analogue of `wit_component_prototype.rs`, which
 //! validated the same shortcut for resources + variants + sub-u64 ints
 //! (the WASI HTTP handler shape). If both prototypes pass, the
-//! architectural claim in `WASI-HTTP-HANDLER.md` and `STREAMING.md`
-//! holds: the codegen's remaining responsibility for these features
+//! architectural claim from the WASI HTTP handler work (and the
+//! planned streaming support, not yet implemented) holds: the
+//! codegen's remaining responsibility for these features
 //! shrinks to "produce a core module with the right `(import …)` +
 //! `(export …)` names and let `wit-component` emit the canonical-ABI
 //! type-section bytes."

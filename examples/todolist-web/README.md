@@ -35,6 +35,6 @@ instead. A live, embedded preview runs in the book:
 - **`localStorage` with a pure guest.** The model is a fold over the
   message history, so the host persists the *message log* and replays it
   on load. The program stays effect-free and would compile unchanged for
-  a backend. See [`WEB-TARGET.md`](../../WEB-TARGET.md).
+  a backend. See [The Web Target](../../docs/src/reference/web-target.md).
 - **Dispatch as control flow.** Message routing and the done/undone
   branch are both literal dispatch — there is no `if`.

@@ -343,10 +343,11 @@ struct LoadCtx {
     /// resolved; `None` when there's no project root or no index file.
     project_install_index: Option<InstallIndex>,
     /// Canonicalized path of the project's vendored-dependency tree
-    /// (`<root>/deps/`, see PACKAGES.md), when it exists on disk. The
+    /// (`<root>/deps/`, see modules & packages (docs/src/spec/modules.md)),
+    /// when it exists on disk. The
     /// root is the project root when there is one, otherwise the entry
-    /// file's directory — so manifest-free projects (the PACKAGES.md
-    /// end state) resolve `deps/` without an `canon.toml` marker.
+    /// file's directory — so manifest-free projects (the modules &
+    /// packages end state) resolve `deps/` without an `canon.toml` marker.
     ///
     /// `Some` enables two things: reference discovery resolves names
     /// against the `deps/` tree, and `load_into` recognizes files
@@ -732,8 +733,8 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 // filename-matched because binding files declare functions whose names
 // don't kebab-back to their file (`getRandomU64` lives in `random.can`).
 //
-// Ambiguity is a hard error, not a precedence (PACKAGES.md
-// § Resolution): a name resolving in more than one place fails the
+// Ambiguity is a hard error, not a precedence (modules & packages,
+// docs/src/spec/modules.md): a name resolving in more than one place fails the
 // build naming every candidate. A name resolving nowhere is *not* a
 // loader error — the checker reports undefined names with full type
 // context, so discovery stays best-effort and only ever adds files.
@@ -1475,7 +1476,7 @@ fn deps_pkg_for_file(path: &Path, ctx: &LoadCtx) -> Result<Option<(String, Strin
 
 /// Split a package coordinate `"<ns>:<name>@<version>"` into its three
 /// parts. Namespace and name are lowercase kebab identifiers (matching
-/// the OCI / wkg package-name grammar PACKAGES.md adopts); the version
+/// the OCI / wkg package-name grammar Canon adopts); the version
 /// is any non-empty semver-ish string (`1.2.3`,
 /// `0.3.0-rc-2026-03-15`, …).
 fn parse_package_coordinate(s: &str) -> Option<(&str, &str, &str)> {
@@ -1494,8 +1495,8 @@ fn parse_package_coordinate(s: &str) -> Option<(&str, &str, &str)> {
     (seg_ok(ns) && seg_ok(name) && ver_ok).then_some((ns, name, version))
 }
 
-/// Enforce the `package` directive rules from PACKAGES.md on one file's
-/// parsed items.
+/// Enforce the `package` directive rules from modules & packages
+/// (docs/src/spec/modules.md) on one file's parsed items.
 ///
 /// `deps_pkg` is `Some((expected_key, label))` when the file is
 /// vendored (lives under `deps/`), `None` otherwise. Outside `deps/`

@@ -1,4 +1,4 @@
-//! The browser side of the web target (`WEB-TARGET.md`).
+//! The browser side of the web target (docs/src/reference/web-target.md).
 //!
 //! A web-app program (the `init`/`update`/`view` triple) compiles to a
 //! self-contained core module; this module supplies everything around

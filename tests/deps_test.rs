@@ -1,4 +1,4 @@
-//! Vendored-dependency (`deps/`) resolution tests — PACKAGES.md slice 1.
+//! Vendored-dependency (`deps/`) resolution tests.
 //!
 //! Each subdirectory of `tests/deps/` is a committed miniature project:
 //! a `main.can` entry plus a hand-vendored `deps/` tree. The `ok_*`
@@ -9,7 +9,8 @@
 //!
 //! None of these projects has an `canon.toml` — the `deps/` root falls
 //! back to the entry file's directory, which is exactly the
-//! manifest-free layout PACKAGES.md ends at.
+//! manifest-free layout modules & packages (docs/src/spec/modules.md)
+//! ends at.
 
 mod common;
 

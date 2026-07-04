@@ -28,7 +28,7 @@ canon run examples/todolist-web        # serves on http://127.0.0.1:8080
 
 A Canon program becomes a web app by defining three functions with the
 conventional shapes — `init`, `update`, `view` (see
-[The Web Target](https://github.com/Almaju/canon/blob/main/WEB-TARGET.md)).
+[The Web Target](../reference/web-target.md)).
 The model here is `Todos`, a newline-separated encoding of `flag|title`
 lines; messages are prefix-parsed strings decoded with the same
 pure-Canon string primitives the standard library uses everywhere else.
@@ -85,7 +85,7 @@ generated `index.html` passes a storage key to `canonWebStart`, the host
 appends each message to `localStorage` as it is sent, and reads the log
 back on boot. If a saved log ever stops folding (say the app's message
 grammar changed), the host discards it and starts fresh rather than
-breaking. See [The Web Target](https://github.com/Almaju/canon/blob/main/WEB-TARGET.md).
+breaking. See [The Web Target](../reference/web-target.md).
 
 ## The rest of the program
 

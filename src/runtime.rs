@@ -43,7 +43,7 @@ struct State {
     /// Optional reference to the guest's `canon:http-handler/handler.handle-request`
     /// component export, when the program defined a `handleRequest`
     /// function. The HTTP server runtime calls this Func per incoming
-    /// request to compute the response body. See `DYNAMIC-HANDLERS.md`.
+    /// request to compute the response body.
     handler_func: Option<wasmtime::component::Func>,
 }
 
@@ -442,7 +442,7 @@ async fn dispatch_request(
     // forever on a body channel nobody is feeding.
     //
     // Buffering the full body here caps us at non-streaming responses;
-    // when `Stream<T>` response bodies land (STREAMING.md slice 3),
+    // when `Stream<T>` response bodies land (streaming, not yet implemented),
     // this becomes a keep-driving loop that feeds hyper incrementally.
     let response = guard
         .run_concurrent(async |store| -> wasmtime::Result<_> {
@@ -1085,8 +1085,7 @@ mod host_builtin_http_server {
                     // the body. We detect this and honour it. Absent
                     // the prefix we use `text/plain` as before.
                     //
-                    // This is the minimum-viable SSE pathway from
-                    // `DYNAMIC-HANDLERS.md` slice 3 — a single
+                    // This is the minimum-viable SSE pathway — a single
                     // event-stream payload returned in one shot. True
                     // multi-event streaming (`SseSender` capability,
                     // events pushed over time) builds on top of this

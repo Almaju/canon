@@ -5,7 +5,7 @@
 //! opens a TCP connection to it, sends an HTTP request, and asserts
 //! that the response body matches what the handler returned.
 //!
-//! This is the smoke test for `DYNAMIC-HANDLERS.md` slice 1: it
+//! This is the smoke test for the dynamic handler ABI: it
 //! proves the callback ABI works end-to-end (compiler synthesises
 //! the wrapper, component exports it, host runtime looks it up,
 //! calls it per request).
@@ -107,8 +107,8 @@ main = () -> Result<Unit, IoError> {{
     );
 }
 
-/// Companion smoke test for the SSE/Content-Type override pathway (Gap
-/// 6 MVP from `DYNAMIC-HANDLERS.md`): when the guest handler's
+/// Companion smoke test for the SSE/Content-Type override pathway
+/// (MVP): when the guest handler's
 /// returned string starts with `Content-Type: <mime>\r\n\r\n`, the
 /// host honours that as the response's Content-Type. Proves that
 /// `text/event-stream` flows end-to-end with a single payload.
