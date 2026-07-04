@@ -1,7 +1,7 @@
 # Types
 
-Every type in Canon is built by composing two operators — `+` for "or",
-`*` for "and" — over a small core of primitives.
+Every type in Canon is built by composing two operators, `+` for "or"
+and `*` for "and", over a small core of primitives.
 
 ## Naming
 
@@ -80,7 +80,7 @@ Username = String
 ```
 
 `Birthday` and `Username` cannot be used interchangeably. They share
-storage, but they are different types — which is exactly the point. See
+storage, but they are different types. That is the point. See
 [Philosophy](./philosophy.md) on why types are the documentation.
 
 ## Fixed and Unbounded Repetition
@@ -132,8 +132,8 @@ main = () -> Unit {
 ```
 
 `Unit` in return position is the type; `Unit` in expression position is its
-sole value. No constructor call is needed (and would not work — there is
-no data to pass).
+sole value. No constructor call is needed, and none would work: there is
+no data to pass.
 
 ## Recursive Types
 
@@ -156,7 +156,6 @@ scheme; it is never spelled out in source.
 
 ## Type Inference
 
-There is **none**. Every type must be explicitly written. If a function
-declares it returns `Result<T, Err>` but no `Err` ever flows through, that
-is a compile-time error — declared types must match inferred shape
-exactly.
+There is none. Every type must be written. If a function declares it
+returns `Result<T, Err>` but no `Err` ever flows through, that is a
+compile-time error: declared types must match inferred shape exactly.

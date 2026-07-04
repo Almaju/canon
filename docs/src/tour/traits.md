@@ -12,7 +12,8 @@ difference is how the compiler distinguishes a trait implementation
 
 ## Implementing a Trait
 
-A trait is implemented for a type by declaring a function with the trait's name and the implementing type as a component:
+A trait is implemented for a type by declaring a function with the
+trait's name and the implementing type as a component:
 
 ```canon,run=traits
 Greeting = String
@@ -44,7 +45,7 @@ main = () -> Unit {
 
 ## Multi-Method Traits
 
-A trait with multiple methods is just a product of single-method traits:
+A trait with multiple methods is a product of single-method traits:
 
 ```canon
 Debug = () -> String

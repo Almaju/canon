@@ -9,7 +9,7 @@ type's constructor.
 Every type `T` has a constructor `T(_)`. The argument is a value matching
 the type's underlying definition:
 
-| Kind             | Constructor                              | Argument is…                                  |
+| Kind             | Constructor                              | Argument                                      |
 |------------------|------------------------------------------|-----------------------------------------------|
 | Primitive        | `Int(123)`, `Float(1.0)`, `String("hi")` | a literal of the corresponding lexical kind   |
 | Hex              | `Hex(0xFF0000)`                          | a hex literal                                 |
@@ -35,8 +35,8 @@ with spaces and punctuation.
 
 ## Zero-Data Constructors
 
-A type with no underlying composition — `Unit`, `True`, `False`, a
-payload-less union variant — is constructed with empty parens:
+A type with no underlying composition (`Unit`, `True`, `False`, a
+payload-less union variant) is constructed with empty parens:
 
 ```canon
 Unit()
@@ -46,7 +46,7 @@ None()
 
 The `()` unambiguously signals *producing a value*: `value.Field`
 (no parens) reads a field, `Type()` constructs. In type position the
-bare name is still the type — `-> Unit` — and after `.` a bare
+bare name is still the type, as in `-> Unit`, and after `.` a bare
 PascalCase name is always a field access.
 
 ## Constructing a Product
@@ -65,12 +65,14 @@ appear in the same context.
 ## Validated Constructors
 
 By default, a type's constructor is total: `T(inner)` always succeeds and
-returns `T`. For types whose construction can fail — a `Url` parsed from
-a `String`, an `Email` from a `String`, etc. — the fallibility belongs in
-the type system as `Result<T, E>`. Same principle the language already
-applies to "missing": `Option<T>`.
+returns `T`. For types whose construction can fail (a `Url` or an `Email`
+parsed from a `String`), the fallibility belongs in the type system as
+`Result<T, E>`. Same principle the language already applies to "missing":
+`Option<T>`.
 
-A type opts into this by declaring a constructor with the **same name as the type** — a function whose name matches the type it constructs. The body can be ordinary Canon, or it can be an `extern Wasm` binding to a host-provided parser:
+A type opts in by declaring a constructor with the **same name as the
+type**: a function whose name matches the type it constructs. The body can
+be ordinary Canon, or an `extern Wasm` binding to a host-provided parser:
 
 ```canon
 Url = String
@@ -79,13 +81,12 @@ extern Wasm("canon:builtins/url@0.1.0#parse")
 Url = (String) -> Result<Url, InvalidUrl>
 ```
 
-When a type declares a constructor, that *is* the constructor — the
-implicit total constructor is replaced. The signature is unconstrained:
-total (`(String) -> Url`), fallible (`Result<Url, InvalidUrl>`), or
-optional (`Option<Url>`). Call sites still use the ordinary constructor
-syntax `Url("https://example.com")`, but the expression's type is now
-whatever the constructor returns, so a fallible constructor *forces* `?` (or
-dispatch) at the call site:
+A declared constructor replaces the implicit total one. The signature is
+unconstrained: total (`(String) -> Url`), fallible
+(`Result<Url, InvalidUrl>`), or optional (`Option<Url>`). Call sites still
+use the ordinary constructor syntax `Url("https://example.com")`, but the
+expression's type is now whatever the constructor returns, so a fallible
+constructor *forces* `?` (or dispatch) at the call site:
 
 ```canon
 Url("https://example.com")?.get()?.print()

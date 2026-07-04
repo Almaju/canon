@@ -2,15 +2,14 @@
 
 Every program in this section lives in the repository's
 [`examples/`](https://github.com/Almaju/canon/tree/main/examples)
-directory and is exercised by `just examples` — these are real,
-running programs, not illustrative pseudo-code. Each page shows the
-complete source, what it prints, and which language ideas it
-demonstrates.
+directory and is exercised by `just examples`: real, running programs,
+not illustrative pseudo-code. Each page shows the complete source, what
+it prints, and which language ideas it demonstrates.
 
-Examples exist to show **real-world usage** — I/O, networking, things
-with environment-dependent output. (Small deterministic feature
+Examples exist to show **real-world usage**: I/O, networking, things
+with environment-dependent output. Small deterministic feature
 demonstrations live in the repository's `tests/runtime/` fixtures
-instead, where CI pins their exact output.)
+instead, where CI pins their exact output.
 
 | Example | What it shows | Page |
 |---|---|---|
@@ -29,6 +28,6 @@ canon run examples/random          # any single example
 just examples                       # compile + run all, report pass/fail
 ```
 
-Every example is an ordinary package — a `canon.toml` plus
-`src/main.can` — so they're also templates for starting your own
+Every example is an ordinary package, a `canon.toml` plus
+`src/main.can`, so each one doubles as a template for starting your own
 project.

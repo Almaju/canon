@@ -1,8 +1,7 @@
 # Testing
 
-Canon ships a test framework that is almost not there: a union type, one
-helper function, and a CLI verb. There are no attributes, no test macros,
-no runner configuration.
+The test framework is a union type, one helper function, and a CLI verb.
+There are no attributes, no test macros, no runner configuration.
 
 ## `TestResult`
 
@@ -33,7 +32,7 @@ assert = (Bool * String) -> TestResult
 ```
 
 `assert` turns a `Bool` and a message into a `TestResult`: `True` becomes
-`Pass()`, `False` becomes `Fail(message)` — the message only appears when
+`Pass()`, `False` becomes `Fail(message)`. The message only appears when
 the assertion fails.
 
 ## Running Tests
@@ -45,9 +44,9 @@ running 1 test(s) from note_test.can
 ```
 
 `canon test` discovers every `() -> TestResult` function in the file.
-Discovery is **by type signature**, not by name — the `test` prefix is a
-convention, not a requirement. This is the entry-point rule again: just as
-a function returning `Response` makes the program an HTTP service, a
+Discovery is **by type signature**, not by name; the `test` prefix is a
+convention, not a requirement. This is the entry-point rule again: a
+function returning `Response` makes the program an HTTP service, a
 function returning `TestResult` makes it a test.
 
 A failing test prints its message and fails the process:
@@ -56,13 +55,13 @@ A failing test prints its message and fails the process:
 [FAIL] testRenderWrapsTitle: render should wrap the title in a JSON object
 ```
 
-The exit code is honest — `0` when everything passes, `1` when anything
-fails — so `canon test` slots directly into CI and shell scripts.
+The exit code is honest: `0` when everything passes, `1` when anything
+fails. `canon test` slots directly into CI and shell scripts.
 
 ## The Shape of a Test
 
-Without local variables, a test is a single chain that ends in a
-`TestResult` — typically `.eq(expected).assert(message)`:
+Without local variables, a test is a single chain ending in a
+`TestResult`, typically `.eq(expected).assert(message)`:
 
 ```canon
 use canon/std/TestResult
@@ -84,14 +83,15 @@ testRenderWrapsTitle = () -> TestResult {
 ```
 
 One test, one assertion. This is a constraint today (`?` doesn't yet
-short-circuit across multiple assertions in a test body), but it's also a
-decent discipline: a test that asserts one thing has one reason to fail.
+short-circuit across multiple assertions in a test body), but it is also
+a decent discipline: a test that asserts one thing has one reason to
+fail.
 
 ## What to Test
 
-Because only the entry point may return a world type (`Unit` for CLI,
-`Response` for HTTP), everything else in a program is a **pure function
-over values** — and pure functions are trivially testable. Put logic in
-helpers that take values and return values, keep the entry thin, and the
-testable surface falls out for free. The [tutorial's testing
+Only the entry point may return a world type (`Unit` for CLI, `Response`
+for HTTP), so everything else in a program is a pure function over
+values, and pure functions are trivially testable. Put logic in helpers
+that take values and return values, keep the entry thin, and the testable
+surface falls out for free. The [tutorial's testing
 chapter](../tutorial/05-testing.md) walks through this on a real API.

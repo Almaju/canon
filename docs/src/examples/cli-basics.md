@@ -1,10 +1,10 @@
 # CLI Basics: Time, Randomness, Exit Codes
 
-Four programs, each about five lines, each demonstrating the same
-pattern: **a WASI capability surfaced as an ordinary constructor**. No
-setup, no context objects — construct the value, use it.
+Four programs, each about five lines, each the same pattern: **a WASI
+capability surfaced as an ordinary constructor**. No setup, no context
+objects. Construct the value, use it.
 
-## `now` — Wall-Clock Time
+## `now`: Wall-Clock Time
 
 ```canon
 use canon/std/time/Now
@@ -20,10 +20,10 @@ $ canon run examples/now
 ```
 
 `Now = String` is a newtype whose constructor reads the wall clock and
-formats RFC 3339. Because it's a `String` underneath, `.print()` is
+formats RFC 3339. Because it is a `String` underneath, `.print()` is
 inherited straight through the alias.
 
-## `clock` — Monotonic Time
+## `clock`: Monotonic Time
 
 ```canon
 use canon/std/time/Instant
@@ -33,12 +33,12 @@ main = () -> Unit {
 }
 ```
 
-`Instant = Int` — nanoseconds from the monotonic clock
-(`wasi:clocks/monotonic-clock`). It's an `Int` newtype, so arithmetic
-works: `Instant().sub(start)` is a duration. There's also
-`canon/std/time/Unix` for wall-clock Unix seconds.
+`Instant = Int`: nanoseconds from the monotonic clock
+(`wasi:clocks/monotonic-clock`). It is an `Int` newtype, so arithmetic
+works: `Instant().sub(start)` is a duration. `canon/std/time/Unix`
+provides wall-clock Unix seconds.
 
-## `random` — A Random Integer
+## `random`: A Random Integer
 
 ```canon
 use canon/std/Random
@@ -48,12 +48,12 @@ main = () -> Unit {
 }
 ```
 
-`Random()` draws from the host CSPRNG via `wasi:random/random`. Note
-what this program *couldn't* do in reverse: nothing conjures randomness
-without constructing a `Random` — the [effects
-story](../tour/effects.md) in miniature.
+`Random()` draws from the host CSPRNG via `wasi:random/random`. The
+reverse is impossible: nothing conjures randomness without constructing
+a `Random`. This is the [effects story](../tour/effects.md) in
+miniature.
 
-## `exit-code` — Honest Process Exits
+## `exit-code`: Honest Process Exits
 
 ```canon
 use canon/std/cli/Exit
@@ -65,12 +65,12 @@ main = () -> Unit {
 ```
 
 `Exit = Int`; `.exit()` terminates the process with that code, riding
-the real `wasi:cli/exit` interface. Try `Exit(3)` and check `echo $?` —
-Canon programs are shell-scriptable and CI-safe, and `canon test` uses
-the same mechanism to fail builds.
+the real `wasi:cli/exit` interface. Try `Exit(3)` and check `echo $?`.
+Canon programs are shell-scriptable and CI-safe; `canon test` uses the
+same mechanism to fail builds.
 
 ## The Common Shape
 
-All four are the same sentence with a different noun: *construct the
-domain value, transform it, print it*. The signature of each capability
-is documented in the [Standard Library reference](../reference/stdlib.md).
+All four are the same sentence with a different noun: construct the
+domain value, transform it, print it. Each capability's signature is
+documented in the [Standard Library reference](../reference/stdlib.md).

@@ -1,7 +1,7 @@
 # A Multi-File Project
 
-[`examples/multifile`](https://github.com/Almaju/canon/tree/main/examples/multifile)
-— the smallest possible demonstration of Canon's module system.
+[`examples/multifile`](https://github.com/Almaju/canon/tree/main/examples/multifile):
+the smallest possible demonstration of Canon's module system.
 
 ```text
 multifile/
@@ -11,8 +11,7 @@ multifile/
     main.can
 ```
 
-`src/greeter.can` — the file is named `greeter.can`, so it must declare
-`Greeter`:
+`src/greeter.can` must declare `Greeter`; the file name says so:
 
 ```canon
 Greeter = String
@@ -45,11 +44,11 @@ HELLO from greeter
   `Greeter`. The compiler enforces the correspondence, so "where is this
   type defined?" always has a mechanical answer.
 - **`use Greeter` imports the type *and its methods*.** `main.can`
-  calls `.shout()` without importing it separately — methods travel
+  calls `.shout()` without importing it separately; methods travel
   with their type.
 - **No `mod`, no manifest of files.** The directory *is* the module
   structure; adding a file is adding a type.
-- **Everything is public.** There's no visibility to configure; see
+- **Everything is public.** There is no visibility to configure; see
   [Modules and Packages](../spec/modules.md#visibility) for why.
 
 The [tutorial's modules chapter](../tutorial/04-modules.md) applies this
