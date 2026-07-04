@@ -2,7 +2,7 @@
 
 Create a file named `hello.can`:
 
-```canon
+```canon,run=hello-world
 main = () -> Unit {
     "hello".print()
 }

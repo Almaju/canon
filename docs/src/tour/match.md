@@ -5,7 +5,7 @@ a union — the value is the receiver, and the arms go inside `.( )`.
 
 ## Basic Form
 
-```canon
+```canon,run=dispatch
 main = () -> Unit {
     True().(
         * (False) -> Unit { "no".print() }

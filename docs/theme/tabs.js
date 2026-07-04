@@ -18,6 +18,7 @@
         { label: 'Tutorial', href: 'tutorial/index.html', prefixes: ['tutorial/'] },
         { label: 'Specification', href: 'spec/index.html', prefixes: ['spec/'] },
         { label: 'Examples', href: 'examples/index.html', prefixes: ['examples/'] },
+        { label: 'Playground', href: 'playground.html', prefixes: ['playground.html'] },
         { label: 'Reference', href: 'reference/stdlib.html', prefixes: ['reference/'] }
     ];
 

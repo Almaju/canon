@@ -14,7 +14,7 @@ difference is how the compiler distinguishes a trait implementation
 
 A trait is implemented for a type by declaring a function with the trait's name and the implementing type as a component:
 
-```canon
+```canon,run=traits
 Greeting = String
 
 Name = String

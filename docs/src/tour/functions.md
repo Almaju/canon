@@ -12,7 +12,7 @@ The components inside the parentheses form a product — the function's input. A
 
 ## A First Function
 
-```canon
+```canon,run=first-function
 Greeting = String
 
 shout = (Greeting) -> String {
