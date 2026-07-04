@@ -1,0 +1,27 @@
+main = () -> Unit {
+    2.5
+        .lt(3.5)
+        .print()
+    3.5
+        .le(3.5)
+        .print()
+    4.5
+        .gt(3.5)
+        .print()
+    3.5
+        .ge(4.5)
+        .print()
+    2.5
+        .eq(2.5)
+        .print()
+    2.5
+        .ne(2.5)
+        .print()
+    7.5
+        .rem(2.0)
+        .print()
+    0.0
+        .sub(7.5)
+        .rem(2.0)
+        .print()
+}

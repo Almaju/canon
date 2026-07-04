@@ -26,7 +26,7 @@ Usage:
 ```canon
 main = () -> Unit {
     parallel("hello".slowEcho(), "world".slowEcho())
-        .toJsonArray()
+        .Json()
         .print()
     # Prints: [hello,world]
 }
@@ -56,7 +56,7 @@ PascalCase first parameter `Future<T>` would otherwise force them to be
 looked up as methods on `Future`, which the `Constructor(…)` call shape
 doesn't support). `expr_type_name_in_scope` reports `List` for `parallel`
 and propagates the inner type of the first arg for `race`, so subsequent
-method chains (`.toJsonArray()`, `.print()`) type-check normally.
+method chains (`.Json()`, `.print()`) type-check normally.
 
 See the `CONCURRENT_COMBINATORS` const in `src/checker/mod.rs`.
 

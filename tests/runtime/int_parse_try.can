@@ -1,0 +1,14 @@
+double = (String) -> Result<Int, MalformedInt> {
+    Ok(Int(String)?.mul(2))
+}
+
+main = () -> Unit {
+    "21".double().(
+        * (Err<MalformedInt>) -> Unit { "err".print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+    "x".double().(
+        * (Err<MalformedInt>) -> Unit { MalformedInt.print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+}
