@@ -1,6 +1,0 @@
-main = () -> Unit {
-    "hello"
-        .shout()
-        .wave()
-        .print()
-}

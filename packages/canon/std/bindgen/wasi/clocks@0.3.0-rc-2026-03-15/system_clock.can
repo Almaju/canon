@@ -1,0 +1,11 @@
+Instant = InstantNanoseconds * InstantSeconds
+
+InstantNanoseconds = Int
+
+InstantSeconds = Int
+
+SystemClock = Unit
+
+getResolution = (SystemClock) -> Duration
+
+now = (SystemClock) -> Instant

@@ -1,0 +1,3 @@
+getArguments = () -> List<String>
+
+getInitialCwd = () -> Option<String>

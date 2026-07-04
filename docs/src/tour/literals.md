@@ -71,14 +71,16 @@ parsed from a `String`), the fallibility belongs in the type system as
 `Option<T>`.
 
 A type opts in by declaring a constructor with the **same name as the
-type**: a function whose name matches the type it constructs. The body can
-be ordinary Canon, or an `extern Wasm` binding to a host-provided parser:
+type**: a function whose name matches the type it constructs. The body is
+ordinary Canon — here, delegating to a host-provided parser bound in a
+binding file:
 
 ```canon
 Url = String
 
-extern Wasm("canon:builtins/url@0.1.0#parse")
-Url = (String) -> Result<Url, InvalidUrl>
+Url = (String) -> Result<Url, InvalidUrl> {
+    String.parse()
+}
 ```
 
 A declared constructor replaces the implicit total one. The signature is

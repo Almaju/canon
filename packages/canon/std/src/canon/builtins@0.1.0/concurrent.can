@@ -1,0 +1,3 @@
+parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
+
+race = <T>(Future<T> * Future<T>) -> Future<T>

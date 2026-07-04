@@ -83,16 +83,24 @@ pub fn split_interface_id(id: &str) -> Option<(String, String, String, Option<St
 /// Build the on-disk relative path for an interface's generated file.
 ///
 /// `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15`
-///   → `wasi/src/clocks/monotonic_clock.can`
+///   → `wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can`
 ///
-/// The `src/` directory mirrors the layout every shipped Canon package
-/// uses (manifest at root, sources under `src/`). The bindgen output is
-/// meant to land directly in a real package, so it emits the same shape.
-pub fn interface_file_path(ns: &str, pkg: &str, iface: &str) -> String {
+/// This is the vendored-package layout PACKAGES.md specifies: the
+/// directory name carries the package identity and version (the pin),
+/// the file stem names the interface, and the loader derives each
+/// binding's URN back from exactly this shape — no directive in the
+/// file. Kebab-case WIT names become snake_case path segments (use
+/// paths can't carry `-`); the derivation maps them back. A version-
+/// less WIT package produces an unversioned directory, which the
+/// loader rejects at `use` time with a message naming the fix (version
+/// the WIT package).
+pub fn interface_file_path(ns: &str, pkg: &str, iface: &str, version: Option<&str>) -> String {
+    let at_ver = version.map(|v| format!("@{v}")).unwrap_or_default();
     format!(
-        "{}/src/{}/{}.can",
+        "{}/{}{}/{}.can",
         kebab_to_snake(ns),
         kebab_to_snake(pkg),
+        at_ver,
         kebab_to_snake(iface),
     )
 }
@@ -169,8 +177,12 @@ mod tests {
     #[test]
     fn file_path() {
         assert_eq!(
-            interface_file_path("wasi", "clocks", "monotonic-clock"),
-            "wasi/src/clocks/monotonic_clock.can"
+            interface_file_path("wasi", "clocks", "monotonic-clock", Some("0.3.0")),
+            "wasi/clocks@0.3.0/monotonic_clock.can"
+        );
+        assert_eq!(
+            interface_file_path("wasi", "clocks", "monotonic-clock", None),
+            "wasi/clocks/monotonic_clock.can"
         );
     }
 }

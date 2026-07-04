@@ -1,5 +1,0 @@
-package "acme:other@1.0.0"
-
-shout = (String) -> String {
-    String.concat("!")
-}

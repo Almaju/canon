@@ -5,6 +5,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Path-carried package identity (2026-07)
+
+The `package` keyword is gone (PACKAGES.md slices 7 + 8a). A vendored
+package's identity now lives in its directory name —
+`deps/<ns>/<name>@<version>/` — so the files are pure source: no
+provenance directive, and version agreement across a package is
+structural (a directory has one name) instead of checked. `canon
+install` writes the versioned layout, removes any previously vendored
+version in the same operation, and records a published package's
+dependency list from directory names. Two `@`-versioned siblings, an
+unversioned vendor directory, or a malformed version are loader
+errors.
+
+The `bindings` keyword is gone too (slice 8, complete). Binding files
+are recognized by *shape*: a body-less camelCase declaration in a file
+directly under a versioned package directory binds to the WIT
+interface its path spells (`deps/wasi/random@0.3.0/random.can` →
+`wasi:random/random@0.3.0`); resource fragments derive from shape
+(`[method]` from a Handle-typed receiver, `[constructor]` from a
+PascalCase decl named like an in-file resource). No escape hatch
+survived because none was needed: every one-shot rename was an idiom
+nailed directly onto a host function, fixed by giving the raw binding
+its mechanical name and making the idiom an ordinary bodied wrapper
+(`ToJson = (Bool) -> Json { Bool.fromBool() }`). The stdlib's
+`canon:builtins/*` bridges now live in path-carried binding files, the
+`wasi` bindgen tree uses the versioned layout, `canon bindgen` emits
+that layout directly with no header, and the language grammar contains
+zero packaging or binding vocabulary.
 ### The `use` keyword is gone - imports are automatic (2026-07)
 
 There is no import statement anymore. A reference to a name the current
@@ -17,10 +45,12 @@ name that matches in more than one place is a hard error naming every
 candidate (no shadowing: names are globally unique across a project,
 its dependencies, and the stdlib); a name that matches nowhere is an
 ordinary checker error. Writing `use ...` is now a parse error that says
-what to do instead. `canon install` interface-qualifies binding
-functions whose names collide across an install set
-(`monotonicClockNow` / `systemClockNow`), pinning them with one-shot
-`bindings "<urn>#fn"` directives. See DESIGN.md section Imports.
+what to do instead. Where two interfaces of a package export the same
+function name (`wasi:clocks` monotonic + system both have `now`), the
+generated binding emits it as a method on the interface's zero-data
+capability marker (`MonotonicClock.now()`) so discovery resolves on the
+unique marker type — no rename, no directive. See DESIGN.md section
+Imports.
 
 ### Release channels & toolchains (2026-07)
 

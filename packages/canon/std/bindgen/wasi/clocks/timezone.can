@@ -1,5 +1,0 @@
-bindings "wasi:clocks/timezone@0.3.0-rc-2026-03-15"
-
-ianaId = () -> Option<String>
-
-toDebugString = () -> String

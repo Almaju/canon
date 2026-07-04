@@ -11,51 +11,6 @@ pub struct Module {
 pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
-    /// A file-level `bindings "<urn>"` directive. Declares that all
-    /// camelCase function-type aliases in this file are actually
-    /// external bindings backed by `<urn>` in the WebAssembly Component
-    /// canonical ABI. The loader rewrites those aliases into
-    /// `FunctionDef`s with `extern_wasm` populated; without the
-    /// directive, a bare `name = (P) -> R` stays a function-type alias
-    /// (the existing language semantics).
-    ///
-    /// Emitted at the top of every `canon install`-generated file as a
-    /// human-readable index of "what is this file bindings for?" so a
-    /// reader sees `bindings "wasi:clocks/timezone@…"` and immediately
-    /// knows where to look in the source WIT.
-    Bindings(BindingsDecl),
-    /// A file-level `package "<ns>:<name>@<version>"` directive. Stamps
-    /// a vendored source file with the identity and exact version of
-    /// the package it came from — the `bindings` directive generalized
-    /// to whole packages (see PACKAGES.md).
-    ///
-    /// Written by `canon install` at the top of every file it vendors
-    /// under `deps/`; never typed by hand. The loader validates it
-    /// (deps-only placement, coordinate matches the `deps/<ns>/<name>/`
-    /// directory, one version per vendored package) and then carries it
-    /// as a breadcrumb for tooling, exactly like `Bindings`.
-    Package(PackageDecl),
-}
-
-/// A `package "<ns>:<name>@<version>"` directive at the top of a
-/// vendored source file. See [`Item::Package`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct PackageDecl {
-    /// The package coordinate, e.g. `"acme:http@1.2.3"`. Stored
-    /// verbatim; the loader parses and validates it.
-    pub coordinate: String,
-    pub span: Span,
-}
-
-/// A `bindings "<urn>"` directive at the top of a generated bindings
-/// file. See [`Item::Bindings`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct BindingsDecl {
-    /// The WIT interface URN, e.g.
-    /// `"wasi:clocks/timezone@0.3.0-rc-2026-03-15"`. Stored verbatim;
-    /// the loader appends `#<fn-kebab>` per function.
-    pub urn: String,
-    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

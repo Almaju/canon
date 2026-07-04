@@ -671,18 +671,18 @@ mod host_builtin_filesystem {
                 /// Open a file by path. Returns the path string back as the
                 /// `File` handle on success, or a diagnostic message on
                 /// failure. The handle is just the path — actual reading
-                /// happens in `read-file-handle`.
+                /// happens in `read`.
                 open-file: func(path: string) -> result<string, string>;
 
                 /// Read the contents of a previously-opened `File`. Takes
                 /// the same string handle returned by `open-file`.
-                read-file-handle: func(file: string) -> result<string, string>;
+                read: func(file: string) -> result<string, string>;
 
                 /// Write `contents` to the file at `path`, creating it if
                 /// absent and truncating if present. Returns the path back
                 /// on success so call sites can keep chaining
                 /// (`.write(...)?.File()?.read()?`).
-                write-file: func(contents: string, path: string) -> result<string, string>;
+                write: func(contents: string, path: string) -> result<string, string>;
             }
             world host-shim {
                 import filesystem;
@@ -700,11 +700,11 @@ mod host_builtin_filesystem {
             }
         }
 
-        fn read_file_handle(&mut self, file: String) -> Result<String, String> {
+        fn read(&mut self, file: String) -> Result<String, String> {
             fs::read_to_string(&file).map_err(|e| e.to_string())
         }
 
-        fn write_file(&mut self, contents: String, path: String) -> Result<String, String> {
+        fn write(&mut self, contents: String, path: String) -> Result<String, String> {
             fs::write(&path, contents.as_bytes())
                 .map(|_| path)
                 .map_err(|e| e.to_string())
@@ -733,7 +733,7 @@ mod host_builtin_http {
             interface http {
                 /// HTTP GET on a previously-parsed `Url`. Returns the
                 /// response body or an error message.
-                get: func(url: string) -> result<string, string>;
+                fetch: func(url: string) -> result<string, string>;
             }
             world host-shim {
                 import http;
@@ -743,7 +743,7 @@ mod host_builtin_http {
     });
 
     impl canon::builtins::http::Host for State {
-        fn get(&mut self, url: String) -> Result<String, String> {
+        fn fetch(&mut self, url: String) -> Result<String, String> {
             http_get(&url).ok_or_else(|| format!("HTTP GET failed for {url}"))
         }
     }
@@ -1294,7 +1294,7 @@ mod host_builtin_json {
                 /// string literal; anything else returns a diagnostic
                 /// message. Inverse of `from-string`: escape sequences
                 /// like backslash-n become real newlines.
-                to-string: func(input: string) -> result<string, string>;
+                as-string: func(input: string) -> result<string, string>;
             }
             world host-shim {
                 import json;
@@ -1343,7 +1343,7 @@ mod host_builtin_json {
             extract_field(&input, &name)
         }
 
-        fn to_string(&mut self, input: String) -> Result<String, String> {
+        fn as_string(&mut self, input: String) -> Result<String, String> {
             decode_string(&input)
         }
     }

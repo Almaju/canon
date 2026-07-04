@@ -4,8 +4,9 @@
 //! headline test is the full round trip the RFC promises: publish a
 //! pure-Canon library from one project, install it into another, run a
 //! program that calls it. Also pinned: bare-spec patch-bumping, the
-//! machine-recorded dependency list (published from `deps/` directives,
-//! surfaced on install), and the canonical-format preflight.
+//! machine-recorded dependency list (read off the publisher's
+//! `deps/<ns>/<name>@<version>/` directory names, surfaced on
+//! install), and the canonical-format preflight.
 
 mod common;
 
@@ -92,10 +93,12 @@ fn publish_install_run_round_trip() {
         Some(0),
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    let vendored = fs::read_to_string(app.join("deps/acme/greet/shout.can")).unwrap();
-    assert!(
-        vendored.starts_with("package \"acme:greet@1.0.0\"\n"),
-        "vendored source must be stamped with its provenance:\n{vendored}"
+    // The pin is the directory name; the vendored file is byte-for-byte
+    // the published source.
+    let vendored = fs::read_to_string(app.join("deps/acme/greet@1.0.0/shout.can")).unwrap();
+    assert_eq!(
+        vendored, SHOUT_CAN,
+        "vendored source must be the published source, unstamped"
     );
 
     fs::write(app.join("main.can"), MAIN_CAN).unwrap();
@@ -136,14 +139,14 @@ fn published_dependency_list_surfaces_on_install() {
     let dir = scratch("dep-list");
     let config = write_registry_config(&dir);
 
-    // The publisher vendors one dependency; its directive is the
-    // machine-recorded dep list.
+    // The publisher vendors one dependency; its versioned directory
+    // name is the machine-recorded dep list.
     let lib = dir.join("lib");
-    fs::create_dir_all(lib.join("deps/other/pkg")).unwrap();
+    fs::create_dir_all(lib.join("deps/other/pkg@2.0.0")).unwrap();
     fs::write(lib.join("shout.can"), SHOUT_CAN).unwrap();
     fs::write(
-        lib.join("deps/other/pkg/thing.can"),
-        "package \"other:pkg@2.0.0\"\n\nthing = (String) -> String {\n    String.concat(\"?\")\n}\n",
+        lib.join("deps/other/pkg@2.0.0/thing.can"),
+        "thing = (String) -> String {\n    String.concat(\"?\")\n}\n",
     )
     .unwrap();
     let (_, stderr, code) = run_canon(&lib, &config, &["publish", "acme:combo@1.0.0"]);
@@ -160,7 +163,7 @@ fn published_dependency_list_surfaces_on_install() {
     );
     // Only the package's own files are vendored — the dependency is the
     // consumer's own install (until slice 4 automates it).
-    assert!(app.join("deps/acme/combo/shout.can").is_file());
+    assert!(app.join("deps/acme/combo@1.0.0/shout.can").is_file());
     assert!(!app.join("deps/other").exists());
 }
 

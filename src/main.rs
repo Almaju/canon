@@ -702,13 +702,13 @@ fn cmd_install(args: &[String]) {
                 println!("Usage: canon install [target | <namespace>:<name>[@<version>]]");
                 println!();
                 println!("  <ns>:<name>[@ver]   Fetch a package from its registry and vendor the");
-                println!("               generated bindings under `deps/<ns>/<name>/` of the");
-                println!("               current project (see PACKAGES.md). Without a version,");
-                println!("               the newest release is installed; a prefix like `@0.3`");
-                println!("               picks the newest matching release. Registries resolve");
-                println!("               through the standard `wasm-pkg` config file (shared");
-                println!("               with `wkg`); set CANON_REGISTRY_CONFIG to use an");
-                println!("               alternate config.");
+                println!("               generated bindings under `deps/<ns>/<name>@<version>/`");
+                println!("               of the current project (see PACKAGES.md). Without a");
+                println!("               version, the newest release is installed; a prefix like");
+                println!("               `@0.3` picks the newest matching release. Registries");
+                println!("               resolve through the standard `wasm-pkg` config file");
+                println!("               (shared with `wkg`); set CANON_REGISTRY_CONFIG to use");
+                println!("               an alternate config.");
                 println!();
                 println!("  target       The project directory (containing `canon.toml`).");
                 println!("               Defaults to the current directory.");
@@ -807,7 +807,7 @@ fn cmd_publish(args: &[String]) {
                 println!("Publishes the package rooted at the current directory to its");
                 println!("registry: every `.can` file except the vendored `deps/` tree and");
                 println!("derived directories, wrapped as a Canon source artifact. The");
-                println!("dependency list is recorded from the `deps/` directives.");
+                println!("dependency list is recorded from the `deps/` directory names.");
                 println!();
                 println!("Without `@<version>`, the newest published release is patch-bumped");
                 println!("(a package with no releases starts at 0.1.0). Registries resolve");
@@ -1211,8 +1211,7 @@ fn cmd_test(args: &[String]) {
     // is synthesised as source too and inserted into the *import
     // region* of the module (before `entry_items_start`), where the
     // alphabetical-ordering rule doesn't apply to it.
-    let exit_binding = "bindings \"wasi:cli/exit@0.3.0-rc-2026-03-15#exit-with-code\"\n\n\
-                        exitWithCode = (Int) -> Unit\n";
+    let exit_binding = "exitWithCode = (Int) -> Unit\n";
     let mut exit_items = match parse_synthesised(exit_binding) {
         Ok(items) => items,
         Err(err) => {
@@ -1223,7 +1222,7 @@ fn cmd_test(args: &[String]) {
             process::exit(1);
         }
     };
-    canon::loader::apply_bindings_directive(&mut exit_items);
+    canon::loader::apply_bindings(&mut exit_items, Some("wasi:cli/exit@0.3.0-rc-2026-03-15"));
     for item in exit_items.into_iter().rev() {
         loaded.module.items.insert(0, item);
         loaded.entry_items_start += 1;

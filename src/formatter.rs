@@ -25,34 +25,9 @@ pub fn format(source: &str) -> Result<String> {
 fn emit_module(module: &Module) -> String {
     let mut sections: Vec<String> = Vec::new();
 
-    // The `package` provenance directive leads the file, before even
-    // the `use` block — it states where the whole file came from, so
-    // nothing may precede it (the loader enforces first-declaration
-    // placement; the formatter produces it). At most one exists per
-    // file, but emit whatever the parser saw and let the loader be the
-    // backstop, same division of labor as ordering.
-    let pkgs: Vec<String> = module
-        .items
-        .iter()
-        .filter_map(|item| {
-            if let Item::Package(p) = item {
-                Some(format!("package \"{}\"", p.coordinate))
-            } else {
-                None
-            }
-        })
-        .collect();
-    if !pkgs.is_empty() {
-        sections.push(pkgs.join("\n"));
-    }
-
-    // All other items, each separated by a blank line, in canonical
+    // All items, each separated by a blank line, in canonical
     // declaration order (see `sort_items`).
-    let others: Vec<&Item> = module
-        .items
-        .iter()
-        .filter(|item| !matches!(item, Item::Package(_)))
-        .collect();
+    let others: Vec<&Item> = module.items.iter().collect();
     for item in sort_items(&others) {
         sections.push(emit_item(item));
     }
@@ -64,27 +39,17 @@ fn emit_module(module: &Module) -> String {
     out
 }
 
-/// Canonical top-level declaration order, applied per segment between
-/// `bindings` directives — a `bindings` header governs the
-/// declarations that follow it, so no declaration may cross one.
-/// Within a segment, type definitions sort alphabetically among the
-/// type-definition slots and functions sort alphabetically among the
-/// function slots (the same subsequence rule the checker enforces, so
-/// sorted output always passes `check_ordering`). Two functions are
-/// exempt and keep their position, mirroring the checker's exemptions:
-/// `main` and an HTTP entry (a free function returning `Response` /
-/// `Result<Response, _>`).
+/// Canonical top-level declaration order: type definitions sort
+/// alphabetically among the type-definition slots and functions sort
+/// alphabetically among the function slots (the same subsequence rule
+/// the checker enforces, so sorted output always passes
+/// `check_ordering`). Two functions are exempt and keep their
+/// position, mirroring the checker's exemptions: `main` and an HTTP
+/// entry (a free function returning `Response` / `Result<Response,
+/// _>`).
 fn sort_items<'a>(items: &[&'a Item]) -> Vec<&'a Item> {
     let mut out: Vec<&'a Item> = Vec::with_capacity(items.len());
-    let mut segment: Vec<&'a Item> = Vec::new();
-    for item in items {
-        if matches!(item, Item::Bindings(_)) {
-            flush_sorted_segment(&mut segment, &mut out);
-            out.push(item);
-        } else {
-            segment.push(item);
-        }
-    }
+    let mut segment: Vec<&'a Item> = items.to_vec();
     flush_sorted_segment(&mut segment, &mut out);
     out
 }
@@ -143,8 +108,6 @@ fn is_pinned_entry(f: &FunctionDef) -> bool {
 
 fn emit_item(item: &Item) -> String {
     match item {
-        Item::Bindings(b) => format!("bindings \"{}\"", b.urn),
-        Item::Package(p) => format!("package \"{}\"", p.coordinate),
         Item::TypeDef(td) => emit_type_def(td),
         Item::Function(f) => emit_function(f),
     }
@@ -207,11 +170,11 @@ fn emit_function(func: &FunctionDef) -> String {
     out.push_str(&emit_type_expr(&func.return_ty));
 
     // Body. Functions whose body was synthesized by the loader (i.e.
-    // the `extern_wasm` field is populated because they were declared
-    // under a `bindings "…"` directive) get no body emitted — the
-    // source they came from already used the bodyless `name = (P) -> R`
-    // form. The loader recreates that shape on every parse, so the
-    // formatter just needs to mirror it.
+    // the `extern_wasm` field is populated because they came from a
+    // vendored binding file) get no body emitted — the source they
+    // came from already used the bodyless `name = (P) -> R` form. The
+    // loader recreates that shape on every parse, so the formatter
+    // just needs to mirror it.
     if func.extern_wasm.is_none() {
         out.push_str(" {\n");
         for expr in &func.body.exprs {
@@ -900,13 +863,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bindings_directive_bounds_sorting() {
-        // A `bindings` header governs the declarations after it, so
-        // sorting never moves a declaration across one.
-        assert_idempotent("Zed = Int\n\nbindings \"canon:builtins/x@0.1.0\"\n\nAlpha = Int\n");
-    }
-
-    #[test]
     fn test_dispatch_arms_sorted() {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
@@ -957,24 +913,13 @@ mod tests {
     }
 
     #[test]
-    fn test_bindings_directive_round_trips() {
-        // A `bindings "<urn>"` line at the top of a file is the new
-        // canonical way to declare external function bindings. The
-        // formatter passes it through unchanged.
+    fn test_body_less_function_type_aliases_round_trip() {
+        // Bare function-type aliases are the shape of a binding file
+        // (the vendored path, not a header, carries the URN). The
+        // formatter passes them through as ordinary type aliases.
         assert_format(
-            "bindings \"wasi:clocks/wall-clock@0.3.0\"\n\nnow = () -> Datetime\n",
-            "bindings \"wasi:clocks/wall-clock@0.3.0\"\n\nnow = () -> Datetime\n",
-        );
-    }
-
-    #[test]
-    fn test_bindings_with_multiple_functions() {
-        // Multiple function-type aliases under a single `bindings`
-        // directive — the loader rewrites each into a bound FunctionDef
-        // at parse time; the formatter just preserves the source shape.
-        assert_format(
-            "bindings \"wasi:clocks/monotonic-clock@0.3.0\"\n\ngetResolution = () -> Duration\n\nnow = () -> Mark\n",
-            "bindings \"wasi:clocks/monotonic-clock@0.3.0\"\n\ngetResolution = () -> Duration\n\nnow = () -> Mark\n",
+            "getResolution = () -> Duration\n\nnow = () -> Mark\n",
+            "getResolution = () -> Duration\n\nnow = () -> Mark\n",
         );
     }
 

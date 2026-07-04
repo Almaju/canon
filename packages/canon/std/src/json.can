@@ -8,29 +8,21 @@ Json = (String) -> Result<Json, MalformedJson> {
 
 ToJson = () -> Json
 
-bindings "canon:builtins/json@0.1.0"
+ToJson = (Bool) -> Json {
+    Bool.fromBool()
+}
 
-field = (Json * String) -> Result<Json, MalformedJson>
+ToJson = (Float) -> Json {
+    Float.fromFloat()
+}
 
-bindings "canon:builtins/json@0.1.0#from-bool"
+ToJson = (Int) -> Json {
+    Int.fromInt()
+}
 
-ToJson = (Bool) -> Json
-
-bindings "canon:builtins/json@0.1.0#from-float"
-
-ToJson = (Float) -> Json
-
-bindings "canon:builtins/json@0.1.0#from-int"
-
-ToJson = (Int) -> Json
-
-bindings "canon:builtins/json@0.1.0#from-string"
-
-ToJson = (String) -> Json
-
-bindings "canon:builtins/json@0.1.0#to-string"
-
-asString = (Json) -> Result<String, MalformedJson>
+ToJson = (String) -> Json {
+    String.fromString()
+}
 
 checkTrailing = (ParseStep * String) -> ParseStep {
     ParseStep.(

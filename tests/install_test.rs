@@ -68,7 +68,7 @@ version = "0.1.0"
     // The fixture defines a single `monotonic-clock` interface within
     // the `wasi:clocks` package. Expect one binding file at the
     // snake-cased path plus the install index sidecar.
-    let expected_binding = root.join("bindgen/wasi/clocks/monotonic_clock.can");
+    let expected_binding = root.join("bindgen/wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can");
     let expected_index = root.join("bindgen/_install.toml");
     assert!(
         expected_binding.exists(),
@@ -86,12 +86,15 @@ version = "0.1.0"
     assert!(outcome.written.contains(&expected_index));
 
     let content = fs::read_to_string(&expected_binding).expect("read binding");
-    // The binding starts with a `bindings "<urn>"` directive and lists
-    // each function as a bare type alias. The loader
-    // (`apply_bindings_directive` in `src/loader.rs`) rewrites those
-    // aliases into real FunctionDefs with the URN attached at load
-    // time. No per-function `extern Wasm` marker is emitted.
-    assert!(content.contains("bindings \"wasi:clocks/monotonic-clock@"));
+    // The binding file is pure source: bare function-type aliases, no
+    // header. The versioned directory name carries the interface's
+    // package and version, and the loader derives each declaration's
+    // URN from that path (a binding file is recognized by shape —
+    // PACKAGES.md slice 8).
+    assert!(
+        !content.contains("bindings \""),
+        "no bindings header should be emitted, got:\n{content}",
+    );
     assert!(
         !content.contains("extern Wasm"),
         "bindgen should not emit per-function `extern Wasm`, got:\n{content}",
@@ -101,7 +104,7 @@ version = "0.1.0"
 
     // The index sidecar should map this file to the correct URN.
     let index_content = fs::read_to_string(&expected_index).expect("read index");
-    assert!(index_content.contains("\"wasi/clocks/monotonic_clock.can\""));
+    assert!(index_content.contains("\"wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can\""));
     assert!(index_content.contains("wasi:clocks/monotonic-clock@"));
 }
 
@@ -149,7 +152,7 @@ version = "0.1.0"
     );
 
     let outcome = install::install(&root).expect("install with broad prefix should succeed");
-    let expected = root.join("bindgen/wasi/clocks/monotonic_clock.can");
+    let expected = root.join("bindgen/wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can");
     assert!(
         expected.exists(),
         "expected `{}` to be written; got {:?}",
@@ -239,8 +242,11 @@ fn loader_resolves_use_against_installed_bindgen() {
     // We stand up that exact shape on disk and assert that
     // `loader::load_module` resolves the `use` line against the
     // installed binding file.
+    // A uniquely-named WIT package (not one the bundled `canon/std`
+    // already provides) so a bare reference resolves to the project's
+    // `bindgen/` without colliding with the standard library.
     let root = tmpdir("loader_uses_bindgen");
-    vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
+    vendor_wit(&root, "widget.wit", "widget.wit");
     write_manifest(
         &root,
         r#"
@@ -248,7 +254,7 @@ name = "my-app"
 version = "0.1.0"
 
 [imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
+"example/widget" = "vendor/widget.wit"
 "#,
     );
 
@@ -256,38 +262,32 @@ version = "0.1.0"
 
     // Write a source file in src/main.can that references a name the
     // binding declares. Imports are automatic: the loader resolves
-    // `getResolution` against the project's `bindgen/` tree by declared
-    // name, pulling the whole binding file in.
+    // `spin` against the project's `bindgen/` tree by declared name,
+    // pulling the whole binding file in.
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(
-        &entry,
-        "main = () -> Unit {\n    getResolution().print()\n}\n",
-    )
-    .expect("write entry");
+    fs::write(&entry, "main = () -> Unit {\n    spin().print()\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
-    // The loader's `module.items` should include items contributed by
-    // the bindgen file. The monotonic-clock fixture declares `Duration`
-    // and `Instant` type aliases plus `now` and `getResolution`. If
-    // resolution failed we'd never get here.
+    // The binding file declares `spin` and `wobble`; both should land in
+    // `module.items`. If resolution failed we'd never get here.
     let item_count = result.module.items.len();
     assert!(
-        item_count >= 4,
+        item_count >= 2,
         "expected the bindgen file's declarations to be loaded; got {item_count} items",
     );
 }
 
 #[test]
-fn loader_patches_bare_extern_wasm_with_urn_from_install_index() {
-    // The slice-4 contract: a bindgen file with bare `extern Wasm`
-    // declarations gets each function's `extern_wasm.path` filled in by
-    // the loader, with the URN coming from `bindgen/_install.toml` and
-    // the function name camel-back-converted to kebab-case.
+fn loader_derives_extern_urns_from_vendored_path() {
+    // The slice-8 contract: an installed binding file carries no
+    // directive; the loader derives each function's `extern_wasm.path`
+    // from the vendored path (`bindgen/wasi/clocks@<ver>/…`), with the
+    // function name camel-back-converted to kebab-case.
     let root = tmpdir("patch_bare_externs");
-    vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
+    vendor_wit(&root, "widget.wit", "widget.wit");
     write_manifest(
         &root,
         r#"
@@ -295,7 +295,7 @@ name = "my-app"
 version = "0.1.0"
 
 [imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
+"example/widget" = "vendor/widget.wit"
 "#,
     );
 
@@ -304,18 +304,13 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(
-        &entry,
-        "main = () -> Unit {\n    getResolution().print()\n}\n",
-    )
-    .expect("write entry");
+    fs::write(&entry, "main = () -> Unit {\n    spin().print()\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 
-    // The fixture declares `now` and `get-resolution` (kebab) which the
-    // bindgen renders as `now` and `getResolution`. Both should land in
-    // `module.items` with their `extern_wasm.path` populated to the
-    // full canonical-ABI form.
+    // The binding file declares `spin` and `wobble`; both should land in
+    // `module.items` with their `extern_wasm.path` derived from the
+    // vendored path (`bindgen/example/widget@1.0.0/gadget.can`).
     let externs: Vec<(String, String)> = result
         .module
         .items
@@ -329,22 +324,22 @@ version = "0.1.0"
         })
         .collect();
 
-    let now = externs
+    let spin = externs
         .iter()
-        .find(|(name, _)| name == "now")
-        .expect("`now` should be loaded");
+        .find(|(name, _)| name == "spin")
+        .expect("`spin` should be loaded");
     assert_eq!(
-        now.1, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#now",
-        "loader should patch the bare `extern Wasm` with the full URN",
+        spin.1, "example:widget/gadget@1.0.0#spin",
+        "loader should derive the full URN from the vendored path",
     );
 
-    let get_resolution = externs
+    let wobble = externs
         .iter()
-        .find(|(name, _)| name == "getResolution")
-        .expect("`getResolution` should be loaded");
+        .find(|(name, _)| name == "wobble")
+        .expect("`wobble` should be loaded");
     assert_eq!(
-        get_resolution.1, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#get-resolution",
-        "camelCase function name should be reconverted to kebab when appended to URN",
+        wobble.1, "example:widget/gadget@1.0.0#wobble",
+        "each function's URN is derived from the same vendored path",
     );
 }
 
@@ -449,7 +444,7 @@ version = "0.1.0"
         "should have written something"
     );
     assert!(root
-        .join("bindgen/wasi/clocks/monotonic_clock.can")
+        .join("bindgen/wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can")
         .is_file());
 }
 

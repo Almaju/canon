@@ -1,5 +1,0 @@
-Response = Handle
-
-bindings "wasi:http/types@0.3.0-rc-2026-03-15#[static]response.new"
-
-Response = (Body * Headers * Status) -> Response
