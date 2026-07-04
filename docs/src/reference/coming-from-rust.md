@@ -1,10 +1,9 @@
 # Coming from Rust
 
-Canon's compiler is written in Rust and the language inherits Rust-style
-ownership analysis, but it does **not** transpile to Rust. Programs
-compile to WebAssembly Components (WASI Preview 3). If you already know
-Rust, this page is the fastest path in — the cheat sheet is the
-syntax-level mapping, not a runtime mapping.
+Canon's compiler is written in Rust and the language inherits
+Rust-style ownership analysis, but it does **not** transpile to Rust.
+Programs compile to WebAssembly Components (WASI Preview 3). The cheat
+sheet below is a syntax-level mapping, not a runtime mapping.
 
 ## Cheat Sheet
 
@@ -21,15 +20,15 @@ syntax-level mapping, not a runtime mapping.
 | `Option<T>`                                | `Option<T>`                             |
 | `?` operator                               | `?` operator (same semantics)           |
 | `match x { ... }`                          | `x.( ... )`                             |
-| `let x = ...;`                             | No equivalent — declare a newtype       |
+| `let x = ...;`                             | No equivalent; declare a newtype        |
 | `if cond { a } else { b }`                 | `cond.( * (False) -> R { b } * (True) -> R { a } )` |
 | `pub fn`                                   | Everything is public                    |
-| `mod foo;`                                 | No `mod` — `foo.can` declares `Foo`      |
+| `mod foo;`                                 | No `mod`; `foo.can` declares `Foo`       |
 | `use crate::foo::Foo;`                     | `use Foo`                               |
 | `use serde_json::Value;` (third-party)     | `use canon/std/Foo` for stdlib, plus `extern Wasm` for raw imports |
 | `fn(...) -> T` (function type)             | `(params) -> T` (also a trait declaration) |
 | `&T` / `&mut T` / `Box<T>` / `Rc<T>`       | Inferred by the compiler                |
-| `async fn`, `.await`                       | Inferred — no source-level keyword      |
+| `async fn`, `.await`                       | Inferred; no source-level keyword       |
 
 ## Things Rust Has That Canon Doesn't
 
@@ -38,18 +37,18 @@ syntax-level mapping, not a runtime mapping.
 - **Comments.** Use names and types.
 - **`if`/`else`.** Use dispatch on `Bool`.
 - **`let` and local variables.** Method chaining only; newtype an
-  intermediate value if you really need to name it.
+  intermediate value if you need to name it.
 - **Named arguments.** Use newtypes for disambiguation.
 - **Macros and `format!`.** No comparable mechanism yet.
 - **`async`/`await`.** Suspension is inferred from `extern Wasm.async`
-  declarations and `Future<T>`/`Stream<T>` consumption — both keywords
+  declarations and `Future<T>`/`Stream<T>` consumption; both keywords
   are absent at the source level.
 
 ## Things Canon Has That Rust Doesn't
 
 - **Mandatory alphabetical declaration order.** Compiler-enforced.
 - **Domain-first I/O.** Effects flow through ordinary values (`File`,
-  `Url`, `Database`) constructed from concrete inputs — no `unsafe`, no
+  `Url`, `Database`) constructed from concrete inputs. No `unsafe`, no
   globals, no `lazy_static`, no service locators.
 - **Inline error unions.** `Result<Bytes, IoError + NotFound>` without
   declaring a wrapper enum at every call site.
@@ -70,20 +69,19 @@ syntax-level mapping, not a runtime mapping.
 | `canon inspect wat hello.can`   | WAT (WebAssembly Text) for the **core** module               |
 | `canon check`                  | Type + sort-order check on the current package, no codegen   |
 
-A package looks like `canon.toml` + `src/main.can` + `build/` — the
-same three-sibling shape as `Cargo.toml` + `src/` + `target/`. A
-workspace looks like `canon.toml` (`[workspace] members = ["*"]`) +
-member packages + a shared `build/` at the workspace root — the same
-shape as Cargo workspaces. There is no `rustc`/`cargo` invocation
-anywhere in the build path; the output `.wasm` is a portable
-WebAssembly Component.
+A package is `canon.toml` + `src/main.can` + `build/`: the same
+three-sibling shape as `Cargo.toml` + `src/` + `target/`. A workspace
+is `canon.toml` (`[workspace] members = ["*"]`) + member packages + a
+shared `build/` at the workspace root, the same shape as Cargo
+workspaces. There is no `rustc`/`cargo` invocation anywhere in the
+build path; the output `.wasm` is a portable WebAssembly Component.
 
 ## When in Doubt
 
 - Look at the [`examples/`](https://github.com/Almaju/canon/tree/main/examples)
   directory in the repo.
-- Read [`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md)
-  — it's the authoritative spec.
+- Read [`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md),
+  the authoritative spec.
 - Read [`WASM.md`](https://github.com/Almaju/canon/blob/main/WASM.md)
   for the WASM-backend status and known gaps.
 - `canon inspect wat path/to/file.can` prints the WAT the compiler produces.

@@ -1,6 +1,6 @@
 # Building and Running
 
-Canon commands operate on a **target**, which is one of:
+Canon commands operate on a **target**, one of:
 
 - a **package directory** (`canon.toml` + `src/main.can`),
 - a **workspace directory** (`canon.toml` with a `[workspace]` table
@@ -44,9 +44,9 @@ my-workspace/
     src/main.can
 ```
 
-`members = ["*"]` is a shorthand for "every immediate subdirectory that
-contains an `canon.toml`". Explicit lists (`members = ["foo", "bar"]`)
-work too. Nested workspaces are not allowed.
+`members = ["*"]` means every immediate subdirectory containing an
+`canon.toml`. Explicit lists (`members = ["foo", "bar"]`) work too.
+Nested workspaces are not allowed.
 
 ## Run a Program
 
@@ -57,9 +57,9 @@ canon run hello.can              # single-file mode
 canon run my-workspace -p foo   # one member of a workspace
 ```
 
-Compiles the target to a WebAssembly component and immediately runs it
-through the embedded `wasmtime` runtime. `canon run` on a workspace
-without `-p` is ambiguous and errors with a hint listing the members.
+Compiles the target to a WebAssembly component and runs it through the
+embedded `wasmtime` runtime. `canon run` on a workspace without `-p` is
+ambiguous and errors with a hint listing the members.
 
 ## Build a Component
 
@@ -70,13 +70,12 @@ canon build my-workspace        # builds every member
 canon build my-workspace -p foo # builds only `foo`
 ```
 
-In package mode, produces `build/<name>.wasm` and `build/<name>.wit`
-next to the package's `src/`. In workspace mode, every member's
-artifacts land in the workspace's shared `build/` directory. In
-single-file mode, the output goes to `build/<stem>/<stem>.wasm` next to
-the file. The component runs on any host that supports WASI Preview 3
-and satisfies its imports — `canon run`, `wasmtime serve`, browser
-polyfills, edge runtimes, etc.
+Package mode produces `build/<name>.wasm` and `build/<name>.wit` next
+to the package's `src/`. Workspace mode puts every member's artifacts
+in the workspace's shared `build/`. Single-file mode writes
+`build/<stem>/<stem>.wasm` next to the file. The component runs on any
+host that supports WASI Preview 3 and satisfies its imports:
+`canon run`, `wasmtime serve`, browser polyfills, edge runtimes.
 
 ## Serve as an HTTP Handler
 
@@ -102,11 +101,10 @@ canon inspect ast    hello.can   # parser output (AST debug dump)
 canon inspect wat    hello.can   # generated WebAssembly Text
 ```
 
-One verb, three stages. The `wat` stage is the fastest way to see how
-Canon constructs map to wasm — print statements, dispatch, heap
-allocation, async lowering — without dragging in the component wrapping
-layer. `tokens` and `ast` are diagnostic tools when you want to
-understand exactly how the lexer or parser sees your code.
+One verb, three stages. `wat` shows how Canon constructs (print
+statements, dispatch, heap allocation, async lowering) map to wasm,
+without the component wrapping layer. `tokens` and `ast` show how the
+lexer and parser see your code.
 
 ## Check Sort Order and Types
 
@@ -117,7 +115,7 @@ canon check my-workspace -p foo # only one member of a workspace
 ```
 
 Runs the full checker (sort-order rules plus type checking) without
-codegen. Fast — useful as an editor lint or pre-commit gate.
+codegen. Fast enough for an editor lint or a pre-commit gate.
 
 ## Format
 
@@ -134,8 +132,8 @@ canon test mymod_test.can
 
 Discovers every `() -> TestResult` function in the file and prints a
 `[ ok ]` / `[FAIL]` line per test. The process exits `1` when any test
-fails, so `canon test` slots straight into CI. See the
-[Testing chapter](../tour/testing.md) for the full conventions.
+fails, so `canon test` slots straight into CI. See
+[Testing](../tour/testing.md) for the conventions.
 
 ## Language Server
 
