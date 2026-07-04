@@ -99,7 +99,7 @@ three declarative attributes:
 | `data-msg-input="X:"` | change | `X:` + the control's value |
 
 Payload-carrying messages are plain string composition
-(`"Toggle:".concat(id.toText())`) decoded in `update` with
+(`"Toggle:".concat(id.String())`) decoded in `update` with
 `substring`/`byteAt` — the same pure-Canon parsing the stdlib's JSON
 validator uses. `canon/std/web` provides `button` (renders
 `data-msg`), `elAttr` (arbitrary attributes for the form/input

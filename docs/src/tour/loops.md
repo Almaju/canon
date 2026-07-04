@@ -6,7 +6,7 @@ through higher-order methods on collections or recursion.
 ## Higher-Order Methods
 
 For most collection work, use methods on the collection itself:
-`map`, `get`, `length`, `first`.
+`map`, `get`, `length`, `first`, `append`, `concat`.
 
 ```canon,run=list-map
 main = () -> Unit {
@@ -16,6 +16,31 @@ main = () -> Unit {
         .print()
 }
 ```
+
+## Recursion
+
+Anything the collection methods don't cover is plain recursion —
+functions call themselves, and dispatch supplies the base case:
+
+```canon,run=countdown
+countdown = (Int) -> Unit {
+    Int.eq(0).(
+        * (False) -> Unit {
+            Int.print()
+            Int.sub(1).countdown()
+        }
+        * (True) -> Unit { "liftoff".print() }
+    )
+}
+
+main = () -> Unit {
+    3.countdown()
+}
+```
+
+The stdlib's `Map` and `Set` are built this way — recursive unions
+walked by recursive functions — as is the JSON validator; all three
+make good reference code.
 
 ## Why No Loop Keywords?
 

@@ -29,6 +29,10 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `fn(...) -> T` (function type)             | `(params) -> T` (also a trait declaration) |
 | `&T` / `&mut T` / `Box<T>` / `Rc<T>`       | Inferred by the compiler                |
 | `async fn`, `.await`                       | Inferred; no source-level keyword       |
+| `String::from(x)` / `x.into()` / `x.to_string()` | `String(x)` / `x.String()` — conversion is construction |
+| `s.parse::<i64>()?`                        | `Int(s)?` / `s.Int()?` (`use canon/std/Int`) |
+| `HashMap::new()` + `.insert(k, v)`         | `Map().insert(k, v)` (`use canon/std/Map`; sorted, functional) |
+| `BTreeSet::new()` + `.insert(x)`           | `Set().insert(x)` (`use canon/std/Set`) |
 
 ## Things Rust Has That Canon Doesn't
 

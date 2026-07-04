@@ -104,8 +104,7 @@ positional product access `.1`.
 ## Generics
 
 Types may be parameterized with angle brackets: `List<T>`,
-`Option<T>`, `Result<T, E>`, `Map<String, Int>`. Constraints name a
-trait after `:`:
+`Option<T>`, `Result<T, E>`. Constraints name a trait after `:`:
 
 ```canon
 showAll = <T: Show>(List<T>) -> Unit {
@@ -135,6 +134,11 @@ Value = Int
 
 There is no user-visible `Box<T>`; the compiler chooses the indirection.
 
+The stdlib's `Map` and `Set` (`canon/std/Map`, `canon/std/Set`) are
+recursive unions in exactly this shape — `Map = Empty + Node` with
+`Node = Key * Rest * Value` and `Rest = Map` — and double as reference
+code for the pattern.
+
 ## Validated Constructors
 
 By default every type `T` has a total constructor `T(inner)`. A file may
@@ -160,14 +164,54 @@ Url = (String) -> Result<Url, InvalidUrl> {
   language's entire encapsulation story; see
   [visibility](./modules.md#visibility).
 
+## Conversions
+
+**Conversion is construction.** There is no `parse` / `toString` /
+`from` / `into` family — converting a value to type `T` is spelled as
+constructing a `T`, because it is one:
+
+```canon
+String(42)            # "42" — decimal rendering
+42.String()           # the same declaration, method spelling
+Int("42")             # Result<Int, MalformedInt> — parsing can fail
+"42".Int()?           # method spelling, ?-propagated
+String(Byte(65))      # "A" — a Byte renders as its character
+List("1", "2").Json() # [1,2] — a list of JSON values as a JSON array
+```
+
+- Infallible conversions return the target type; the function's name
+  *is* its return type, so it cannot lie about what it produces.
+- Fallible conversions are [validated
+  constructors](#validated-constructors) returning `Result<T, E>` —
+  `Int(String)` forces `?` or dispatch exactly like `Url(String)`.
+- `T(value)` and `value.T()` are the same declaration (the commutative
+  method-call rule), so what Rust splits into `From` and `Into` is one
+  function here.
+- Ambiguity is resolved by newtypes: `String(42)` renders decimal
+  digits, `String(Byte(42))` is the one-byte string `"*"` — wrapping
+  to mean the other thing is what newtypes are for.
+
+User types opt in the same way the stdlib does: declare a function
+named after the target type taking the source type.
+`Celsius = (Fahrenheit) -> Celsius { … }` enables both `Celsius(f)`
+and `f.Celsius()`.
+
 ## Zero-Data Types
 
 A type with no underlying data (`Unit`, `True`, `False`, a payload-less
 variant) has exactly one value, produced with an empty argument list:
 `True()`, `None()`. Calling a **data-carrying** constructor with no
 arguments (`String()`, `User()`) is a compile error: absence belongs in
-`Option<T>`, not in a default value. Factory-style construction uses an
-explicit lowercase function (`List.empty()`).
+`Option<T>`, not in a default value.
+
+Two escape hatches exist, both deliberate:
+
+- `List()` is the **empty list** — the type's zero value, and the base
+  case that recursive builders grow from via `.concat(…)` /
+  `.append(…)`.
+- A type may declare its own zero-arg [validated
+  constructor](#validated-constructors): `Map = () -> Map { Empty() }`
+  in `canon/std/Map` makes `Map()` the empty map.
 
 ## No Type Inference
 

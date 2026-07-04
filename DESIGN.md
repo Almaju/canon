@@ -148,7 +148,6 @@ Types can be parameterized by other types using angle brackets:
 List<T>
 Option<T>
 Result<T, E>
-Map<String, Int>
 ```
 
 The chevron syntax does not conflict with `[]` repetition or `*` product.
@@ -201,7 +200,7 @@ String literals exist to avoid the parsing ambiguity of bare `String(...)` with 
 
 `String()`, `Int()`, `User()` — calling any data-carrying constructor with no arguments is a compile-time error. If a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
 
-For factory-style construction (e.g. "an empty list"), use an explicit lowercase function — `List.empty()`, `String.empty()`.
+Two escape hatches exist, both deliberate. `List()` is the **empty list** — the type's zero value, and the base case recursive builders grow from via `.concat(…)` / `.append(…)`. And a type may declare its own zero-arg [validated constructor](#validated-constructors): `Map = () -> Map { Empty() }` in `canon/std/Map` makes `Map()` the empty map.
 
 ### Zero-Data Types
 

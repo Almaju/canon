@@ -65,6 +65,12 @@ A `String` is `Byte^*` interpreted as UTF-8. Indexing (`byteAt`) yields
 bytes, not code points. Higher-level text operations are stdlib
 functions, not language built-ins.
 
+Strings carry the same comparison surface as `Int` — `eq`, `ne`, `lt`,
+`le`, `gt`, `ge` — one spelling for comparison regardless of type.
+Order is byte-wise lexicographic, shorter-first on a shared prefix
+(`"app".lt("apple")` is `True`): the same order the compiler enforces
+on declarations, now available to programs.
+
 ## No Comments
 
 There is no comment syntax. `//`, `/* */`, and `#` are all rejected at
