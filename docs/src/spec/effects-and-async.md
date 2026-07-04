@@ -81,7 +81,7 @@ Canon call:
 "a"
     .slowEcho()
     .parallel("b".slowEcho())
-    .toJsonArray()
+    .Json()
     .print()
 "a"
     .slowEcho()

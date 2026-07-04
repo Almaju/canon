@@ -33,8 +33,14 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
 | `time/Now` | `Now = String` | `canon:builtins/clock` | RFC 3339 wall-clock time |
 | `fs/Path` | `Path = String` | none | filesystem path newtype |
-| `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `read` |
+| `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `read`, `write` |
+| `fs/Contents` | `Contents = String` | none | file-contents newtype (the `write` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
+| `Map` | `Map = Empty + Node` | pure Canon | sorted key→value map (`String` keys/values); see [Map and Set](#map-and-set) |
+| `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set.List()` = members, alphabetically |
+| `Int` | `Int = (String) -> Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
+| `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
+| `Byte` | `Byte = Int` | none | picks the byte→character reading of `String(…)`: `String(Byte(65))` is `"A"` |
 | `http/Url` | `Url`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `get` |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
 | `http/HttpServer` | `HttpServer = String` | `canon:builtins/http-server` | HTTP/1.1 server, see [HTTP Server](#http-server) |
@@ -118,13 +124,14 @@ Currently backed by `canon:builtins/clock` (the host formats the
 time); will move to `wasi:clocks/wall-clock` once that interface's
 canonical-ABI shape lands.
 
-## `File`, `Path`, `IoError`
+## `File`, `Path`, `Contents`, `IoError`
 
-Synchronous file I/O.
+Synchronous file I/O — read and write.
 
 ```canon
 main = () -> Unit {
-    Path("./Cargo.toml")
+    Contents("hello from canon")
+        .write(Path("/tmp/greeting.txt"))?
         .File()?
         .read()?
         .print()
@@ -132,6 +139,8 @@ main = () -> Unit {
 ```
 
 ```canon
+Contents = String
+
 File = String
 
 File = (Path) -> Result<File, IoError>
@@ -139,12 +148,127 @@ File = (Path) -> Result<File, IoError>
 Path = String
 
 read = (File) -> Result<String, IoError>
+
+write = (Contents * Path) -> Result<Path, IoError>
 ```
 
 `Path("…").File()` opens the file, returning a `File` handle or an
-`IoError`; `.read()` reads the entire contents as a `String`. Backed
-by `canon:builtins/filesystem`; will move to the async
-`wasi:filesystem/types` interface once Phase 5 lands.
+`IoError`; `.read()` reads the entire contents as a `String`.
+`Contents("…").write(path)` creates or truncates the file and returns
+the path back on success, so a write chains straight into a re-open —
+the example above round-trips. Backed by `canon:builtins/filesystem`;
+will move to the async `wasi:filesystem/types` interface once Phase 5
+lands.
+
+## Map and Set
+
+Sorted collections, written in **pure Canon** — recursive unions built
+from nothing but dispatch, recursion, and `String` comparison. Keys
+(and Map values) are `String`s until stdlib generics land. All updates
+are functional: `insert` / `remove` return a new collection.
+
+```canon
+main = () -> Unit {
+    Map().insert("b", "2").insert("a", "1").keys().Json().print()
+    Map().insert("k", "v").get("k").(
+        * (None) -> Unit { "absent".print() }
+        * (Some<String>) -> Unit { String.print() }
+    )
+}
+```
+
+Iteration order is **alphabetical by key** — `insert` is a sorted
+insert, so `keys()` / `values()` come back ordered no matter the
+insertion order. (Of course it is: wherever ordering is discretionary,
+Canon picks alphabetical.)
+
+```canon
+Map = Empty + Node
+
+Map = () -> Map
+
+get = (Map * String) -> Option<Value>
+
+insert = (Map * String * Value) -> Map
+
+keys = (Map) -> List<Key>
+
+length = (Map) -> Int
+
+remove = (Map * String) -> Map
+
+values = (Map) -> List<Value>
+```
+
+`Set` is the set-shaped counterpart. `set.List()` — conversion is
+construction — returns the members, alphabetically, as a
+`List<String>`:
+
+```canon
+main = () -> Unit {
+    Set().insert("b").insert("a").insert("b").length().print()
+    Set().insert("x").contains("x").print()
+    Set().insert("b").insert("a").List().Json().print()
+}
+```
+
+```canon
+Set = Absent + Entry
+
+Set = () -> Set
+
+List = (Set) -> List<Item>
+
+contains = (Set * String) -> Bool
+
+insert = (Set * String) -> Set
+
+length = (Set) -> Int
+
+remove = (Set * String) -> Set
+```
+
+Both modules double as reference code for **recursive union types**:
+`Map = Empty + Node` with `Node = Key * Rest * Value` and
+`Rest = Map` is the canonical self-referential shape, auto-boxed by
+the compiler (see [Recursive Types](../spec/types.md#recursive-types)).
+
+## `Int`, `MalformedInt`, `Byte`
+
+Conversions follow one rule — **conversion is construction** (see
+[Conversions](../spec/types.md#conversions)). The infallible
+directions are compiler builtins available without imports:
+
+```canon
+main = () -> Unit {
+    String(42).print()
+    123
+        .String()
+        .concat("!")
+        .print()
+}
+```
+
+The fallible direction, `String` → `Int`, is a validated constructor
+in `canon/std/Int`, written in pure Canon (digit recursion over
+`byteAt`):
+
+```canon
+double = (String) -> Result<Int, MalformedInt> {
+    Ok(Int(String)?.mul(2))
+}
+```
+
+```canon
+Int = (String) -> Result<Int, MalformedInt>
+
+MalformedInt = String
+```
+
+`Byte = Int` resolves the ambiguity of `Int` → `String` (decimal
+rendering vs. byte-to-character) the way Canon resolves everything:
+wrap to mean the other thing. `String(42)` is `"42"`;
+`String(Byte(42))` is `"*"`.
 
 ## `Url`, `HttpError`
 
@@ -310,11 +434,9 @@ Literal values may be:
   instance). The result is concatenated into the surrounding JSON
   scaffolding at runtime.
 
-**Known limitation:** `.ToJson()` doesn't yet fall through newtype
-aliases. `Email = String` won't dispatch to `String`'s instance;
-either declare `ToJson = (Email) -> Json` by hand, or call
-`.String.ToJson()` to unwrap first. A structural derive that walks
-product / union types will close this in a follow-up slice.
+`.ToJson()` follows newtype alias chains: `Email = String` dispatches
+to `String`'s instance without a hand-written one. A structural derive
+that walks product / union types is still a follow-up slice.
 
 ## Not Yet Available
 

@@ -677,6 +677,12 @@ mod host_builtin_filesystem {
                 /// Read the contents of a previously-opened `File`. Takes
                 /// the same string handle returned by `open-file`.
                 read-file-handle: func(file: string) -> result<string, string>;
+
+                /// Write `contents` to the file at `path`, creating it if
+                /// absent and truncating if present. Returns the path back
+                /// on success so call sites can keep chaining
+                /// (`.write(...)?.File()?.read()?`).
+                write-file: func(contents: string, path: string) -> result<string, string>;
             }
             world host-shim {
                 import filesystem;
@@ -696,6 +702,12 @@ mod host_builtin_filesystem {
 
         fn read_file_handle(&mut self, file: String) -> Result<String, String> {
             fs::read_to_string(&file).map_err(|e| e.to_string())
+        }
+
+        fn write_file(&mut self, contents: String, path: String) -> Result<String, String> {
+            fs::write(&path, contents.as_bytes())
+                .map(|_| path)
+                .map_err(|e| e.to_string())
         }
     }
 

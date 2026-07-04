@@ -1,7 +1,7 @@
 main = () -> Unit {
     List("alpha", "beta")
         .map((String) -> String { String.concat("!") })
-        .toJsonArray()
+        .Json()
         .print()
     List("xx", "yyy", "z").map((String) -> Int { String.length() }).get(2).(
         * (None) -> Unit { "none".print() }

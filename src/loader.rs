@@ -460,10 +460,90 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
     register_defined_names(&other_items, ctx);
     inject_json_prelude(&other_items, ctx)?;
     inject_html_prelude(&other_items, ctx)?;
+    inject_int_prelude(&other_items, ctx)?;
     discover_references(&other_items, dir, ctx)?;
     let start = ctx.items.len();
     ctx.items.extend(other_items);
     Ok(start)
+}
+
+/// Int prelude: the fallible parse constructor `Int(String) ->
+/// Result<Int, MalformedInt>` lives in `canon/std/Int` (pure Canon),
+/// but the name `Int` is undiscoverable — it appears in virtually
+/// every program as the builtin type. Mirror of the JSON prelude:
+/// load the stdlib module only when the program actually reaches for
+/// the parse — an `Int(…)` constructor whose argument isn't already a
+/// numeric literal, or a zero-arg `.Int()` conversion call. Skipped
+/// when the file supplies its own `Int` constructor function.
+fn inject_int_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
+    let already_in_scope = other_items.iter().any(|item| match item {
+        Item::Function(f) => {
+            f.name.name == "Int" || f.receiver.as_ref().is_some_and(|r| r.name == "Int")
+        }
+        _ => false,
+    });
+    if already_in_scope || !items_use_int_parse(other_items) {
+        return Ok(());
+    }
+    let Some((pkg, file)) = resolve_bundled_use("canon/std/Int") else {
+        return Ok(());
+    };
+    let key = format!("{}/{}", pkg.name, file.path);
+    if ctx.seen_bundled.insert(key) {
+        load_bundled_source(pkg, file, ctx)?;
+    }
+    Ok(())
+}
+
+fn items_use_int_parse(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Function(f) => f.body.exprs.iter().any(expr_uses_int_parse),
+        _ => false,
+    })
+}
+
+fn expr_uses_int_parse(expr: &Expr) -> bool {
+    match expr {
+        Expr::Constructor { name, args, .. } => {
+            (name.name == "Int"
+                && args.first().is_some_and(|a| {
+                    !matches!(
+                        a,
+                        Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. }
+                    )
+                }))
+                || args.iter().any(expr_uses_int_parse)
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            (method.name == "Int" && args.is_empty())
+                || expr_uses_int_parse(receiver)
+                || args.iter().any(expr_uses_int_parse)
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_uses_int_parse(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| arm.body.exprs.iter().any(expr_uses_int_parse))
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_uses_int_parse(inner),
+        Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_int_parse),
+        Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_int_parse),
+        Expr::FieldAccess { receiver, .. } => expr_uses_int_parse(receiver),
+        Expr::JsonLit { .. }
+        | Expr::HtmlLit { .. }
+        | Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => false,
+    }
 }
 
 /// JSON prelude: `canon/std/Json` loads automatically — like Rust's
@@ -662,6 +742,13 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 /// containers, their builtin variants, and the intrinsically-known
 /// `Json` alias (the JSON prelude decides when the stdlib machinery is
 /// actually needed — see `inject_json_prelude`).
+// NOTE: `Map` and `Set` are deliberately NOT here — they are ordinary
+// pure-Canon stdlib modules (`canon/std/{map,set}.can`), so referencing
+// either name loads its file like any other stdlib type. `Int` IS here
+// (it appears in virtually every program as the builtin type), so the
+// stdlib parse constructor `Int(String)` loads through
+// `inject_int_prelude` instead — the same targeted mechanism as the
+// JSON prelude.
 const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Bool",
     "Deserialize",
@@ -675,7 +762,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Int",
     "Json",
     "List",
-    "Map",
     "Network",
     "Never",
     "None",
@@ -684,7 +770,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Result",
     "Self",
     "Serialize",
-    "Set",
     "Some",
     "Stderr",
     "Stdin",
@@ -701,6 +786,7 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
 const UNDISCOVERABLE_METHODS: &[&str] = &[
     "add",
     "and",
+    "append",
     "byteAt",
     "concat",
     "contains",
@@ -711,14 +797,12 @@ const UNDISCOVERABLE_METHODS: &[&str] = &[
     "ge",
     "get",
     "gt",
-    "gte",
     "insert",
     "keys",
     "le",
     "len",
     "length",
     "lt",
-    "lte",
     "main",
     "map",
     "mod",
@@ -734,7 +818,6 @@ const UNDISCOVERABLE_METHODS: &[&str] = &[
     "slice",
     "sub",
     "substring",
-    "toJsonArray",
     "values",
 ];
 

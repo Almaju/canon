@@ -147,7 +147,6 @@ Types can be parameterized by other types using angle brackets:
 List<T>
 Option<T>
 Result<T, E>
-Map<String, Int>
 ```
 
 The chevron syntax does not conflict with `[]` repetition or `*` product.
@@ -209,7 +208,7 @@ view = (Model) -> Html {
     <div>
         <h1>Counter</h1>
         <button data-msg="Increment">+</button>
-        <span>{Model.toText()}</span>
+        <span>{Model.String()}</span>
     </div>
 }
 ```
@@ -240,7 +239,7 @@ all-static JSON literal. `{{` and `}}` escape literal braces.
 
 `String()`, `Int()`, `User()` — calling any data-carrying constructor with no arguments is a compile-time error. If a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
 
-For factory-style construction (e.g. "an empty list"), use an explicit lowercase function — `List.empty()`, `String.empty()`.
+Two escape hatches exist, both deliberate. `List()` is the **empty list** — the type's zero value, and the base case recursive builders grow from via `.concat(…)` / `.append(…)`. And a type may declare its own zero-arg [validated constructor](#validated-constructors): `Map = () -> Map { Empty() }` in `canon/std/Map` makes `Map()` the empty map.
 
 ### Zero-Data Types
 
@@ -328,6 +327,28 @@ Url = (String) -> Result<Url, InvalidUrl>
 #### Error Naming
 
 Errors are types like any other, and they're named *semantically* — by what failed, not by who emitted them. `InvalidUrl`, `MalformedJson`, `FileNotFound`, `PermissionDenied` carry information; `UrlError`, `JsonError`, `FsError` don't. The exception is opaque wrappers around foreign error types (e.g., `HttpError` wrapping the entire `reqwest::Error` enum) where the underlying error space hasn't been decomposed into Canon variants yet.
+
+### Conversions
+
+**Conversion is construction.** There is no `parse`, no `toString`, no `from`/`into` family — converting a value to type `T` is spelled the same way as constructing a `T`, because it *is* constructing a `T`:
+
+```
+String(42)            # "42" — decimal rendering
+42.String()           # the same declaration, method spelling
+Int("42")             # Result<Int, MalformedInt> — parsing can fail
+"42".Int()?           # method spelling, ?-propagated
+String(Byte(65))      # "A" — a Byte renders as its character
+List("1", "2").Json() # [1,2] — a list of JSON values as a JSON array
+```
+
+One rule covers everything:
+
+- **Infallible conversions return the target type.** `String(Int)` always succeeds, so it returns `String`. The function's name is its return type — it cannot lie.
+- **Fallible conversions are [validated constructors](#validated-constructors).** `Int(String)` can fail, so it returns `Result<Int, MalformedInt>` and forces `?` or dispatch at the call site — exactly like `Url(String)` or `Json(String)`.
+- **The method spelling is free.** `T(value)` and `value.T()` are the same declaration (the commutative method-call rule), so what Rust splits into `From` and `Into` is one function here.
+- **Ambiguity is resolved by newtypes.** `Int` → `String` has two readings — decimal rendering and byte-to-character — so the second one takes a wrapper: `String(42)` renders, `String(Byte(42))` is `"*"`. Wrapping to mean the other thing is what newtypes are for.
+
+User types opt in the same way the stdlib does: declare a function named after the target type taking the source type. `Celsius = (Fahrenheit) -> Celsius { … }` makes both `Celsius(f)` and `f.Celsius()` work.
 
 ## Naming Conventions
 
@@ -1147,12 +1168,12 @@ Three things ship with the language:
 - Boolean atoms (newtype aliases of `Unit`): `False`, `True`
 - Bit‑level composition: `Bit` (`= False + True`), `Byte` (`= Bit^8`), `Bytes` (`= Byte^*`)
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
-- Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
+- Generic containers: `List<T>`, `Option<T>`, `Result<T, E>`
 - Standard unions: `Bool` (`= False + True`), `Ord`
 - Async wrappers: `Future<T>`, `Stream<T>`
 - I/O built-ins: `print` (stdout), wired against `wasi:cli/stdout`
 
-`Map<K, V>` is a sorted key-value map. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is its set-shaped counterpart.
+`Map` and `Set` are deliberately **not** core: they are ordinary pure-Canon stdlib types (`canon/std/Map`, `canon/std/Set`) — sorted recursive unions built from nothing but dispatch, recursion, and `String` comparison. `Map` is a sorted key-value map; iteration order is alphabetical by key, kept that way by construction (`insert` is a sorted insert). `Set` is its set-shaped counterpart, and `set.List()` returns the members alphabetically. The stdlib versions are `String`-keyed/`String`-valued until stdlib generics land; the guiding rule is that anything expressible in the language lives in the language.
 
 `Future<T>` and `Stream<T>` appear in user-visible signatures only when a binding file mirrors an `async func` / `stream<T>` from its WIT interface (see [WIT → Canon Mapping](#wit--canon-mapping)). Everywhere else they are inferred and inserted by the compiler — ordinary Canon code consumes the unwrapped `T` and the async/streaming machinery is invisible (see [Async](#async)).
 
@@ -1167,11 +1188,15 @@ Three things ship with the language:
 | `canon/std/cli/Exit` (`Int.exit()`) | `canon:builtins/cli` (will move to `wasi/cli/exit` once narrow-int codegen lands) | ✅ |
 | `canon/std/Random` | `canon/wasi/random/random` | ✅ |
 | `canon/std/time/Now` (RFC 3339 wall-clock time) | `canon/wasi/clocks/wall_clock` (today: `canon:builtins/clock`) | ✅ |
-| `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ |
+| `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/fs/Contents` (write), `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ — read + write (`Contents("x").write(Path("f"))?.File()?.read()?` round-trips) |
 | `canon/std/http/Url`, `canon/std/http/InvalidUrl`, `canon/std/http/HttpError` | `canon:builtins/url` + `canon:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
 | `canon/std/http/HttpServer`, `canon/std/http/HttpStatus`, `canon/std/http/Port`, `canon/std/http/RoutePath` | `canon:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
 | `canon/std/Json`, `canon/std/MalformedJson` | `canon:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Canon (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k":v}` / `[v,...]` literal syntax with interpolation; structural derive for user types pending |
 | `canon/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Canon | ✅ |
+| `canon/std/Int` (`Int(String) -> Result<Int, MalformedInt>`), `canon/std/MalformedInt` | pure Canon | ✅ — the fallible half of [Conversions](#conversions); the infallible half (`String(Int)`, `String(Byte)`) is a compiler builtin |
+| `canon/std/Byte` (`Byte = Int`; `String(Byte(65))` is `"A"`) | pure Canon (rendering builtin) | ✅ |
+| `canon/std/Map` (sorted, alphabetical iteration; `String` keys/values for now) | pure Canon — recursive union | ✅ |
+| `canon/std/Set` (sorted; `set.List()` = members alphabetically) | pure Canon — recursive union | ✅ |
 
 The `canon:builtins/*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available — the binding file in `canon/wasi` is regenerated, the `canon/std` wrapper stays the same.
 
@@ -1217,6 +1242,10 @@ This is a deliberate design choice: types lie less than names.
 ## Strings
 
 A `String` is `Byte^*` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
+
+### Ordering
+
+Strings carry the same comparison surface as `Int` — `eq`, `ne`, `lt`, `le`, `gt`, `ge` — one spelling for comparison regardless of type. Order is byte-wise lexicographic, with the shorter string first on a shared prefix (`"app".lt("apple")` is `True`). This is the same order the compiler enforces on declarations, dispatch arms, and imports, now available to programs.
 
 ### Indexing Is 1-Based
 

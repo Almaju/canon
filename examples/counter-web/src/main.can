@@ -16,7 +16,7 @@ view = (Model) -> Html {
     "Canon Counter"
         .h1()
         .concat(Msg("Decrement").button("-"))
-        .concat(Model.toText().span())
+        .concat(Model.String().span())
         .concat(Msg("Increment").button("+"))
         .div()
 }

@@ -6,6 +6,6 @@ main = () -> Unit {
     "hello"
         .slowEcho()
         .parallel("world".slowEcho())
-        .toJsonArray()
+        .Json()
         .print()
 }

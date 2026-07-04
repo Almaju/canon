@@ -1,0 +1,15 @@
+main = () -> Unit {
+    List(1, 2)
+        .append(3)
+        .length()
+        .print()
+    List("a")
+        .append("b")
+        .concat(List("c", "d"))
+        .Json()
+        .print()
+    List(10, 20).append(30).get(3).(
+        * (None) -> Unit { "none".print() }
+        * (Some<Int>) -> Unit { Int.print() }
+    )
+}

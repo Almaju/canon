@@ -65,7 +65,7 @@ Two ideas in eight lines:
 
 ```canon
 indexBody = () -> Body {
-    Body(List(Note("ship canon v1").render(), Note("write the docs").render()).toJsonArray())
+    Body(List(Note("ship canon v1").render(), Note("write the docs").render()).Json())
 }
 
 notFound = () -> Body {
@@ -91,7 +91,7 @@ serve = (Request) -> Response {
 ```
 
 `indexBody` composes the array dynamically now:
-`List<String>.toJsonArray()` is a compiler builtin that joins
+`List<String>.Json()` is a compiler builtin that joins
 already-encoded JSON fragments into an array, so the static array
 literal from chapter 3 gives way to encoding each `Note` once. The
 behaviour is identical (same routes, same bytes), but the JSON

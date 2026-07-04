@@ -43,7 +43,7 @@ Conventions: `runtime/x` = `tests/runtime/x.can` (+ `.stdout` golden),
 | Surface | Coverage |
 |---|---|
 | JSON (literals, parse, roundtrip, field extract, typed ctors, pure-Canon parser) | `runtime/json_*` (9 fixtures) |
-| `List<String>.toJsonArray()` | `runtime/list_to_json_array` |
+| `List<String>.Json()` (né `toJsonArray`) | `runtime/list_to_json_array` |
 | `canon/std/cli` — `Args()`, `Cwd()` (list<string> / option<string> externs) | `runtime/cli_args_cwd` |
 | `canon/std/cli` — `exit` (narrow-int u8 extern, exit-code mapping) | `exit_code_test.rs::exit_code_propagates` |
 | `canon test` framework (assert, FAIL banner, exit codes) | `canon_tests.rs` (runs all `tests/canon/`), `exit_code_test.rs::canon_test_exit_codes` |

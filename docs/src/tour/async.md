@@ -161,7 +161,7 @@ method-call shape as everything else in Canon.
 "a"
     .slowEcho()
     .parallel("b".slowEcho())
-    .toJsonArray()
+    .Json()
     .print()
 "a"
     .slowEcho()

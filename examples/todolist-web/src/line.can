@@ -12,18 +12,18 @@ renderItem = (Int * Line) -> Html {
         * (False) -> Html {
             Line.substring(3, Line.length()).text().String
                 .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("done").String)
+                .concat(Msg("Toggle:".concat(Int.String())).button("done").String)
                 .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
+                .concat(Msg("Delete:".concat(Int.String())).button("remove").String)
                 .li()
         }
         * (True) -> Html {
             "<s>"
                 .concat(Line.substring(3, Line.length()).text().String)
                 .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("undo").String)
+                .concat(Msg("Toggle:".concat(Int.String())).button("undo").String)
                 .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
+                .concat(Msg("Delete:".concat(Int.String())).button("remove").String)
                 .li()
         }
     )

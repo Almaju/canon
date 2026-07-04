@@ -108,7 +108,6 @@ Type parameters use angle brackets:
 List<T>
 Option<T>
 Result<T, E>
-Map<String, Int>
 ```
 
 Constraints on type parameters use `:`, naming a trait the parameter must

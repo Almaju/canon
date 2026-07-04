@@ -42,12 +42,17 @@ fn is_capability_type(name: &str) -> bool {
     CAPABILITY_TYPES.contains(&name)
 }
 
-const BUILTIN_GENERIC_TYPES: &[&str] =
-    &["Future", "List", "Map", "Option", "Result", "Set", "Stream"];
+// `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
+// types (`canon/std/Map`, `canon/std/Set`), so their names arrive through
+// the imported typedefs like any other user type.
+const BUILTIN_GENERIC_TYPES: &[&str] = &["Future", "List", "Option", "Result", "Stream"];
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
-const ZERO_DATA_BUILTINS: &[&str] = &["False", "True", "Unit"];
+/// `List()` is the empty list — the type's zero value, and the base case
+/// recursive std collections (`canon/std/Map`'s `keys`, `canon/std/Set`'s
+/// `List`) build up from via `concat`.
+const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 
 /// Synthetic concurrency combinators recognised by the codegen as built-in
 /// `compile_parallel` / `compile_race` paths. They appear in source as if
@@ -1681,23 +1686,16 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if matches!(receiver_ty, "Int" | "Float")
         && matches!(
             method,
-            "add"
-                | "sub"
-                | "mul"
-                | "div"
-                | "rem"
-                | "mod"
-                | "ne"
-                | "eq"
-                | "lt"
-                | "gt"
-                | "le"
-                | "ge"
-                | "lte"
-                | "gte"
+            "add" | "sub" | "mul" | "div" | "rem" | "mod" | "ne" | "eq" | "lt" | "gt" | "le" | "ge"
         )
         && arg_count == 1
     {
+        return true;
+    }
+    // Conversion is construction (DESIGN.md § Conversions): `Int.String()`
+    // is the method spelling of the `String(Int)` constructor. `Byte`
+    // receivers reach this arm through the alias chain (`Byte = Int`).
+    if receiver_ty == "Int" && method == "String" && arg_count == 0 {
         return true;
     }
     if receiver_ty == "Bool" && matches!(method, "not") && arg_count == 0 {
@@ -1716,36 +1714,35 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("substring", 2)
                 | ("slice", 2)
                 | ("eq", 1)
+                | ("ne", 1)
+                | ("lt", 1)
+                | ("le", 1)
+                | ("gt", 1)
+                | ("ge", 1)
         )
     {
         return true;
     }
+    // `list.Json()` — conversion-is-construction spelling of "encode this
+    // list of pre-rendered JSON values as a JSON array".
     if receiver_ty == "List"
         && matches!(
             (method, arg_count),
-            ("length", 0) | ("first", 0) | ("get", 1) | ("map", 1) | ("toJsonArray", 0)
+            ("length", 0)
+                | ("first", 0)
+                | ("get", 1)
+                | ("map", 1)
+                | ("append", 1)
+                | ("concat", 1)
+                | ("Json", 0)
         )
     {
         return true;
     }
-    if receiver_ty == "Map" {
-        return matches!(
-            (method, arg_count),
-            ("empty", 0)
-                | ("get", 1)
-                | ("insert", 2)
-                | ("keys", 0)
-                | ("length", 0)
-                | ("remove", 1)
-                | ("values", 0)
-        );
-    }
-    if receiver_ty == "Set" {
-        return matches!(
-            (method, arg_count),
-            ("contains", 1) | ("empty", 0) | ("insert", 1) | ("length", 0) | ("remove", 1)
-        );
-    }
+    // NOTE: `Map` and `Set` have no builtin entries — they are pure
+    // Canon (`canon/std/Map`, `canon/std/Set`: sorted recursive
+    // unions), so their methods arrive through `symbols.methods` like
+    // any other stdlib declaration once the module is imported.
     false
 }
 
@@ -1762,13 +1759,34 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::IntLit { .. } => "Int".to_string(),
         Expr::FloatLit { .. } => "Float".to_string(),
         Expr::HexLit { .. } => "Hex".to_string(),
-        Expr::Constructor { name, .. } => {
+        Expr::Constructor { name, args, .. } => {
             // Variants widen to their parent union (e.g. `Some(x)` typed as
             // `Option`); free-function constructors take their declared
             // return type; everything else is treated as the type name
             // itself (newtype wrap).
             if let Some(parent) = symbols.variant_of.get(&name.name) {
                 parent.clone()
+            } else if matches!(name.name.as_str(), "Int" | "Float" | "String") {
+                // Primitive constructors are identity when the argument
+                // already has the target type (`Int(1)` is an `Int`) and
+                // *conversions* otherwise (conversion is construction,
+                // DESIGN.md § Conversions). A fallible conversion is
+                // declared as a self-named method on the source type
+                // (`Int = (String) -> Result<Int, MalformedInt>` in
+                // `canon/std/Int` registers as `("String", "Int")`), so
+                // that signature's return type wins for non-matching
+                // arguments. Infallible builtin conversions
+                // (`String(42)`) have no such declaration and keep the
+                // primitive's own name.
+                let arg_ty = args.first().map(|a| expr_type_name_in_scope(a, symbols));
+                match arg_ty {
+                    Some(t) if t != name.name => symbols
+                        .methods
+                        .get(&(t, name.name.clone()))
+                        .map(|sig| sig.return_ty.clone())
+                        .unwrap_or_else(|| name.name.clone()),
+                    _ => name.name.clone(),
+                }
             } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
                 sig.return_ty.clone()
             } else {
@@ -1782,7 +1800,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 // `a.parallel(b)` returns `Future<List<T>>`; the
                 // auto-await collapses `Future<List<T>>` → `List<T>` at
                 // any consuming site, so we report `List` here to keep
-                // method-chain typing (`.toJsonArray()`, `.get(i)`, etc.)
+                // method-chain typing (`.Json()`, `.get(i)`, etc.)
                 // flowing.
                 return "List".to_string();
             }
@@ -1931,29 +1949,22 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         | ("Float", "print")
         | ("Hex", "print")
         | ("Bool", "print") => "Unit".to_string(),
-        ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
-        ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
-        ("Int", "eq" | "lt" | "gt" | "lte" | "gte") => "Bool".to_string(),
-        ("Float", "eq" | "lt" | "gt" | "lte" | "gte") => "Bool".to_string(),
+        ("Int", "add" | "sub" | "mul" | "div" | "rem" | "mod") => "Int".to_string(),
+        ("Float", "add" | "sub" | "mul" | "div" | "rem" | "mod") => "Float".to_string(),
+        ("Int", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
+        ("Float", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
+        // Conversion is construction: `Int.String()` renders decimal.
+        ("Int", "String") => "String".to_string(),
         ("Bool", "not" | "and" | "or") => "Bool".to_string(),
-        ("String", "concat") => "String".to_string(),
+        ("String", "concat" | "substring" | "slice") => "String".to_string(),
+        ("String", "length" | "len" | "byteAt") => "Int".to_string(),
+        ("String", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         ("List", "length") => "Int".to_string(),
         ("List", "map") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
         ("List", "get") => "Option".to_string(),
-        ("List", "toJsonArray") => "Json".to_string(),
-        ("Map", "empty") => "Map".to_string(),
-        ("Map", "get") => "Option".to_string(),
-        ("Map", "insert") => "Map".to_string(),
-        ("Map", "keys") => "List".to_string(),
-        ("Map", "length") => "Int".to_string(),
-        ("Map", "remove") => "Map".to_string(),
-        ("Map", "values") => "List".to_string(),
-        ("Set", "contains") => "Bool".to_string(),
-        ("Set", "empty") => "Set".to_string(),
-        ("Set", "insert") => "Set".to_string(),
-        ("Set", "length") => "Int".to_string(),
-        ("Set", "remove") => "Set".to_string(),
+        ("List", "append" | "concat") => "List".to_string(),
+        ("List", "Json") => "Json".to_string(),
         _ => "<unknown>".to_string(),
     }
 }
