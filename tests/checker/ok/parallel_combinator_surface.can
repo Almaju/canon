@@ -1,5 +1,3 @@
-use canon/std/concurrent
-
 main = () -> Unit {
     "ok".print()
 }

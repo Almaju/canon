@@ -13,10 +13,16 @@ on:
       - "build.rs"
       - "Cargo.toml"
       - "Cargo.lock"
+      # Web-app examples get a live in-book preview built from their
+      # source (docs/runner/build.mjs), so their changes rebuild the book.
+      - "examples/**"
   pull_request:
     paths:
       - "docs/**"
       - ".github/workflows/docs.yml"
+      - "src/**"
+      - "packages/**"
+      - "examples/**"
   workflow_dispatch:
 
 permissions:

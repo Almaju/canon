@@ -25,13 +25,13 @@ The keyword set is small:
 
 | Keyword | Role |
 |---|---|
-| `use` | import a type ([Modules and Packages](./modules.md)) |
 | `extern` | bind a declaration to a Component Model import ([Compilation](./compilation.md)) |
 | `bindings` | file-level directive naming the WIT interface a generated binding file covers |
 | `impl` | placeholder body marking a trait declaration's default implementation |
 
 There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
-`async`, `await`, `pub`, or `mod`. The absences are deliberate; the
+`async`, `await`, `pub`, `mod`, or `use` (imports are automatic —
+[Modules and Packages](./modules.md)). The absences are deliberate; the
 [Tour](../tour/philosophy.md) lists what replaces each.
 
 ## Literals

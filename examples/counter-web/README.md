@@ -13,6 +13,12 @@ Open the printed URL: two buttons and a number. `canon build
 examples/counter-web` writes the deployable three-file bundle
 (`counter-web.wasm`, `canon-web.js`, `index.html`) instead.
 
+The count survives a page reload: the JS host persists the message log
+to `localStorage` and replays it on boot (see the *Persistence* section
+of [`WEB-TARGET.md`](../../WEB-TARGET.md)). For a fuller demonstration —
+add / toggle / delete with a live in-book preview — see
+[`examples/todolist-web`](../todolist-web).
+
 ## What it demonstrates
 
 - **The entry-point rule**: defining `init` / `update` / `view` with

@@ -1,6 +1,7 @@
 ; ─── Keywords ─────────────────────────────────────────────────────────────────
-"use" @keyword
+"bindings" @keyword
 "mut" @keyword
+"package" @keyword
 "extern" @keyword
 
 ; ─── Operators ───────────────────────────────────────────────────────────────────────
@@ -59,10 +60,10 @@
 ; Bare extern type declaration
 (extern_type_decl name: (identifier) @type)
 
-; Use declaration — every identifier in the path (e.g. `std/Foo`) is
-; styled as a namespace. We omit the field selector because the `path`
-; field contains multiple identifier nodes separated by `/`.
-(use_decl (identifier) @namespace)
+; File-level directives: the URN / coordinate strings carry the
+; machine-readable identity, so they get the special-string face.
+(bindings_decl urn: (string_literal) @string.special)
+(package_decl coordinate: (string_literal) @string.special)
 
 ; Extern clause
 (extern_clause language: (identifier) @type.builtin)

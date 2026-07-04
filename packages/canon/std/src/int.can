@@ -1,5 +1,3 @@
-use MalformedInt
-
 Pos = Int
 
 Int = (String) -> Result<Int, MalformedInt> {

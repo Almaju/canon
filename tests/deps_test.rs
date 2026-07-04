@@ -101,7 +101,7 @@ fn version_conflict_within_a_package_is_rejected() {
 fn deps_and_local_resolution_is_ambiguous() {
     let msg = load_error("fail_ambiguous");
     assert!(
-        msg.contains("`use acme/greet/shout` is ambiguous"),
+        msg.contains("`shout` is ambiguous"),
         "unexpected message: {msg}"
     );
 }

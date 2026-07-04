@@ -45,6 +45,18 @@ const FENCE_RE = /^```canon,run=([a-z0-9][a-z0-9-]*)[ \t]*\n([\s\S]*?)^```[ \t]*
 const TITLE_RE = /^#\s+(.+)$/m;
 const IMPORT_RE = /(?:^|\n)\s*import\b[^'"]*['"]([^'"]+)['"]/g;
 
+// Web-target example apps (the Elm `init`/`update`/`view` triple) get a
+// live, interactive preview instead of a stdout panel. Each entry names
+// a package under the repo's `examples/` tree; it is built with `canon
+// build`, and its `<stem>.wasm` + compiler-emitted `canon-web.js` are
+// copied under `<out>/web/<name>/` with a themed `index.html`. A book
+// page embeds that directory in an <iframe>. Unlike the CLI runner, a
+// web app needs no jco transpile: browsers instantiate the core module
+// directly, and `canon-web.js` is the host. See docs/src/examples/todolist.md.
+const WEB_APPS = [{ name: "todolist", src: "examples/todolist-web" }];
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
 // jco 1.24.6 emits code that references FutureReadableEnd/FutureWritableEnd
 // without ever defining them (it defines the Stream* analogues). The guest
 // only ever drops these futures, so a minimal stand-in is enough.
@@ -153,6 +165,119 @@ function checkImports(name, outDir) {
   }
 }
 
+// Depth-first search for a file by exact name under `dir`.
+function findFile(dir, filename) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const hit = findFile(p, filename);
+      if (hit) return hit;
+    } else if (entry.name === filename) {
+      return p;
+    }
+  }
+  return null;
+}
+
+// The iframe shell for a web-app preview. Self-contained (its own
+// theme, not the book's) and keyed to its own localStorage namespace so
+// the demo persists across reloads without touching the book's storage.
+function webIndexHtml(name) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${name}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 1rem 1.25rem;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #1a1a2e; background: #fff;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 .75rem; }
+  form { display: flex; gap: .5rem; margin-bottom: .75rem; }
+  input {
+    flex: 1; padding: .5rem .6rem; font: inherit;
+    border: 1px solid #ccc; border-radius: 6px; background: #fff; color: inherit;
+  }
+  ul { list-style: none; margin: .5rem 0; padding: 0; }
+  li {
+    display: flex; align-items: center; gap: .4rem;
+    padding: .4rem 0; border-bottom: 1px solid #eee;
+  }
+  s { color: #999; }
+  button {
+    font: inherit; padding: .3rem .6rem; cursor: pointer;
+    border: 1px solid #cfcfe0; border-radius: 6px;
+    background: #f3f3fb; color: inherit;
+  }
+  button:hover { background: #e8e8f5; }
+  li button { padding: .15rem .5rem; font-size: .85em; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e6e6f0; background: #1b1b26; }
+    input { background: #12121a; border-color: #3a3a4a; }
+    li { border-color: #2c2c3a; }
+    button { background: #2a2a3a; border-color: #3a3a4a; }
+    button:hover { background: #33334a; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="canon-web.js"></script>
+<script>canonWebStart("${name}.wasm", document.getElementById("app"), "canon-docs:${name}");</script>
+</body>
+</html>
+`;
+}
+
+// Build each web-app example and stage its bundle under <out>/web/<name>/.
+function buildWebApps(canon, outRoot) {
+  const built = [];
+  for (const app of WEB_APPS) {
+    const srcDir = resolve(REPO_ROOT, app.src);
+    if (!existsSync(srcDir)) fail(`web app '${app.name}': ${srcDir} not found`);
+    const tmp = mkdtempSync(join(tmpdir(), `canon-web-${app.name}-`));
+    try {
+      const pkg = join(tmp, "pkg");
+      cpSync(srcDir, pkg, { recursive: true });
+      run(canon, ["build", pkg], { cwd: tmp });
+      // The stem comes from canon.toml's `name`, which may differ from
+      // the preview name; take whichever .wasm the build produced.
+      const wasm = findAnyWasm(tmp);
+      const hostJs = findFile(tmp, "canon-web.js");
+      if (!wasm || !hostJs)
+        fail(`web app '${app.name}': build produced no .wasm/canon-web.js under ${tmp}`);
+
+      const outDir = join(outRoot, "web", app.name);
+      mkdirSync(outDir, { recursive: true });
+      cpSync(wasm, join(outDir, `${app.name}.wasm`));
+      cpSync(hostJs, join(outDir, "canon-web.js"));
+      writeFileSync(join(outDir, "index.html"), webIndexHtml(app.name));
+      built.push(app.name);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+    console.log(`  built web app ${app.name}`);
+  }
+  return built;
+}
+
+function findAnyWasm(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const hit = findAnyWasm(p);
+      if (hit) return hit;
+    } else if (entry.name.endsWith(".wasm")) {
+      return p;
+    }
+  }
+  return null;
+}
+
 function main() {
   const args = parseArgs();
   const canon = resolve(args.canon); // canon build runs from a temp cwd
@@ -197,11 +322,16 @@ function main() {
     console.log(`  built ${ex.name} (${ex.page})`);
   }
 
+  const webApps = buildWebApps(canon, args.out);
+
   writeFileSync(
     join(args.out, "manifest.json"),
-    JSON.stringify({ wasiVersion: WASI_VERSION, examples }, null, 1)
+    JSON.stringify({ wasiVersion: WASI_VERSION, examples, webApps }, null, 1)
   );
-  console.log(`runner: ${examples.length} runnable examples → ${args.out}`);
+  console.log(
+    `runner: ${examples.length} runnable examples, ` +
+      `${webApps.length} web app(s) → ${args.out}`
+  );
 }
 
 main();

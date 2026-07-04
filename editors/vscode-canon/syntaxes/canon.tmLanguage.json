@@ -6,7 +6,6 @@
   "patterns": [
     { "include": "#strings" },
     { "include": "#numbers" },
-    { "include": "#use-decl" },
     { "include": "#bindings-decl" },
     { "include": "#keywords" },
     { "include": "#function-def" },
@@ -61,7 +60,7 @@
       "patterns": [
         {
           "name": "keyword.control.canon",
-          "match": "\\b(use|mut|impl|extern|bindings)\\b"
+          "match": "\\b(mut|impl|extern|bindings|package)\\b"
         },
         {
           "name": "support.type.builtin.self.canon",
@@ -69,15 +68,8 @@
         }
       ]
     },
-    "use-decl": {
-      "match": "\\b(use)\\s+([A-Za-z0-9_/]+)",
-      "captures": {
-        "1": { "name": "keyword.control.import.canon" },
-        "2": { "name": "entity.name.namespace.canon" }
-      }
-    },
     "bindings-decl": {
-      "match": "^\\s*(bindings)\\b",
+      "match": "^\\s*(bindings|package)\\b",
       "captures": {
         "1": { "name": "keyword.control.import.canon" }
       }

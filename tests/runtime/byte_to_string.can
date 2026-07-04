@@ -1,5 +1,3 @@
-use canon/std/Byte
-
 main = () -> Unit {
     String(Byte(65)).print()
     String(Byte(97))

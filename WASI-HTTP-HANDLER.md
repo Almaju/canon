@@ -30,16 +30,10 @@ entry-point selection**. See [Entry-point selection](#entry-point-selection).
 ## Target user-facing shape
 
 ```ow
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 home = (Request) -> Response {
     Response(Headers(), Status(200))
 }
 ```
-
 (A real handler dispatches on `Request.method()` or `Request.path()`;
 we omit that here for the smallest possible illustration.)
 
@@ -168,7 +162,6 @@ world service {
   export handler;
 }
 ```
-
 The guest **imports** `wasi:http/types` (so it can construct
 `Response`, `Headers`, write the body) and **exports**
 `wasi:http/handler` (so the host can dispatch to it).

@@ -254,14 +254,18 @@ version = "0.1.0"
 
     install::install(&root).expect("install should succeed");
 
-    // Write a source file in src/main.can that imports the binding by
-    // its installed module path. We don't actually need the body to
-    // type-check end-to-end — just to load — so the file holds a
-    // single `use` line.
+    // Write a source file in src/main.can that references a name the
+    // binding declares. Imports are automatic: the loader resolves
+    // `getResolution` against the project's `bindgen/` tree by declared
+    // name, pulling the whole binding file in.
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
+    fs::write(
+        &entry,
+        "main = () -> Unit {\n    getResolution().print()\n}\n",
+    )
+    .expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
@@ -300,7 +304,11 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
+    fs::write(
+        &entry,
+        "main = () -> Unit {\n    getResolution().print()\n}\n",
+    )
+    .expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 
@@ -357,10 +365,10 @@ version = "0.1.0"
     );
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
-    // A local sibling module the entry will `use`.
-    fs::write(src_dir.join("sibling.can"), "Marker = Int\n").expect("write sibling");
+    // A local sibling file, resolved by the name → file convention.
+    fs::write(src_dir.join("marker.can"), "Marker = Int\n").expect("write sibling");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use sibling\n").expect("write entry");
+    fs::write(&entry, "Wrapped = Marker\n").expect("write entry");
 
     let result =
         loader::load_module(&entry).expect("loader should fall through to local resolution");
@@ -375,7 +383,7 @@ version = "0.1.0"
         .collect();
     assert!(
         names.iter().any(|n| n == "Marker"),
-        "expected `Marker` from sibling.can to be loaded; got names {names:?}",
+        "expected `Marker` from marker.can to be loaded; got names {names:?}",
     );
 }
 

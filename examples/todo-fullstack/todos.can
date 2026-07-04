@@ -1,7 +1,3 @@
-use Line
-use Title
-use canon/std/web/Html
-
 Todos = String
 
 addTodo = (Title * Todos) -> Todos {
@@ -72,7 +68,7 @@ restLines = (String) -> String {
     )
 }
 
-seed = () -> Todos {
+todos = () -> Todos {
     Title("write a todo of your own")
         .addTodo(Title("load todos from the canon server").addTodo(Todos("")))
 }

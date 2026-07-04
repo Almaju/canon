@@ -9,7 +9,7 @@ use crate::error::CanonError;
 use crate::formatter;
 use crate::install::{parse_install_index, INSTALL_INDEX_FILENAME};
 use crate::lexer::Scanner;
-use crate::loader::{kebab_case, resolve_bundled_use, BundledFile, BUNDLED_PACKAGES};
+use crate::loader::{kebab_case, BUNDLED_PACKAGES};
 use crate::manifest::{self, ImportSource};
 use crate::parser::Parser;
 
@@ -486,95 +486,12 @@ impl LspServer {
 // Compiler integration
 // ===========================================================================
 
-/// Recursively collect non-`use` items from a module and all its transitive
-/// imports into `out`. `seen` tracks already-visited module names to break
-/// cycles. `current_file` is the requesting file, used to resolve relative
-/// local imports.
-///
-/// `bundled` is `Some` when the `use` path resolves into a shipped package
-/// (`canon/std`, `canon/wasi`, …) and `None` for local-file imports. The
-/// compiler's own loader makes the same split — we must too, otherwise the
-/// LSP and the compiler disagree about what `Foo` is.
-fn collect_import_items(
-    use_path: &str,
-    bundled: Option<&'static BundledFile>,
-    current_file: &str,
-    seen: &mut std::collections::HashSet<String>,
-    out: &mut Vec<crate::ast::Item>,
-) {
-    if !seen.insert(use_path.to_string()) {
-        return; // already loaded
-    }
-
-    // Bundled-package resolution: pull the embedded source out of the
-    // loader. This is the same registry the compiler uses, so the LSP and
-    // the compiler never disagree on what `use canon/std/Foo` means.
-    if let Some(file) = bundled {
-        let Some(imported) = parse_source(file.source) else {
-            return;
-        };
-        for item in &imported.items {
-            if let crate::ast::Item::Use(u) = item {
-                let (inner_path, inner_bundled) = parse_use_path(&u.name.name);
-                // Transitive imports inherit the current file as the
-                // resolution base — the embedded packages have no
-                // filesystem location, and local imports from within
-                // a bundled package resolve against the package itself.
-                collect_import_items(inner_path, inner_bundled, current_file, seen, out);
-            }
-        }
-        for item in imported.items {
-            if !matches!(item, crate::ast::Item::Use(_)) {
-                out.push(item);
-            }
-        }
-        return;
-    }
-
-    // Local resolution: file relative to `current_file`. Only the last
-    // segment (the type name) of the use path is meaningful for the
-    // local-file form — multi-segment local paths aren't supported by
-    // this helper yet (the compiler's loader handles them via
-    // `process_use`, but LSP-side definition-following is single-segment
-    // only for now).
-    let type_name = use_path.rsplit('/').next().unwrap_or(use_path);
-    let Some(ow_path) = resolve_local_ow_file(type_name, current_file) else {
-        return;
-    };
-    let Ok(src) = std::fs::read_to_string(&ow_path) else {
-        return;
-    };
-    let Some(imported) = parse_source(&src) else {
-        return;
-    };
-    for item in &imported.items {
-        if let crate::ast::Item::Use(u) = item {
-            let (inner_path, inner_bundled) = parse_use_path(&u.name.name);
-            collect_import_items(inner_path, inner_bundled, &ow_path, seen, out);
-        }
-    }
-    for item in imported.items {
-        if !matches!(item, crate::ast::Item::Use(_)) {
-            out.push(item);
-        }
-    }
-}
-
-/// Classify a `use` path: if it matches a bundled package, return the
-/// bundled file; otherwise return `None`. The returned `&str` is the
-/// original full path — callers use it as the seen-set key and (for the
-/// local case) extract the last segment for filesystem lookup.
-fn parse_use_path(path: &str) -> (&str, Option<&'static BundledFile>) {
-    let bundled = resolve_bundled_use(path).map(|(_, file)| file);
-    (path, bundled)
-}
-
 /// Check source text and return all errors.
 ///
-/// `file_path` is the filesystem path of the file being checked (not a URI).
-/// If provided, all `use` imports are resolved relative to it and their
-/// definitions are loaded into the module before checking — giving the
-/// checker full knowledge of imported types and methods.
+/// `file_path` is the filesystem path of the file being checked (not a
+/// URI). Every name the buffer references but doesn't define is resolved
+/// through the compiler's own reference discovery (`load_import_closure`),
+/// so the LSP and the compiler never disagree about what `Foo` is.
 fn check_source(source: &str, file_path: &str) -> Vec<CanonError> {
     // 1. Parse the in-memory source.
     let mut scanner = Scanner::new(source);
@@ -589,35 +506,21 @@ fn check_source(source: &str, file_path: &str) -> Vec<CanonError> {
     };
     resolve_new_syntax(&mut current);
 
-    // 2. Collect items from every `use` import, recursively following
-    //    transitive imports (e.g. `use canon/std/HttpServer` brings in
-    //    `use canon/std/Request` etc.). A `seen` set prevents cycles. The
-    //    full use path is preserved through `parse_use_path` so the
-    //    embedded packages and on-disk files don't collide.
-    let mut imported_items: Vec<crate::ast::Item> = Vec::new();
-    let mut seen = std::collections::HashSet::<String>::new();
-    for item in &current.items {
-        let crate::ast::Item::Use(u) = item else {
-            continue;
-        };
-        let (use_path, bundled) = parse_use_path(&u.name.name);
-        collect_import_items(use_path, bundled, file_path, &mut seen, &mut imported_items);
-    }
+    // 2. Load the import closure of everything the buffer references,
+    //    rooted at the buffer's directory — same rule as the compiler.
+    let dir = std::path::Path::new(file_path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let mut combined_items = crate::loader::load_import_closure(&current.items, &dir);
 
-    // 3. Build a combined module: imported items first, then current file's
-    //    non-use items. `entry_items_start` tells the checker which items
+    // 3. Build a combined module: imported items first, then the current
+    //    file's items. `entry_items_start` tells the checker which items
     //    belong to the user's file (the only ones subject to ordering rules).
-    let entry_items_start = imported_items.len();
-    for item in current.items {
-        // Strip use declarations here too — they were already resolved above
-        // and keeping them causes false "use must appear before definitions"
-        // and alphabetical ordering errors.
-        if !matches!(item, crate::ast::Item::Use(_)) {
-            imported_items.push(item);
-        }
-    }
+    let entry_items_start = combined_items.len();
+    combined_items.extend(current.items);
     let combined = crate::ast::Module {
-        items: imported_items,
+        items: combined_items,
         span: current.span,
     };
 
@@ -1116,67 +1019,47 @@ fn resolve_local_ow_file(type_name: &str, current_file: &str) -> Option<String> 
     None
 }
 
-/// Compose the on-disk path of a bundled file. Used so go-to-definition
-/// on a `use canon/std/Foo` import can navigate to the actual file in
-/// the source tree. Returns `None` if the use path doesn't match any
-/// bundled package, or if the build-time absolute path no longer exists
-/// (e.g. when running from an installed binary).
-fn resolve_bundled_ow_file(use_path: &str) -> Option<String> {
-    use std::path::Path;
-    let (_, file) = resolve_bundled_use(use_path)?;
-    let path = Path::new(file.abs_path);
-    if path.exists() {
-        Some(file.abs_path.to_string())
-    } else {
-        None
-    }
-}
-
-/// Search imported modules for a definition. Returns (file_uri, span) on success.
-/// If the word IS the imported type name (e.g. clicking `Json` in `use std/Json`),
-/// navigates to the top of the imported file.
+/// Search imported files for a definition of `word`. Returns
+/// (file_uri, span) on success. With imports automatic, the candidate
+/// files are found the same way the loader finds them: the local tree
+/// by filename convention, then the bundled packages by declared name.
 fn find_definition_in_imports(
-    module: &Module,
+    _module: &Module,
     word: &str,
     current_file: &str,
 ) -> Option<(String, crate::error::Span)> {
     use crate::error::Span;
-    for item in &module.items {
-        let Item::Use(u) = item else { continue };
-        let (use_path, bundled) = parse_use_path(&u.name.name);
-        // The clickable target name is always the last segment of the use
-        // path — the type or file name the user is importing.
-        let type_name = use_path.rsplit('/').next().unwrap_or(use_path);
-        let file_path = if bundled.is_some() {
-            resolve_bundled_ow_file(use_path)?
-        } else {
-            match resolve_local_ow_file(type_name, current_file) {
-                Some(p) => p,
-                None => continue,
+    // Local: `word` → `<kebab>.can` / `<kebab>/main.can` next to the file.
+    if let Some(file_path) = resolve_local_ow_file(word, current_file) {
+        if let Ok(src) = std::fs::read_to_string(&file_path) {
+            if let Some(imported) = parse_source(&src) {
+                if let Some(span) = find_definition(&imported, word) {
+                    return Some((path_to_uri(&file_path), span));
+                }
             }
-        };
-
-        // Clicking the import name itself → top of the imported file.
-        if type_name == word {
-            let file_uri = path_to_uri(&file_path);
-            let top = Span {
-                start: 0,
-                end: 0,
-                line: 1,
-                column: 1,
-            };
-            return Some((file_uri, top));
         }
-
-        // Otherwise search inside the imported file.
-        let Ok(src) = std::fs::read_to_string(&file_path) else {
-            continue;
+        // The file exists but doesn't declare `word` under that exact
+        // name (e.g. a `Self`-renamed constructor) — top of file.
+        let top = Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
         };
-        let Some(imported) = parse_source(&src) else {
+        return Some((path_to_uri(&file_path), top));
+    }
+
+    // Bundled: any shipped file declaring `word`, when its build-time
+    // source path still exists on disk (running from the source tree).
+    for file in crate::loader::bundled_files_declaring(word) {
+        if !std::path::Path::new(file.abs_path).exists() {
+            continue;
+        }
+        let Some(imported) = parse_source(file.source) else {
             continue;
         };
         if let Some(span) = find_definition(&imported, word) {
-            return Some((path_to_uri(&file_path), span));
+            return Some((path_to_uri(file.abs_path), span));
         }
     }
     None
@@ -1207,12 +1090,11 @@ fn collect_definitions(module: &Module) -> Vec<DefInfo> {
                 };
                 defs.push(DefInfo { name, span });
             }
-            // `use` items are resolved via find_definition_in_imports;
             // `bindings` / `package` items don't introduce new symbols
             // (the loader synthesizes FunctionDefs for the function-type
             // aliases beneath a `bindings` directive; `package` is pure
             // provenance).
-            Item::Use(_) | Item::Bindings(_) | Item::Package(_) => {}
+            Item::Bindings(_) | Item::Package(_) => {}
         }
     }
     defs

@@ -1,6 +1,3 @@
-use canon/std/Int
-use canon/std/MalformedInt
-
 main = () -> Unit {
     Int("42").(
         * (Err<MalformedInt>) -> Unit { "err".print() }

@@ -15,11 +15,10 @@ Wherever ordering is discretionary, Canon requires **alphabetical order**. This 
 - Arms of a dispatch (in the order of the union's variants — which are themselves alphabetical)
 - Trait composition: `Show = Debug * PrintString`
 - Error unions inside `Result`: `Result<T, IoError + NotFound + PermissionDenied>`
-- Imports: multiple `use` statements at the top of a file
 
 The reasoning: ordering is a constant source of bikeshedding and diff noise. By forcing one canonical order, code reads the same way no matter who wrote it, and reordering is never a meaningful change.
 
-Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts `use` imports, type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
+Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
 
 One caveat worth knowing: alphabetical order is a *source-level* canon, never a wire format. Union variants are numbered by their alphabetical position internally, so adding a variant renumbers everything after it. Serialized values must therefore always carry variant *names*, not indices; at the Component Model boundary the WIT file's declared order governs the ABI, and the compiler maps between the two.
 
@@ -323,37 +322,29 @@ The case difference disambiguates trait implementations from regular functions: 
 
 - **Files** use `kebab-case.can` names — the mechanical conversion of the declared type's PascalCase name (`http-server.can` declares `HttpServer`).
 - A file's name **must match** the type it declares: `foo.can` must declare a type named `Foo`.
-- A **module is a folder**. There is no `mod` declaration. Importing `Foo` from a sibling folder is enough.
+- A **module is a folder**. There is no `mod` declaration and no import statement: referencing `Foo` is enough (see [Imports](#imports)).
 - The entry point is `main.can`; libraries live in `lib.can`.
 
 ### Imports
 
-```
-use Foo
-use acme/image/Decoder
-use canon/std/Json
-use models/User
-```
+There is **no import statement**. Wherever choice is discretionary, Canon removes the concept — and an import line is pure ceremony once files are named after what they declare. A reference *is* the import: mentioning `User` in a file that doesn't define it loads `user.can`.
 
-| Import | Resolves to |
+Given a reference to a name `Z` the current file does not define, the loader searches:
+
+| Location | Rule |
 |---|---|
-| `use Foo` | local: `foo.can` or `foo/main.can` relative to this file |
-| `use models/User` | local: subfolder lookup, `models/user.can` |
-| `use canon/std/Json` | package: `<namespace>/<package>/<Type>` |
-| `use acme/image/Decoder` | third-party: same shape, no privileged path |
+| the file's own directory tree | name → file convention: `z.can` or `z/main.can` (kebab-case of `Z`), recursively, skipping `deps/` and `bindgen/` |
+| the project's `bindgen/` tree | by declared name — binding files declare functions whose names don't kebab back to their file (`getRandomU64` lives in `random.can`) |
+| the project's `deps/` tree | vendored packages (see PACKAGES.md), by declared name |
+| the bundled packages (`canon/std`) | by declared name; the stdlib's hand-written wrappers shadow its internal bindgen substrate |
 
-There is exactly one `use` resolution rule. Given `use a/b/c/…/Z`:
+**Ambiguity is a hard error, not a precedence.** A name that resolves in more than one location fails the build naming every candidate — there is no shadowing, so names are globally unique across a project, its dependency closure, and the standard library. A name that resolves nowhere is left for the checker, which reports the undefined name with full type context.
 
-1. If the leading segments `a/b` (the first two) match a declared dependency in the project's package manifest, resolve as a **package import**: locate the package in the cache, then look up the type `Z` (or, for multi-file packages, the file matching `Z`'s [kebab-case form](#naming-conventions)) inside it.
-2. Otherwise, resolve as a **local import**: walk the segments as directories relative to the current file and load `z.can` or `z/main.can` at the end.
+This is why the naming conventions have teeth: files are `kebab-case.can` of the PascalCase type they declare, so "which file defines `HttpServer`?" has exactly one mechanical answer, and the compiler applies it so you never write it down.
 
-The shipped packages `canon/std` and `canon/wasi` are pre-installed and bundled with the compiler binary, but indistinguishable from any other package at the language level — they appear in the cache and must be listed as deps to be used.
+**The prelude.** A handful of core names need no lookup at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`).
 
-Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use canon/std/JsonValue` and `use canon/std/JsonArray`.
-
-**The prelude.** A handful of core names need no import at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`). This mirrors Rust's prelude: the standard vocabulary is ambient, everything else is an explicit import.
-
-Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. `use canon/std/Json` never carries an `@version`.
+Packages have versions. The version pin lives in the vendored files' `package` directives (see PACKAGES.md), not at any reference site — a reference to `Decoder` never carries an `@version`.
 
 ### Visibility
 
@@ -481,7 +472,7 @@ Rules:
 
 - **Exactly one** top-level function may return a world-shape type. Multiple matches are a compile error.
 - **Mixed worlds** in the same module (one function returning `Unit`, another returning `Response`) are a compile error — a component exports exactly one world.
-- **Zero matches** means the module is a library, not a program. It can be `use`d from another module but not run with `canon run`.
+- **Zero matches** means the module is a library, not a program. It can be referenced from another module but not run with `canon run`.
 - The entry is lifted as *async-stackful* at the Component Model boundary so nested calls to suspending externs (filesystem, network, …) can yield without trapping. The programmer writes uniform, sync-looking code; the compiler handles the rest.
 
 Helpers should return non-world types (`String`, user-defined products, etc.). The discipline "helpers return data, the entry returns the world-shape" is the layering this rule encourages.
@@ -1054,7 +1045,7 @@ The input is either a `.wit` file (parsed directly) or a WebAssembly Component `
 4. Populate `~/.canon/cache/<sha256>.wasm`.
 5. Add the package to the project manifest's `deps`.
 
-After `canon install`, the consumer writes `use <namespace>/<package>/<Type>` and the rest is ordinary Canon.
+After `canon install`, the consumer just references `<Type>` — the loader resolves it against the installed bindings — and the rest is ordinary Canon.
 
 #### WIT → Canon Mapping
 
@@ -1109,21 +1100,9 @@ readViaStream = (Descriptor * Int) -> Result<InputStream, ErrorCode>
 
 This means `canon/std/file.can` can wrap `canon/wasi/filesystem/types#Descriptor` in a clean type without the user ever touching a `Handle` directly — exactly the layering the stdlib split is for.
 
-### Importing from Bindings
+### Referencing Bindings
 
-Idiomatic Canon code does not import binding files directly. Instead, it imports curated wrappers from `canon/std`. The wrappers are grouped into thematic sub-namespaces (`cli`, `fs`, `http`, `time`); the top level of `canon/std` is reserved for cross-cutting types (`IoError`, `Json`, `MalformedJson`, `Random`, `TestResult`).
-
-```
-use canon/std/IoError
-use canon/std/Random
-use canon/std/cli/Exit
-use canon/std/fs/File
-use canon/std/fs/Path
-use canon/std/http/HttpServer
-use canon/std/http/Url
-use canon/std/time/Instant
-use canon/std/time/Now
-```
+Idiomatic Canon code does not reach into binding files directly. Instead, it references the curated wrapper types from `canon/std` — `IoError`, `Random`, `Exit`, `File`, `Path`, `HttpServer`, `Url`, `Instant`, `Now`, … — and the loader resolves each name against the stdlib's wrapper layer (the wrappers shadow the package's internal bindgen substrate).
 
 | Wrapper | Wraps |
 |---|---|
@@ -1135,9 +1114,9 @@ use canon/std/time/Now
 | `canon/std/time/Now` | `canon/wasi/clocks/wall_clock` (or `canon:builtins/*` until P3 lands) |
 | `canon/std/Random` | `canon/wasi/random/random` |
 
-Each `use canon/std/<path>/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any namespace; the `canon/` namespace is reserved for packages shipped with the language.
+Referencing a wrapper type brings in exactly its file: the type, its constructor, and its methods. The community can publish additional or alternative bindings under any namespace; the `canon/` namespace is reserved for packages shipped with the language.
 
-A direct `use canon/wasi/clocks/monotonic_clock/now` works (everything is public), but you give up the capability discipline and the cleaned-up names that the `canon/std` wrapper provides.
+Referencing a raw binding function directly (e.g. `monotonicClockNow`) works — everything is public — but you give up the capability discipline and the cleaned-up names that the `canon/std` wrapper provides.
 
 ### What Canon Ships Itself
 

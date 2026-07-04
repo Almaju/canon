@@ -1,7 +1,3 @@
-use Contents
-use Path
-use canon/std/IoError
-
 File = String
 
 bindings "canon:builtins/filesystem@0.1.0#open-file"

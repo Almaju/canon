@@ -1,5 +1,3 @@
-use canon/std/TestResult
-
 testListConstruction = () -> TestResult {
     List(1, 2, 3)
         .length()

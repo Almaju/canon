@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### The `use` keyword is gone - imports are automatic (2026-07)
+
+There is no import statement anymore. A reference to a name the current
+file doesn't define *is* the import: the loader resolves it name -> file
+against the file's own directory tree (`foo.can` / `foo/main.can` for
+`Foo`, recursively), then the project's `bindgen/` tree, the vendored
+`deps/` tree, and the bundled standard library - the last three by
+*declared name*, so binding functions (`getRandomU64`) resolve too. A
+name that matches in more than one place is a hard error naming every
+candidate (no shadowing: names are globally unique across a project,
+its dependencies, and the stdlib); a name that matches nowhere is an
+ordinary checker error. Writing `use ...` is now a parse error that says
+what to do instead. `canon install` interface-qualifies binding
+functions whose names collide across an install set
+(`monotonicClockNow` / `systemClockNow`), pinning them with one-shot
+`bindings "<urn>#fn"` directives. See DESIGN.md section Imports.
+
 ### Release channels & toolchains (2026-07)
 
 Releases moved to a **nightly + stable** model that never pushes to `main`

@@ -1,7 +1,3 @@
-use canon/std/fs/Contents
-use canon/std/fs/File
-use canon/std/fs/Path
-
 main = () -> Unit {
     Contents("written from canon")
         .write(Path("/tmp/canon-fs-write-test.txt"))?

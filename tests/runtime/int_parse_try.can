@@ -1,6 +1,3 @@
-use canon/std/Int
-use canon/std/MalformedInt
-
 double = (String) -> Result<Int, MalformedInt> {
     Ok(Int(String)?.mul(2))
 }

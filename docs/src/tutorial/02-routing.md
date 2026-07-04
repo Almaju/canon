@@ -31,12 +31,6 @@ never be exhaustive, so totality comes from the catch-all. Update
 `notes.can`:
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 notFound = () -> Body {
     Body("not found")
 }

@@ -1,5 +1,3 @@
-use canon/std/Json
-
 main = () -> Unit {
     List("\"a\"", "\"b\"", "\"c\"")
         .Json()

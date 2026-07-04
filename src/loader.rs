@@ -1,6 +1,6 @@
 use crate::ast::{
     extract_receiver_from_params, resolve_new_syntax, BindingsDecl, Block, Expr, ExternWasm,
-    FunctionDef, Item, Module, PackageDecl, Param, TypeExpr,
+    FunctionDef, Item, JsonLitPart, MatchArm, Module, PackageDecl, Param, TypeExpr,
 };
 use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
@@ -8,9 +8,10 @@ use crate::install::{self, InstallIndex, INSTALL_INDEX_FILENAME};
 use crate::lexer::Scanner;
 use crate::manifest::{self, Manifest};
 use crate::parser::Parser;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// Walk a slice of items and fill in the path string of any `extern Wasm`
 /// declaration that was emitted without one.
@@ -191,7 +192,7 @@ pub struct BundledPackage {
 #[derive(Debug, Clone, Copy)]
 pub struct BundledFile {
     /// Path relative to the package root, e.g. `"clocks/monotonic_clock.can"`.
-    /// Always uses `/` separators so it matches `use` paths users write.
+    /// Always uses `/` separators.
     pub path: &'static str,
     /// The file's source, embedded at build time via `include_str!`.
     pub source: &'static str,
@@ -221,7 +222,10 @@ pub fn bundled_file(pkg: &BundledPackage, rel_path: &str) -> Option<&'static Bun
     pkg.files.iter().find(|f| f.path == rel_path)
 }
 
-/// Resolve a `use a/b/c/…/Z` path against the bundled packages.
+/// Resolve a package path (`a/b/c/…/Z`, e.g. `canon/std/Json`) against
+/// the bundled packages. Only the JSON prelude and tooling use this
+/// path-shaped lookup now — ordinary references resolve by name via
+/// `bundled_decl_matches`.
 ///
 /// Returns the matching file plus the owning package, or `None` if no
 /// bundled package's name is a prefix of `use_path`.
@@ -278,8 +282,8 @@ pub fn parse_bundled_manifest(pkg: &BundledPackage) -> std::result::Result<Manif
 pub struct LoadResult {
     pub module: Module,
     /// Index in `module.items` where items declared in the entry file
-    /// begin. Items before this index were pulled in via `use` and are
-    /// exempt from per-file ordering rules.
+    /// begin. Items before this index were pulled in by reference
+    /// discovery and are exempt from per-file ordering rules.
     pub entry_items_start: usize,
     /// Every user-authored source file that contributed to this module,
     /// in load order. Bundled package files are deliberately excluded —
@@ -300,22 +304,36 @@ pub struct LoadedSource {
 struct LoadCtx {
     seen: HashSet<PathBuf>,
     /// Deduplicates bundled imports so a single package is loaded once even
-    /// when multiple files transitively `use` it. Keyed by absolute bundled
-    /// file path (`pkg.name + "/" + file.path`).
+    /// when multiple files transitively reference it. Keyed by absolute
+    /// bundled file path (`pkg.name + "/" + file.path`).
     seen_bundled: HashSet<String>,
     items: Vec<Item>,
+    /// Every top-level name (type or function) defined by an item loaded
+    /// so far — plus the names of the file currently being processed,
+    /// which are registered *before* its references are resolved so that
+    /// mutually-referencing files don't chase each other. Reference
+    /// discovery consults this set before searching any root.
+    defined: HashSet<String>,
+    /// Lazily-built recursive file-stem indexes for local project trees,
+    /// keyed by the directory the scan was rooted at. See
+    /// `local_stem_index`.
+    local_stems: HashMap<PathBuf, HashMap<String, Vec<PathBuf>>>,
+    /// Lazily-built declaration index over `<project_root>/bindgen/`:
+    /// declared name → declaring files.
+    bindgen_decls: Option<HashMap<String, Vec<PathBuf>>>,
+    /// Lazily-built declaration index over the project's `deps/` tree.
+    deps_decls: Option<HashMap<String, Vec<PathBuf>>>,
     /// User-authored sources accumulated during load (entry + transitive
-    /// local `use` imports). Mirrors `seen` but keeps each file's full
+    /// local imports). Mirrors `seen` but keeps each file's full
     /// text so callers can validate canonical formatting later.
     local_sources: Vec<LoadedSource>,
     /// Root of the project that contains the entry file, identified by
     /// the nearest ancestor directory containing an `canon.toml`. `None`
     /// when the entry is a loose `.can` file outside any project (in that
-    /// case `use` paths resolve via bundled packages and local-relative
-    /// lookup only, exactly as before this field existed).
+    /// case references resolve via the local tree and bundled packages
+    /// only).
     ///
-    /// When set, `process_use` consults `<project_root>/bindgen/` between
-    /// the bundled-package check and the local-relative fallback. This is
+    /// When set, reference discovery consults `<project_root>/bindgen/` —
     /// where `canon install` writes the materialized bindings declared
     /// in the manifest's `[imports]` table.
     project_root: Option<PathBuf>,
@@ -330,8 +348,8 @@ struct LoadCtx {
     /// file's directory — so manifest-free projects (the PACKAGES.md
     /// end state) resolve `deps/` without an `canon.toml` marker.
     ///
-    /// `Some` enables two things: `process_use` resolves use paths
-    /// against `deps/<ns>/<name>/…`, and `load_into` recognizes files
+    /// `Some` enables two things: reference discovery resolves names
+    /// against the `deps/` tree, and `load_into` recognizes files
     /// under this prefix as vendored, which requires (and validates)
     /// their `package` directive.
     deps_dir: Option<PathBuf>,
@@ -380,6 +398,10 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
         items: Vec::new(),
+        defined: HashSet::new(),
+        local_stems: HashMap::new(),
+        bindgen_decls: None,
+        deps_decls: None,
         local_sources: Vec::new(),
         project_root,
         project_install_index,
@@ -434,21 +456,92 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
     // is always an error.
     validate_package_directives(&module.items, None, ctx)?;
 
-    let mut use_items = Vec::new();
-    let mut other_items = Vec::new();
-    for item in module.items {
-        match item {
-            Item::Use(u) => use_items.push(u),
-            other => other_items.push(other),
-        }
-    }
-    inject_json_prelude(&use_items, &other_items, dir, ctx)?;
-    for u in use_items {
-        process_use(&u, dir, ctx)?;
-    }
+    let other_items = module.items;
+    register_defined_names(&other_items, ctx);
+    inject_json_prelude(&other_items, ctx)?;
+    inject_int_prelude(&other_items, ctx)?;
+    discover_references(&other_items, dir, ctx)?;
     let start = ctx.items.len();
     ctx.items.extend(other_items);
     Ok(start)
+}
+
+/// Int prelude: the fallible parse constructor `Int(String) ->
+/// Result<Int, MalformedInt>` lives in `canon/std/Int` (pure Canon),
+/// but the name `Int` is undiscoverable — it appears in virtually
+/// every program as the builtin type. Mirror of the JSON prelude:
+/// load the stdlib module only when the program actually reaches for
+/// the parse — an `Int(…)` constructor whose argument isn't already a
+/// numeric literal, or a zero-arg `.Int()` conversion call. Skipped
+/// when the file supplies its own `Int` constructor function.
+fn inject_int_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
+    let already_in_scope = other_items.iter().any(|item| match item {
+        Item::Function(f) => {
+            f.name.name == "Int" || f.receiver.as_ref().is_some_and(|r| r.name == "Int")
+        }
+        _ => false,
+    });
+    if already_in_scope || !items_use_int_parse(other_items) {
+        return Ok(());
+    }
+    let Some((pkg, file)) = resolve_bundled_use("canon/std/Int") else {
+        return Ok(());
+    };
+    let key = format!("{}/{}", pkg.name, file.path);
+    if ctx.seen_bundled.insert(key) {
+        load_bundled_source(pkg, file, ctx)?;
+    }
+    Ok(())
+}
+
+fn items_use_int_parse(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Function(f) => f.body.exprs.iter().any(expr_uses_int_parse),
+        _ => false,
+    })
+}
+
+fn expr_uses_int_parse(expr: &Expr) -> bool {
+    match expr {
+        Expr::Constructor { name, args, .. } => {
+            (name.name == "Int"
+                && args.first().is_some_and(|a| {
+                    !matches!(
+                        a,
+                        Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. }
+                    )
+                }))
+                || args.iter().any(expr_uses_int_parse)
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            (method.name == "Int" && args.is_empty())
+                || expr_uses_int_parse(receiver)
+                || args.iter().any(expr_uses_int_parse)
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_uses_int_parse(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| arm.body.exprs.iter().any(expr_uses_int_parse))
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_uses_int_parse(inner),
+        Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_int_parse),
+        Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_int_parse),
+        Expr::FieldAccess { receiver, .. } => expr_uses_int_parse(receiver),
+        Expr::JsonLit { .. }
+        | Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => false,
+    }
 }
 
 /// JSON prelude: `canon/std/Json` loads automatically — like Rust's
@@ -458,17 +551,10 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
 /// in only when the program actually reaches for its machinery:
 /// interpolation inside a literal (`{"n":Int}` converts via `ToJson`),
 /// the validating `Json(...)` constructor, or an explicit `.ToJson()` /
-/// `.Json()` call. Skipped when the file imports or defines `Json`
-/// itself.
-fn inject_json_prelude(
-    use_items: &[crate::ast::UseDecl],
-    other_items: &[Item],
-    dir: &Path,
-    ctx: &mut LoadCtx,
-) -> Result<()> {
-    let already_in_scope = use_items
-        .iter()
-        .any(|u| u.name.name == "Json" || u.name.name.ends_with("/Json"))
+/// `.Json()` call. Skipped when the file defines `Json` itself or the
+/// module already loaded a `Json` definition.
+fn inject_json_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
+    let already_in_scope = ctx.defined.contains("Json")
         || other_items.iter().any(|item| match item {
             Item::TypeDef(td) => td.name.name == "Json",
             Item::Function(f) => f.name.name == "Json" && f.extern_wasm.is_some(),
@@ -477,14 +563,14 @@ fn inject_json_prelude(
     if already_in_scope || !items_use_json_machinery(other_items) {
         return Ok(());
     }
-    let synthetic = crate::ast::UseDecl {
-        name: crate::ast::Ident {
-            name: "canon/std/Json".to_string(),
-            span: Span::default(),
-        },
-        span: Span::default(),
+    let Some((pkg, file)) = resolve_bundled_use("canon/std/Json") else {
+        return Ok(());
     };
-    process_use(&synthetic, dir, ctx)
+    let key = format!("{}/{}", pkg.name, file.path);
+    if ctx.seen_bundled.insert(key) {
+        load_bundled_source(pkg, file, ctx)?;
+    }
+    Ok(())
 }
 
 fn items_use_json_machinery(items: &[Item]) -> bool {
@@ -540,152 +626,701 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
     }
 }
 
-fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
-    let path_str = &u.name.name;
+// ---------------------------------------------------------------------------
+// Reference discovery — the `use`-less import rule
+// ---------------------------------------------------------------------------
+//
+// There is no import statement. A reference to a name `Z` that the
+// current file does not define resolves — by convention, name → file —
+// against, in this order of *search* (not precedence):
+//
+//   1. the referencing file's own directory tree (recursive):
+//      `<kebab(Z)>.can` or `<kebab(Z)>/main.can`, skipping `deps/`,
+//      `bindgen/`, `target/`, and hidden directories;
+//   2. the project's `bindgen/` tree, by declared name;
+//   3. the project's `deps/` tree (vendored packages), by declared name;
+//   4. the bundled packages (`canon/std`), by declared name.
+//
+// The non-local roots are *declaration-indexed* rather than
+// filename-matched because binding files declare functions whose names
+// don't kebab-back to their file (`getRandomU64` lives in `random.can`).
+//
+// Ambiguity is a hard error, not a precedence (PACKAGES.md
+// § Resolution): a name resolving in more than one place fails the
+// build naming every candidate. A name resolving nowhere is *not* a
+// loader error — the checker reports undefined names with full type
+// context, so discovery stays best-effort and only ever adds files.
 
-    // Package resolution: if the first two segments name a bundled package,
-    // serve the file from the embedded registry. (Project-manifest-driven
-    // dep gating will layer on top of this in a later phase.)
-    if let Some((pkg, file)) = resolve_bundled_use(path_str) {
-        let key = format!("{}/{}", pkg.name, file.path);
-        if ctx.seen_bundled.insert(key) {
-            // Bundled files have no on-disk directory we can hand to nested
-            // `use` lookups. Their `use` lines resolve either against the
-            // bundled registry (cross-package) or against the importing
-            // file's own directory within its package (same-package).
-            load_bundled_source(pkg, file, ctx)?;
+/// Names that never trigger discovery: builtin types, builtin generic
+/// containers, their builtin variants, and the intrinsically-known
+/// `Json` alias (the JSON prelude decides when the stdlib machinery is
+/// actually needed — see `inject_json_prelude`).
+// NOTE: `Map` and `Set` are deliberately NOT here — they are ordinary
+// pure-Canon stdlib modules (`canon/std/{map,set}.can`), so referencing
+// either name loads its file like any other stdlib type. `Int` IS here
+// (it appears in virtually every program as the builtin type), so the
+// stdlib parse constructor `Int(String)` loads through
+// `inject_int_prelude` instead — the same targeted mechanism as the
+// JSON prelude.
+const UNDISCOVERABLE_TYPES: &[&str] = &[
+    "Bool",
+    "Deserialize",
+    "Err",
+    "ExitCode",
+    "False",
+    "Float",
+    "Future",
+    "Handle",
+    "Hex",
+    "Int",
+    "Json",
+    "List",
+    "Network",
+    "Never",
+    "None",
+    "Ok",
+    "Option",
+    "Result",
+    "Self",
+    "Serialize",
+    "Some",
+    "Stderr",
+    "Stdin",
+    "Stdout",
+    "Stream",
+    "String",
+    "True",
+    "Unit",
+];
+
+/// Builtin method names (mirrors the checker's `is_known_method` plus
+/// the concurrency combinators). Calling one of these can never mean
+/// "load a file" — they're implemented by the codegen directly.
+const UNDISCOVERABLE_METHODS: &[&str] = &[
+    "add",
+    "and",
+    "append",
+    "byteAt",
+    "concat",
+    "contains",
+    "div",
+    "empty",
+    "eq",
+    "first",
+    "ge",
+    "get",
+    "gt",
+    "insert",
+    "keys",
+    "le",
+    "len",
+    "length",
+    "lt",
+    "main",
+    "map",
+    "mod",
+    "mul",
+    "ne",
+    "not",
+    "or",
+    "parallel",
+    "print",
+    "race",
+    "rem",
+    "remove",
+    "slice",
+    "sub",
+    "substring",
+    "values",
+];
+
+fn is_undiscoverable(name: &str) -> bool {
+    UNDISCOVERABLE_TYPES.contains(&name) || UNDISCOVERABLE_METHODS.contains(&name)
+}
+
+/// Register every top-level name `items` defines into `ctx.defined`.
+/// Called *before* the same items' references are resolved so that
+/// self-references and mutually-referencing files terminate.
+fn register_defined_names(items: &[Item], ctx: &mut LoadCtx) {
+    for item in items {
+        match item {
+            Item::TypeDef(td) => {
+                ctx.defined.insert(td.name.name.clone());
+            }
+            Item::Function(f) => {
+                ctx.defined.insert(f.name.name.clone());
+            }
+            _ => {}
         }
-        return Ok(());
+    }
+}
+
+/// Referenced names, each with the span of its first occurrence (for
+/// error reporting). BTreeMap so resolution order — and therefore item
+/// order in the loaded module — is deterministic and alphabetical, the
+/// same order `use` lines used to load in.
+type Refs = BTreeMap<String, Span>;
+
+fn collect_item_refs(item: &Item, out: &mut Refs) {
+    match item {
+        Item::TypeDef(td) => {
+            let skip: HashSet<&str> = td
+                .generic_params
+                .iter()
+                .map(|g| g.name.name.as_str())
+                .collect();
+            collect_ty_refs(&td.body, &skip, out);
+        }
+        Item::Function(f) => {
+            let skip: HashSet<&str> = f
+                .generic_params
+                .iter()
+                .map(|g| g.name.name.as_str())
+                .collect();
+            if let Some(r) = &f.receiver {
+                add_ref(&r.name, r.span, &skip, out);
+            }
+            for p in &f.params {
+                collect_ty_refs(&p.ty, &skip, out);
+            }
+            collect_ty_refs(&f.return_ty, &skip, out);
+            for e in &f.body.exprs {
+                collect_expr_refs(e, &skip, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn add_ref(name: &str, span: Span, skip: &HashSet<&str>, out: &mut Refs) {
+    if skip.contains(name) {
+        return;
+    }
+    out.entry(name.to_string()).or_insert(span);
+}
+
+fn collect_ty_refs(ty: &TypeExpr, skip: &HashSet<&str>, out: &mut Refs) {
+    match ty {
+        TypeExpr::Named {
+            name,
+            generics,
+            span,
+        } => {
+            add_ref(name, *span, skip, out);
+            for g in generics {
+                collect_ty_refs(g, skip, out);
+            }
+        }
+        TypeExpr::Union { variants, .. } => {
+            for v in variants {
+                collect_ty_refs(v, skip, out);
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                collect_ty_refs(f, skip, out);
+            }
+        }
+        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => collect_ty_refs(ty, skip, out),
+        TypeExpr::Function {
+            generic_params,
+            params,
+            return_ty,
+            ..
+        } => {
+            let mut inner: HashSet<&str> = skip.clone();
+            inner.extend(generic_params.iter().map(|g| g.name.name.as_str()));
+            for p in params {
+                collect_ty_refs(p, &inner, out);
+            }
+            collect_ty_refs(return_ty, &inner, out);
+        }
+    }
+}
+
+/// Expression walk. Deliberately narrower than the checker's dead-code
+/// walk: bare identifiers (parameters referenced by their type name —
+/// the type already appears in the signature) and field-access names
+/// (product components — declared where the product's type is) add
+/// nothing a signature didn't, and chasing them would invite spurious
+/// loads.
+fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
+    match expr {
+        Expr::Constructor { name, args, .. } => {
+            add_ref(&name.name, name.span, skip, out);
+            for a in args {
+                collect_expr_refs(a, skip, out);
+            }
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            ..
+        } => {
+            add_ref(&method.name, method.span, skip, out);
+            collect_expr_refs(receiver, skip, out);
+            for t in type_args {
+                collect_ty_refs(t, skip, out);
+            }
+            for a in args {
+                collect_expr_refs(a, skip, out);
+            }
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_expr_refs(scrutinee, skip, out);
+            for MatchArm {
+                param_ty,
+                return_ty,
+                body,
+                ..
+            } in arms
+            {
+                collect_ty_refs(param_ty, skip, out);
+                collect_ty_refs(return_ty, skip, out);
+                for e in &body.exprs {
+                    collect_expr_refs(e, skip, out);
+                }
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => collect_expr_refs(inner, skip, out),
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            ..
+        } => {
+            for p in params {
+                collect_ty_refs(&p.ty, skip, out);
+            }
+            collect_ty_refs(return_ty, skip, out);
+            for e in &body.exprs {
+                collect_expr_refs(e, skip, out);
+            }
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                collect_expr_refs(f, skip, out);
+            }
+        }
+        Expr::FieldAccess { receiver, .. } => collect_expr_refs(receiver, skip, out),
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    collect_expr_refs(e, skip, out);
+                }
+            }
+        }
+        Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => {}
+    }
+}
+
+/// One place a discovered name resolved to.
+enum Found {
+    Local(PathBuf),
+    Bundled(&'static BundledPackage, &'static BundledFile),
+}
+
+impl Found {
+    fn label(&self) -> String {
+        match self {
+            Found::Local(p) => p.display().to_string(),
+            Found::Bundled(pkg, file) => format!("{}/{} (bundled)", pkg.name, file.path),
+        }
+    }
+}
+
+/// Resolve every name `items` references but the module doesn't define.
+/// `dir` is the referencing file's directory — the root of the local
+/// search. Loading a discovered file recursively discovers *its*
+/// references, so a single type reference pulls in the whole closure.
+fn discover_references(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
+    let mut refs = Refs::new();
+    for item in items {
+        collect_item_refs(item, &mut refs);
+    }
+    for (name, span) in refs {
+        if is_undiscoverable(&name) || ctx.defined.contains(&name) {
+            continue;
+        }
+        resolve_reference(&name, span, dir, ctx)?;
+    }
+    Ok(())
+}
+
+fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
+    let mut found: Vec<Found> = Vec::new();
+
+    // 1. Local tree — name → file convention.
+    let stem = kebab_case(name);
+    for path in ctx.local_stem_matches(dir, &stem) {
+        found.push(Found::Local(path));
     }
 
-    // Vendored-dependency lookup (PACKAGES.md slice 1). A use path with
-    // at least three segments (`<ns>/<name>/…`, mirroring the bundled
-    // rule) also resolves against `<deps>/<ns>/<name>/…` — intermediate
-    // segments as directory names, the final type-name segment
-    // kebab-cased to its file stem.
-    let deps_candidate: Option<PathBuf> = ctx.deps_dir.as_ref().and_then(|deps| {
-        let segments: Vec<&str> = path_str.split('/').collect();
-        if segments.len() < 3 {
-            return None;
-        }
-        let (last, dirs) = segments.split_last()?;
-        let mut p = deps.clone();
-        for d in dirs {
-            p = p.join(d);
-        }
-        let stem = if last.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-            kebab_case(last)
-        } else {
-            (*last).to_string()
+    // 2. Project `bindgen/` — where `canon install` materializes the
+    //    bindings declared in the manifest's `[imports]` table.
+    for path in ctx.bindgen_decl_matches(name) {
+        found.push(Found::Local(path));
+    }
+
+    // 3. Vendored dependencies under `deps/`.
+    for path in ctx.deps_decl_matches(name) {
+        found.push(Found::Local(path));
+    }
+
+    // 4. Bundled packages. Wrapper (`src/`) declarations shadow the
+    //    package's own bindgen substrate — that split is an internal
+    //    layering detail of the package, not a user-visible ambiguity.
+    for (pkg, file) in bundled_decl_matches(name, false) {
+        found.push(Found::Bundled(pkg, file));
+    }
+
+    // De-duplicate: a path can be reachable through more than one root
+    // (e.g. a deps file is also inside the referencing file's tree when
+    // the referencing file itself lives under `deps/`).
+    let mut unique: Vec<Found> = Vec::new();
+    let mut seen_labels: HashSet<String> = HashSet::new();
+    for f in found {
+        let key = match &f {
+            Found::Local(p) => p
+                .canonicalize()
+                .unwrap_or_else(|_| p.clone())
+                .display()
+                .to_string(),
+            Found::Bundled(pkg, file) => format!("{}/{}", pkg.name, file.path),
         };
-        p = p.join(format!("{stem}.can"));
-        p.is_file().then_some(p)
+        if seen_labels.insert(key) {
+            unique.push(f);
+        }
+    }
+
+    // A candidate that's already loaded means this reference was
+    // resolved by a file currently mid-load (mutual references) — the
+    // name lands in the module either way, so there's nothing to do.
+    let already_loaded = unique.iter().any(|f| match f {
+        Found::Local(p) => {
+            let canonical = p.canonicalize().unwrap_or_else(|_| p.clone());
+            ctx.seen.contains(&canonical)
+        }
+        Found::Bundled(pkg, file) => ctx
+            .seen_bundled
+            .contains(&format!("{}/{}", pkg.name, file.path)),
     });
+    if already_loaded {
+        return Ok(());
+    }
 
-    // Project `bindgen/` lookup. When the entry file lives inside a
-    // project (an ancestor directory has `canon.toml`), `use` paths
-    // also resolve against `<project_root>/bindgen/<path>.can` — the
-    // directory where `canon install` materializes external bindings
-    // declared in the manifest's `[imports]` table. Sits between the
-    // bundled-package check and the local-relative fallback so bindgen
-    // output is reachable from any source file in the project without
-    // overriding either bundled std lookups or in-project sibling files.
-    let bindgen_candidate: Option<PathBuf> = ctx
-        .project_root
+    match unique.len() {
+        0 => Ok(()),
+        1 => match unique.remove(0) {
+            Found::Local(p) => {
+                let canonical = p.canonicalize().map_err(|err| CanonError::CheckError {
+                    message: format!("could not resolve `{}`: {}", p.display(), err),
+                    span,
+                })?;
+                load_into(&canonical, ctx)
+            }
+            Found::Bundled(pkg, file) => {
+                let key = format!("{}/{}", pkg.name, file.path);
+                if ctx.seen_bundled.insert(key) {
+                    load_bundled_source(pkg, file, ctx)?;
+                }
+                Ok(())
+            }
+        },
+        _ => {
+            let labels: Vec<String> = unique.iter().map(Found::label).collect();
+            Err(CanonError::CheckError {
+                message: format!(
+                    "`{}` is ambiguous: it resolves to `{}` (names are globally unique \
+                     across a project, its dependencies, and the standard library — \
+                     rename one side)",
+                    name,
+                    labels.join("`, `"),
+                ),
+                span,
+            })
+        }
+    }
+}
+
+impl LoadCtx {
+    /// Files in the tree rooted at `dir` whose stem is `stem` (or
+    /// `<stem>/main.can`). The scan is recursive, skips `deps/`,
+    /// `bindgen/`, `target/`, and hidden directories, and is cached per
+    /// root.
+    fn local_stem_matches(&mut self, dir: &Path, stem: &str) -> Vec<PathBuf> {
+        let root = dir.to_path_buf();
+        let index = self
+            .local_stems
+            .entry(root.clone())
+            .or_insert_with(|| build_stem_index(&root));
+        index.get(stem).cloned().unwrap_or_default()
+    }
+
+    fn bindgen_decl_matches(&mut self, name: &str) -> Vec<PathBuf> {
+        let Some(root) = self.project_root.as_ref().map(|r| r.join("bindgen")) else {
+            return Vec::new();
+        };
+        let index = self
+            .bindgen_decls
+            .get_or_insert_with(|| build_decl_index(&root));
+        index.get(name).cloned().unwrap_or_default()
+    }
+
+    fn deps_decl_matches(&mut self, name: &str) -> Vec<PathBuf> {
+        let Some(root) = self.deps_dir.clone() else {
+            return Vec::new();
+        };
+        let index = self
+            .deps_decls
+            .get_or_insert_with(|| build_decl_index(&root));
+        index.get(name).cloned().unwrap_or_default()
+    }
+}
+
+const SKIPPED_DIR_NAMES: &[&str] = &["bindgen", "deps", "target"];
+
+/// Recursive file-stem index over a local tree: `foo.can` registers
+/// under `foo`; `foo/main.can` additionally registers under `foo`
+/// (the module-directory form). Entries are visited in sorted order so
+/// candidate lists are deterministic.
+fn build_stem_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
+    let mut map: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
+        let mut entries: Vec<_> = rd.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            let path = e.path();
+            let file_name = e.file_name().to_string_lossy().to_string();
+            if path.is_dir() {
+                if file_name.starts_with('.') || SKIPPED_DIR_NAMES.contains(&file_name.as_str()) {
+                    continue;
+                }
+                stack.push(path);
+            } else if let Some(stem) = file_name.strip_suffix(".can") {
+                if stem == "main" {
+                    if let Some(parent) = path
+                        .parent()
+                        .filter(|p| *p != root)
+                        .and_then(|p| p.file_name())
+                    {
+                        map.entry(parent.to_string_lossy().to_string())
+                            .or_default()
+                            .push(path.clone());
+                    }
+                }
+                map.entry(stem.to_string()).or_default().push(path);
+            }
+        }
+    }
+    map
+}
+
+/// Declaration index over an on-disk tree: every top-level name each
+/// `.can` file declares, mapped to the declaring files. Files that fail
+/// to parse contribute nothing — they'll error properly if and when
+/// they're actually loaded.
+fn build_decl_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
+    let mut map: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
+        let mut entries: Vec<_> = rd.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            let path = e.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|x| x == "can") {
+                let Ok(src) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                for name in declared_names_of_source(&src) {
+                    map.entry(name).or_default().push(path.clone());
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Top-level names a source declares. Runs the real parser — bindings
+/// files' function-type aliases are `TypeDef`s pre-rewrite, so the name
+/// set is the same either side of `apply_bindings_directive`.
+fn declared_names_of_source(source: &str) -> Vec<String> {
+    let Ok(tokens) = Scanner::new(source).scan_tokens() else {
+        return Vec::new();
+    };
+    let Ok(module) = Parser::new(tokens).parse() else {
+        return Vec::new();
+    };
+    module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) => Some(td.name.name.clone()),
+            Item::Function(f) => Some(f.name.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Global declaration index over every bundled file:
+/// name → (package index, file index) pairs. Built once per process.
+fn bundled_decl_index() -> &'static HashMap<String, Vec<(usize, usize)>> {
+    static INDEX: OnceLock<HashMap<String, Vec<(usize, usize)>>> = OnceLock::new();
+    INDEX.get_or_init(|| {
+        let mut map: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        for (pi, pkg) in BUNDLED_PACKAGES.iter().enumerate() {
+            for (fi, file) in pkg.files.iter().enumerate() {
+                for name in declared_names_of_source(file.source) {
+                    let entry = map.entry(name).or_default();
+                    if !entry.contains(&(pi, fi)) {
+                        entry.push((pi, fi));
+                    }
+                }
+            }
+        }
+        map
+    })
+}
+
+/// Bundled files declaring `name`. A bundled package is two trees
+/// flattened into one namespace: hand-written wrappers (`src/`,
+/// `wit_urn == None`) and generated bindings (`bindgen/`,
+/// `wit_urn == Some`). When a name is declared in both, the referrer's
+/// own tier wins: user code and wrappers see the wrapper (`Request`
+/// means the stdlib `Request`, not the raw resource newtype), while a
+/// bindings file referencing a sibling interface's type stays inside
+/// the bindings substrate.
+fn bundled_decl_matches(
+    name: &str,
+    referrer_is_bindgen: bool,
+) -> Vec<(&'static BundledPackage, &'static BundledFile)> {
+    let Some(hits) = bundled_decl_index().get(name) else {
+        return Vec::new();
+    };
+    let resolve = |&(pi, fi): &(usize, usize)| {
+        let pkg = &BUNDLED_PACKAGES[pi];
+        (pkg, &pkg.files[fi])
+    };
+    let tier: Vec<_> = hits
+        .iter()
+        .map(resolve)
+        .filter(|(_, f)| f.wit_urn.is_some() == referrer_is_bindgen)
+        .collect();
+    if !tier.is_empty() {
+        return tier;
+    }
+    hits.iter().map(resolve).collect()
+}
+
+/// Load the transitive import closure of `items` — a parsed (possibly
+/// unsaved) buffer — the way `load_module` would, rooted at `dir`.
+/// Tooling entry point (the LSP): resolution errors are swallowed
+/// because a half-typed buffer shouldn't lose every diagnostic to one
+/// ambiguous name.
+pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
+    let project_root = find_project_root(dir);
+    let project_install_index = project_root
         .as_ref()
-        .map(|root| root.join("bindgen").join(format!("{}.can", path_str)))
-        .filter(|p| p.is_file());
+        .map(|root| root.join("bindgen").join(INSTALL_INDEX_FILENAME))
+        .filter(|p| p.is_file())
+        .and_then(|p| fs::read_to_string(&p).ok())
+        .and_then(|src| install::parse_install_index(&src).ok());
+    let deps_dir = project_root
+        .as_deref()
+        .unwrap_or(dir)
+        .join("deps")
+        .canonicalize()
+        .ok();
+    let mut ctx = LoadCtx {
+        seen: HashSet::new(),
+        seen_bundled: HashSet::new(),
+        items: Vec::new(),
+        defined: HashSet::new(),
+        local_stems: HashMap::new(),
+        bindgen_decls: None,
+        deps_decls: None,
+        local_sources: Vec::new(),
+        project_root,
+        project_install_index,
+        deps_dir,
+        deps_versions: HashMap::new(),
+    };
+    register_defined_names(items, &mut ctx);
+    let _ = inject_json_prelude(items, &mut ctx);
+    let _ = discover_references(items, dir, &mut ctx);
+    ctx.items
+}
 
-    // Local file/module candidates.
-    let segments: Vec<&str> = path_str.split('/').collect();
-    let type_name = segments[segments.len() - 1];
-    let file_stem = kebab_case(type_name);
-    let mut file_dir = dir.to_path_buf();
-    for seg in &segments[..segments.len() - 1] {
-        file_dir = file_dir.join(seg);
+/// Bundled files declaring `name`, wrapper tier first. Tooling helper
+/// (go-to-definition into the shipped sources).
+pub fn bundled_files_declaring(name: &str) -> Vec<&'static BundledFile> {
+    bundled_decl_matches(name, false)
+        .into_iter()
+        .map(|(_, file)| file)
+        .collect()
+}
+
+/// Discovery for a file inside a bundled package: no filesystem, so the
+/// only root is the bundled registry itself, tiered by the referrer.
+fn discover_bundled_references(
+    items: &[Item],
+    current: &'static BundledFile,
+    ctx: &mut LoadCtx,
+) -> Result<()> {
+    let referrer_is_bindgen = current.wit_urn.is_some();
+    let mut refs = Refs::new();
+    for item in items {
+        collect_item_refs(item, &mut refs);
     }
-
-    let candidate = file_dir.join(format!("{}.can", file_stem));
-    let module_candidate = file_dir.join(&file_stem).join("main.can");
-
-    // A `deps/` hit must be the *only* hit: PACKAGES.md's resolution
-    // rule is "ambiguity is a hard error, not a precedence", and slice 1
-    // applies it wherever a vendored package is involved. (The
-    // pre-existing bindgen-before-local precedence for paths that never
-    // touch `deps/` is unchanged; the full no-precedence rule lands with
-    // the `use` removal.)
-    if let Some(deps_file) = deps_candidate {
-        let mut clashes: Vec<String> = Vec::new();
-        if let Some(b) = &bindgen_candidate {
-            clashes.push(b.display().to_string());
+    for (name, span) in refs {
+        if is_undiscoverable(&name) || ctx.defined.contains(&name) {
+            continue;
         }
-        if candidate.exists() {
-            clashes.push(candidate.display().to_string());
-        }
-        if module_candidate.exists() {
-            clashes.push(module_candidate.display().to_string());
-        }
-        if !clashes.is_empty() {
-            return Err(CanonError::CheckError {
-                message: format!(
-                    "`use {}` is ambiguous: it resolves to the vendored `{}` and also to `{}`",
-                    path_str,
-                    deps_file.display(),
-                    clashes.join("`, `"),
-                ),
-                span: u.span,
-            });
-        }
-        let canonical = deps_file
-            .canonicalize()
-            .map_err(|err| CanonError::CheckError {
-                message: format!("could not resolve `{}`: {}", deps_file.display(), err),
-                span: u.span,
-            })?;
-        load_into(&canonical, ctx)?;
-        return Ok(());
-    }
-
-    if let Some(bindgen_file) = bindgen_candidate {
-        let canonical = bindgen_file
-            .canonicalize()
-            .map_err(|err| CanonError::CheckError {
-                message: format!("could not resolve `{}`: {}", bindgen_file.display(), err),
-                span: u.span,
-            })?;
-        load_into(&canonical, ctx)?;
-        return Ok(());
-    }
-
-    if candidate.exists() {
-        let canonical = candidate
-            .canonicalize()
-            .map_err(|err| CanonError::CheckError {
-                message: format!("could not resolve `{}`: {}", candidate.display(), err),
-                span: u.span,
-            })?;
-        load_into(&canonical, ctx)?;
-    } else if module_candidate.exists() {
-        let canonical = module_candidate
-            .canonicalize()
-            .map_err(|err| CanonError::CheckError {
-                message: format!(
-                    "could not resolve `{}`: {}",
-                    module_candidate.display(),
-                    err
-                ),
-                span: u.span,
-            })?;
-        load_into(&canonical, ctx)?;
-    } else {
-        return Err(CanonError::CheckError {
-            message: format!(
-                "`use {}` cannot find `{}`",
-                u.name.name,
-                candidate.display(),
-            ),
-            span: u.span,
+        let candidates = bundled_decl_matches(&name, referrer_is_bindgen);
+        let already_loaded = candidates.iter().any(|(pkg, file)| {
+            ctx.seen_bundled
+                .contains(&format!("{}/{}", pkg.name, file.path))
         });
+        if already_loaded {
+            continue;
+        }
+        match candidates.len() {
+            0 => {}
+            1 => {
+                let (pkg, file) = candidates[0];
+                let key = format!("{}/{}", pkg.name, file.path);
+                if ctx.seen_bundled.insert(key) {
+                    load_bundled_source(pkg, file, ctx)?;
+                }
+            }
+            _ => {
+                let labels: Vec<String> = candidates
+                    .iter()
+                    .map(|(pkg, file)| format!("{}/{}", pkg.name, file.path))
+                    .collect();
+                return Err(CanonError::CheckError {
+                    message: format!(
+                        "`{}` is ambiguous inside the bundled packages: it resolves to `{}`",
+                        name,
+                        labels.join("`, `"),
+                    ),
+                    span,
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -887,18 +1522,10 @@ fn load_source(
     resolve_new_syntax(&mut module);
     validate_package_directives(&module.items, deps_pkg, ctx)?;
 
-    let mut use_items = Vec::new();
-    let mut other_items = Vec::new();
-    for item in module.items {
-        match item {
-            Item::Use(u) => use_items.push(u),
-            other => other_items.push(other),
-        }
-    }
-    inject_json_prelude(&use_items, &other_items, dir, ctx)?;
-    for u in use_items {
-        process_use(&u, dir, ctx)?;
-    }
+    let mut other_items = module.items;
+    register_defined_names(&other_items, ctx);
+    inject_json_prelude(&other_items, ctx)?;
+    discover_references(&other_items, dir, ctx)?;
     if let Some(urn) = wit_urn {
         patch_extern_paths(&mut other_items, urn);
     }
@@ -906,12 +1533,11 @@ fn load_source(
     Ok(())
 }
 
-/// Load a bundled file's source. `use` lines inside the source resolve
-/// against either the bundled registry (cross-package) or the importing
-/// file's directory within its package (same-package). Local-disk paths
-/// are not available because the bundle is in-memory.
+/// Load a bundled file's source. References inside the source resolve
+/// against the bundled registry only — the bundle is in-memory, so
+/// there are no local-disk roots to search.
 fn load_bundled_source(
-    pkg: &'static BundledPackage,
+    _pkg: &'static BundledPackage,
     current: &'static BundledFile,
     ctx: &mut LoadCtx,
 ) -> Result<()> {
@@ -925,111 +1551,13 @@ fn load_bundled_source(
     apply_bindings_directive(&mut module.items);
     resolve_new_syntax(&mut module);
 
-    let mut use_items = Vec::new();
-    let mut other_items = Vec::new();
-    for item in module.items {
-        match item {
-            Item::Use(u) => use_items.push(u),
-            other => other_items.push(other),
-        }
-    }
-    for u in use_items {
-        process_bundled_use(pkg, current, &u, ctx)?;
-    }
+    let mut other_items = module.items;
+    register_defined_names(&other_items, ctx);
+    discover_bundled_references(&other_items, current, ctx)?;
     if let Some(urn) = current.wit_urn {
         patch_extern_paths(&mut other_items, urn);
     }
     ctx.items.extend(other_items);
-    Ok(())
-}
-
-/// Resolve a `use` directive that appeared inside a bundled file.
-///
-/// Resolution rule:
-/// 1. If the path's first two segments name a known bundled package, treat
-///    as a cross-package import.
-/// 2. Otherwise try same-directory relative first: `use Foo` from
-///    `time/instant.can` resolves to `time/foo.can`. This is how sibling
-///    imports inside the package have always worked.
-/// 3. If that misses, try the use path as a package-root-relative path:
-///    `use wasi/random/random` from `random.can` resolves to
-///    `wasi/random/random.can` at the package root. This is what lets
-///    `canon/std`'s hand-written wrappers `use wasi/…` against the
-///    bindings materialized under `<package>/bindgen/` (which the
-///    bundler flattens into the same namespace as `src/`).
-fn process_bundled_use(
-    pkg: &'static BundledPackage,
-    current: &'static BundledFile,
-    u: &crate::ast::UseDecl,
-    ctx: &mut LoadCtx,
-) -> Result<()> {
-    let path_str = &u.name.name;
-
-    // Cross-package lookup. `resolve_bundled_use` only returns `Some` when
-    // the path's first two segments name an actual bundled package.
-    if let Some((other_pkg, file)) = resolve_bundled_use(path_str) {
-        let key = format!("{}/{}", other_pkg.name, file.path);
-        if ctx.seen_bundled.insert(key) {
-            load_bundled_source(other_pkg, file, ctx)?;
-        }
-        return Ok(());
-    }
-
-    // Compute the importing file's directory within its package, used
-    // for the sibling-relative attempt.
-    let current_dir = current
-        .path
-        .rsplit_once('/')
-        .map(|(dir, _)| format!("{dir}/"))
-        .unwrap_or_default();
-
-    // Translate the use path into a candidate filename relative to some
-    // base directory: `use sub/Foo` becomes `<base>sub/foo.can`,
-    // `use lowercase/path` becomes `<base>lowercase/path.can`.
-    let candidate_path = |base: &str| -> String {
-        let segments: Vec<&str> = path_str.split('/').collect();
-        let (last, dirs) = segments.split_last().expect("split_last on non-empty Vec");
-        let mut rel = base.to_string();
-        for d in dirs {
-            rel.push_str(d);
-            rel.push('/');
-        }
-        let stem = if last.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-            kebab_case(last)
-        } else {
-            (*last).to_string()
-        };
-        rel.push_str(&stem);
-        rel.push_str(".can");
-        rel
-    };
-
-    let sibling_rel = candidate_path(&current_dir);
-    let root_rel = candidate_path("");
-
-    let file = bundled_file(pkg, &sibling_rel).or_else(|| bundled_file(pkg, &root_rel));
-
-    let Some(file) = file else {
-        // Report both lookup paths so the error names exactly what we
-        // tried. The sibling form comes first because it's the more
-        // intuitive case for in-package imports.
-        let looked_for = if sibling_rel == root_rel {
-            sibling_rel.clone()
-        } else {
-            format!("{sibling_rel}` or `{root_rel}")
-        };
-        return Err(CanonError::CheckError {
-            message: format!(
-                "`use {}` from package `{}` not found (looked for `{}`)",
-                u.name.name, pkg.name, looked_for,
-            ),
-            span: u.span,
-        });
-    };
-    let key = format!("{}/{}", pkg.name, file.path);
-    if ctx.seen_bundled.insert(key) {
-        load_bundled_source(pkg, file, ctx)?;
-    }
     Ok(())
 }
 

@@ -1,5 +1,21 @@
 [
   {
+    "type": "bindings_decl",
+    "named": true,
+    "fields": {
+      "urn": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string_literal",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "block",
     "named": true,
     "fields": {},
@@ -830,6 +846,22 @@
     }
   },
   {
+    "type": "package_decl",
+    "named": true,
+    "fields": {
+      "coordinate": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string_literal",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "param",
     "named": true,
     "fields": {
@@ -928,11 +960,16 @@
   {
     "type": "source_file",
     "named": true,
+    "root": true,
     "fields": {},
     "children": {
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "bindings_decl",
+          "named": true
+        },
         {
           "type": "extern_type_decl",
           "named": true
@@ -942,11 +979,11 @@
           "named": true
         },
         {
-          "type": "type_def",
+          "type": "package_decl",
           "named": true
         },
         {
-          "type": "use_decl",
+          "type": "type_def",
           "named": true
         }
       ]
@@ -1117,26 +1154,6 @@
     }
   },
   {
-    "type": "use_decl",
-    "named": true,
-    "fields": {
-      "path": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "/",
-            "named": false
-          },
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "(",
     "named": false
   },
@@ -1166,10 +1183,6 @@
   },
   {
     "type": ".",
-    "named": false
-  },
-  {
-    "type": "/",
     "named": false
   },
   {
@@ -1209,6 +1222,10 @@
     "named": false
   },
   {
+    "type": "bindings",
+    "named": false
+  },
+  {
     "type": "extern",
     "named": false
   },
@@ -1233,12 +1250,12 @@
     "named": false
   },
   {
-    "type": "string_literal",
-    "named": true
+    "type": "package",
+    "named": false
   },
   {
-    "type": "use",
-    "named": false
+    "type": "string_literal",
+    "named": true
   },
   {
     "type": "{",

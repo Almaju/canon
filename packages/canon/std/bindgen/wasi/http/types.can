@@ -1,5 +1,3 @@
-use wasi/clocks/types
-
 DNSErrorPayload = DNSErrorPayloadInfoCode * DNSErrorPayloadRcode
 
 DNSErrorPayloadInfoCode = Option<Int>

@@ -1,7 +1,3 @@
-use Attr
-use Msg
-use Tag
-
 Html = String
 
 button = (Msg * String) -> Html {

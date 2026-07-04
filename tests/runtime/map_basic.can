@@ -1,5 +1,3 @@
-use canon/std/Map
-
 main = () -> Unit {
     Map().insert("b", "banana").insert("a", "apple").get("a").(
         * (None) -> Unit { "none".print() }

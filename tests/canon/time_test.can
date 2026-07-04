@@ -1,6 +1,3 @@
-use canon/std/TestResult
-use canon/std/time/Unix
-
 testUnixAfter2001 = () -> TestResult {
     Unix()
         .ge(1000000000)

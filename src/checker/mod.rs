@@ -144,15 +144,14 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         match item {
             Item::Function(func) => check_function(func, &symbols, &mut errors, &mut main_found),
             Item::TypeDef(td) => check_type_def(td, &symbols, &mut errors),
-            // `use`, `bindings`, and `package` are file-level directives
-            // the loader has already digested by the time we get here.
-            // The loader patches function-type aliases under `bindings`
-            // into FunctionDefs with `extern_wasm` set and validates
-            // `package` placement/agreement; the original decl items are
-            // left in the module purely as breadcrumbs for tooling
-            // (formatter, LSP) and have nothing for the checker to
-            // enforce.
-            Item::Use(_) | Item::Bindings(_) | Item::Package(_) => {}
+            // `bindings` and `package` are file-level directives the
+            // loader has already digested by the time we get here. The
+            // loader patches function-type aliases under `bindings` into
+            // FunctionDefs with `extern_wasm` set and validates `package`
+            // placement/agreement; the original decl items are left in
+            // the module purely as breadcrumbs for tooling (formatter,
+            // LSP) and have nothing for the checker to enforce.
+            Item::Bindings(_) | Item::Package(_) => {}
         }
     }
 
@@ -304,37 +303,6 @@ fn check_ordering(
         })
         .collect();
     check_sorted_named("type definition", &type_defs, errors);
-
-    // `use` imports must come first and be alphabetical.
-    let mut seen_non_use = false;
-    for item in &module.items {
-        match item {
-            Item::Use(u) => {
-                if seen_non_use {
-                    errors.push(CanonError::CheckError {
-                        message: format!(
-                            "`use {}` must appear before any type or function definitions",
-                            u.name.name
-                        ),
-                        span: u.span,
-                    });
-                }
-            }
-            _ => seen_non_use = true,
-        }
-    }
-    let use_names: Vec<(&str, crate::error::Span)> = module
-        .items
-        .iter()
-        .filter_map(|i| {
-            if let Item::Use(u) = i {
-                Some((u.name.name.as_str(), u.span))
-            } else {
-                None
-            }
-        })
-        .collect();
-    check_sorted_named("`use` import", &use_names, errors);
 }
 
 fn check_sorted_named(
@@ -415,7 +383,7 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
                 collect_type_names(&td.body, &mut out);
                 (td.name.name.clone(), out)
             }
-            Item::Use(_) | Item::Bindings(_) | Item::Package(_) => continue,
+            Item::Bindings(_) | Item::Package(_) => continue,
         };
         if !refs.contains_key(&name) {
             declared_order.push(name.clone());
@@ -578,15 +546,6 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     types.insert("Err".to_string());
     variant_of.insert("False".to_string(), "Bool".to_string());
     variant_of.insert("True".to_string(), "Bool".to_string());
-
-    // `use Foo` (or `use path/Foo`) imports the type `Foo` — register it as
-    // known so references to it in the same file are not flagged as unknown.
-    for item in &module.items {
-        if let Item::Use(u) = item {
-            let type_name = u.name.name.split('/').next_back().unwrap_or(&u.name.name);
-            types.insert(type_name.to_string());
-        }
-    }
 
     for item in &module.items {
         if let Item::TypeDef(td) = item {

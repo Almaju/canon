@@ -17,7 +17,6 @@ in `src/codegen/wasm/` and the runtime in `src/runtime.rs`.
            → Checker → WASM Codegen → core module → wit-component wrap
            → .wasm component → wasmtime (WASI P3 + canon:* host bridges)
 ```
-
 | File | Role |
 |---|---|
 | `src/ast.rs` | `FunctionDef.extern_wasm: Option<ExternWasm>`, `Expr::Await` |
@@ -71,7 +70,6 @@ A declaration like
 extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
 randomInt = () -> Int
 ```
-
 is lowered as follows:
 
 1. **Path parse** (`parse_extern_path`) → `(component_ns, core_ns, fn_name)`.
