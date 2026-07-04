@@ -1,14 +1,14 @@
 # Types
 
 Every Canon type is built by composing a small algebra over a minimal
-core. The algebra has three operators — `+` (union), `*` (product),
-`^` (repetition) — and two identities.
+core. The algebra has three operators, `+` (union), `*` (product), and
+`^` (repetition), and two identities.
 
 ## The Core
 
-- **`Unit`** — the type with exactly one value; the multiplicative
+- **`Unit`**: the type with exactly one value; the multiplicative
   identity (`T * Unit ≡ T`).
-- **`Never`** — the type with zero values; the additive identity
+- **`Never`**: the type with zero values; the additive identity
   (`T + Never ≡ T`).
 
 Together with `+` and `*` these form a type **semiring**. The boolean
@@ -29,10 +29,10 @@ False = Unit
 True = Unit
 ```
 
-Higher-level primitives — `Int`, `Float`, `Hex`, `String` — are defined
-from `Byte`/`Bytes`; a small set of built-in operations on them (e.g.
-integer arithmetic) is supplied by the compiler, but their *shape* is
-still described by the algebra.
+The higher-level primitives (`Int`, `Float`, `Hex`, `String`) are
+defined from `Byte`/`Bytes`. The compiler supplies a small set of
+built-in operations on them (e.g. integer arithmetic), but their shape
+is still described by the algebra.
 
 ## Unions (`+`)
 
@@ -56,7 +56,7 @@ User = Birthday * Username
 ```
 
 - Components must be in alphabetical order.
-- Components must be **distinct types** — `(User * User)` is a compile
+- Components must be **distinct types**: `(User * User)` is a compile
   error. Disambiguate with a newtype (`OtherUser = User`).
 - A component is accessed by its type name: `user.Birthday`.
 - For repeated or anonymous components (from `^N`), access is by
@@ -89,21 +89,21 @@ Rules:
 
 ## Repetition (`^N`, `^*`)
 
-`T^N` is the N-fold product `T * T * … * T`; `T^*` is the Kleene star —
+`T^N` is the N-fold product `T * T * … * T`; `T^*` is the Kleene star,
 zero or more `T`s. Both share the `^` operator and complete the
 semiring reading: sums, products, exponents.
 
-`List<T>` is not a separate concept: core defines **`List<T> = T^*`** —
+`List<T>` is not a separate concept. Core defines **`List<T> = T^*`**;
 the nominal name and the algebraic form are the same type. `Bytes =
 Byte^*` therefore has every `List` method (`map`, `first`, `get`, …)
-with nothing to declare, and `List(…)` is simply the value-level
-constructor for the star. Indexing is **1-based** everywhere
-(`list.get(1)` is the first element, `byteAt(1)` the first byte) — one
-origin, matching positional product access `.1`.
+with nothing to declare, and `List(…)` is the value-level constructor
+for the star. Indexing is **1-based** everywhere (`list.get(1)` is the
+first element, `byteAt(1)` the first byte): one origin, matching
+positional product access `.1`.
 
 ## Generics
 
-Types may be parameterized with angle brackets — `List<T>`,
+Types may be parameterized with angle brackets: `List<T>`,
 `Option<T>`, `Result<T, E>`, `Map<String, Int>`. Constraints name a
 trait after `:`:
 
@@ -152,12 +152,12 @@ Url = (String) -> Result<Url, InvalidUrl> {
   total one is gone.
 - The signature is unconstrained: total (`-> Url`), fallible
   (`-> Result<Url, E>`), or optional (`-> Option<Url>`).
-- Call sites keep ordinary constructor syntax — `Url("…")` — but the
+- Call sites keep ordinary constructor syntax (`Url("…")`), but the
   expression's type is the constructor's return type, so a fallible
   constructor forces `?` or dispatch at every use.
 - External callers cannot bypass it: only functions declared in the same
   file as the type may touch the raw inner representation. This is the
-  language's entire encapsulation story — see
+  language's entire encapsulation story; see
   [visibility](./modules.md#visibility).
 
 ## Zero-Data Types
@@ -165,7 +165,7 @@ Url = (String) -> Result<Url, InvalidUrl> {
 A type with no underlying data (`Unit`, `True`, `False`, a payload-less
 variant) has exactly one value, produced with an empty argument list:
 `True()`, `None()`. Calling a **data-carrying** constructor with no
-arguments (`String()`, `User()`) is a compile error — absence belongs in
+arguments (`String()`, `User()`) is a compile error: absence belongs in
 `Option<T>`, not in a default value. Factory-style construction uses an
 explicit lowercase function (`List.empty()`).
 
@@ -177,16 +177,16 @@ match exactly.
 
 ## Dead Code
 
-A **program's** declarations must be reachable from its entry point:
+A **program's** declarations must be reachable from its entry point.
 `canon check` walks the reference graph from `main` (or the HTTP
-handler) and warns on every unreachable type and function —
+handler) and warns on every unreachable type and function:
 
 ```
-warning: `unused` is never used — dead code is not allowed to
+warning: `unused` is never used: dead code is not allowed to
 accumulate; delete it or wire it into the program
 ```
 
-— a warning at the command line, promoted to a failure in CI.
-Libraries are exempt: with no private visibility, every declaration in
-a library *is* exported surface, so its dead code shows up downstream,
-in the programs that stopped calling it.
+The warning is promoted to a failure in CI. Libraries are exempt: with
+no private visibility, every declaration in a library *is* exported
+surface, so its dead code shows up downstream, in the programs that
+stopped calling it.

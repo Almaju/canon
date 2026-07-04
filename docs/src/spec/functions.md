@@ -8,7 +8,7 @@ name = (Components) -> ReturnType {
 }
 ```
 
-The parenthesised components form a **product** — the function's input
+The parenthesised components form a **product**: the function's input
 is a product type, written with the same `*` used everywhere else. There
 are no commas, no parameter names, no defaults:
 
@@ -36,7 +36,7 @@ Greeting("hi ").greet(Name("ada"))
 Name("ada").greet(Greeting("hi "))
 ```
 
-Both are the same call — a consequence of `*`'s commutativity: the
+Both are the same call, a consequence of `*`'s commutativity: the
 receiver position is not privileged, it merely selects which component
 the caller writes on the left. For arities above two, the remaining
 components are passed as a product value:
@@ -47,7 +47,7 @@ router.route(Handler(...) * Path("/api"))
 
 ### The Binding Rule
 
-Commutative calling is a *syntactic* freedom — never a semantic
+Commutative calling is a *syntactic* freedom, never a semantic
 ambiguity. Arguments (including the receiver) bind to components by:
 
 1. **Exact type match binds first.** A value typed `OtherUser` binds
@@ -57,19 +57,19 @@ ambiguity. Arguments (including the receiver) bind to components by:
    unfilled component accepts it.
 3. **Anything else is a compile error.** If two same-typed bare values
    could each fill two alias-related slots, the call is ambiguous and
-   the caller must wrap one explicitly: for
+   the caller must wrap one explicitly. For
    `compare = (OtherUser * User) -> Ord`, `alice.compare(bob)` is
-   rejected (which one is the `OtherUser`? the answer flips `Less` and
-   `Greater`) — write `alice.compare(OtherUser(bob))`.
+   rejected: which value is the `OtherUser` decides `Less` versus
+   `Greater`. Write `alice.compare(OtherUser(bob))`.
 
 **Repeated components bind positionally.** A function over a fixed
-repetition — `merge = (User^2) -> User` — has positional components
-(`.1`, `.2`, …), so binding is positional too: the receiver fills `.1`,
-remaining arguments fill `.2`… in the order written. Commutative
-reordering does not apply, because position *is* the identity of a
-repeated component. Use `T^N` when order is the honest semantic
-(pairs, coordinates); use distinct newtypes when components mean
-different things.
+repetition, such as `merge = (User^2) -> User`, has positional
+components (`.1`, `.2`, …), so binding is positional too: the receiver
+fills `.1`, remaining arguments fill `.2` and onward in the order
+written. Commutative reordering does not apply, because position *is*
+the identity of a repeated component. Use `T^N` when order is the
+honest semantic (pairs, coordinates); use distinct newtypes when
+components mean different things.
 
 ## Optional Components
 
@@ -86,7 +86,7 @@ paint = (Option<Color> * String) -> Unit { ... }
 Omission is legal **only when the component's type implements the
 `Default` trait**; the compiler inserts `T.Default()` for the missing
 component. `Default = <T>() -> T` is an ordinary trait, and core ships
-exactly one implementation — `Option<T>`'s, which returns `None()`. So
+exactly one implementation: `Option<T>`'s, which returns `None()`. So
 omitting an `Option<Color>` means `None()`, but the defaulting is not a
 special case: it is opt-in, declared in source, and a user type that
 wants omission semantics implements `Default` for itself.
@@ -94,9 +94,9 @@ wants omission semantics implements `Default` for itself.
 ## First-Class Functions and Lambdas
 
 A function is referenced as a value by qualifying it with one of its
-component types — `Int.double` — and passed wherever a matching
-signature is expected. Anonymous functions are lambda literals with a
-**full signature** (there is no inference):
+component types (`Int.double`) and passed wherever a matching signature
+is expected. Anonymous functions are lambda literals with a **full
+signature** (there is no inference):
 
 ```canon
 Numbers.map((Int) -> Int { Int.mul(Int(3)) })
@@ -124,7 +124,7 @@ Show = (Greeting) -> String {
 
 Case alone distinguishes the forms: `show` would be a regular function;
 `Show` is a trait implementation. Call sites use ordinary commutative
-syntax — `Greeting("hi").Show()`.
+syntax: `Greeting("hi").Show()`.
 
 - **Multi-method traits** are products of single-method traits:
   `Presentable = Debug * PrintString`. Implementing the product means
@@ -149,11 +149,11 @@ is by signature, not by name:
 
 Rules the compiler enforces:
 
-- Two functions returning a world type — compile error (ambiguous
+- Two functions returning a world type: compile error (ambiguous
   entry). **Helpers must return ordinary data**, never `Response`.
-- Mixed worlds in one module — compile error; a component exports
+- Mixed worlds in one module: compile error; a component exports
   exactly one world.
-- Zero matches — the module is a library: usable via `use`, not
+- Zero matches: the module is a library, usable via `use`, not
   runnable.
 - The entry is lifted **async-stackful** at the Component Model
   boundary, so suspending calls anywhere beneath it can yield without
@@ -165,7 +165,7 @@ The same signature-driven selection powers testing: every
 
 ## Declaration Order
 
-Functions in a file must be declared in alphabetical order — a
-compile-time requirement. The synthesised test `main` and similar
+Functions in a file must be declared in alphabetical order; the checker
+enforces this at compile time. The synthesised test `main` and similar
 compiler-generated entries are exempt (they are distinguished by role,
 not name). See [Ordering Rules](./ordering.md).

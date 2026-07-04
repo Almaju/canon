@@ -4,19 +4,19 @@
 
 Type-level, tightest first:
 
-1. `T^N`, `T^*` — postfix repetition / Kleene star
-2. `T<...>` — generic application
-3. `*` — product
-4. `+` — union
+1. `T^N`, `T^*`: postfix repetition / Kleene star
+2. `T<...>`: generic application
+3. `*`: product
+4. `+`: union
 
 So `A + B * C^3` parses as `A + (B * (C^3))`.
 
 Expression-level, tightest first:
 
-1. `.` — call / field access / dispatch
-2. `()` — application
-3. `?` — postfix propagation
-4. `*` — value-level product (only inside a constructor argument)
+1. `.`: call / field access / dispatch
+2. `()`: application
+3. `?`: postfix propagation
+4. `*`: value-level product (only inside a constructor argument)
 
 So `foo.bar()?` is `((foo.bar)())?`.
 
@@ -25,8 +25,8 @@ So `foo.bar()?` is `((foo.bar)())?`.
 Field names and constructors are both PascalCase, so the dot syntax
 needs one disambiguation rule, and it is the parentheses:
 
-- `user.Birthday` — **field access**: reads the `Birthday` component.
-- `user.Birthday()` — **constructor call**: calls `Birthday` with `user`
+- `user.Birthday`: **field access**, reads the `Birthday` component.
+- `user.Birthday()`: **constructor call**, calls `Birthday` with `user`
   as the receiver, producing a new value.
 
 `()` signals *producing*; its absence signals *observing*. In type
@@ -37,7 +37,7 @@ always the type.
 
 A body is a newline-separated sequence of expressions; the **last
 expression is the return value**. Non-final expressions are evaluated
-and discarded — they exist for effects and for `?` propagation. With no
+and discarded; they exist for effects and for `?` propagation. With no
 local variables, the way a value threads through several operations is a
 method chain:
 
@@ -68,7 +68,7 @@ Rules:
 - Each arm is a lambda whose single parameter is one variant type; arms
   are separated by `*`. The leading `*` on the first arm is optional.
 - Arms must appear in the union's **variant order** (alphabetical), and
-  every variant must be handled — there is no wildcard arm.
+  every variant must be handled; there is no wildcard arm.
 - Dispatch is an expression; all arms must produce the same type.
 
 Algebraically, dispatch is the isomorphism
@@ -107,7 +107,7 @@ the arm body it shadows any outer component of the same type name. A
 function that already has a `String` component and dispatches over a
 `Result<String, E>` sees the *payload* as `String` inside the
 `Ok<String>` arm. When both values are needed in the same arm,
-disambiguate the outer one with a newtype alias before dispatching —
+disambiguate the outer one with a newtype alias before dispatching,
 the same rule as same-typed parameters.
 
 ### Literal Dispatch
@@ -132,16 +132,16 @@ Rules:
   newtype alias chain (`Path = String` dispatches with a `(Path)`
   catch-all).
 - Literal arms can never be exhaustive, so **totality comes from the
-  catch-all** — it is required, and it is always the last arm.
-- Literal arms follow canonical order — alphabetical for strings,
-  ascending for ints; duplicates are a compile error. `canon fmt` sorts
-  the arms automatically.
+  catch-all**: it is required, and it is always the last arm.
+- Literal arms follow canonical order (alphabetical for strings,
+  ascending for ints); duplicates are a compile error. `canon fmt`
+  sorts the arms automatically.
 - Inside every arm body (including literal arms) the scrutinee value is
   in scope under its type name, exactly like a bound payload.
 
 Nested dispatch composes: dispatch on a union, then literal-dispatch
-the payload inside an arm — the shape of every HTTP route table (see
-[Serving HTTP](../tour/http.md)).
+the payload inside an arm. This is the shape of every HTTP route table
+(see [Serving HTTP](../tour/http.md)).
 
 ## The `?` Operator
 
@@ -160,7 +160,7 @@ short-circuited value (a `Result` whose error slot includes `E`, or an
 
 **Error union widening.** Inline error unions widen along
 `?`-propagation: a `Result<T, IoError>` propagates out of a function
-declared `Result<U, IoError + ParseError>` without ceremony — `?` lifts
+declared `Result<U, IoError + ParseError>` without ceremony. `?` lifts
 the error into the wider union whenever the callee's error variants are
 a subset of the caller's. Alphabetical enforcement makes the subset
 test purely syntactic: every union has exactly one canonical spelling,
@@ -172,12 +172,11 @@ so `IoError + NotFound` *is* the same type everywhere it appears.
 ## JSON Literals
 
 JSON object and array literals are first-class expressions producing
-`Json` values. No import is required — like `Option` and `Result`,
-JSON support is part of the prelude: the compiler knows
-`Json = String` intrinsically, and the loader pulls in
-`canon/std/Json` automatically the moment a program uses its
-machinery (interpolation, the validating `Json(...)` constructor, or
-`.ToJson()`):
+`Json` values. No import is required: like `Option` and `Result`, JSON
+support is part of the prelude. The compiler knows `Json = String`
+intrinsically, and the loader pulls in `canon/std/Json` automatically
+the moment a program uses its machinery (interpolation, the validating
+`Json(...)` constructor, or `.ToJson()`):
 
 ```canon
 label = (Int) -> Json {
@@ -187,16 +186,16 @@ label = (Int) -> Json {
 
 - **Static** members (strings, numbers, `true`/`false`/`null`, nested
   static literals) are baked into a constant at parse time. A fully
-  static literal is just a constant — it imposes no imports and no
-  host requirements, so it works in every world (including
+  static literal is a constant: it imposes no imports and no host
+  requirements, so it works in every world (including
   `wasi:http/service` handlers).
 - **Interpolated** members are ordinary Canon expressions converted at
   runtime via their `ToJson` instance. The instances are host-backed
-  (`canon:builtins/json`), which the HTTP world can't satisfy yet — a
+  (`canon:builtins/json`), which the HTTP world can't satisfy yet; a
   handler program using interpolation fails at build with an error
   naming the unsatisfiable imports.
 - Literal layout is canonical like all Canon code: no spaces after `:`
-  or `,` — `{"k":v}`, not `{"k": v}`. `canon fmt` enforces it.
+  or `,` (`{"k":v}`, not `{"k": v}`). `canon fmt` enforces it.
 
 ## Operator and Sigil Glossary
 
