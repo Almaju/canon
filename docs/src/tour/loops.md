@@ -22,19 +22,18 @@ main = () -> Unit {
 Anything the collection methods don't cover is plain recursion —
 functions call themselves, and dispatch supplies the base case:
 
-```canon,run=countdown
-countdown = (Int) -> Unit {
+```canon,run=sum-to
+sumTo = (Int) -> Int {
     Int.eq(0).(
-        * (False) -> Unit {
-            Int.print()
-            Int.sub(1).countdown()
-        }
-        * (True) -> Unit { "liftoff".print() }
+        * (False) -> Int { Int.add(Int.sub(1).sumTo()) }
+        * (True) -> Int { 0 }
     )
 }
 
 main = () -> Unit {
-    3.countdown()
+    5
+        .sumTo()
+        .print()
 }
 ```
 
