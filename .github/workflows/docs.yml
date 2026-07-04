@@ -73,7 +73,7 @@ jobs:
 
       - name: Build the in-browser runner (runnable examples)
         run: |
-          python3 docs/runner/build.py \
+          node docs/runner/build.mjs \
             --canon target/release/canon \
             --src docs/src \
             --out site/doc/runner \
