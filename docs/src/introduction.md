@@ -76,7 +76,7 @@ main = () -> Unit {
 A CLI program, with branching (dispatch on a union — Canon's only
 control-flow construct) and iteration (methods on collections):
 
-```canon
+```canon,run=intro
 main = () -> Unit {
     List(1, 2, 3)
         .map((Int) -> Int { Int.mul(2) })

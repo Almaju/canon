@@ -11,8 +11,8 @@ preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/Almaju/canon"
 edit-url-template = "https://github.com/Almaju/canon/edit/main/docs/{path}"
 additional-css = ["theme/custom.css"]
-additional-js = ["theme/canon-highlight.js", "theme/tabs.js"]
-no-section-label = false
+additional-js = ["theme/canon-highlight.js", "theme/tabs.js", "theme/run.js"]
+no-section-label = true
 
 [output.html.fold]
 enable = true

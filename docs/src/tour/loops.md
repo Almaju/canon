@@ -8,11 +8,13 @@ through higher-order methods on collections or recursion.
 For most collection work, use methods on the collection itself —
 `map`, `get`, `length`, `first`:
 
-```canon
-List(10, 20, 30)
-    .map((Int) -> Int { Int.mul(2) })
-    .length()
-    .print()
+```canon,run=list-map
+main = () -> Unit {
+    List(10, 20, 30)
+        .map((Int) -> Int { Int.mul(2) })
+        .length()
+        .print()
+}
 ```
 
 ## Why No Loop Keywords?

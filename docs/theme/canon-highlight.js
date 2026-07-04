@@ -88,8 +88,16 @@
     }
 
     function highlightCanonBlocks() {
-        var blocks = document.querySelectorAll(
-            'pre code.language-canon, pre code.language-ow'
+        // Match `language-canon` with optional fence flags — a block
+        // tagged ```canon,run=hello gets the single class
+        // "language-canon,run=hello" (the info string up to whitespace).
+        var blocks = Array.prototype.filter.call(
+            document.querySelectorAll('pre code'),
+            function (block) {
+                return /(?:^|\s)language-(?:canon|ow)(?:,|\s|$)/.test(
+                    block.className
+                );
+            }
         );
         blocks.forEach(function (block) {
             var raw = block.textContent;
