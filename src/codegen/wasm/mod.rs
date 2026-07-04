@@ -1804,6 +1804,18 @@ impl<'m> WasmGen<'m> {
                     }
                 }
             }
+            Expr::HtmlLit { parts, .. } => {
+                // Same as JsonLit: pre-intern Static fragments for the
+                // concat-chain lowering, recurse into interpolations.
+                for p in parts {
+                    match p {
+                        crate::ast::HtmlLitPart::Static(s) => {
+                            self.strings.intern(s);
+                        }
+                        crate::ast::HtmlLitPart::Interp(e) => self.collect_strings_expr(e),
+                    }
+                }
+            }
             Expr::FieldAccess { receiver, .. } => self.collect_strings_expr(receiver),
             Expr::MethodCall { receiver, args, .. } => {
                 self.collect_strings_expr(receiver);
@@ -3154,6 +3166,36 @@ impl<'m> WasmGen<'m> {
                 }
             }
 
+            // ── HTML literal ──────────────────────────────────
+            //
+            // Same two-tier lowering as the JSON literal above: an
+            // all-static literal collapses to one interned string; a
+            // literal with interpolation holes becomes a
+            // `String.concat` chain whose `Interp` links are
+            // `.ToHtml()` calls (escaping for `String`/`Int` via the
+            // stdlib's `text()`, identity for `Html` — see
+            // `packages/canon/std/src/web/html.can`).
+            Expr::HtmlLit { parts, span } => {
+                let all_static = parts
+                    .iter()
+                    .all(|p| matches!(p, crate::ast::HtmlLitPart::Static(_)));
+                if all_static {
+                    let mut merged = String::new();
+                    for p in parts {
+                        if let crate::ast::HtmlLitPart::Static(s) = p {
+                            merged.push_str(s);
+                        }
+                    }
+                    let (ptr, len) = self.strings.intern(&merged);
+                    f.instruction(&Instruction::I32Const(ptr as i32));
+                    f.instruction(&Instruction::I32Const(len as i32));
+                    Ty::Str
+                } else {
+                    let chain = html_lit_to_concat_chain(parts, *span);
+                    self.compile_expr(&chain, scope, f)
+                }
+            }
+
             // ── Await (checker-inserted, Phase 5) ─────────────────────────────
             Expr::Await { inner, .. } => self.compile_expr(inner, scope, f),
         }
@@ -3391,7 +3433,9 @@ impl<'m> WasmGen<'m> {
     /// `None` when the static shape isn't obvious without full type checking.
     fn infer_static_type_name(&self, expr: &Expr) -> Option<String> {
         match expr {
-            Expr::StringLit { .. } | Expr::JsonLit { .. } => Some("String".to_string()),
+            Expr::StringLit { .. } | Expr::JsonLit { .. } | Expr::HtmlLit { .. } => {
+                Some("String".to_string())
+            }
             Expr::IntLit { .. } | Expr::HexLit { .. } => Some("Int".to_string()),
             Expr::FloatLit { .. } => Some("Float".to_string()),
             Expr::Constructor { name, .. } => {
@@ -7938,6 +7982,58 @@ fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::erro
     // Parser invariant: parts is never empty (always starts with the
     // opening `{` or `[` as a Static).
     let mut acc = iter.next().expect("JsonLit parts must be non-empty");
+    for next in iter {
+        acc = Expr::MethodCall {
+            receiver: Box::new(acc),
+            method: Ident {
+                name: "concat".to_string(),
+                span,
+            },
+            type_args: vec![],
+            args: vec![next],
+            span,
+        };
+    }
+    acc
+}
+
+/// Lower an `HtmlLit { parts }` into the equivalent left-associative
+/// `String.concat` chain over `StringLit` (Static parts) and
+/// `.ToHtml()` method calls (Interp parts) — the exact HTML analogue of
+/// `json_lit_to_concat_chain` above. `ToHtml` dispatches on the
+/// interpolated value's type: `String` and `Int` escape through the
+/// stdlib's `text()`, `Html` passes through unchanged.
+///
+/// Example: `<li>{name}</li>` (parts = [Static(`<li>`), Interp(name),
+/// Static(`</li>`)])
+///
+///   → `"<li>".concat(name.ToHtml()).concat("</li>")`
+fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::error::Span) -> Expr {
+    use crate::ast::{HtmlLitPart, Ident};
+    let part_exprs: Vec<Expr> = parts
+        .iter()
+        .map(|p| match p {
+            HtmlLitPart::Static(s) => Expr::StringLit {
+                value: s.clone(),
+                span,
+            },
+            HtmlLitPart::Interp(e) => Expr::MethodCall {
+                receiver: e.clone(),
+                method: Ident {
+                    name: "ToHtml".to_string(),
+                    span,
+                },
+                type_args: vec![],
+                args: vec![],
+                span,
+            },
+        })
+        .collect();
+
+    let mut iter = part_exprs.into_iter();
+    // Parser invariant: parts is never empty (the literal's opening
+    // tag is always a Static).
+    let mut acc = iter.next().expect("HtmlLit parts must be non-empty");
     for next in iter {
         acc = Expr::MethodCall {
             receiver: Box::new(acc),

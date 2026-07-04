@@ -1,5 +1,17 @@
 Html = String
 
+ToHtml = (Html) -> Html {
+    Html
+}
+
+ToHtml = (Int) -> Html {
+    Int.toText().text()
+}
+
+ToHtml = (String) -> Html {
+    String.text()
+}
+
 button = (Msg * String) -> Html {
     Html("<button data-msg=\"".concat(Msg).concat("\">").concat(String).concat("</button>"))
 }

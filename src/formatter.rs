@@ -647,6 +647,26 @@ fn emit_base_inline(expr: &Expr) -> String {
             }
             out
         }
+        Expr::HtmlLit { parts, .. } => {
+            // Reconstruct the source-level HTML literal. Static parts
+            // hold the *unescaped* text (the scanner resolved `{{` /
+            // `}}`), so literal braces must be re-escaped; interpolated
+            // expressions get their `{…}` hole back.
+            let mut out = String::new();
+            for p in parts {
+                match p {
+                    HtmlLitPart::Static(s) => {
+                        out.push_str(&s.replace('{', "{{").replace('}', "}}"))
+                    }
+                    HtmlLitPart::Interp(e) => {
+                        out.push('{');
+                        out.push_str(&emit_inline(e));
+                        out.push('}');
+                    }
+                }
+            }
+            out
+        }
         // MethodCall, Match, Try are handled by chain flattening and should
         // never appear as a Base.  Return empty as a safeguard.
         _ => String::new(),

@@ -191,8 +191,48 @@ For ergonomics, several literal forms are sugar over their constructors:
 | `"abc"`        | `String("abc")`    |
 | `0xFF0000`     | `Hex(0xFF0000)`    |
 | `{"k":v}`, `[v]` | a `Json` value (static parts constant-folded; interpolated parts via `ToJson`) |
+| `<div>…</div>`   | an `Html` value (static parts constant-folded; interpolated parts via `ToHtml`) |
 
 String literals exist to avoid the parsing ambiguity of bare `String(...)` with spaces and punctuation. Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
+
+#### HTML Literals
+
+An HTML literal starts at a `<` immediately followed by a lowercase tag
+name — a position where `<` is never valid Canon (generic arguments are
+PascalCase types) — and spans one root element, closing tag included.
+Inside, `{…}` is an interpolation hole holding an arbitrary Canon
+expression; everything else (attributes, quotes, nested tags, comments,
+void elements like `<br>`) is raw markup:
+
+```
+view = (Model) -> Html {
+    <div>
+        <h1>Counter</h1>
+        <button data-msg="Increment">+</button>
+        <span>{Model.toText()}</span>
+    </div>
+}
+```
+
+Interpolated values convert through the `ToHtml` trait: a `String` or
+`Int` is HTML-escaped (via the stdlib's `text()`), while an `Html` value
+passes through unchanged — so composing literals never double-escapes:
+
+```
+row = (String) -> Html {
+    <li>{String}</li>
+}
+
+list = (String) -> Html {
+    <ul>{String.row()}</ul>
+}
+```
+
+Holes work in attribute values too (`<button data-msg="{Msg}">`).
+Literal interpolations (`{42}`, `{"a & b"}`) fold to static text at
+parse time — escaped where escaping applies — so an all-constant
+literal costs one string constant at runtime, exactly like an
+all-static JSON literal. `{{` and `}}` escape literal braces.
 
 #### Zero-Data vs Data-Carrying Constructors
 
@@ -321,7 +361,7 @@ Given a reference to a name `Z` the current file does not define, the loader sea
 
 This is why the naming conventions have teeth: files are `kebab-case.can` of the PascalCase type they declare, so "which file defines `HttpServer`?" has exactly one mechanical answer, and the compiler applies it so you never write it down.
 
-**The prelude.** A handful of core names need no lookup at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`).
+**The prelude.** A handful of core names need no lookup at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json` and `Html`. JSON and HTML literals are part of the syntax, so `{"k":"v"}` types as `Json` and `<div>hi</div>` as `Html` (both aliases of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses the JSON machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`), and `canon/std/web/Html` the moment an HTML literal carries an interpolation hole (conversion rides `.ToHtml()`).
 
 Packages have versions. The version pin lives in the vendored files' `package` directives (see PACKAGES.md), not at any reference site — a reference to `Decoder` never carries an `@version`.
 

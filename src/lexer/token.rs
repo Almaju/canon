@@ -8,6 +8,12 @@ pub enum TokenKind {
     FloatLit,
     HexLit,
     StringLit,
+    /// A raw fragment of an HTML literal that is followed by a `{…}`
+    /// interpolation (the scanner has already consumed the `{`).
+    HtmlText,
+    /// The final raw fragment of an HTML literal (the literal's root
+    /// element closed with this fragment).
+    HtmlEnd,
 
     Eq,
     FatArrow,
@@ -51,6 +57,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::FloatLit => "float literal",
             TokenKind::HexLit => "hex literal",
             TokenKind::StringLit => "string literal",
+            TokenKind::HtmlText => "HTML literal fragment",
+            TokenKind::HtmlEnd => "HTML literal",
             TokenKind::Eq => "`=`",
             TokenKind::FatArrow => "`=>`",
             TokenKind::Arrow => "`->`",
