@@ -1,6 +1,6 @@
 use crate::ast::{
     extract_receiver_from_params, resolve_new_syntax, BindingsDecl, Block, Expr, ExternWasm,
-    FunctionDef, Item, JsonLitPart, MatchArm, Module, PackageDecl, Param, TypeExpr,
+    FunctionDef, HtmlLitPart, Item, JsonLitPart, MatchArm, Module, PackageDecl, Param, TypeExpr,
 };
 use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
@@ -459,6 +459,7 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
     let other_items = module.items;
     register_defined_names(&other_items, ctx);
     inject_json_prelude(&other_items, ctx)?;
+    inject_html_prelude(&other_items, ctx)?;
     inject_int_prelude(&other_items, ctx)?;
     discover_references(&other_items, dir, ctx)?;
     let start = ctx.items.len();
@@ -536,6 +537,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
         Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_int_parse),
         Expr::FieldAccess { receiver, .. } => expr_uses_int_parse(receiver),
         Expr::JsonLit { .. }
+        | Expr::HtmlLit { .. }
         | Expr::Ident(_)
         | Expr::StringLit { .. }
         | Expr::IntLit { .. }
@@ -580,6 +582,87 @@ fn items_use_json_machinery(items: &[Item]) -> bool {
     })
 }
 
+/// HTML prelude: `canon/std/web/Html` loads automatically, mirroring
+/// the JSON prelude. A fully static HTML literal is constant-folded and
+/// needs nothing at all (the checker knows `Html = String`
+/// intrinsically), so the stdlib module is pulled in only when a
+/// literal carries an interpolation hole (`<li>{Model}</li>` converts
+/// via `ToHtml`, which escapes through `text()`) or the program calls
+/// `.ToHtml()` explicitly. Programs that *name* `Html` (annotations,
+/// `Html(...)` constructors) already load the module through ordinary
+/// reference discovery — this covers the literal-only case. Skipped
+/// when the file defines `Html` itself or the module already loaded an
+/// `Html` definition.
+fn inject_html_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
+    let already_in_scope = ctx.defined.contains("Html")
+        || other_items.iter().any(|item| match item {
+            Item::TypeDef(td) => td.name.name == "Html",
+            Item::Function(f) => f.name.name == "Html" && f.extern_wasm.is_some(),
+            _ => false,
+        });
+    if already_in_scope || !items_use_html_machinery(other_items) {
+        return Ok(());
+    }
+    let Some((pkg, file)) = resolve_bundled_use("canon/std/web/Html") else {
+        return Ok(());
+    };
+    let key = format!("{}/{}", pkg.name, file.path);
+    if ctx.seen_bundled.insert(key) {
+        load_bundled_source(pkg, file, ctx)?;
+    }
+    Ok(())
+}
+
+fn items_use_html_machinery(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Function(f) => f.body.exprs.iter().any(expr_uses_html_machinery),
+        _ => false,
+    })
+}
+
+fn expr_uses_html_machinery(expr: &Expr) -> bool {
+    match expr {
+        Expr::HtmlLit { parts, .. } => parts.iter().any(|p| match p {
+            HtmlLitPart::Static(_) => false,
+            // The interpolation itself needs `ToHtml`, whatever the
+            // inner expression is.
+            HtmlLitPart::Interp(_) => true,
+        }),
+        Expr::JsonLit { parts, .. } => parts.iter().any(|p| match p {
+            JsonLitPart::Static(_) => false,
+            JsonLitPart::Interp(e) => expr_uses_html_machinery(e),
+        }),
+        Expr::Constructor { args, .. } => args.iter().any(expr_uses_html_machinery),
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            method.name == "ToHtml"
+                || expr_uses_html_machinery(receiver)
+                || args.iter().any(expr_uses_html_machinery)
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_uses_html_machinery(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| arm.body.exprs.iter().any(expr_uses_html_machinery))
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_uses_html_machinery(inner),
+        Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_html_machinery),
+        Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_html_machinery),
+        Expr::FieldAccess { receiver, .. } => expr_uses_html_machinery(receiver),
+        Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => false,
+    }
+}
+
 fn expr_uses_json_machinery(expr: &Expr) -> bool {
     use crate::ast::JsonLitPart;
     match expr {
@@ -591,6 +674,10 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
                 let _ = e;
                 true
             }
+        }),
+        Expr::HtmlLit { parts, .. } => parts.iter().any(|p| match p {
+            HtmlLitPart::Static(_) => false,
+            HtmlLitPart::Interp(e) => expr_uses_json_machinery(e),
         }),
         Expr::Constructor { name, args, .. } => {
             name.name == "Json" || args.iter().any(expr_uses_json_machinery)
@@ -910,6 +997,13 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
         Expr::JsonLit { parts, .. } => {
             for p in parts {
                 if let JsonLitPart::Interp(e) = p {
+                    collect_expr_refs(e, skip, out);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
                     collect_expr_refs(e, skip, out);
                 }
             }
@@ -1260,6 +1354,7 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
     };
     register_defined_names(items, &mut ctx);
     let _ = inject_json_prelude(items, &mut ctx);
+    let _ = inject_html_prelude(items, &mut ctx);
     let _ = discover_references(items, dir, &mut ctx);
     ctx.items
 }
@@ -1525,6 +1620,7 @@ fn load_source(
     let mut other_items = module.items;
     register_defined_names(&other_items, ctx);
     inject_json_prelude(&other_items, ctx)?;
+    inject_html_prelude(&other_items, ctx)?;
     discover_references(&other_items, dir, ctx)?;
     if let Some(urn) = wit_urn {
         patch_extern_paths(&mut other_items, urn);

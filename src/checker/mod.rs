@@ -521,6 +521,13 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
                 }
             }
         }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
+                    collect_expr_names(e, out);
+                }
+            }
+        }
         Expr::StringLit { .. }
         | Expr::IntLit { .. }
         | Expr::FloatLit { .. }
@@ -728,6 +735,16 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     if !types.contains("Json") && !generic_types.contains("Json") {
         types.insert("Json".to_string());
         aliases.insert("Json".to_string(), "String".to_string());
+    }
+
+    // Same for `Html`: a fully static HTML literal (`<div>hi</div>` —
+    // a compile-time constant) is typed `Html` without the stdlib's
+    // `web/html.can` in scope, so the checker needs the alias chain to
+    // reach `String` intrinsically. A user- or stdlib-defined `Html`
+    // wins (the stdlib's is the same `Html = String`).
+    if !types.contains("Html") && !generic_types.contains("Html") {
+        types.insert("Html".to_string());
+        aliases.insert("Html".to_string(), "String".to_string());
     }
 
     // Free functions: every `FunctionDef` with no receiver and a name
@@ -1239,6 +1256,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::StringLit { .. } => {}
         Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. } => {}
         Expr::JsonLit { .. } => {}
+        Expr::HtmlLit { .. } => {}
         Expr::Constructor { name, args, span } => {
             let is_variant = symbols.variant_of.contains_key(&name.name);
             // A free function with this exact name (like `Now = () -> Now`
@@ -1916,6 +1934,10 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         // — same shape as any other stdlib type. JSON literal syntax
         // is first-class, but its *type name* is part of the stdlib.
         Expr::JsonLit { .. } => "Json".to_string(),
+        // HTML literals are `Html` (a `String` newtype) — like `Json`,
+        // the type name is intrinsically known to the checker so a
+        // fully static literal needs no import (see `collect_symbols`).
+        Expr::HtmlLit { .. } => "Html".to_string(),
         Expr::Await { inner, .. } => expr_type_name_in_scope(inner, symbols),
     }
 }
