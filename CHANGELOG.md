@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Release channels & install (2026-07)
+
+Releases moved to a **nightly + stable** model that never pushes to `main`
+(so it no longer trips the branch ruleset). Every push to `main` publishes a
+rolling `nightly` prerelease; stable `vX.Y.Z` releases are cut on demand by the
+`promote` workflow. `install.sh` gained `CANON_CHANNEL` (`stable` default /
+`nightly`), and the CLI gained `canon channel [stable|nightly]` plus
+`canon upgrade --nightly` / `--stable`; `canon --version` now reports the
+active channel. The x86_64 macOS binary is cross-built on the arm64 runner
+(the Intel `macos-13` runner is gone), and `install.sh` fails with a clear
+message when no release exists instead of building a bogus tag.
+
 ### V1 milestone (2026-07)
 
 The V1 roadmap (`V1.md`) is complete, with resources/streams for the

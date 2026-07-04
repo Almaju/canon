@@ -27,18 +27,37 @@ Pin to a specific version:
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.3.0
 ```
 
+## Channels
+
+Canon ships on two channels:
+
+- **stable** (default) — versioned releases (`vX.Y.Z`), promoted manually from
+  a tested nightly.
+- **nightly** — a rolling prerelease rebuilt automatically on every push to
+  `main`. Latest features, less settled.
+
+Install the nightly channel:
+
+```sh
+CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
+```
+
 ## Verify
 
 ```sh
-canon --version
+canon --version            # e.g. "canon 0.3.1 (stable)"
 ```
 
 ## Update
 
 ```sh
-canon upgrade              # install the latest release
+canon upgrade              # install the latest build on your current channel
 canon upgrade v0.3.0       # install a specific release
 canon upgrade --check      # check whether a newer release is available
+canon upgrade --nightly    # switch to nightly and update
+canon upgrade --stable     # switch to stable and update
+canon channel              # print the current channel
+canon channel nightly      # switch channel without updating yet
 ```
 
 ## Editor Support

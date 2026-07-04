@@ -48,12 +48,22 @@ Pin to a specific version:
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
 ```
 
+Prefer the bleeding edge? Install the **nightly** channel, rebuilt on every push to `main`:
+
+```sh
+CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
+```
+
 Update an existing install in place:
 
 ```sh
-canon upgrade            # install the latest release
+canon upgrade            # install the latest build on your current channel
 canon upgrade v0.2.0     # install a specific release
 canon upgrade --check    # only check whether a newer release is available
+canon upgrade --nightly  # switch to the nightly channel and update
+canon upgrade --stable   # switch back to the stable channel and update
+canon channel            # print the current channel
+canon channel nightly    # switch channel without updating yet
 ```
 
 > **Note:** no external toolchain is required — the compiler produces the final `.wasm` in-process and `canon run` executes it on the embedded wasmtime runtime.
@@ -122,12 +132,17 @@ just ci           # run all CI checks locally
 
 ## Releases
 
-Releases are fully automated via GitHub Actions. To cut a release, trigger the **bump** workflow from the GitHub UI (`Actions → bump → Run workflow`) and enter the new version (e.g. `0.4.0`).
+Two channels, both driven by GitHub Actions — no manual version bumps, and
+nothing is ever pushed to `main`:
 
-The workflow:
-1. Updates `Cargo.toml` and `Cargo.lock`
-2. Commits and tags `vX.Y.Z`
-3. Pushes — which triggers `release.yml`, which cross-builds for macOS and Linux and publishes the tarballs to the GitHub release
+- **nightly** — every push to `main` publishes a rolling `nightly` prerelease
+  (the `nightly` workflow). Install it with `CANON_CHANNEL=nightly`.
+- **stable** — cut on demand: `Actions → promote → Run workflow` turns the
+  current nightly into the next `vX.Y.Z` release (pick a patch/minor/major
+  bump). This becomes the default install channel.
+
+Both call the reusable `release.yml`, which cross-builds for macOS and Linux
+and publishes the tarballs. See [`RELEASE.md`](RELEASE.md) for details.
 
 ---
 

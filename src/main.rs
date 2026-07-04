@@ -36,8 +36,9 @@ fn main() {
         "install" => cmd_install(&rest),
         "lsp" => canon::lsp::run(),
         "upgrade" | "update" => cmd_upgrade(&rest),
+        "channel" => cmd_channel(&rest),
         "--version" | "-V" => {
-            println!("canon {}", VERSION);
+            println!("canon {} ({})", VERSION, current_channel());
         }
         "help" | "--help" | "-h" => print_help(),
         other => {
@@ -82,7 +83,10 @@ fn print_help() {
     println!("  lsp                       Start the Language Server Protocol server");
     println!("  update [version]          Update canon to the latest (or given) release");
     println!("  update --check            Check whether a newer release is available");
+    println!("  update --nightly          Switch to the nightly channel and update");
+    println!("  update --stable           Switch to the stable channel and update");
     println!("                            (alias: upgrade)");
+    println!("  channel [stable|nightly]  Show or switch the update channel");
     println!("  --version, -V             Print version");
     println!("  help                      Print this message");
 }
@@ -1428,16 +1432,22 @@ const RELEASES_LATEST_URL: &str = "https://github.com/almaju/canon/releases/late
 fn cmd_upgrade(args: &[String]) {
     let mut check_only = false;
     let mut requested_version: Option<String> = None;
+    let mut channel_override: Option<&str> = None;
     for a in args {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
+            "--nightly" => channel_override = Some(CHANNEL_NIGHTLY),
+            "--stable" => channel_override = Some(CHANNEL_STABLE),
             "--help" | "-h" => {
-                println!("Usage: canon update [version] [--check]   (alias: upgrade)");
+                println!("Usage: canon update [version] [--check] [--nightly|--stable]");
+                println!("       (alias: upgrade)");
                 println!();
                 println!(
                     "  version      Install a specific release (e.g. v0.2.0). Defaults to latest."
                 );
                 println!("  --check      Only check whether a newer release is available.");
+                println!("  --nightly    Switch to the nightly channel, then update.");
+                println!("  --stable     Switch to the stable channel, then update.");
                 return;
             }
             other if other.starts_with('-') => {
@@ -1454,7 +1464,27 @@ fn cmd_upgrade(args: &[String]) {
         }
     }
 
+    // An explicit `--nightly`/`--stable` both selects the channel for this run
+    // and persists it, so a later bare `canon upgrade` stays on that channel.
+    if let Some(ch) = channel_override {
+        if let Err(err) = write_channel(ch) {
+            eprintln!("warning: could not persist channel selection: {}", err);
+        }
+    }
+    let channel = channel_override
+        .map(|c| c.to_string())
+        .unwrap_or_else(current_channel);
+
     if check_only {
+        // A pinned version request is always a stable-style tag lookup.
+        if channel == CHANNEL_NIGHTLY && requested_version.is_none() {
+            println!(
+                "canon is on the nightly channel (current: {}).\n\
+                 Nightly builds are published continuously; run `canon upgrade` to get the latest.",
+                VERSION
+            );
+            return;
+        }
         let latest = match fetch_latest_tag() {
             Ok(v) => v,
             Err(err) => {
@@ -1490,7 +1520,14 @@ fn cmd_upgrade(args: &[String]) {
         Some(v) => format!("sh -s -- {}", shell_escape(v)),
         None => "sh".to_string(),
     };
-    let pipeline = format!("{} | {}", fetch_cmd, sh_args);
+    // The installer reads CANON_CHANNEL to decide stable vs. nightly, and
+    // records it back so the installed binary reports the right channel.
+    let pipeline = format!(
+        "{} | CANON_CHANNEL={} {}",
+        fetch_cmd,
+        shell_escape(&channel),
+        sh_args
+    );
 
     let status = std::process::Command::new("sh")
         .arg("-c")
@@ -1507,6 +1544,67 @@ fn cmd_upgrade(args: &[String]) {
             process::exit(1);
         }
     }
+}
+
+const CHANNEL_STABLE: &str = "stable";
+const CHANNEL_NIGHTLY: &str = "nightly";
+
+fn cmd_channel(args: &[String]) {
+    match args.first().map(|s| s.as_str()) {
+        None => println!("{}", current_channel()),
+        Some("--help" | "-h") => {
+            println!("Usage: canon channel [stable|nightly]");
+            println!();
+            println!("  With no argument, prints the current update channel.");
+            println!("  With `stable` or `nightly`, switches the channel used by");
+            println!("  `canon upgrade`. Run `canon upgrade` afterwards to install");
+            println!("  the selected channel's latest build.");
+        }
+        Some(ch @ (CHANNEL_STABLE | CHANNEL_NIGHTLY)) => {
+            if let Err(err) = write_channel(ch) {
+                eprintln!("error: could not set channel: {}", err);
+                process::exit(1);
+            }
+            println!("Update channel set to '{}'.", ch);
+            println!("Run `canon upgrade` to install the latest {} build.", ch);
+        }
+        Some(other) => {
+            eprintln!(
+                "error: unknown channel '{}' (expected 'stable' or 'nightly')",
+                other
+            );
+            process::exit(1);
+        }
+    }
+}
+
+/// The install prefix, matching install.sh: `$CANON_INSTALL` or `$HOME/.canon`.
+fn install_dir() -> Option<PathBuf> {
+    if let Some(dir) = env::var_os("CANON_INSTALL") {
+        return Some(PathBuf::from(dir));
+    }
+    env::var_os("HOME").map(|home| PathBuf::from(home).join(".canon"))
+}
+
+fn channel_file() -> Option<PathBuf> {
+    install_dir().map(|d| d.join("channel"))
+}
+
+/// The persisted update channel, defaulting to `stable` when unset or invalid.
+fn current_channel() -> String {
+    channel_file()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| s == CHANNEL_STABLE || s == CHANNEL_NIGHTLY)
+        .unwrap_or_else(|| CHANNEL_STABLE.to_string())
+}
+
+fn write_channel(channel: &str) -> Result<(), String> {
+    let path = channel_file().ok_or("could not determine install directory")?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path, format!("{}\n", channel)).map_err(|e| e.to_string())
 }
 
 fn fetch_latest_tag() -> Result<String, String> {

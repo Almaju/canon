@@ -5,10 +5,12 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
+#   CANON_CHANNEL=nightly curl -fsSL .../install.sh | sh
 #
 # Env vars:
 #   CANON_INSTALL  override install prefix (default: $HOME/.canon)
-#   CANON_VERSION  override version (default: latest release)
+#   CANON_VERSION  override version (default: latest release of the channel)
+#   CANON_CHANNEL  'stable' (default) or 'nightly'
 
 set -eu
 
@@ -68,11 +70,29 @@ esac
 
 target="${arch_target}-${os_target}"
 
-# Resolve version
-version="${CANON_VERSION:-${1:-latest}}"
+# Select channel: stable (default) tracks versioned releases; nightly tracks
+# the rolling `nightly` prerelease published on every push to main.
+channel="${CANON_CHANNEL:-stable}"
+case "$channel" in
+    stable|nightly) ;;
+    *) die "error: unknown CANON_CHANNEL \`$channel\` (expected 'stable' or 'nightly')" ;;
+esac
 
-if [ "$version" = "latest" ]; then
+# An explicit version (positional arg or CANON_VERSION) always wins and pins a
+# specific tag, regardless of channel.
+requested="${CANON_VERSION:-${1:-}}"
+
+if [ -n "$requested" ]; then
+    version="$requested"
+    case "$version" in v*) ;; *) version="v${version}" ;; esac
+elif [ "$channel" = "nightly" ]; then
+    # The nightly release uses a fixed rolling tag — no resolution needed.
+    version="nightly"
+    info "Installing the latest nightly build of canon…"
+else
     info "Resolving latest release from github.com/${REPO}…"
+    # `/releases/latest` resolves to the latest NON-prerelease, so nightly
+    # prereleases are ignored here — exactly what the stable channel wants.
     redirect_url="https://github.com/${REPO}/releases/latest"
     if command -v curl >/dev/null 2>&1; then
         resolved="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$redirect_url" 2>/dev/null || true)"
@@ -80,24 +100,22 @@ if [ "$version" = "latest" ]; then
         resolved="$(wget --max-redirect=10 --server-response --spider "$redirect_url" 2>&1 | awk '/Location: /{u=$2} END{print u}')"
     fi
     # A repo with a published release redirects to …/releases/tag/<tag>.
-    # A repo with NO releases redirects to the …/releases listing page, so
-    # a naive "${resolved##*/}" would yield the literal word "releases" and
+    # A repo with NO stable release redirects to the …/releases listing page,
+    # so a naive "${resolved##*/}" would yield the literal word "releases" and
     # build a bogus "vreleases" tag. Require the tag form explicitly.
     case "$resolved" in
         */releases/tag/*) version="${resolved##*/}" ;;
         *) version="" ;;
     esac
-    [ -n "$version" ] || die "error: no published release found for ${REPO}.
-       The repository may not have cut a release yet — see
+    [ -n "$version" ] || die "error: no published stable release found for ${REPO}.
+       The repository may not have cut a stable release yet — see
        https://github.com/${REPO}/releases
-       Once a release exists, re-run this installer, or pin a version:
+       Try the nightly channel instead:
+       CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh
+       Or pin a specific version:
        CANON_VERSION=vX.Y.Z curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh"
+    case "$version" in v*) ;; *) version="v${version}" ;; esac
 fi
-
-case "$version" in
-    v*) ;;
-    *) version="v${version}" ;;
-esac
 
 archive="canon-${version}-${target}.tar.gz"
 url="https://github.com/${REPO}/releases/download/${version}/${archive}"
@@ -138,6 +156,10 @@ extracted="$tmpdir/canon-${version}-${target}"
 
 mv "$extracted/canon" "$BIN_DIR/canon"
 chmod +x "$BIN_DIR/canon"
+
+# Record the channel so the installed binary knows which channel it tracks
+# (used by `canon channel` / `canon upgrade`).
+printf '%s\n' "$channel" > "$INSTALL_DIR/channel"
 
 ok ""
 ok "  ✓ Installed canon ${version} to ${BIN_DIR}/canon"
