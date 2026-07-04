@@ -55,6 +55,7 @@
 - [Fetching a URL](./examples/fetch-url.md)
 - [A Multi-File Project](./examples/multifile.md)
 - [notes-api: A JSON Service](./examples/notes-api.md)
+- [A Todo List in the Browser](./examples/todolist.md)
 
 # Playground
 

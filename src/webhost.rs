@@ -20,6 +20,17 @@
 //!     GETs the URL and sends prefix + response body. This is the
 //!     host-mediated effect that lets a (pure) web app talk to a
 //!     Canon backend without any guest-side fetch import.
+//!
+//! ## Persistence
+//!
+//! The host can persist app state to `localStorage`. Because a Canon
+//! web app's `Model` is a pure fold over messages (`update`), the host
+//! never has to serialize the opaque model: it records the *message
+//! log* and, on the next load, replays it through `update` to rebuild
+//! the exact same model. Enabled by passing a storage key as the third
+//! argument to `canonWebStart` — the generated `index.html` keys it by
+//! the app's stem, so `canon run`/`canon build` apps persist by
+//! default with no guest-side `localStorage` import.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -34,13 +45,19 @@ pub const CANON_WEB_JS: &str = r#""use strict";
 (function () {
   const STDOUT = "wasi:cli/stdout@0.3.0-rc-2026-03-15";
 
-  async function canonWebStart(wasmUrl, root) {
+  // `persistKey` (optional): when a non-empty string, the host records
+  // every message in `localStorage[persistKey]` and replays the log on
+  // the next load to rebuild the model. See the module docs.
+  async function canonWebStart(wasmUrl, root, persistKey) {
     const dec = new TextDecoder();
     const enc = new TextEncoder();
     let exports = null;
+    let muteStdout = false;
 
     // `.print()` in Canon lowers to these five stdout intrinsics;
     // buffer bytes and forward whole lines to the browser console.
+    // Muted while replaying the persisted log so a reload does not
+    // re-echo every past message.
     let stdoutBuf = "";
     const stdout = {
       "write-via-stream": () => 1,
@@ -49,7 +66,7 @@ pub const CANON_WEB_JS: &str = r#""use strict";
         stdoutBuf += dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
         let nl;
         while ((nl = stdoutBuf.indexOf("\n")) >= 0) {
-          console.log(stdoutBuf.slice(0, nl));
+          if (!muteStdout) console.log(stdoutBuf.slice(0, nl));
           stdoutBuf = stdoutBuf.slice(nl + 1);
         }
         return 0;
@@ -64,7 +81,40 @@ pub const CANON_WEB_JS: &str = r#""use strict";
     );
     exports = instance.exports;
 
+    const persist = typeof persistKey === "string" && persistKey.length > 0
+      && typeof localStorage !== "undefined";
+    let log = [];
+
+    // Apply one message to the current model without persisting or
+    // rendering — the shared core of `send` and log replay.
+    function apply(model, msg) {
+      const bytes = enc.encode(msg);
+      const ptr = exports.alloc(bytes.length);
+      new Uint8Array(exports.memory.buffer, ptr, bytes.length).set(bytes);
+      return exports.update(model, ptr, bytes.length);
+    }
+
     let model = exports.init();
+
+    // Replay the saved message log. A message that no longer folds
+    // (e.g. the app's message grammar changed since it was saved)
+    // discards the log and starts fresh rather than bricking the app.
+    if (persist) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(persistKey) || "[]");
+        if (Array.isArray(saved)) {
+          muteStdout = true;
+          for (const msg of saved) model = apply(model, String(msg));
+          muteStdout = false;
+          log = saved.map(String);
+        }
+      } catch (e) {
+        muteStdout = false;
+        model = exports.init();
+        log = [];
+        try { localStorage.removeItem(persistKey); } catch (_) {}
+      }
+    }
 
     function render() {
       const [ptr, len] = exports.view(model);
@@ -72,10 +122,11 @@ pub const CANON_WEB_JS: &str = r#""use strict";
     }
 
     function send(msg) {
-      const bytes = enc.encode(msg);
-      const ptr = exports.alloc(bytes.length);
-      new Uint8Array(exports.memory.buffer, ptr, bytes.length).set(bytes);
-      model = exports.update(model, ptr, bytes.length);
+      model = apply(model, msg);
+      if (persist) {
+        log.push(msg);
+        try { localStorage.setItem(persistKey, JSON.stringify(log)); } catch (_) {}
+      }
       render();
     }
 
@@ -131,7 +182,7 @@ pub fn index_html(stem: &str) -> String {
 <body>
 <div id="app"></div>
 <script src="canon-web.js"></script>
-<script>canonWebStart("{stem}.wasm", document.getElementById("app"));</script>
+<script>canonWebStart("{stem}.wasm", document.getElementById("app"), "canon:{stem}");</script>
 </body>
 </html>
 "#

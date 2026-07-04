@@ -1,0 +1,99 @@
+Todos = String
+
+addTodo = (Title * Todos) -> Todos {
+    Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
+}
+
+clearDone = (Todos) -> Todos {
+    Todos.String.length().eq(0).(
+        * (False) -> Todos {
+            Todos.String.byteAt(1).eq(49).(
+                * (False) -> Todos {
+                    Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
+                }
+                * (True) -> Todos { Todos(Todos.String.restLines()).clearDone() }
+            )
+        }
+        * (True) -> Todos { Todos }
+    )
+}
+
+firstLine = (String) -> String {
+    String.length().eq(0).(
+        * (False) -> String {
+            String.byteAt(1).eq(10).(
+                * (False) -> String {
+                    String
+                        .substring(1, 1)
+                        .concat(String.substring(2, String.length()).firstLine())
+                }
+                * (True) -> String { "" }
+            )
+        }
+        * (True) -> String { "" }
+    )
+}
+
+parseNum = (String) -> Int {
+    String.length().eq(0).(
+        * (False) -> Int {
+            String
+                .substring(1, String.length().sub(1))
+                .parseNum()
+                .mul(10)
+                .add(String.byteAt(String.length()).sub(48))
+        }
+        * (True) -> Int { 0 }
+    )
+}
+
+removeAt = (Int * Todos) -> Todos {
+    Todos.String.length().eq(0).(
+        * (False) -> Todos {
+            Int.eq(1).(
+                * (False) -> Todos {
+                    Todos(Todos.String.firstLine().concat("\n").concat(Int.sub(1).removeAt(Todos(Todos.String.restLines())).String))
+                }
+                * (True) -> Todos { Todos(Todos.String.restLines()) }
+            )
+        }
+        * (True) -> Todos { Todos }
+    )
+}
+
+renderItems = (Int * Todos) -> Html {
+    Todos.String.length().eq(0).(
+        * (False) -> Html {
+            Html(Int.renderItem(Line(Todos.String.firstLine())).String.concat(Int.add(1).renderItems(Todos(Todos.String.restLines())).String))
+        }
+        * (True) -> Html { Html("") }
+    )
+}
+
+restLines = (String) -> String {
+    String.length().eq(0).(
+        * (False) -> String {
+            String.byteAt(1).eq(10).(
+                * (False) -> String { String.substring(2, String.length()).restLines() }
+                * (True) -> String { String.substring(2, String.length()) }
+            )
+        }
+        * (True) -> String { "" }
+    )
+}
+
+toggleAt = (Int * Todos) -> Todos {
+    Todos.String.length().eq(0).(
+        * (False) -> Todos {
+            Int.eq(1).(
+                * (False) -> Todos {
+                    Todos(Todos.String.firstLine().concat("\n").concat(Int.sub(1).toggleAt(Todos(Todos.String.restLines())).String))
+                }
+                * (True) -> Todos {
+                    Todos(Line(Todos.String.firstLine()).flip().String.concat("\n").concat(Todos.String.restLines()))
+                }
+            )
+        }
+        * (True) -> Todos { Todos }
+    )
+}

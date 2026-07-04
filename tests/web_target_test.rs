@@ -218,3 +218,116 @@ fn web_counter_full_loop() {
 
     let _ = std::fs::remove_dir_all(&workdir);
 }
+
+fn count(haystack: &str, needle: &str) -> usize {
+    haystack.matches(needle).count()
+}
+
+/// The shipped `examples/todolist-web` app: build the real package,
+/// drive the full add/toggle/delete/clear loop, and prove the
+/// localStorage story — replaying the message log on a fresh instance
+/// reproduces the exact same view (that is *how* the host persists,
+/// since the model is a fold over messages).
+#[test]
+fn web_todolist_example_loop_and_replay() {
+    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("todolist-web");
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let out = Command::new(&canon_bin)
+        .arg("build")
+        .arg(&example)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("canon build must spawn");
+    assert!(
+        out.status.success(),
+        "canon build examples/todolist-web failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // `examples/` is a workspace, so members build to its shared
+    // `examples/build/<stem>.{wasm}` plus the three-file web bundle.
+    let build = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("build");
+    let wasm_path = build.join("todolist-web.wasm");
+    assert!(
+        wasm_path.exists(),
+        "expected {} after canon build",
+        wasm_path.display()
+    );
+
+    // The generated shell must enable localStorage persistence, keyed
+    // by the app's stem.
+    let index = std::fs::read_to_string(build.join("index.html")).unwrap();
+    assert!(
+        index.contains("canonWebStart(\"todolist-web.wasm\"")
+            && index.contains("\"canon:todolist-web\""),
+        "index.html must boot the app with a persistence key: {index}"
+    );
+
+    let wasm = std::fs::read(&wasm_path).unwrap();
+
+    // Messages the browser host would send, driving the whole feature
+    // set. The same sequence is replayed below.
+    let log = ["Add:buy milk", "Toggle:3", "Delete:1", "Clear"];
+
+    let mut app = WebApp::load(&wasm);
+    let mut model = app.init();
+    let html = app.render(model);
+    assert!(
+        html.contains("<h1>Canon Todos</h1>"),
+        "initial view must render the title: {html}"
+    );
+    assert_eq!(count(&html, "<li>"), 2, "two seed items: {html}");
+    assert!(
+        html.contains("data-msg-form=\"Add:\""),
+        "add form must be present: {html}"
+    );
+
+    model = app.send(model, log[0]);
+    let html = app.render(model);
+    assert_eq!(count(&html, "<li>"), 3, "add appends an item: {html}");
+    assert!(html.contains("buy milk"), "new item text present: {html}");
+
+    model = app.send(model, log[1]);
+    assert!(
+        app.render(model).contains("<s>buy milk</s>"),
+        "toggling the third item strikes it through"
+    );
+
+    model = app.send(model, log[2]);
+    assert_eq!(
+        count(&app.render(model), "<li>"),
+        2,
+        "delete removes an item"
+    );
+
+    model = app.send(model, log[3]);
+    let live = app.render(model);
+    assert!(
+        !live.contains("<s>buy milk</s>"),
+        "clear drops the completed item: {live}"
+    );
+    assert_eq!(
+        count(&live, "<li>"),
+        1,
+        "one incomplete item remains: {live}"
+    );
+
+    // Persistence: a fresh instance that replays the saved message log
+    // must land on the identical view — no model serialization needed.
+    let mut replay = WebApp::load(&wasm);
+    let mut rmodel = replay.init();
+    for msg in log {
+        rmodel = replay.send(rmodel, msg);
+    }
+    assert_eq!(
+        replay.render(rmodel),
+        live,
+        "replaying the message log must reproduce the persisted view"
+    );
+}
