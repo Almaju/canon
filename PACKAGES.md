@@ -1,7 +1,9 @@
 # Package Management — Design (RFC)
 
-Status: **proposal — slice 1 implemented** (the `deps/` search root and
-the `package` directive; see the slice table). This document defines how
+Status: **proposal — slices 1–2 implemented** (the `deps/` search root,
+the `package` directive, and registry-backed
+`canon install <ns>:<pkg>[@ver]`; see the slice table). This document
+defines how
 Canon fetches, resolves, and publishes packages. When accepted it
 **supersedes DESIGN.md § Package Manifests** (`canon.toml` is deleted
 entirely) and amends § Imports. It assumes the in-flight removal of the
