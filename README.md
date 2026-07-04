@@ -48,12 +48,30 @@ Pin to a specific version:
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
 ```
 
-Update an existing install in place:
+### Toolchains: stable and nightly
+
+One install holds both channels, and switching is a single word — no config
+file in your project, no separate "default" and "override" concepts:
 
 ```sh
-canon upgrade            # install the latest release
-canon upgrade v0.2.0     # install a specific release
-canon upgrade --check    # only check whether a newer release is available
+canon use nightly            # this directory (and below) now uses nightly —
+                             # installs it first if needed
+cd ~ && canon use nightly    # run it in your home directory and it's global
+canon use                    # show the active toolchain and why
+
+canon nightly run app.can    # one command with nightly, like a dispatch arm
+canon stable test suite.can  # one command with stable
+```
+
+A bare `canon` resolves: explicit channel word → nearest `canon use` ancestor
+→ `stable`. (Nightly is rebuilt on every push to `main`.)
+
+Update the active toolchain in place, or pin a version:
+
+```sh
+canon upgrade            # update the active toolchain to its channel's latest
+canon upgrade --check    # only check whether a newer stable release exists
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.2.0
 ```
 
 > **Note:** no external toolchain is required — the compiler produces the final `.wasm` in-process and `canon run` executes it on the embedded wasmtime runtime.
@@ -122,12 +140,17 @@ just ci           # run all CI checks locally
 
 ## Releases
 
-Releases are fully automated via GitHub Actions. To cut a release, trigger the **bump** workflow from the GitHub UI (`Actions → bump → Run workflow`) and enter the new version (e.g. `0.4.0`).
+Two channels, both driven by GitHub Actions — no manual version bumps, and
+nothing is ever pushed to `main`:
 
-The workflow:
-1. Updates `Cargo.toml` and `Cargo.lock`
-2. Commits and tags `vX.Y.Z`
-3. Pushes — which triggers `release.yml`, which cross-builds for macOS and Linux and publishes the tarballs to the GitHub release
+- **nightly** — every push to `main` publishes a rolling `nightly` prerelease
+  (the `nightly` workflow). Install it with `CANON_CHANNEL=nightly`.
+- **stable** — cut on demand: `Actions → promote → Run workflow` turns the
+  current nightly into the next `vX.Y.Z` release (pick a patch/minor/major
+  bump). This becomes the default install channel.
+
+Both call the reusable `release.yml`, which cross-builds for macOS and Linux
+and publishes the tarballs. See [`RELEASE.md`](RELEASE.md) for details.
 
 ---
 

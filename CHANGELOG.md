@@ -5,6 +5,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Release channels & toolchains (2026-07)
+
+Releases moved to a **nightly + stable** model that never pushes to `main`
+(so it no longer trips the branch ruleset). Every push to `main` publishes a
+rolling `nightly` prerelease; stable `vX.Y.Z` releases are cut on demand by the
+`promote` workflow.
+
+The CLI manages toolchains with two concepts (rustup's five, collapsed): one
+install holds both channels under `~/.canon/toolchains/`, and the `canon` on
+`PATH` is a launcher. `canon use nightly` makes the current directory (and
+everything below) use nightly — installing it first if needed; run it at `~`
+and it's the global default. `canon nightly <cmd>` / `canon stable <cmd>` run
+one command with that toolchain, the channel as first word like a dispatch
+arm. Resolution: explicit word → nearest `use` ancestor → `stable`. No project
+config file, no default/override machinery. `canon upgrade` updates the active
+toolchain. The x86_64 macOS binary is cross-built on the arm64 runner (the
+Intel `macos-13` runner is gone), and `install.sh` fails with a clear message
+when no release exists instead of building a bogus tag.
+
 ### V1 milestone (2026-07)
 
 The V1 roadmap (`V1.md`) is complete, with resources/streams for the

@@ -27,18 +27,48 @@ Pin to a specific version:
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.3.0
 ```
 
+## Toolchains
+
+One installation holds both channels, and the `canon` on your `PATH` is a thin
+launcher that picks the active one:
+
+- **stable** (the fallback) — versioned releases (`vX.Y.Z`), promoted from a
+  tested nightly.
+- **nightly** — a rolling prerelease rebuilt automatically on every push to
+  `main`. Latest features, less settled.
+
+Switching is one word, scoped by where you run it — no config file in your
+project, and no separate "default" vs "override" machinery:
+
+```sh
+canon use nightly       # this directory (and below) now uses nightly —
+                        # installs it first if it isn't on disk
+cd ~ && canon use nightly   # run it in your home directory: global default
+canon use               # show the active toolchain, why, and what's installed
+```
+
+For a single command, the channel is the first word — like a dispatch arm:
+
+```sh
+canon nightly run app.can
+canon stable test suite.can
+```
+
+A bare `canon` resolves: explicit channel word → nearest `canon use` ancestor
+→ `stable`. Selections live centrally in `~/.canon/uses`; to remove a
+toolchain from disk, delete `~/.canon/toolchains/<channel>`.
+
 ## Verify
 
 ```sh
-canon --version
+canon --version            # reports the active toolchain's version
 ```
 
 ## Update
 
 ```sh
-canon upgrade              # install the latest release
-canon upgrade v0.3.0       # install a specific release
-canon upgrade --check      # check whether a newer release is available
+canon upgrade              # update the active toolchain to its channel's latest
+canon upgrade --check      # check whether a newer stable release is available
 ```
 
 ## Editor Support

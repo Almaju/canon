@@ -1,20 +1,63 @@
 name: release
 
+# Reusable build-and-publish core. It never pushes to main: the version is
+# stamped into Cargo.toml at build time (not committed) and the release is
+# attached to a tag. Entry points:
+#   - nightly.yml  → rolling `nightly` prerelease on every push to main
+#   - promote.yml  → manual promotion of a commit to a stable vX.Y.Z release
+# Both call this workflow via `workflow_call`. A `workflow_dispatch` trigger is
+# kept for manual emergency rebuilds of a specific tag.
+
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to release (e.g. v0.1.0)"
-        required: true
   workflow_call:
     inputs:
-      tag:
-        description: "Tag to release (e.g. v0.1.0)"
+      ref:
+        description: "Git ref / SHA to build from"
         required: true
         type: string
+      tag:
+        description: "Release tag to create or update (e.g. v0.3.1 or nightly)"
+        required: true
+        type: string
+      version:
+        description: "Version string stamped into Cargo.toml + the binary"
+        required: true
+        type: string
+      prerelease:
+        description: "Publish as a prerelease (nightly)"
+        required: false
+        default: false
+        type: boolean
+      make_latest:
+        description: "Mark this release as the repository's Latest"
+        required: false
+        default: true
+        type: boolean
+      move_tag:
+        description: "Force-move the tag to `ref` before publishing (rolling tags)"
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref / SHA to build from"
+        required: true
+      tag:
+        description: "Release tag to create or update (e.g. v0.3.1 or nightly)"
+        required: true
+      version:
+        description: "Version string stamped into Cargo.toml + the binary"
+        required: true
+      prerelease:
+        type: boolean
+        default: false
+      make_latest:
+        type: boolean
+        default: true
+      move_tag:
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -52,19 +95,21 @@ jobs:
             os: windows-latest
             exe: .exe
     steps:
-      - name: Resolve tag
-        id: tag
-        shell: bash
-        run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v7
         with:
-          ref: ${{ steps.tag.outputs.ref }}
+          ref: ${{ inputs.ref }}
+
+      - name: Stamp version
+        shell: bash
+        run: |
+          set -eu
+          v="${{ inputs.version }}"
+          # Rewrite only the first top-level `version = "..."` (the [package]
+          # line, which starts at column 0). awk is available on every runner,
+          # including Git bash on Windows, and avoids sed -i portability quirks.
+          awk -v v="$v" 'BEGIN{done=0} /^version = "/ && !done {sub(/"[^"]*"/, "\"" v "\""); done=1} {print}' Cargo.toml > Cargo.toml.tmp
+          mv Cargo.toml.tmp Cargo.toml
+          echo "Building canon $v"
 
       - name: Install cross-compilation toolchain
         if: matrix.apt != ''
@@ -89,8 +134,7 @@ jobs:
         id: package
         shell: bash
         run: |
-          ref="${{ steps.tag.outputs.ref }}"
-          name="canon-${ref}-${{ matrix.target }}"
+          name="canon-${{ inputs.tag }}-${{ matrix.target }}"
           mkdir -p "dist/${name}"
           cp "target/${{ matrix.target }}/release/canon${{ matrix.exe }}" "dist/${name}/"
           cp README.md LICENSE DESIGN.md "dist/${name}/" 2>/dev/null || true
@@ -114,19 +158,9 @@ jobs:
     name: package vscode extension
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve tag
-        id: tag
-        shell: bash
-        run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v7
         with:
-          ref: ${{ steps.tag.outputs.ref }}
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-node@v6
         with:
@@ -148,15 +182,17 @@ jobs:
     needs: [build, vsix]
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve tag
-        id: tag
-        shell: bash
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Move rolling tag
+        if: ${{ inputs.move_tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
+          set -eu
+          git tag -f "${{ inputs.tag }}" "${{ inputs.ref }}"
+          git push -f origin "refs/tags/${{ inputs.tag }}"
 
       - uses: actions/download-artifact@v8
         with:
@@ -166,8 +202,11 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.tag.outputs.ref }}
-          name: ${{ steps.tag.outputs.ref }}
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ inputs.ref }}
+          name: ${{ inputs.tag }}
+          prerelease: ${{ inputs.prerelease }}
+          make_latest: ${{ inputs.make_latest }}
           generate_release_notes: true
           files: |
             dist/*.tar.gz

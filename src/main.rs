@@ -15,7 +15,13 @@ use std::process;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    // Toolchain launcher: when this binary is the installed launcher
+    // (`~/.canon/bin/canon`), resolve the active toolchain and hand off to it.
+    // `launch` strips a leading `stable`/`nightly` channel word; if the
+    // resolved toolchain differs from this binary it execs it and never
+    // returns. `canon use` and directly-run binaries (dev builds, an exec'd
+    // toolchain) fall through and run in-process.
+    let args = toolchain::launch(env::args().collect());
 
     if args.len() < 2 {
         print_help();
@@ -37,6 +43,7 @@ fn main() {
         "publish" => cmd_publish(&rest),
         "lsp" => canon::lsp::run(),
         "upgrade" | "update" => cmd_upgrade(&rest),
+        "use" => toolchain::cmd_use(&rest),
         "--version" | "-V" => {
             println!("canon {}", VERSION);
         }
@@ -86,9 +93,12 @@ fn print_help() {
     println!("                            registry. Without a version, patch-bumps the");
     println!("                            newest release (first publish is 0.1.0)");
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  update [version]          Update canon to the latest (or given) release");
-    println!("  update --check            Check whether a newer release is available");
-    println!("                            (alias: upgrade)");
+    println!("  update [--check]          Update the active toolchain (alias: upgrade)");
+    println!("  use [stable|nightly]      Show the active toolchain, or make this");
+    println!("                            directory (and below) use one — installing it");
+    println!("                            if needed. Run in ~ to set it for everything.");
+    println!("  stable|nightly <command>  Run one command with that toolchain");
+    println!("                            (e.g. `canon nightly run app.can`)");
     println!("  --version, -V             Print version");
     println!("  help                      Print this message");
 }
@@ -1537,34 +1547,42 @@ const RELEASES_LATEST_URL: &str = "https://github.com/almaju/canon/releases/late
 
 fn cmd_upgrade(args: &[String]) {
     let mut check_only = false;
-    let mut requested_version: Option<String> = None;
     for a in args {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: canon update [version] [--check]   (alias: upgrade)");
+                println!("Usage: canon update [--check]   (alias: upgrade)");
                 println!();
-                println!(
-                    "  version      Install a specific release (e.g. v0.2.0). Defaults to latest."
-                );
-                println!("  --check      Only check whether a newer release is available.");
+                println!("  Updates the active toolchain to the latest build on its channel.");
+                println!("  --check   Only check whether a newer stable release is available.");
+                println!();
+                println!("  To switch toolchains, see `canon use` or run a single command");
+                println!("  with `canon stable <cmd>` / `canon nightly <cmd>`.");
                 return;
             }
-            other if other.starts_with('-') => {
+            other => {
                 eprintln!("error: unknown upgrade flag '{}'", other);
                 process::exit(1);
-            }
-            other => {
-                if requested_version.is_some() {
-                    eprintln!("error: upgrade accepts at most one version argument");
-                    process::exit(1);
-                }
-                requested_version = Some(other.to_string());
             }
         }
     }
 
+    // The toolchain the launcher resolved us to (set on exec), else whatever the
+    // current directory / default resolves to.
+    let channel = env::var("CANON_RESOLVED")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(toolchain::active_channel);
+
     if check_only {
+        if channel == toolchain::NIGHTLY {
+            println!(
+                "The nightly toolchain is published continuously (current: {}).\n\
+                 Run `canon upgrade` to pull the latest nightly.",
+                VERSION
+            );
+            return;
+        }
         let latest = match fetch_latest_tag() {
             Ok(v) => v,
             Err(err) => {
@@ -1584,37 +1602,361 @@ fn cmd_upgrade(args: &[String]) {
         return;
     }
 
-    let curl = which("curl");
-    let wget = which("wget");
-    if curl.is_none() && wget.is_none() {
-        eprintln!("error: `canon upgrade` requires `curl` or `wget` to be installed");
-        process::exit(1);
+    println!("Updating the '{}' toolchain…", channel);
+    toolchain::install(&channel);
+}
+
+/// Toolchain management, canon-style: two concepts, nothing else.
+///
+/// One installation holds both channels under `<install>/toolchains/<name>/`,
+/// and the on-PATH `<install>/bin/canon` is a thin launcher that resolves the
+/// active toolchain and execs it.
+///
+/// 1. `canon use [stable|nightly]` — scoped by where you run it: records
+///    "this directory and below use X" in a central registry (nothing in the
+///    project). Run it at `~` and it is your global default. Using a channel
+///    that isn't installed installs it first.
+/// 2. `canon stable <cmd>` / `canon nightly <cmd>` — one-shot: the first word
+///    picks the toolchain, like a dispatch arm.
+///
+/// Resolution: explicit channel word → `CANON_TOOLCHAIN` env (CI escape
+/// hatch) → nearest `use` ancestor → `stable`. When the fallback lands on a
+/// channel that isn't installed, the sole installed toolchain (or the
+/// launcher binary itself) runs instead — there is no separate "default"
+/// state to configure.
+mod toolchain {
+    use super::{shell_escape, which, INSTALL_URL};
+    use std::env;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process;
+
+    pub const STABLE: &str = "stable";
+    pub const NIGHTLY: &str = "nightly";
+
+    /// Install prefix, matching install.sh: `$CANON_INSTALL` or `$HOME/.canon`.
+    fn install_dir() -> Option<PathBuf> {
+        if let Some(dir) = env::var_os("CANON_INSTALL") {
+            return Some(PathBuf::from(dir));
+        }
+        env::var_os("HOME").map(|home| PathBuf::from(home).join(".canon"))
     }
 
-    let fetch_cmd = if curl.is_some() {
-        format!("curl -fsSL {}", INSTALL_URL)
-    } else {
-        format!("wget -qO- {}", INSTALL_URL)
-    };
-    let sh_args = match &requested_version {
-        Some(v) => format!("sh -s -- {}", shell_escape(v)),
-        None => "sh".to_string(),
-    };
-    let pipeline = format!("{} | {}", fetch_cmd, sh_args);
+    fn toolchains_dir() -> Option<PathBuf> {
+        install_dir().map(|d| d.join("toolchains"))
+    }
+    fn uses_file() -> Option<PathBuf> {
+        install_dir().map(|d| d.join("uses"))
+    }
 
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(&pipeline)
-        .status();
-    match status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            eprintln!("error: upgrade failed with exit status: {}", s);
-            process::exit(s.code().unwrap_or(1));
+    fn exe_name() -> &'static str {
+        if cfg!(windows) {
+            "canon.exe"
+        } else {
+            "canon"
         }
-        Err(err) => {
-            eprintln!("error: failed to run upgrade: {}", err);
+    }
+
+    /// The toolchain binary path, if that toolchain is installed.
+    fn toolchain_bin(name: &str) -> Option<PathBuf> {
+        let p = toolchains_dir()?.join(name).join(exe_name());
+        p.is_file().then_some(p)
+    }
+
+    /// True when the running binary is the installed launcher (`<install>/bin`).
+    fn is_launcher() -> bool {
+        let exe = match env::current_exe() {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+        let parent = match exe.parent() {
+            Some(p) => p,
+            None => return false,
+        };
+        // `current_exe` is canonical (via /proc/self/exe on Linux); canonicalize
+        // the bin dir too so a symlinked HOME (or /tmp) still matches.
+        let bindir = match install_dir() {
+            Some(d) => d.join("bin"),
+            None => return false,
+        };
+        let bindir = bindir.canonicalize().unwrap_or(bindir);
+        parent == bindir
+    }
+
+    fn env_toolchain() -> Option<String> {
+        env::var("CANON_TOOLCHAIN")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// The nearest `canon use` ancestor covering the current directory:
+    /// longest-prefix match wins, so a deeper `use` shadows one above it.
+    fn nearest_use() -> Option<(String, String)> {
+        let cwd = env::current_dir().ok()?;
+        let cwd = cwd.canonicalize().unwrap_or(cwd);
+        let mut best: Option<(usize, String, String)> = None;
+        for (path, tc) in read_uses() {
+            if cwd.starts_with(&path) {
+                let len = Path::new(&path).components().count();
+                if best.as_ref().map(|(l, _, _)| len > *l).unwrap_or(true) {
+                    best = Some((len, path, tc));
+                }
+            }
+        }
+        best.map(|(_, path, tc)| (path, tc))
+    }
+
+    /// Where the active toolchain choice came from.
+    enum Source {
+        Word,
+        Env,
+        Use(String),
+        Fallback,
+    }
+
+    fn resolve(word: Option<&str>) -> (String, Source) {
+        if let Some(w) = word {
+            return (w.to_string(), Source::Word);
+        }
+        if let Some(e) = env_toolchain() {
+            return (e, Source::Env);
+        }
+        if let Some((path, tc)) = nearest_use() {
+            return (tc, Source::Use(path));
+        }
+        (STABLE.to_string(), Source::Fallback)
+    }
+
+    /// The channel a bare `canon` would use here (no channel word).
+    pub fn active_channel() -> String {
+        resolve(None).0
+    }
+
+    /// Front door from `main`: when we are the launcher, hand off to the
+    /// resolved toolchain. Returns args with any leading channel word removed.
+    pub fn launch(mut args: Vec<String>) -> Vec<String> {
+        // A toolchain we exec sets CANON_RESOLVED; never re-dispatch then.
+        if env::var_os("CANON_RESOLVED").is_some() {
+            take_channel_word(&mut args);
+            return args;
+        }
+        let word = take_channel_word(&mut args);
+        // `canon use` manages the launcher's own state; run it in-process.
+        let is_mgmt = matches!(args.get(1).map(String::as_str), Some("use"));
+        if !is_launcher() || is_mgmt {
+            return args;
+        }
+        let (requested, source) = resolve(word.as_deref());
+        match toolchain_bin(&requested) {
+            Some(bin) => {
+                if env::current_exe().ok().as_ref() != Some(&bin) {
+                    exec_toolchain(&bin, &requested, &args);
+                }
+                args
+            }
+            None => {
+                if matches!(source, Source::Fallback) {
+                    // Nothing was chosen and stable isn't on disk. If exactly
+                    // one toolchain is installed there is no ambiguity — run
+                    // it; otherwise the launcher binary itself is a full
+                    // toolchain, so run in-process.
+                    let installed = installed_toolchains();
+                    if let [only] = installed.as_slice() {
+                        if let Some(bin) = toolchain_bin(only) {
+                            exec_toolchain(&bin, only, &args);
+                        }
+                    }
+                    return args;
+                }
+                eprintln!(
+                    "error: toolchain '{}' is not installed.\n       \
+                     Install and select it with: canon use {}",
+                    requested, requested
+                );
+                process::exit(1);
+            }
+        }
+    }
+
+    /// Remove and return a leading `stable`/`nightly` channel word, if present.
+    fn take_channel_word(args: &mut Vec<String>) -> Option<String> {
+        if args.len() >= 2 && is_channel(&args[1]) {
+            return Some(args.remove(1));
+        }
+        None
+    }
+
+    fn exec_toolchain(bin: &Path, name: &str, args: &[String]) -> ! {
+        let mut cmd = process::Command::new(bin);
+        cmd.args(&args[1..]);
+        cmd.env("CANON_RESOLVED", name);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            let err = cmd.exec();
+            eprintln!("error: failed to launch toolchain '{}': {}", name, err);
             process::exit(1);
+        }
+        #[cfg(not(unix))]
+        {
+            match cmd.status() {
+                Ok(s) => process::exit(s.code().unwrap_or(1)),
+                Err(e) => {
+                    eprintln!("error: failed to launch toolchain '{}': {}", name, e);
+                    process::exit(1);
+                }
+            }
+        }
+    }
+
+    fn is_channel(name: &str) -> bool {
+        name == STABLE || name == NIGHTLY
+    }
+
+    /// Download and install a channel's toolchain via install.sh.
+    pub fn install(channel: &str) {
+        let curl = which("curl");
+        let wget = which("wget");
+        if curl.is_none() && wget.is_none() {
+            eprintln!("error: installing a toolchain requires `curl` or `wget`");
+            process::exit(1);
+        }
+        let fetch = if curl.is_some() {
+            format!("curl -fsSL {}", INSTALL_URL)
+        } else {
+            format!("wget -qO- {}", INSTALL_URL)
+        };
+        let pipeline = format!("{} | CANON_CHANNEL={} sh", fetch, shell_escape(channel));
+        let status = process::Command::new("sh")
+            .arg("-c")
+            .arg(&pipeline)
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                eprintln!("error: toolchain install failed with status: {}", s);
+                process::exit(s.code().unwrap_or(1));
+            }
+            Err(err) => {
+                eprintln!("error: failed to run installer: {}", err);
+                process::exit(1);
+            }
+        }
+    }
+
+    fn installed_toolchains() -> Vec<String> {
+        let mut names = Vec::new();
+        if let Some(dir) = toolchains_dir() {
+            if let Ok(rd) = fs::read_dir(&dir) {
+                for entry in rd.flatten() {
+                    if entry.path().is_dir() {
+                        if let Some(n) = entry.file_name().to_str() {
+                            names.push(n.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        names.sort();
+        names
+    }
+
+    fn read_uses() -> Vec<(String, String)> {
+        uses_file()
+            .and_then(|p| fs::read_to_string(p).ok())
+            .map(|c| {
+                c.lines()
+                    .filter_map(|l| {
+                        l.trim()
+                            .rsplit_once('\t')
+                            .map(|(a, b)| (a.to_string(), b.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn write_uses(entries: &[(String, String)]) -> Result<(), String> {
+        let path = uses_file().ok_or("could not determine install directory")?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let body: String = entries
+            .iter()
+            .map(|(p, tc)| format!("{}\t{}\n", p, tc))
+            .collect();
+        fs::write(&path, body).map_err(|e| e.to_string())
+    }
+
+    fn cwd_key() -> String {
+        let cwd = env::current_dir().unwrap_or_default();
+        cwd.canonicalize()
+            .unwrap_or(cwd)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// `canon use` — show the active toolchain, or select one for this
+    /// directory tree (installing it first when it isn't on disk).
+    pub fn cmd_use(args: &[String]) {
+        match args.first().map(String::as_str) {
+            None => {
+                let (active, source) = resolve(None);
+                match source {
+                    Source::Word => unreachable!("no channel word reaches cmd_use"),
+                    Source::Env => println!("{} (CANON_TOOLCHAIN)", active),
+                    Source::Use(path) => println!("{} (canon use in {})", active, path),
+                    Source::Fallback => println!("{}", active),
+                }
+                let installed = installed_toolchains();
+                if !installed.is_empty() {
+                    println!();
+                    println!("installed:");
+                    for n in installed {
+                        println!("  {}", n);
+                    }
+                }
+            }
+            Some("--help") | Some("-h") => {
+                println!("Usage: canon use [stable|nightly]");
+                println!();
+                println!("  With no argument, shows the active toolchain and where the");
+                println!("  choice comes from.");
+                println!("  With a channel, this directory (and everything below it) uses");
+                println!("  that toolchain — installing it first if needed. Run it in your");
+                println!("  home directory to set the toolchain for everything.");
+            }
+            Some(ch) if is_channel(ch) => {
+                if toolchain_bin(ch).is_none() {
+                    println!("Toolchain '{}' is not installed — installing…", ch);
+                    install(ch);
+                    if toolchain_bin(ch).is_none() {
+                        eprintln!(
+                            "error: install finished but toolchain '{}' was not found",
+                            ch
+                        );
+                        process::exit(1);
+                    }
+                }
+                let key = cwd_key();
+                let mut entries = read_uses();
+                entries.retain(|(p, _)| p != &key);
+                entries.push((key.clone(), ch.to_string()));
+                entries.sort();
+                if let Err(e) = write_uses(&entries) {
+                    eprintln!("error: could not record the selection: {}", e);
+                    process::exit(1);
+                }
+                println!("Using {} in {} (and below).", ch, key);
+            }
+            Some(other) => {
+                eprintln!(
+                    "error: unknown toolchain '{}' (expected 'stable' or 'nightly')",
+                    other
+                );
+                process::exit(1);
+            }
         }
     }
 }
