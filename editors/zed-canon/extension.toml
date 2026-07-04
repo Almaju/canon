@@ -1,6 +1,6 @@
 id = "canon"
 name = "Canon"
-version = "0.4.0"
+version = "0.5.0"
 schema_version = 1
 authors = ["Almaju <almaju.fr@gmail.com>"]
 description = "Canon language support for Zed — syntax highlighting, diagnostics, hover, go-to-definition, and formatting via the built-in canon LSP"
@@ -13,4 +13,4 @@ languages = ["Canon"]
 [grammars.canon]
 repository = "https://github.com/Almaju/canon"
 path = "editors/tree-sitter-canon"
-commit = "da7a9c4d1b9f7aa25e56a43a08bed921f957e377"
+commit = "5daee5bb01f5042f8fb4028bd7a7d70bd0b624a8"

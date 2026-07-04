@@ -1,0 +1,3 @@
+main = () -> Unit {
+    Greeting("hello autodiscovery").print()
+}

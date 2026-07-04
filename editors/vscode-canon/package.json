@@ -2,7 +2,7 @@
   "name": "canon-lang",
   "displayName": "Canon",
   "description": "Canon language support — syntax highlighting, diagnostics, hover, go-to-definition, and format-on-save via the built-in canon LSP",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "almaju",
   "license": "MIT",
   "icon": "icon.png",

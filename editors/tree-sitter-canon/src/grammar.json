@@ -1,4 +1,5 @@
 {
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
   "name": "canon",
   "word": "identifier",
   "rules": {
@@ -14,7 +15,11 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "use_decl"
+          "name": "bindings_decl"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "package_decl"
         },
         {
           "type": "SYMBOL",
@@ -30,40 +35,36 @@
         }
       ]
     },
-    "use_decl": {
+    "bindings_decl": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
-          "value": "use"
+          "value": "bindings"
         },
         {
           "type": "FIELD",
-          "name": "path",
+          "name": "urn",
           "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "identifier"
-              },
-              {
-                "type": "REPEAT",
-                "content": {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "/"
-                    },
-                    {
-                      "type": "SYMBOL",
-                      "name": "identifier"
-                    }
-                  ]
-                }
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "string_literal"
+          }
+        }
+      ]
+    },
+    "package_decl": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "package"
+        },
+        {
+          "type": "FIELD",
+          "name": "coordinate",
+          "content": {
+            "type": "SYMBOL",
+            "name": "string_literal"
           }
         }
       ]
@@ -1297,5 +1298,6 @@
   "precedences": [],
   "externals": [],
   "inline": [],
-  "supertypes": []
+  "supertypes": [],
+  "reserved": {}
 }

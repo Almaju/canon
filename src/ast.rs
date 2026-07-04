@@ -11,7 +11,6 @@ pub struct Module {
 pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
-    Use(UseDecl),
     /// A file-level `bindings "<urn>"` directive. Declares that all
     /// camelCase function-type aliases in this file are actually
     /// external bindings backed by `<urn>` in the WebAssembly Component
@@ -56,12 +55,6 @@ pub struct BindingsDecl {
     /// `"wasi:clocks/timezone@0.3.0-rc-2026-03-15"`. Stored verbatim;
     /// the loader appends `#<fn-kebab>` per function.
     pub urn: String,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct UseDecl {
-    pub name: Ident,
     pub span: Span,
 }
 

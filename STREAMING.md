@@ -25,16 +25,6 @@ its body. The work in this doc is wiring the canonical-ABI lowering for
 A clock-driven SSE endpoint:
 
 ```ow
-use canon/std/Stream
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-use canon/std/http/eventStream
-use canon/std/http/formatSse
-use canon/std/time/Duration
-use canon/std/time/ticks
-
 home = (Request) -> Response {
     Response(
         eventStream(),
@@ -46,19 +36,10 @@ home = (Request) -> Response {
     )
 }
 ```
-
 Using only slice-0 primitives (no clock source yet) the same shape
 looks like:
 
 ```ow
-use canon/std/Stream
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-use canon/std/http/eventStream
-use canon/std/http/formatSse
-
 home = (Request) -> Response {
     Response(
         eventStream(),
@@ -69,7 +50,6 @@ home = (Request) -> Response {
     )
 }
 ```
-
 This runs as soon as slice 3 (`Response` constructor accepting a
 `Stream<String>`) and the prerequisite WASI-HTTP slices land. Slice 0
 proves the type surface compiles.
@@ -98,7 +78,6 @@ home = (Request) -> Response {
     Response(Headers(), Status(200), Stream("hello"))
 }
 ```
-
 `Stream(s : String) -> Stream<String>` is the single-element source —
 the materialised case from the chat discussion. This replaces the
 current `(Headers * Status * String) -> Response` constructor; static
@@ -183,7 +162,6 @@ concat = <T>(Stream<T> * Stream<T>) -> Stream<T>
 toList = <T>(Stream<T>) -> List<T>
 toString = (Stream<String>) -> String
 ```
-
 Implementation notes:
 
 - The actual stdlib file (`packages/canon/std/src/stream.can`) uses a

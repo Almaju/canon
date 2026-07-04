@@ -1,9 +1,11 @@
-use wasi/clocks/types
-
 bindings "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15"
 
 Mark = Int
 
-getResolution = () -> Duration
+bindings "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#get-resolution"
 
-now = () -> Mark
+monotonicClockGetResolution = () -> Duration
+
+bindings "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#now"
+
+monotonicClockNow = () -> Mark

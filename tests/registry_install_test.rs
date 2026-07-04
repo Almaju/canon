@@ -44,7 +44,7 @@ fn write_local_registry(dir: &Path, versions: &[&str]) -> PathBuf {
     for version in versions {
         let wit = format!(
             "package test:adder@{version};\n\n\
-             interface add {{\n    add: func(left: u64, right: u64) -> u64;\n}}\n"
+             interface triple {{\n    triple: func(n: u64) -> u64;\n}}\n"
         );
         let path = root
             .join("test")
@@ -94,7 +94,7 @@ fn install_vendors_latest_release_and_project_checks() {
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 
-    let vendored = project.join("deps/test/adder/add.can");
+    let vendored = project.join("deps/test/adder/triple.can");
     let content = fs::read_to_string(&vendored)
         .unwrap_or_else(|e| panic!("expected `{}` to exist: {e}", vendored.display()));
     assert!(
@@ -102,7 +102,7 @@ fn install_vendors_latest_release_and_project_checks() {
         "vendored file must open with the provenance directive pinning the newest release:\n{content}"
     );
     assert!(
-        content.contains("bindings \"test:adder/add@1.1.0\""),
+        content.contains("bindings \"test:adder/triple@1.1.0\""),
         "vendored file must carry the interface URN:\n{content}"
     );
 
@@ -112,7 +112,7 @@ fn install_vendors_latest_release_and_project_checks() {
     // the formatter's chain-breaking rules.
     fs::write(
         project.join("main.can"),
-        "use test/adder/add\n\nmain = () -> Unit {\n    1.add(2).print()\n}\n",
+        "main = () -> Unit {\n    1.triple().print()\n}\n",
     )
     .unwrap();
     let (o, e, c) = run_canon(&project, &config, &["fmt", "main.can"]);
@@ -134,7 +134,7 @@ fn install_pins_exact_and_prefix_versions() {
         Some(0),
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    let content = fs::read_to_string(exact.join("deps/test/adder/add.can")).unwrap();
+    let content = fs::read_to_string(exact.join("deps/test/adder/triple.can")).unwrap();
     assert!(
         content.starts_with("package \"test:adder@1.0.0\"\n"),
         "exact pin should install 1.0.0:\n{content}"
@@ -148,7 +148,7 @@ fn install_pins_exact_and_prefix_versions() {
         Some(0),
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    let content = fs::read_to_string(prefix.join("deps/test/adder/add.can")).unwrap();
+    let content = fs::read_to_string(prefix.join("deps/test/adder/triple.can")).unwrap();
     assert!(
         content.starts_with("package \"test:adder@1.1.0\"\n"),
         "prefix pin `@1` should install the newest 1.x:\n{content}"

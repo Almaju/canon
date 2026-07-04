@@ -52,8 +52,21 @@ pub fn emit_all(resolve: &Resolve) -> Vec<EmittedFile> {
             ifaces.insert(qid, (id, iface));
         }
     }
+    // Batch-level collision census. Imports are resolved by bare name
+    // (there is no `use`), so a Canon module's namespace is flat: two
+    // interfaces both exporting `now` can never coexist. A function
+    // whose camelCase name appears in more than one interface of this
+    // install set gets interface-qualified (`monotonicClockNow`), bound
+    // back to its WIT name via a one-shot `bindings "<urn>#<fn>"`
+    // directive.
+    let mut fn_name_uses: BTreeMap<String, u32> = BTreeMap::new();
+    for (_, (_, iface)) in ifaces.iter() {
+        for name in iface.functions.keys() {
+            *fn_name_uses.entry(kebab_to_camel(name)).or_default() += 1;
+        }
+    }
     for (qualified_id, (id, iface)) in ifaces {
-        if let Some(emitted) = emit_interface(resolve, id, iface, &qualified_id) {
+        if let Some(emitted) = emit_interface(resolve, id, iface, &qualified_id, &fn_name_uses) {
             out.push(emitted);
         }
     }
@@ -83,6 +96,7 @@ fn emit_interface(
     self_iface_id: InterfaceId,
     iface: &Interface,
     qualified_id: &str,
+    fn_name_uses: &BTreeMap<String, u32>,
 ) -> Option<EmittedFile> {
     let (ns, pkg, iface_name, _ver) = split_interface_id(qualified_id)?;
     let relative_path = interface_file_path(&ns, &pkg, &iface_name);
@@ -127,11 +141,16 @@ fn emit_interface(
     }
 
     // Function declarations, alphabetical by their camelCase name.
+    let fn_ctx = FnEmitCtx {
+        qualified_iface_id: qualified_id,
+        iface_name: &iface_name,
+        fn_name_uses,
+    };
     let mut fn_decls: BTreeMap<String, String> = BTreeMap::new();
     for (name, func) in &iface.functions {
         match emit_function(
             resolve,
-            qualified_id,
+            &fn_ctx,
             name,
             func,
             &mut external_use_paths,
@@ -151,22 +170,18 @@ fn emit_interface(
         }
     }
 
-    // Emit `use` lines first (alphabetical — BTreeSet already sorted),
-    // then the file-level `bindings "<urn>"` directive (only when the
-    // file actually contains function declarations — binding-less type
-    // files like `wasi/clocks/types.can` don't need it), then type
+    // Emit the file-level `bindings "<urn>"` directive first (only when
+    // the file actually contains function declarations — binding-less
+    // type files like `wasi/clocks/types.can` don't need it), then type
     // decls, then function decls. The directive does two jobs:
     // documents which WIT interface this file shadows (the reader sees
     // it and immediately knows where to look in `wit-vendor/`), and
     // tells the loader to convert the camelCase function-type aliases
     // beneath into bound FunctionDefs without each one needing its own
-    // `extern Wasm` marker.
-    for use_path in &external_use_paths {
-        let _ = writeln!(content, "use {}", use_path);
-    }
-    if !external_use_paths.is_empty() {
-        content.push('\n');
-    }
+    // `extern Wasm` marker. Cross-interface type references need no
+    // import lines: the loader resolves them by name against the
+    // sibling binding files (`external_use_paths` still gates which
+    // type entries are alias re-exports vs. local declarations).
     if !fn_decls.is_empty() {
         let _ = writeln!(content, "bindings \"{}\"", qualified_id);
         content.push('\n');
@@ -431,9 +446,18 @@ fn emit_type_decl(
     }
 }
 
+/// Per-batch context `emit_function` needs beyond the function itself:
+/// the owning interface's identity plus the install-set-wide name census
+/// that drives collision qualification.
+struct FnEmitCtx<'a> {
+    qualified_iface_id: &'a str,
+    iface_name: &'a str,
+    fn_name_uses: &'a BTreeMap<String, u32>,
+}
+
 fn emit_function(
     resolve: &Resolve,
-    qualified_iface_id: &str,
+    ctx: &FnEmitCtx<'_>,
     name: &str,
     func: &Function,
     external_use_paths: &mut BTreeSet<String>,
@@ -546,15 +570,35 @@ fn emit_function(
     // `src/loader.rs`) walks each camelCase function-type alias and
     // converts it into a real FunctionDef with the URN attached.
     //
-    // The `qualified_iface_id` parameter is still passed in by callers
-    // because they use it for error / skip messages; the actual URN
-    // baked into each function lives in the file-level directive now.
-    let _ = qualified_iface_id;
-
+    // Exception: a name that collides across the install set (two
+    // interfaces both exporting `now`) is emitted interface-qualified
+    // (`monotonicClockNow`) — imports resolve by bare name in a flat
+    // namespace, so the collision would otherwise be unresolvable. The
+    // qualified alias can't kebab back to its WIT name, so it gets the
+    // one-shot `bindings "<urn>#<fn>"` directive immediately above it.
+    let collides = ctx.fn_name_uses.get(&camel).copied().unwrap_or(0) > 1;
     let mut decl = String::new();
-    let _ = writeln!(decl, "{} = {} -> {}", camel, params_str, ret);
+    let canon_name = if collides {
+        let iface_camel = kebab_to_camel(ctx.iface_name);
+        let mut chars = camel.chars();
+        let qualified = match chars.next() {
+            Some(first) => format!(
+                "{}{}{}",
+                iface_camel,
+                first.to_ascii_uppercase(),
+                chars.as_str()
+            ),
+            None => iface_camel,
+        };
+        let _ = writeln!(decl, "bindings \"{}#{}\"", ctx.qualified_iface_id, name);
+        decl.push('\n');
+        qualified
+    } else {
+        camel
+    };
+    let _ = writeln!(decl, "{} = {} -> {}", canon_name, params_str, ret);
 
-    Ok((camel, decl))
+    Ok((canon_name, decl))
 }
 
 /// Returns true if the function's result type is (or transparently aliases)

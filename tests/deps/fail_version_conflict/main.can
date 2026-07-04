@@ -1,6 +1,3 @@
-use acme/greet/shout
-use acme/greet/wave
-
 main = () -> Unit {
     "hello"
         .shout()

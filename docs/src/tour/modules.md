@@ -13,28 +13,22 @@ manifest of what's in scope.
 
 ## Imports
 
-To use a type defined in a sibling file, write:
+There is no import statement. To use a type defined in a sibling file,
+just refer to it — the reference to `Foo` loads `foo.can` (or
+`foo/main.can` if `Foo` is a module) automatically. No paths, no
+aliasing, nothing to write at the top of the file.
 
-```canon
-use Foo
-```
-
-This imports `Foo` from `foo.can` (or from the corresponding folder if
-`Foo` is a module). No paths, no aliasing.
-
-To import from the embedded standard library, prefix the path with
-`canon/std/`:
-
-```canon
-use canon/std/fs/File
-use canon/std/http/Url
-```
+The same rule reaches the embedded standard library: referencing
+`File` or `Url` in a project that doesn't define them finds the
+stdlib's `file.can` / `url.can`. The loader searches your project's
+own files, then its `bindgen/` tree, then vendored packages under
+`deps/`, then `canon/std` — and a name that resolves in more than one
+place is a compile error naming every candidate. There is no
+shadowing: names are globally unique across a project, its
+dependencies, and the standard library.
 
 The [Standard Library](../reference/stdlib.md) reference has the full
-list.
-
-Multiple `use` statements at the top of a file must be in alphabetical
-order.
+list of stdlib names.
 
 ## Example: Multi-File Project
 
@@ -57,12 +51,13 @@ shout = (Greeter) -> String {
 `main.can`:
 
 ```canon
-use Greeter
-
 main = () -> Unit {
     Greeter("hi").shout().print()
 }
 ```
+
+The reference to `Greeter` in `main.can` is the entire import: the
+loader finds the sibling `greeter.can` by name.
 
 Run it with:
 

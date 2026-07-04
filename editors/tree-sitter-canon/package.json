@@ -1,6 +1,6 @@
 {
   "name": "tree-sitter-canon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tree-sitter grammar for Canon",
   "devDependencies": {
     "tree-sitter-cli": "^0.22.0",

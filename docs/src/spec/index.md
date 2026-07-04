@@ -21,8 +21,8 @@ Each chapter is self-contained and cross-referenced:
   calling, lambdas, traits, and the entry-point rule.
 - [Ordering Rules](./ordering.md): every place alphabetical order is
   enforced, and the exact comparison used.
-- [Modules and Packages](./modules.md): file/module conventions, `use`
-  resolution, manifests, and workspaces.
+- [Modules and Packages](./modules.md): file/module conventions,
+  automatic name resolution, manifests, and workspaces.
 - [Effects and the Async Model](./effects-and-async.md): values as
   capabilities, suspension inference, and auto-await.
 - [Compilation and the ABI](./compilation.md): the pipeline, the memory

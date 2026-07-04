@@ -47,12 +47,6 @@ can't provide. Inside a handler, keep literals fully static.
 ## The Full Program
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 indexBody = () -> Body {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }

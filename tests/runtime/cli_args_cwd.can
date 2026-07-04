@@ -1,7 +1,3 @@
-use canon/std/Json
-use canon/std/cli/Args
-use canon/std/cli/Cwd
-
 main = () -> Unit {
     Args()
         .length()

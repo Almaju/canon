@@ -32,7 +32,7 @@ compilation model. Each chapter introduces exactly one idea:
 3. **[JSON, Without a Framework](./03-json.md)**: JSON bodies are
    JSON literals; no serializer, no middleware.
 4. **[Growing Into Modules](./04-modules.md)**: a real package, with a
-   `Note` type in its own file, imported with `use`.
+   `Note` type in its own file, loaded automatically by reference.
 5. **[Testing the API](./05-testing.md)**: `canon test` and the
    `TestResult` type.
 6. **[Ship a Component](./06-ship-it.md)**: `canon build`, the `.wit`

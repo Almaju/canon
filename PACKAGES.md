@@ -6,10 +6,11 @@ the `package` directive, registry-backed
 table). This document defines how
 Canon fetches, resolves, and publishes packages. When accepted it
 **supersedes DESIGN.md § Package Manifests** (`canon.toml` is deleted
-entirely) and amends § Imports. It assumes the in-flight removal of the
-`use` keyword: a reference to a type `User` that is not defined in the
-current file resolves by convention to `user.can`. Package management
-below is that same rule with one more search location — nothing else.
+entirely) and amends § Imports. The removal of the `use` keyword it
+assumed has **landed**: a reference to a type `User` that is not defined
+in the current file resolves by convention to `user.can` (see DESIGN.md
+§ Imports). Package management below is that same rule with one more
+search location — nothing else.
 
 This document is a peer of `STREAMING.md` / `WEB-TARGET.md`: design
 first, then implementation slices at the end.
@@ -157,8 +158,9 @@ relocated to `deps/` and stamped with `package`.
 Given a reference to type `Z` not defined in the current file
 (post-`use`-removal, name→file):
 
-1. Resolve within the project tree (the auto-import rule, whatever its
-   final scoping — this RFC does not define it).
+1. Resolve within the project tree (the auto-import rule: the tree
+   rooted at the referencing file's directory, recursively, skipping
+   `deps/` and `bindgen/`).
 2. Else resolve against `deps/**/z.can`.
 3. Else resolve against the bundled `canon:std` sources.
 4. Else: compile error. The error suggests `canon install`, and — only
@@ -387,9 +389,11 @@ slices 4+ interlock with it.
 
 ## Open questions
 
-- **Search scoping for step 1 of resolution** is owned by the
-  `use`-removal design (same directory? whole project tree?). This RFC
-  only appends `deps/` and `canon:std` after whatever it decides.
+- ~~**Search scoping for step 1 of resolution**~~ Resolved by the
+  `use`-removal implementation: the tree rooted at the referencing
+  file's directory, recursively, with `deps/`, `bindgen/`, and hidden
+  directories excluded. This RFC only appends `deps/` and `canon:std`
+  after that.
 - **Should `canon publish` verify reproducibility** (rebuild the
   component from the source layer and compare digests) before pushing?
   Cheap honesty; deferred to slice 3 review.

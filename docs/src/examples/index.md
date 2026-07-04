@@ -16,7 +16,7 @@ instead, where CI pins their exact output.
 | `clock`, `now`, `random`, `exit-code` | WASI capabilities as one-line constructors; honest exit codes | [CLI Basics](./cli-basics.md) |
 | `read-file` | file I/O via the `Path → File → String` chain | [Reading a File](./read-file.md) |
 | `fetch-url` | HTTP client via a validated `Url` constructor | [Fetching a URL](./fetch-url.md) |
-| `multifile` | modules: one type per file, `use` imports | [A Multi-File Project](./multifile.md) |
+| `multifile` | modules: one type per file, imports by reference | [A Multi-File Project](./multifile.md) |
 | `notes-api` | a JSON API as a `wasi:http/service` component | [notes-api](./notes-api.md) |
 
 ## Running Them
