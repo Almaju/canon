@@ -1400,7 +1400,7 @@ fn cmd_run(args: &[String]) {
             None => "127.0.0.1:8080".parse().expect("static addr"),
         };
         if addr.is_none() {
-            eprintln!("web app detected — serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+            eprintln!("web app detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
         }
         canon::webhost::serve_bundle(bind_addr, &spec.output_stem, component_bytes);
     }
@@ -1428,7 +1428,7 @@ fn cmd_run(args: &[String]) {
         }
         None if is_http => {
             let bind_addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("static addr");
-            eprintln!("HTTP handler detected — serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+            eprintln!("HTTP handler detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
             canon::runtime::serve_component(&component_bytes, bind_addr);
         }
         None => {

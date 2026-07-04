@@ -26,7 +26,7 @@
     // "tour/types.html". Derived from mdBook's `path_to_root` global
     // ("../" per directory level). A directory URL (the site served at
     // "/" or "/canon/") is the book root, where index.html is the
-    // first chapter — the trailing segment there is the deploy prefix,
+    // first chapter - the trailing segment there is the deploy prefix,
     // not a chapter, so it must not be taken as the path.
     function currentRelPath() {
         var toRoot = typeof path_to_root !== 'undefined' ? path_to_root : '';

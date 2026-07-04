@@ -4,7 +4,7 @@
 // `hljs.highlightBlock` immediately on script load, BEFORE additional-js
 // files (like this one) execute. By the time we register the `canon`
 // language, mdBook has already run hljs over the blocks with the
-// language missing — they end up un-highlighted.
+// language missing - they end up un-highlighted.
 //
 // The fix: register `canon`, then re-highlight any block tagged
 // `language-canon` (or `language-ow`) using `hljs.highlight(name, code)`
@@ -22,7 +22,7 @@
 //   - calls            `.print()`, `.map()` -> hljs-title
 //   - constructors     `True()`, `Body("x")` -> hljs-type
 //                      (a PascalCase name followed by `(` CONSTRUCTS;
-//                       without `(` it observes — mirroring the
+//                       without `(` it observes - mirroring the
 //                       language's own rule)
 //   - core vocabulary  `Int`, `String`, …   -> hljs-built_in
 //   - literals         `True`, `None`, `Ok` -> hljs-literal
@@ -60,12 +60,12 @@
                 {
                     // Definition site: `name = …` at the start of a line
                     // (functions, trait impls are PascalCase and excluded
-                    // on purpose — they read as types).
+                    // on purpose - they read as types).
                     className: 'title',
                     begin: '^[ \\t]*[a-z][A-Za-z0-9_]*(?=[ \\t]*=)'
                 },
                 {
-                    // Call site: `.method(` — the dot rides along to
+                    // Call site: `.method(` - the dot rides along to
                     // avoid a lookbehind (Safari compatibility).
                     className: 'title',
                     begin: '\\.[a-z][A-Za-z0-9_]*(?=\\()'
@@ -88,7 +88,7 @@
     }
 
     function highlightCanonBlocks() {
-        // Match `language-canon` with optional fence flags — a block
+        // Match `language-canon` with optional fence flags - a block
         // tagged ```canon,run=hello gets the single class
         // "language-canon,run=hello" (the info string up to whitespace).
         var blocks = Array.prototype.filter.call(

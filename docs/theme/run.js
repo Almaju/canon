@@ -8,7 +8,7 @@
 // Playground page (#canon-playground) from the same manifest.
 //
 // Canon components are WASI P3 (async-lifted), so executing them needs
-// JSPI (WebAssembly.Suspending) — stable in Chromium; Firefox/Safari
+// JSPI (WebAssembly.Suspending) - stable in Chromium; Firefox/Safari
 // pending. Without it the button explains instead of running.
 
 (function () {
@@ -73,7 +73,7 @@
         }
         p.status.textContent = 'running…';
         // import() in a classic script resolves relative specifiers
-        // against this script's URL (theme/run.js), not the page —
+        // against this script's URL (theme/run.js), not the page -
         // build an absolute URL against the page instead.
         var url = new URL(
             root + 'runner/' + name + '/' + name + '.js?i=' + runCounter++,
@@ -231,7 +231,7 @@
                 wireBlocks();
                 wirePlayground();
             })
-            .catch(function () { /* no runner assets — book works without */ });
+            .catch(function () { /* no runner assets - book works without */ });
     }
 
     if (document.readyState === 'loading') {

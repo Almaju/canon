@@ -9,7 +9,7 @@
 // docs/theme/run.js) into the built site. The markdown is the single
 // source of truth: a snippet that stops compiling fails the docs build.
 //
-// Node with no dependencies — Node is already required for jco itself.
+// Node with no dependencies - Node is already required for jco itself.
 //
 // Usage:
 //   node docs/runner/build.mjs --canon target/release/canon \
@@ -17,7 +17,7 @@
 //
 // Constraints on runnable snippets (enforced here):
 //   - must be a self-contained program (its own `main`),
-//   - may only import wasi:cli stdout/stderr and canon:builtins/json —
+//   - may only import wasi:cli stdout/stderr and canon:builtins/json -
 //     the two interfaces the browser shims in docs/runner/shims/ cover.
 //     Anything else (clocks, random, fs, sockets, http) fails the build
 //     with a pointer to this file.
@@ -129,7 +129,7 @@ function patchPolyfill(jsPath) {
   if (src.includes("class FutureReadableEnd extends _FutureEndPolyfill")) return;
   if (!src.includes(POLYFILL_ANCHOR))
     fail(
-      `${jsPath}: jco output changed shape — polyfill anchor not found. ` +
+      `${jsPath}: jco output changed shape - polyfill anchor not found. ` +
         "If the jco version was bumped, check whether the " +
         "FutureReadableEnd/FutureWritableEnd emission bug still exists " +
         "(this polyfill may be deletable)."
@@ -147,7 +147,7 @@ function checkImports(name, outDir) {
         fail(
           `example '${name}' needs import '${spec}', which has no browser ` +
             "shim. Runnable book snippets may only use stdout printing " +
-            "and JSON — see docs/runner/build.mjs."
+            "and JSON - see docs/runner/build.mjs."
         );
     }
   }

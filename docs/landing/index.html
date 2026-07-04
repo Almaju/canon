@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Canon — every program has exactly one form</title>
-<meta name="description" content="Canon is a maximally opinionated programming language that compiles straight to WebAssembly components. No let, no if, no comments — and everything in alphabetical order.">
+<title>Canon: every program has exactly one form</title>
+<meta name="description" content="Canon is a maximally opinionated programming language that compiles straight to WebAssembly components. No let, no if, no comments. Everything in alphabetical order.">
 <meta property="og:title" content="Canon">
 <meta property="og:description" content="A maximally opinionated language that compiles straight to WebAssembly components. No let, no if, no comments.">
 <meta property="og:type" content="website">
@@ -519,8 +519,8 @@
 
     <p class="sub">
       Canon is a maximally opinionated programming language.
-      No <code>let</code>, no <code>if</code>, no comments, no local variables —
-      and wherever ordering is discretionary, the compiler enforces
+      No <code>let</code>, no <code>if</code>, no comments, no local variables.
+      Wherever ordering is discretionary, the compiler enforces
       alphabetical order.
     </p>
 
@@ -568,14 +568,14 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
     <h2>Small surface. Sharp edges.</h2>
     <p class="lede">
       Style is not a choice, so a diff only ever shows meaning.
-      What most languages leave to taste, Canon decides once — in the compiler.
+      What most languages leave to taste, Canon decides once, in the compiler.
     </p>
 
     <div class="grid">
       <div class="cell">
         <span class="glyph">a→z</span>
         <h3>Alphabetical, enforced</h3>
-        <p>Product fields, union variants, functions, dispatch arms, imports — everything sorts. <code>canon fmt</code> does it; the checker is the backstop.</p>
+        <p>Product fields, union variants, functions, dispatch arms, imports: everything sorts. <code>canon fmt</code> does it; the checker is the backstop.</p>
       </div>
       <div class="cell">
         <span class="glyph">*(&hellip;)</span>
@@ -585,17 +585,17 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
       <div class="cell">
         <span class="glyph">.wasm</span>
         <h3>WebAssembly, natively</h3>
-        <p>Every build is a standard WASI&nbsp;P3 component — no external toolchain, no transpile step. <code>canon run</code> executes it on embedded wasmtime.</p>
+        <p>Every build is a standard WASI&nbsp;P3 component. No external toolchain, no transpile step. <code>canon run</code> executes it on embedded wasmtime.</p>
       </div>
       <div class="cell">
         <span class="glyph">(A * B)</span>
         <h3>No privileged receiver</h3>
-        <p>Functions are defined over compositions of types. <code>a.f(b)</code> and <code>b.f(a)</code> are the same call — composition is commutative.</p>
+        <p>Functions are defined over compositions of types. <code>a.f(b)</code> and <code>b.f(a)</code> are the same call; composition is commutative.</p>
       </div>
       <div class="cell">
         <span class="glyph">-&gt; R</span>
         <h3>Effects are capabilities</h3>
-        <p>A function that touches the world says so in its signature. Effects are passed in as values — purity is the default, not a discipline.</p>
+        <p>A function that touches the world says so in its signature. Effects are passed in as values. Purity is the default, not a discipline.</p>
       </div>
       <div class="cell">
         <span class="glyph">§ 1</span>
@@ -612,8 +612,8 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
     <h2>A server is a function.</h2>
     <p class="lede">
       Canon picks the entry point by its type. Define <code>(Request) -&gt; Response</code>
-      and the compiler emits a standard <code>wasi:http/service</code> component —
-      routing is just dispatch on the path.
+      and the compiler emits a standard <code>wasi:http/service</code> component.
+      Routing is dispatch on the path.
     </p>
 
     <div class="split">
@@ -624,7 +624,7 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
           catch-all arm means an unhandled route can’t exist. The same
           program serves locally and runs on any component host.
         </p>
-        <div class="term"><span class="p">$</span> canon run notes.can --addr 127.0.0.1:8080<br><span class="out">serving wasi:http/service on 127.0.0.1:8080</span></div>
+        <div class="term"><span class="p">$</span> canon run notes.can<br><span class="out">HTTP handler detected: serving on http://127.0.0.1:8080</span></div>
       </div>
 
       <div class="window">
