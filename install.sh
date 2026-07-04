@@ -164,13 +164,10 @@ chmod +x "$tc_dir/canon"
 
 # Refresh the launcher from the freshly installed binary (the launcher logic is
 # identical across toolchains, so keeping it current is harmless and picks up
-# launcher fixes).
+# launcher fixes). There is no separate "default" state: the launcher falls
+# back to stable, or to the sole installed toolchain when stable isn't on disk.
 cp "$tc_dir/canon" "$BIN_DIR/canon"
 chmod +x "$BIN_DIR/canon"
-
-# On first install, make this channel the global default. Later toolchain
-# installs leave an existing default untouched.
-[ -f "$INSTALL_DIR/default" ] || printf '%s\n' "$channel" > "$INSTALL_DIR/default"
 
 ok ""
 ok "  ✓ Installed canon ${version} (${channel}) to ${tc_dir}/canon"

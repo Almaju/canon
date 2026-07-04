@@ -12,16 +12,17 @@ Releases moved to a **nightly + stable** model that never pushes to `main`
 rolling `nightly` prerelease; stable `vX.Y.Z` releases are cut on demand by the
 `promote` workflow.
 
-The CLI now manages toolchains like `rustup`: one install holds both channels
-under `~/.canon/toolchains/`, and the `canon` on `PATH` is a launcher that
-resolves the active toolchain (`+<tc>` → `CANON_TOOLCHAIN` → per-directory
-override → global default → `stable`). New commands: `canon toolchain
-<list|install|uninstall>`, `canon default`, `canon override <set|unset|list>`,
-and the `+<toolchain>` prefix — no project config file involved. `canon
-upgrade` updates the active toolchain. The x86_64 macOS binary is cross-built
-on the arm64 runner (the Intel `macos-13` runner is gone), and `install.sh`
-fails with a clear message when no release exists instead of building a bogus
-tag.
+The CLI manages toolchains with two concepts (rustup's five, collapsed): one
+install holds both channels under `~/.canon/toolchains/`, and the `canon` on
+`PATH` is a launcher. `canon use nightly` makes the current directory (and
+everything below) use nightly — installing it first if needed; run it at `~`
+and it's the global default. `canon nightly <cmd>` / `canon stable <cmd>` run
+one command with that toolchain, the channel as first word like a dispatch
+arm. Resolution: explicit word → nearest `use` ancestor → `stable`. No project
+config file, no default/override machinery. `canon upgrade` updates the active
+toolchain. The x86_64 macOS binary is cross-built on the arm64 runner (the
+Intel `macos-13` runner is gone), and `install.sh` fails with a clear message
+when no release exists instead of building a bogus tag.
 
 ### V1 milestone (2026-07)
 

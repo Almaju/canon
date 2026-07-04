@@ -29,38 +29,34 @@ curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -
 
 ## Toolchains
 
-Canon manages toolchains the way `rustup` does: one installation holds several
-toolchains, and the `canon` on your `PATH` is a thin launcher that picks the
-active one. Two channels are available:
+One installation holds both channels, and the `canon` on your `PATH` is a thin
+launcher that picks the active one:
 
-- **stable** (default) — versioned releases (`vX.Y.Z`), promoted from a tested
-  nightly.
+- **stable** (the fallback) — versioned releases (`vX.Y.Z`), promoted from a
+  tested nightly.
 - **nightly** — a rolling prerelease rebuilt automatically on every push to
   `main`. Latest features, less settled.
 
-The bootstrap script installs **stable**. Add and manage the others:
+Switching is one word, scoped by where you run it — no config file in your
+project, and no separate "default" vs "override" machinery:
 
 ```sh
-canon toolchain install nightly   # add the nightly toolchain
-canon toolchain list              # show installed toolchains (marks the default)
-canon toolchain uninstall nightly # remove one
+canon use nightly       # this directory (and below) now uses nightly —
+                        # installs it first if it isn't on disk
+cd ~ && canon use nightly   # run it in your home directory: global default
+canon use               # show the active toolchain, why, and what's installed
 ```
 
-## Switching toolchains
-
-No project config file is involved — switching is global, per-directory, or
-per-command:
+For a single command, the channel is the first word — like a dispatch arm:
 
 ```sh
-canon default nightly        # global default
-canon override set nightly   # pin the current directory (and children)
-canon override unset         # remove that pin
-canon +nightly run app.can   # one command, one toolchain
-CANON_TOOLCHAIN=nightly canon build app.can   # via environment
+canon nightly run app.can
+canon stable test suite.can
 ```
 
-A bare `canon` resolves in this order: `+toolchain` → `CANON_TOOLCHAIN` →
-directory override → global default → `stable`.
+A bare `canon` resolves: explicit channel word → nearest `canon use` ancestor
+→ `stable`. Selections live centrally in `~/.canon/uses`; to remove a
+toolchain from disk, delete `~/.canon/toolchains/<channel>`.
 
 ## Verify
 

@@ -50,21 +50,21 @@ curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -
 
 ### Toolchains: stable and nightly
 
-Like rustup, one install holds multiple toolchains and lets you switch globally
-or per project — no config file in your project. The bootstrap above installs
-**stable**; add **nightly** (rebuilt on every push to `main`) alongside it:
+One install holds both channels, and switching is a single word — no config
+file in your project, no separate "default" and "override" concepts:
 
 ```sh
-canon toolchain install nightly   # add the nightly toolchain
-canon toolchain list              # list installed toolchains
+canon use nightly            # this directory (and below) now uses nightly —
+                             # installs it first if needed
+cd ~ && canon use nightly    # run it in your home directory and it's global
+canon use                    # show the active toolchain and why
 
-canon default nightly             # set the global default
-canon +nightly run app.can        # use nightly for a single command
-canon override set nightly        # pin THIS directory (and children) to nightly
+canon nightly run app.can    # one command with nightly, like a dispatch arm
+canon stable test suite.can  # one command with stable
 ```
 
-Resolution order for a bare `canon`: `+toolchain` → `CANON_TOOLCHAIN` env →
-directory override → global default → `stable`.
+A bare `canon` resolves: explicit channel word → nearest `canon use` ancestor
+→ `stable`. (Nightly is rebuilt on every push to `main`.)
 
 Update the active toolchain in place, or pin a version:
 
