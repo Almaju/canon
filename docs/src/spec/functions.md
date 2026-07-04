@@ -153,8 +153,8 @@ Rules the compiler enforces:
   entry). **Helpers must return ordinary data**, never `Response`.
 - Mixed worlds in one module: compile error; a component exports
   exactly one world.
-- Zero matches: the module is a library, usable via `use`, not
-  runnable.
+- Zero matches: the module is a library, usable by reference from
+  other modules, not runnable.
 - The entry is lifted **async-stackful** at the Component Model
   boundary, so suspending calls anywhere beneath it can yield without
   trapping ([Effects and the Async Model](./effects-and-async.md)).

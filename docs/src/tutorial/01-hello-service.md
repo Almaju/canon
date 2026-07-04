@@ -3,12 +3,6 @@
 Create a file named `notes.can`:
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 serve = (Request) -> Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }

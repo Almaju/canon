@@ -4,9 +4,6 @@
 the canonical demonstration of Canon's *type chain as access control*.
 
 ```canon
-use canon/std/fs/File
-use canon/std/fs/Path
-
 main = () -> Unit {
     Path("Cargo.toml")
         .File()?

@@ -24,8 +24,8 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `if cond { a } else { b }`                 | `cond.( * (False) -> R { b } * (True) -> R { a } )` |
 | `pub fn`                                   | Everything is public                    |
 | `mod foo;`                                 | No `mod`; `foo.can` declares `Foo`       |
-| `use crate::foo::Foo;`                     | `use Foo`                               |
-| `use serde_json::Value;` (third-party)     | `use canon/std/Foo` for stdlib, plus `extern Wasm` for raw imports |
+| `use crate::foo::Foo;`                     | Nothing — referencing `Foo` loads `foo.can` |
+| `use serde_json::Value;` (third-party)     | Nothing — stdlib and `deps/` names resolve by reference; `extern Wasm` for raw imports |
 | `fn(...) -> T` (function type)             | `(params) -> T` (also a trait declaration) |
 | `&T` / `&mut T` / `Box<T>` / `Rc<T>`       | Inferred by the compiler                |
 | `async fn`, `.await`                       | Inferred; no source-level keyword       |
