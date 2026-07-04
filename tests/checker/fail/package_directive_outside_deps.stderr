@@ -1,0 +1,1 @@
+error[tests/checker/fail/package_directive_outside_deps.can:1:1]: the `package` directive is only allowed in vendored files under `deps/`

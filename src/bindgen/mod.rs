@@ -59,6 +59,19 @@ pub fn generate_from_path(input: &Path) -> Result<Vec<EmittedFile>, BindgenError
     Ok(emit::emit_all(&resolve))
 }
 
+/// Decode wasm bytes carrying a WIT package (the form package
+/// registries serve) or a full Component, and produce the files to
+/// write. Same decode as the `.wasm` arm of [`generate_from_path`],
+/// minus the filesystem — used by the registry-backed `canon install`.
+pub fn generate_from_wasm_bytes(bytes: &[u8]) -> Result<Vec<EmittedFile>, BindgenError> {
+    let decoded = wit_component::decode(bytes)
+        .map_err(|e| BindgenError(format!("failed to decode component: {e}")))?;
+    match decoded {
+        wit_component::DecodedWasm::Component(resolve, _)
+        | wit_component::DecodedWasm::WitPackage(resolve, _) => Ok(emit::emit_all(&resolve)),
+    }
+}
+
 fn parse_input(input: &Path) -> Result<Resolve, BindgenError> {
     if input.is_dir() {
         return parse_wit_directory(input);

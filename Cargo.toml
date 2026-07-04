@@ -45,3 +45,17 @@ hyper-util    = { version = "0.1", default-features = false, features = ["tokio"
 http-body-util = { version = "0.1", default-features = false }
 http          = { version = "1", default-features = false }
 bytes         = { version = "1", default-features = false }
+# Package-registry client (Bytecode Alliance wasm-pkg-tools). Powers
+# `canon install <ns>:<pkg>` — fetching WIT packages / components from
+# OCI (or local/warg) registries, with the standard `wasm-pkg`
+# namespace→registry config. `futures-util` is only for draining the
+# client's ContentStream; it's already in the tree transitively.
+wasm-pkg-client = "0.15.1"
+futures-util    = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Tests encode throwaway WIT packages into the wasm form registries
+# serve (`tests/registry_install_test.rs`). Same pins as the main
+# dependencies above, so no extra compilation.
+wit-component = "0.250"
+wit-parser    = "0.250"

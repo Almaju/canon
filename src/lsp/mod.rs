@@ -1208,10 +1208,11 @@ fn collect_definitions(module: &Module) -> Vec<DefInfo> {
                 defs.push(DefInfo { name, span });
             }
             // `use` items are resolved via find_definition_in_imports;
-            // `bindings` items don't introduce new symbols (the loader
-            // synthesizes FunctionDefs for the function-type aliases
-            // beneath the directive).
-            Item::Use(_) | Item::Bindings(_) => {}
+            // `bindings` / `package` items don't introduce new symbols
+            // (the loader synthesizes FunctionDefs for the function-type
+            // aliases beneath a `bindings` directive; `package` is pure
+            // provenance).
+            Item::Use(_) | Item::Bindings(_) | Item::Package(_) => {}
         }
     }
     defs
