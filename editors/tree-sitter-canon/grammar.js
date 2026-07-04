@@ -13,9 +13,20 @@ module.exports = grammar({
     source_file: ($) => repeat($._item),
 
     _item: ($) =>
-      choice($.use_decl, $.function_def, $.type_def, $.extern_type_decl),
+      choice(
+        $.bindings_decl,
+        $.package_decl,
+        $.function_def,
+        $.type_def,
+        $.extern_type_decl,
+      ),
 
-    use_decl: ($) => seq("use", field("path", sep1($.identifier, "/"))),
+    // bindings "wasi:random/random@0.3.0"   (generated binding files)
+    bindings_decl: ($) => seq("bindings", field("urn", $.string_literal)),
+
+    // package "acme:http@1.2.3"             (vendored files under deps/)
+    package_decl: ($) =>
+      seq("package", field("coordinate", $.string_literal)),
 
     // extern Rust("path")
     // name       = (params) -> Ret { body }   (normal free function)

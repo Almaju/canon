@@ -1,6 +1,6 @@
 id = "canon"
 name = "Canon"
-version = "0.4.0"
+version = "0.5.0"
 schema_version = 1
 authors = ["Almaju <almaju.fr@gmail.com>"]
 description = "Canon language support for Zed — syntax highlighting, diagnostics, hover, go-to-definition, and formatting via the built-in canon LSP"
