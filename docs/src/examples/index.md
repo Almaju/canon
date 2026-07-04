@@ -18,6 +18,7 @@ instead, where CI pins their exact output.
 | `fetch-url` | HTTP client via a validated `Url` constructor | [Fetching a URL](./fetch-url.md) |
 | `multifile` | modules: one type per file, imports by reference | [A Multi-File Project](./multifile.md) |
 | `notes-api` | a JSON API as a `wasi:http/service` component | [notes-api](./notes-api.md) |
+| `todolist-web` | an interactive browser frontend (the Elm triple) with `localStorage` persistence, live preview | [A Todo List in the Browser](./todolist.md) |
 
 ## Running Them
 

@@ -1,0 +1,30 @@
+Line = String
+
+flip = (Line) -> Line {
+    Line.byteAt(1).eq(48).(
+        * (False) -> Line { Line("0".concat(Line.substring(2, Line.length()))) }
+        * (True) -> Line { Line("1".concat(Line.substring(2, Line.length()))) }
+    )
+}
+
+renderItem = (Int * Line) -> Html {
+    Line.byteAt(1).eq(49).(
+        * (False) -> Html {
+            Line.substring(3, Line.length()).text().String
+                .concat(" ")
+                .concat(Msg("Toggle:".concat(Int.toText())).button("done").String)
+                .concat(" ")
+                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
+                .li()
+        }
+        * (True) -> Html {
+            "<s>"
+                .concat(Line.substring(3, Line.length()).text().String)
+                .concat("</s> ")
+                .concat(Msg("Toggle:".concat(Int.toText())).button("undo").String)
+                .concat(" ")
+                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
+                .li()
+        }
+    )
+}
