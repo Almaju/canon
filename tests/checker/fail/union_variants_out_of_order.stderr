@@ -1,2 +1,2 @@
-error[tests/checker/fail/union_variants_out_of_order.can:8:5]: union variants must be in alphabetical order — `Banana` should come before `Cherry`
-error[tests/checker/fail/union_variants_out_of_order.can:9:5]: union variants must be in alphabetical order — `Apple` should come before `Banana`
+error[tests/checker/fail/union_variants_out_of_order.can:8:5]: union variants must be in alphabetical order: `Banana` should come before `Cherry`
+error[tests/checker/fail/union_variants_out_of_order.can:9:5]: union variants must be in alphabetical order: `Apple` should come before `Banana`

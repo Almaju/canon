@@ -677,7 +677,7 @@ fn builtin_hover(name: &str) -> Option<String> {
         "Bytes"  => "```canon\nBytes = Byte^*\n```\nA byte sequence.",
         // Unit / Never
         "Unit"  => "```canon\nUnit\n```\nThe singleton type with exactly one value: `Unit`.",
-        "Never" => "```canon\nNever\n```\nThe uninhabited type — a function returning `Never` does not return.",
+        "Never" => "```canon\nNever\n```\nThe uninhabited type: a function returning `Never` does not return.",
         // Bool and its variants
         "Bool"  => "```canon\nBool = False + True\n```\nThe built-in boolean type.",
         "False" => "```canon\nFalse\n```\nVariant of `Bool`. The falsy value.",
@@ -692,15 +692,15 @@ fn builtin_hover(name: &str) -> Option<String> {
         "Map"    => "```canon\nMap<K, V>\n```\nA sorted key-value map. `K` must implement `Ord`.",
         "Set"    => "```canon\nSet<T>\n```\nA sorted set of values. `T` must implement `Ord`.",
         "Option" => "```canon\nOption<T> = None + Some<T>\n```\nAn optional value.",
-        "Some"   => "```canon\nSome<T>\n```\nVariant of `Option<T>` — value is present.",
-        "None"   => "```canon\nNone\n```\nVariant of `Option<T>` — value is absent.",
+        "Some"   => "```canon\nSome<T>\n```\nVariant of `Option<T>`: value is present.",
+        "None"   => "```canon\nNone\n```\nVariant of `Option<T>`: value is absent.",
         "Result" => "```canon\nResult<T, E> = Err<E> + Ok<T>\n```\nA fallible computation.",
-        "Ok"     => "```canon\nOk<T>\n```\nVariant of `Result<T, E>` — success.",
-        "Err"    => "```canon\nErr<E>\n```\nVariant of `Result<T, E>` — failure.",
+        "Ok"     => "```canon\nOk<T>\n```\nVariant of `Result<T, E>`: success.",
+        "Err"    => "```canon\nErr<E>\n```\nVariant of `Result<T, E>`: failure.",
         // Capabilities
         "Clock"      => "```canon\nClock\n```\nCapability for reading the current time (non-suspending).",
-        "Filesystem" => "```canon\nFilesystem\n```\nCapability for filesystem I/O (suspending — makes the function async).",
-        "Network"    => "```canon\nNetwork\n```\nCapability for network I/O (suspending — makes the function async).",
+        "Filesystem" => "```canon\nFilesystem\n```\nCapability for filesystem I/O (suspending; makes the function async).",
+        "Network"    => "```canon\nNetwork\n```\nCapability for network I/O (suspending; makes the function async).",
 
         "Stderr"     => "```canon\nStderr\n```\nCapability for writing to stderr (non-suspending).",
         "Stdin"      => "```canon\nStdin\n```\nCapability for reading from stdin (non-suspending).",

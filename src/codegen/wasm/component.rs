@@ -1269,9 +1269,9 @@ pub(super) fn generate_wit(module: &OModule, async_set: &AsyncSet) -> String {
     suspending.sort();
     suspending.dedup();
     if suspending.is_empty() {
-        out.push_str("/// Async inference — no suspending functions detected.\n\n");
+        out.push_str("/// Async inference: no suspending functions detected.\n\n");
     } else {
-        out.push_str("/// Async inference — the following functions are suspending\n");
+        out.push_str("/// Async inference: the following functions are suspending\n");
         out.push_str(
             "/// (lowered with `CanonicalOption::Async` and declared as\n\
              /// `async func(…)` in the imported interface type):\n",
