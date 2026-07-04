@@ -477,7 +477,7 @@ fn install_wit_entry(
 /// `wasi/random/random.can`. Returns `None` if the input doesn't have
 /// the expected `<ns>/src/...` shape (bindgen producing an unexpected
 /// layout is a programmer error, not a user error).
-fn strip_src_segment(rel: &str) -> Option<String> {
+pub(crate) fn strip_src_segment(rel: &str) -> Option<String> {
     let parts: Vec<&str> = rel.split('/').collect();
     if parts.len() < 2 || parts[1] != "src" {
         return None;
@@ -495,7 +495,7 @@ fn strip_src_segment(rel: &str) -> Option<String> {
 /// uses when deciding whether to skip writing a file; duplicated here
 /// because the bindgen module marks it private. If a future refactor
 /// promotes it, we'll switch to that.
-fn has_no_decls(content: &str) -> bool {
+pub(crate) fn has_no_decls(content: &str) -> bool {
     content
         .lines()
         .map(|l| l.trim())

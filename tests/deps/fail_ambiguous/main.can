@@ -1,0 +1,7 @@
+use acme/greet/shout
+
+main = () -> Unit {
+    "hello"
+        .shout()
+        .print()
+}
