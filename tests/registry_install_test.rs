@@ -1,12 +1,13 @@
-//! Registry-backed `canon install` — PACKAGES.md slice 2.
+//! Registry-backed `canon install` — PACKAGES.md slices 2 + 7 + 8.
 //!
 //! Drives the real CLI end-to-end against a `local`-type registry (the
 //! filesystem backend `wasm-pkg-client` ships): the test encodes a
 //! throwaway WIT package into the wasm form registries serve, lays it
 //! out as `<root>/<ns>/<name>/<version>.wasm`, points the install at it
 //! via a `CANON_REGISTRY_CONFIG` config file, and asserts the vendored
-//! `deps/` tree — `package` + `bindings` directives included — checks
-//! cleanly with the loader. No network involved.
+//! `deps/<ns>/<name>@<version>/` tree — pure source, the directory
+//! name carrying the pin and the loader deriving each binding URN from
+//! the path — checks cleanly. No network involved.
 
 mod common;
 
@@ -94,16 +95,23 @@ fn install_vendors_latest_release_and_project_checks() {
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 
-    let vendored = project.join("deps/test/adder/add.can");
+    // The directory name is the pin; the file is pure source. Neither
+    // the deleted `package` directive nor a `bindings` header appears —
+    // the loader derives `test:adder/add@1.1.0` from the path.
+    let vendored = project.join("deps/test/adder@1.1.0/add.can");
     let content = fs::read_to_string(&vendored)
         .unwrap_or_else(|e| panic!("expected `{}` to exist: {e}", vendored.display()));
     assert!(
-        content.starts_with("package \"test:adder@1.1.0\"\n"),
-        "vendored file must open with the provenance directive pinning the newest release:\n{content}"
+        !content.contains("package \""),
+        "vendored files carry no provenance directive:\n{content}"
     );
     assert!(
-        content.contains("bindings \"test:adder/add@1.1.0\""),
-        "vendored file must carry the interface URN:\n{content}"
+        !content.contains("bindings \""),
+        "a path-derivable URN needs no bindings header:\n{content}"
+    );
+    assert!(
+        content.contains("add = ("),
+        "the binding declaration must be present:\n{content}"
     );
 
     // The vendored package is usable: a program `use`s it and the
@@ -134,10 +142,9 @@ fn install_pins_exact_and_prefix_versions() {
         Some(0),
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    let content = fs::read_to_string(exact.join("deps/test/adder/add.can")).unwrap();
     assert!(
-        content.starts_with("package \"test:adder@1.0.0\"\n"),
-        "exact pin should install 1.0.0:\n{content}"
+        exact.join("deps/test/adder@1.0.0/add.can").is_file(),
+        "exact pin should vendor into the 1.0.0 directory"
     );
 
     let prefix = dir.join("prefix");
@@ -148,10 +155,32 @@ fn install_pins_exact_and_prefix_versions() {
         Some(0),
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    let content = fs::read_to_string(prefix.join("deps/test/adder/add.can")).unwrap();
     assert!(
-        content.starts_with("package \"test:adder@1.1.0\"\n"),
-        "prefix pin `@1` should install the newest 1.x:\n{content}"
+        prefix.join("deps/test/adder@1.1.0/add.can").is_file(),
+        "prefix pin `@1` should vendor the newest 1.x"
+    );
+}
+
+#[test]
+fn install_replaces_the_previously_vendored_version() {
+    // At most one version of a package per project: installing a new
+    // version removes the old versioned directory in the same
+    // operation, so the loader never sees two `@`-suffixed siblings.
+    let dir = scratch("replace");
+    let config = write_local_registry(&dir, &["1.0.0", "1.1.0"]);
+    let project = dir.join("project");
+    fs::create_dir_all(&project).unwrap();
+
+    let (_, stderr, code) = run_canon(&project, &config, &["install", "test:adder@1.0.0"]);
+    assert_eq!(code, Some(0), "first install failed: {stderr}");
+    assert!(project.join("deps/test/adder@1.0.0/add.can").is_file());
+
+    let (_, stderr, code) = run_canon(&project, &config, &["install", "test:adder@1.1.0"]);
+    assert_eq!(code, Some(0), "second install failed: {stderr}");
+    assert!(project.join("deps/test/adder@1.1.0/add.can").is_file());
+    assert!(
+        !project.join("deps/test/adder@1.0.0").exists(),
+        "the stale version must be removed by the install"
     );
 }
 

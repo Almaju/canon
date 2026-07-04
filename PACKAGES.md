@@ -1,21 +1,25 @@
 # Package Management — Design (RFC)
 
-Status: **proposal — slices 1–3 implemented; design amended (Jul 2026)**.
-Slices 1–3 landed as originally specified (the `deps/` search root, the
-`package` directive, registry-backed `canon install <ns>:<pkg>[@ver]`,
-and `canon publish`). The amendment removes every packaging directive
-from the language: the `package` and `bindings` keywords are deleted in
-favor of **path-carried identity** (`deps/<ns>/<name>@<ver>/`), binding
-files are recognized by **shape** (body-less declarations) rather than
-by a header, and the planned `component` directive becomes a
-tool-written **`.component` file**. Slices 7–8 migrate the as-built
-directive implementation onto this design. This document describes the
-amended design throughout; when accepted it **supersedes DESIGN.md
-§ Package Manifests** (`canon.toml` is deleted entirely) and amends
-§ Imports and § Binding Files. It assumes the removal of the `use`
-keyword: a reference to a type `User` that is not defined in the
-current file resolves by convention to `user.can`. Package management
-below is that same rule with one more search location — nothing else.
+Status: **proposal — slices 1–3, 7, 8a implemented; design amended
+(Jul 2026)**. Slices 1–3 landed as originally specified (the `deps/`
+search root, the `package` directive, registry-backed
+`canon install <ns>:<pkg>[@ver]`, and `canon publish`). The amendment
+removes packaging directives from the language in favor of
+**path-carried identity** (`deps/<ns>/<name>@<ver>/`): the `package`
+keyword is **deleted** (slice 7, implemented), binding files are
+recognized by **shape** (body-less declarations) with their URN derived
+from the path (slice 8a, implemented), and the planned `component`
+directive becomes a tool-written **`.component` file** (slice 5). The
+`bindings` keyword survives *only* as the escape hatch for URNs no
+path can spell — deleting it too is slice 8b, blocked on choosing that
+escape hatch's replacement spelling (see Open questions). This
+document describes the amended design throughout; when accepted it
+**supersedes DESIGN.md § Package Manifests** (`canon.toml` is deleted
+entirely) and amends § Imports and § Binding Files. It assumes the
+removal of the `use` keyword: a reference to a type `User` that is not
+defined in the current file resolves by convention to `user.can`.
+Package management below is that same rule with one more search
+location — nothing else.
 
 This document is a peer of `STREAMING.md` / `WEB-TARGET.md`: design
 first, then implementation slices at the end.
@@ -196,17 +200,28 @@ the language:
   amendment only an active `bindings` header distinguished these two
   readings; location now does.)
 
-The escape hatch for hand-written bindings that defy the path
-convention — a bespoke host interface, a one-off URN — remains the
-per-function `extern Wasm("<urn>#<fn>")` annotation, which is an
-annotation on *a function*, not a file talking about itself. Bindgen
-never emits it.
+An escape hatch remains necessary for bindings that defy the path
+convention — a bespoke host interface (`canon:builtins/*` in the
+stdlib's hand-written wrappers), and one-shot renames where the Canon
+name can't kebab back to the WIT name (`ToJson = (Bool) -> Json` binds
+`#from-bool`; four `ToJson` overloads can't all derive distinct WIT
+names). Today that escape hatch **is** the `bindings` directive — the
+original amendment text claimed the legacy per-function
+`extern Wasm("<urn>#<fn>")` annotation "survives" for this, but that
+syntax has since been deleted from the grammar entirely; there is
+nothing to fall back to. So the directive stays, demoted from
+"canonical form on every generated file" to "escape hatch on the
+files whose URN no path can spell": `canon install` no longer emits
+it (the loader re-derives path-spellable URNs), and it appears only
+in hand-written host-bridge wrappers and test fixtures. Deleting
+`KwBindings` is slice 8b, gated on designing its per-function
+replacement (see Open questions).
 
-With both directives gone, a binding file and an ordinary Canon file
-are grammatically identical, and the language grammar contains no
-packaging vocabulary at all: `KwPackage` and `KwBindings` leave the
-lexer, and the loader's rewrite keys on shape and path instead of on a
-header token.
+With `package` gone and `bindings` reduced to the escape hatch, a
+vendored binding file and an ordinary Canon file are grammatically
+identical: `KwPackage` has left the lexer, and the loader's rewrite
+keys on shape and path, with a directive overriding the path-derived
+base only where one is written.
 
 ## The `.component` file
 
@@ -237,6 +252,14 @@ it one:
   information: "this package's implementation is not in this repo."
 - Any future fact that genuinely needs recording argues for its own
   file on its own merits; nothing is ever appended to `.component`.
+
+The name is settled (was an open question): `.component`, not
+`component.sha256` or `.sha256`. The filename says what fact the file
+records — the package's component — not how the content is encoded;
+the encoding is the content's first word (`sha256:`). And the dotfile
+correctly reads as "tool-owned, not source": the review surface for
+the security-critical digest is `git diff`, which shows dotfiles like
+anything else.
 
 The `.wasm` itself lives in the global content-addressed cache
 (`~/.canon/cache/<sha256>.wasm`), populated by `canon install`, shared
@@ -413,18 +436,22 @@ credentials.
   eventually `src/manifest.rs` (the parser survives only as long as
   the migration needs it).
 - The `package` directive and `KwPackage` — implemented in slice 1,
-  removed by slice 7. With it go the deps-only placement rule, the
-  per-package agreement check, and the
+  **deleted by slice 7 (done)**. With it went the deps-only placement
+  rule, the per-package agreement check, and the
   `package_directive_outside_deps` fixture: all states the directive
   could get wrong are unrepresentable under path-carried identity.
-- The `bindings` directive and `KwBindings` — binding files are
-  recognized by shape and bound by path (slice 8). DESIGN.md § Binding
-  Files amends to match. The per-function `extern Wasm("<urn>#<fn>")`
-  annotation survives as the sole escape hatch.
+- The `bindings` directive on generated files — **done (slice 8a)**:
+  binding files are recognized by shape and bound by path;
+  `canon install` emits no header. The directive itself and
+  `KwBindings` remain as the escape hatch for path-unspellable URNs
+  (hand-written `canon:builtins/*` wrappers, one-shot `#fn` renames)
+  until slice 8b designs its per-function replacement — the previously
+  named candidate, `extern Wasm("<urn>#<fn>")`, no longer exists in
+  the grammar. DESIGN.md § Binding Files amends when 8b lands.
 - The separate `bindgen/` output directory in user projects — bindings
   are just vendored packages under `deps/` now. (`packages/canon/std`'s
   committed `bindgen/` tree is a compiler-internal build detail and
-  migrates to the same versioned-path layout in slice 8.)
+  migrates to the same versioned-path layout in slice 8b.)
 - `_install.toml` as a committed artifact — its content becomes the
   derived index under `.canon/`.
 - The `[workspace]` concept, `from`/`sha256` manifest fields, and the
@@ -514,20 +541,22 @@ interop with every component publisher, including `wasi:*` itself.
 
 Each slice is a self-contained PR that keeps `cargo test` green.
 Slices 1–3 are **implemented** (as originally specified, with
-directives); slices 7–8 migrate them onto the amended design and can
-land before or interleaved with 4–6.
+directives); slices 7 and 8a (**implemented**) migrated them onto the
+amended design; 8b interlocks with 6 and waits on the escape-hatch
+decision.
 
 | Slice | Contents | Proof |
 |---|---|---|
 | **0. This RFC** | `PACKAGES.md`; no code. | Review. |
-| **1. `deps/` + `package` directive** — *implemented; directive superseded by slice 7* | Loader gains the `deps/` search root; parser accepts the `package` directive; checker enforces deps-only placement and per-package agreement; ambiguity errors. | Checker fixtures (`package_directive_*.can`), runtime fixture with a hand-vendored `deps/`. |
+| **1. `deps/` + `package` directive** — *implemented; directive deleted by slice 7* | Loader gains the `deps/` search root; parser accepts the `package` directive; checker enforces deps-only placement and per-package agreement; ambiguity errors. | Checker fixtures (`package_directive_*.can`), runtime fixture with a hand-vendored `deps/`. |
 | **2. Registry fetch for WIT packages** — *implemented* | `canon install <ns>:<pkg>[@ver]` fetches a WIT package via `wasm-pkg-client` and lands bindgen output under `deps/`; namespace config; content cache. | Integration test against a local OCI registry fixture (or a vendored artifact file driven through the same code path). |
 | **3. `canon publish`** — *implemented* | Source-carrying artifact; recorded dep list; component layer when an entry point exists; auth via credential helpers; patch-bump default. | Round-trip test: publish to a temp/local registry, install into a fresh project, run. |
-| **4. Closure + MVS + collision check** | Transitive resolution from recorded dep lists; minimal version selection; install-time flat-namespace verification; versioned-sibling detection. | Fixtures with conflicting/diamond closures asserting exact error text. |
+| **4. Closure + MVS + collision check** | Transitive resolution from recorded dep lists; minimal version selection; install-time flat-namespace verification. | Fixtures with conflicting/diamond closures asserting exact error text. |
 | **5. Binary component deps** | `.component` digest file; global cache; build-time composition of the nested instance. | Runtime test calling into a vendored non-Canon component. |
 | **6. Delete `canon.toml`** | Migrate `packages/canon/std` and `examples/`; remove manifest parsing from the loader path; update DESIGN.md (§ Package Manifests replaced by a pointer here). | The tree contains no `canon.toml`; full suite green. |
-| **7. Path-carried identity** | `canon install` writes `deps/<ns>/<name>@<ver>/` and stops stamping `package` directives; loader derives provenance from the path; the deps-only placement and agreement checks (and their fixtures) are deleted; versioned-sibling error; `KwPackage` leaves the lexer; `tests/deps/` fixtures migrate to the versioned layout. | Migrated fixtures; a fixture asserting the two-siblings error; grep shows no `KwPackage`. |
-| **8. Shape-recognized bindings** | Loader binds body-less camelCase declarations under `deps/` to the path-derived URN (kebab mapping shared with bindgen); bindgen stops emitting the `bindings` header; `packages/canon/std/bindgen` migrates to the versioned-path layout; `KwBindings` leaves the lexer; `extern Wasm("<urn>#<fn>")` remains the per-function escape hatch. | Existing binding-consuming runtime fixtures stay green over the migrated layout; grep shows no `KwBindings`. |
+| **7. Path-carried identity** — *implemented* | `canon install` writes `deps/<ns>/<name>@<ver>/` (replacing any prior version) and stamps no directive; loader derives identity from the path; the placement/agreement checks and their fixtures are deleted; unversioned-dir, malformed-version, and two-siblings errors; `KwPackage` left the lexer; `tests/deps/` fixtures migrated; publish records deps from directory names. | `tests/deps_test.rs` (versioned fixtures incl. the two-siblings error); registry install/publish suites; grep shows no `KwPackage`. |
+| **8a. Shape-recognized bindings** — *implemented* | Loader binds body-less camelCase declarations in files directly under `deps/<ns>/<name>@<ver>/` to the path-derived URN (PascalCase stays a type alias there — only *directive* bases rewrite PascalCase, so vendored callback types can't be hijacked); `canon install` stops emitting the `bindings` header whenever the URN is path-derivable, keeping it otherwise (the escape hatch working as designed). | `tests/deps/ok_bindings` (hand-vendored, header-free, runs against the host builtin); `registry_install_test` asserts header-free vendored output that checks cleanly. |
+| **8b. Delete `KwBindings`** | Blocked on the escape-hatch decision (see Open questions). Then: migrate the stdlib's hand-written `canon:builtins/*` wrappers and test fixtures to the replacement; migrate `packages/canon/std/bindgen` to the versioned-path layout (interlocks with slice 6's manifest removal); delete the keyword. | Existing binding-consuming runtime fixtures stay green over the migrated layout; grep shows no `KwBindings`. |
 
 ## Open questions
 
@@ -541,9 +570,16 @@ land before or interleaved with 4–6.
   registry concern (ghcr.io: org membership). Whether Canon wants a
   blessed default registry with its own namespace policy is a
   community question, not a compiler one.
-- **`.component` visibility** — the digest is the security-critical
-  bit of a binary dep; a visible `component.sha256` would surface it
-  in a directory browse where the dotfile hides it. `git diff` (the
-  actual review surface) shows both equally. Current call: `.component`
-  (hidden reads as "tool-owned, not source"); rename is a one-line
-  change if browsing ever matters.
+- **The escape-hatch spelling (blocks slice 8b).** Path-derivation
+  covers every generated binding, but hand-written host-bridge
+  wrappers and one-shot renames need a per-function URN annotation,
+  and the grammar currently has exactly one way to write it: the
+  `bindings` directive. Deleting `KwBindings` means choosing its
+  replacement — resurrecting `extern Wasm("<urn>#<fn>")` re-adds two
+  keywords to delete one; an annotation form (`min = (Int * Int) ->
+  Int @ "canon:builtins/math@0.1.0#min"`?) is new grammar of its own;
+  relocating the stdlib's host bridges under a deps-shaped path only
+  works for base URNs, not for overloaded one-shot renames. A file-
+  level directive whose every remaining occurrence is irreducible
+  information may also just be the honest resting point, mirroring
+  `.component`. Needs a decision before 8b; nothing else blocks on it.

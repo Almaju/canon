@@ -5,6 +5,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Path-carried package identity (2026-07)
+
+The `package` keyword is gone (PACKAGES.md slices 7 + 8a). A vendored
+package's identity now lives in its directory name —
+`deps/<ns>/<name>@<version>/` — so the files are pure source: no
+provenance directive, and version agreement across a package is
+structural (a directory has one name) instead of checked. `canon
+install` writes the versioned layout, removes any previously vendored
+version in the same operation, and records a published package's
+dependency list from directory names. Two `@`-versioned siblings, an
+unversioned vendor directory, or a malformed version are loader
+errors.
+
+Binding files are now recognized by *shape*: a body-less camelCase
+declaration in a file directly under the package directory binds to
+the WIT interface its path spells (`deps/wasi/random@0.3.0/random.can`
+→ `wasi:random/random@0.3.0`), so `canon install` stops emitting the
+`bindings` header on generated files. The `bindings` directive remains
+solely as the escape hatch for URNs no path can spell (hand-written
+`canon:builtins/*` wrappers, one-shot `#fn` renames); deleting the
+keyword outright is PACKAGES.md slice 8b, blocked on choosing that
+escape hatch's replacement spelling.
+
 ### Release channels & toolchains (2026-07)
 
 Releases moved to a **nightly + stable** model that never pushes to `main`

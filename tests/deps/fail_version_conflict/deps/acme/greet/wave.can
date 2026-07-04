@@ -1,5 +1,0 @@
-package "acme:greet@1.1.0"
-
-wave = (String) -> String {
-    String.concat("~")
-}

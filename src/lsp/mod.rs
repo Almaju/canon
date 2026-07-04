@@ -1212,7 +1212,7 @@ fn collect_definitions(module: &Module) -> Vec<DefInfo> {
             // (the loader synthesizes FunctionDefs for the function-type
             // aliases beneath a `bindings` directive; `package` is pure
             // provenance).
-            Item::Use(_) | Item::Bindings(_) | Item::Package(_) => {}
+            Item::Use(_) | Item::Bindings(_) => {}
         }
     }
     defs
