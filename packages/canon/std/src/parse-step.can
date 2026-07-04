@@ -1,4 +1,1 @@
-use ParseFail
-use ParsePos
-
 ParseStep = ParseFail + ParsePos

@@ -1,4 +1,1 @@
-use Body
-use HttpStatus
-
 HttpResponseBody = Body * HttpStatus

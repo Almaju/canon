@@ -39,7 +39,6 @@ main = (Network) -> Unit {
         .serve(Network)
 }
 ```
-
 The fourth argument to `post` is a **function reference** — not a body
 string. The host invokes it per matching request, marshalling the
 request body in and the response body out.
@@ -49,7 +48,6 @@ The full Coulisse-port shape adds state threading:
 ```
 post = <S>(HttpRouter<S> * HttpStatus * RoutePath * (Request * S) -> HttpResponseBody) -> HttpRouter<S>
 ```
-
 For the MVP we'll punt on `<S>` and ship the `(Request) -> HttpResponseBody`
 form; state threading is a layer of polish on top of the same machinery.
 
@@ -95,7 +93,6 @@ main = (Network) -> Unit {
         .serve(Network)
 }
 ```
-
 Only one handler. No routing — every request hits it. Just proves the
 ABI works.
 
@@ -128,7 +125,6 @@ ABI works.
    // In the `comp_insts.export_items` for wasi:cli/run, add:
    ("handle-request", ComponentExportKind::Func, handle_request_component_fn)
    ```
-
    where `handle_request_component_fn` is built via `lift` from the
    user-function's core index, mirroring how `run_component_fn` is
    built (`component.rs` ~line 470).
@@ -140,7 +136,6 @@ ABI works.
    extern Wasm("canon:builtins/http-server@0.1.0#with-handler")
    withHandler = (HttpServer * String) -> HttpServer
    ```
-
    For the MVP we pass the handler **name** as a String. The runtime
    side ignores the name and just calls the single `handle-request`
    export. (Generalising to multiple handlers comes in slice 2.)
@@ -159,7 +154,6 @@ ABI works.
        // build HTTP/1.1 response with `body` as the response body
    })
    ```
-
    The exact accessor/instance plumbing varies by wasmtime version — see
    `wasmtime-45.0.0/src/runtime/component/concurrent.rs` for the
    `Accessor::with` shape we already use in `serve`.
@@ -177,7 +171,6 @@ main = (Network) -> Unit {
         .serveOnce(Network)                              -- serves one request then exits
 }
 ```
-
 `serveOnce` is a test-only variant that returns after the first
 request — saves us from killing the server in the harness. The
 harness sends a single HTTP request to the bound port and asserts the
@@ -202,7 +195,6 @@ main = (Network) -> Unit {
         .serve(Network)
 }
 ```
-
 **Implementation deltas vs slice 1:**
 
 1. **Compiler** — instead of one export, synthesise a single dispatcher
@@ -232,7 +224,6 @@ main = (Network) -> Unit {
        end
      end)
    ```
-
    This is straightforward wasm. The handler IDs are stable across the
    `WasmGen.handler_funcs` Vec.
 
@@ -326,7 +317,6 @@ honest (different return shape).
    ```wit
    __http-dispatch: func(handler-id: s32, body: string) -> string;
    ```
-
    This is exported, not imported, so it lives in the component's
    *export* section (currently empty except for `run`). Adding an
    export means another instance entry in the

@@ -1,5 +1,3 @@
-use Headers
-
 eventStream = () -> Headers {
     Headers().set("content-type", "text/event-stream")
 }

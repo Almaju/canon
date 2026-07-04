@@ -1,5 +1,3 @@
-use wasi/cli/exit
-
 Exit = Int
 
 exit = (Int) -> Unit {

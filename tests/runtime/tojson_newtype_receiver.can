@@ -1,5 +1,3 @@
-use canon/std/Json
-
 Foo = String
 
 main = () -> Unit {

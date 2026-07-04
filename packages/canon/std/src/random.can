@@ -1,5 +1,3 @@
-use wasi/random/random
-
 Random = Int
 
 Random = () -> Random {

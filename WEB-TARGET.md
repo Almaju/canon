@@ -35,7 +35,6 @@ init   = () -> Model                 # free, zero params
 update = (Model * String) -> Model   # method on the model type
 view   = (Model) -> Html             # method on the model type
 ```
-
 `Model` is any user type (product, union, `Int`/`Float`/`String`
 newtype). `Html` comes from `use canon/std/web/Html`. When the triple
 is present (and no `main` / HTTP entry competes — the checker rejects
@@ -52,7 +51,6 @@ mixed worlds), codegen routes through `WasmGen::compile_web`.
 canon-web.js     # the JS host, embedded in the compiler binary
 index.html       # boots the app into <div id="app">
 ```
-
 Unlike the CLI/HTTP worlds the output is **not** a component —
 browsers instantiate core wasm directly, and `canon-web.js` plays the
 role the component wrapper plays elsewhere. (A `jco`-style
@@ -74,7 +72,6 @@ imports (module "wasi:cli/stdout@0.3.0-rc-2026-03-15"):
   whole lines to console.log, so `.print()` debugging works in the
   browser console.
 ```
-
 The model stays **in guest memory** between calls; the host only
 holds an opaque i64 (see `WebModelShape` in `src/codegen/wasm/mod.rs`
 for how each model representation normalizes to it). No
