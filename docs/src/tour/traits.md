@@ -15,10 +15,11 @@ difference is how the compiler distinguishes a trait implementation
 A trait is implemented for a type by declaring a function with the trait's name and the implementing type as a component:
 
 ```canon
-Show = () -> String
-
 Greeting = String
-Name     = String
+
+Name = String
+
+Show = () -> String
 
 Show = (Greeting) -> String {
     "HELLO!"
@@ -29,8 +30,12 @@ Show = (Name) -> String {
 }
 
 main = () -> Unit {
-    Greeting("hi").Show().print()
-    Name("Alice").Show().print()
+    Greeting("hi")
+        .Show()
+        .print()
+    Name("Alice")
+        .Show()
+        .print()
 }
 ```
 
@@ -42,18 +47,15 @@ main = () -> Unit {
 A trait with multiple methods is just a product of single-method traits:
 
 ```canon
-Show = Debug * PrintString
+Debug = () -> String
+
+Presentable = Debug * PrintString
+
+PrintString = () -> Unit
 ```
 
-## Default Implementations
-
-A trait declaration can carry a default body marked `{ impl }`:
-
-```canon
-Greet = () -> String { impl }
-```
-
-Implementing types may then either override or inherit the default.
+Implementing `Presentable` for a type means implementing both `Debug`
+and `PrintString` for it.
 
 ## Using a Trait as a Parameter
 

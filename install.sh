@@ -79,8 +79,19 @@ if [ "$version" = "latest" ]; then
     else
         resolved="$(wget --max-redirect=10 --server-response --spider "$redirect_url" 2>&1 | awk '/Location: /{u=$2} END{print u}')"
     fi
-    version="${resolved##*/}"
-    [ -n "$version" ] && [ "$version" != "latest" ] || die "error: could not resolve latest release tag"
+    # A repo with a published release redirects to …/releases/tag/<tag>.
+    # A repo with NO releases redirects to the …/releases listing page, so
+    # a naive "${resolved##*/}" would yield the literal word "releases" and
+    # build a bogus "vreleases" tag. Require the tag form explicitly.
+    case "$resolved" in
+        */releases/tag/*) version="${resolved##*/}" ;;
+        *) version="" ;;
+    esac
+    [ -n "$version" ] || die "error: no published release found for ${REPO}.
+       The repository may not have cut a release yet — see
+       https://github.com/${REPO}/releases
+       Once a release exists, re-run this installer, or pin a version:
+       CANON_VERSION=vX.Y.Z curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh"
 fi
 
 case "$version" in

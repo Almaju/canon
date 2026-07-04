@@ -42,7 +42,7 @@ the [Tour](../tour/philosophy.md) for what replaces each.
 | Float | `1.5` | `Float(1.5)` |
 | Hex | `0xFF0000` | `Hex(0xFF0000)` |
 | String | `"abc"` | `String("abc")` |
-| JSON object/array | `{"a": 1}`, `[1, 2]` | `Json` value ([Expressions](./expressions.md#json-literals)) |
+| JSON object/array | `{"a":1}`, `[1,2]` | `Json` value ([Expressions](./expressions.md#json-literals)) |
 
 ## String Escape Sequences
 

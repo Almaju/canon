@@ -26,8 +26,8 @@ To import from the embedded standard library, prefix the path with
 `canon/std/`:
 
 ```canon
-use canon/std/File
-use canon/std/Url
+use canon/std/fs/File
+use canon/std/http/Url
 ```
 
 See the [Standard Library](../reference/stdlib.md) reference for the

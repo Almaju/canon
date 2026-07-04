@@ -29,7 +29,7 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install mdBook
         run: |
@@ -42,11 +42,17 @@ jobs:
         working-directory: docs
         run: mdbook build
 
+      - name: Assemble site (landing at /, book under /doc/)
+        run: |
+          mkdir -p site/doc
+          cp -r docs/landing/. site/
+          cp -r docs/book/. site/doc/
+
       - name: Upload artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/book
+          path: site
 
   deploy:
     name: deploy

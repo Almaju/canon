@@ -131,11 +131,11 @@ Idiomatic Canon code does not write `extern Wasm` directly. Instead, it
 imports individual types from the embedded standard library:
 
 ```canon
-use canon/std/File
-use canon/std/Instant
-use canon/std/Now
 use canon/std/Random
-use canon/std/Url
+use canon/std/fs/File
+use canon/std/http/Url
+use canon/std/time/Instant
+use canon/std/time/Now
 ```
 
 (`Instant()` — monotonic clock via `wasi/clocks/monotonic_clock`;

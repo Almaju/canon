@@ -191,6 +191,7 @@ For ergonomics, several literal forms are sugar over their constructors:
 | `1.0`          | `Float(1.0)`       |
 | `"abc"`        | `String("abc")`    |
 | `0xFF0000`     | `Hex(0xFF0000)`    |
+| `{"k":v}`, `[v]` | a `Json` value (static parts constant-folded; interpolated parts via `ToJson`) |
 
 String literals exist to avoid the parsing ambiguity of bare `String(...)` with spaces and punctuation. Numeric literals exist to avoid boilerplate in arithmetic-heavy code.
 
@@ -329,6 +330,8 @@ The shipped packages `canon/std` and `canon/wasi` are pre-installed and bundled 
 
 Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use canon/std/JsonValue` and `use canon/std/JsonArray`.
 
+**The prelude.** A handful of core names need no import at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`). This mirrors Rust's prelude: the standard vocabulary is ambient, everything else is an explicit import.
+
 Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. `use canon/std/Json` never carries an `@version`.
 
 ### Visibility
@@ -428,7 +431,7 @@ An HTTP service:
 
 ```
 home = (Request) -> Response {
-    Response(Body("hello"), Headers(), Status(200))
+    Response(Body("hello") * Headers() * Status(200))
 }
 ```
 
@@ -1148,7 +1151,7 @@ Three things ship with the language:
 | `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ |
 | `canon/std/http/Url`, `canon/std/http/InvalidUrl`, `canon/std/http/HttpError` | `canon:builtins/url` + `canon:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
 | `canon/std/http/HttpServer`, `canon/std/http/HttpStatus`, `canon/std/http/Port`, `canon/std/http/RoutePath` | `canon:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
-| `canon/std/Json`, `canon/std/MalformedJson` | `canon:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Canon (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k": v}` / `[v, ...]` literal syntax with interpolation; structural derive for user types pending |
+| `canon/std/Json`, `canon/std/MalformedJson` | `canon:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Canon (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k":v}` / `[v,...]` literal syntax with interpolation; structural derive for user types pending |
 | `canon/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Canon | ✅ |
 
 The `canon:builtins/*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available — the binding file in `canon/wasi` is regenerated, the `canon/std` wrapper stays the same.

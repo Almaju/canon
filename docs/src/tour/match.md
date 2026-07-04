@@ -6,8 +6,6 @@ a union — the value is the receiver, and the arms go inside `.( )`.
 ## Basic Form
 
 ```canon
-Bool = False + True
-
 main = () -> Unit {
     True().(
         * (False) -> Unit { "no".print() }
@@ -15,6 +13,9 @@ main = () -> Unit {
     )
 }
 ```
+
+(`Bool` is core's union `False + True` — nothing special-cased; any
+union of your own dispatches the same way.)
 
 Dispatch is an expression. It can be the final line of a function body or
 appear as a sub-expression.
@@ -25,7 +26,9 @@ Dispatch arms follow the union's variant order — which is itself
 alphabetical. Every variant must be spelled out:
 
 ```canon
-Ord = Equal + Greater + Less
+Ord = Equal
+  + Greater
+  + Less
 
 classify = (Ord) -> Sign {
     Ord.(

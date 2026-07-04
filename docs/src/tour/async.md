@@ -79,10 +79,13 @@ hood, `wasi:http/outgoing-handler` is an async interface — every step of
 the chain returns a `Future`:
 
 ```canon
-use canon/std/Url
+use canon/std/http/Url
 
 main = () -> Unit {
-    Url("https://example.com")?.get()?.body()?.print()
+    Url("https://example.com")?
+        .get()?
+        .body()?
+        .print()
 }
 ```
 
@@ -172,41 +175,52 @@ Model's semantics; we don't get to invent our own.
 A common follow-up: *if there's no `async` keyword, how do I express "fire
 off two HTTP requests in parallel, then combine the results"?*
 
-The answer, consistent with [domain-first design](./effects.md), is **as
-ordinary stdlib functions, not keywords** (`use canon/std/concurrent`):
+The answer, consistent with [domain-first design](./effects.md), is
+**as methods on the futures themselves, not keywords** — the same
+commutative method-call shape as everything else in Canon:
 
 ```canon
-parallel("a".slowEcho(), "b".slowEcho()).toJsonArray().print()
-race("a".slowEcho(), "b".slowEcho()).print()
+"a"
+    .slowEcho()
+    .parallel("b".slowEcho())
+    .toJsonArray()
+    .print()
+"a"
+    .slowEcho()
+    .race("b".slowEcho())
+    .print()
 ```
 
-`parallel(a, b)` fans out, awaits both, and returns the results in
-arg-order as a `Future<List<T>>`; `race(a, b)` returns the first to
-finish and cancels the loser. Both sides must produce the same payload
-type:
+`a.parallel(b)` fans out, awaits both, and returns the results in
+receiver-then-argument order as a `Future<List<T>>`; `a.race(b)`
+returns the first to finish and cancels the loser. Both sides must
+produce the same payload type:
 
 ```
 parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
 race     = <T>(Future<T> * Future<T>) -> Future<T>
 ```
 
-These are not language features — they're functions that take futures
-and return composed futures. The user never writes `await` on the result;
+These are not language features — they're combinators over futures,
+entered through the receiver like any other Canon call. There is no
+bare call form (`parallel(a, b)` is a compile error steering you to
+the method spelling). The user never writes `await` on the result;
 the auto-await rule fires the moment the composed future is used in a
 position that expects its payload. The surface remains keyword-free.
 
 > Implementation notes:
 >
-> `parallel(a, b)` joins two subtasks to a fresh waitable-set, loops on
+> `a.parallel(b)` joins two subtasks to a fresh waitable-set, loops on
 > `waitable-set.wait` until both events fire, then builds a `List<T>`
-> with the results in arg-order. `race(a, b)` waits for the first event
-> and emits `canon.subtask.cancel` on the losing branch (the cancel is
-> declared with `async_ = false`, which is permitted because `run` is
-> lifted async-stackful). Both are recognised by name in the codegen —
-> see `compile_parallel` / `compile_race` in `src/codegen/wasm/mod.rs`
-> — and emit the canonical-ABI multi-subtask wait sequence inline; no
-> host bridge is needed. Pinned by `tests/runtime/parallel_two_echoes.can`
-> and `tests/runtime/race_two_echoes.can`.
+> with the results in receiver-first order. `a.race(b)` waits for the
+> first event and emits `canon.subtask.cancel` on the losing branch
+> (the cancel is declared with `async_ = false`, which is permitted
+> because `run` is lifted async-stackful). Both are recognised by name
+> in the codegen — see `compile_parallel` / `compile_race` in
+> `src/codegen/wasm/mod.rs` — and emit the canonical-ABI multi-subtask
+> wait sequence inline; no host bridge is needed. Pinned by
+> `tests/runtime/parallel_two_echoes.can` and
+> `tests/runtime/race_two_echoes.can`.
 
 ## Streams
 

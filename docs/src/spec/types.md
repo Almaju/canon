@@ -16,13 +16,17 @@ atoms are newtype aliases of `Unit`, and everything scales up from
 there:
 
 ```canon
-False = Unit
-True = Unit
+Bit = False + True
+
 Bool = False + True
 
-Bit = False + True
 Byte = Bit^8
+
 Bytes = Byte^*
+
+False = Unit
+
+True = Unit
 ```
 
 Higher-level primitives — `Int`, `Float`, `Hex`, `String` — are defined
@@ -35,7 +39,9 @@ still described by the algebra.
 `A + B` is a value of `A` **or** `B`:
 
 ```canon
-Ord = Equal + Greater + Less
+Ord = Equal
+  + Greater
+  + Less
 ```
 
 Variants must be listed in [alphabetical order](./ordering.md). There is
@@ -117,9 +123,13 @@ Recursive definitions are legal and **boxed automatically**:
 
 ```canon
 Branch = Left * Right * Value
+
 Left = Tree
+
 Right = Tree
+
 Tree = Branch + Leaf
+
 Value = Int
 ```
 
