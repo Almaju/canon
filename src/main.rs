@@ -15,7 +15,12 @@ use std::process;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    // Toolchain launcher: when this binary is the installed launcher
+    // (`~/.canon/bin/canon`), resolve the active toolchain and hand off to it.
+    // `launch` strips any leading `+toolchain`; if a resolved toolchain differs
+    // from this binary it execs it and never returns. Management subcommands
+    // and directly-run binaries (dev builds, an exec'd toolchain) fall through.
+    let args = toolchain::launch(env::args().collect());
 
     if args.len() < 2 {
         print_help();
@@ -36,9 +41,11 @@ fn main() {
         "install" => cmd_install(&rest),
         "lsp" => canon::lsp::run(),
         "upgrade" | "update" => cmd_upgrade(&rest),
-        "channel" => cmd_channel(&rest),
+        "toolchain" => toolchain::cmd_toolchain(&rest),
+        "default" => toolchain::cmd_default(&rest),
+        "override" => toolchain::cmd_override(&rest),
         "--version" | "-V" => {
-            println!("canon {} ({})", VERSION, current_channel());
+            println!("canon {}", VERSION);
         }
         "help" | "--help" | "-h" => print_help(),
         other => {
@@ -81,12 +88,14 @@ fn print_help() {
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  update [version]          Update canon to the latest (or given) release");
-    println!("  update --check            Check whether a newer release is available");
-    println!("  update --nightly          Switch to the nightly channel and update");
-    println!("  update --stable           Switch to the stable channel and update");
-    println!("                            (alias: upgrade)");
-    println!("  channel [stable|nightly]  Show or switch the update channel");
+    println!("  update [--check]          Update the active toolchain (alias: upgrade)");
+    println!("  toolchain <list|install|uninstall> [stable|nightly]");
+    println!("                            Manage installed toolchains");
+    println!("  default [stable|nightly]  Show or set the global default toolchain");
+    println!("  override <set|unset|list> [stable|nightly]");
+    println!("                            Pin the toolchain for the current directory");
+    println!("  +<toolchain> <command>    Run one command with a specific toolchain");
+    println!("                            (e.g. `canon +nightly run app.can`)");
     println!("  --version, -V             Print version");
     println!("  help                      Print this message");
 }
@@ -1431,56 +1440,38 @@ const RELEASES_LATEST_URL: &str = "https://github.com/almaju/canon/releases/late
 
 fn cmd_upgrade(args: &[String]) {
     let mut check_only = false;
-    let mut requested_version: Option<String> = None;
-    let mut channel_override: Option<&str> = None;
     for a in args {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
-            "--nightly" => channel_override = Some(CHANNEL_NIGHTLY),
-            "--stable" => channel_override = Some(CHANNEL_STABLE),
             "--help" | "-h" => {
-                println!("Usage: canon update [version] [--check] [--nightly|--stable]");
-                println!("       (alias: upgrade)");
+                println!("Usage: canon update [--check]   (alias: upgrade)");
                 println!();
-                println!(
-                    "  version      Install a specific release (e.g. v0.2.0). Defaults to latest."
-                );
-                println!("  --check      Only check whether a newer release is available.");
-                println!("  --nightly    Switch to the nightly channel, then update.");
-                println!("  --stable     Switch to the stable channel, then update.");
+                println!("  Updates the active toolchain to the latest build on its channel.");
+                println!("  --check   Only check whether a newer stable release is available.");
+                println!();
+                println!("  To switch toolchains, see `canon toolchain`, `canon default`,");
+                println!("  `canon override`, or the `+<toolchain>` prefix.");
                 return;
             }
-            other if other.starts_with('-') => {
+            other => {
                 eprintln!("error: unknown upgrade flag '{}'", other);
                 process::exit(1);
             }
-            other => {
-                if requested_version.is_some() {
-                    eprintln!("error: upgrade accepts at most one version argument");
-                    process::exit(1);
-                }
-                requested_version = Some(other.to_string());
-            }
         }
     }
 
-    // An explicit `--nightly`/`--stable` both selects the channel for this run
-    // and persists it, so a later bare `canon upgrade` stays on that channel.
-    if let Some(ch) = channel_override {
-        if let Err(err) = write_channel(ch) {
-            eprintln!("warning: could not persist channel selection: {}", err);
-        }
-    }
-    let channel = channel_override
-        .map(|c| c.to_string())
-        .unwrap_or_else(current_channel);
+    // The toolchain the launcher resolved us to (set on exec), else whatever the
+    // current directory / default resolves to.
+    let channel = env::var("CANON_RESOLVED")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(toolchain::active_channel);
 
     if check_only {
-        // A pinned version request is always a stable-style tag lookup.
-        if channel == CHANNEL_NIGHTLY && requested_version.is_none() {
+        if channel == toolchain::NIGHTLY {
             println!(
-                "canon is on the nightly channel (current: {}).\n\
-                 Nightly builds are published continuously; run `canon upgrade` to get the latest.",
+                "The nightly toolchain is published continuously (current: {}).\n\
+                 Run `canon upgrade` to pull the latest nightly.",
                 VERSION
             );
             return;
@@ -1504,107 +1495,440 @@ fn cmd_upgrade(args: &[String]) {
         return;
     }
 
-    let curl = which("curl");
-    let wget = which("wget");
-    if curl.is_none() && wget.is_none() {
-        eprintln!("error: `canon upgrade` requires `curl` or `wget` to be installed");
-        process::exit(1);
-    }
-
-    let fetch_cmd = if curl.is_some() {
-        format!("curl -fsSL {}", INSTALL_URL)
-    } else {
-        format!("wget -qO- {}", INSTALL_URL)
-    };
-    let sh_args = match &requested_version {
-        Some(v) => format!("sh -s -- {}", shell_escape(v)),
-        None => "sh".to_string(),
-    };
-    // The installer reads CANON_CHANNEL to decide stable vs. nightly, and
-    // records it back so the installed binary reports the right channel.
-    let pipeline = format!(
-        "{} | CANON_CHANNEL={} {}",
-        fetch_cmd,
-        shell_escape(&channel),
-        sh_args
-    );
-
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(&pipeline)
-        .status();
-    match status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            eprintln!("error: upgrade failed with exit status: {}", s);
-            process::exit(s.code().unwrap_or(1));
-        }
-        Err(err) => {
-            eprintln!("error: failed to run upgrade: {}", err);
-            process::exit(1);
-        }
-    }
+    println!("Updating the '{}' toolchain…", channel);
+    toolchain::install(&channel);
 }
 
-const CHANNEL_STABLE: &str = "stable";
-const CHANNEL_NIGHTLY: &str = "nightly";
+/// Toolchain management, modeled on rustup: one installation holds multiple
+/// toolchains under `<install>/toolchains/<name>/`, and the on-PATH
+/// `<install>/bin/canon` is a thin launcher that resolves the active toolchain
+/// and execs it. Selection order: `+<tc>` arg, `CANON_TOOLCHAIN` env, a
+/// per-directory override (`canon override set`), the global default
+/// (`canon default`), then `stable`. No project config file is involved.
+mod toolchain {
+    use super::{shell_escape, which, INSTALL_URL};
+    use std::env;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process;
 
-fn cmd_channel(args: &[String]) {
-    match args.first().map(|s| s.as_str()) {
-        None => println!("{}", current_channel()),
-        Some("--help" | "-h") => {
-            println!("Usage: canon channel [stable|nightly]");
-            println!();
-            println!("  With no argument, prints the current update channel.");
-            println!("  With `stable` or `nightly`, switches the channel used by");
-            println!("  `canon upgrade`. Run `canon upgrade` afterwards to install");
-            println!("  the selected channel's latest build.");
+    pub const STABLE: &str = "stable";
+    pub const NIGHTLY: &str = "nightly";
+
+    /// Install prefix, matching install.sh: `$CANON_INSTALL` or `$HOME/.canon`.
+    fn install_dir() -> Option<PathBuf> {
+        if let Some(dir) = env::var_os("CANON_INSTALL") {
+            return Some(PathBuf::from(dir));
         }
-        Some(ch @ (CHANNEL_STABLE | CHANNEL_NIGHTLY)) => {
-            if let Err(err) = write_channel(ch) {
-                eprintln!("error: could not set channel: {}", err);
+        env::var_os("HOME").map(|home| PathBuf::from(home).join(".canon"))
+    }
+
+    fn toolchains_dir() -> Option<PathBuf> {
+        install_dir().map(|d| d.join("toolchains"))
+    }
+    fn default_file() -> Option<PathBuf> {
+        install_dir().map(|d| d.join("default"))
+    }
+    fn overrides_file() -> Option<PathBuf> {
+        install_dir().map(|d| d.join("overrides"))
+    }
+
+    fn exe_name() -> &'static str {
+        if cfg!(windows) {
+            "canon.exe"
+        } else {
+            "canon"
+        }
+    }
+
+    /// The toolchain binary path, if that toolchain is installed.
+    fn toolchain_bin(name: &str) -> Option<PathBuf> {
+        let p = toolchains_dir()?.join(name).join(exe_name());
+        p.is_file().then_some(p)
+    }
+
+    /// True when the running binary is the installed launcher (`<install>/bin`).
+    fn is_launcher() -> bool {
+        let exe = match env::current_exe() {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+        let parent = match exe.parent() {
+            Some(p) => p,
+            None => return false,
+        };
+        // `current_exe` is canonical (via /proc/self/exe on Linux); canonicalize
+        // the bin dir too so a symlinked HOME (or /tmp) still matches.
+        let bindir = match install_dir() {
+            Some(d) => d.join("bin"),
+            None => return false,
+        };
+        let bindir = bindir.canonicalize().unwrap_or(bindir);
+        parent == bindir
+    }
+
+    fn nonempty_line(p: Option<PathBuf>) -> Option<String> {
+        p.and_then(|p| fs::read_to_string(p).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    fn env_toolchain() -> Option<String> {
+        env::var("CANON_TOOLCHAIN")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// The longest-prefix directory override covering the current directory.
+    fn dir_override() -> Option<String> {
+        let cwd = env::current_dir().ok()?;
+        let cwd = cwd.canonicalize().unwrap_or(cwd);
+        let mut best: Option<(usize, String)> = None;
+        for (path, tc) in read_overrides() {
+            if cwd.starts_with(&path) {
+                let len = Path::new(&path).components().count();
+                if best.as_ref().map(|(l, _)| len > *l).unwrap_or(true) {
+                    best = Some((len, tc));
+                }
+            }
+        }
+        best.map(|(_, tc)| tc)
+    }
+
+    /// Resolve the active toolchain and whether the choice was explicit.
+    fn resolve(plus: Option<&str>) -> (String, bool) {
+        if let Some(p) = plus {
+            return (p.to_string(), true);
+        }
+        if let Some(e) = env_toolchain() {
+            return (e, true);
+        }
+        if let Some(o) = dir_override() {
+            return (o, true);
+        }
+        if let Some(d) = nonempty_line(default_file()) {
+            return (d, true);
+        }
+        (STABLE.to_string(), false)
+    }
+
+    /// The channel a bare `canon` would use here (no `+toolchain`).
+    pub fn active_channel() -> String {
+        resolve(None).0
+    }
+
+    /// Front door from `main`: when we are the launcher, hand off to the
+    /// resolved toolchain. Returns args with any leading `+toolchain` removed.
+    pub fn launch(mut args: Vec<String>) -> Vec<String> {
+        // A toolchain we exec sets CANON_RESOLVED; never re-dispatch then.
+        if env::var_os("CANON_RESOLVED").is_some() {
+            take_plus(&mut args);
+            return args;
+        }
+        let plus = take_plus(&mut args);
+        // Management subcommands run in-process, in the launcher binary itself.
+        let is_mgmt = matches!(
+            args.get(1).map(String::as_str),
+            Some("toolchain") | Some("default") | Some("override")
+        );
+        if !is_launcher() || is_mgmt {
+            return args;
+        }
+        let (requested, explicit) = resolve(plus.as_deref());
+        match toolchain_bin(&requested) {
+            Some(bin) => {
+                if env::current_exe().ok().as_ref() != Some(&bin) {
+                    exec_toolchain(&bin, &requested, &args);
+                }
+                args
+            }
+            None => {
+                if explicit {
+                    eprintln!(
+                        "error: toolchain '{}' is not installed.\n       \
+                         Install it with: canon toolchain install {}",
+                        requested, requested
+                    );
+                    process::exit(1);
+                }
+                args
+            }
+        }
+    }
+
+    /// Remove and return a leading `+toolchain` argument, if present.
+    fn take_plus(args: &mut Vec<String>) -> Option<String> {
+        if args.len() >= 2 && args[1].starts_with('+') && args[1].len() > 1 {
+            let tc = args.remove(1);
+            return Some(tc[1..].to_string());
+        }
+        None
+    }
+
+    fn exec_toolchain(bin: &Path, name: &str, args: &[String]) -> ! {
+        let mut cmd = process::Command::new(bin);
+        cmd.args(&args[1..]);
+        cmd.env("CANON_RESOLVED", name);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            let err = cmd.exec();
+            eprintln!("error: failed to launch toolchain '{}': {}", name, err);
+            process::exit(1);
+        }
+        #[cfg(not(unix))]
+        {
+            match cmd.status() {
+                Ok(s) => process::exit(s.code().unwrap_or(1)),
+                Err(e) => {
+                    eprintln!("error: failed to launch toolchain '{}': {}", name, e);
+                    process::exit(1);
+                }
+            }
+        }
+    }
+
+    fn is_channel(name: &str) -> bool {
+        name == STABLE || name == NIGHTLY
+    }
+
+    fn require_channel(arg: Option<&String>) -> String {
+        match arg.map(String::as_str) {
+            Some(ch) if is_channel(ch) => ch.to_string(),
+            Some(other) => {
+                eprintln!(
+                    "error: unknown toolchain '{}' (expected 'stable' or 'nightly')",
+                    other
+                );
                 process::exit(1);
             }
-            println!("Update channel set to '{}'.", ch);
-            println!("Run `canon upgrade` to install the latest {} build.", ch);
+            None => {
+                eprintln!("error: expected a toolchain ('stable' or 'nightly')");
+                process::exit(1);
+            }
         }
-        Some(other) => {
-            eprintln!(
-                "error: unknown channel '{}' (expected 'stable' or 'nightly')",
-                other
-            );
+    }
+
+    /// Download and install a channel's toolchain via install.sh.
+    pub fn install(channel: &str) {
+        let curl = which("curl");
+        let wget = which("wget");
+        if curl.is_none() && wget.is_none() {
+            eprintln!("error: installing a toolchain requires `curl` or `wget`");
             process::exit(1);
         }
+        let fetch = if curl.is_some() {
+            format!("curl -fsSL {}", INSTALL_URL)
+        } else {
+            format!("wget -qO- {}", INSTALL_URL)
+        };
+        let pipeline = format!("{} | CANON_CHANNEL={} sh", fetch, shell_escape(channel));
+        let status = process::Command::new("sh")
+            .arg("-c")
+            .arg(&pipeline)
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                eprintln!("error: toolchain install failed with status: {}", s);
+                process::exit(s.code().unwrap_or(1));
+            }
+            Err(err) => {
+                eprintln!("error: failed to run installer: {}", err);
+                process::exit(1);
+            }
+        }
     }
-}
 
-/// The install prefix, matching install.sh: `$CANON_INSTALL` or `$HOME/.canon`.
-fn install_dir() -> Option<PathBuf> {
-    if let Some(dir) = env::var_os("CANON_INSTALL") {
-        return Some(PathBuf::from(dir));
+    fn installed_toolchains() -> Vec<String> {
+        let mut names = Vec::new();
+        if let Some(dir) = toolchains_dir() {
+            if let Ok(rd) = fs::read_dir(&dir) {
+                for entry in rd.flatten() {
+                    if entry.path().is_dir() {
+                        if let Some(n) = entry.file_name().to_str() {
+                            names.push(n.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        names.sort();
+        names
     }
-    env::var_os("HOME").map(|home| PathBuf::from(home).join(".canon"))
-}
 
-fn channel_file() -> Option<PathBuf> {
-    install_dir().map(|d| d.join("channel"))
-}
-
-/// The persisted update channel, defaulting to `stable` when unset or invalid.
-fn current_channel() -> String {
-    channel_file()
-        .and_then(|p| fs::read_to_string(p).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| s == CHANNEL_STABLE || s == CHANNEL_NIGHTLY)
-        .unwrap_or_else(|| CHANNEL_STABLE.to_string())
-}
-
-fn write_channel(channel: &str) -> Result<(), String> {
-    let path = channel_file().ok_or("could not determine install directory")?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    pub fn cmd_toolchain(args: &[String]) {
+        match args.first().map(String::as_str) {
+            None | Some("list") => {
+                let names = installed_toolchains();
+                if names.is_empty() {
+                    println!("no toolchains installed");
+                    return;
+                }
+                let def = nonempty_line(default_file());
+                for n in names {
+                    let marker = if Some(&n) == def.as_ref() {
+                        " (default)"
+                    } else {
+                        ""
+                    };
+                    println!("{}{}", n, marker);
+                }
+            }
+            Some("install") | Some("add") => {
+                let name = require_channel(args.get(1));
+                install(&name);
+            }
+            Some("uninstall") | Some("remove") => {
+                let name = require_channel(args.get(1));
+                match toolchains_dir().map(|d| d.join(&name)) {
+                    Some(path) if path.is_dir() => match fs::remove_dir_all(&path) {
+                        Ok(()) => println!("Removed toolchain '{}'.", name),
+                        Err(e) => {
+                            eprintln!("error: could not remove toolchain '{}': {}", name, e);
+                            process::exit(1);
+                        }
+                    },
+                    _ => println!("toolchain '{}' is not installed", name),
+                }
+            }
+            Some("--help") | Some("-h") => {
+                println!("Usage: canon toolchain <list|install|uninstall> [stable|nightly]");
+            }
+            Some(other) => {
+                eprintln!("error: unknown `toolchain` subcommand '{}'", other);
+                process::exit(1);
+            }
+        }
     }
-    fs::write(&path, format!("{}\n", channel)).map_err(|e| e.to_string())
+
+    pub fn cmd_default(args: &[String]) {
+        match args.first() {
+            None => println!(
+                "{}",
+                nonempty_line(default_file()).unwrap_or_else(|| STABLE.into())
+            ),
+            Some(arg) => {
+                let name = require_channel(Some(arg));
+                let path = match default_file() {
+                    Some(p) => p,
+                    None => {
+                        eprintln!("error: could not determine install directory");
+                        process::exit(1);
+                    }
+                };
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if let Err(e) = fs::write(&path, format!("{}\n", name)) {
+                    eprintln!("error: could not set default: {}", e);
+                    process::exit(1);
+                }
+                println!("Default toolchain set to '{}'.", name);
+                if toolchain_bin(&name).is_none() {
+                    println!(
+                        "note: '{}' is not installed yet — run `canon toolchain install {}`.",
+                        name, name
+                    );
+                }
+            }
+        }
+    }
+
+    fn read_overrides() -> Vec<(String, String)> {
+        overrides_file()
+            .and_then(|p| fs::read_to_string(p).ok())
+            .map(|c| {
+                c.lines()
+                    .filter_map(|l| {
+                        l.trim()
+                            .rsplit_once('\t')
+                            .map(|(a, b)| (a.to_string(), b.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn write_overrides(entries: &[(String, String)]) -> Result<(), String> {
+        let path = overrides_file().ok_or("could not determine install directory")?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let body: String = entries
+            .iter()
+            .map(|(p, tc)| format!("{}\t{}\n", p, tc))
+            .collect();
+        fs::write(&path, body).map_err(|e| e.to_string())
+    }
+
+    fn cwd_key() -> String {
+        let cwd = env::current_dir().unwrap_or_default();
+        cwd.canonicalize()
+            .unwrap_or(cwd)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub fn cmd_override(args: &[String]) {
+        match args.first().map(String::as_str) {
+            Some("set") => {
+                let name = require_channel(args.get(1));
+                let key = cwd_key();
+                let mut entries = read_overrides();
+                entries.retain(|(p, _)| p != &key);
+                entries.push((key.clone(), name.clone()));
+                entries.sort();
+                if let Err(e) = write_overrides(&entries) {
+                    eprintln!("error: could not set override: {}", e);
+                    process::exit(1);
+                }
+                println!("Set toolchain override for '{}' to '{}'.", key, name);
+                if toolchain_bin(&name).is_none() {
+                    println!(
+                        "note: '{}' is not installed yet — run `canon toolchain install {}`.",
+                        name, name
+                    );
+                }
+            }
+            Some("unset") => {
+                let key = cwd_key();
+                let mut entries = read_overrides();
+                let before = entries.len();
+                entries.retain(|(p, _)| p != &key);
+                if entries.len() == before {
+                    println!("no override set for '{}'", key);
+                    return;
+                }
+                if let Err(e) = write_overrides(&entries) {
+                    eprintln!("error: could not unset override: {}", e);
+                    process::exit(1);
+                }
+                println!("Removed toolchain override for '{}'.", key);
+            }
+            None | Some("list") => {
+                let entries = read_overrides();
+                if entries.is_empty() {
+                    println!("no directory overrides set");
+                    return;
+                }
+                for (p, tc) in entries {
+                    println!("{}\t{}", p, tc);
+                }
+            }
+            Some("--help") | Some("-h") => {
+                println!("Usage: canon override <set|unset|list> [stable|nightly]");
+                println!("  set    Pin the current directory (and its children) to a toolchain.");
+                println!("  unset  Remove the current directory's override.");
+                println!("  list   Show all directory overrides.");
+            }
+            Some(other) => {
+                eprintln!("error: unknown `override` subcommand '{}'", other);
+                process::exit(1);
+            }
+        }
+    }
 }
 
 fn fetch_latest_tag() -> Result<String, String> {

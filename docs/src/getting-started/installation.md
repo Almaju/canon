@@ -27,37 +27,52 @@ Pin to a specific version:
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.3.0
 ```
 
-## Channels
+## Toolchains
 
-Canon ships on two channels:
+Canon manages toolchains the way `rustup` does: one installation holds several
+toolchains, and the `canon` on your `PATH` is a thin launcher that picks the
+active one. Two channels are available:
 
-- **stable** (default) — versioned releases (`vX.Y.Z`), promoted manually from
-  a tested nightly.
+- **stable** (default) — versioned releases (`vX.Y.Z`), promoted from a tested
+  nightly.
 - **nightly** — a rolling prerelease rebuilt automatically on every push to
   `main`. Latest features, less settled.
 
-Install the nightly channel:
+The bootstrap script installs **stable**. Add and manage the others:
 
 ```sh
-CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
+canon toolchain install nightly   # add the nightly toolchain
+canon toolchain list              # show installed toolchains (marks the default)
+canon toolchain uninstall nightly # remove one
 ```
+
+## Switching toolchains
+
+No project config file is involved — switching is global, per-directory, or
+per-command:
+
+```sh
+canon default nightly        # global default
+canon override set nightly   # pin the current directory (and children)
+canon override unset         # remove that pin
+canon +nightly run app.can   # one command, one toolchain
+CANON_TOOLCHAIN=nightly canon build app.can   # via environment
+```
+
+A bare `canon` resolves in this order: `+toolchain` → `CANON_TOOLCHAIN` →
+directory override → global default → `stable`.
 
 ## Verify
 
 ```sh
-canon --version            # e.g. "canon 0.3.1 (stable)"
+canon --version            # reports the active toolchain's version
 ```
 
 ## Update
 
 ```sh
-canon upgrade              # install the latest build on your current channel
-canon upgrade v0.3.0       # install a specific release
-canon upgrade --check      # check whether a newer release is available
-canon upgrade --nightly    # switch to nightly and update
-canon upgrade --stable     # switch to stable and update
-canon channel              # print the current channel
-canon channel nightly      # switch channel without updating yet
+canon upgrade              # update the active toolchain to its channel's latest
+canon upgrade --check      # check whether a newer stable release is available
 ```
 
 ## Editor Support

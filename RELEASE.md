@@ -52,10 +52,10 @@ After a stable promotion, confirm both channels download and run:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
-canon --version                                    # e.g. "canon 0.3.1 (stable)"
+canon --version                       # e.g. "canon 0.3.1"
 
-CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
-canon --version                                    # e.g. "canon 0.3.2-nightly.… (nightly)"
+canon toolchain install nightly       # add nightly alongside stable
+canon +nightly --version              # e.g. "canon 0.3.2-nightly.…"
 ```
 
 ## Version scheme

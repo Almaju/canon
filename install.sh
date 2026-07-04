@@ -121,9 +121,9 @@ archive="canon-${version}-${target}.tar.gz"
 url="https://github.com/${REPO}/releases/download/${version}/${archive}"
 sha_url="${url}.sha256"
 
-info "Installing canon ${version} for ${target}…"
+info "Installing canon ${version} (${channel}) for ${target}…"
 info "Source:  ${url}"
-info "Target:  ${BIN_DIR}/canon"
+info "Target:  ${INSTALL_DIR}/toolchains/${channel}/canon"
 
 tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t canon-install)"
 trap 'rm -rf "$tmpdir"' EXIT INT TERM
@@ -148,21 +148,32 @@ if command -v shasum >/dev/null 2>&1 || command -v sha256sum >/dev/null 2>&1; th
     fi
 fi
 
-mkdir -p "$BIN_DIR"
+# Toolchains live side by side under <install>/toolchains/<channel>/, and the
+# on-PATH <install>/bin/canon is a thin launcher (a copy of a real toolchain
+# binary — every canon binary can act as the launcher). This mirrors rustup:
+# one install holds every toolchain, and `canon` picks the active one.
+tc_dir="$INSTALL_DIR/toolchains/$channel"
+mkdir -p "$BIN_DIR" "$tc_dir"
 tar -xzf "$tmpdir/$archive" -C "$tmpdir"
 
 extracted="$tmpdir/canon-${version}-${target}"
 [ -f "$extracted/canon" ] || die "error: archive did not contain expected \`canon\` binary"
 
-mv "$extracted/canon" "$BIN_DIR/canon"
+mv "$extracted/canon" "$tc_dir/canon"
+chmod +x "$tc_dir/canon"
+
+# Refresh the launcher from the freshly installed binary (the launcher logic is
+# identical across toolchains, so keeping it current is harmless and picks up
+# launcher fixes).
+cp "$tc_dir/canon" "$BIN_DIR/canon"
 chmod +x "$BIN_DIR/canon"
 
-# Record the channel so the installed binary knows which channel it tracks
-# (used by `canon channel` / `canon upgrade`).
-printf '%s\n' "$channel" > "$INSTALL_DIR/channel"
+# On first install, make this channel the global default. Later toolchain
+# installs leave an existing default untouched.
+[ -f "$INSTALL_DIR/default" ] || printf '%s\n' "$channel" > "$INSTALL_DIR/default"
 
 ok ""
-ok "  ✓ Installed canon ${version} to ${BIN_DIR}/canon"
+ok "  ✓ Installed canon ${version} (${channel}) to ${tc_dir}/canon"
 ok ""
 
 # Detect shell rc file and offer PATH instructions

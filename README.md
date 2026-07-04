@@ -48,22 +48,30 @@ Pin to a specific version:
 curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
 ```
 
-Prefer the bleeding edge? Install the **nightly** channel, rebuilt on every push to `main`:
+### Toolchains: stable and nightly
+
+Like rustup, one install holds multiple toolchains and lets you switch globally
+or per project — no config file in your project. The bootstrap above installs
+**stable**; add **nightly** (rebuilt on every push to `main`) alongside it:
 
 ```sh
-CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
+canon toolchain install nightly   # add the nightly toolchain
+canon toolchain list              # list installed toolchains
+
+canon default nightly             # set the global default
+canon +nightly run app.can        # use nightly for a single command
+canon override set nightly        # pin THIS directory (and children) to nightly
 ```
 
-Update an existing install in place:
+Resolution order for a bare `canon`: `+toolchain` → `CANON_TOOLCHAIN` env →
+directory override → global default → `stable`.
+
+Update the active toolchain in place, or pin a version:
 
 ```sh
-canon upgrade            # install the latest build on your current channel
-canon upgrade v0.2.0     # install a specific release
-canon upgrade --check    # only check whether a newer release is available
-canon upgrade --nightly  # switch to the nightly channel and update
-canon upgrade --stable   # switch back to the stable channel and update
-canon channel            # print the current channel
-canon channel nightly    # switch channel without updating yet
+canon upgrade            # update the active toolchain to its channel's latest
+canon upgrade --check    # only check whether a newer stable release exists
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.2.0
 ```
 
 > **Note:** no external toolchain is required — the compiler produces the final `.wasm` in-process and `canon run` executes it on the embedded wasmtime runtime.
