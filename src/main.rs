@@ -58,7 +58,7 @@ fn main() {
 }
 
 fn print_help() {
-    println!("canon {} \u{2014} the Canon language compiler", VERSION);
+    println!("canon {} - the Canon language compiler", VERSION);
     println!();
     println!("Usage: canon <command> [args]");
     println!();
@@ -778,7 +778,7 @@ fn cmd_install(args: &[String]) {
         Ok(outcome) => {
             if outcome.written.is_empty() && outcome.skipped.is_empty() {
                 println!(
-                    "no `[imports]` entries in `{}/canon.toml` \u{2014} nothing to install",
+                    "no `[imports]` entries in `{}/canon.toml` - nothing to install",
                     target_path.display()
                 );
             } else {
@@ -1117,7 +1117,7 @@ fn build_spec(spec: &BuildSpec) -> bool {
                 .display()
         );
         println!(
-            "Web bundle : {} (index.html + canon-web.js — serve the directory, or `canon run`)",
+            "Web bundle : {} (index.html + canon-web.js; serve the directory, or `canon run`)",
             spec.output_dir.display()
         );
         return true;
@@ -1178,7 +1178,7 @@ fn cmd_test(args: &[String]) {
         let item = &loaded.module.items[loaded.entry_items_start + idx];
         if let Item::Function(f) = item {
             eprintln!(
-                "error[{}:{}:{}]: test files must not define `main` — `canon test` synthesises one",
+                "error[{}:{}:{}]: test files must not define `main`: `canon test` synthesises one",
                 file_path, f.span.line, f.span.column
             );
         }
@@ -1195,7 +1195,7 @@ fn cmd_test(args: &[String]) {
 
     if tests.is_empty() {
         eprintln!(
-            "error: no tests found in `{}` — a test is a function with signature `() -> TestResult`",
+            "error: no tests found in `{}`: a test is a function with signature `() -> TestResult`",
             file_path
         );
         process::exit(1);
@@ -1371,7 +1371,7 @@ fn cmd_run(args: &[String]) {
         Target::Build(spec) => spec,
         Target::Workspace { label, members, .. } => {
             eprintln!(
-                "error: `canon run` on workspace `{}` is ambiguous — pick a member",
+                "error: `canon run` on workspace `{}` is ambiguous: pick a member",
                 label
             );
             if !members.is_empty() {
@@ -1410,7 +1410,7 @@ fn cmd_run(args: &[String]) {
             None => "127.0.0.1:8080".parse().expect("static addr"),
         };
         if addr.is_none() {
-            eprintln!("web app detected — serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+            eprintln!("web app detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
         }
         canon::webhost::serve_bundle(bind_addr, &spec.output_stem, component_bytes);
     }
@@ -1438,7 +1438,7 @@ fn cmd_run(args: &[String]) {
         }
         None if is_http => {
             let bind_addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("static addr");
-            eprintln!("HTTP handler detected — serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+            eprintln!("HTTP handler detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
             canon::runtime::serve_component(&component_bytes, bind_addr);
         }
         None => {

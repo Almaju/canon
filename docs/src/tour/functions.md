@@ -8,7 +8,7 @@ name = (Components) -> ReturnType {
 }
 ```
 
-The components inside the parentheses form a product — the function's input. Any component can appear before the dot at the call site (commutative calling).
+The components inside the parentheses form a product, the function's input. Any component can appear before the dot at the call site (commutative calling).
 
 ## A First Function
 
@@ -33,7 +33,7 @@ main = () -> Unit {
 A body is a **newline-separated sequence of expressions**. The last
 expression is the return value. There are no semicolons.
 
-- Dispatch (`.( )`) is an expression — it can be the final line of a body
+- Dispatch (`.( )`) is an expression; it can be the final line of a body
   or appear as a sub-expression.
 - Non-final lines whose results are discarded are valid (they exist for
   side effects or `?` propagation).
@@ -60,7 +60,8 @@ format = (Greeting * Name) -> String {
 }
 ```
 
-When two components share the same type, introduce a newtype alias — product members must be distinct types:
+When two components share the same type, introduce a newtype alias;
+product members must be distinct types:
 
 ```canon
 OtherInt = Int
@@ -99,7 +100,7 @@ This allows both forms at the call site:
 ```
 
 Omitting a component is legal only when its type implements the
-`Default` trait — core ships exactly one implementation, `Option<T>`'s,
+`Default` trait. Core ships exactly one implementation, `Option<T>`'s,
 which fills the gap with `None()`.
 
 ## First-Class Functions
@@ -164,5 +165,5 @@ main = () -> Unit {
 ```
 
 For I/O, construct the value that carries the effect (`File`, `Url`,
-`HttpServer`, …) from inside `main` and thread it through the chain. See
+`HttpServer`) from inside `main` and thread it through the chain. See
 [Effects and Values](./effects.md) for the full domain-first story.

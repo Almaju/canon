@@ -6,13 +6,13 @@ involved; you normally only touch the top one.
 
 ## The layers
 
-1. **`use canon/std/…`** — curated wrappers with Canon idioms
+1. **`use canon/std/…`**: curated wrappers with Canon idioms
    (`Random()`, `Args()`, `Exit(1).exit()`). This is the layer
    programs import. See the [Standard Library](./stdlib.md).
-2. **`use wasi/…`** — machine-generated bindings, one file per WIT
+2. **`use wasi/…`**: machine-generated bindings, one file per WIT
    interface, produced by `canon install` from vendored WIT. The
    stdlib wrappers consume these; user packages can too.
-3. **The WIT itself** — the contract any component-model host
+3. **The WIT itself**: the contract any component-model host
    understands.
 
 There is no privileged mechanism for the stdlib: it declares its WIT
@@ -21,9 +21,9 @@ package would.
 
 ## Declaring imports in `canon.toml`
 
-The `[imports]` table maps a path prefix to a WIT source — a `.wit`
+The `[imports]` table maps a path prefix to a WIT source: a `.wit`
 file, a directory of them, or a `.wasm` component to extract types
-from:
+from.
 
 ```toml
 name    = "my-app"
@@ -71,7 +71,7 @@ one-shot, without a manifest.
 | `resource` | a `Handle` newtype (opaque) |
 
 Functions whose shape the compiler can't lower yet are **skipped with
-a reason** at install time rather than emitted broken — notably
+a reason** at install time rather than emitted broken, notably
 resource *methods* and streams (tracked for V1.1 in `V1.md`). The
 skip list is printed by `canon install`.
 

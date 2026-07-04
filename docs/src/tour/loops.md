@@ -5,8 +5,8 @@ through higher-order methods on collections or recursion.
 
 ## Higher-Order Methods
 
-For most collection work, use methods on the collection itself —
-`map`, `get`, `length`, `first`:
+For most collection work, use methods on the collection itself:
+`map`, `get`, `length`, `first`.
 
 ```canon,run=list-map
 main = () -> Unit {
@@ -20,6 +20,6 @@ main = () -> Unit {
 ## Why No Loop Keywords?
 
 Loop keywords are special forms that exist outside the type-and-method
-system. Since Canon expresses everything through types and methods,
-iteration belongs there too. A `.for()` method on a collection is just a
-method call — same as everything else.
+system. Canon expresses everything through types and methods, so
+iteration belongs there too. A `.for()` method on a collection is a
+method call like any other.

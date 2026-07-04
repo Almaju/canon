@@ -1259,7 +1259,7 @@ impl<'m> WasmGen<'m> {
                 .map(|e| e.full_path.clone())
                 .collect();
             eprintln!(
-                "error: HTTP handler programs can only import `wasi:http/types` for now — \
+                "error: HTTP handler programs can only import `wasi:http/types` for now: \
                  found extern imports the `wasi:http/service` world can't satisfy: {}. \
                  (Lifting the remaining WASI surface into HTTP handlers is tracked in V1.md M3.)",
                 names.join(", ")
@@ -1304,7 +1304,7 @@ impl<'m> WasmGen<'m> {
                 .map(|e| e.full_path.clone())
                 .collect();
             eprintln!(
-                "error: web-app programs can't use extern imports yet — the browser host \
+                "error: web-app programs can't use extern imports yet: the browser host \
                  implements only the print surface. Found: {}. (Extending the web host's \
                  import surface is tracked in WEB-TARGET.md.)",
                 names.join(", ")
@@ -7576,7 +7576,7 @@ impl<'m> WasmGen<'m> {
             [ValType::I32, ValType::I32] => WebModelShape::Str,
             other => {
                 eprintln!(
-                    "error: unsupported web model shape {other:?} — the model must be a \
+                    "error: unsupported web model shape {other:?}: the model must be a \
                      product, union, Int, Float, or String-aliased type"
                 );
                 std::process::exit(1);
@@ -7596,7 +7596,7 @@ impl<'m> WasmGen<'m> {
             .collect();
         if update_params != expected_update || update_results != init_results {
             eprintln!(
-                "error: web entry shape mismatch — `update` must be \
+                "error: web entry shape mismatch: `update` must be \
                  `({model} * String) -> {model}` with the same model type `init` returns"
             );
             std::process::exit(1);
@@ -7604,7 +7604,7 @@ impl<'m> WasmGen<'m> {
         let (view_params, view_results) = sig_of(view_info.type_idx).clone();
         if view_params != model_flat || view_results != [ValType::I32, ValType::I32] {
             eprintln!(
-                "error: web entry shape mismatch — `view` must be `({model}) -> Html` \
+                "error: web entry shape mismatch: `view` must be `({model}) -> Html` \
                  with the same model type `init` returns"
             );
             std::process::exit(1);

@@ -1,10 +1,10 @@
 # Compilation and the ABI
 
 This chapter describes what the compiler does with a checked program and
-what the resulting artifact is. The short version: **source → lexer →
-parser → checker → codegen**, where codegen emits a WebAssembly core
-module and wraps it into a **Component Model component** in-process —
-`wasm-encoder` and `wit-component` produce the final `.wasm`; no
+what the resulting artifact is. The pipeline is **source → lexer →
+parser → checker → codegen**. Codegen emits a WebAssembly core module
+and wraps it into a **Component Model component** in-process:
+`wasm-encoder` and `wit-component` produce the final `.wasm`, no
 external toolchain is invoked, and `canon run` executes the result on an
 embedded wasmtime.
 
@@ -16,11 +16,11 @@ Compiled to: my-app/build/my-app.wasm
 WIT world : my-app/build/my-app.wit
 ```
 
-- **`.wasm`** — a WASI Preview 3 component. Its imports are standard
-  `wasi:*` interfaces (plus, transitionally, `canon:builtins/*` host
-  bridges for surfaces whose canonical-ABI shape isn't ready — these run
-  only under `canon run`).
-- **`.wit`** — the component's world: a human- and tool-readable
+- **`.wasm`**: a WASI Preview 3 component. Its imports are standard
+  `wasi:*` interfaces, plus, transitionally, `canon:builtins/*` host
+  bridges for surfaces whose canonical-ABI shape isn't ready; these run
+  only under `canon run`.
+- **`.wit`**: the component's world, a human- and tool-readable
   statement of everything it imports and exports.
 
 The WASI rc version is embedded in every interface name, so components
@@ -58,7 +58,7 @@ reported in Canon terms.
 ## Binding Files
 
 All interop happens at the Component Model boundary, declared in
-**binding files** — `.can` files whose declarations are body-less and
+**binding files**: `.can` files whose declarations are body-less and
 bound to a WIT interface. Generated files use the `bindings` directive:
 
 ```canon
@@ -79,7 +79,7 @@ getRandomU64 = () -> Int
 ```
 
 Body-less declarations are legal **only** under a `bindings` directive
-or an `extern Wasm` marker — anywhere else, a missing body is a compile
+or an `extern Wasm` marker; anywhere else, a missing body is a compile
 error. Bound functions are first-class values like any other function.
 
 Bindings are produced mechanically:
@@ -118,24 +118,25 @@ Identifier case converts mechanically: WIT `kebab-case` becomes
 `IncomingRequest`).
 
 **Resources.** A WIT `resource` is modelled as `Foo = Handle`, where
-`Handle` is a non-copyable, non-printable language primitive with linear
-ownership — it can only be passed to binding functions and dropped by
-going out of scope (the compiler emits the matching `resource.drop`).
-WIT's `own<T>` / `borrow<T>` distinction is read off the WIT and handled
-by the compiler; source never mentions it.
+`Handle` is a non-copyable, non-printable language primitive with
+linear ownership: it can only be passed to binding functions and
+dropped by going out of scope (the compiler emits the matching
+`resource.drop`). WIT's `own<T>` / `borrow<T>` distinction is read off
+the WIT and handled by the compiler; source never mentions it.
 
 ## The Stdlib Layering
 
-The shipped standard library demonstrates the intended architecture, and
+The shipped standard library demonstrates the intended architecture and
 has no privileged mechanism:
 
-- **generated bindings** (under the stdlib's `bindgen/`) — raw,
-  machine-produced from vendored WASI WIT, regenerated never hand-edited;
-- **curated wrappers** (`canon/std/…`) — hand-written Canon presenting
+- **generated bindings** (under the stdlib's `bindgen/`): raw,
+  machine-produced from vendored WASI WIT, regenerated and never
+  hand-edited;
+- **curated wrappers** (`canon/std/…`): hand-written Canon presenting
   one primary type per file with capability discipline.
 
 Idiomatic code imports only `canon/std/…`. A direct import of a raw
-binding works — everything is public — but gives up the curated naming
+binding works (everything is public) but gives up the curated naming
 and discipline. Where a `wasi:*` interface isn't yet expressible through
 the canonical ABI, the binding temporarily points at a
 `canon:builtins/*` bridge fulfilled by `canon run`; the wrapper API
@@ -149,6 +150,6 @@ canon inspect ast hello.can      # parser output
 canon inspect wat hello.can      # generated core-module WebAssembly Text
 ```
 
-`inspect wat` is the fastest way to see how a Canon construct lowers —
-dispatch, heap allocation, string handling, async plumbing — without the
-component wrapper in the way.
+`inspect wat` is the fastest way to see how a Canon construct lowers
+(dispatch, heap allocation, string handling, async plumbing) without
+the component wrapper in the way.

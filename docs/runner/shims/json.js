@@ -1,4 +1,4 @@
-// Browser shim for canon:builtins/json@0.1.0 — the host bridge behind
+// Browser shim for canon:builtins/json@0.1.0 - the host bridge behind
 // canon/std/Json. The interface passes JSON values as raw JSON text, so
 // the browser's own JSON object covers all of it.
 export const json = {

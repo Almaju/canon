@@ -429,7 +429,7 @@ fn vendor_source_package(
         .iter()
         .map(|dep| {
             format!(
-                "`{coordinate}` depends on `{dep}` — install it with `canon install {}` (transitive install lands with PACKAGES.md slice 4)",
+                "`{coordinate}` depends on `{dep}`: install it with `canon install {}` (transitive install lands with PACKAGES.md slice 4)",
                 dep.split('@').next().unwrap_or(dep),
             )
         })
@@ -560,7 +560,7 @@ fn collect_publish_sources(root: &Path) -> Result<Vec<(String, String)>, Install
     }
     if files.is_empty() {
         return Err(InstallError(format!(
-            "no `.can` files under `{}` — nothing to publish",
+            "no `.can` files under `{}`: nothing to publish",
             root.display()
         )));
     }
@@ -581,7 +581,7 @@ fn preflight(files: &[(String, String)], root: &Path) -> Result<(), InstallError
             .map_err(|e| InstallError(format!("`{rel}` does not parse: {e:?}")))?;
         if &formatted != source {
             return Err(InstallError(format!(
-                "`{rel}` is not canonically formatted — run `canon fmt` before publishing"
+                "`{rel}` is not canonically formatted: run `canon fmt` before publishing"
             )));
         }
     }
@@ -592,7 +592,7 @@ fn preflight(files: &[(String, String)], root: &Path) -> Result<(), InstallError
         let errors = crate::checker::check_with_entry(&loaded.module, loaded.entry_items_start);
         if !errors.is_empty() {
             return Err(InstallError(format!(
-                "package does not check ({} error(s)) — run `canon check main.can`",
+                "package does not check ({} error(s)): run `canon check main.can`",
                 errors.len()
             )));
         }

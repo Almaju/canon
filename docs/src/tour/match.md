@@ -1,7 +1,7 @@
 # Dispatch
 
-There is no `if`/`else` or `match` keyword. All branching is **dispatch** on
-a union — the value is the receiver, and the arms go inside `.( )`.
+There is no `if`/`else` or `match` keyword. All branching is **dispatch**
+on a union: the value is the receiver, and the arms go inside `.( )`.
 
 ## Basic Form
 
@@ -14,15 +14,15 @@ main = () -> Unit {
 }
 ```
 
-(`Bool` is core's union `False + True` — nothing special-cased; any
-union of your own dispatches the same way.)
+`Bool` is core's union `False + True`, nothing special-cased; any union
+of your own dispatches the same way.
 
 Dispatch is an expression. It can be the final line of a function body or
 appear as a sub-expression.
 
 ## Arm Order
 
-Dispatch arms follow the union's variant order — which is itself
+Dispatch arms follow the union's variant order, which is itself
 alphabetical. Every variant must be spelled out:
 
 ```canon
@@ -70,16 +70,16 @@ route = (String) -> String {
 }
 ```
 
-Literal arms follow canonical order — alphabetical for strings,
-ascending for ints — and `canon fmt` sorts them for you. Inside every
-arm body the scrutinee is in scope under its type name, just like a
-bound payload. Newtype scrutinees work too: a `Path = String` value
-dispatches with a `(Path)` catch-all.
+Literal arms follow canonical order (alphabetical for strings, ascending
+for ints), and `canon fmt` sorts them for you. Inside every arm body the
+scrutinee is in scope under its type name, like a bound payload. Newtype
+scrutinees work too: a `Path = String` value dispatches with a `(Path)`
+catch-all.
 
 ## Why No `if`?
 
 `if cond then a else b` is a dispatch on `Bool`. Since you already need
-dispatch for unions in general, a second branching construct would just be
+dispatch for unions in general, a second branching construct would be
 another way to do the same thing. So there is one.
 
 ## Why No `match` Keyword?
@@ -91,4 +91,4 @@ Algebraically, a function from a sum is a product of functions:
 ```
 
 Dispatch makes this explicit: the scrutinee is the receiver, the arms are
-the handlers. No keyword needed — just a value applied to its handlers.
+the handlers. A value applied to its handlers needs no keyword.

@@ -1,1 +1,1 @@
-error[tests/checker/fail/method_ordering_violation.can:7:1]: method declarations must be in alphabetical order — `murmur` should come before `shout`
+error[tests/checker/fail/method_ordering_violation.can:7:1]: method declarations must be in alphabetical order: `murmur` should come before `shout`

@@ -343,7 +343,7 @@ fn check_sorted_named(
         if next < prev {
             errors.push(CanonError::CheckError {
                 message: format!(
-                    "{}s must be in alphabetical order — `{}` should come before `{}`",
+                    "{}s must be in alphabetical order: `{}` should come before `{}`",
                     kind, next, prev
                 ),
                 span,
@@ -438,7 +438,7 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
         .filter(|n| !reached.contains(*n))
         .map(|n| {
             format!(
-                "`{}` is never used — dead code is not allowed to accumulate; \
+                "`{}` is never used: dead code is not allowed to accumulate; \
                  delete it or wire it into the program",
                 n
             )
@@ -1114,7 +1114,7 @@ fn check_literal_dispatch(
     if scrutinee_known && base != "String" && base != "Int" {
         errors.push(CanonError::CheckError {
             message: format!(
-                "literal dispatch requires a `String` or `Int` scrutinee — `{}` is neither",
+                "literal dispatch requires a `String` or `Int` scrutinee: `{}` is neither",
                 scrutinee_ty
             ),
             span,
@@ -1123,7 +1123,7 @@ fn check_literal_dispatch(
     if !arms.iter().any(|a| a.literal.is_none()) {
         errors.push(CanonError::CheckError {
             message: format!(
-                "literal dispatch must end with a catch-all arm `({})` — \
+                "literal dispatch must end with a catch-all arm `({})`: \
                  literal arms can never be exhaustive",
                 if scrutinee_known {
                     scrutinee_ty
@@ -1214,7 +1214,7 @@ fn check_literal_dispatch(
                 } else if b < a {
                     errors.push(CanonError::CheckError {
                         message: format!(
-                            "literal dispatch arms must be in alphabetical order — \
+                            "literal dispatch arms must be in alphabetical order: \
                              `\"{}\"` should come before `\"{}\"`",
                             b, a
                         ),
@@ -1231,7 +1231,7 @@ fn check_literal_dispatch(
                 } else if b < a {
                     errors.push(CanonError::CheckError {
                         message: format!(
-                            "literal dispatch arms must be in ascending order — \
+                            "literal dispatch arms must be in ascending order: \
                              `{}` should come before `{}`",
                             b, a
                         ),
@@ -1253,7 +1253,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 if !scope.contains(&ident.name) {
                     errors.push(CanonError::CheckError {
                         message: format!(
-                            "capability `{}` must be received as a parameter — capabilities cannot be conjured",
+                            "capability `{}` must be received as a parameter: capabilities cannot be conjured",
                             ident.name
                         ),
                         span: ident.span,
@@ -1292,7 +1292,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             if CONCURRENT_COMBINATORS.contains(&name.name.as_str()) && !matches_free_func {
                 errors.push(CanonError::CheckError {
                     message: format!(
-                        "`{0}(…)` is not a call form — combinators are methods on the first future: `a.{0}(b)`",
+                        "`{0}(…)` is not a call form: combinators are methods on the first future: `a.{0}(b)`",
                         name.name
                     ),
                     span: name.span,
@@ -1317,7 +1317,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 if !is_zero_data_builtin && !has_zero_arg_ctor {
                     errors.push(CanonError::CheckError {
                         message: format!(
-                            "constructor `{}()` is not allowed — empty constructors are disallowed",
+                            "constructor `{}()` is not allowed: empty constructors are disallowed",
                             name.name
                         ),
                         span: *span,
@@ -1557,7 +1557,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             } else {
                 errors.push(CanonError::CheckError {
                     message: format!(
-                        "field access `.{}` on `{}` — not a product field and no method `{}` found",
+                        "field access `.{}` on `{}`: not a product field and no method `{}` found",
                         field.name, recv_ty_for_lookup, field.name
                     ),
                     span: *span,

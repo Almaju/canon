@@ -2,10 +2,10 @@
 
 Canon is a small, maximally opinionated language that compiles directly to
 **WebAssembly Components** targeting WASI Preview 3. Every program is a
-portable `.wasm` file that runs on any Component Model host — no toolchain
+portable `.wasm` file that runs on any Component Model host: no toolchain
 at build time, no runtime of its own to ship.
 
-Here is a complete HTTP service:
+A complete HTTP service:
 
 ```canon
 use canon/std/http/Body
@@ -21,21 +21,21 @@ greet = (Request) -> Response {
 
 ```sh
 $ canon run greet.can
-HTTP handler detected — serving on http://127.0.0.1:8080
+HTTP handler detected: serving on http://127.0.0.1:8080
 
 $ curl localhost:8080
 hello from canon
 ```
 
-No framework, no router registration, no port wiring, not even a `main`.
-The compiler sees one function returning `Response`, so the program *is*
-an HTTP service — it compiles to a standard `wasi:http/service` component
+No framework, no router registration, no port wiring, no `main`. The
+compiler sees one function returning `Response`, so the program *is* an
+HTTP service: it compiles to a standard `wasi:http/service` component
 that any compliant host can serve.
 
 ## Three Ideas
 
 **One way to do everything.** Wherever ordering is discretionary, the
-compiler enforces alphabetical order — product fields, union variants,
+compiler enforces alphabetical order: product fields, union variants,
 function declarations, dispatch arms, imports. There is no `if`/`else`
 *and* `match`; there is dispatch. There is no `while` *and* `for` *and*
 recursion; there are collection methods and recursion. Two programmers
@@ -73,7 +73,7 @@ main = () -> Unit {
 
 ## What It Looks Like
 
-A CLI program, with branching (dispatch on a union — Canon's only
+A CLI program, with branching (dispatch on a union, Canon's only
 control-flow construct) and iteration (methods on collections):
 
 ```canon,run=intro
@@ -91,33 +91,34 @@ main = () -> Unit {
 
 - Functions are `name = (Components) -> Return { body }`; the last
   expression is the return value.
-- `Bool` is an ordinary union, `False + True` — dispatch applies the
+- `Bool` is an ordinary union, `False + True`; dispatch applies the
   value to one handler arm per variant.
 - Any component can be the dot-receiver at the call site
   (`a.compare(b)` and `b.compare(a)` are the same call).
 - `T()` constructs a value; `value.Field` (no parens) reads a field.
 - `?` propagates `Result` errors and `Option` absence.
-- Async exists at the ABI, never in the source: no `async`, no `.await`
-  — the compiler infers suspension and lifts the component accordingly.
+- Async exists at the ABI, never in the source: no `async`, no
+  `.await`. The compiler infers suspension and lifts the component
+  accordingly.
 
 ## How to Read This Book
 
-The book is split into sections — use the tabs at the top:
+The book is split into sections; use the tabs at the top.
 
-- **Start** — install the toolchain and run your first program.
-- **Tour** — every language feature, one short chapter each. Read it
+- **Start**: install the toolchain and run your first program.
+- **Tour**: every language feature, one short chapter each. Read it
   straight through; it's an afternoon.
-- **Tutorial** — build and ship a small JSON API, step by step. Start
+- **Tutorial**: build and ship a small JSON API, step by step. Start
   here if you learn by doing.
-- **Specification** — the precise rules: lexical structure, the type
+- **Specification**: the precise rules: lexical structure, the type
   algebra, ordering, the compilation model and ABI.
-- **Examples** — annotated real programs from the repository.
-- **Reference** — the standard library, WASI interfaces, deployment.
+- **Examples**: annotated real programs from the repository.
+- **Reference**: the standard library, WASI interfaces, deployment.
 
 ## Status
 
 Canon is an **experimental design exploration**. The compiler exists, the
-examples run, and the design is stable enough to write about — but every
+examples run, and the design is stable enough to write about, but every
 detail is subject to change. The reference implementation lives in the
 same repository as this book; the design notes behind it are in
 [`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md).

@@ -1,8 +1,8 @@
 # Testing the API
 
-The refactor in the last chapter did more than tidy up — it made the
-interesting logic *pure*. `render` takes a `Note` and returns a
-`String`; nothing about HTTP anywhere near it. Pure functions are what
+The refactor in the last chapter did more than tidy up: it made the
+interesting logic pure. `render` takes a `Note` and returns a `String`,
+with nothing about HTTP anywhere near it. Pure functions are what
 Canon's test framework wants.
 
 ## A Test File
@@ -29,8 +29,8 @@ running 1 test(s) from notes-api/src/note_test.can
 [ ok ] testRenderWrapsTitle
 ```
 
-A test is **any function with the signature `() -> TestResult`** —
-discovery is by type, not by name, the same signature-driven selection
+A test is **any function with the signature `() -> TestResult`**.
+Discovery is by type, not by name: the same signature-driven selection
 that picks the program's entry point. The test file is an ordinary
 module: `use Note` imports the real `note.can` sitting next to it, so
 the test exercises the code the server runs, not a copy.
@@ -52,15 +52,15 @@ convert with `.assert`. When the bool is `False`, the message surfaces:
 [FAIL] testRenderWrapsTitle: render should wrap the title in a JSON object
 ```
 
-…and the process exits `1` — `canon test` is honest to shells, so wiring
-it into CI is a one-liner.
+The process exits `1`: `canon test` is honest to shells, so wiring it
+into CI is a one-liner.
 
 ## Keep the Entry Thin
 
-You can't call `serve` from a test — it returns `Response`, a world
-type, and constructing a fake `Request` isn't a thing the language
-offers. That's by design, and it points at the architecture the
-entry-point rule has been nudging us toward all along:
+You can't call `serve` from a test: it returns `Response`, a world
+type, and the language offers no way to construct a fake `Request`.
+That is by design, and it points at the architecture the entry-point
+rule has been nudging toward all along:
 
 - **helpers** hold the logic, take values, return values → *test these*;
 - **the entry** routes and wraps → keep it too thin to get wrong.

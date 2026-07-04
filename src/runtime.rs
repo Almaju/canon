@@ -102,7 +102,7 @@ impl WasiHttpHooks for OneswayHttpHooks {
         Box::new(async {
             Err(ErrorCode::InternalError(Some(
                 "wasi:http/client outbound requests are not routed by the \
-                 Canon runtime yet \u{2014} use `canon:builtins/http` (via \
+                 Canon runtime yet: use `canon:builtins/http` (via \
                  `canon/std/Url`) for now"
                     .to_string(),
             ))

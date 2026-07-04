@@ -2,7 +2,7 @@
 // Canon programs that only print. The transpiled component hands us a
 // stream reader; we drain it, split lines, and forward them to whatever
 // sink the page installed (docs/theme/run.js sets globalThis.__canonSink
-// around each run) — console.log otherwise.
+// around each run) - console.log otherwise.
 const dec = new TextDecoder();
 
 function normalize(r) {

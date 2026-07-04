@@ -1,8 +1,8 @@
 # Deploying Canon Components
 
-`canon build` produces a standard **WASI Preview 3 component** —
-deployment is whatever your component host of choice does with a
-`.wasm` file. Canon has no runtime of its own to ship.
+`canon build` produces a standard **WASI Preview 3 component**.
+Deployment is whatever your component host does with a `.wasm` file;
+Canon has no runtime of its own to ship.
 
 ## Build output
 
@@ -12,7 +12,7 @@ Compiled to: my-app/build/my-app/my-app.wasm
 WIT world : my-app/build/my-app/my-app.wit
 ```
 
-The `.wit` sidecar documents the component's world — feed it to
+The `.wit` sidecar documents the component's world. Feed it to
 `wasm-tools`, `wit-bindgen`, or a host's tooling to see exactly what
 the component imports and exports.
 
@@ -34,16 +34,16 @@ canon run my-app --addr 0.0.0.0:9000  # HTTP world: explicit address
 ```
 
 Exit codes are real: a guest `Exit(3).exit()` terminates the process
-with status 3, and `canon test` exits nonzero on failure — both safe
-to wire into CI and shell scripts.
+with status 3, and `canon test` exits nonzero on failure. Both are
+safe to wire into CI and shell scripts.
 
 ## Running on other hosts
 
 The component targets the `0.3.0-rc-2026-03-15` WASI Preview 3
-release candidate — the same rc `wasmtime-wasi` 45 implements. Any
+release candidate, the same rc `wasmtime-wasi` 45 implements. Any
 host with matching p3 support can instantiate it:
 
-- **HTTP components** need a host that serves `wasi:http/handler` —
+- **HTTP components** need a host that serves `wasi:http/handler`,
   the contract `wasmtime serve` implements for its supported preview
   versions. Until stock CLI hosts ship this rc, `canon run --addr` is
   the reference host; the component itself contains nothing
@@ -53,7 +53,7 @@ host with matching p3 support can instantiate it:
 
 One caveat during the transition: programs using `canon:builtins/*`
 bridge interfaces (currently the legacy HTTP-client/filesystem/JSON
-host helpers — the skip list in `canon install` and the At-a-Glance
+host helpers; the skip list in `canon install` and the At-a-Glance
 table mark them) run only under `canon run` until their `wasi:*`
 replacements land. Programs that stick to `canon/std` cli, clocks,
 random, and the HTTP handler surface are fully portable.
@@ -62,5 +62,5 @@ random, and the HTTP handler surface are fully portable.
 
 The WASI rc version is embedded in every interface name, so a
 component either matches its host exactly or fails loudly at
-instantiation — there is no silent skew. When the vendored WIT is
-bumped (`wit-vendor/wasi/`), rebuild and redeploy.
+instantiation. No silent skew. When the vendored WIT is bumped
+(`wit-vendor/wasi/`), rebuild and redeploy.

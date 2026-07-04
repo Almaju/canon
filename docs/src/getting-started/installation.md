@@ -2,14 +2,12 @@
 
 ## Prerequisites
 
-None at runtime. Canon ships a single prebuilt `canon` binary that
-embeds the `wasmtime` Component Model runtime — there is no Rust
-toolchain to install, no `rustc`/`cargo` invoked at build time, and no
-external linker needed.
+None at runtime. Canon ships a single prebuilt `canon` binary with the
+`wasmtime` Component Model runtime embedded: no Rust toolchain, no
+`rustc`/`cargo` at build time, no external linker.
 
-(If you want to build the compiler from source rather than install a
-prebuilt release, you'll need stable Rust via [rustup](https://rustup.rs)
-— but that's a contributor concern, not a user one.)
+Building the compiler from source (a contributor concern, not a user
+one) needs stable Rust via [rustup](https://rustup.rs).
 
 ## Install
 
@@ -19,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
 
 The script downloads a prebuilt `canon` binary for your platform (macOS
 arm64/x86_64, Linux arm64/x86_64) and installs it to `~/.canon/bin/canon`.
-Add that directory to your PATH as instructed by the installer.
+Add that directory to your PATH as the installer instructs.
 
 Pin to a specific version:
 
@@ -76,7 +74,7 @@ canon upgrade --check      # check whether a newer stable release is available
 The Zed extension at
 [`editors/zed-canon`](https://github.com/Almaju/canon/tree/main/editors/zed-canon)
 provides syntax highlighting and a built-in language server. Install it
-via Zed's *Install Dev Extension* command — see
+via Zed's *Install Dev Extension* command;
 [`editors/README.md`](https://github.com/Almaju/canon/blob/main/editors/README.md)
-for the full instructions. The extension reuses the same `canon` binary
+has the full instructions. The extension runs the same `canon` binary
 (`canon lsp` subcommand), so there is no separate LSP install.

@@ -1,9 +1,9 @@
 # Lexical Structure
 
 Canon source is UTF-8 text. The lexer produces a token stream of
-identifiers, literals, keywords, and punctuation; everything the language
-rejects at this level (comments, unknown escapes) is a lexer error with a
-source span.
+identifiers, literals, keywords, and punctuation. Everything the
+language rejects at this level (comments, unknown escapes) is a lexer
+error with a source span.
 
 ## Identifiers
 
@@ -14,10 +14,10 @@ Two identifier classes, distinguished by their first character:
 | **PascalCase** | `[A-Z][A-Za-z0-9_]*` | types, traits, trait implementations, constructors, variants |
 | **camelCase** | `[a-z][A-Za-z0-9_]*` | functions |
 
-The case split is load-bearing: `print` is a function, `Print` is a trait
-(and `Print = (Foo) -> …` implements it for `Foo`). There is no third
-class — no SCREAMING_CASE constants, no leading underscores with special
-meaning.
+The case split is load-bearing: `print` is a function, `Print` is a
+trait (and `Print = (Foo) -> …` implements it for `Foo`). There is no
+third class: no SCREAMING_CASE constants, no leading underscores with
+special meaning.
 
 ## Keywords
 
@@ -31,8 +31,8 @@ The keyword set is small:
 | `impl` | placeholder body marking a trait declaration's default implementation |
 
 There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
-`async`, `await`, `pub`, or `mod`. Their absence is not an omission — see
-the [Tour](../tour/philosophy.md) for what replaces each.
+`async`, `await`, `pub`, or `mod`. The absences are deliberate; the
+[Tour](../tour/philosophy.md) lists what replaces each.
 
 ## Literals
 
@@ -62,7 +62,7 @@ An unrecognised escape (e.g. `\q`) is a **compile-time lexer error**.
 There are no raw string literals.
 
 A `String` is `Byte^*` interpreted as UTF-8. Indexing (`byteAt`) yields
-bytes, not code points; higher-level text operations are stdlib
+bytes, not code points. Higher-level text operations are stdlib
 functions, not language built-ins.
 
 ## No Comments
@@ -80,7 +80,7 @@ outside the source file.
   `.`).
 - Layout is **canonical**: `canon fmt` defines the one accepted
   formatting, and `canon check` / `canon run` refuse files that deviate
-  from it. Formatting is therefore part of the language surface, not a
-  style choice. The formatter also sorts everything the
-  [ordering rules](./ordering.md) cover, so it is the auto-fixer, not
-  just a pretty-printer.
+  from it. Formatting is part of the language surface, not a style
+  choice. The formatter also sorts everything the
+  [ordering rules](./ordering.md) cover, so it is the auto-fixer as
+  well as the pretty-printer.

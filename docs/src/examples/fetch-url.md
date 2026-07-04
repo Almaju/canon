@@ -1,7 +1,7 @@
 # Fetching a URL
 
-[`examples/fetch-url`](https://github.com/Almaju/canon/tree/main/examples/fetch-url)
-— an HTTP GET in one chain, built on a **validated constructor**.
+[`examples/fetch-url`](https://github.com/Almaju/canon/tree/main/examples/fetch-url):
+an HTTP GET in one chain, built on a **validated constructor**.
 
 ```canon
 use canon/std/http/HttpError
@@ -29,15 +29,15 @@ Url = (String) -> Result<Url, InvalidUrl>
 get = (Url) -> Result<String, HttpError>
 ```
 
-The first `?` handles *parse* failure: `Url` declares its own
-constructor, so `Url("not a url")` doesn't give you a `Url` — it gives
-you a `Result` you must unwrap. Malformed URLs are unrepresentable
-downstream of this line; `get` never has to re-validate its input.
+The first `?` handles *parse* failure. `Url` declares its own
+constructor, so `Url("not a url")` produces a `Result`, not a `Url`.
+Malformed URLs are unrepresentable downstream of this line; `get` never
+has to re-validate its input.
 
 The second `?` handles *network* failure. Different failure, different
 error type, same operator.
 
-This is the pattern the [Errors chapter](../tour/errors.md) formalizes:
+The [Errors chapter](../tour/errors.md) formalizes the pattern:
 fallibility lives in the type, and the inline error union
 (`InvalidUrl + HttpError`) composes at the signature when a caller
 propagates both.
