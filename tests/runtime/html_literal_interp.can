@@ -1,0 +1,16 @@
+row = (String) -> Html {
+    <li>{String}</li>
+}
+
+tag = (Msg) -> Html {
+    <button data-msg="{Msg}">go</button>
+}
+
+main = () -> Unit {
+    <ul>{"a & b".row()}{"x<y".row()}</ul>.print()
+    <span>{1.add(41)}</span>.print()
+    Msg("inc")
+        .tag()
+        .print()
+    <p>5 &lt; 6 &amp; 7</p>.print()
+}

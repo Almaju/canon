@@ -1,0 +1,8 @@
+main = () -> Unit {
+    <div class="box">hello</div>.print()
+    <p>escaped {{braces}} stay</p>.print()
+    <ul>
+        <li>one</li>
+        <li>two</li>
+    </ul>.print()
+}

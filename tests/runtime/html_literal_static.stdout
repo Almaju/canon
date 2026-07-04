@@ -1,0 +1,6 @@
+<div class="box">hello</div>
+<p>escaped {braces} stay</p>
+<ul>
+        <li>one</li>
+        <li>two</li>
+    </ul>

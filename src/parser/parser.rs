@@ -646,11 +646,84 @@ impl Parser {
                     span: span_join(open, end),
                 })
             }
+            TokenKind::HtmlText | TokenKind::HtmlEnd => self.parse_html_literal(),
             _ => Err(CanonError::ParseError {
                 message: format!("expected an expression (got {})", tok.kind),
                 span: tok.span,
             }),
         }
+    }
+
+    /// Parse an HTML literal from the raw-fragment tokens the scanner
+    /// emits: zero or more `HtmlText` fragments (each followed by an
+    /// interpolated expression — the scanner already consumed the
+    /// hole's braces) and a final `HtmlEnd` fragment.
+    ///
+    /// Pure-literal interpolations fold to Static text so an
+    /// all-constant literal stays zero-runtime-cost: strings are
+    /// HTML-escaped at parse time, ints/floats render as digits, and a
+    /// nested HTML literal splices its parts verbatim (it is already
+    /// HTML). Anything with runtime content becomes an `Interp` part,
+    /// which the codegen `.ToHtml()`-converts and concats into the
+    /// surrounding markup.
+    fn parse_html_literal(&mut self) -> Result<Expr> {
+        let start = self.peek().span;
+        let mut parts: Vec<HtmlLitPart> = Vec::new();
+        loop {
+            let tok = self.peek().clone();
+            let is_end = match tok.kind {
+                TokenKind::HtmlText => false,
+                TokenKind::HtmlEnd => true,
+                _ => {
+                    return Err(CanonError::ParseError {
+                        message: format!(
+                            "expected `}}` to close HTML interpolation (got {})",
+                            tok.kind
+                        ),
+                        span: tok.span,
+                    });
+                }
+            };
+            self.advance();
+            push_html_static(&mut parts, &tok.lexeme);
+            if is_end {
+                break;
+            }
+            self.skip_newlines();
+            let expr = self.parse_expr()?;
+            self.skip_newlines();
+            match expr {
+                Expr::StringLit { value, .. } => {
+                    push_html_static(&mut parts, &html_encode_text(&value));
+                }
+                Expr::IntLit { value, .. } => {
+                    push_html_static(&mut parts, &value.to_string());
+                }
+                Expr::FloatLit { value, .. } => {
+                    push_html_static(&mut parts, &value.to_string());
+                }
+                Expr::HtmlLit {
+                    parts: inner_parts, ..
+                } => {
+                    // Splice the nested literal's parts directly so
+                    // static chunks merge into the outer accumulator.
+                    for p in inner_parts {
+                        match p {
+                            HtmlLitPart::Static(s) => push_html_static(&mut parts, &s),
+                            HtmlLitPart::Interp(e) => parts.push(HtmlLitPart::Interp(e)),
+                        }
+                    }
+                }
+                other => {
+                    parts.push(HtmlLitPart::Interp(Box::new(other)));
+                }
+            }
+        }
+        let end = self.previous_span();
+        Ok(Expr::HtmlLit {
+            parts,
+            span: span_join(start, end),
+        })
     }
 
     fn parse_json_object_body(
@@ -1060,6 +1133,39 @@ impl JsonPartBuilder {
 
 /// Re-encode a Canon string value (already unescaped by the scanner) as a
 /// JSON string literal, including the surrounding double-quote characters.
+/// Append a static HTML fragment, merging into a preceding `Static`
+/// part so all-constant literals collapse to a single part (which is
+/// what triggers the codegen's zero-cost fast path). Empty fragments
+/// (e.g. two adjacent interpolation holes) are dropped.
+fn push_html_static(parts: &mut Vec<HtmlLitPart>, s: &str) {
+    if s.is_empty() {
+        return;
+    }
+    if let Some(HtmlLitPart::Static(last)) = parts.last_mut() {
+        last.push_str(s);
+    } else {
+        parts.push(HtmlLitPart::Static(s.to_string()));
+    }
+}
+
+/// HTML-escape a string for element text content — the parse-time
+/// equivalent of the stdlib's `text()` (`packages/canon/std/src/web/
+/// html.can`), applied when a string-literal interpolation is folded
+/// statically.
+fn html_encode_text(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("&quot;"),
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn json_encode_string(s: &str) -> String {
     let mut out = String::from('"');
     for c in s.chars() {

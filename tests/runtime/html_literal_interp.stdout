@@ -1,0 +1,4 @@
+<ul><li>a &amp; b</li><li>x&lt;y</li></ul>
+<span>42</span>
+<button data-msg="inc">go</button>
+<p>5 &lt; 6 &amp; 7</p>

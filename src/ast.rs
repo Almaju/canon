@@ -127,6 +127,19 @@ pub enum JsonLitPart {
     Interp(Box<Expr>),
 }
 
+/// One piece of an HTML literal expression — see `Expr::HtmlLit`.
+#[derive(Debug, Clone)]
+pub enum HtmlLitPart {
+    /// A raw chunk of HTML text (e.g. `<div>` or `</li></ul>`).
+    /// Inlined verbatim into the output.
+    Static(String),
+    /// An interpolated Canon expression (`{expr}` in the literal). Its
+    /// runtime value is converted to HTML via `.ToHtml()` — escaping
+    /// for `String`/`Int`, identity for `Html` — and concatenated into
+    /// the surrounding HTML text.
+    Interp(Box<Expr>),
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Ident(Ident),
@@ -195,6 +208,21 @@ pub enum Expr {
         parts: Vec<JsonLitPart>,
         span: Span,
     },
+    /// An HTML element literal: `<div>hello {Model}</div>`.
+    ///
+    /// Lexed as raw text (an HTML literal starts at a `<` immediately
+    /// followed by a lowercase tag name — a position where `<` is never
+    /// valid Canon) and compiled-out at parse time into an alternating
+    /// list of `Static` (raw HTML text fragments) and `Interp`
+    /// (arbitrary Canon expressions in `{…}` holes whose runtime values
+    /// are `.ToHtml()`-converted and concatenated into the surrounding
+    /// markup). When `parts` is a single `Static`, the literal is fully
+    /// constant and codegen lowers it to one string-literal load;
+    /// otherwise it emits a `String.concat` chain over the parts.
+    HtmlLit {
+        parts: Vec<HtmlLitPart>,
+        span: Span,
+    },
     /// Inserted by the checker when a `Future<T>` expression is used in a position
     /// that expects `T`. Never produced by the parser.
     Await {
@@ -219,6 +247,7 @@ impl Expr {
             Expr::ProductValue { span, .. } => *span,
             Expr::FieldAccess { span, .. } => *span,
             Expr::JsonLit { span, .. } => *span,
+            Expr::HtmlLit { span, .. } => *span,
             Expr::Await { span, .. } => *span,
         }
     }
