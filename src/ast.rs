@@ -25,6 +25,27 @@ pub enum Item {
     /// reader sees `bindings "wasi:clocks/timezone@…"` and immediately
     /// knows where to look in the source WIT.
     Bindings(BindingsDecl),
+    /// A file-level `package "<ns>:<name>@<version>"` directive. Stamps
+    /// a vendored source file with the identity and exact version of
+    /// the package it came from — the `bindings` directive generalized
+    /// to whole packages (see PACKAGES.md).
+    ///
+    /// Written by `canon install` at the top of every file it vendors
+    /// under `deps/`; never typed by hand. The loader validates it
+    /// (deps-only placement, coordinate matches the `deps/<ns>/<name>/`
+    /// directory, one version per vendored package) and then carries it
+    /// as a breadcrumb for tooling, exactly like `Bindings`.
+    Package(PackageDecl),
+}
+
+/// A `package "<ns>:<name>@<version>"` directive at the top of a
+/// vendored source file. See [`Item::Package`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct PackageDecl {
+    /// The package coordinate, e.g. `"acme:http@1.2.3"`. Stored
+    /// verbatim; the loader parses and validates it.
+    pub coordinate: String,
+    pub span: Span,
 }
 
 /// A `bindings "<urn>"` directive at the top of a generated bindings

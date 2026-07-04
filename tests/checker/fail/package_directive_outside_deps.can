@@ -1,0 +1,5 @@
+package "acme:http@1.0.0"
+
+main = () -> Unit {
+    "hi".print()
+}

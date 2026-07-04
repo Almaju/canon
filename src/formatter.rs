@@ -25,6 +25,27 @@ pub fn format(source: &str) -> Result<String> {
 fn emit_module(module: &Module) -> String {
     let mut sections: Vec<String> = Vec::new();
 
+    // The `package` provenance directive leads the file, before even
+    // the `use` block — it states where the whole file came from, so
+    // nothing may precede it (the loader enforces first-declaration
+    // placement; the formatter produces it). At most one exists per
+    // file, but emit whatever the parser saw and let the loader be the
+    // backstop, same division of labor as ordering.
+    let pkgs: Vec<String> = module
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let Item::Package(p) = item {
+                Some(format!("package \"{}\"", p.coordinate))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !pkgs.is_empty() {
+        sections.push(pkgs.join("\n"));
+    }
+
     // Use declarations grouped at the top, in canonical (alphabetical)
     // order. Ordering everywhere in Canon is mechanical, so the
     // formatter *fixes* it — the checker's ordering errors are the
@@ -51,7 +72,7 @@ fn emit_module(module: &Module) -> String {
     let others: Vec<&Item> = module
         .items
         .iter()
-        .filter(|item| !matches!(item, Item::Use(_)))
+        .filter(|item| !matches!(item, Item::Use(_) | Item::Package(_)))
         .collect();
     for item in sort_items(&others) {
         sections.push(emit_item(item));
@@ -145,6 +166,7 @@ fn emit_item(item: &Item) -> String {
     match item {
         Item::Use(u) => format!("use {}", u.name.name),
         Item::Bindings(b) => format!("bindings \"{}\"", b.urn),
+        Item::Package(p) => format!("package \"{}\"", p.coordinate),
         Item::TypeDef(td) => emit_type_def(td),
         Item::Function(f) => emit_function(f),
     }

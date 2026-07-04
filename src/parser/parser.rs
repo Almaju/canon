@@ -74,6 +74,23 @@ impl Parser {
             }));
         }
 
+        // `package "<ns>:<name>@<version>"` directive. Stamps a vendored
+        // file with the coordinate of the package it came from. The
+        // loader validates placement and content; the parser only
+        // records the string verbatim. See `ast::PackageDecl`.
+        if self.check(TokenKind::KwPackage) {
+            self.advance();
+            let coord_tok = self.expect(
+                TokenKind::StringLit,
+                "expected a quoted package coordinate after `package`",
+            )?;
+            let end_span = coord_tok.span;
+            return Ok(Item::Package(crate::ast::PackageDecl {
+                coordinate: coord_tok.lexeme,
+                span: span_join(start_span, end_span),
+            }));
+        }
+
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),
