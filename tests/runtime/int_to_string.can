@@ -1,0 +1,12 @@
+main = () -> Unit {
+    String(42).print()
+    String(0).print()
+    String(0.sub(7)).print()
+    123
+        .String()
+        .concat("!")
+        .print()
+    String(9)
+        .concat(String(10))
+        .print()
+}

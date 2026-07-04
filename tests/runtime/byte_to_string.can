@@ -1,0 +1,11 @@
+use canon/std/Byte
+
+main = () -> Unit {
+    String(Byte(65)).print()
+    String(Byte(97))
+        .concat(String(Byte(98)))
+        .print()
+    Byte(33)
+        .String()
+        .print()
+}

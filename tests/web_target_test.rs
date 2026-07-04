@@ -39,7 +39,7 @@ view = (Model) -> Html {
     "Canon Counter"
         .h1()
         .concat(Msg("Decrement").button("-"))
-        .concat(Model.toText().span())
+        .concat(Model.String().span())
         .concat(Msg("Increment").button("+"))
         .div()
 }
@@ -209,7 +209,7 @@ fn web_counter_full_loop() {
     let model = app.send(model, "Decrement");
     assert!(
         app.render(model).contains("<span>-1</span>"),
-        "negative counts must render with the sign (toText)"
+        "negative counts must render with the sign (Int.String())"
     );
 
     // Unknown messages hit the catch-all arm and leave the model alone.

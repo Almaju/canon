@@ -7,7 +7,7 @@ main = () -> Unit {
         .length()
         .print()
     Args()
-        .toJsonArray()
+        .Json()
         .print()
     Cwd().(
         * (None) -> Unit { "no cwd".print() }

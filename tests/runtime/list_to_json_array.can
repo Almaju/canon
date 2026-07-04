@@ -2,12 +2,12 @@ use canon/std/Json
 
 main = () -> Unit {
     List("\"a\"", "\"b\"", "\"c\"")
-        .toJsonArray()
+        .Json()
         .print()
     List("1", "2", "3")
-        .toJsonArray()
+        .Json()
         .print()
     List("\"only\"")
-        .toJsonArray()
+        .Json()
         .print()
 }

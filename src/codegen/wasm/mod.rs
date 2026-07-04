@@ -852,6 +852,13 @@ impl LocalScope {
     fn lit_scrut_i64(&self) -> u32 {
         self.param_count + 26
     }
+
+    /// Second f64 scratch. `Float.rem` needs both operands available
+    /// twice (`a - trunc(a/b) * b`), and wasm has no stack dup — the
+    /// pair of f64 locals holds `a`/`b` across the sequence.
+    fn tmp_f64_b(&self) -> u32 {
+        self.param_count + 27
+    }
 }
 
 /// Local declarations appended after the function params.
@@ -870,6 +877,7 @@ fn extra_locals_decl() -> Vec<(u32, ValType)> {
         (2, ValType::I32), // map_elem_ptr, map_elem_ptr + 1 (len)
         (2, ValType::I32), // lit_scrut_ptr, lit_scrut_ptr + 1 (len)
         (1, ValType::I64), // lit_scrut_i64 (Int literal-dispatch scrutinee)
+        (1, ValType::F64), // tmp_f64_b (Float.rem second operand)
     ]
 }
 
@@ -1151,6 +1159,18 @@ struct WasmGen<'m> {
     /// specials). Core signature: `(f64) -> ()`. See
     /// `build_print_float`.
     fn_print_float: u32,
+    /// Renders an `i64` as its decimal string in a fresh heap
+    /// allocation — the value half of `String(Int)` / `Int.String()`
+    /// (conversion-is-construction, DESIGN.md § Conversions). Same
+    /// digit loop as `build_print_int` but the bytes are copied out of
+    /// the shared int buffer into an `$alloc` block so later renders
+    /// can't clobber the result. Core signature: `(i64) -> (i32, i32)`.
+    fn_int_to_str: u32,
+    /// Byte-wise lexicographic string compare returning -1/0/1 —
+    /// backs `String.lt/le/gt/ge/ne` (and the alphabetical-order rule
+    /// the language is built on). Core signature:
+    /// `(ptr1, len1, ptr2, len2) -> i32`.
+    fn_str_cmp: u32,
     /// Synthesised wrapper that adapts a user-defined `handleRequest`
     /// function (signature `(String) -> String`, direct multi-value
     /// return) to the canonical-ABI shape required for a component
@@ -1225,12 +1245,14 @@ impl<'m> WasmGen<'m> {
             fn_start: base_defined + 4,
             fn_list_to_json_array: base_defined + 5,
             fn_print_float: base_defined + 6,
+            fn_int_to_str: base_defined + 7,
+            fn_str_cmp: base_defined + 8,
             // Slot reservation for the handler wrapper is decided in
             // `assign_func_indices` (it depends on whether the AST
             // actually defines `handleRequest`). When present, it sits
             // at the last available slot after user functions.
             fn_handler_wrapper: None,
-            fn_user_start: base_defined + 7,
+            fn_user_start: base_defined + 9,
             user_handler_func_idx: None,
             cur_fn_early_return: None,
             http_mode: false,
@@ -1277,7 +1299,9 @@ impl<'m> WasmGen<'m> {
         gen.fn_start = HTTP_BASE_DEFINED + 4; // the `handle` wrapper slot
         gen.fn_list_to_json_array = HTTP_BASE_DEFINED + 5;
         gen.fn_print_float = HTTP_BASE_DEFINED + 6;
-        gen.fn_user_start = HTTP_BASE_DEFINED + 7;
+        gen.fn_int_to_str = HTTP_BASE_DEFINED + 7;
+        gen.fn_str_cmp = HTTP_BASE_DEFINED + 8;
+        gen.fn_user_start = HTTP_BASE_DEFINED + 9;
         gen.fn_waitable_set_new = u32::MAX;
         gen.fn_waitable_join = u32::MAX;
         gen.fn_waitable_set_wait = u32::MAX;
@@ -1321,7 +1345,9 @@ impl<'m> WasmGen<'m> {
         gen.fn_start = WEB_BASE_DEFINED + 4; // init wrapper; update/view at +5/+6
         gen.fn_list_to_json_array = WEB_BASE_DEFINED + 7;
         gen.fn_print_float = WEB_BASE_DEFINED + 8;
-        gen.fn_user_start = WEB_BASE_DEFINED + 9;
+        gen.fn_int_to_str = WEB_BASE_DEFINED + 9;
+        gen.fn_str_cmp = WEB_BASE_DEFINED + 10;
+        gen.fn_user_start = WEB_BASE_DEFINED + 11;
         gen.fn_waitable_set_new = u32::MAX;
         gen.fn_waitable_join = u32::MAX;
         gen.fn_waitable_set_wait = u32::MAX;
@@ -2394,6 +2420,210 @@ impl<'m> WasmGen<'m> {
         f
     }
 
+    /// Build the `fn_int_to_str` helper: `(i64) -> (i32, i32)`.
+    ///
+    /// Renders the value's decimal digits into the shared int buffer
+    /// (same backward digit loop as `build_print_int`, minus the
+    /// trailing-newline convention), then copies them into a fresh
+    /// `$alloc` block so the result survives later renders. Returns
+    /// the `(ptr, len)` pair of the copy.
+    fn build_int_to_str(&self) -> Function {
+        let store8 = MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        };
+        let load8 = store8;
+        // Locals: 0 = value (param, i64); 1 = ptr; 2 = is_neg;
+        // 3 = digit; 4 = len; 5 = dst; 6 = out_ptr.
+        let mut f = Function::new([(6, ValType::I32)]);
+        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
+        f.instruction(&Instruction::LocalSet(1));
+        // Negative? Remember the sign, work on the magnitude. (i64::MIN
+        // survives this: `0 - i64::MIN` wraps back to itself and the
+        // unsigned digit loop below reads it as the correct magnitude.)
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::I64Const(0));
+        f.instruction(&Instruction::I64LtS);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::LocalSet(2));
+        f.instruction(&Instruction::I64Const(0));
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::I64Sub);
+        f.instruction(&Instruction::LocalSet(0));
+        f.instruction(&Instruction::End);
+        // Zero short-circuits to a single '0' digit.
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::I64Eqz);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(1));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(b'0' as i32));
+        f.instruction(&Instruction::I32Store8(store8));
+        f.instruction(&Instruction::Else);
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::I64Eqz);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::I64Const(10));
+        f.instruction(&Instruction::I64RemU);
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::I64Const(10));
+        f.instruction(&Instruction::I64DivU);
+        f.instruction(&Instruction::LocalSet(0));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(1));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(b'0' as i32));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Store8(store8));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        // Leading '-' for negatives.
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(1));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(b'-' as i32));
+        f.instruction(&Instruction::I32Store8(store8));
+        f.instruction(&Instruction::End);
+        // len = MEM_INT_BUF_END - ptr (the '\n' at END is print_int's
+        // convention, not part of the rendered value).
+        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(4));
+        // out_ptr = alloc(len); dst = out_ptr.
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalTee(6));
+        f.instruction(&Instruction::LocalSet(5));
+        // Copy loop: while ptr < MEM_INT_BUF_END { *dst++ = *ptr++ }.
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
+        f.instruction(&Instruction::I32GeU);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Load8U(load8));
+        f.instruction(&Instruction::I32Store8(store8));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(5));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(1));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        // Return (out_ptr, len).
+        f.instruction(&Instruction::LocalGet(6));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::End);
+        f
+    }
+
+    /// Build the `fn_str_cmp` helper: `(ptr1, len1, ptr2, len2) -> i32`
+    /// returning -1 / 0 / 1 — byte-wise lexicographic order, with the
+    /// shorter string ordering first on a shared prefix. Backs the
+    /// `String.lt/le/gt/ge/ne` builtins (and, transitively, the
+    /// alphabetical-order rule the language enforces everywhere else).
+    fn build_str_cmp(&self) -> Function {
+        let load8 = MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        };
+        // Locals: 0..3 = params (ptr1, len1, ptr2, len2);
+        // 4 = i; 5 = b1; 6 = b2; 7 = minlen.
+        let mut f = Function::new([(4, ValType::I32)]);
+        // minlen = min(len1, len2)
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32LtU);
+        f.instruction(&Instruction::Select);
+        f.instruction(&Instruction::LocalSet(7));
+        // for i in 0..minlen: compare bytes, early-return on mismatch.
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::LocalGet(7));
+        f.instruction(&Instruction::I32GeU);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(0));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Load8U(load8));
+        f.instruction(&Instruction::LocalSet(5));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Load8U(load8));
+        f.instruction(&Instruction::LocalSet(6));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::LocalGet(6));
+        f.instruction(&Instruction::I32LtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(-1));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::LocalGet(6));
+        f.instruction(&Instruction::I32GtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(4));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        // Shared prefix — order by length: len1 < len2 → -1,
+        // len1 > len2 → 1, equal → 0.
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32LtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(-1));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(1));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::I32GtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::End);
+        f
+    }
+
     fn build_print_bool(&self) -> Function {
         let (fp, fl) = self.strings.get("False").expect("False interned");
         let (tp, tl) = self.strings.get("True").expect("True interned");
@@ -3161,6 +3391,49 @@ impl<'m> WasmGen<'m> {
 
     // ── Constructor compilation ────────────────────────────────────────────────
 
+    /// Static byte-ness test for the `String(Byte)` conversion. `Byte`
+    /// erases to i64 at the value level (same repr as `Int`), so the
+    /// two Int→String conversions — decimal rendering vs. single-byte
+    /// string — are told apart by the *declared* type at the call
+    /// site: a `Byte(…)` constructor, an identifier bound under a
+    /// name whose alias chain passes through `Byte`, or a field
+    /// access unwrapping to `Byte`. A method chain that returns
+    /// `Byte` erases before it gets here — wrap it
+    /// (`Byte(x).String()`) to pick the byte reading; needing the
+    /// wrap to mean the other thing is exactly why the newtype
+    /// exists.
+    fn expr_is_byte(&self, e: &Expr) -> bool {
+        let name = match e {
+            Expr::Constructor { name, .. } => &name.name,
+            Expr::Ident(id) => &id.name,
+            Expr::FieldAccess { field, .. } => &field.name,
+            _ => return false,
+        };
+        self.collect_alias_chain(name).iter().any(|n| n == "Byte")
+    }
+
+    /// Converts the i64 byte value on the stack into a fresh one-byte
+    /// string — the value half of `String(Byte)`. The value is masked
+    /// to its low 8 bits.
+    fn emit_byte_to_str(&mut self, scope: &LocalScope, f: &mut Function) -> Ty {
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::I32Const(0xFF));
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalTee(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Const(1));
+        Ty::Str
+    }
+
     fn compile_constructor(
         &mut self,
         name: &str,
@@ -3190,12 +3463,17 @@ impl<'m> WasmGen<'m> {
                 Ty::NamedPtr("Headers".to_string())
             }
             "Response" if self.http_mode => self.build_http_response(args, scope, f),
-            // Primitive identity constructors: `Int(1)`, `Float(2.5)`,
-            // `String("x")`. The argument already has the target
-            // representation — compiling it IS the construction. The
-            // zero-arg forms produce the type's zero value.
+            // Primitive constructors. Identity when the argument
+            // already has the target representation (`Int(1)`,
+            // `String("x")`) — compiling it IS the construction —
+            // and *conversion* when it doesn't (`String(42)` renders
+            // decimal, `String(Byte(65))` is the one-byte string
+            // "A"): conversion is construction, DESIGN.md
+            // § Conversions. The zero-arg forms produce the type's
+            // zero value.
             "Int" | "Float" | "String" => {
                 if let Some(a) = args.first() {
+                    let is_byte = name == "String" && self.expr_is_byte(a);
                     let ty = self.compile_expr(a, scope, f);
                     match (name, &ty) {
                         // Tolerate `Int(bool)` / `Float(int)` shape
@@ -3208,6 +3486,32 @@ impl<'m> WasmGen<'m> {
                         ("Float", Ty::I64) => {
                             f.instruction(&Instruction::F64ConvertI64S);
                             Ty::F64
+                        }
+                        ("String", Ty::I64) => {
+                            if is_byte {
+                                self.emit_byte_to_str(scope, f)
+                            } else {
+                                f.instruction(&Instruction::Call(self.fn_int_to_str));
+                                Ty::Str
+                            }
+                        }
+                        ("Int", ty) if ty.is_str_like() => {
+                            // `Int("42")` — the fallible parse constructor
+                            // from `canon/std/Int`. The compiled string is
+                            // already on the stack, exactly where
+                            // `emit_func_table_call` expects the receiver.
+                            if let Some(info) = self
+                                .func_table
+                                .get(&(Some("String".to_string()), "Int".to_string()))
+                                .cloned()
+                            {
+                                return self.emit_func_table_call(&info, &[], scope, f);
+                            }
+                            // Parser not in scope — the checker rejects
+                            // this; keep the stack shape sane regardless.
+                            self.drop_value(Ty::Str, f);
+                            f.instruction(&Instruction::I64Const(0));
+                            Ty::I64
                         }
                         _ => ty,
                     }
@@ -4285,6 +4589,28 @@ impl<'m> WasmGen<'m> {
         if type_name.is_some() {
             if let Some(info) = self.func_table.get(&free_key).cloned() {
                 return self.emit_func_table_call(&info, args, scope, f);
+            }
+        }
+
+        // Conversion is construction (DESIGN.md § Conversions):
+        // `Int.String()` / `Byte.String()` are the method spellings of
+        // the `String(Int)` / `String(Byte)` constructors. Placed after
+        // the func-table lookups so a user-declared `String` method on
+        // some other receiver type still wins.
+        if method == "String" && args.is_empty() {
+            match &recv_ty {
+                Ty::I64 => {
+                    return if self.expr_is_byte(receiver) {
+                        self.emit_byte_to_str(scope, f)
+                    } else {
+                        f.instruction(&Instruction::Call(self.fn_int_to_str));
+                        Ty::Str
+                    };
+                }
+                // A String-alias receiver (`Path("/x").String()`) is
+                // the identity conversion — the value already is one.
+                ty if ty.is_str_like() => return Ty::Str,
+                _ => {}
             }
         }
 
@@ -5477,6 +5803,55 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::F64Div);
                 Ty::F64
             }
+            // wasm has no f64 remainder instruction; compute
+            // `a - trunc(a/b) * b` (sign follows the dividend, matching
+            // Rust's `%` on floats). Both operands are needed twice and
+            // wasm has no stack dup, so they round-trip through the
+            // f64 scratch pair.
+            ("mod" | "rem", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::LocalSet(scope.tmp_f64_b())); // b
+                f.instruction(&Instruction::LocalSet(scope.tmp_f64())); // a
+                f.instruction(&Instruction::LocalGet(scope.tmp_f64()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_f64()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_f64_b()));
+                f.instruction(&Instruction::F64Div);
+                f.instruction(&Instruction::F64Trunc);
+                f.instruction(&Instruction::LocalGet(scope.tmp_f64_b()));
+                f.instruction(&Instruction::F64Mul);
+                f.instruction(&Instruction::F64Sub);
+                Ty::F64
+            }
+            ("lt", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::F64Lt);
+                Ty::I32
+            }
+            ("le", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::F64Le);
+                Ty::I32
+            }
+            ("gt", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::F64Gt);
+                Ty::I32
+            }
+            ("ge", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::F64Ge);
+                Ty::I32
+            }
+            ("eq", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::F64Eq);
+                Ty::I32
+            }
+            ("ne", Ty::F64) => {
+                self.compile_f64_arg(args, scope, f);
+                f.instruction(&Instruction::F64Ne);
+                Ty::I32
+            }
             // ── String concat ────────────────────────────────────────────────────
             //
             // Allocates a fresh buffer of size `len1 + len2`, copies the
@@ -5686,6 +6061,32 @@ impl<'m> WasmGen<'m> {
                 self.emit_str_eq(scope, f);
                 Ty::I32
             }
+            // ── String ordering ─────────────────────────────────────
+            //
+            // Byte-wise lexicographic comparison via `fn_str_cmp`
+            // (-1/0/1), mirroring `Int`'s comparison surface. This is
+            // the primitive behind user-side alphabetical ordering —
+            // the same order the language enforces on declarations.
+            ("lt" | "le" | "gt" | "ge" | "ne", _) if recv_ty.is_str_like() && args.len() == 1 => {
+                let arg_ty = self.compile_expr(&args[0], scope, f);
+                if !arg_ty.is_str_like() {
+                    // Mismatched arg type — drop everything, return false.
+                    self.drop_value(arg_ty, f);
+                    self.drop_value(recv_ty, f);
+                    f.instruction(&Instruction::I32Const(0));
+                    return Ty::I32;
+                }
+                f.instruction(&Instruction::Call(self.fn_str_cmp));
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&match method {
+                    "lt" => Instruction::I32LtS,
+                    "le" => Instruction::I32LeS,
+                    "gt" => Instruction::I32GtS,
+                    "ge" => Instruction::I32GeS,
+                    _ => Instruction::I32Ne,
+                });
+                Ty::I32
+            }
             // ── List methods ───────────────────────────────────────────────────
             ("length" | "len", Ty::List) | ("length" | "len", Ty::NamedPtr(_)) => {
                 // Stack: (ptr: i32, len: i32) for List, or just i32 for NamedPtr
@@ -5811,7 +6212,10 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
-            ("toJsonArray", Ty::List) => {
+            // `list.Json()` — conversion-is-construction spelling
+            // (DESIGN.md § Conversions) of "encode this list of
+            // pre-rendered JSON values as a JSON array".
+            ("Json", Ty::List) => {
                 // Stack: [list_ptr, list_len]. Call the helper which
                 // returns `(out_ptr, out_len)` of a freshly-allocated
                 // string `[elem0,elem1,…,elemN]`. Each slot in the list
@@ -6898,6 +7302,11 @@ impl<'m> WasmGen<'m> {
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
         // Reserve the wasm type for the float printer: `(f64) -> ()`.
         let print_float_ty = self.get_or_add_wasm_type(&[ValType::F64], &[]);
+        // Int→String renderer: `(i64) -> (i32, i32)`; string compare:
+        // `(ptr1, len1, ptr2, len2) -> i32`.
+        let int_to_str_ty =
+            self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
+        let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         // Reserve the loop block type used by `compile_list_map`:
         // `(src, dst, remaining) -> (src, dst, remaining)`, all i32.
         // Block types must exist in the type section, which is emitted
@@ -7066,13 +7475,15 @@ impl<'m> WasmGen<'m> {
         funcs.function(TY_RUN); // exported run() -> i32
         funcs.function(list_to_json_array_ty); // list → json array helper
         funcs.function(print_float_ty); // float printer (f64) -> ()
-                                        // User-compiled functions only — extern imports are already declared
-                                        // in the import section and must NOT get a defined-function slot.
-                                        // Dedupe by `func_idx`: the same `FuncInfo` can be registered
-                                        // under multiple keys in `func_table` (the self-ctor commutative
-                                        // alias adds a second entry pointing at the same function body).
-                                        // Each function body must declare its type exactly once or the
-                                        // wasm function-section and code-section lengths drift apart.
+        funcs.function(int_to_str_ty); // Int→String renderer (i64) -> (i32, i32)
+        funcs.function(str_cmp_ty); // string compare -> -1/0/1
+                                    // User-compiled functions only — extern imports are already declared
+                                    // in the import section and must NOT get a defined-function slot.
+                                    // Dedupe by `func_idx`: the same `FuncInfo` can be registered
+                                    // under multiple keys in `func_table` (the self-ctor commutative
+                                    // alias adds a second entry pointing at the same function body).
+                                    // Each function body must declare its type exactly once or the
+                                    // wasm function-section and code-section lengths drift apart.
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut user_func_defs: Vec<(u32, u32)> = self
             .func_table
@@ -7129,6 +7540,8 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_start());
         codes.function(&self.build_list_to_json_array());
         codes.function(&self.build_print_float());
+        codes.function(&self.build_int_to_str());
+        codes.function(&self.build_str_cmp());
         // User functions — compile each FunctionDef in ascending func_idx order
         let ordered_funcs: Vec<FunctionDef> = {
             let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
@@ -7215,6 +7628,9 @@ impl<'m> WasmGen<'m> {
         let list_to_json_array_ty =
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
         let print_float_ty = self.get_or_add_wasm_type(&[ValType::F64], &[]);
+        let int_to_str_ty =
+            self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
+        let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         let _list_map_loop_ty = self.get_or_add_wasm_type(
             &[ValType::I32, ValType::I32, ValType::I32],
             &[ValType::I32, ValType::I32, ValType::I32],
@@ -7402,6 +7818,8 @@ impl<'m> WasmGen<'m> {
         funcs.function(TY_PRINT_BOOL); // fn_start slot = handle wrapper, (i32) -> ()
         funcs.function(list_to_json_array_ty);
         funcs.function(print_float_ty);
+        funcs.function(int_to_str_ty);
+        funcs.function(str_cmp_ty);
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut user_func_defs: Vec<(u32, u32)> = self
             .func_table
@@ -7462,6 +7880,8 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_http_handle_wrapper(user_fn_idx));
         codes.function(&self.build_list_to_json_array());
         codes.function(&self.build_print_float());
+        codes.function(&self.build_int_to_str());
+        codes.function(&self.build_str_cmp());
         let ordered_funcs: Vec<FunctionDef> = {
             let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
             for item in self.ast.items.iter() {
@@ -7538,6 +7958,9 @@ impl<'m> WasmGen<'m> {
         let list_to_json_array_ty =
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
         let print_float_ty = self.get_or_add_wasm_type(&[ValType::F64], &[]);
+        let int_to_str_ty =
+            self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
+        let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         let _list_map_loop_ty = self.get_or_add_wasm_type(
             &[ValType::I32, ValType::I32, ValType::I32],
             &[ValType::I32, ValType::I32, ValType::I32],
@@ -7674,6 +8097,8 @@ impl<'m> WasmGen<'m> {
         funcs.function(ty_view_wrapper);
         funcs.function(list_to_json_array_ty);
         funcs.function(print_float_ty);
+        funcs.function(int_to_str_ty);
+        funcs.function(str_cmp_ty);
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut user_func_defs: Vec<(u32, u32)> = self
             .func_table
@@ -7729,6 +8154,8 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_web_view_wrapper(view_info.func_idx, model_shape));
         codes.function(&self.build_list_to_json_array());
         codes.function(&self.build_print_float());
+        codes.function(&self.build_int_to_str());
+        codes.function(&self.build_str_cmp());
         let ordered_funcs: Vec<FunctionDef> = {
             let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
             for item in self.ast.items.iter() {
