@@ -47,7 +47,9 @@ const BUILTIN_GENERIC_TYPES: &[&str] =
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
-const ZERO_DATA_BUILTINS: &[&str] = &["False", "True", "Unit"];
+/// `Map()` is the empty map — the type's zero value and the only way to
+/// start one (all Map updates are functional; see `fn_map_insert`).
+const ZERO_DATA_BUILTINS: &[&str] = &["False", "Map", "True", "Unit"];
 
 /// Synthetic concurrency combinators recognised by the codegen as built-in
 /// `compile_parallel` / `compile_race` paths. They appear in source as if
@@ -1746,16 +1748,33 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "List"
         && matches!(
             (method, arg_count),
-            ("length", 0) | ("first", 0) | ("get", 1) | ("map", 1) | ("Json", 0)
+            ("length", 0)
+                | ("first", 0)
+                | ("get", 1)
+                | ("map", 1)
+                | ("append", 1)
+                | ("concat", 1)
+                | ("Json", 0)
         )
     {
         return true;
     }
-    // NOTE: `Map` / `Set` deliberately have no entries here. Earlier
-    // versions accepted their method surface ahead of codegen support,
-    // which made programs typecheck and then silently miscompile. They
-    // return once real codegen lands; until then the standard
-    // "no method" error fires.
+    // `Map<String, String>` — the implemented surface only (see the
+    // fn_map_* helpers in codegen). Construction is `Map()`; every
+    // update is functional. `Set` stays out until it has codegen —
+    // earlier stub entries made programs typecheck and then silently
+    // miscompile.
+    if receiver_ty == "Map" {
+        return matches!(
+            (method, arg_count),
+            ("get", 1)
+                | ("insert", 2)
+                | ("keys", 0)
+                | ("length", 0)
+                | ("remove", 1)
+                | ("values", 0)
+        );
+    }
     false
 }
 
@@ -1972,7 +1991,12 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "map") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
         ("List", "get") => "Option".to_string(),
+        ("List", "append" | "concat") => "List".to_string(),
         ("List", "Json") => "Json".to_string(),
+        ("Map", "get") => "Option".to_string(),
+        ("Map", "insert" | "remove") => "Map".to_string(),
+        ("Map", "keys" | "values") => "List".to_string(),
+        ("Map", "length") => "Int".to_string(),
         _ => "<unknown>".to_string(),
     }
 }

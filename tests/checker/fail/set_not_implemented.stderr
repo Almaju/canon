@@ -1,0 +1,1 @@
+error[tests/checker/fail/set_not_implemented.can:2:5]: no method `insert` on type `Set` with 1 argument(s)

@@ -1,1 +1,0 @@
-error[tests/checker/fail/map_set_not_implemented.can:2:5]: no method `insert` on type `Map` with 2 argument(s)

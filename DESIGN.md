@@ -1170,7 +1170,7 @@ Three things ship with the language:
 | `canon/std/cli/Exit` (`Int.exit()`) | `canon:builtins/cli` (will move to `wasi/cli/exit` once narrow-int codegen lands) | ✅ |
 | `canon/std/Random` | `canon/wasi/random/random` | ✅ |
 | `canon/std/time/Now` (RFC 3339 wall-clock time) | `canon/wasi/clocks/wall_clock` (today: `canon:builtins/clock`) | ✅ |
-| `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ |
+| `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/fs/Contents` (write), `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ — read + write (`Contents("x").write(Path("f"))?.File()?.read()?` round-trips) |
 | `canon/std/http/Url`, `canon/std/http/InvalidUrl`, `canon/std/http/HttpError` | `canon:builtins/url` + `canon:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
 | `canon/std/http/HttpServer`, `canon/std/http/HttpStatus`, `canon/std/http/Port`, `canon/std/http/RoutePath` | `canon:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
 | `canon/std/Json`, `canon/std/MalformedJson` | `canon:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Canon (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k":v}` / `[v,...]` literal syntax with interpolation; structural derive for user types pending |

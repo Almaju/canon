@@ -1,3 +1,4 @@
+use Contents
 use Path
 use canon/std/IoError
 
@@ -10,3 +11,7 @@ File = (Path) -> Result<File, IoError>
 bindings "canon:builtins/filesystem@0.1.0#read-file-handle"
 
 read = (File) -> Result<String, IoError>
+
+bindings "canon:builtins/filesystem@0.1.0#write-file"
+
+write = (Contents * Path) -> Result<Path, IoError>

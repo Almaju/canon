@@ -1,7 +1,0 @@
-counts = (Map) -> Map {
-    Map.insert("k", 1)
-}
-
-main = () -> Unit {
-    "done".print()
-}
