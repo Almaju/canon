@@ -1,10 +1,9 @@
-use HttpError
-use InvalidUrl
-use canon/builtins/http
-use canon/builtins/url
-
 Url = String
 
 Url = (String) -> Result<Url, InvalidUrl> {
     String.parse()
+}
+
+get = (Url) -> Result<String, HttpError> {
+    Url.fetch()
 }

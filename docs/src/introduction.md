@@ -8,12 +8,6 @@ at build time, no runtime of its own to ship.
 A complete HTTP service:
 
 ```canon
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 greet = (Request) -> Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
@@ -36,7 +30,7 @@ that any compliant host can serve.
 
 **One way to do everything.** Wherever ordering is discretionary, the
 compiler enforces alphabetical order: product fields, union variants,
-function declarations, dispatch arms, imports. There is no `if`/`else`
+function declarations, dispatch arms. There is no `if`/`else`
 *and* `match`; there is dispatch. There is no `while` *and* `for` *and*
 recursion; there are collection methods and recursion. Two programmers
 writing the same program produce the same bytes.
@@ -60,9 +54,6 @@ value, which you can only get from a `Path`, which you can only build
 from a `String`. The type chain *is* the access control:
 
 ```canon
-use canon/std/fs/File
-use canon/std/fs/Path
-
 main = () -> Unit {
     Path("./data.json")
         .File()?

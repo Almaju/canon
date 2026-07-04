@@ -1,5 +1,3 @@
-use canon/std/TestResult
-
 Greeting = String
 
 Name = String

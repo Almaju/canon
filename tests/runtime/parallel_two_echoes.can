@@ -1,11 +1,7 @@
-use canon/builtins/http_server
-use canon/std/Json
-use canon/std/concurrent
-
 main = () -> Unit {
     "hello"
         .slowEcho()
         .parallel("world".slowEcho())
-        .toJsonArray()
+        .Json()
         .print()
 }

@@ -1,7 +1,7 @@
-use wasi/clocks/types
-
 Mark = Int
 
-getResolution = () -> Duration
+MonotonicClock = Unit
 
-now = () -> Mark
+getResolution = (MonotonicClock) -> Duration
+
+now = (MonotonicClock) -> Mark

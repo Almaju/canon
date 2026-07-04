@@ -35,9 +35,9 @@ init   = () -> Model                 # free, zero params
 update = (Model * String) -> Model   # method on the model type
 view   = (Model) -> Html             # method on the model type
 ```
-
 `Model` is any user type (product, union, `Int`/`Float`/`String`
-newtype). `Html` comes from `use canon/std/web/Html`. When the triple
+newtype). `Html` resolves to `canon/std/web/Html` automatically (no
+import statement). When the triple
 is present (and no `main` / HTTP entry competes — the checker rejects
 mixed worlds), codegen routes through `WasmGen::compile_web`.
 
@@ -52,7 +52,6 @@ mixed worlds), codegen routes through `WasmGen::compile_web`.
 canon-web.js     # the JS host, embedded in the compiler binary
 index.html       # boots the app into <div id="app">
 ```
-
 Unlike the CLI/HTTP worlds the output is **not** a component —
 browsers instantiate core wasm directly, and `canon-web.js` plays the
 role the component wrapper plays elsewhere. (A `jco`-style
@@ -74,7 +73,6 @@ imports (module "wasi:cli/stdout@0.3.0-rc-2026-03-15"):
   whole lines to console.log, so `.print()` debugging works in the
   browser console.
 ```
-
 The model stays **in guest memory** between calls; the host only
 holds an opaque i64 (see `WebModelShape` in `src/codegen/wasm/mod.rs`
 for how each model representation normalizes to it). No
@@ -99,11 +97,35 @@ three declarative attributes:
 | `data-msg-input="X:"` | change | `X:` + the control's value |
 
 Payload-carrying messages are plain string composition
-(`"Toggle:".concat(id.toText())`) decoded in `update` with
+(`"Toggle:".concat(id.String())`) decoded in `update` with
 `substring`/`byteAt` — the same pure-Canon parsing the stdlib's JSON
 validator uses. `canon/std/web` provides `button` (renders
 `data-msg`), `elAttr` (arbitrary attributes for the form/input
 cases), and `text` (HTML-escapes user content).
+
+## Persistence (localStorage)
+
+The host can persist app state to `localStorage` — and it does so
+**without any guest-side capability**. A web app's `Model` is a pure
+fold over messages (`update`), so the host never serializes the opaque
+model: it records the **message log** and, on the next load, replays it
+through `update` to rebuild the identical model.
+
+`canonWebStart(wasmUrl, root, persistKey)` takes an optional third
+argument. When it's a non-empty string, the host:
+
+- reads `localStorage[persistKey]` (a JSON array of message strings) on
+  boot and replays each message through `update` (stdout muted during
+  replay so a reload doesn't re-echo past `.print()`s);
+- appends every subsequent message and writes the log back;
+- discards the log and starts from `init()` if a saved message ever
+  fails to fold (e.g. the app's message grammar changed) — a corrupt or
+  stale log can't brick the app.
+
+The generated `index.html` keys persistence by the app's stem
+(`"canon:<stem>"`), so `canon run` / `canon build` apps persist by
+default. Pass your own key (or none) when hosting the bundle yourself.
+`examples/todolist-web` is the worked example.
 
 ## Full-page re-render
 
@@ -120,10 +142,12 @@ example scale. Two consequences to know about:
 ## Current limits (deliberate MVP cuts)
 
 - **No extern imports.** The browser host implements only the print
-  stubs; `new_web` hard-errors on anything else. The natural next
-  slice is a `canon:web/host` interface (fetch, localStorage,
-  timers) implemented in `canon-web.js` — which is also what turns
-  the fullstack example's frontend from static to API-backed.
+  stubs; `new_web` hard-errors on anything else. Persistence
+  (localStorage, above) is handled entirely host-side via message-log
+  replay, so it needs no guest import. The natural next slice is a
+  `canon:web/host` interface (fetch, timers) implemented in
+  `canon-web.js` — which is also what turns the fullstack example's
+  frontend from static to API-backed.
 - **`Msg` is `String`.** A typed `Msg` union with automatic
   encode/decode is a later slice; literal dispatch keeps the string
   form readable meanwhile.
@@ -134,4 +158,6 @@ example scale. Two consequences to know about:
   the wrappers call `update`/`view` by index, not by dispatch.
 
 Pinned by `tests/web_target_test.rs` (full loop under wasmtime — the
-same ABI the JS host drives) and `examples/counter-web`.
+same ABI the JS host drives), `examples/counter-web`, and
+`examples/todolist-web` (the persistence example, with a live preview in
+the book).

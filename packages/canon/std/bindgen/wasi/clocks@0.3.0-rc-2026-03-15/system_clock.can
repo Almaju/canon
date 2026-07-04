@@ -1,11 +1,11 @@
-use wasi/clocks/types
-
 Instant = InstantNanoseconds * InstantSeconds
 
 InstantNanoseconds = Int
 
 InstantSeconds = Int
 
-getResolution = () -> Duration
+SystemClock = Unit
 
-now = () -> Instant
+getResolution = (SystemClock) -> Duration
+
+now = (SystemClock) -> Instant

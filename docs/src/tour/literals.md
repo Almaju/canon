@@ -96,3 +96,27 @@ Url("https://example.com")?.get()?.print()
 
 External callers cannot bypass the constructor. The raw inner
 representation is only accessible inside the same file as the type.
+
+## Conversions
+
+The constructor spelling covers conversion too — **conversion is
+construction**. There is no `parse`, no `toString`, no `from`/`into`
+family; converting a value to `T` is spelled `T(value)` (or
+`value.T()`, the method form of the same declaration):
+
+```canon,run=conversions
+main = () -> Unit {
+    String(42).print()
+    123
+        .String()
+        .concat("!")
+        .print()
+}
+```
+
+Infallible conversions return the target type — the name cannot lie.
+Fallible ones are validated constructors returning `Result<T, E>`:
+`Int("42")` from `canon/std/Int` returns `Result<Int, MalformedInt>`,
+forcing `?` or dispatch at the call site. When one source type has two
+readings, a newtype picks the second one: `String(42)` is `"42"`,
+while `String(Byte(42))` is the one-byte string `"*"`.

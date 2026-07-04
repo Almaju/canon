@@ -1,7 +1,3 @@
-use http/Body
-use http/HttpError
-use http/Status
-
 Headers = Handle
 
 Headers = () -> Headers

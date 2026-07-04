@@ -1,7 +1,5 @@
-use wasi/clocks/system_clock
-
 Unix = Int
 
 Unix = () -> Unix {
-    Unix(now().InstantSeconds)
+    Unix(SystemClock.now().InstantSeconds)
 }

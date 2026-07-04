@@ -1,5 +1,3 @@
-use wasi/filesystem/types
-
 main = () -> Unit {
     "ok".print()
 }

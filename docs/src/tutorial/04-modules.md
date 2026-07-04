@@ -3,7 +3,7 @@
 One file was fine for three routes. The next step is a real package
 layout, with the note logic in its own module. Canon's module system
 fits in one sentence: *a file declares the type it's named after, and
-`use` imports it.*
+referencing the type loads the file.*
 
 ## From File to Package
 
@@ -61,18 +61,11 @@ Two ideas in eight lines:
 
 ## The Entry, Rewritten
 
-`src/main.can` imports the module and gets out of the data business:
+`src/main.can` refers to the module and gets out of the data business:
 
 ```canon
-use Note
-use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
 indexBody = () -> Body {
-    Body(List(Note("ship canon v1").render(), Note("write the docs").render()).toJsonArray())
+    Body(List(Note("ship canon v1").render(), Note("write the docs").render()).Json())
 }
 
 notFound = () -> Body {
@@ -98,7 +91,7 @@ serve = (Request) -> Response {
 ```
 
 `indexBody` composes the array dynamically now:
-`List<String>.toJsonArray()` is a compiler builtin that joins
+`List<String>.Json()` is a compiler builtin that joins
 already-encoded JSON fragments into an array, so the static array
 literal from chapter 3 gives way to encoding each `Note` once. The
 behaviour is identical (same routes, same bytes), but the JSON
@@ -110,15 +103,20 @@ $ curl localhost:8080/notes
 [{"title":"ship canon v1"},{"title":"write the docs"}]
 ```
 
-## What `use` Did
+## Where `Note` Came From
 
-- `use Note` loads `note.can` from the same directory and brings in the
-  `Note` type **with its methods**, which is why `main.can` can call
-  `.render()` without importing it separately. One import per type; no
-  wildcards; no `mod` declarations. A folder is a module.
-- `use` lines, like everything else, are alphabetical. `Note` sorts
-  before `canon/std/…`; the compiler will tell you if you get it
-  wrong.
+- There is no import statement. `main.can` mentions `Note`, doesn't
+  define it, and the loader resolves the reference by convention: a
+  file named `note.can` in the project declares `Note`. The type
+  arrives **with its methods**, which is why `main.can` can call
+  `.render()` without any ceremony. No import lines; no wildcards; no
+  `mod` declarations. A folder is a module.
+- The same rule fetched `Request`, `Response`, and the rest: a name
+  not found in the project's files is looked up in `bindgen/`, then in
+  vendored `deps/`, then in the standard library. If a name resolves
+  in more than one place, the build fails naming every candidate —
+  names are globally unique across a project, its deps, and the
+  stdlib, so there is never shadowing to reason about.
 - `render` chains `.concat(Note)` where `concat` expects a `String`: a
   newtype flows into its underlying type without unwrapping. The same
   substitutability is why `Body(Note(…).render())` works.

@@ -57,7 +57,8 @@ fn run_canon(cwd: &Path, config: &Path, args: &[&str]) -> (String, String, Optio
 
 const SHOUT_CAN: &str = "shout = (String) -> String {\n    String.concat(\"!\")\n}\n";
 
-const MAIN_CAN: &str = "use acme/greet/shout\n\nmain = () -> Unit {\n    \"hello\"\n        .shout()\n        .print()\n}\n";
+const MAIN_CAN: &str =
+    "main = () -> Unit {\n    \"hello\"\n        .shout()\n        .print()\n}\n";
 
 #[test]
 fn publish_install_run_round_trip() {

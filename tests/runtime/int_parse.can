@@ -1,0 +1,22 @@
+main = () -> Unit {
+    Int("42").(
+        * (Err<MalformedInt>) -> Unit { "err".print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+    Int("-7").(
+        * (Err<MalformedInt>) -> Unit { "err".print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+    "123".Int().(
+        * (Err<MalformedInt>) -> Unit { "err".print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+    Int("abc").(
+        * (Err<MalformedInt>) -> Unit { MalformedInt.print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+    Int("").(
+        * (Err<MalformedInt>) -> Unit { MalformedInt.print() }
+        * (Ok<Int>) -> Unit { Int.print() }
+    )
+}

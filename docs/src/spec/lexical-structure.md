@@ -25,13 +25,13 @@ The keyword set is small:
 
 | Keyword | Role |
 |---|---|
-| `use` | import a type ([Modules and Packages](./modules.md)) |
 | `extern` | bind a declaration to a Component Model import ([Compilation](./compilation.md)) |
 | `bindings` | file-level directive naming the WIT interface a generated binding file covers |
 | `impl` | placeholder body marking a trait declaration's default implementation |
 
 There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
-`async`, `await`, `pub`, or `mod`. The absences are deliberate; the
+`async`, `await`, `pub`, `mod`, or `use` (imports are automatic —
+[Modules and Packages](./modules.md)). The absences are deliberate; the
 [Tour](../tour/philosophy.md) lists what replaces each.
 
 ## Literals
@@ -64,6 +64,12 @@ There are no raw string literals.
 A `String` is `Byte^*` interpreted as UTF-8. Indexing (`byteAt`) yields
 bytes, not code points. Higher-level text operations are stdlib
 functions, not language built-ins.
+
+Strings carry the same comparison surface as `Int` — `eq`, `ne`, `lt`,
+`le`, `gt`, `ge` — one spelling for comparison regardless of type.
+Order is byte-wise lexicographic, shorter-first on a shared prefix
+(`"app".lt("apple")` is `True`): the same order the compiler enforces
+on declarations, now available to programs.
 
 ## No Comments
 

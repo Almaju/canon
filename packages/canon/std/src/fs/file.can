@@ -1,7 +1,3 @@
-use Path
-use canon/builtins/filesystem
-use canon/std/IoError
-
 File = String
 
 File = (Path) -> Result<File, IoError> {

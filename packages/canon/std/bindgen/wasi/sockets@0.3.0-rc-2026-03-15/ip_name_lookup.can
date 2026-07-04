@@ -1,5 +1,3 @@
-use wasi/sockets/types
-
 ErrorCode = ErrorCodeAccessDenied
   + ErrorCodeInvalidArgument
   + ErrorCodeNameUnresolvable

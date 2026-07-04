@@ -1,5 +1,3 @@
-use wasi/clocks/types
-
 ErrorCode = ErrorCodeAccessDenied
   + ErrorCodeAddressInUse
   + ErrorCodeAddressNotBindable

@@ -122,11 +122,12 @@ fn malformed_version_is_rejected() {
 
 #[test]
 fn two_vendored_versions_are_rejected() {
+    // Two versioned siblings both declare `shout`; the flat,
+    // globally-unique name rule catches it as an ambiguity naming both
+    // versioned directories (install removes old versions, so this only
+    // arises from manual tampering).
     let msg = load_error("fail_two_versions");
-    assert!(
-        msg.contains("more than one version"),
-        "unexpected message: {msg}"
-    );
+    assert!(msg.contains("is ambiguous"), "unexpected message: {msg}");
     assert!(
         msg.contains("greet@1.0.0") && msg.contains("greet@1.1.0"),
         "message should name both versioned directories: {msg}"
@@ -137,7 +138,7 @@ fn two_vendored_versions_are_rejected() {
 fn deps_and_local_resolution_is_ambiguous() {
     let msg = load_error("fail_ambiguous");
     assert!(
-        msg.contains("`use acme/greet/shout` is ambiguous"),
+        msg.contains("`shout` is ambiguous"),
         "unexpected message: {msg}"
     );
 }

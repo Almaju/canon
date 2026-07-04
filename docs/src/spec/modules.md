@@ -14,37 +14,38 @@
 
 ## Imports
 
-```canon
-use Foo
-use acme/image/Decoder
-use canon/std/Json
-use models/User
-```
+There is **no import statement**. A reference *is* the import:
+mentioning `User` in a file that doesn't define it loads `user.can`.
+Wherever choice is discretionary, Canon removes the concept — and an
+import line is pure ceremony once files are named after what they
+declare.
 
-| Import | Resolves to |
+For a reference to a name `Z` the current file does not define, the
+loader searches:
+
+| Location | Rule |
 |---|---|
-| `use Foo` | sibling file `foo.can` (or `foo/main.can`) |
-| `use models/User` | subfolder file `models/user.can` |
-| `use canon/std/Json` | package import: `<namespace>/<package>/<Type>` |
-| `use acme/image/Decoder` | third-party package: same shape, no privileged path |
+| the file's own directory tree | name → file convention: `z.can` or `z/main.can` (kebab-case of `Z`), recursively, skipping `deps/` and `bindgen/` |
+| the project's `bindgen/` tree | by declared name — binding files declare functions whose names don't kebab back to their file (`getRandomU64` lives in `random.can`) |
+| the project's `deps/` tree | vendored packages, by declared name |
+| the bundled packages (`canon/std`) | by declared name; the stdlib's hand-written wrappers shadow its internal bindgen substrate |
 
-There is exactly **one resolution rule**. For `use a/b/…/Z`:
+**Ambiguity is a hard error, not a precedence.** A name that resolves
+in more than one location fails the build naming every candidate —
+there is no shadowing, so names are globally unique across a project,
+its dependency closure, and the standard library. A name that resolves
+nowhere is left for the checker, which reports the undefined name with
+full type context.
 
-1. If the leading segments name a declared dependency in the project's
-   manifest (or a bundled package like `canon/std`), resolve as a
-   **package import**: find the package, then the file matching `Z`'s
-   kebab-case form inside it.
-2. Otherwise resolve as a **local import**: walk the segments as
-   directories relative to the current file and load `z.can` or
-   `z/main.can`.
+A resolved reference brings the type **with its constructor and
+methods** (no wildcards, no aliasing — there is nothing to write).
+This is why the naming convention has teeth: files are
+`kebab-case.can` of the PascalCase type they declare, so "which file
+defines `HttpServer`?" has exactly one mechanical answer, and the
+compiler applies it so you never write it down.
 
-Each `use` names exactly one type (no wildcards, no aliasing) and
-brings that type **with its constructor and methods**. Using both
-`JsonValue` and `JsonArray` means writing both imports. `use` lines are
-[alphabetically ordered](./ordering.md).
-
-Version pins live in the manifest, never in source: `use canon/std/Json`
-carries no `@version`.
+Version pins live in the manifest, never in source: a reference to
+`Decoder` carries no `@version`.
 
 ## Visibility
 

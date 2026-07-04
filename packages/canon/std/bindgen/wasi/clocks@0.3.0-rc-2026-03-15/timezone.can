@@ -1,5 +1,3 @@
-use wasi/clocks/system_clock
-
 ianaId = () -> Option<String>
 
 toDebugString = () -> String

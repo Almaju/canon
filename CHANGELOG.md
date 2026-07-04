@@ -33,6 +33,24 @@ its mechanical name and making the idiom an ordinary bodied wrapper
 `wasi` bindgen tree uses the versioned layout, `canon bindgen` emits
 that layout directly with no header, and the language grammar contains
 zero packaging or binding vocabulary.
+### The `use` keyword is gone - imports are automatic (2026-07)
+
+There is no import statement anymore. A reference to a name the current
+file doesn't define *is* the import: the loader resolves it name -> file
+against the file's own directory tree (`foo.can` / `foo/main.can` for
+`Foo`, recursively), then the project's `bindgen/` tree, the vendored
+`deps/` tree, and the bundled standard library - the last three by
+*declared name*, so binding functions (`getRandomU64`) resolve too. A
+name that matches in more than one place is a hard error naming every
+candidate (no shadowing: names are globally unique across a project,
+its dependencies, and the stdlib); a name that matches nowhere is an
+ordinary checker error. Writing `use ...` is now a parse error that says
+what to do instead. Where two interfaces of a package export the same
+function name (`wasi:clocks` monotonic + system both have `now`), the
+generated binding emits it as a method on the interface's zero-data
+capability marker (`MonotonicClock.now()`) so discovery resolves on the
+unique marker type — no rename, no directive. See DESIGN.md section
+Imports.
 
 ### Release channels & toolchains (2026-07)
 

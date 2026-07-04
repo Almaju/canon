@@ -1,5 +1,3 @@
-use canon/builtins/strings
-
 main = () -> Unit {
     "Hello, World"
         .toUppercase()

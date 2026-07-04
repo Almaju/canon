@@ -118,8 +118,8 @@ canon bindgen path/to/my-component.wit -o .
 ```
 
 This writes `<ns>/<pkg>@<ver>/<iface>.can` for each interface,
-alphabetically ordered, ready to `use`. The mapping is mechanical: WIT
-records become
+alphabetically ordered, ready to reference. The mapping is mechanical:
+WIT records become
 products, variants become unions, `list<T>` becomes `List<T>`, kebab-case
 becomes Canon camelCase / PascalCase, and so on. See `DESIGN.md` for the
 full table.
@@ -131,22 +131,16 @@ with `just regen-bindings`.
 ## Binding Packages
 
 Idiomatic Canon code does not touch binding files directly. Instead, it
-imports individual types from the embedded standard library:
-
-```canon
-use canon/std/Random
-use canon/std/fs/File
-use canon/std/http/Url
-use canon/std/time/Instant
-use canon/std/time/Now
-```
+just mentions the standard library's types — `Instant()`, `Random()`,
+`File`, `Now()`, `Url` — and each reference resolves to its stdlib
+module automatically; there is no import statement.
 
 (`Instant()`: monotonic clock via `wasi/clocks/monotonic_clock`.
 `Random()`: random `Int` via `wasi/random/random`. `File`/`read`:
 `canon:builtins/filesystem`. `Now()`: RFC 3339 wall clock.
 `Url` + `get`: `canon:builtins/url` + `canon:builtins/http`.)
 
-Each `use canon/std/X` brings in the named type along with its constructor and
+A stdlib reference brings in the named type along with its constructor and
 methods. Behind the scenes those modules are written in ordinary Canon
 on top of the generated `wasi/…` bindings; there is no privileged path.
 
@@ -164,7 +158,7 @@ Two namespaces appear in binding-file paths:
   interface as that interface's canonical-ABI shape (async, streams,
   resources) becomes available.
 
-From a user's perspective both look identical: `use canon/std/Foo` and call
+From a user's perspective both look identical: reference `Foo` and call
 methods. The bridge swap is invisible.
 
 ## Tradeoffs

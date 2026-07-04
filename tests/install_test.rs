@@ -242,8 +242,11 @@ fn loader_resolves_use_against_installed_bindgen() {
     // We stand up that exact shape on disk and assert that
     // `loader::load_module` resolves the `use` line against the
     // installed binding file.
+    // A uniquely-named WIT package (not one the bundled `canon/std`
+    // already provides) so a bare reference resolves to the project's
+    // `bindgen/` without colliding with the standard library.
     let root = tmpdir("loader_uses_bindgen");
-    vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
+    vendor_wit(&root, "widget.wit", "widget.wit");
     write_manifest(
         &root,
         r#"
@@ -251,30 +254,28 @@ name = "my-app"
 version = "0.1.0"
 
 [imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
+"example/widget" = "vendor/widget.wit"
 "#,
     );
 
     install::install(&root).expect("install should succeed");
 
-    // Write a source file in src/main.can that imports the binding by
-    // its installed module path. We don't actually need the body to
-    // type-check end-to-end — just to load — so the file holds a
-    // single `use` line.
+    // Write a source file in src/main.can that references a name the
+    // binding declares. Imports are automatic: the loader resolves
+    // `spin` against the project's `bindgen/` tree by declared name,
+    // pulling the whole binding file in.
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
+    fs::write(&entry, "main = () -> Unit {\n    spin().print()\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
-    // The loader's `module.items` should include items contributed by
-    // the bindgen file. The monotonic-clock fixture declares `Duration`
-    // and `Instant` type aliases plus `now` and `getResolution`. If
-    // resolution failed we'd never get here.
+    // The binding file declares `spin` and `wobble`; both should land in
+    // `module.items`. If resolution failed we'd never get here.
     let item_count = result.module.items.len();
     assert!(
-        item_count >= 4,
+        item_count >= 2,
         "expected the bindgen file's declarations to be loaded; got {item_count} items",
     );
 }
@@ -286,7 +287,7 @@ fn loader_derives_extern_urns_from_vendored_path() {
     // from the vendored path (`bindgen/wasi/clocks@<ver>/…`), with the
     // function name camel-back-converted to kebab-case.
     let root = tmpdir("patch_bare_externs");
-    vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
+    vendor_wit(&root, "widget.wit", "widget.wit");
     write_manifest(
         &root,
         r#"
@@ -294,7 +295,7 @@ name = "my-app"
 version = "0.1.0"
 
 [imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
+"example/widget" = "vendor/widget.wit"
 "#,
     );
 
@@ -303,14 +304,13 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use wasi/clocks/monotonic_clock\n").expect("write entry");
+    fs::write(&entry, "main = () -> Unit {\n    spin().print()\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 
-    // The fixture declares `now` and `get-resolution` (kebab) which the
-    // bindgen renders as `now` and `getResolution`. Both should land in
-    // `module.items` with their `extern_wasm.path` populated to the
-    // full canonical-ABI form.
+    // The binding file declares `spin` and `wobble`; both should land in
+    // `module.items` with their `extern_wasm.path` derived from the
+    // vendored path (`bindgen/example/widget@1.0.0/gadget.can`).
     let externs: Vec<(String, String)> = result
         .module
         .items
@@ -324,22 +324,22 @@ version = "0.1.0"
         })
         .collect();
 
-    let now = externs
+    let spin = externs
         .iter()
-        .find(|(name, _)| name == "now")
-        .expect("`now` should be loaded");
+        .find(|(name, _)| name == "spin")
+        .expect("`spin` should be loaded");
     assert_eq!(
-        now.1, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#now",
+        spin.1, "example:widget/gadget@1.0.0#spin",
         "loader should derive the full URN from the vendored path",
     );
 
-    let get_resolution = externs
+    let wobble = externs
         .iter()
-        .find(|(name, _)| name == "getResolution")
-        .expect("`getResolution` should be loaded");
+        .find(|(name, _)| name == "wobble")
+        .expect("`wobble` should be loaded");
     assert_eq!(
-        get_resolution.1, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15#get-resolution",
-        "camelCase function name should be reconverted to kebab when appended to URN",
+        wobble.1, "example:widget/gadget@1.0.0#wobble",
+        "each function's URN is derived from the same vendored path",
     );
 }
 
@@ -360,10 +360,10 @@ version = "0.1.0"
     );
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
-    // A local sibling module the entry will `use`.
-    fs::write(src_dir.join("sibling.can"), "Marker = Int\n").expect("write sibling");
+    // A local sibling file, resolved by the name → file convention.
+    fs::write(src_dir.join("marker.can"), "Marker = Int\n").expect("write sibling");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "use sibling\n").expect("write entry");
+    fs::write(&entry, "Wrapped = Marker\n").expect("write entry");
 
     let result =
         loader::load_module(&entry).expect("loader should fall through to local resolution");
@@ -378,7 +378,7 @@ version = "0.1.0"
         .collect();
     assert!(
         names.iter().any(|n| n == "Marker"),
-        "expected `Marker` from sibling.can to be loaded; got names {names:?}",
+        "expected `Marker` from marker.can to be loaded; got names {names:?}",
     );
 }
 

@@ -12,17 +12,23 @@ path, and the `bindings` keyword is **deleted too** (slice 8) — no
 escape hatch survived, because none was needed: every one-shot rename
 was a layering violation (an idiom nailed directly to a host
 function), fixed by giving the raw binding its mechanical name and
-making the idiom an ordinary bodied wrapper. The planned `component`
+making the idiom an ordinary bodied wrapper. Where two interfaces of a
+package export the same function name (`wasi:clocks` monotonic +
+system both have `now`), the collision — unresolvable in the flat,
+`use`-free namespace — is handled without a keyword either: the
+generated binding emits the function as a method on the interface's
+zero-data capability marker (`MonotonicClock.now()`), so reference
+discovery resolves on the unique marker type. The planned `component`
 directive becomes a tool-written **`.component` file** (slice 5,
 pending). The language grammar now contains zero packaging or binding
 vocabulary. This document describes the amended design throughout;
 when accepted it **supersedes DESIGN.md § Package Manifests**
 (`canon.toml` is deleted entirely) and amends § Imports and § Binding
-Files (already amended to the shape-and-path rule). It assumes the
-removal of the `use` keyword: a reference to a type `User` that is not
-defined in the current file resolves by convention to `user.can`.
-Package management below is that same rule with one more search
-location — nothing else.
+Files (already amended to the shape-and-path rule). The removal of the
+`use` keyword it assumed has **landed**: a reference to a type `User`
+that is not defined in the current file resolves by convention to
+`user.can` (see DESIGN.md § Imports). Package management below is that
+same rule with one more search location — nothing else.
 
 This document is a peer of `STREAMING.md` / `WEB-TARGET.md`: design
 first, then implementation slices at the end.
@@ -283,8 +289,9 @@ instance (the `wac plug` role, built in — unchanged from DESIGN.md).
 Given a reference to type `Z` not defined in the current file
 (post-`use`-removal, name→file):
 
-1. Resolve within the project tree (the auto-import rule, whatever its
-   final scoping — this RFC does not define it).
+1. Resolve within the project tree (the auto-import rule: the tree
+   rooted at the referencing file's directory, recursively, skipping
+   `deps/` and `bindgen/`).
 2. Else resolve against `deps/**/z.can`.
 3. Else resolve against the bundled `canon:std` sources.
 4. Else: compile error. The error suggests `canon install`, and — only
@@ -567,9 +574,11 @@ decision.
 
 ## Open questions
 
-- **Search scoping for step 1 of resolution** is owned by the
-  `use`-removal design (same directory? whole project tree?). This RFC
-  only appends `deps/` and `canon:std` after whatever it decides.
+- ~~**Search scoping for step 1 of resolution**~~ Resolved by the
+  `use`-removal implementation: the tree rooted at the referencing
+  file's directory, recursively, with `deps/`, `bindgen/`, and hidden
+  directories excluded. This RFC only appends `deps/` and `canon:std`
+  after that.
 - **Should `canon publish` verify reproducibility** (rebuild the
   component from the source layer and compare digests) before pushing?
   Cheap honesty; deferred to slice 3 review.

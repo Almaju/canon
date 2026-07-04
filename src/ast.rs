@@ -11,13 +11,6 @@ pub struct Module {
 pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
-    Use(UseDecl),
-}
-
-#[derive(Debug, Clone)]
-pub struct UseDecl {
-    pub name: Ident,
-    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

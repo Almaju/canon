@@ -1,5 +1,3 @@
-use canon/builtins/clock
-
 Now = String
 
 Now = () -> Now {

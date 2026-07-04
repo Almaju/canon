@@ -35,13 +35,7 @@ fn wasi_http_service_smoke() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
-home = (Request) -> Response {
+        r#"home = (Request) -> Response {
     Response(Body("created: ".concat("ok")) * Headers() * Status(201))
 }
 "#,
@@ -123,13 +117,7 @@ fn wasi_http_service_response_headers() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
-home = (Request) -> Response {
+        r#"home = (Request) -> Response {
     Response(Body("<h1>hi</h1>") * Headers().set("content-type", "text/html").set("x-canon", "1") * Status(200))
 }
 "#,
@@ -210,13 +198,7 @@ fn wasi_http_service_method_dispatch() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"use canon/std/http/Body
-use canon/std/http/Headers
-use canon/std/http/Request
-use canon/std/http/Response
-use canon/std/http/Status
-
-serve = (Request) -> Response {
+        r#"serve = (Request) -> Response {
     Request.method().(
         * ("GET") -> Response { Response(Body("got GET") * Headers() * Status(200)) }
         * ("POST") -> Response { Response(Body("got POST") * Headers() * Status(201)) }

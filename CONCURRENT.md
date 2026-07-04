@@ -16,7 +16,6 @@ bindings "canon:builtins/concurrent@0.1.0"
 parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
 race     = <T>(Future<T> * Future<T>) -> Future<T>
 ```
-
 `parallel` is `Promise.all`-shaped: both futures must produce the same
 payload type, results come back in arg-order as a `List<T>`. `race` is
 `Promise.race`: returns the first to finish, cancels the loser. Both are
@@ -25,16 +24,13 @@ recognised by name in the codegen — no host bridge.
 Usage:
 
 ```canon
-use canon/std/concurrent
-
 main = () -> Unit {
     parallel("hello".slowEcho(), "world".slowEcho())
-        .toJsonArray()
+        .Json()
         .print()
     # Prints: [hello,world]
 }
 ```
-
 ## Architecture
 
 ### Step 1 — Bindings are filtered out of extern collection
@@ -47,7 +43,6 @@ if component_ns.starts_with("canon:builtins/concurrent") {
     continue;
 }
 ```
-
 So no wasm import is emitted and the linker doesn't go looking for a
 host implementation. The bindings declaration still exists in the AST
 so the loader / auto-await / checker can reason about the type
@@ -61,7 +56,7 @@ PascalCase first parameter `Future<T>` would otherwise force them to be
 looked up as methods on `Future`, which the `Constructor(…)` call shape
 doesn't support). `expr_type_name_in_scope` reports `List` for `parallel`
 and propagates the inner type of the first arg for `race`, so subsequent
-method chains (`.toJsonArray()`, `.print()`) type-check normally.
+method chains (`.Json()`, `.print()`) type-check normally.
 
 See the `CONCURRENT_COMBINATORS` const in `src/checker/mod.rs`.
 
@@ -114,7 +109,6 @@ subtask.drop(subtask_a)
 subtask.drop(subtask_b)
 waitable-set.drop(set)
 ```
-
 The event-payload layout (`handle` at +0, `code` at +4) comes from
 wasmtime's `waitable_check` implementation. The two-subtasks-drop
 **must** happen before the set-drop because the subtasks are children

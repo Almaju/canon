@@ -45,7 +45,7 @@ fn write_local_registry(dir: &Path, versions: &[&str]) -> PathBuf {
     for version in versions {
         let wit = format!(
             "package test:adder@{version};\n\n\
-             interface add {{\n    add: func(left: u64, right: u64) -> u64;\n}}\n"
+             interface triple {{\n    triple: func(n: u64) -> u64;\n}}\n"
         );
         let path = root
             .join("test")
@@ -95,10 +95,10 @@ fn install_vendors_latest_release_and_project_checks() {
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 
-    // The directory name is the pin; the file is pure source. Neither
-    // the deleted `package` directive nor a `bindings` header appears —
-    // the loader derives `test:adder/add@1.1.0` from the path.
-    let vendored = project.join("deps/test/adder@1.1.0/add.can");
+    // The directory name is the pin; the file is pure source. No
+    // `package` directive and no `bindings` header appears — the loader
+    // derives `test:adder/triple@1.1.0` from the path.
+    let vendored = project.join("deps/test/adder@1.1.0/triple.can");
     let content = fs::read_to_string(&vendored)
         .unwrap_or_else(|e| panic!("expected `{}` to exist: {e}", vendored.display()));
     assert!(
@@ -110,7 +110,7 @@ fn install_vendors_latest_release_and_project_checks() {
         "a path-derivable URN needs no bindings header:\n{content}"
     );
     assert!(
-        content.contains("add = ("),
+        content.contains("triple = ("),
         "the binding declaration must be present:\n{content}"
     );
 
@@ -120,7 +120,7 @@ fn install_vendors_latest_release_and_project_checks() {
     // the formatter's chain-breaking rules.
     fs::write(
         project.join("main.can"),
-        "use test/adder/add\n\nmain = () -> Unit {\n    1.add(2).print()\n}\n",
+        "main = () -> Unit {\n    1.triple().print()\n}\n",
     )
     .unwrap();
     let (o, e, c) = run_canon(&project, &config, &["fmt", "main.can"]);
@@ -143,7 +143,7 @@ fn install_pins_exact_and_prefix_versions() {
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(
-        exact.join("deps/test/adder@1.0.0/add.can").is_file(),
+        exact.join("deps/test/adder@1.0.0/triple.can").is_file(),
         "exact pin should vendor into the 1.0.0 directory"
     );
 
@@ -156,7 +156,7 @@ fn install_pins_exact_and_prefix_versions() {
         "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(
-        prefix.join("deps/test/adder@1.1.0/add.can").is_file(),
+        prefix.join("deps/test/adder@1.1.0/triple.can").is_file(),
         "prefix pin `@1` should vendor the newest 1.x"
     );
 }
@@ -173,11 +173,11 @@ fn install_replaces_the_previously_vendored_version() {
 
     let (_, stderr, code) = run_canon(&project, &config, &["install", "test:adder@1.0.0"]);
     assert_eq!(code, Some(0), "first install failed: {stderr}");
-    assert!(project.join("deps/test/adder@1.0.0/add.can").is_file());
+    assert!(project.join("deps/test/adder@1.0.0/triple.can").is_file());
 
     let (_, stderr, code) = run_canon(&project, &config, &["install", "test:adder@1.1.0"]);
     assert_eq!(code, Some(0), "second install failed: {stderr}");
-    assert!(project.join("deps/test/adder@1.1.0/add.can").is_file());
+    assert!(project.join("deps/test/adder@1.1.0/triple.can").is_file());
     assert!(
         !project.join("deps/test/adder@1.0.0").exists(),
         "the stale version must be removed by the install"

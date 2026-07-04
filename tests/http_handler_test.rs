@@ -30,13 +30,7 @@ fn dynamic_handler_round_trip() {
     std::fs::write(
         &ow_path,
         format!(
-            r#"use canon/std/IoError
-use canon/std/http/HttpServer
-use canon/std/http/HttpStatus
-use canon/std/http/Port
-use canon/std/http/RoutePath
-
-handleRequest = (String) -> String {{
+            r#"handleRequest = (String) -> String {{
     "echoed via dynamic handler"
 }}
 
@@ -126,13 +120,7 @@ fn dynamic_handler_sse_content_type() {
     std::fs::write(
         &ow_path,
         format!(
-            r#"use canon/std/IoError
-use canon/std/http/HttpServer
-use canon/std/http/HttpStatus
-use canon/std/http/Port
-use canon/std/http/RoutePath
-
-handleRequest = (String) -> String {{
+            r#"handleRequest = (String) -> String {{
     "Content-Type: text/event-stream\r\n\r\ndata: hello\n\ndata: world\n\n"
 }}
 

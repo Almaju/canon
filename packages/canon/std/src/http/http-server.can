@@ -1,9 +1,3 @@
-use HttpStatus
-use Port
-use RoutePath
-use canon/builtins/http_server
-use canon/std/IoError
-
 HttpServer = String
 
 HttpServer = (Port) -> HttpServer {

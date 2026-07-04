@@ -1,1 +1,1 @@
-get = (Url) -> Result<String, HttpError>
+fetch = (Url) -> Result<String, HttpError>

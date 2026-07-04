@@ -15,11 +15,10 @@ Wherever ordering is discretionary, Canon requires **alphabetical order**. This 
 - Arms of a dispatch (in the order of the union's variants — which are themselves alphabetical)
 - Trait composition: `Show = Debug * PrintString`
 - Error unions inside `Result`: `Result<T, IoError + NotFound + PermissionDenied>`
-- Imports: multiple `use` statements at the top of a file
 
 The reasoning: ordering is a constant source of bikeshedding and diff noise. By forcing one canonical order, code reads the same way no matter who wrote it, and reordering is never a meaningful change.
 
-Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts `use` imports, type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
+Because the canonical order is mechanical, it is also **auto-fixable**: `canon fmt` sorts type definitions, function declarations, and dispatch arms into canonical order. The checker's ordering errors are the backstop for code that bypassed the formatter, not a hand-sorting chore. (The entry point — `main` or the HTTP handler — is exempt and keeps its position: it is a distinguished role, not a regular free function.)
 
 One caveat worth knowing: alphabetical order is a *source-level* canon, never a wire format. Union variants are numbered by their alphabetical position internally, so adding a variant renumbers everything after it. Serialized values must therefore always carry variant *names*, not indices; at the Component Model boundary the WIT file's declared order governs the ABI, and the compiler maps between the two.
 
@@ -148,7 +147,6 @@ Types can be parameterized by other types using angle brackets:
 List<T>
 Option<T>
 Result<T, E>
-Map<String, Int>
 ```
 
 The chevron syntax does not conflict with `[]` repetition or `*` product.
@@ -201,7 +199,7 @@ String literals exist to avoid the parsing ambiguity of bare `String(...)` with 
 
 `String()`, `Int()`, `User()` — calling any data-carrying constructor with no arguments is a compile-time error. If a value can legitimately be "missing", that absence belongs in the type as `Option<T>`; otherwise the type requires its data.
 
-For factory-style construction (e.g. "an empty list"), use an explicit lowercase function — `List.empty()`, `String.empty()`.
+Two escape hatches exist, both deliberate. `List()` is the **empty list** — the type's zero value, and the base case recursive builders grow from via `.concat(…)` / `.append(…)`. And a type may declare its own zero-arg [validated constructor](#validated-constructors): `Map = () -> Map { Empty() }` in `canon/std/Map` makes `Map()` the empty map.
 
 ### Zero-Data Types
 
@@ -290,6 +288,28 @@ Url = (String) -> Result<Url, InvalidUrl>
 
 Errors are types like any other, and they're named *semantically* — by what failed, not by who emitted them. `InvalidUrl`, `MalformedJson`, `FileNotFound`, `PermissionDenied` carry information; `UrlError`, `JsonError`, `FsError` don't. The exception is opaque wrappers around foreign error types (e.g., `HttpError` wrapping the entire `reqwest::Error` enum) where the underlying error space hasn't been decomposed into Canon variants yet.
 
+### Conversions
+
+**Conversion is construction.** There is no `parse`, no `toString`, no `from`/`into` family — converting a value to type `T` is spelled the same way as constructing a `T`, because it *is* constructing a `T`:
+
+```
+String(42)            # "42" — decimal rendering
+42.String()           # the same declaration, method spelling
+Int("42")             # Result<Int, MalformedInt> — parsing can fail
+"42".Int()?           # method spelling, ?-propagated
+String(Byte(65))      # "A" — a Byte renders as its character
+List("1", "2").Json() # [1,2] — a list of JSON values as a JSON array
+```
+
+One rule covers everything:
+
+- **Infallible conversions return the target type.** `String(Int)` always succeeds, so it returns `String`. The function's name is its return type — it cannot lie.
+- **Fallible conversions are [validated constructors](#validated-constructors).** `Int(String)` can fail, so it returns `Result<Int, MalformedInt>` and forces `?` or dispatch at the call site — exactly like `Url(String)` or `Json(String)`.
+- **The method spelling is free.** `T(value)` and `value.T()` are the same declaration (the commutative method-call rule), so what Rust splits into `From` and `Into` is one function here.
+- **Ambiguity is resolved by newtypes.** `Int` → `String` has two readings — decimal rendering and byte-to-character — so the second one takes a wrapper: `String(42)` renders, `String(Byte(42))` is `"*"`. Wrapping to mean the other thing is what newtypes are for.
+
+User types opt in the same way the stdlib does: declare a function named after the target type taking the source type. `Celsius = (Fahrenheit) -> Celsius { … }` makes both `Celsius(f)` and `f.Celsius()` work.
+
 ## Naming Conventions
 
 - **Types**: `PascalCase`
@@ -302,37 +322,29 @@ The case difference disambiguates trait implementations from regular functions: 
 
 - **Files** use `kebab-case.can` names — the mechanical conversion of the declared type's PascalCase name (`http-server.can` declares `HttpServer`).
 - A file's name **must match** the type it declares: `foo.can` must declare a type named `Foo`.
-- A **module is a folder**. There is no `mod` declaration. Importing `Foo` from a sibling folder is enough.
+- A **module is a folder**. There is no `mod` declaration and no import statement: referencing `Foo` is enough (see [Imports](#imports)).
 - The entry point is `main.can`; libraries live in `lib.can`.
 
 ### Imports
 
-```
-use Foo
-use acme/image/Decoder
-use canon/std/Json
-use models/User
-```
+There is **no import statement**. Wherever choice is discretionary, Canon removes the concept — and an import line is pure ceremony once files are named after what they declare. A reference *is* the import: mentioning `User` in a file that doesn't define it loads `user.can`.
 
-| Import | Resolves to |
+Given a reference to a name `Z` the current file does not define, the loader searches:
+
+| Location | Rule |
 |---|---|
-| `use Foo` | local: `foo.can` or `foo/main.can` relative to this file |
-| `use models/User` | local: subfolder lookup, `models/user.can` |
-| `use canon/std/Json` | package: `<namespace>/<package>/<Type>` |
-| `use acme/image/Decoder` | third-party: same shape, no privileged path |
+| the file's own directory tree | name → file convention: `z.can` or `z/main.can` (kebab-case of `Z`), recursively, skipping `deps/` and `bindgen/` |
+| the project's `bindgen/` tree | by declared name — binding files declare functions whose names don't kebab back to their file (`getRandomU64` lives in `random.can`) |
+| the project's `deps/` tree | vendored packages (see PACKAGES.md), by declared name |
+| the bundled packages (`canon/std`) | by declared name; the stdlib's hand-written wrappers shadow its internal bindgen substrate |
 
-There is exactly one `use` resolution rule. Given `use a/b/c/…/Z`:
+**Ambiguity is a hard error, not a precedence.** A name that resolves in more than one location fails the build naming every candidate — there is no shadowing, so names are globally unique across a project, its dependency closure, and the standard library. A name that resolves nowhere is left for the checker, which reports the undefined name with full type context.
 
-1. If the leading segments `a/b` (the first two) match a declared dependency in the project's package manifest, resolve as a **package import**: locate the package in the cache, then look up the type `Z` (or, for multi-file packages, the file matching `Z`'s [kebab-case form](#naming-conventions)) inside it.
-2. Otherwise, resolve as a **local import**: walk the segments as directories relative to the current file and load `z.can` or `z/main.can` at the end.
+This is why the naming conventions have teeth: files are `kebab-case.can` of the PascalCase type they declare, so "which file defines `HttpServer`?" has exactly one mechanical answer, and the compiler applies it so you never write it down.
 
-The shipped packages `canon/std` and `canon/wasi` are pre-installed and bundled with the compiler binary, but indistinguishable from any other package at the language level — they appear in the cache and must be listed as deps to be used.
+**The prelude.** A handful of core names need no lookup at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`).
 
-Each import names exactly one type — there are no wildcard imports. If you use `JsonValue` and `JsonArray`, you write both `use canon/std/JsonValue` and `use canon/std/JsonArray`.
-
-**The prelude.** A handful of core names need no import at all: `Bool`, `Option`, `Result`, `List`, the primitives — and `Json`. JSON literals are part of the syntax, so `{"k":"v"}` types as `Json` (an alias of `String`) with zero ceremony; the loader pulls in `canon/std/Json` automatically the moment a program uses its machinery (interpolation, the validating `Json(...)` constructor, or `.ToJson()`). This mirrors Rust's prelude: the standard vocabulary is ambient, everything else is an explicit import.
-
-Packages have versions. The version pin lives in the project's package manifest (see [Package Manifests](#package-manifests)), not in source. `use canon/std/Json` never carries an `@version`.
+Packages have versions. The version pin lives in the vendored files' `package` directives (see PACKAGES.md), not at any reference site — a reference to `Decoder` never carries an `@version`.
 
 ### Visibility
 
@@ -460,7 +472,7 @@ Rules:
 
 - **Exactly one** top-level function may return a world-shape type. Multiple matches are a compile error.
 - **Mixed worlds** in the same module (one function returning `Unit`, another returning `Response`) are a compile error — a component exports exactly one world.
-- **Zero matches** means the module is a library, not a program. It can be `use`d from another module but not run with `canon run`.
+- **Zero matches** means the module is a library, not a program. It can be referenced from another module but not run with `canon run`.
 - The entry is lifted as *async-stackful* at the Component Model boundary so nested calls to suspending externs (filesystem, network, …) can yield without trapping. The programmer writes uniform, sync-looking code; the compiler handles the rest.
 
 Helpers should return non-world types (`String`, user-defined products, etc.). The discipline "helpers return data, the entry returns the world-shape" is the layering this rule encourages.
@@ -1037,7 +1049,7 @@ The input is either a `.wit` file (parsed directly) or a WebAssembly Component `
 4. Populate `~/.canon/cache/<sha256>.wasm`.
 5. Add the package to the project manifest's `deps`.
 
-After `canon install`, the consumer writes `use <namespace>/<package>/<Type>` and the rest is ordinary Canon.
+After `canon install`, the consumer just references `<Type>` — the loader resolves it against the installed bindings — and the rest is ordinary Canon.
 
 #### WIT → Canon Mapping
 
@@ -1092,21 +1104,9 @@ readViaStream = (Descriptor * Int) -> Result<InputStream, ErrorCode>
 
 This means `canon/std/file.can` can wrap `canon/wasi/filesystem/types#Descriptor` in a clean type without the user ever touching a `Handle` directly — exactly the layering the stdlib split is for.
 
-### Importing from Bindings
+### Referencing Bindings
 
-Idiomatic Canon code does not import binding files directly. Instead, it imports curated wrappers from `canon/std`. The wrappers are grouped into thematic sub-namespaces (`cli`, `fs`, `http`, `time`); the top level of `canon/std` is reserved for cross-cutting types (`IoError`, `Json`, `MalformedJson`, `Random`, `TestResult`).
-
-```
-use canon/std/IoError
-use canon/std/Random
-use canon/std/cli/Exit
-use canon/std/fs/File
-use canon/std/fs/Path
-use canon/std/http/HttpServer
-use canon/std/http/Url
-use canon/std/time/Instant
-use canon/std/time/Now
-```
+Idiomatic Canon code does not reach into binding files directly. Instead, it references the curated wrapper types from `canon/std` — `IoError`, `Random`, `Exit`, `File`, `Path`, `HttpServer`, `Url`, `Instant`, `Now`, … — and the loader resolves each name against the stdlib's wrapper layer (the wrappers shadow the package's internal bindgen substrate).
 
 | Wrapper | Wraps |
 |---|---|
@@ -1118,9 +1118,9 @@ use canon/std/time/Now
 | `canon/std/time/Now` | `canon/wasi/clocks/wall_clock` (or `canon:builtins/*` until P3 lands) |
 | `canon/std/Random` | `canon/wasi/random/random` |
 
-Each `use canon/std/<path>/X` imports exactly the named type along with its associated constructor and methods. The community can publish additional or alternative bindings under any namespace; the `canon/` namespace is reserved for packages shipped with the language.
+Referencing a wrapper type brings in exactly its file: the type, its constructor, and its methods. The community can publish additional or alternative bindings under any namespace; the `canon/` namespace is reserved for packages shipped with the language.
 
-A direct `use canon/wasi/clocks/monotonic_clock/now` works (everything is public), but you give up the capability discipline and the cleaned-up names that the `canon/std` wrapper provides.
+Referencing a raw binding function directly (e.g. `monotonicClockNow`) works — everything is public — but you give up the capability discipline and the cleaned-up names that the `canon/std` wrapper provides.
 
 ### What Canon Ships Itself
 
@@ -1132,12 +1132,12 @@ Three things ship with the language:
 - Boolean atoms (newtype aliases of `Unit`): `False`, `True`
 - Bit‑level composition: `Bit` (`= False + True`), `Byte` (`= Bit^8`), `Bytes` (`= Byte^*`)
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
-- Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
+- Generic containers: `List<T>`, `Option<T>`, `Result<T, E>`
 - Standard unions: `Bool` (`= False + True`), `Ord`
 - Async wrappers: `Future<T>`, `Stream<T>`
 - I/O built-ins: `print` (stdout), wired against `wasi:cli/stdout`
 
-`Map<K, V>` is a sorted key-value map. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is its set-shaped counterpart.
+`Map` and `Set` are deliberately **not** core: they are ordinary pure-Canon stdlib types (`canon/std/Map`, `canon/std/Set`) — sorted recursive unions built from nothing but dispatch, recursion, and `String` comparison. `Map` is a sorted key-value map; iteration order is alphabetical by key, kept that way by construction (`insert` is a sorted insert). `Set` is its set-shaped counterpart, and `set.List()` returns the members alphabetically. The stdlib versions are `String`-keyed/`String`-valued until stdlib generics land; the guiding rule is that anything expressible in the language lives in the language.
 
 `Future<T>` and `Stream<T>` appear in user-visible signatures only when a binding file mirrors an `async func` / `stream<T>` from its WIT interface (see [WIT → Canon Mapping](#wit--canon-mapping)). Everywhere else they are inferred and inserted by the compiler — ordinary Canon code consumes the unwrapped `T` and the async/streaming machinery is invisible (see [Async](#async)).
 
@@ -1152,11 +1152,15 @@ Three things ship with the language:
 | `canon/std/cli/Exit` (`Int.exit()`) | `canon:builtins/cli` (will move to `wasi/cli/exit` once narrow-int codegen lands) | ✅ |
 | `canon/std/Random` | `canon/wasi/random/random` | ✅ |
 | `canon/std/time/Now` (RFC 3339 wall-clock time) | `canon/wasi/clocks/wall_clock` (today: `canon:builtins/clock`) | ✅ |
-| `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ |
+| `canon/std/fs/File`, `canon/std/fs/Path`, `canon/std/fs/Contents` (write), `canon/std/IoError` | `canon/wasi/filesystem/types` (today: `canon:builtins/filesystem`) | ✅ — read + write (`Contents("x").write(Path("f"))?.File()?.read()?` round-trips) |
 | `canon/std/http/Url`, `canon/std/http/InvalidUrl`, `canon/std/http/HttpError` | `canon:builtins/url` + `canon:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
 | `canon/std/http/HttpServer`, `canon/std/http/HttpStatus`, `canon/std/http/Port`, `canon/std/http/RoutePath` | `canon:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
 | `canon/std/Json`, `canon/std/MalformedJson` | `canon:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Canon (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k":v}` / `[v,...]` literal syntax with interpolation; structural derive for user types pending |
 | `canon/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Canon | ✅ |
+| `canon/std/Int` (`Int(String) -> Result<Int, MalformedInt>`), `canon/std/MalformedInt` | pure Canon | ✅ — the fallible half of [Conversions](#conversions); the infallible half (`String(Int)`, `String(Byte)`) is a compiler builtin |
+| `canon/std/Byte` (`Byte = Int`; `String(Byte(65))` is `"A"`) | pure Canon (rendering builtin) | ✅ |
+| `canon/std/Map` (sorted, alphabetical iteration; `String` keys/values for now) | pure Canon — recursive union | ✅ |
+| `canon/std/Set` (sorted; `set.List()` = members alphabetically) | pure Canon — recursive union | ✅ |
 
 The `canon:builtins/*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available — the binding file in `canon/wasi` is regenerated, the `canon/std` wrapper stays the same.
 
@@ -1202,6 +1206,10 @@ This is a deliberate design choice: types lie less than names.
 ## Strings
 
 A `String` is `Byte^*` interpreted as UTF-8. Indexing yields bytes, not codepoints. Higher-level operations (grapheme iteration, etc.) are stdlib functions, not language built-ins.
+
+### Ordering
+
+Strings carry the same comparison surface as `Int` — `eq`, `ne`, `lt`, `le`, `gt`, `ge` — one spelling for comparison regardless of type. Order is byte-wise lexicographic, with the shorter string first on a shared prefix (`"app".lt("apple")` is `True`). This is the same order the compiler enforces on declarations, dispatch arms, and imports, now available to programs.
 
 ### Indexing Is 1-Based
 

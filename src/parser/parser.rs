@@ -33,28 +33,17 @@ impl Parser {
     fn parse_item(&mut self) -> Result<Item> {
         let start_span = self.current_span();
 
+        // `use` was removed from the language: imports are automatic.
+        // Recognize the old keyword purely to steer migration — the
+        // message says what replaced it.
         if self.check(TokenKind::KwUse) {
-            self.advance();
-            let first = self.expect(TokenKind::Ident, "expected module name after `use`")?;
-            let mut path = first.lexeme.clone();
-            let mut end_span = first.span;
-            while self.check(TokenKind::Slash) {
-                self.advance(); // consume /
-                let seg = self.expect(
-                    TokenKind::Ident,
-                    "expected identifier after `/` in use path",
-                )?;
-                path.push('/');
-                path.push_str(&seg.lexeme);
-                end_span = seg.span;
-            }
-            return Ok(Item::Use(UseDecl {
-                name: Ident {
-                    name: path,
-                    span: span_join(start_span, end_span),
-                },
-                span: span_join(start_span, end_span),
-            }));
+            return Err(CanonError::ParseError {
+                message: "`use` has been removed: a reference to `Foo` resolves to `foo.can` \
+                          automatically (project files, then `deps/`, then the standard \
+                          library) — delete this line"
+                    .to_string(),
+                span: start_span,
+            });
         }
 
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;

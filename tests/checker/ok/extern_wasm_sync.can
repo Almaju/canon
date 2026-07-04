@@ -1,5 +1,3 @@
-use wasi/clocks/wall_clock
-
 main = () -> Unit {
     "ok".print()
 }

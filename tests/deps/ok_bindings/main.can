@@ -1,5 +1,3 @@
-use canon/builtins/math
-
 main = () -> Unit {
     5
         .min(3)

@@ -21,9 +21,7 @@ fn canon_test_exit_codes() {
     let failing = workdir.join("failing_test.can");
     std::fs::write(
         &failing,
-        r#"use canon/std/TestResult
-
-testBroken = () -> TestResult {
+        r#"testBroken = () -> TestResult {
     1
         .add(2)
         .eq(7)
@@ -55,9 +53,7 @@ testFine = () -> TestResult {
     let passing = workdir.join("passing_test.can");
     std::fs::write(
         &passing,
-        r#"use canon/std/TestResult
-
-testFine = () -> TestResult {
+        r#"testFine = () -> TestResult {
     1
         .add(2)
         .eq(3)
@@ -83,9 +79,7 @@ fn exit_code_propagates() {
     let src_path = workdir.join("exit3.can");
     std::fs::write(
         &src_path,
-        r#"use canon/std/cli/Exit
-
-main = () -> Unit {
+        r#"main = () -> Unit {
     "terminating with 3".print()
     Exit(3).exit()
 }

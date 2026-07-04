@@ -1,0 +1,56 @@
+main = () -> Unit {
+    Map().insert("b", "banana").insert("a", "apple").get("a").(
+        * (None) -> Unit { "none".print() }
+        * (Some<String>) -> Unit { String.print() }
+    )
+    Map().insert("k", "v1").insert("k", "v2").get("k").(
+        * (None) -> Unit { "none".print() }
+        * (Some<String>) -> Unit { String.print() }
+    )
+    Map().insert("a", "1").get("missing").(
+        * (None) -> Unit { "none".print() }
+        * (Some<String>) -> Unit { String.print() }
+    )
+    Map()
+        .insert("a", "1")
+        .insert("b", "2")
+        .length()
+        .print()
+    Map()
+        .insert("a", "1")
+        .insert("b", "2")
+        .remove("a")
+        .length()
+        .print()
+    Map()
+        .insert("a", "1")
+        .insert("b", "2")
+        .keys()
+        .Json()
+        .print()
+    Map()
+        .insert("a", "1")
+        .insert("b", "2")
+        .values()
+        .Json()
+        .print()
+    Map()
+        .insert("a", "1")
+        .remove("missing")
+        .length()
+        .print()
+    Map()
+        .insert("b", "2")
+        .insert("c", "3")
+        .insert("a", "1")
+        .keys()
+        .Json()
+        .print()
+    Map()
+        .insert("b", "2")
+        .insert("c", "3")
+        .insert("a", "1")
+        .values()
+        .Json()
+        .print()
+}
