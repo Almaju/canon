@@ -4140,10 +4140,11 @@ impl<'m> WasmGen<'m> {
             }
             // List constructor: List(e1, e2, e3, ...)
             "List" => self.build_list_literal(args, scope, f),
-            // Empty-map constructor: `Map()` — the type's zero value and
-            // the only Map source besides `insert`. Same `(ptr, count)`
-            // stack shape as List; see the fn_map_* helpers.
-            "Map" => {
+            // Empty-collection constructors: `Map()` / `Set()` — each
+            // type's zero value and the only source besides `insert`.
+            // Same `(ptr, count)` stack shape as List; a Set is a Map
+            // with an empty value slot (see the fn_map_* helpers).
+            "Map" | "Set" => {
                 f.instruction(&Instruction::I32Const(0));
                 f.instruction(&Instruction::I32Const(0));
                 Ty::List
@@ -6820,26 +6821,54 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
-            // ── Map methods (String keys, String values) ─────────────
+            // ── Map / Set methods (String keys, String values) ───────
             //
-            // A Map rides the same `(ptr, count)` stack shape as List;
-            // entries are 16 bytes (key ptr/len, value ptr/len). All
-            // updates are functional — the helpers copy into fresh
-            // allocations.
+            // Both ride the same `(ptr, count)` stack shape as List;
+            // entries are 16 bytes (key ptr/len, value ptr/len — a Set
+            // entry's value slot is the empty string). All updates are
+            // functional and sorted — the helpers copy into fresh
+            // allocations keeping keys alphabetical.
             ("insert", Ty::List) => {
+                // Two args = Map insert(k, v); one arg = Set insert(k),
+                // which is a Map insert with an empty value slot.
                 for a in args.iter().take(2) {
                     let ty = self.compile_expr(a, scope, f);
                     if !ty.is_str_like() {
                         // Mismatched arg — degrade to the empty string
-                        // rather than corrupting the stack (Map is
-                        // `Map<String, String>` for now).
+                        // rather than corrupting the stack (keys and
+                        // values are Strings for now).
                         self.drop_value(ty, f);
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Const(0));
                     }
                 }
+                if args.len() < 2 {
+                    f.instruction(&Instruction::I32Const(0));
+                    f.instruction(&Instruction::I32Const(0));
+                }
                 // [map_ptr, count, kp, kl, vp, vl] → (ptr, count).
                 f.instruction(&Instruction::Call(self.fn_map_insert));
+                Ty::List
+            }
+            // `set.contains(k)` — a Map lookup that keeps only the
+            // found flag.
+            ("contains", Ty::List) => {
+                let ty = self.compile_expr(&args[0], scope, f);
+                if !ty.is_str_like() {
+                    self.drop_value(ty, f);
+                    f.instruction(&Instruction::I32Const(0));
+                    f.instruction(&Instruction::I32Const(0));
+                }
+                f.instruction(&Instruction::Call(self.fn_map_get));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // vl
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // vp
+                Ty::I32
+            }
+            // `set.List()` — conversion-is-construction: the members,
+            // alphabetically, as a `List<String>` (key projection).
+            ("List", Ty::List) => {
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::Call(self.fn_map_project));
                 Ty::List
             }
             ("remove", Ty::List) => {

@@ -1,7 +1,0 @@
-tags = (Set) -> Set {
-    Set.insert("k")
-}
-
-main = () -> Unit {
-    "done".print()
-}

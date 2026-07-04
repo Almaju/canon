@@ -47,9 +47,9 @@ const BUILTIN_GENERIC_TYPES: &[&str] =
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
-/// `Map()` is the empty map — the type's zero value and the only way to
-/// start one (all Map updates are functional; see `fn_map_insert`).
-const ZERO_DATA_BUILTINS: &[&str] = &["False", "Map", "True", "Unit"];
+/// `Map()` / `Set()` are the empty collections — each type's zero value and
+/// the only way to start one (all updates are functional; see `fn_map_insert`).
+const ZERO_DATA_BUILTINS: &[&str] = &["False", "Map", "Set", "True", "Unit"];
 
 /// Synthetic concurrency combinators recognised by the codegen as built-in
 /// `compile_parallel` / `compile_race` paths. They appear in source as if
@@ -1761,9 +1761,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     }
     // `Map<String, String>` — the implemented surface only (see the
     // fn_map_* helpers in codegen). Construction is `Map()`; every
-    // update is functional. `Set` stays out until it has codegen —
-    // earlier stub entries made programs typecheck and then silently
-    // miscompile.
+    // update is functional and keeps entries sorted by key.
     if receiver_ty == "Map" {
         return matches!(
             (method, arg_count),
@@ -1773,6 +1771,16 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("length", 0)
                 | ("remove", 1)
                 | ("values", 0)
+        );
+    }
+    // `Set<String>` — a Map with no values (the codegen reuses the
+    // fn_map_* helpers with an empty value slot). Construction is
+    // `Set()`; `set.List()` is the conversion-is-construction spelling
+    // of "the members, alphabetically, as a List<String>".
+    if receiver_ty == "Set" {
+        return matches!(
+            (method, arg_count),
+            ("contains", 1) | ("insert", 1) | ("length", 0) | ("List", 0) | ("remove", 1)
         );
     }
     false
@@ -1997,6 +2005,10 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("Map", "insert" | "remove") => "Map".to_string(),
         ("Map", "keys" | "values") => "List".to_string(),
         ("Map", "length") => "Int".to_string(),
+        ("Set", "contains") => "Bool".to_string(),
+        ("Set", "insert" | "remove") => "Set".to_string(),
+        ("Set", "length") => "Int".to_string(),
+        ("Set", "List") => "List".to_string(),
         _ => "<unknown>".to_string(),
     }
 }
