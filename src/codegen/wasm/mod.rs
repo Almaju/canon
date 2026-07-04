@@ -1171,26 +1171,6 @@ struct WasmGen<'m> {
     /// the language is built on). Core signature:
     /// `(ptr1, len1, ptr2, len2) -> i32`.
     fn_str_cmp: u32,
-    /// `Map<String, String>` helpers. A Map value is `(entries_ptr,
-    /// count)` on the stack — same two-i32 shape as `List` — with
-    /// 16-byte entries: key ptr/len at +0/+4, the 8-byte value slot at
-    /// +8 (string values: ptr/len at +8/+12). Maps are immutable;
-    /// `insert`/`remove` copy into a fresh allocation. Key lookup is a
-    /// linear scan through `fn_str_cmp` — fine for the small maps
-    /// Canon programs build today; a sorted layout can land later
-    /// without changing the surface.
-    ///
-    /// `(map_ptr, count, key_ptr, key_len) -> (found, val_ptr, val_len)`
-    fn_map_get: u32,
-    /// `(map_ptr, count, key_ptr, key_len, val_ptr, val_len) -> (ptr, count)`
-    fn_map_insert: u32,
-    /// `(map_ptr, count, key_ptr, key_len) -> (ptr, count)`
-    fn_map_remove: u32,
-    /// `(map_ptr, count, field_offset) -> (list_ptr, count)` — copies
-    /// the 8 bytes at `entry + field_offset` of every entry into a
-    /// fresh 8-byte-stride list: offset 0 projects keys, offset 8
-    /// projects values.
-    fn_map_project: u32,
     /// `(list_ptr, count, slot: i64) -> (ptr, count)` — fresh list
     /// with `slot` appended. The call site packs the element into the
     /// 8-byte slot (i64 as-is; strings as `ptr | len << 32`, matching
@@ -1275,18 +1255,14 @@ impl<'m> WasmGen<'m> {
             fn_print_float: base_defined + 6,
             fn_int_to_str: base_defined + 7,
             fn_str_cmp: base_defined + 8,
-            fn_map_get: base_defined + 9,
-            fn_map_insert: base_defined + 10,
-            fn_map_remove: base_defined + 11,
-            fn_map_project: base_defined + 12,
-            fn_list_append: base_defined + 13,
-            fn_list_concat: base_defined + 14,
+            fn_list_append: base_defined + 9,
+            fn_list_concat: base_defined + 10,
             // Slot reservation for the handler wrapper is decided in
             // `assign_func_indices` (it depends on whether the AST
             // actually defines `handleRequest`). When present, it sits
             // at the last available slot after user functions.
             fn_handler_wrapper: None,
-            fn_user_start: base_defined + 15,
+            fn_user_start: base_defined + 11,
             user_handler_func_idx: None,
             cur_fn_early_return: None,
             http_mode: false,
@@ -1335,13 +1311,9 @@ impl<'m> WasmGen<'m> {
         gen.fn_print_float = HTTP_BASE_DEFINED + 6;
         gen.fn_int_to_str = HTTP_BASE_DEFINED + 7;
         gen.fn_str_cmp = HTTP_BASE_DEFINED + 8;
-        gen.fn_map_get = HTTP_BASE_DEFINED + 9;
-        gen.fn_map_insert = HTTP_BASE_DEFINED + 10;
-        gen.fn_map_remove = HTTP_BASE_DEFINED + 11;
-        gen.fn_map_project = HTTP_BASE_DEFINED + 12;
-        gen.fn_list_append = HTTP_BASE_DEFINED + 13;
-        gen.fn_list_concat = HTTP_BASE_DEFINED + 14;
-        gen.fn_user_start = HTTP_BASE_DEFINED + 15;
+        gen.fn_list_append = HTTP_BASE_DEFINED + 9;
+        gen.fn_list_concat = HTTP_BASE_DEFINED + 10;
+        gen.fn_user_start = HTTP_BASE_DEFINED + 11;
         gen.fn_waitable_set_new = u32::MAX;
         gen.fn_waitable_join = u32::MAX;
         gen.fn_waitable_set_wait = u32::MAX;
@@ -1387,13 +1359,9 @@ impl<'m> WasmGen<'m> {
         gen.fn_print_float = WEB_BASE_DEFINED + 8;
         gen.fn_int_to_str = WEB_BASE_DEFINED + 9;
         gen.fn_str_cmp = WEB_BASE_DEFINED + 10;
-        gen.fn_map_get = WEB_BASE_DEFINED + 11;
-        gen.fn_map_insert = WEB_BASE_DEFINED + 12;
-        gen.fn_map_remove = WEB_BASE_DEFINED + 13;
-        gen.fn_map_project = WEB_BASE_DEFINED + 14;
-        gen.fn_list_append = WEB_BASE_DEFINED + 15;
-        gen.fn_list_concat = WEB_BASE_DEFINED + 16;
-        gen.fn_user_start = WEB_BASE_DEFINED + 17;
+        gen.fn_list_append = WEB_BASE_DEFINED + 11;
+        gen.fn_list_concat = WEB_BASE_DEFINED + 12;
+        gen.fn_user_start = WEB_BASE_DEFINED + 13;
         gen.fn_waitable_set_new = u32::MAX;
         gen.fn_waitable_join = u32::MAX;
         gen.fn_waitable_set_wait = u32::MAX;
@@ -2154,7 +2122,9 @@ impl<'m> WasmGen<'m> {
             // names belong here — only true ambient-effect capabilities,
             // not value types like `HttpServer<S>`.
             "Stdout" | "Stderr" | "Stdin" | "Network" | "Clock" | "Filesystem" => Ty::Unit,
-            "List" | "Map" | "Set" => Ty::List,
+            // `Map` / `Set` are NOT here — they are pure-Canon stdlib
+            // unions whose repr resolves through `type_defs` below.
+            "List" => Ty::List,
             "Option" | "Result" => Ty::NamedPtr(name.to_string()),
             _ => {
                 if let Some(body) = self.type_defs.get(name).cloned() {
@@ -2666,396 +2636,6 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::Return);
         f.instruction(&Instruction::End);
         f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Build the `fn_map_get` helper:
-    /// `(map_ptr, count, key_ptr, key_len) -> (found, val_ptr, val_len)`.
-    /// Linear scan over 16-byte entries, comparing keys via `fn_str_cmp`.
-    fn build_map_get(&self) -> Function {
-        // Locals: 0..3 = params; 4 = i.
-        let mut f = Function::new([(1, ValType::I32)]);
-        // entry_base(i) = map_ptr + i*16, recomputed per use.
-        let entry_base = |f: &mut Function, field_off: u64| {
-            f.instruction(&Instruction::LocalGet(0));
-            f.instruction(&Instruction::LocalGet(4));
-            f.instruction(&Instruction::I32Const(16));
-            f.instruction(&Instruction::I32Mul);
-            f.instruction(&Instruction::I32Add);
-            f.instruction(&Instruction::I32Load(MemArg {
-                offset: field_off,
-                align: 2,
-                memory_index: 0,
-            }));
-        };
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        entry_base(&mut f, 0); // entry key ptr
-        entry_base(&mut f, 4); // entry key len
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::Call(self.fn_str_cmp));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::I32Const(1));
-        entry_base(&mut f, 8); // value ptr
-        entry_base(&mut f, 12); // value len
-        f.instruction(&Instruction::Return);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(4));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Build the `fn_map_insert` helper:
-    /// `(map_ptr, count, key_ptr, key_len, val_ptr, val_len) -> (ptr, count)`.
-    ///
-    /// Functional *sorted* insert — DESIGN.md pins `Map` iteration
-    /// order as alphabetical by key, so entries are kept sorted and
-    /// the scan is a lower-bound search: it stops at the first entry
-    /// whose key is `>=` the new key. Equal → replace at that index;
-    /// greater (or end) → insert there, shifting the suffix one entry
-    /// right in the fresh allocation.
-    fn build_map_insert(&self) -> Function {
-        let mem64 = MemArg {
-            offset: 0,
-            align: 3,
-            memory_index: 0,
-        };
-        // Locals: 0..5 = params; 6 = i (lower-bound index); 7 = found;
-        // 8 = new_ptr; 9 = out_count; 10 = j; 11 = delta; 12 = cmp.
-        let mut f = Function::new([(7, ValType::I32)]);
-        // ── Lower-bound scan ──
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        for off in [0u64, 4] {
-            f.instruction(&Instruction::LocalGet(0));
-            f.instruction(&Instruction::LocalGet(6));
-            f.instruction(&Instruction::I32Const(16));
-            f.instruction(&Instruction::I32Mul);
-            f.instruction(&Instruction::I32Add);
-            f.instruction(&Instruction::I32Load(MemArg {
-                offset: off,
-                align: 2,
-                memory_index: 0,
-            }));
-        }
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::Call(self.fn_str_cmp));
-        f.instruction(&Instruction::LocalSet(12));
-        // entry == key → replace at i.
-        f.instruction(&Instruction::LocalGet(12));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::LocalSet(7));
-        f.instruction(&Instruction::Br(2));
-        f.instruction(&Instruction::End);
-        // entry > key → i is the insertion slot.
-        f.instruction(&Instruction::LocalGet(12));
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::I32GtS);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(6));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        // out_count = count + (1 - found).
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(9));
-        // new_ptr = alloc(out_count * 16)
-        f.instruction(&Instruction::LocalGet(9));
-        f.instruction(&Instruction::I32Const(16));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::LocalSet(8));
-        // Prefix: words [0, i*2) copy straight across.
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(8));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I64Load(mem64));
-        f.instruction(&Instruction::I64Store(mem64));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(10));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        // Suffix: replace copies words [(i+1)*2, count*2) unshifted
-        // (entry i is rewritten below); insert copies [i*2, count*2)
-        // shifted one entry (+2 words) right.
-        //   j starts at 2*i + 2*found, dst = j + delta,
-        //   delta = 2 - 2*found.
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(10));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(11));
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(8));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::LocalGet(11));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I64Load(mem64));
-        f.instruction(&Instruction::I64Store(mem64));
-        f.instruction(&Instruction::LocalGet(10));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(10));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        // Write the entry at new_ptr + i*16: kp, kl, vp, vl.
-        for (off, local) in [(0u64, 2u32), (4, 3), (8, 4), (12, 5)] {
-            f.instruction(&Instruction::LocalGet(8));
-            f.instruction(&Instruction::LocalGet(6));
-            f.instruction(&Instruction::I32Const(16));
-            f.instruction(&Instruction::I32Mul);
-            f.instruction(&Instruction::I32Add);
-            f.instruction(&Instruction::LocalGet(local));
-            f.instruction(&Instruction::I32Store(MemArg {
-                offset: off,
-                align: 2,
-                memory_index: 0,
-            }));
-        }
-        f.instruction(&Instruction::LocalGet(8));
-        f.instruction(&Instruction::LocalGet(9));
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Build the `fn_map_remove` helper:
-    /// `(map_ptr, count, key_ptr, key_len) -> (ptr, count)`.
-    /// Absent key returns the map unchanged; a present key yields a
-    /// fresh array with that entry's two words skipped.
-    fn build_map_remove(&self) -> Function {
-        let mem64 = MemArg {
-            offset: 0,
-            align: 3,
-            memory_index: 0,
-        };
-        // Locals: 0..3 = params; 4 = i; 5 = found; 6 = new_ptr; 7 = j.
-        let mut f = Function::new([(4, ValType::I32)]);
-        // ── Scan ──
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        for off in [0u64, 4] {
-            f.instruction(&Instruction::LocalGet(0));
-            f.instruction(&Instruction::LocalGet(4));
-            f.instruction(&Instruction::I32Const(16));
-            f.instruction(&Instruction::I32Mul);
-            f.instruction(&Instruction::I32Add);
-            f.instruction(&Instruction::I32Load(MemArg {
-                offset: off,
-                align: 2,
-                memory_index: 0,
-            }));
-        }
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::Call(self.fn_str_cmp));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::LocalSet(5));
-        f.instruction(&Instruction::Br(2));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(4));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        // Absent → unchanged.
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::Return);
-        f.instruction(&Instruction::End);
-        // new_ptr = alloc((count-1) * 16)
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::I32Const(16));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::LocalSet(6));
-        // Copy count*2 words, skipping words 2i and 2i+1; the write
-        // cursor is `j - 2` once past the removed entry.
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        // skip the removed entry's words
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32DivU);
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Ne);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        // dst word index = j < 2i ? j : j - 2
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Const(2));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32LtU);
-        f.instruction(&Instruction::Select);
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I64Load(mem64));
-        f.instruction(&Instruction::I64Store(mem64));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(7));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Build the `fn_map_project` helper:
-    /// `(map_ptr, count, field_offset) -> (list_ptr, count)`.
-    /// Copies the 8-byte word at `entry + field_offset` of every entry
-    /// into a fresh 8-byte-stride list — offset 0 yields the keys
-    /// (`(ptr, len)` slots, i.e. a `List<String>`), offset 8 the values.
-    fn build_map_project(&self) -> Function {
-        let mem64 = MemArg {
-            offset: 0,
-            align: 3,
-            memory_index: 0,
-        };
-        // Locals: 0..2 = params; 3 = i; 4 = new_ptr.
-        let mut f = Function::new([(2, ValType::I32)]);
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::LocalSet(4));
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Const(16));
-        f.instruction(&Instruction::I32Mul);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I64Load(mem64));
-        f.instruction(&Instruction::I64Store(mem64));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(3));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::LocalGet(1));
         f.instruction(&Instruction::End);
         f
     }
@@ -4140,15 +3720,10 @@ impl<'m> WasmGen<'m> {
             }
             // List constructor: List(e1, e2, e3, ...)
             "List" => self.build_list_literal(args, scope, f),
-            // Empty-collection constructors: `Map()` / `Set()` — each
-            // type's zero value and the only source besides `insert`.
-            // Same `(ptr, count)` stack shape as List; a Set is a Map
-            // with an empty value slot (see the fn_map_* helpers).
-            "Map" | "Set" => {
-                f.instruction(&Instruction::I32Const(0));
-                f.instruction(&Instruction::I32Const(0));
-                Ty::List
-            }
+            // NOTE: `Map()` / `Set()` are NOT built in — they are the
+            // pure-Canon `canon/std/Map` / `canon/std/Set` recursive
+            // unions, whose zero-arg `Self` constructors resolve
+            // through the ordinary user-defined path below.
             // NOTE: the concurrency combinators (`parallel` / `race`) are
             // *methods* — `a.parallel(b)` — handled at the top of
             // `compile_method_call`. The checker rejects the bare call
@@ -4650,6 +4225,48 @@ impl<'m> WasmGen<'m> {
         } else {
             vec![]
         };
+
+        // ── Auto-boxed product payloads (DESIGN.md § Recursive Types) ──
+        //
+        // A variant whose typedef is a multi-field product (`Link =
+        // Label * Next` inside `Chain = Link + Stop`) stores ONE
+        // pointer to a standalone product struct, not inline fields.
+        // `build_product_value` already handles any field count and
+        // arbitrarily nested constructors (including recursive
+        // same-union values) via its operand-stack discipline, and the
+        // indirection is exactly what makes recursive types finite.
+        // The arm side reads the pointer back in `bind_arm_payload`'s
+        // `NamedPtr` case, so field access on the bound name goes
+        // through the ordinary `product_field_layout` offsets.
+        if layout.len() >= 2 {
+            let fields: Vec<Expr> = match args {
+                [Expr::ProductValue { fields, .. }] => fields.clone(),
+                _ => args.to_vec(),
+            };
+            self.build_product_value(variant_name, &fields, scope, f);
+            // [product_ptr] — park it while the union struct allocates
+            // (nothing below compiles user code, so tmp_i32 is safe).
+            f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+            f.instruction(&Instruction::I32Const(total_size as i32));
+            f.instruction(&Instruction::Call(self.fn_alloc));
+            f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+            f.instruction(&Instruction::I32Const(tag as i32));
+            f.instruction(&Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
+            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+            f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+            f.instruction(&Instruction::I32Store(MemArg {
+                offset: payload_start as u64,
+                align: 2,
+                memory_index: 0,
+            }));
+            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+            return Ty::NamedPtr(union_name.to_string());
+        }
 
         // Encoded field types for the store pass below.
         //
@@ -6725,41 +6342,15 @@ impl<'m> WasmGen<'m> {
                 Ty::List
             }
             ("get", Ty::List) => {
-                // `list.get(i)` or `map.get(key)` — one method name,
-                // disambiguated by the argument's compiled type: an
-                // `Int` indexes a list, a `String` looks up a map key
-                // (Maps share the two-i32 `(ptr, count)` stack shape
-                // with Lists; the checker keeps the surfaces separate).
+                // list.get(i) -> Option — mirrors `first` but reads at
+                // `list_ptr + i*8` after an unsigned bounds check
+                // (negative indices wrap to huge u64s and fail it).
                 //
-                // Compile the argument first — it is arbitrary user
-                // code and may clobber every scratch local; the
+                // Compile the index argument first — it is arbitrary
+                // user code and may clobber every scratch local; the
                 // receiver's (ptr, len) stays safe on the stack below
                 // it.
                 let idx_ty = self.compile_expr(&args[0], scope, f);
-                if idx_ty.is_str_like() {
-                    // Map lookup: [map_ptr, count, kp, kl] → (found,
-                    // vp, vl). Stash the value pair in tmp_i32(_b) —
-                    // build_option_some(Str) only touches rptr/rlen,
-                    // alloc_ptr, and addr_scratch.
-                    f.instruction(&Instruction::Call(self.fn_map_get));
-                    f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // vl
-                    f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // vp
-                    f.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
-                    f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
-                    f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-                    self.build_option_some(Ty::Str, scope, f);
-                    f.instruction(&Instruction::Else);
-                    self.build_option_none(f);
-                    f.instruction(&Instruction::End);
-                    // String payload on both branches so `(Some<String>)`
-                    // arms and `?` extract (ptr, len) — the same shape
-                    // extern `option<string>` returns surface as.
-                    return Ty::NamedPtrStr(
-                        "Option".to_string(),
-                        "String".to_string(),
-                        "String".to_string(),
-                    );
-                }
                 if !matches!(idx_ty, Ty::I64) {
                     self.drop_value(idx_ty, f);
                     f.instruction(&Instruction::I64Const(1));
@@ -6821,76 +6412,10 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
-            // ── Map / Set methods (String keys, String values) ───────
-            //
-            // Both ride the same `(ptr, count)` stack shape as List;
-            // entries are 16 bytes (key ptr/len, value ptr/len — a Set
-            // entry's value slot is the empty string). All updates are
-            // functional and sorted — the helpers copy into fresh
-            // allocations keeping keys alphabetical.
-            ("insert", Ty::List) => {
-                // Two args = Map insert(k, v); one arg = Set insert(k),
-                // which is a Map insert with an empty value slot.
-                for a in args.iter().take(2) {
-                    let ty = self.compile_expr(a, scope, f);
-                    if !ty.is_str_like() {
-                        // Mismatched arg — degrade to the empty string
-                        // rather than corrupting the stack (keys and
-                        // values are Strings for now).
-                        self.drop_value(ty, f);
-                        f.instruction(&Instruction::I32Const(0));
-                        f.instruction(&Instruction::I32Const(0));
-                    }
-                }
-                if args.len() < 2 {
-                    f.instruction(&Instruction::I32Const(0));
-                    f.instruction(&Instruction::I32Const(0));
-                }
-                // [map_ptr, count, kp, kl, vp, vl] → (ptr, count).
-                f.instruction(&Instruction::Call(self.fn_map_insert));
-                Ty::List
-            }
-            // `set.contains(k)` — a Map lookup that keeps only the
-            // found flag.
-            ("contains", Ty::List) => {
-                let ty = self.compile_expr(&args[0], scope, f);
-                if !ty.is_str_like() {
-                    self.drop_value(ty, f);
-                    f.instruction(&Instruction::I32Const(0));
-                    f.instruction(&Instruction::I32Const(0));
-                }
-                f.instruction(&Instruction::Call(self.fn_map_get));
-                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // vl
-                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // vp
-                Ty::I32
-            }
-            // `set.List()` — conversion-is-construction: the members,
-            // alphabetically, as a `List<String>` (key projection).
-            ("List", Ty::List) => {
-                f.instruction(&Instruction::I32Const(0));
-                f.instruction(&Instruction::Call(self.fn_map_project));
-                Ty::List
-            }
-            ("remove", Ty::List) => {
-                let ty = self.compile_expr(&args[0], scope, f);
-                if !ty.is_str_like() {
-                    self.drop_value(ty, f);
-                    f.instruction(&Instruction::I32Const(0));
-                    f.instruction(&Instruction::I32Const(0));
-                }
-                f.instruction(&Instruction::Call(self.fn_map_remove));
-                Ty::List
-            }
-            ("keys", Ty::List) => {
-                f.instruction(&Instruction::I32Const(0));
-                f.instruction(&Instruction::Call(self.fn_map_project));
-                Ty::List
-            }
-            ("values", Ty::List) => {
-                f.instruction(&Instruction::I32Const(8));
-                f.instruction(&Instruction::Call(self.fn_map_project));
-                Ty::List
-            }
+            // NOTE: `Map` / `Set` methods are NOT built in — they are
+            // pure Canon (`canon/std/Map`, `canon/std/Set`) and resolve
+            // through `func_table` in `compile_method_call` before the
+            // builtin fallback ever fires.
             // ── List growth ──────────────────────────────────────────
             ("append", Ty::List) => {
                 // Compile the element, then pack it into the 8-byte
@@ -7618,14 +7143,39 @@ impl<'m> WasmGen<'m> {
                     f.instruction(&Instruction::LocalSet(scope.rbool()));
                 }
             },
-            Ty::NamedPtr(_) | Ty::Ptr => match ty {
-                Ty::NamedPtr(_) | Ty::Ptr => {
+            Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) | Ty::Ptr => match ty {
+                Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) | Ty::Ptr => {
                     f.instruction(&Instruction::LocalSet(scope.rbool()));
                 }
                 _ => {
                     self.drop_value(ty, f);
                     f.instruction(&Instruction::I32Const(0));
                     f.instruction(&Instruction::LocalSet(scope.rbool()));
+                }
+            },
+            Ty::F64 => match ty {
+                Ty::F64 => {
+                    f.instruction(&Instruction::LocalSet(scope.tmp_f64()));
+                }
+                _ => {
+                    self.drop_value(ty, f);
+                    f.instruction(&Instruction::F64Const(0.0.into()));
+                    f.instruction(&Instruction::LocalSet(scope.tmp_f64()));
+                }
+            },
+            // A List result is a (ptr, count) pair — same two-i32 shape
+            // as a string, parked in the same rptr/rlen scratch pair.
+            Ty::List => match ty {
+                Ty::List => {
+                    f.instruction(&Instruction::LocalSet(scope.rlen()));
+                    f.instruction(&Instruction::LocalSet(scope.rptr()));
+                }
+                _ => {
+                    self.drop_value(ty, f);
+                    f.instruction(&Instruction::I32Const(0));
+                    f.instruction(&Instruction::LocalSet(scope.rptr()));
+                    f.instruction(&Instruction::I32Const(0));
+                    f.instruction(&Instruction::LocalSet(scope.rlen()));
                 }
             },
             _ => {
@@ -7732,8 +7282,28 @@ impl<'m> WasmGen<'m> {
                     .vars
                     .insert(bound_name, (base_scope.rbool(), payload_ty));
             }
+            Ty::Ptr | Ty::NamedPtr(_) => {
+                // Boxed product payload (auto-boxed by
+                // `build_union_value` for multi-field product variants,
+                // or a single pointer payload): the union stores one
+                // pointer at +4. Bind it in the string pair's first
+                // slot — dedicated, so arm-body builtins that use the
+                // ordinary scratch locals can't clobber it — and field
+                // access on the bound name (`Link.Label`) reads through
+                // `product_field_layout` as usual.
+                f.instruction(&Instruction::LocalGet(base_scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(base_scope.arm_payload_ptr()));
+                scope
+                    .vars
+                    .insert(bound_name, (base_scope.arm_payload_ptr(), payload_ty));
+            }
             _ => {
-                // Product / ptr / list payloads not yet bound.
+                // List payloads not yet bound.
             }
         }
         scope
@@ -7765,6 +7335,14 @@ impl<'m> WasmGen<'m> {
             }
             return (String::new(), Ty::Unit);
         }
+        // Zero-data variants (`Stop`, `Empty` — a variant with no
+        // typedef of its own) carry nothing to bind. Without this
+        // guard their repr resolves to `NamedPtr(parent)` through the
+        // `variant_parent` arm of `resolve_repr` and the pointer case
+        // above would bind garbage read from offset 4.
+        if !self.type_defs.contains_key(name) && self.variant_parent.contains_key(name) {
+            return (String::new(), Ty::Unit);
+        }
         // User variant: bind under the variant's own name. The payload
         // type is the variant's repr (which walks the alias chain), so
         // `Fail` with `Fail = String` gets `Ty::NamedStr("Fail")`.
@@ -7791,9 +7369,18 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::I32
             }
-            Ty::NamedPtr(n) => {
+            Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) => {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
-                Ty::NamedPtr(n.clone())
+                result_ty.clone()
+            }
+            Ty::F64 => {
+                f.instruction(&Instruction::LocalGet(scope.tmp_f64()));
+                Ty::F64
+            }
+            Ty::List => {
+                f.instruction(&Instruction::LocalGet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                Ty::List
             }
             _ => Ty::Unit,
         }
@@ -8029,10 +7616,6 @@ impl<'m> WasmGen<'m> {
             self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
         let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         // Map + list-growth helper shapes.
-        let map_get_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32; 3]);
-        let map_insert_ty = self.get_or_add_wasm_type(&[ValType::I32; 6], &[ValType::I32; 2]);
-        let map_remove_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32; 2]);
-        let map_project_ty = self.get_or_add_wasm_type(&[ValType::I32; 3], &[ValType::I32; 2]);
         let list_append_ty = self.get_or_add_wasm_type(
             &[ValType::I32, ValType::I32, ValType::I64],
             &[ValType::I32; 2],
@@ -8208,10 +7791,6 @@ impl<'m> WasmGen<'m> {
         funcs.function(print_float_ty); // float printer (f64) -> ()
         funcs.function(int_to_str_ty); // Int→String renderer (i64) -> (i32, i32)
         funcs.function(str_cmp_ty); // string compare -> -1/0/1
-        funcs.function(map_get_ty); // map lookup
-        funcs.function(map_insert_ty); // map functional insert
-        funcs.function(map_remove_ty); // map functional remove
-        funcs.function(map_project_ty); // map keys/values projection
         funcs.function(list_append_ty); // list append
         funcs.function(list_concat_ty); // list concat
                                         // User-compiled functions only — extern imports are already declared
@@ -8279,10 +7858,6 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_print_float());
         codes.function(&self.build_int_to_str());
         codes.function(&self.build_str_cmp());
-        codes.function(&self.build_map_get());
-        codes.function(&self.build_map_insert());
-        codes.function(&self.build_map_remove());
-        codes.function(&self.build_map_project());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
         // User functions — compile each FunctionDef in ascending func_idx order
@@ -8374,10 +7949,6 @@ impl<'m> WasmGen<'m> {
         let int_to_str_ty =
             self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
         let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
-        let map_get_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32; 3]);
-        let map_insert_ty = self.get_or_add_wasm_type(&[ValType::I32; 6], &[ValType::I32; 2]);
-        let map_remove_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32; 2]);
-        let map_project_ty = self.get_or_add_wasm_type(&[ValType::I32; 3], &[ValType::I32; 2]);
         let list_append_ty = self.get_or_add_wasm_type(
             &[ValType::I32, ValType::I32, ValType::I64],
             &[ValType::I32; 2],
@@ -8572,10 +8143,6 @@ impl<'m> WasmGen<'m> {
         funcs.function(print_float_ty);
         funcs.function(int_to_str_ty);
         funcs.function(str_cmp_ty);
-        funcs.function(map_get_ty);
-        funcs.function(map_insert_ty);
-        funcs.function(map_remove_ty);
-        funcs.function(map_project_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
@@ -8640,10 +8207,6 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_print_float());
         codes.function(&self.build_int_to_str());
         codes.function(&self.build_str_cmp());
-        codes.function(&self.build_map_get());
-        codes.function(&self.build_map_insert());
-        codes.function(&self.build_map_remove());
-        codes.function(&self.build_map_project());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
         let ordered_funcs: Vec<FunctionDef> = {
@@ -8725,10 +8288,6 @@ impl<'m> WasmGen<'m> {
         let int_to_str_ty =
             self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
         let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
-        let map_get_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32; 3]);
-        let map_insert_ty = self.get_or_add_wasm_type(&[ValType::I32; 6], &[ValType::I32; 2]);
-        let map_remove_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32; 2]);
-        let map_project_ty = self.get_or_add_wasm_type(&[ValType::I32; 3], &[ValType::I32; 2]);
         let list_append_ty = self.get_or_add_wasm_type(
             &[ValType::I32, ValType::I32, ValType::I64],
             &[ValType::I32; 2],
@@ -8872,10 +8431,6 @@ impl<'m> WasmGen<'m> {
         funcs.function(print_float_ty);
         funcs.function(int_to_str_ty);
         funcs.function(str_cmp_ty);
-        funcs.function(map_get_ty);
-        funcs.function(map_insert_ty);
-        funcs.function(map_remove_ty);
-        funcs.function(map_project_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
         let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
@@ -8935,10 +8490,6 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_print_float());
         codes.function(&self.build_int_to_str());
         codes.function(&self.build_str_cmp());
-        codes.function(&self.build_map_get());
-        codes.function(&self.build_map_insert());
-        codes.function(&self.build_map_remove());
-        codes.function(&self.build_map_project());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
         let ordered_funcs: Vec<FunctionDef> = {

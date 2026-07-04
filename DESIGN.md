@@ -1150,12 +1150,12 @@ Three things ship with the language:
 - Boolean atoms (newtype aliases of `Unit`): `False`, `True`
 - Bit‑level composition: `Bit` (`= False + True`), `Byte` (`= Bit^8`), `Bytes` (`= Byte^*`)
 - Numeric and text: `Float`, `Hex`, `Int`, `String`
-- Generic containers: `List<T>`, `Map<K, V>`, `Option<T>`, `Result<T, E>`, `Set<T>`
+- Generic containers: `List<T>`, `Option<T>`, `Result<T, E>`
 - Standard unions: `Bool` (`= False + True`), `Ord`
 - Async wrappers: `Future<T>`, `Stream<T>`
 - I/O built-ins: `print` (stdout), wired against `wasi:cli/stdout`
 
-`Map<K, V>` is a sorted key-value map. `K` must implement `Ord`. Iteration order is alphabetical by key. `Set<T>` is its set-shaped counterpart.
+`Map` and `Set` are deliberately **not** core: they are ordinary pure-Canon stdlib types (`canon/std/Map`, `canon/std/Set`) — sorted recursive unions built from nothing but dispatch, recursion, and `String` comparison. `Map` is a sorted key-value map; iteration order is alphabetical by key, kept that way by construction (`insert` is a sorted insert). `Set` is its set-shaped counterpart, and `set.List()` returns the members alphabetically. The stdlib versions are `String`-keyed/`String`-valued until stdlib generics land; the guiding rule is that anything expressible in the language lives in the language.
 
 `Future<T>` and `Stream<T>` appear in user-visible signatures only when a binding file mirrors an `async func` / `stream<T>` from its WIT interface (see [WIT → Canon Mapping](#wit--canon-mapping)). Everywhere else they are inferred and inserted by the compiler — ordinary Canon code consumes the unwrapped `T` and the async/streaming machinery is invisible (see [Async](#async)).
 
@@ -1177,6 +1177,8 @@ Three things ship with the language:
 | `canon/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Canon | ✅ |
 | `canon/std/Int` (`Int(String) -> Result<Int, MalformedInt>`), `canon/std/MalformedInt` | pure Canon | ✅ — the fallible half of [Conversions](#conversions); the infallible half (`String(Int)`, `String(Byte)`) is a compiler builtin |
 | `canon/std/Byte` (`Byte = Int`; `String(Byte(65))` is `"A"`) | pure Canon (rendering builtin) | ✅ |
+| `canon/std/Map` (sorted, alphabetical iteration; `String` keys/values for now) | pure Canon — recursive union | ✅ |
+| `canon/std/Set` (sorted; `set.List()` = members alphabetically) | pure Canon — recursive union | ✅ |
 
 The `canon:builtins/*` interfaces are temporary scaffolds. Each one moves to the corresponding `wasi:*` interface as that interface's canonical-ABI shape (async, streams, resources) becomes available — the binding file in `canon/wasi` is regenerated, the `canon/std` wrapper stays the same.
 

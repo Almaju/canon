@@ -42,14 +42,17 @@ fn is_capability_type(name: &str) -> bool {
     CAPABILITY_TYPES.contains(&name)
 }
 
-const BUILTIN_GENERIC_TYPES: &[&str] =
-    &["Future", "List", "Map", "Option", "Result", "Set", "Stream"];
+// `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
+// types (`canon/std/Map`, `canon/std/Set`), so their names arrive through
+// the imported typedefs like any other user type.
+const BUILTIN_GENERIC_TYPES: &[&str] = &["Future", "List", "Option", "Result", "Stream"];
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
-/// `Map()` / `Set()` are the empty collections — each type's zero value and
-/// the only way to start one (all updates are functional; see `fn_map_insert`).
-const ZERO_DATA_BUILTINS: &[&str] = &["False", "Map", "Set", "True", "Unit"];
+/// `List()` is the empty list — the type's zero value, and the base case
+/// recursive std collections (`canon/std/Map`'s `keys`, `canon/std/Set`'s
+/// `List`) build up from via `concat`.
+const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 
 /// Synthetic concurrency combinators recognised by the codegen as built-in
 /// `compile_parallel` / `compile_race` paths. They appear in source as if
@@ -1759,30 +1762,10 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     {
         return true;
     }
-    // `Map<String, String>` — the implemented surface only (see the
-    // fn_map_* helpers in codegen). Construction is `Map()`; every
-    // update is functional and keeps entries sorted by key.
-    if receiver_ty == "Map" {
-        return matches!(
-            (method, arg_count),
-            ("get", 1)
-                | ("insert", 2)
-                | ("keys", 0)
-                | ("length", 0)
-                | ("remove", 1)
-                | ("values", 0)
-        );
-    }
-    // `Set<String>` — a Map with no values (the codegen reuses the
-    // fn_map_* helpers with an empty value slot). Construction is
-    // `Set()`; `set.List()` is the conversion-is-construction spelling
-    // of "the members, alphabetically, as a List<String>".
-    if receiver_ty == "Set" {
-        return matches!(
-            (method, arg_count),
-            ("contains", 1) | ("insert", 1) | ("length", 0) | ("List", 0) | ("remove", 1)
-        );
-    }
+    // NOTE: `Map` and `Set` have no builtin entries — they are pure
+    // Canon (`canon/std/Map`, `canon/std/Set`: sorted recursive
+    // unions), so their methods arrive through `symbols.methods` like
+    // any other stdlib declaration once the module is imported.
     false
 }
 
@@ -2001,14 +1984,6 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "get") => "Option".to_string(),
         ("List", "append" | "concat") => "List".to_string(),
         ("List", "Json") => "Json".to_string(),
-        ("Map", "get") => "Option".to_string(),
-        ("Map", "insert" | "remove") => "Map".to_string(),
-        ("Map", "keys" | "values") => "List".to_string(),
-        ("Map", "length") => "Int".to_string(),
-        ("Set", "contains") => "Bool".to_string(),
-        ("Set", "insert" | "remove") => "Set".to_string(),
-        ("Set", "length") => "Int".to_string(),
-        ("Set", "List") => "List".to_string(),
         _ => "<unknown>".to_string(),
     }
 }

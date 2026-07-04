@@ -1,3 +1,5 @@
+use canon/std/Set
+
 main = () -> Unit {
     Set()
         .insert("b")
