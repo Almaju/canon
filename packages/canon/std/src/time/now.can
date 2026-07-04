@@ -1,5 +1,7 @@
+use canon/builtins/clock
+
 Now = String
 
-bindings "canon:builtins/clock@0.1.0#now-rfc3339"
-
-Now = () -> Now
+Now = () -> Now {
+    nowRfc3339()
+}

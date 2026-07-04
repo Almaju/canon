@@ -84,8 +84,8 @@ fn emit_interface(
     iface: &Interface,
     qualified_id: &str,
 ) -> Option<EmittedFile> {
-    let (ns, pkg, iface_name, _ver) = split_interface_id(qualified_id)?;
-    let relative_path = interface_file_path(&ns, &pkg, &iface_name);
+    let (ns, pkg, iface_name, ver) = split_interface_id(qualified_id)?;
+    let relative_path = interface_file_path(&ns, &pkg, &iface_name, ver.as_deref());
 
     let mut content = String::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -152,23 +152,14 @@ fn emit_interface(
     }
 
     // Emit `use` lines first (alphabetical — BTreeSet already sorted),
-    // then the file-level `bindings "<urn>"` directive (only when the
-    // file actually contains function declarations — binding-less type
-    // files like `wasi/clocks/types.can` don't need it), then type
-    // decls, then function decls. The directive does two jobs:
-    // documents which WIT interface this file shadows (the reader sees
-    // it and immediately knows where to look in `wit-vendor/`), and
-    // tells the loader to convert the camelCase function-type aliases
-    // beneath into bound FunctionDefs without each one needing its own
-    // `extern Wasm` marker.
+    // then type decls, then function decls. No header: the file's
+    // vendored path spells the interface URN, and the loader derives
+    // each camelCase declaration's binding from it — a binding file is
+    // recognized by shape (PACKAGES.md slice 8).
     for use_path in &external_use_paths {
         let _ = writeln!(content, "use {}", use_path);
     }
     if !external_use_paths.is_empty() {
-        content.push('\n');
-    }
-    if !fn_decls.is_empty() {
-        let _ = writeln!(content, "bindings \"{}\"", qualified_id);
         content.push('\n');
     }
     for decl in type_decls.values() {
@@ -540,15 +531,13 @@ fn emit_function(
     };
 
     // Bindgen output uses the bare function-type-alias form. There's no
-    // per-function marker — a single `bindings "<urn>"` directive at
-    // the top of the file does the job of identifying every function
-    // below as a binding. The loader (`apply_bindings_directive` in
+    // per-function marker and no header — the vendored file's path
+    // spells the interface URN, and the loader (`apply_bindings` in
     // `src/loader.rs`) walks each camelCase function-type alias and
     // converts it into a real FunctionDef with the URN attached.
     //
     // The `qualified_iface_id` parameter is still passed in by callers
-    // because they use it for error / skip messages; the actual URN
-    // baked into each function lives in the file-level directive now.
+    // because they use it for error / skip messages.
     let _ = qualified_iface_id;
 
     let mut decl = String::new();

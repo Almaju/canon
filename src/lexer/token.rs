@@ -36,7 +36,6 @@ pub enum TokenKind {
     KwUse,
     KwSelf,
     KwImpl,
-    KwBindings,
 
     Newline,
     Eof,
@@ -76,7 +75,6 @@ impl std::fmt::Display for TokenKind {
             TokenKind::KwUse => "`use`",
             TokenKind::KwSelf => "`Self`",
             TokenKind::KwImpl => "`impl`",
-            TokenKind::KwBindings => "`bindings`",
             TokenKind::Newline => "newline",
             TokenKind::Eof => "end of file",
         };

@@ -60,7 +60,7 @@ use futures_util::TryStreamExt;
 use wasm_pkg_client::{Client, Config, PackageRef, PublishOpts, Version, VersionInfo};
 
 use crate::bindgen;
-use crate::install::{has_no_decls, strip_src_segment, InstallError, InstallOutcome};
+use crate::install::{has_no_decls, strip_version_suffixes, InstallError, InstallOutcome};
 
 /// Custom section holding a source artifact's own coordinate.
 const SECTION_PACKAGE: &str = "canon:package";
@@ -130,23 +130,6 @@ fn remove_vendored_versions(deps_root: &Path, ns: &str, name: &str) -> Result<()
         }
     }
     Ok(())
-}
-
-/// Drop the `bindings "<urn>"` header bindgen emits when the URN is
-/// exactly what the vendored file's path will spell — the loader
-/// re-derives it from the path, so keeping the line would state the
-/// same fact twice. A URN the path can't spell (it happens when the
-/// WIT package's own version differs from the release version) keeps
-/// its directive: that's the escape hatch working as designed.
-fn strip_path_derivable_header(content: &str, derived_urn: &str) -> String {
-    let directive = format!("bindings \"{derived_urn}\"");
-    let mut out: String = content
-        .lines()
-        .filter(|line| line.trim() != directive)
-        .collect::<Vec<_>>()
-        .join("\n");
-    out.push('\n');
-    out
 }
 
 /// Parse an install spec. The namespace/name grammar matches the
@@ -315,7 +298,6 @@ fn vendor_wit_package(
     let coordinate = format!("{}:{}@{version}", spec.namespace, spec.name);
     let deps_root = root.join("deps");
     let prefix = spec.deps_prefix();
-    let pkg_dir = deps_root.join(spec.versioned_dir(version));
     remove_vendored_versions(&deps_root, &spec.namespace, &spec.name)?;
 
     let mut written: Vec<PathBuf> = Vec::new();
@@ -325,46 +307,30 @@ fn vendor_wit_package(
             skipped.extend(file.skipped);
             continue;
         }
-        // `<ns>/src/<pkg>/<iface>.can` → `<ns>/<pkg>/<iface>.can`, same
-        // normalization as the manifest-driven install.
-        let rel = strip_src_segment(&file.relative_path).ok_or_else(|| {
-            InstallError(format!(
-                "bindgen produced an unexpected path `{}` (expected `<ns>/src/<pkg>/<iface>.can`)",
-                file.relative_path
-            ))
-        })?;
+        // The bindgen emits the vendored layout directly —
+        // `<ns>/<pkg>@<version>/<iface>.can`, no directive; the loader
+        // derives each binding's URN from the path.
+        let rel = file.relative_path.clone();
         // Only the requested package may land in its `deps/` directory —
         // the loader derives every binding URN from that path, so any
         // other placement would lie about provenance. Filter here and
-        // say so.
-        let Some(iface_rel) = rel.strip_prefix(&prefix) else {
+        // say so. (The comparison strips the `@<version>` the emitted
+        // path carries.)
+        if !strip_version_suffixes(&rel).starts_with(&prefix) {
             skipped.push(format!(
                 "interface `{}` belongs to another package embedded in the artifact; install it explicitly",
                 rel.trim_end_matches(".can"),
             ));
             continue;
-        };
+        }
 
-        // The loader re-derives this file's URN from its vendored path;
-        // drop bindgen's header when it says the same thing.
-        let derived_urn = format!(
-            "{}:{}/{}@{version}",
-            spec.namespace,
-            spec.name,
-            iface_rel.trim_end_matches(".can").replace('_', "-"),
-        );
-        let stripped = if file.urn == derived_urn {
-            strip_path_derivable_header(&file.content, &derived_urn)
-        } else {
-            file.content.clone()
-        };
-        let content = crate::formatter::format(&stripped).map_err(|e| {
+        let content = crate::formatter::format(&file.content).map_err(|e| {
             InstallError(format!(
                 "generated bindings for `{rel}` do not parse: {e:?}"
             ))
         })?;
 
-        let target = pkg_dir.join(iface_rel);
+        let target = deps_root.join(&rel);
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 InstallError(format!("could not create `{}`: {e}", parent.display()))

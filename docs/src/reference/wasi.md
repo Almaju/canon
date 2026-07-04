@@ -36,23 +36,21 @@ version = "0.1.0"
 Then materialize the bindings:
 
 ```sh
-canon install          # writes bindgen/wasi/<pkg>/<interface>.can
+canon install          # writes bindgen/wasi/<pkg>@<version>/<interface>.can
 ```
 
-Each generated file starts with a `bindings "<urn>"` directive and
-lists plain function-type aliases:
+Each generated file is pure source — plain function-type aliases, no
+header. The versioned directory name carries the interface's package
+and version, and the loader derives each declaration's binding from
+the path (a binding file is recognized by shape):
 
 ```canon
-bindings "wasi:cli/environment@0.3.0-rc-2026-03-15"
-
 getArguments = () -> List<String>
 
 getInitialCwd = () -> Option<String>
 ```
 
-The loader turns each alias into an external function bound to that
-WIT interface; your code imports and calls them like any Canon
-function. `canon bindgen <wit-or-wasm> -o <dir>` does the same
+Your code imports and calls them like any Canon function. `canon bindgen <wit-or-wasm> -o <dir>` does the same
 one-shot, without a manifest.
 
 ## Type mapping

@@ -1,8 +1,4 @@
-bindings "canon:builtins/math@0.1.0"
-
-OtherInt = Int
-
-min = (Int * OtherInt) -> Int
+use canon/builtins/math
 
 main = () -> Unit {
     5

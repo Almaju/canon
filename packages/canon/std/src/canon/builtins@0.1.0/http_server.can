@@ -1,0 +1,7 @@
+create = (Int) -> HttpServer
+
+get = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
+
+post = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
+
+serve = (HttpServer) -> Future<Result<Unit, IoError>>

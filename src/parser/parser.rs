@@ -57,23 +57,6 @@ impl Parser {
             }));
         }
 
-        // `bindings "<urn>"` directive. The string carries the WIT
-        // interface URN; the loader uses it to patch every camelCase
-        // function-type alias in the file into an external function
-        // declaration. See `ast::BindingsDecl` for the full story.
-        if self.check(TokenKind::KwBindings) {
-            self.advance();
-            let urn_tok = self.expect(
-                TokenKind::StringLit,
-                "expected a quoted WIT URN after `bindings`",
-            )?;
-            let end_span = urn_tok.span;
-            return Ok(Item::Bindings(crate::ast::BindingsDecl {
-                urn: urn_tok.lexeme,
-                span: span_join(start_span, end_span),
-            }));
-        }
-
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),

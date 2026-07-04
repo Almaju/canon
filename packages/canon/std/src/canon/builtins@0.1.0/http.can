@@ -1,0 +1,1 @@
+get = (Url) -> Result<String, HttpError>

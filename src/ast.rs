@@ -12,34 +12,6 @@ pub enum Item {
     Function(FunctionDef),
     TypeDef(TypeDef),
     Use(UseDecl),
-    /// A file-level `bindings "<urn>"` directive. Declares that all
-    /// function-type aliases that follow it in this file are actually
-    /// external bindings backed by `<urn>` in the WebAssembly Component
-    /// canonical ABI. The loader rewrites those aliases into
-    /// `FunctionDef`s with `extern_wasm` populated; without a bindings
-    /// context, a bare `name = (P) -> R` stays a function-type alias
-    /// (the existing language semantics).
-    ///
-    /// Vendored binding files don't need it: a file directly under
-    /// `deps/<ns>/<name>@<version>/` derives its URN from its path
-    /// (PACKAGES.md — binding files are recognized by shape). The
-    /// directive is the escape hatch for URNs no path can spell:
-    /// hand-written host-bridge bindings (`canon:builtins/*`) and
-    /// one-shot `#fn` renames where the Canon name doesn't kebab back
-    /// to the WIT name. Its final replacement is an open question in
-    /// PACKAGES.md slice 8.
-    Bindings(BindingsDecl),
-}
-
-/// A `bindings "<urn>"` directive at the top of a generated bindings
-/// file. See [`Item::Bindings`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct BindingsDecl {
-    /// The WIT interface URN, e.g.
-    /// `"wasi:clocks/timezone@0.3.0-rc-2026-03-15"`. Stored verbatim;
-    /// the loader appends `#<fn-kebab>` per function.
-    pub urn: String,
-    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

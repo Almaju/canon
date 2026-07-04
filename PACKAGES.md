@@ -1,21 +1,24 @@
 # Package Management — Design (RFC)
 
-Status: **proposal — slices 1–3, 7, 8a implemented; design amended
+Status: **proposal — slices 1–3, 7, 8 implemented; design amended
 (Jul 2026)**. Slices 1–3 landed as originally specified (the `deps/`
 search root, the `package` directive, registry-backed
 `canon install <ns>:<pkg>[@ver]`, and `canon publish`). The amendment
-removes packaging directives from the language in favor of
+removed packaging directives from the language in favor of
 **path-carried identity** (`deps/<ns>/<name>@<ver>/`): the `package`
-keyword is **deleted** (slice 7, implemented), binding files are
-recognized by **shape** (body-less declarations) with their URN derived
-from the path (slice 8a, implemented), and the planned `component`
-directive becomes a tool-written **`.component` file** (slice 5). The
-`bindings` keyword survives *only* as the escape hatch for URNs no
-path can spell — deleting it too is slice 8b, blocked on choosing that
-escape hatch's replacement spelling (see Open questions). This
-document describes the amended design throughout; when accepted it
-**supersedes DESIGN.md § Package Manifests** (`canon.toml` is deleted
-entirely) and amends § Imports and § Binding Files. It assumes the
+keyword is **deleted** (slice 7), binding files are recognized by
+**shape** (body-less declarations) with their URN derived from the
+path, and the `bindings` keyword is **deleted too** (slice 8) — no
+escape hatch survived, because none was needed: every one-shot rename
+was a layering violation (an idiom nailed directly to a host
+function), fixed by giving the raw binding its mechanical name and
+making the idiom an ordinary bodied wrapper. The planned `component`
+directive becomes a tool-written **`.component` file** (slice 5,
+pending). The language grammar now contains zero packaging or binding
+vocabulary. This document describes the amended design throughout;
+when accepted it **supersedes DESIGN.md § Package Manifests**
+(`canon.toml` is deleted entirely) and amends § Imports and § Binding
+Files (already amended to the shape-and-path rule). It assumes the
 removal of the `use` keyword: a reference to a type `User` that is not
 defined in the current file resolves by convention to `user.can`.
 Package management below is that same rule with one more search
@@ -200,28 +203,34 @@ the language:
   amendment only an active `bindings` header distinguished these two
   readings; location now does.)
 
-An escape hatch remains necessary for bindings that defy the path
-convention — a bespoke host interface (`canon:builtins/*` in the
-stdlib's hand-written wrappers), and one-shot renames where the Canon
-name can't kebab back to the WIT name (`ToJson = (Bool) -> Json` binds
-`#from-bool`; four `ToJson` overloads can't all derive distinct WIT
-names). Today that escape hatch **is** the `bindings` directive — the
-original amendment text claimed the legacy per-function
-`extern Wasm("<urn>#<fn>")` annotation "survives" for this, but that
-syntax has since been deleted from the grammar entirely; there is
-nothing to fall back to. So the directive stays, demoted from
-"canonical form on every generated file" to "escape hatch on the
-files whose URN no path can spell": `canon install` no longer emits
-it (the loader re-derives path-spellable URNs), and it appears only
-in hand-written host-bridge wrappers and test fixtures. Deleting
-`KwBindings` is slice 8b, gated on designing its per-function
-replacement (see Open questions).
+No escape hatch exists, because none is needed. The cases that once
+seemed to require one all dissolved into existing mechanisms:
 
-With `package` gone and `bindings` reduced to the escape hatch, a
-vendored binding file and an ordinary Canon file are grammatically
-identical: `KwPackage` has left the lexer, and the loader's rewrite
-keys on shape and path, with a directive overriding the path-derived
-base only where one is written.
+- **Host bridges are packages.** The stdlib's `canon:builtins/*`
+  bindings live in path-carried binding files
+  (`canon/builtins@0.1.0/json.can` inside the std package) and the
+  stdlib consumes its own host bridge the way anyone consumes a
+  dependency — "no privileged shape that only the stdlib can use."
+- **Renames are wrappers.** Machine-generated names always round-trip
+  (kebab ↔ camel is bijective), so a rename only ever existed where an
+  *idiom* was nailed directly onto a host function, skipping the raw
+  layer the architecture already claims. The raw binding keeps the
+  mechanical name (`fromBool`); the idiom is one line of ordinary
+  Canon (`ToJson = (Bool) -> Json { Bool.fromBool() }`). Where Canon
+  owns both sides of the bridge and the idiomatic name is unique
+  camelCase, the host function is simply renamed to match.
+- **Resource fragments derive from shape.** A camelCase declaration
+  whose first parameter is an in-file `X = Handle` resource binds
+  `[method]x.<name>`; a PascalCase declaration named like an in-file
+  resource binds `[constructor]x`. (The full resource surface still
+  waits on the codegen's resource lowering; the fragments these rules
+  spell are verified against the vendored WIT when that lands.)
+
+With both keywords gone, a vendored binding file and an ordinary Canon
+file are grammatically identical: the lexer knows neither `package`
+nor `bindings`, and the loader's rewrite keys on shape and path alone.
+Where a name doesn't fit the mapping, the answer is a wrapper written
+in the language, not an annotation bolted onto it.
 
 ## The `.component` file
 
@@ -440,18 +449,16 @@ credentials.
   rule, the per-package agreement check, and the
   `package_directive_outside_deps` fixture: all states the directive
   could get wrong are unrepresentable under path-carried identity.
-- The `bindings` directive on generated files — **done (slice 8a)**:
+- The `bindings` directive and `KwBindings` — **deleted (slice 8)**:
   binding files are recognized by shape and bound by path;
-  `canon install` emits no header. The directive itself and
-  `KwBindings` remain as the escape hatch for path-unspellable URNs
-  (hand-written `canon:builtins/*` wrappers, one-shot `#fn` renames)
-  until slice 8b designs its per-function replacement — the previously
-  named candidate, `extern Wasm("<urn>#<fn>")`, no longer exists in
-  the grammar. DESIGN.md § Binding Files amends when 8b lands.
+  `canon install` and the bindgen emit no header; the stdlib's
+  host-bridge bindings moved into path-carried files with idiom
+  wrappers; DESIGN.md § Binding Files is amended to the
+  shape-and-path rule.
 - The separate `bindgen/` output directory in user projects — bindings
   are just vendored packages under `deps/` now. (`packages/canon/std`'s
-  committed `bindgen/` tree is a compiler-internal build detail and
-  migrates to the same versioned-path layout in slice 8b.)
+  committed `bindgen/` tree uses the same versioned-path layout; the
+  directory itself dissolves into `deps/` with slice 6.)
 - `_install.toml` as a committed artifact — its content becomes the
   derived index under `.canon/`.
 - The `[workspace]` concept, `from`/`sha256` manifest fields, and the
@@ -570,16 +577,10 @@ decision.
   registry concern (ghcr.io: org membership). Whether Canon wants a
   blessed default registry with its own namespace policy is a
   community question, not a compiler one.
-- **The escape-hatch spelling (blocks slice 8b).** Path-derivation
-  covers every generated binding, but hand-written host-bridge
-  wrappers and one-shot renames need a per-function URN annotation,
-  and the grammar currently has exactly one way to write it: the
-  `bindings` directive. Deleting `KwBindings` means choosing its
-  replacement — resurrecting `extern Wasm("<urn>#<fn>")` re-adds two
-  keywords to delete one; an annotation form (`min = (Int * Int) ->
-  Int @ "canon:builtins/math@0.1.0#min"`?) is new grammar of its own;
-  relocating the stdlib's host bridges under a deps-shaped path only
-  works for base URNs, not for overloaded one-shot renames. A file-
-  level directive whose every remaining occurrence is irreducible
-  information may also just be the honest resting point, mirroring
-  `.component`. Needs a decision before 8b; nothing else blocks on it.
+- **Resource statics.** The shape rules spell `[method]` and
+  `[constructor]` fragments; `[static]` functions (e.g.
+  `[static]response.new`) have no receiver to derive from and are
+  owned by the resources slice, which can consult the vendored WIT
+  the compiler already loads for codegen. Until then the stdlib's
+  http surface keeps its Canon-facing names and the codegen's fixed
+  import table remains the source of truth for the real WIT names.

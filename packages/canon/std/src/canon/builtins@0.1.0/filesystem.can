@@ -1,0 +1,3 @@
+openFile = (Path) -> Result<File, IoError>
+
+read = (File) -> Result<String, IoError>

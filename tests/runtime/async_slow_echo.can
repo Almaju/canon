@@ -1,6 +1,4 @@
-bindings "canon:builtins/http-server@0.1.0"
-
-slowEcho = (String) -> Future<String>
+use canon/builtins/http_server
 
 main = () -> Unit {
     "hello slow"

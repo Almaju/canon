@@ -1,0 +1,7 @@
+Filesystem = String
+
+IoError = String
+
+Path = String
+
+read = (Filesystem * Path) -> Future<Result<String, IoError>>

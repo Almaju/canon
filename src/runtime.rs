@@ -671,12 +671,12 @@ mod host_builtin_filesystem {
                 /// Open a file by path. Returns the path string back as the
                 /// `File` handle on success, or a diagnostic message on
                 /// failure. The handle is just the path — actual reading
-                /// happens in `read-file-handle`.
+                /// happens in `read`.
                 open-file: func(path: string) -> result<string, string>;
 
                 /// Read the contents of a previously-opened `File`. Takes
                 /// the same string handle returned by `open-file`.
-                read-file-handle: func(file: string) -> result<string, string>;
+                read: func(file: string) -> result<string, string>;
             }
             world host-shim {
                 import filesystem;
@@ -694,7 +694,7 @@ mod host_builtin_filesystem {
             }
         }
 
-        fn read_file_handle(&mut self, file: String) -> Result<String, String> {
+        fn read(&mut self, file: String) -> Result<String, String> {
             fs::read_to_string(&file).map_err(|e| e.to_string())
         }
     }
@@ -1282,7 +1282,7 @@ mod host_builtin_json {
                 /// string literal; anything else returns a diagnostic
                 /// message. Inverse of `from-string`: escape sequences
                 /// like backslash-n become real newlines.
-                to-string: func(input: string) -> result<string, string>;
+                as-string: func(input: string) -> result<string, string>;
             }
             world host-shim {
                 import json;
@@ -1331,7 +1331,7 @@ mod host_builtin_json {
             extract_field(&input, &name)
         }
 
-        fn to_string(&mut self, input: String) -> Result<String, String> {
+        fn as_string(&mut self, input: String) -> Result<String, String> {
             decode_string(&input)
         }
     }

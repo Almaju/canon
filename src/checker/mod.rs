@@ -147,7 +147,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             // left in the module purely as breadcrumbs for tooling
             // (formatter, LSP) and have nothing for the checker to
             // enforce.
-            Item::Use(_) | Item::Bindings(_) => {}
+            Item::Use(_) => {}
         }
     }
 
@@ -410,7 +410,7 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
                 collect_type_names(&td.body, &mut out);
                 (td.name.name.clone(), out)
             }
-            Item::Use(_) | Item::Bindings(_) => continue,
+            Item::Use(_) => continue,
         };
         if !refs.contains_key(&name) {
             declared_order.push(name.clone());

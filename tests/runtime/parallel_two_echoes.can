@@ -1,9 +1,6 @@
+use canon/builtins/http_server
 use canon/std/Json
 use canon/std/concurrent
-
-bindings "canon:builtins/http-server@0.1.0"
-
-slowEcho = (String) -> Future<String>
 
 main = () -> Unit {
     "hello"

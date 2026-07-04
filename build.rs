@@ -64,10 +64,6 @@ fn main() {
                 "                abs_path: {:?},\n",
                 file.abs_path.to_string_lossy()
             ));
-            match &file.wit_urn {
-                Some(urn) => code.push_str(&format!("                wit_urn: Some({:?}),\n", urn)),
-                None => code.push_str("                wit_urn: None,\n"),
-            }
             code.push_str("            },\n");
             println!("cargo:rerun-if-changed={}", file.abs_path.display());
         }
@@ -97,12 +93,6 @@ struct DiscoveredFile {
     /// Always uses `/` separators so it matches the `use` path users write.
     rel_path: String,
     abs_path: PathBuf,
-    /// WIT interface URN of the form `"<ns>:<pkg>/<iface>@<version>"`,
-    /// or `None` for hand-written files under `src/`. Populated for
-    /// `bindgen/` files by consulting the package's
-    /// `bindgen/_install.toml`. The loader uses this to fill in the
-    /// path string of bare `extern Wasm` declarations at parse time.
-    wit_urn: Option<String>,
 }
 
 fn discover_packages(root: &Path) -> Vec<DiscoveredPackage> {
@@ -164,51 +154,17 @@ fn discover_packages(root: &Path) -> Vec<DiscoveredPackage> {
             if bindgen_root.exists() {
                 collect_ow_files(&bindgen_root, &bindgen_root, &mut files);
             }
-            // Read the install index from the bindgen directory (if it
-            // exists) and attach the URN to each `bindgen/` file. The
-            // installer's filename constant lives in `src/install.rs`;
-            // we hardcode it here because `build.rs` can't depend on
-            // the crate it's about to build.
-            if bindgen_root.exists() {
-                let index_path = bindgen_root.join("_install.toml");
-                if index_path.is_file() {
-                    let urns =
-                        parse_install_index(&fs::read_to_string(&index_path).unwrap_or_else(|e| {
-                            panic!("could not read `{}`: {e}", index_path.display())
-                        }));
-                    for f in files.iter_mut() {
-                        if let Some(urn) = urns.get(&f.rel_path) {
-                            f.wit_urn = Some(urn.clone());
-                        }
-                    }
-                }
-            }
-
-            // Reject collisions explicitly. If two files exist with the
-            // same `rel_path` (one in `src/`, one in `bindgen/`), the
-            // bundled lookup would be ambiguous; surface the conflict
-            // here rather than letting it produce silently wrong behavior.
+            // Collision rule: a hand-written file under `src/` shadows
+            // the generated file at the same `rel_path` under
+            // `bindgen/`. This is how the stdlib supersedes a machine
+            // surface it needs to hand-maintain for now — e.g.
+            // `wasi/http@<ver>/types.can`, whose resource-method
+            // bindings the bindgen can't emit until resource lowering
+            // lands. `src/` files were collected first, so keeping the
+            // first occurrence keeps the hand-written one.
+            let mut seen_rel: std::collections::HashSet<String> = std::collections::HashSet::new();
+            files.retain(|f| seen_rel.insert(f.rel_path.clone()));
             files.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
-            for win in files.windows(2) {
-                assert!(
-                    win[0].rel_path != win[1].rel_path,
-                    "package `{}/{}`: file `{}` exists in both `src/` and `bindgen/`; rename one to disambiguate",
-                    namespace,
-                    package,
-                    win[0].rel_path
-                );
-            }
-            // Track the index file too so cargo reruns the build when it
-            // changes. The index isn't bundled itself — it's been read
-            // into individual `BundledFile.wit_urn` values above — but
-            // its content steers the generated registry.
-            if bindgen_root.exists() {
-                let index_path = bindgen_root.join("_install.toml");
-                if index_path.is_file() {
-                    println!("cargo:rerun-if-changed={}", index_path.display());
-                }
-            }
-
             out.push(DiscoveredPackage {
                 name: format!("{namespace}/{package}"),
                 manifest_path,
@@ -233,39 +189,7 @@ fn collect_ow_files(root: &Path, dir: &Path, out: &mut Vec<DiscoveredFile>) {
             out.push(DiscoveredFile {
                 rel_path: rel,
                 abs_path: path,
-                wit_urn: None,
             });
         }
     }
-}
-
-/// Minimal `_install.toml` parser used at build time. Mirrors the
-/// runtime parser in `src/install.rs::parse_install_index` but lives
-/// here because `build.rs` can't import from the crate it's about to
-/// build. Format is a strict subset of TOML: comment lines starting
-/// with `#`, blank lines, and `"key" = "value"` pairs.
-fn parse_install_index(source: &str) -> std::collections::HashMap<String, String> {
-    let mut out = std::collections::HashMap::new();
-    for (idx, raw) in source.lines().enumerate() {
-        let line_no = idx + 1;
-        let line = raw.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-        let eq = line.find('=').unwrap_or_else(|| {
-            panic!("_install.toml:{line_no}: expected `key = value`, got `{line}`")
-        });
-        let key = unquote_install_index(line[..eq].trim(), line_no);
-        let value = unquote_install_index(line[eq + 1..].trim(), line_no);
-        out.insert(key, value);
-    }
-    out
-}
-
-fn unquote_install_index(raw: &str, line_no: usize) -> String {
-    assert!(
-        raw.len() >= 2 && raw.starts_with('"') && raw.ends_with('"'),
-        "_install.toml:{line_no}: expected quoted string, got `{raw}`"
-    );
-    raw[1..raw.len() - 1].to_string()
 }

@@ -1,32 +1,33 @@
-# Extern Wasm
+# Binding Files
 
 Canon compiles to a **WebAssembly Component**, so foreign functions bind
 to **Component Model imports** declared by their fully-qualified path,
-not to a host language. The mechanism is `extern Wasm`, and it works the
-same whether the import is a standard WASI interface
-(`wasi:random/random#get-random-u64`) or a per-application bridge
-(`canon:builtins/url@0.1.0#parse`).
+not to a host language. There is no FFI keyword: a **binding file** is
+recognized by *shape and path*. It is an ordinary `.can` file sitting
+directly in a vendored package directory —
+`<ns>/<name>@<version>/<iface>.can` — whose function declarations are
+body-less:
 
-The compiler emits the matching `(import …)` and lowers each call through
-the canonical ABI: no source-level marshalling, no manual buffer
-management.
-
-## Declaring an Extern Function
-
-```canon
-extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
-getRandomU64 = () -> Int
-
-main = () -> Unit {
-    getRandomU64().print()
-}
+```
+deps/wasi/random@0.3.0-rc-2026-03-15/random.can
 ```
 
-The string follows Component Model path syntax:
+```canon
+getRandomU64 = () -> Int
+```
+
+The path spells the interface; the declaration's kebab-case form names
+the WIT function. Together they reconstruct the Component Model path:
 
 ```
 namespace : package / interface @ version # function
+wasi      : random  / random    @ 0.3.0-… # get-random-u64
 ```
+
+The compiler emits the matching `(import …)` and lowers each call
+through the canonical ABI: no source-level marshalling, no manual
+buffer management, no directive — the file's location carries
+everything a header ever said.
 
 - The `namespace:package/interface` part identifies a WIT interface: a
   group of related functions, types, and resources.
@@ -41,10 +42,9 @@ to the WIT integer at its declared width (`u8` through `s64`; for
 honoured at the ABI), `String` is `string`, `Result<T, E>` is
 `result<T, E>`, and so on.
 
-Hand-written `extern Wasm("<urn>")` is the explicit form. Generated
-binding files use the equivalent `bindings "<urn>"` directive at the
-top of the file, with each function below it declared as a bare
-function-type alias; see
+Generated and hand-vendored binding files share one shape: bare
+function-type aliases in a versioned package directory. There is no
+explicit form — the path is the declaration; see
 [Using WASI Interfaces](../reference/wasi.md).
 
 ## Extern Types
@@ -62,22 +62,25 @@ extern function:
 ```canon
 Url = String
 
-extern Wasm("canon:builtins/url@0.1.0#parse")
-Url = (String) -> Result<Url, InvalidUrl>
+Url = (String) -> Result<Url, InvalidUrl> {
+    String.parse()
+}
 ```
 
 The type declaration on the first line is an ordinary Canon newtype.
-The `extern Wasm` block on the second line replaces the implicit total
-constructor, so `Url("https://example.com")` calls the host-provided
-parser and yields a `Result<Url, InvalidUrl>`.
+The constructor on the second line is an ordinary Canon function whose
+body calls `parse` — a raw binding declared in the
+`canon:builtins/url@0.1.0` binding file. Idioms are always plain
+wrappers over raw bindings; the binding layer itself never renames
+anything (kebab-case ↔ camelCase is a round trip).
 
 ## Async Externs
 
-Suspending Component imports are bound with `extern Wasm.async`:
+Async-ness is not declared — it is read off the signature. A binding
+whose return type is `Future<T>` is a suspending import:
 
 ```canon
-extern Wasm.async("canon:builtins/http-server@0.1.0#serve")
-serve = (HttpServer) -> Result<Unit, IoError>
+serve = (HttpServer) -> Future<Result<Unit, IoError>>
 ```
 
 The compiler lowers the call site through the *async* canonical ABI
@@ -93,20 +96,19 @@ You write no `async` keyword, no `await`, no `.await`. A `Future<T>`
 returned by a suspending call is implicitly awaited when used in a
 position that expects `T`.
 
-## The Manifest's Role
+## Installing Bindings
 
-A package's `canon.toml` declares WIT *sources* under `[imports]`
-(a `.wit` file, a directory, or a `.wasm` component) and
-`canon install` materializes them into `bindgen/` as Canon binding
-files. The compiled component's import list is then fully determined
-by the `extern Wasm`/`bindings` declarations the program actually
-uses, and resolved at component-instantiation time by the host.
-`canon build` produces a `.wasm` plus a sibling `.wit` describing the
-component's world.
+`canon install <ns>:<pkg>[@ver]` fetches a WIT package from its
+registry and vendors the generated binding files under
+`deps/<ns>/<pkg>@<version>/` (see PACKAGES.md). The compiled
+component's import list is then fully determined by the binding
+declarations the program actually uses, and resolved at
+component-instantiation time by the host. `canon build` produces a
+`.wasm` plus a sibling `.wit` describing the component's world.
 
 ## Generating Bindings from WIT
 
-Writing `extern Wasm` declarations by hand is rarely necessary. The
+Writing binding declarations by hand is rarely necessary. The
 compiler can read a WIT file (or a `.wasm` component, whose embedded
 WIT is extracted automatically) and emit one Canon binding file per
 interface:
@@ -115,8 +117,9 @@ interface:
 canon bindgen path/to/my-component.wit -o .
 ```
 
-This writes `<ns>/<pkg>/<iface>.can` for each interface, alphabetically
-ordered, ready to `use`. The mapping is mechanical: WIT records become
+This writes `<ns>/<pkg>@<ver>/<iface>.can` for each interface,
+alphabetically ordered, ready to `use`. The mapping is mechanical: WIT
+records become
 products, variants become unions, `list<T>` becomes `List<T>`, kebab-case
 becomes Canon camelCase / PascalCase, and so on. See `DESIGN.md` for the
 full table.
@@ -127,7 +130,7 @@ with `just regen-bindings`.
 
 ## Binding Packages
 
-Idiomatic Canon code does not write `extern Wasm` directly. Instead, it
+Idiomatic Canon code does not touch binding files directly. Instead, it
 imports individual types from the embedded standard library:
 
 ```canon
@@ -152,7 +155,7 @@ complete list and the WIT interfaces behind each module.
 
 ## `wasi:*` vs `canon:builtins/*`
 
-Two namespaces appear in `extern Wasm` paths:
+Two namespaces appear in binding-file paths:
 
 - `wasi:*`: standard [WASI](https://github.com/WebAssembly/WASI)
   interfaces. Any compliant host satisfies them.

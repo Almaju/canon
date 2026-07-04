@@ -940,26 +940,30 @@ The shipped stdlib is **layered**:
 - `canon/wasi` — **raw bindings**, machine-generated from upstream WIT by `canon bindgen`. One `.can` file per WIT interface, each a [binding file](#binding-files). No idioms, no capability discipline, no opinions. Regenerated, never hand-edited.
 - `canon/std` — **curated wrappers**, hand-written. One primary type per file (`canon/std/clock.can` declares `Clock`, `canon/std/file.can` declares `File`, …). Methods, constructors, and capability arguments live here. Idiomatic Canon code only ever imports from `canon/std`.
 
-Where a `wasi:*` interface isn't yet usable from the canonical ABI, the corresponding `canon/wasi` file binds an `canon:builtins/*` bridge instead. The split is invariant — only the WIT path on the file's `extern` header changes.
+Where a `wasi:*` interface isn't yet usable from the canonical ABI, the corresponding binding file lives in an `canon:builtins/*` bridge package instead. The split is invariant — only the package directory the binding file lives in changes.
 
 ### Binding Files
 
-A **binding file** is a `.can` file whose first declaration is an `extern` header naming a Component-Model interface:
+A **binding file** is recognized by *shape and path*, never by a header (see PACKAGES.md). It is a `.can` file sitting directly in a vendored package directory — `<ns>/<name>@<version>/<iface>.can` under a `deps/` tree or inside a shipped package — whose function declarations are body-less:
 
 ```
-extern "wasi:random/random@0.3.0-rc-2026-03-15"
+deps/wasi/random@0.3.0-rc-2026-03-15/random.can
+```
 
+```
 getRandomBytes = (Int) -> Bytes
+
 getRandomU64 = () -> Int
 ```
 
-The header pins the WIT interface this file binds. Every declaration in the file describes one symbol from that interface, mapped through the mechanical [WIT → Canon mapping](#wit--canon-mapping):
+The path spells the WIT interface this file binds: the directory names the package and version, the file stem names the interface, and each declaration maps through the mechanical [WIT → Canon mapping](#wit--canon-mapping):
 
-- **Function declarations are body-less.** Each function's name and signature must match a `func` (or `async func`) in the named WIT interface. The compiler verifies this when the package is loaded.
-- **Type declarations** describe types defined by the WIT interface (records, variants, resources). They follow the same mechanical mapping.
-- The `extern` header is the **only** way to introduce a Component-Model import. Body-less function declarations are **only legal inside a binding file** — anywhere else, a missing body is a compile error ("forgot a body").
+- **Function declarations are body-less.** A camelCase function-type alias in a binding file *is* an external function: its kebab-case form names the WIT `func` (or `async func`), and the compiler verifies the signature when the package is loaded.
+- **Resource fragments derive from shape.** A camelCase declaration whose first parameter is a resource declared in the same file (`X = Handle`) binds that resource's `[method]`; a PascalCase declaration named exactly like an in-file resource binds its `[constructor]`.
+- **Type declarations** describe types defined by the WIT interface (records, variants, resources). They follow the same mechanical mapping. A PascalCase function-type alias that is *not* a resource constructor stays an ordinary callback type, exactly as in any other file.
+- The vendored path is the **only** way to introduce a Component-Model import. Body-less camelCase declarations are only meaningful inside a binding file — anywhere else they remain plain function-type aliases.
 
-The header string follows Component-Model path syntax: `namespace:package/interface@version`. The `@version` is optional for unversioned interfaces. There are no per-function path strings, no async annotations, no `from`/`sha256` fields on declarations — a binding file looks like ordinary Canon code, just without bodies.
+There is no header, no per-function path string, no async annotation, no `from`/`sha256` field — a binding file *is* ordinary Canon code, just without bodies, and the language grammar contains no binding vocabulary at all. Where a name genuinely can't ride the mechanical mapping (a trait overload like `ToJson` binding four host functions), the raw binding keeps the mechanical name and the idiomatic name is an ordinary one-line wrapper with a body — the raw/idiom layering above, applied uniformly.
 
 > **First-class references.** Functions declared in a binding file are entered into the value scope on equal footing with ordinary functions. They may be referenced as first-class values (`Type.fn`) and passed as callbacks wherever a matching function signature is expected.
 

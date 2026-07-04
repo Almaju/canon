@@ -1211,8 +1211,7 @@ fn cmd_test(args: &[String]) {
     // is synthesised as source too and inserted into the *import
     // region* of the module (before `entry_items_start`), where the
     // alphabetical-ordering rule doesn't apply to it.
-    let exit_binding = "bindings \"wasi:cli/exit@0.3.0-rc-2026-03-15#exit-with-code\"\n\n\
-                        exitWithCode = (Int) -> Unit\n";
+    let exit_binding = "exitWithCode = (Int) -> Unit\n";
     let mut exit_items = match parse_synthesised(exit_binding) {
         Ok(items) => items,
         Err(err) => {
@@ -1223,7 +1222,7 @@ fn cmd_test(args: &[String]) {
             process::exit(1);
         }
     };
-    canon::loader::apply_bindings_directive(&mut exit_items);
+    canon::loader::apply_bindings(&mut exit_items, Some("wasi:cli/exit@0.3.0-rc-2026-03-15"));
     for item in exit_items.into_iter().rev() {
         loaded.module.items.insert(0, item);
         loaded.entry_items_start += 1;

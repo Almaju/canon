@@ -18,15 +18,21 @@ dependency list from directory names. Two `@`-versioned siblings, an
 unversioned vendor directory, or a malformed version are loader
 errors.
 
-Binding files are now recognized by *shape*: a body-less camelCase
-declaration in a file directly under the package directory binds to
-the WIT interface its path spells (`deps/wasi/random@0.3.0/random.can`
-→ `wasi:random/random@0.3.0`), so `canon install` stops emitting the
-`bindings` header on generated files. The `bindings` directive remains
-solely as the escape hatch for URNs no path can spell (hand-written
-`canon:builtins/*` wrappers, one-shot `#fn` renames); deleting the
-keyword outright is PACKAGES.md slice 8b, blocked on choosing that
-escape hatch's replacement spelling.
+The `bindings` keyword is gone too (slice 8, complete). Binding files
+are recognized by *shape*: a body-less camelCase declaration in a file
+directly under a versioned package directory binds to the WIT
+interface its path spells (`deps/wasi/random@0.3.0/random.can` →
+`wasi:random/random@0.3.0`); resource fragments derive from shape
+(`[method]` from a Handle-typed receiver, `[constructor]` from a
+PascalCase decl named like an in-file resource). No escape hatch
+survived because none was needed: every one-shot rename was an idiom
+nailed directly onto a host function, fixed by giving the raw binding
+its mechanical name and making the idiom an ordinary bodied wrapper
+(`ToJson = (Bool) -> Json { Bool.fromBool() }`). The stdlib's
+`canon:builtins/*` bridges now live in path-carried binding files, the
+`wasi` bindgen tree uses the versioned layout, `canon bindgen` emits
+that layout directly with no header, and the language grammar contains
+zero packaging or binding vocabulary.
 
 ### Release channels & toolchains (2026-07)
 

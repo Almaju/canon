@@ -1,0 +1,1 @@
+slowEcho = (String) -> Future<String>

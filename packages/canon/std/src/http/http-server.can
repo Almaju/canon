@@ -1,18 +1,11 @@
 use HttpStatus
 use Port
 use RoutePath
+use canon/builtins/http_server
 use canon/std/IoError
 
 HttpServer = String
 
-bindings "canon:builtins/http-server@0.1.0#create"
-
-HttpServer = (Port) -> HttpServer
-
-bindings "canon:builtins/http-server@0.1.0"
-
-get = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
-
-post = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
-
-serve = (HttpServer) -> Future<Result<Unit, IoError>>
+HttpServer = (Port) -> HttpServer {
+    Port.create()
+}

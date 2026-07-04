@@ -1,10 +1,9 @@
 use crate::ast::{
-    extract_receiver_from_params, resolve_new_syntax, BindingsDecl, Block, Expr, ExternWasm,
-    FunctionDef, Item, Module, Param, TypeExpr,
+    extract_receiver_from_params, resolve_new_syntax, Block, Expr, ExternWasm, FunctionDef, Item,
+    Module, Param, TypeExpr,
 };
 use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
-use crate::install::{self, InstallIndex, INSTALL_INDEX_FILENAME};
 use crate::lexer::Scanner;
 use crate::manifest::{self, Manifest};
 use crate::parser::Parser;
@@ -12,70 +11,29 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Walk a slice of items and fill in the path string of any `extern Wasm`
-/// declaration that was emitted without one.
+/// Walk `items` and rewrite function-type aliases into real
+/// `Item::Function`s with `extern_wasm` populated, when the file is a
+/// binding file — recognized by *shape and path*, never by a header
+/// (PACKAGES.md slice 8): `seed_urn` is the WIT interface URN the
+/// file's vendored path spells (`deps/<ns>/<name>@<ver>/<iface>.can`),
+/// and `None` means the file is ordinary source and nothing is
+/// rewritten.
 ///
-/// `canon install` writes bindgen output with bare `extern Wasm` markers
-/// (no URN string) and a sidecar `_install.toml` index mapping each file
-/// to its WIT interface URN. The loader consults that index to fill in
-/// the per-function path each function's codegen needs: `"<urn>#<fn>"`
-/// where `<fn>` is the function's name camel-back-converted to the
-/// kebab-case form the WIT source uses.
-///
-/// Externs that already have an explicit path (user-written one-off
-/// `extern Wasm("…")` declarations) are left untouched.
-fn patch_extern_paths(items: &mut [Item], urn: &str) {
-    for item in items {
-        if let Item::Function(f) = item {
-            if let Some(ew) = f.extern_wasm.as_mut() {
-                if ew.path.is_empty() {
-                    ew.path = format!("{}#{}", urn, bindgen::camel_to_kebab(&f.name.name));
-                }
-            }
-        }
-    }
-}
-
-/// Walk `items` linearly and rewrite function-type aliases that sit in
-/// a bindings context into real `Item::Function`s with `extern_wasm`
-/// populated.
-///
-/// A bindings context arises two ways:
-///   * **Path-derived** (`seed_urn`): a file directly under a vendored
-///     package directory (`deps/<ns>/<name>@<ver>/<iface>.can`) is a
-///     binding file by shape — its body-less camelCase declarations
-///     bind to the WIT interface its path spells, no directive needed
-///     (PACKAGES.md § Binding files are recognized by shape).
-///   * **Directive** (`bindings "…"`): the escape hatch for bindings
-///     whose URN no path can spell — hand-written host-bridge wrappers
-///     (`canon:builtins/*`) and WIT names that don't kebab back from
-///     the Canon name.
-///
-/// `bindings` directives come in two forms:
-///   1. `bindings "<urn>"` (no `#fn` fragment) sets a *file-level base*
-///      URN. Subsequent function-type aliases auto-derive their
-///      canonical-ABI path as `"<urn>#<kebab(name)>"` until another
-///      base-form directive replaces it. A file can mix several bases
-///      (`url.can` does that for `canon:builtins/url` followed by
-///      `canon:builtins/http`).
-///   2. `bindings "<urn>#<fn-name>"` (explicit `#fn`) is a *one-shot*
-///      override: it applies only to the very next function-type alias,
-///      using `<urn>#<fn-name>` verbatim as the path. Used for cases
-///      where the Canon name doesn't kebab-back to the WIT name —
-///      e.g. `ToJson = (Bool) -> Json` is bound to `#from-bool`, not
-///      `#to-json`. After the next alias is consumed, the previous
-///      base-form (if any) is back in effect.
-///
-/// Rewrite rules for individual function-type aliases:
-///   * Under a *directive* base or one-shot override, both camelCase
-///     *and* PascalCase aliases are rewritten (PascalCase covers
-///     constructors and trait overloads like `ToJson = (Bool) -> Json`).
-///   * Under a *path-derived* base, only camelCase aliases are
-///     rewritten: a PascalCase function-type alias in a vendored file
-///     (`Handler = (Request) -> Response`) is an ordinary callback
-///     type, and hijacking it into an extern would corrupt vendored
-///     Canon-source packages. The case distinction is already
-///     load-bearing in the language (types vs. functions).
+/// Rewrite rules, given a seed:
+///   * A camelCase alias whose first parameter is a resource declared
+///     in the same file (`X = Handle`) is that resource's method —
+///     `set = (Headers * String * String) -> Headers` derives
+///     `#[method]headers.set`.
+///   * A PascalCase alias named exactly like an in-file resource is
+///     its constructor — `Headers = () -> Headers` derives
+///     `#[constructor]headers`.
+///   * Any other camelCase alias is a plain interface function
+///     (`#<kebab(name)>`).
+///   * Any other PascalCase function-type alias stays an ordinary
+///     callback type (`Handler = (Request) -> Response`) — hijacking
+///     it into an extern would corrupt vendored Canon-source packages.
+///     The case distinction is already load-bearing in the language
+///     (types vs. functions).
 ///   * The first product component becomes the receiver for camelCase
 ///     declarations; PascalCase declarations and zero-arg functions
 ///     skip the receiver extraction.
@@ -84,35 +42,31 @@ fn patch_extern_paths(items: &mut [Item], urn: &str) {
 ///     `[async-lower]`); everything else is sync. No `async` keyword.
 ///     This keeps the source consistent with the principle "types tell
 ///     the story" — the function's effect is visible in its signature.
-pub fn apply_bindings_directive(items: &mut [Item]) {
-    apply_bindings(items, None);
-}
+///
+/// Public so tests can drive the rewrite with a synthetic seed,
+/// exactly as the loader does for a vendored path.
+pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
+    let Some(base) = seed_urn else { return };
 
-/// See [`apply_bindings_directive`]. `seed_urn` is the path-derived
-/// interface URN for vendored binding files; a `bindings` directive in
-/// the file replaces it from that point on (directives are the escape
-/// hatch and always win).
-fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
-    // The bool records whether the base came from a directive (`true`)
-    // or the path-derived seed (`false`) — PascalCase aliases are only
-    // rewritten under directive bases.
-    let mut base_urn: Option<(String, bool)> = seed_urn.map(|u| (u.to_string(), false));
-    let mut pending_override: Option<String> = None;
+    // Resource types declared in this file (`X = Handle` newtypes).
+    // The rules consult them to spell WIT resource fragments
+    // (`[method]`, `[constructor]`) mechanically.
+    let resources: HashSet<String> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) => match &td.body {
+                TypeExpr::Named { name, generics, .. }
+                    if name == "Handle" && generics.is_empty() =>
+                {
+                    Some(td.name.name.clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
 
     for item in items.iter_mut() {
-        // Bindings directives steer the rewriter for subsequent items.
-        // A URN with `#` is an explicit one-shot path; without `#` it
-        // becomes the new file-level base.
-        if let Item::Bindings(BindingsDecl { urn, .. }) = item {
-            if urn.contains('#') {
-                pending_override = Some(urn.clone());
-            } else {
-                base_urn = Some((urn.clone(), true));
-                pending_override = None;
-            }
-            continue;
-        }
-
         let Item::TypeDef(td) = item else { continue };
         let TypeExpr::Function {
             generic_params,
@@ -126,22 +80,33 @@ fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
 
         let starts_lower = td.name.name.chars().next().is_some_and(char::is_lowercase);
 
-        // Pick the URN for this declaration. A pending one-shot override
-        // wins over the file-level base, and we consume it so the
-        // following decl falls back to the base (if any).
-        let path = if let Some(p) = pending_override.take() {
-            p
-        } else if let Some((base, from_directive)) = &base_urn {
-            if !from_directive && !starts_lower {
-                // Path-derived context: PascalCase stays a type alias.
-                continue;
-            }
-            format!("{}#{}", base, bindgen::camel_to_kebab(&td.name.name))
+        let path = if starts_lower {
+            // A resource-typed first parameter marks a resource method;
+            // anything else is a plain interface function.
+            let receiver_resource = params.first().and_then(|p| match p {
+                TypeExpr::Named { name, .. } if resources.contains(name) => Some(name),
+                _ => None,
+            });
+            let fragment = match receiver_resource {
+                Some(res) => format!(
+                    "[method]{}.{}",
+                    bindgen::camel_to_kebab(res),
+                    bindgen::camel_to_kebab(&td.name.name),
+                ),
+                None => bindgen::camel_to_kebab(&td.name.name),
+            };
+            format!("{base}#{fragment}")
+        } else if resources.contains(&td.name.name) {
+            // A PascalCase alias named like an in-file resource is its
+            // constructor.
+            format!(
+                "{}#[constructor]{}",
+                base,
+                bindgen::camel_to_kebab(&td.name.name),
+            )
         } else {
-            // No bindings context in scope: leave the TypeDef as a
-            // function-type alias (the existing Canon callback-type
-            // syntax). This is the path user code outside any bindings
-            // block follows.
+            // Any other PascalCase alias stays a type alias (the
+            // ordinary Canon callback-type syntax).
             continue;
         };
 
@@ -155,10 +120,9 @@ fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
             .collect();
 
         let (receiver, recv_mut, final_params) = if !starts_lower || new_params.is_empty() {
-            // PascalCase declarations (constructors, trait
-            // overloads) and zero-arg functions don't take a
-            // receiver — the parser does the same for non-bindings
-            // FunctionDefs.
+            // PascalCase declarations (constructors) and zero-arg
+            // functions don't take a receiver — the parser does the
+            // same for ordinary FunctionDefs.
             (None, false, new_params)
         } else {
             extract_receiver_from_params(new_params)
@@ -232,13 +196,6 @@ pub struct BundledFile {
     /// this path won't exist on the user's filesystem; the LSP must cope
     /// (same caveat as the previous `CARGO_MANIFEST_DIR` baked-in path).
     pub abs_path: &'static str,
-    /// WIT interface URN of the form `"<ns>:<pkg>/<iface>@<version>"`,
-    /// or `None` for hand-written files. Populated at build time by
-    /// `build.rs` from the package's `bindgen/_install.toml`. The
-    /// loader uses this to patch the path string of bare `extern Wasm`
-    /// declarations (i.e. ones the bindgen emitted without an explicit
-    /// URN) to the form `"<urn>#<fn-kebab>"` that codegen expects.
-    pub wit_urn: Option<&'static str>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
@@ -251,6 +208,27 @@ pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
 /// Find a specific file inside a bundled package.
 pub fn bundled_file(pkg: &BundledPackage, rel_path: &str) -> Option<&'static BundledFile> {
     pkg.files.iter().find(|f| f.path == rel_path)
+}
+
+/// Find a bundled file, resolving version-carrying directory names:
+/// `use wasi/random/random` (source never states versions) matches the
+/// on-disk `wasi/random@0.3.0-rc-…/random.can`. An exact match wins;
+/// otherwise a path whose directory segments differ only by an
+/// `@<version>` suffix matches. The bundled tree ships with the
+/// compiler, so at most one version of a package exists by
+/// construction and the first match is the match.
+fn bundled_file_versioned(pkg: &BundledPackage, rel_path: &str) -> Option<&'static BundledFile> {
+    bundled_file(pkg, rel_path).or_else(|| {
+        let want: Vec<&str> = rel_path.split('/').collect();
+        pkg.files.iter().find(|f| {
+            let actual: Vec<&str> = f.path.split('/').collect();
+            actual.len() == want.len()
+                && actual
+                    .iter()
+                    .zip(&want)
+                    .all(|(a, w)| a == w || a.split_once('@').is_some_and(|(left, _)| left == *w))
+        })
+    })
 }
 
 /// Resolve a `use a/b/c/…/Z` path against the bundled packages.
@@ -340,22 +318,6 @@ struct LoadCtx {
     /// local `use` imports). Mirrors `seen` but keeps each file's full
     /// text so callers can validate canonical formatting later.
     local_sources: Vec<LoadedSource>,
-    /// Root of the project that contains the entry file, identified by
-    /// the nearest ancestor directory containing an `canon.toml`. `None`
-    /// when the entry is a loose `.can` file outside any project (in that
-    /// case `use` paths resolve via bundled packages and local-relative
-    /// lookup only, exactly as before this field existed).
-    ///
-    /// When set, `process_use` consults `<project_root>/bindgen/` between
-    /// the bundled-package check and the local-relative fallback. This is
-    /// where `canon install` writes the materialized bindings declared
-    /// in the manifest's `[imports]` table.
-    project_root: Option<PathBuf>,
-    /// Parsed `<project_root>/bindgen/_install.toml`, when present.
-    /// Used to patch bare `extern Wasm` paths in local bindgen files —
-    /// see `patch_extern_paths`. Loaded once when the project root is
-    /// resolved; `None` when there's no project root or no index file.
-    project_install_index: Option<InstallIndex>,
     /// Canonicalized path of the project's vendored-dependency tree
     /// (`<root>/deps/`, see PACKAGES.md), when it exists on disk. The
     /// root is the project root when there is one, otherwise the entry
@@ -368,6 +330,12 @@ struct LoadCtx {
     /// `load_into` recognizes files under this prefix as vendored,
     /// deriving each top-level file's binding URN from its path.
     deps_dir: Option<PathBuf>,
+    /// Canonicalized `<project_root>/bindgen/` — the directory the
+    /// manifest-driven `canon install` materializes into. Same
+    /// versioned layout and path-derived binding rules as `deps_dir`;
+    /// the separate root survives only until PACKAGES.md slice 6
+    /// deletes the manifest flow.
+    bindgen_dir: Option<PathBuf>,
 }
 
 /// Walk up from `start` looking for the nearest directory that contains
@@ -392,26 +360,23 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
     })?;
     let dir = canonical.parent().unwrap_or_else(|| Path::new("."));
     let project_root = find_project_root(dir);
-    let project_install_index = project_root
-        .as_ref()
-        .map(|root| root.join("bindgen").join(INSTALL_INDEX_FILENAME))
-        .filter(|p| p.is_file())
-        .and_then(|p| fs::read_to_string(&p).ok())
-        .and_then(|src| install::parse_install_index(&src).ok());
     let deps_dir = project_root
         .as_deref()
         .unwrap_or(dir)
         .join("deps")
         .canonicalize()
         .ok();
+    let bindgen_dir = project_root
+        .as_ref()
+        .map(|root| root.join("bindgen"))
+        .and_then(|p| p.canonicalize().ok());
     let mut ctx = LoadCtx {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         local_sources: Vec::new(),
-        project_root,
-        project_install_index,
         deps_dir,
+        bindgen_dir,
     };
     let source = fs::read_to_string(&canonical).map_err(|err| CanonError::CheckError {
         message: format!("could not read `{}`: {}", canonical.display(), err),
@@ -448,14 +413,8 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let mut module = parser.parse()?;
-    // Apply bindings rewrite first — it converts function-type-alias
-    // TypeDefs into FunctionDefs, which `resolve_new_syntax` then
-    // processes (PascalCase constructor renaming, trait-impl receiver
-    // extraction). Doing it the other way around would leave bindings
-    // declarations stuck as TypeDefs through resolve_new_syntax and
-    // they'd miss the trait-receiver extraction that makes `42.ToJson()`
-    // dispatch correctly.
-    apply_bindings_directive(&mut module.items);
+    // The entry file is never a binding file (binding files live in
+    // vendored package directories), so no bindings rewrite applies.
     resolve_new_syntax(&mut module);
 
     let mut use_items = Vec::new();
@@ -589,21 +548,20 @@ fn process_use(u: &crate::ast::UseDecl, dir: &Path, ctx: &mut LoadCtx) -> Result
     // the directory name (never in source), remaining segments as
     // directory names, the final type-name segment kebab-cased to its
     // file stem.
-    let deps_candidate: Option<PathBuf> = resolve_deps_use(path_str, u.span, ctx)?;
+    let deps_candidate: Option<PathBuf> =
+        resolve_vendored_use(ctx.deps_dir.as_deref(), path_str, u.span)?;
 
     // Project `bindgen/` lookup. When the entry file lives inside a
     // project (an ancestor directory has `canon.toml`), `use` paths
-    // also resolve against `<project_root>/bindgen/<path>.can` — the
-    // directory where `canon install` materializes external bindings
-    // declared in the manifest's `[imports]` table. Sits between the
-    // bundled-package check and the local-relative fallback so bindgen
-    // output is reachable from any source file in the project without
-    // overriding either bundled std lookups or in-project sibling files.
-    let bindgen_candidate: Option<PathBuf> = ctx
-        .project_root
-        .as_ref()
-        .map(|root| root.join("bindgen").join(format!("{}.can", path_str)))
-        .filter(|p| p.is_file());
+    // also resolve against `<project_root>/bindgen/` — the directory
+    // where the manifest-driven `canon install` materializes external
+    // bindings declared in `[imports]`. Same versioned layout and
+    // resolution rule as `deps/`. Sits between the bundled-package
+    // check and the local-relative fallback so bindgen output is
+    // reachable from any source file in the project without overriding
+    // either bundled std lookups or in-project sibling files.
+    let bindgen_candidate: Option<PathBuf> =
+        resolve_vendored_use(ctx.bindgen_dir.as_deref(), path_str, u.span)?;
 
     // Local file/module candidates.
     let segments: Vec<&str> = path_str.split('/').collect();
@@ -711,12 +669,10 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
         path: path.to_path_buf(),
         source: source.clone(),
     });
-    let wit_urn = urn_for_local_file(path, ctx);
     let deps_pkg = deps_pkg_for_file(path, ctx)?;
     load_source(
         &source,
         path.parent().unwrap_or_else(|| Path::new(".")),
-        wit_urn.as_deref(),
         deps_pkg.as_ref(),
         ctx,
     )
@@ -750,10 +706,11 @@ fn valid_pkg_version(version: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '+')
 }
 
-/// Resolve a `use <ns>/<name>/…` path against the vendored `deps/`
-/// tree (PACKAGES.md slices 1 + 7). The package directory carries the
-/// version (`deps/<ns>/<name>@<version>/`), so the lookup scans
-/// `deps/<ns>/` for the directory whose name-before-`@` matches:
+/// Resolve a `use <ns>/<name>/…` path against a vendored tree — the
+/// project's `deps/` or its `bindgen/` (PACKAGES.md slices 1 + 7 + 8).
+/// The package directory carries the version
+/// (`<root>/<ns>/<name>@<version>/`), so the lookup scans
+/// `<root>/<ns>/` for the directory whose name-before-`@` matches:
 ///
 ///   * no match → `Ok(None)`, the caller falls through to the other
 ///     search locations;
@@ -764,16 +721,24 @@ fn valid_pkg_version(version: &str) -> bool {
 ///   * more than one versioned match → hard error (at most one version
 ///     of a package per project — previously structural in the
 ///     unversioned layout, now a detected sibling conflict).
-fn resolve_deps_use(path_str: &str, span: Span, ctx: &LoadCtx) -> Result<Option<PathBuf>> {
-    let Some(deps) = &ctx.deps_dir else {
+fn resolve_vendored_use(
+    root: Option<&Path>,
+    path_str: &str,
+    span: Span,
+) -> Result<Option<PathBuf>> {
+    let Some(root) = root else {
         return Ok(None);
     };
+    let label = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "deps".to_string());
     let segments: Vec<&str> = path_str.split('/').collect();
     if segments.len() < 3 {
         return Ok(None);
     }
     let (ns, name) = (segments[0], segments[1]);
-    let ns_dir = deps.join(ns);
+    let ns_dir = root.join(ns);
     let Ok(entries) = fs::read_dir(&ns_dir) else {
         return Ok(None);
     };
@@ -796,7 +761,7 @@ fn resolve_deps_use(path_str: &str, span: Span, ctx: &LoadCtx) -> Result<Option<
     if unversioned {
         return Err(CanonError::CheckError {
             message: format!(
-                "vendored package directory `deps/{ns}/{name}/` is missing its version (expected `deps/{ns}/{name}@<version>/`)",
+                "vendored package directory `{label}/{ns}/{name}/` is missing its version (expected `{label}/{ns}/{name}@<version>/`)",
             ),
             span,
         });
@@ -805,8 +770,8 @@ fn resolve_deps_use(path_str: &str, span: Span, ctx: &LoadCtx) -> Result<Option<
         matches.sort();
         return Err(CanonError::CheckError {
             message: format!(
-                "vendored package `{ns}:{name}` is present at more than one version: `deps/{ns}/{}` (at most one version of a package per project; remove the stale directory)",
-                matches.join(&format!("/`, `deps/{ns}/")),
+                "vendored package `{ns}:{name}` is present at more than one version: `{label}/{ns}/{}` (at most one version of a package per project; remove the stale directory)",
+                matches.join(&format!("/`, `{label}/{ns}/")),
             ),
             span,
         });
@@ -829,31 +794,45 @@ fn resolve_deps_use(path_str: &str, span: Span, ctx: &LoadCtx) -> Result<Option<
     Ok(p.is_file().then_some(p))
 }
 
-/// When `path` lives under the project's `deps/` tree, parse the
-/// versioned package directory it belongs to and derive the file's
-/// binding URN (see [`DepsPkg`]). Identity is validated where it lives
-/// — the path — so a malformed vendor layout is an error here, with
-/// nothing left for file contents to get wrong. Returns `None` for
-/// ordinary project files.
+/// When `path` lives under one of the project's vendored trees
+/// (`deps/` or `bindgen/`), parse the versioned package directory it
+/// belongs to and derive the file's binding URN (see [`DepsPkg`]).
+/// Identity is validated where it lives — the path — so a malformed
+/// vendor layout is an error here, with nothing left for file contents
+/// to get wrong. Returns `None` for ordinary project files.
 ///
-/// Both `path` and `ctx.deps_dir` are canonicalized by their producers,
-/// so the prefix test is a plain component comparison.
+/// Both `path` and the roots are canonicalized by their producers, so
+/// the prefix test is a plain component comparison.
 fn deps_pkg_for_file(path: &Path, ctx: &LoadCtx) -> Result<Option<DepsPkg>> {
-    let Some(deps) = &ctx.deps_dir else {
+    for root in [ctx.deps_dir.as_deref(), ctx.bindgen_dir.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(pkg) = vendored_pkg_for_file(path, root)? {
+            return Ok(Some(pkg));
+        }
+    }
+    Ok(None)
+}
+
+/// The per-root half of [`deps_pkg_for_file`].
+fn vendored_pkg_for_file(path: &Path, root: &Path) -> Result<Option<DepsPkg>> {
+    let Ok(rel) = path.strip_prefix(root) else {
         return Ok(None);
     };
-    let Ok(rel) = path.strip_prefix(deps) else {
-        return Ok(None);
-    };
+    let root_label = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "deps".to_string());
     let rel_str = rel.to_string_lossy().replace('\\', "/");
-    let label = format!("deps/{rel_str}");
+    let label = format!("{root_label}/{rel_str}");
     let components: Vec<&str> = rel_str.split('/').collect();
     if components.len() < 3 {
         // `deps/foo.can` or `deps/acme/foo.can` — no package directory
         // to belong to, so no identity can be derived.
         return Err(CanonError::CheckError {
             message: format!(
-                "vendored file `{label}` must live under `deps/<namespace>/<name>@<version>/`"
+                "vendored file `{label}` must live under `{root_label}/<namespace>/<name>@<version>/`"
             ),
             span: Span::default(),
         });
@@ -862,7 +841,7 @@ fn deps_pkg_for_file(path: &Path, ctx: &LoadCtx) -> Result<Option<DepsPkg>> {
     let Some((name, version)) = dir.split_once('@') else {
         return Err(CanonError::CheckError {
             message: format!(
-                "vendored package directory `deps/{ns}/{dir}/` is missing its version (expected `deps/{ns}/{dir}@<version>/`)",
+                "vendored package directory `{root_label}/{ns}/{dir}/` is missing its version (expected `{root_label}/{ns}/{dir}@<version>/`)",
             ),
             span: Span::default(),
         });
@@ -870,7 +849,7 @@ fn deps_pkg_for_file(path: &Path, ctx: &LoadCtx) -> Result<Option<DepsPkg>> {
     if !valid_pkg_seg(ns) || !valid_pkg_seg(name) || !valid_pkg_version(version) {
         return Err(CanonError::CheckError {
             message: format!(
-                "malformed vendored package directory `deps/{ns}/{dir}/` (expected `deps/<namespace>/<name>@<version>/` with a lowercase kebab name and a semver-ish version)",
+                "malformed vendored package directory `{root_label}/{ns}/{dir}/` (expected `{root_label}/<namespace>/<name>@<version>/` with a lowercase kebab name and a semver-ish version)",
             ),
             span: Span::default(),
         });
@@ -882,23 +861,29 @@ fn deps_pkg_for_file(path: &Path, ctx: &LoadCtx) -> Result<Option<DepsPkg>> {
     Ok(Some(DepsPkg { urn_base }))
 }
 
-/// Compute the WIT interface URN for a local file by looking it up in
-/// the project's install index. Returns `None` for files outside
-/// `<project_root>/bindgen/`, for projects without a `_install.toml`,
-/// or for `bindgen/` files the index doesn't know about.
-fn urn_for_local_file(path: &Path, ctx: &LoadCtx) -> Option<String> {
-    let project_root = ctx.project_root.as_ref()?;
-    let index = ctx.project_install_index.as_ref()?;
-    let bindgen_root = project_root.join("bindgen");
-    let rel = path.strip_prefix(&bindgen_root).ok()?;
-    let rel_str = rel.to_string_lossy().replace('\\', "/");
-    index.urn_for(&rel_str).map(|s| s.to_string())
+/// Derive the binding-base URN a *bundled* file's package-relative path
+/// spells, when it has the versioned shape
+/// `<ns>/<name>@<version>/<iface>.can`. Lenient counterpart of
+/// [`vendored_pkg_for_file`]: the bundled tree ships with the compiler,
+/// so a non-versioned path is simply an ordinary source file, never an
+/// error.
+pub(crate) fn urn_base_for_bundled_path(rel: &str) -> Option<String> {
+    let components: Vec<&str> = rel.split('/').collect();
+    if components.len() != 3 {
+        return None;
+    }
+    let (ns, dir, file) = (components[0], components[1], components[2]);
+    let (name, version) = dir.split_once('@')?;
+    if !valid_pkg_seg(ns) || !valid_pkg_seg(name) || !valid_pkg_version(version) {
+        return None;
+    }
+    let stem = file.strip_suffix(".can")?.replace('_', "-");
+    Some(format!("{ns}:{name}/{stem}@{version}"))
 }
 
 fn load_source(
     source: &str,
     dir: &Path,
-    wit_urn: Option<&str>,
     deps_pkg: Option<&DepsPkg>,
     ctx: &mut LoadCtx,
 ) -> Result<()> {
@@ -927,9 +912,6 @@ fn load_source(
     for u in use_items {
         process_use(&u, dir, ctx)?;
     }
-    if let Some(urn) = wit_urn {
-        patch_extern_paths(&mut other_items, urn);
-    }
     ctx.items.extend(other_items);
     Ok(())
 }
@@ -949,8 +931,11 @@ fn load_bundled_source(
     let mut module = parser.parse()?;
     // Same order as `load_source`: rewrite bindings first, then let
     // resolve_new_syntax pick up the produced FunctionDefs for the
-    // PascalCase normalisation pass.
-    apply_bindings_directive(&mut module.items);
+    // PascalCase normalisation pass. A bundled file at a versioned
+    // package path (`wasi/random@0.3.0/random.can`) seeds its
+    // path-derived URN, exactly like a vendored file under `deps/`.
+    let seed_urn = urn_base_for_bundled_path(current.path);
+    apply_bindings(&mut module.items, seed_urn.as_deref());
     resolve_new_syntax(&mut module);
 
     let mut use_items = Vec::new();
@@ -963,9 +948,6 @@ fn load_bundled_source(
     }
     for u in use_items {
         process_bundled_use(pkg, current, &u, ctx)?;
-    }
-    if let Some(urn) = current.wit_urn {
-        patch_extern_paths(&mut other_items, urn);
     }
     ctx.items.extend(other_items);
     Ok(())
@@ -1035,7 +1017,8 @@ fn process_bundled_use(
     let sibling_rel = candidate_path(&current_dir);
     let root_rel = candidate_path("");
 
-    let file = bundled_file(pkg, &sibling_rel).or_else(|| bundled_file(pkg, &root_rel));
+    let file = bundled_file_versioned(pkg, &sibling_rel)
+        .or_else(|| bundled_file_versioned(pkg, &root_rel));
 
     let Some(file) = file else {
         // Report both lookup paths so the error names exactly what we

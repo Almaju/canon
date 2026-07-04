@@ -1,0 +1,5 @@
+Clock = String
+
+Datetime = String
+
+now = (Clock) -> Datetime
