@@ -1,8 +1,7 @@
 # Effects and Values
 
 Canon does not have a separate effect or capability system. Effects
-emerge naturally from the values you construct and thread through your
-program.
+emerge from the values you construct and thread through your program.
 
 ## Domain-First Design
 
@@ -31,7 +30,7 @@ system.
 ## Print
 
 `print = (String) -> Unit` is a built-in that writes to stdout. No
-capability token, no parameter to thread — any `String` can be printed:
+capability token, no parameter to thread; any `String` can be printed:
 
 ```canon
 "hello".print()
@@ -42,18 +41,17 @@ capability token, no parameter to thread — any `String` can be printed:
 the compiled `.wasm` runs on any Component Model host. The trailing
 newline is emitted automatically.
 
-For **redirectable output** — writing to a file, a log sink, a test
-buffer — you'd construct an explicit destination value (a `File` once
-its write side lands, a `Fileout` newtype, …) and pass it as an
-additional component. The mechanism is the same as any other effect:
-thread the value.
+For redirectable output (a file, a log sink, a test buffer) you'd
+construct an explicit destination value (a `File` once its write side
+lands, or a `Fileout` newtype) and pass it as an additional component.
+The mechanism is the same as any other effect: thread the value.
 
 ## Threading Effects
 
-When a function performs a meaningful effect — reading a file, talking
-to a database, listening on a socket — the relevant value appears in
-its signature. This is not enforced by a capability type system; it is
-the natural consequence of needing the value to do the work:
+When a function performs a meaningful effect (reading a file, talking
+to a database, listening on a socket), the relevant value appears in
+its signature. No capability type system enforces this; it is the
+natural consequence of needing the value to do the work:
 
 ```canon
 save = (Database * User) -> Result<Unit, DbError>
@@ -92,19 +90,19 @@ A random integer:
 Random().print()
 ```
 
-An HTTP GET — start with a `Url`:
+An HTTP GET starts with a `Url`:
 
 ```canon
 Url("http://example.com")?.get()?.print()
 ```
 
-Read a file — start with a `Path`:
+Reading a file starts with a `Path`:
 
 ```canon
 Path("./Cargo.toml").File()?.read()?.print()
 ```
 
-Serve HTTP — declare a `(Request) -> Response` function and the
+To serve HTTP, declare a `(Request) -> Response` function; the
 program *is* the server (see [Serving HTTP](./http.md)):
 
 ```canon

@@ -2,8 +2,8 @@
 
 A Canon program becomes an HTTP service by declaring **one free
 function that returns `Response`**. There is no server object, no
-router registration, no port in the program — the function *is* the
-service, and the host decides how to run it.
+router registration, no port in the program. The function *is* the
+service; the host decides how to run it.
 
 ```canon
 use canon/std/http/Body
@@ -19,7 +19,7 @@ greet = (Request) -> Response {
 
 ```sh
 $ canon run greet.can
-HTTP handler detected — serving on http://127.0.0.1:8080
+HTTP handler detected: serving on http://127.0.0.1:8080
 
 $ curl localhost:8080
 hello from canon
@@ -33,7 +33,7 @@ The same rule that makes `main` a CLI program makes this an HTTP
 program: **the compiler selects the entry by return type**. A free
 function returning `Unit` is a CLI command; a free function returning
 `Response` is an HTTP handler. Exactly one function per program may
-return a world type — helpers must return ordinary values:
+return a world type; helpers must return ordinary values:
 
 ```canon
 notFound = () -> Body {
@@ -42,14 +42,14 @@ notFound = () -> Body {
 ```
 
 A second `Response`-returning function is a compile error ("ambiguous
-HTTP entry"), and mixing `main` with a handler is too — a component
+HTTP entry"), and mixing `main` with a handler is too: a component
 exports exactly one world.
 
 ## Routing is dispatch
 
-`Request.path()` returns `Option<String>` — the live path and query.
+`Request.path()` returns `Option<String>`, the live path and query.
 There is no route DSL; route matching is the same dispatch used
-everywhere else in Canon — union dispatch on the `Option`, then
+everywhere else in Canon. Union dispatch on the `Option`, then
 [literal dispatch](./match.md#literal-dispatch) on the path, with the
 mandatory `(String)` catch-all as the 404:
 
@@ -68,14 +68,14 @@ serve = (Request) -> Response {
 ```
 
 Literal arms follow canonical order (alphabetical for strings,
-ascending for ints — `canon fmt` sorts them), and the scrutinee stays
+ascending for ints; `canon fmt` sorts them), and the scrutinee stays
 in scope under its type name inside every arm.
 
 ## Response composition
 
 `Response` is the product `Body * Headers * Status`, so a response is
-constructed as a value-level product — components joined with `*`, in
-alphabetical order, like every Canon product:
+constructed as a value-level product: components joined with `*`, in
+alphabetical order, like every Canon product.
 
 - **`Body`** is a `String` newtype. The compiled component streams it
   through a real `wasi:http` contents stream with a correct
@@ -89,8 +89,8 @@ alphabetical order, like every Canon product:
 ## The capstone: notes-api
 
 [`examples/notes-api`](https://github.com/Almaju/canon/tree/main/examples/notes-api)
-puts all of it together — a JSON API with an index route, per-item
-routes, and a 404 fallback, in about forty lines with zero server
+puts all of it together: a JSON API with an index route, per-item
+routes, and a 404 fallback, in about forty lines with no server
 boilerplate:
 
 ```sh
@@ -111,7 +111,7 @@ dispatching on `Request.path()`.
 
 `canon build` on an HTTP program emits a standard **`wasi:http/service`
 component**: it imports only `wasi:*` interfaces and exports
-`wasi:http/handler@0.3.0-rc-2026-03-15#handle` — the same contract any
+`wasi:http/handler@0.3.0-rc-2026-03-15#handle`, the same contract any
 compliant WASI HTTP host instantiates. `canon run` hosts it on the
 embedded wasmtime, but the `.wasm` itself is not tied to Canon's
 runtime in any way.

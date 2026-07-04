@@ -32,7 +32,7 @@ main = () -> Result<Unit, Unit> {
 }
 ```
 
-`Ok(42)?` evaluates to `42` (because the `Result` is `Ok`); if it were
+`Ok(42)?` evaluates to `42` because the `Result` is `Ok`; if it were
 `Err(_)`, the function would return early with that error.
 
 ## Option vs Result
@@ -75,16 +75,15 @@ forces callers to handle the failure mode:
 Url("https://example.com")?.get()?.print()
 ```
 
-Both `?`s here are doing the same job: unwrapping a `Result` at the
-point of use. The first handles `Url` parsing failure (`InvalidUrl`);
-the second handles `.get()` failure (`HttpError`). The
-function's return type then carries the union:
-`Result<Unit, HttpError + InvalidUrl>`.
+Both `?`s do the same job: unwrapping a `Result` at the point of use.
+The first handles `Url` parsing failure (`InvalidUrl`); the second
+handles `.get()` failure (`HttpError`). The function's return type then
+carries the union: `Result<Unit, HttpError + InvalidUrl>`.
 
 ## Error Naming
 
-Errors are types like any other, and they should be named *semantically*
-— by what failed, not by who emitted them. `InvalidUrl`, `MalformedJson`,
+Errors are types like any other, and they should be named semantically:
+by what failed, not by who emitted them. `InvalidUrl`, `MalformedJson`,
 `FileNotFound`, `PermissionDenied` carry information; `UrlError`,
 `JsonError`, `FsError` don't.
 

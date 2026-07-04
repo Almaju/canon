@@ -1,14 +1,14 @@
 # Extern Wasm
 
-Canon compiles to a **WebAssembly Component**, so foreign functions
-aren't bound to a host language — they're bound to **Component Model
-imports** declared by their fully-qualified path. The mechanism is
-`extern Wasm`, and it works the same whether the import is a standard
-WASI interface (`wasi:random/random#get-random-u64`) or a per-application
-bridge (`canon:builtins/url@0.1.0#parse`).
+Canon compiles to a **WebAssembly Component**, so foreign functions bind
+to **Component Model imports** declared by their fully-qualified path,
+not to a host language. The mechanism is `extern Wasm`, and it works the
+same whether the import is a standard WASI interface
+(`wasi:random/random#get-random-u64`) or a per-application bridge
+(`canon:builtins/url@0.1.0#parse`).
 
 The compiler emits the matching `(import …)` and lowers each call through
-the canonical ABI — no source-level marshalling, no manual buffer
+the canonical ABI: no source-level marshalling, no manual buffer
 management.
 
 ## Declaring an Extern Function
@@ -28,7 +28,7 @@ The string follows Component Model path syntax:
 namespace : package / interface @ version # function
 ```
 
-- The `namespace:package/interface` part identifies a WIT interface — a
+- The `namespace:package/interface` part identifies a WIT interface: a
   group of related functions, types, and resources.
 - The `@version` is optional and only present on versioned interfaces
   (every WASI 0.3-rc interface, for example).
@@ -36,7 +36,7 @@ namespace : package / interface @ version # function
 
 The Canon signature declares how the function is called from Canon. The
 compiler resolves Canon types against the WIT-level types: `Int` maps
-to the WIT integer at its declared width (`u8` through `s64` — for
+to the WIT integer at its declared width (`u8` through `s64`; for
 `wasi:*` imports the vendored WIT is consulted, so narrow widths are
 honoured at the ABI), `String` is `string`, `Result<T, E>` is
 `result<T, E>`, and so on.
@@ -44,7 +44,7 @@ honoured at the ABI), `String` is `string`, `Result<T, E>` is
 Hand-written `extern Wasm("<urn>")` is the explicit form. Generated
 binding files use the equivalent `bindings "<urn>"` directive at the
 top of the file, with each function below it declared as a bare
-function-type alias — see
+function-type alias; see
 [Using WASI Interfaces](../reference/wasi.md).
 
 ## Extern Types
@@ -68,7 +68,7 @@ Url = (String) -> Result<Url, InvalidUrl>
 
 The type declaration on the first line is an ordinary Canon newtype.
 The `extern Wasm` block on the second line replaces the implicit total
-constructor — so `Url("https://example.com")` calls the host-provided
+constructor, so `Url("https://example.com")` calls the host-provided
 parser and yields a `Result<Url, InvalidUrl>`.
 
 ## Async Externs
@@ -138,10 +138,10 @@ use canon/std/time/Instant
 use canon/std/time/Now
 ```
 
-(`Instant()` — monotonic clock via `wasi/clocks/monotonic_clock`;
-`Random()` — random `Int` via `wasi/random/random`; `File`/`read` —
-`canon:builtins/filesystem`; `Now()` — RFC 3339 wall clock;
-`Url` + `get` — `canon:builtins/url` + `canon:builtins/http`.)
+(`Instant()`: monotonic clock via `wasi/clocks/monotonic_clock`.
+`Random()`: random `Int` via `wasi/random/random`. `File`/`read`:
+`canon:builtins/filesystem`. `Now()`: RFC 3339 wall clock.
+`Url` + `get`: `canon:builtins/url` + `canon:builtins/http`.)
 
 Each `use canon/std/X` brings in the named type along with its constructor and
 methods. Behind the scenes those modules are written in ordinary Canon
@@ -152,11 +152,11 @@ complete list and the WIT interfaces behind each module.
 
 ## `wasi:*` vs `canon:builtins/*`
 
-You'll see two namespaces in `extern Wasm` paths:
+Two namespaces appear in `extern Wasm` paths:
 
-- `wasi:*` — standard [WASI](https://github.com/WebAssembly/WASI)
+- `wasi:*`: standard [WASI](https://github.com/WebAssembly/WASI)
   interfaces. Any compliant host satisfies them.
-- `canon:builtins/*` — temporary host bridges that `canon run`
+- `canon:builtins/*`: temporary host bridges that `canon run`
   implements internally. Each one will move to the corresponding `wasi:*`
   interface as that interface's canonical-ABI shape (async, streams,
   resources) becomes available.
@@ -173,7 +173,7 @@ methods. The bridge swap is invisible.
   isn't yet usable from the canonical ABI (resources + streams, e.g.
   filesystem descriptors), Canon ships a `canon:builtins/*` stand-in.
   The user-facing API doesn't change when the bridge is later swapped
-  for native WASI — the remaining set is tracked in `V1.md`.
+  for native WASI. The remaining set is tracked in `V1.md`.
 - **Hosts must support WASI Preview 3.** `canon run` embeds `wasmtime`
   with the P3 + component-model-async feature gates; other hosts will
   need equivalent support.
