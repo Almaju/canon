@@ -1,13 +1,13 @@
 # JSON, Without a Framework
 
-A notes API should serve notes, plural, as JSON. In this chapter the
-service grows its real routes: `/notes` returns a JSON array, `/notes/1`
-returns a single note, everything else gets a JSON error.
+A notes API should serve notes, plural, as JSON. The service grows its
+real routes: `/notes` returns a JSON array, `/notes/1` returns a single
+note, everything else gets a JSON error.
 
 ## JSON Is a Literal
 
 JSON is part of Canon's syntax. An object or array literal is an
-ordinary expression, and it evaluates to the encoded JSON text — a
+ordinary expression, and it evaluates to the encoded JSON text: a
 `String`-shaped value holding exactly the bytes the client will
 receive:
 
@@ -17,7 +17,7 @@ notFound = () -> Body {
 }
 ```
 
-No serializer, no schema, no middleware — and no escaped quotes. The
+No serializer, no schema, no middleware, no escaped quotes. The
 literal *is* the wire format. Arrays work the same way, and literals
 nest:
 
@@ -27,20 +27,20 @@ indexBody = () -> Body {
 }
 ```
 
-> Note the spacing: `{"error":"not found"}`, not `{"error": "not
+> The spacing matters: `{"error":"not found"}`, not `{"error": "not
 > found"}`. JSON literals are code, so `canon fmt` owns their layout
-> like everything else's — compact, no spaces after `:` or `,`.
+> like everything else's: compact, no spaces after `:` or `,`.
 
-And there's nothing to import: JSON is part of the prelude, like
-`Option` and `Result`. A static literal compiles down to a plain
-string; when a program reaches for the JSON *machinery* — the
-validating `Json(...)` constructor, or **interpolation** like
-`{"answer":Int.mul(2)}`, which converts values through their `ToJson`
-instance — the compiler pulls in `canon/std/Json` automatically.
+There's nothing to import: JSON is part of the prelude, like `Option`
+and `Result`. A static literal compiles down to a plain string. When a
+program reaches for the JSON *machinery* (the validating `Json(...)`
+constructor, or **interpolation** like `{"answer":Int.mul(2)}`, which
+converts values through their `ToJson` instance) the compiler pulls in
+`canon/std/Json` automatically.
 
-One honest limitation: the `ToJson` instances are currently backed by
-host functions that the `wasi:http/service` world can't satisfy, so
-interpolation is **CLI-only for now** — use it in a handler and the
+One limitation: the `ToJson` instances are currently backed by host
+functions that the `wasi:http/service` world can't satisfy, so
+interpolation is **CLI-only for now**. Use it in a handler and the
 build fails with an error naming exactly which imports the HTTP world
 can't provide. Inside a handler, keep literals fully static.
 
@@ -89,20 +89,20 @@ $ curl localhost:8080/other
 {"error":"not found"}
 ```
 
-Note the ordering everywhere: the functions (`indexBody`, `notFound`,
-`noteOneBody`, `serve`) are alphabetical, and the literal route arms
-(`"/notes"`, `"/notes/1"`) are too, with the catch-all last. Both are
-enforced — and both are auto-fixed by `canon fmt`, so you never sort by
+The ordering is everywhere: the functions (`indexBody`,
+`notFound`, `noteOneBody`, `serve`) are alphabetical, and so are the
+literal route arms (`"/notes"`, `"/notes/1"`), catch-all last. Both are
+enforced, and both are auto-fixed by `canon fmt`, so you never sort by
 hand. This is the [ordering rule](../spec/ordering.md) that runs
 through the whole language.
 
-## The Smell We Just Introduced
+## The Smell
 
-`{"title":"ship canon v1"}` appears twice — once alone, once inside the
+`{"title":"ship canon v1"}` appears twice: once alone, once inside the
 index array. The note *data* and the note *encoding* are tangled
-together in literals, in the same file as the routing. And because the
+together in literals, in the same file as the routing. Because the
 literals are static, adding a third note means editing two places.
 
-In most languages you'd now reach for a `Note` class and a serializer.
-Canon's version of that move is a **newtype and a function in their own
-module** — which is the [next chapter](./04-modules.md).
+In most languages the next move is a `Note` class and a serializer.
+Canon's version of that move is a newtype and a function in their own
+module: the [next chapter](./04-modules.md).

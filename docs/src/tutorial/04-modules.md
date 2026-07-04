@@ -1,9 +1,9 @@
 # Growing Into Modules
 
-One file was fine for three routes. Now we'll give the project a real
-package layout and pull the note logic into its own module — meeting
-Canon's module system, which is small enough to explain in one sentence:
-*a file declares the type it's named after, and `use` imports it.*
+One file was fine for three routes. The next step is a real package
+layout, with the note logic in its own module. Canon's module system
+fits in one sentence: *a file declares the type it's named after, and
+`use` imports it.*
 
 ## From File to Package
 
@@ -32,8 +32,7 @@ canon run notes-api            # or `canon run .` from inside it
 
 ## The `Note` Module
 
-`src/note.can` — the file is named `note.can`, so it must declare a type
-named `Note`:
+The file is named `note.can`, so it must declare a type named `Note`:
 
 ```canon
 Note = String
@@ -47,18 +46,18 @@ render = (Note) -> String {
 
 Two ideas in eight lines:
 
-- **`Note = String` is a newtype.** A `Note` is stored like a `String`
-  but is a distinct type — a function expecting `Note` documents itself.
-  Newtypes are Canon's answer to both naming and disambiguation; they're
-  what you write where other languages write a comment, a variable name,
-  or a wrapper class.
-- **`render` is the serializer.** It builds the JSON encoding of one
-  note by chaining `concat`. A JSON *literal* can't do this job yet:
+- `Note = String` declares a newtype. A `Note` is stored like a
+  `String` but is a distinct type; a function expecting `Note`
+  documents itself. Newtypes are Canon's answer to both naming and
+  disambiguation: what you write where other languages write a
+  comment, a variable name, or a wrapper class.
+- `render` is the serializer. It builds the JSON encoding of one note
+  by chaining `concat`. A JSON *literal* can't do this job yet:
   interpolating a value (`{"title":Note}`) rides `canon/std/Json`'s
-  host-backed `ToJson`, which the HTTP world can't satisfy — so dynamic
+  host-backed `ToJson`, which the HTTP world can't satisfy, so dynamic
   encoding in a handler is honest string concatenation, escapes and
-  all. Note the receiver: inside the body, the note is referenced as
-  `Note` — components are named by their types.
+  all. Inside the body the note is referenced as `Note`: parameters go
+  by their type name.
 
 ## The Entry, Rewritten
 
@@ -102,7 +101,7 @@ serve = (Request) -> Response {
 `List<String>.toJsonArray()` is a compiler builtin that joins
 already-encoded JSON fragments into an array, so the static array
 literal from chapter 3 gives way to encoding each `Note` once. The
-behaviour is identical — same routes, same bytes — but the JSON
+behaviour is identical (same routes, same bytes), but the JSON
 encoding now lives in exactly one place, next to the type it encodes:
 
 ```sh
@@ -114,16 +113,16 @@ $ curl localhost:8080/notes
 ## What `use` Did
 
 - `use Note` loads `note.can` from the same directory and brings in the
-  `Note` type **with its methods** — that's why `main.can` can call
+  `Note` type **with its methods**, which is why `main.can` can call
   `.render()` without importing it separately. One import per type; no
   wildcards; no `mod` declarations. A folder is a module.
 - `use` lines, like everything else, are alphabetical. `Note` sorts
-  before `canon/std/…` — the compiler will tell you if you get it
+  before `canon/std/…`; the compiler will tell you if you get it
   wrong.
-- Note the substitutability: `render` chains `.concat(Note)` where
-  `concat` expects a `String` — a newtype flows into its underlying
-  type without unwrapping. Same reason `Body(Note(…).render())` works.
+- `render` chains `.concat(Note)` where `concat` expects a `String`: a
+  newtype flows into its underlying type without unwrapping. The same
+  substitutability is why `Body(Note(…).render())` works.
 
 The service is now shaped like a real project: data and encoding in a
-module, one thin entry that routes and wraps. Which means the logic is
-now *testable* — [next chapter](./05-testing.md).
+module, one thin entry that routes and wraps. The logic is now
+testable, which is the [next chapter](./05-testing.md).
