@@ -1,48 +1,139 @@
-/* Subtle tweaks for the Canon book */
+/* ── Canon docs skin ─────────────────────────────────────────────────
+   One canonical look, matching the landing page (docs/landing/index.html).
+   Loaded after mdBook's stock stylesheets via `additional-css`, so equal-
+   specificity rules here win. The theme picker is hidden: like the
+   formatter, the theme has no options. */
 
-.content blockquote {
-    border-left: 4px solid var(--quote-border);
-    padding: 0.5rem 1rem;
-    background: var(--quote-bg);
-    font-style: italic;
+html:root {
+    /* landing palette */
+    --canon-bg: #0a0a0a;
+    --canon-panel: #0e0e0f;
+    --canon-border: #1e1e21;
+    --canon-border-hi: #2c2c31;
+    --canon-text: #ededed;
+    --canon-body: #c9c9cf;
+    --canon-muted: #a1a1aa;
+    --canon-dim: #63636b;
+    --canon-accent: #e8a24b;
+    --canon-accent-dim: rgba(232, 162, 75, .55);
+    /* code tokens */
+    --canon-c-type: #8ad4c0;
+    --canon-c-op: #e8a24b;
+    --canon-c-str: #a9c181;
+    --canon-c-num: #d699b6;
+    --canon-c-comment: #55555e;
+
+    --canon-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+        Roboto, Helvetica, Arial, sans-serif;
+    --canon-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code",
+        Menlo, Consolas, monospace;
+
+    /* remap mdBook's variables (all themes collapse to this one look) */
+    --bg: var(--canon-bg);
+    --fg: var(--canon-body);
+    --sidebar-bg: var(--canon-bg);
+    --sidebar-fg: var(--canon-muted);
+    --sidebar-non-existant: var(--canon-dim);
+    --sidebar-active: var(--canon-accent);
+    --sidebar-spacer: var(--canon-border);
+    --scrollbar: var(--canon-border-hi);
+    --icons: var(--canon-dim);
+    --icons-hover: var(--canon-text);
+    --links: var(--canon-accent);
+    --inline-code-color: var(--canon-text);
+    --theme-popup-bg: var(--canon-panel);
+    --theme-popup-border: var(--canon-border-hi);
+    --theme-hover: rgba(255, 255, 255, .05);
+    --quote-bg: var(--canon-panel);
+    --quote-border: var(--canon-border);
+    --table-border-color: var(--canon-border);
+    --table-header-bg: var(--canon-panel);
+    --table-alternate-bg: transparent;
+    --searchbar-border-color: var(--canon-border-hi);
+    --searchbar-bg: var(--canon-panel);
+    --searchbar-fg: var(--canon-text);
+    --searchresults-header-fg: var(--canon-dim);
+    --searchresults-border-color: var(--canon-border);
+    --searchresults-li-bg: var(--canon-panel);
+    --search-mark-bg: rgba(232, 162, 75, .35);
+    --color-scheme: dark;
+
+    --sidebar-width: 264px;
+    --content-max-width: 760px;
+    --menu-bar-height: 52px;
 }
 
-.content table {
-    margin: 1rem 0;
+html {
+    font-family: var(--canon-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    scrollbar-color: var(--canon-border-hi) var(--canon-bg);
 }
 
-.content h2 {
-    border-bottom: 1px solid var(--table-border-color);
-    padding-bottom: 0.3em;
-    margin-top: 2em;
+body {
+    font-family: var(--canon-sans);
+    font-size: 16px;
+    line-height: 1.7;
 }
 
-code {
-    font-size: 0.92em;
+code, pre, kbd, samp {
+    font-family: var(--canon-mono) !important;
 }
 
-/* Canon structural operators (->, ?, *, +, ^, ::<) — emitted by
-   canon-highlight.js; mdBook's stock highlight themes don't style
-   .hljs-operator, so define it per theme family here. */
-.hljs-operator {
-    color: #b76514;
+::selection {
+    background: rgba(232, 162, 75, .28);
+    color: inherit;
 }
 
-.coal .hljs-operator,
-.navy .hljs-operator,
-.ayu .hljs-operator {
-    color: #cc99cd;
+/* ── menu bar: the landing nav ───────────────────────────────────── */
+
+#menu-bar,
+#menu-bar.bordered {
+    border-bottom: 1px solid var(--canon-border);
+    background: rgba(10, 10, 10, .72);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
 }
 
-/* Section tabs (built by tabs.js) */
+#menu-bar .menu-title {
+    font-family: var(--canon-mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--canon-text);
+}
+
+/* wordmark glyph — the text itself is set by tabs.js */
+#menu-bar .menu-title .canon-glyph {
+    color: var(--canon-accent);
+    margin-right: .55em;
+}
+
+#menu-bar .icon-button {
+    color: var(--canon-dim);
+}
+#menu-bar .icon-button:hover {
+    color: var(--canon-text);
+}
+
+/* one look, no theme picker */
+#theme-toggle,
+.theme-popup {
+    display: none !important;
+}
+
+/* ── section tabs (built by tabs.js) ─────────────────────────────── */
+
 .canon-tabs {
     display: flex;
-    gap: 0.25rem;
+    align-items: center;
+    gap: 2px;
     overflow-x: auto;
-    padding: 0 calc(var(--page-padding) - 0.75rem);
-    border-bottom: 1px solid var(--table-border-color);
-    background: var(--bg);
-    font-size: 0.95em;
+    padding: 0 calc(var(--page-padding) - 0.25rem);
+    border-bottom: 1px solid var(--canon-border);
+    background: var(--canon-bg);
+    font-size: 13.5px;
+    scrollbar-width: none;
     /* Above the fixed .nav-chapters edge arrows (z-index auto), which
        otherwise capture clicks on the first tab — but below the sticky
        #menu-bar (z-index 101) so the strip slides underneath it when
@@ -50,6 +141,7 @@ code {
     position: relative;
     z-index: 100;
 }
+.canon-tabs::-webkit-scrollbar { display: none; }
 
 /* The wide-screen prev/next hover zones span the full viewport height
    (top: 0), which puts them over the tab strip. Start them below the
@@ -59,22 +151,487 @@ code {
 }
 
 .canon-tabs a {
-    padding: 0.45rem 0.75rem;
-    color: var(--fg);
+    padding: 9px 12px 7px;
+    color: var(--canon-muted);
     text-decoration: none;
     white-space: nowrap;
     border-bottom: 2px solid transparent;
-    opacity: 0.75;
+    transition: color .15s;
 }
 
 .canon-tabs a:hover {
-    opacity: 1;
-    border-bottom-color: var(--table-border-color);
+    color: var(--canon-text);
 }
 
 .canon-tabs a.active {
-    color: var(--links);
-    border-bottom-color: var(--links);
-    opacity: 1;
+    color: var(--canon-text);
+    border-bottom-color: var(--canon-accent);
+    font-weight: 500;
+}
+
+/* ── sidebar ─────────────────────────────────────────────────────── */
+
+.sidebar {
+    font-size: 13.5px;
+    border-right: 1px solid var(--canon-border);
+    background: var(--canon-bg);
+}
+
+.sidebar .sidebar-scrollbox {
+    padding: 14px 10px 24px;
+    scrollbar-width: thin;
+}
+
+.chapter {
+    line-height: 1.5;
+}
+
+.chapter li.part-title {
+    font-family: var(--canon-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--canon-accent);
+    margin: 20px 0 6px;
+    padding: 0 8px;
+}
+.chapter li.part-title:first-child {
+    margin-top: 4px;
+}
+
+.chapter li.chapter-item {
+    margin: 1px 0;
+}
+
+.chapter li.chapter-item > a,
+.chapter li.chapter-item > div {
+    display: block;
+    padding: 5px 8px;
+    border-radius: 6px;
+    color: var(--canon-muted);
+    transition: color .15s, background .15s;
+}
+
+.chapter li.chapter-item > a:hover {
+    color: var(--canon-text);
+    background: rgba(255, 255, 255, .05);
+    text-decoration: none;
+}
+
+.chapter li.chapter-item > a.active {
+    color: var(--canon-text);
+    background: rgba(255, 255, 255, .06);
+    font-weight: 500;
+}
+
+.chapter li > a.toggle {
+    opacity: .5;
+}
+
+.sidebar .sidebar-resize-handle {
+    background: transparent;
+}
+
+/* ── content typography ──────────────────────────────────────────── */
+
+.content {
+    padding: 0 20px;
+}
+
+.content main {
+    padding-top: 16px;
+    padding-bottom: 80px;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+    font-family: var(--canon-sans);
+    font-weight: 650;
+    color: var(--canon-text);
+}
+
+.content h1 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -.03em;
+    line-height: 1.15;
+    margin-top: 1.6em;
+    background: linear-gradient(180deg, #ffffff 30%, #9d9da6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.content h2 {
+    font-size: 22px;
+    letter-spacing: -.02em;
+    line-height: 1.25;
+    margin-top: 2.6em;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.content h3 {
+    font-size: 17px;
+    letter-spacing: -.01em;
+    margin-top: 2.2em;
+}
+
+.content h4 {
+    font-size: 15px;
+    margin-top: 2em;
+}
+
+.content h1 a.header,
+.content h2 a.header,
+.content h3 a.header,
+.content h4 a.header {
+    color: inherit;
+}
+
+.content p,
+.content ul,
+.content ol {
+    color: var(--canon-body);
+}
+
+.content p {
+    line-height: 1.7;
+}
+
+.content strong {
+    color: var(--canon-text);
     font-weight: 600;
+}
+
+.content a:not(.header) {
+    color: var(--canon-accent);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(232, 162, 75, .3);
+    transition: border-color .15s;
+}
+.content a:not(.header):hover {
+    border-bottom-color: var(--canon-accent);
+    text-decoration: none;
+}
+
+.content hr {
+    border: none;
+    border-top: 1px solid var(--canon-border);
+    margin: 3em 0;
+}
+
+.content ul li::marker,
+.content ol li::marker {
+    color: var(--canon-dim);
+}
+
+/* ── inline code: the landing chip ───────────────────────────────── */
+
+.content :not(pre) > code {
+    font-size: .86em;
+    color: var(--canon-text);
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid var(--canon-border);
+    border-radius: 5px;
+    padding: 1.5px 6px;
+}
+
+.content a:not(.header) > code {
+    color: var(--canon-accent);
+}
+
+.content h1 code, .content h2 code, .content h3 code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: .9em;
+    color: inherit;
+    -webkit-text-fill-color: initial;
+}
+.content h1 code {
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(180deg, #ffffff 30%, #9d9da6);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+/* ── code blocks: the landing window ─────────────────────────────── */
+
+.content pre {
+    position: relative;
+    margin: 1.4em 0;
+    border: 1px solid var(--canon-border-hi);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #101012, #0c0c0d);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, .4),
+        0 18px 44px -22px rgba(0, 0, 0, .8);
+    padding: 0;
+    overflow: hidden;
+}
+
+.content pre > code {
+    display: block;
+    padding: 18px 20px;
+    font-size: 13.5px;
+    line-height: 1.75;
+    background: transparent !important;
+    color: var(--canon-text);
+    overflow-x: auto;
+}
+
+/* mdBook's copy/play buttons */
+.content pre > .buttons {
+    padding: 8px 8px 0 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+}
+.content pre > .buttons button,
+.content pre > .buttons a {
+    color: var(--canon-dim);
+    border: 1px solid var(--canon-border);
+    border-radius: 7px;
+    background: rgba(10, 10, 10, .6);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    padding: 4px 6px;
+    font-size: 12px;
+    transition: color .15s, border-color .15s;
+}
+.content pre > .buttons button:hover,
+.content pre > .buttons a:hover {
+    color: var(--canon-text);
+    border-color: var(--canon-border-hi);
+    background: rgba(10, 10, 10, .6);
+}
+
+/* ── syntax colors (canon-highlight.js token classes) ────────────── */
+
+.hljs {
+    background: transparent;
+    color: var(--canon-text);
+}
+
+.hljs-keyword       { color: var(--canon-c-op); }
+.hljs-operator      { color: var(--canon-c-op); }
+.hljs-built_in      { color: var(--canon-c-type); }
+.hljs-type          { color: var(--canon-c-type); }
+.hljs-literal       { color: var(--canon-c-type); }
+.hljs-title         { color: var(--canon-text); }
+.hljs-string        { color: var(--canon-c-str); }
+.hljs-number        { color: var(--canon-c-num); }
+.hljs-comment,
+.hljs-quote         { color: var(--canon-c-comment); font-style: italic; }
+.hljs-meta          { color: var(--canon-accent); }
+.hljs-meta .hljs-string { color: var(--canon-c-str); }
+.hljs-attr,
+.hljs-attribute     { color: var(--canon-c-type); }
+.hljs-variable,
+.hljs-params        { color: var(--canon-text); }
+.hljs-symbol,
+.hljs-bullet        { color: var(--canon-c-num); }
+.hljs-section,
+.hljs-name,
+.hljs-selector-tag  { color: var(--canon-c-op); }
+.hljs-addition      { color: var(--canon-c-str); background: transparent; }
+.hljs-deletion      { color: var(--canon-c-num); background: transparent; }
+
+/* ── blockquotes ─────────────────────────────────────────────────── */
+
+.content blockquote {
+    margin: 1.4em 0;
+    padding: 12px 18px;
+    border: 1px solid var(--canon-border);
+    border-left: 2px solid var(--canon-accent-dim);
+    border-radius: 0 10px 10px 0;
+    background: var(--canon-panel);
+    color: var(--canon-muted);
+    font-style: normal;
+}
+.content blockquote p {
+    color: var(--canon-muted);
+}
+.content blockquote em {
+    color: var(--canon-text);
+    font-style: normal;
+}
+
+/* ── tables ──────────────────────────────────────────────────────── */
+
+.content table {
+    margin: 1.6em 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--canon-border);
+    border-radius: 10px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.content table th {
+    font-family: var(--canon-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    text-align: left;
+    color: var(--canon-dim);
+    background: var(--canon-panel);
+    padding: 10px 14px;
+    border: none;
+    border-bottom: 1px solid var(--canon-border);
+}
+
+.content table td {
+    padding: 9px 14px;
+    font-size: 14.5px;
+    color: var(--canon-body);
+    border: none;
+    border-top: 1px solid var(--canon-border);
+}
+.content table tr:first-child td {
+    border-top: none;
+}
+
+.content table tbody tr:hover {
+    background: rgba(255, 255, 255, .02);
+}
+
+/* ── search ──────────────────────────────────────────────────────── */
+
+#searchbar {
+    font-family: var(--canon-sans);
+    font-size: 14px;
+    border: 1px solid var(--canon-border-hi);
+    border-radius: 8px;
+    background: var(--canon-panel);
+    color: var(--canon-text);
+    padding: 10px 14px;
+}
+#searchbar:focus,
+#searchbar.active {
+    outline: none;
+    border-color: var(--canon-accent-dim);
+    box-shadow: 0 0 0 3px rgba(232, 162, 75, .12);
+}
+
+#searchresults-header {
+    font-family: var(--canon-mono);
+    font-size: 12px;
+    letter-spacing: .06em;
+    color: var(--canon-dim);
+}
+
+#searchresults a {
+    color: var(--canon-text);
+}
+
+mark {
+    background: rgba(232, 162, 75, .25);
+    color: var(--canon-text);
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+/* ── prev / next navigation ──────────────────────────────────────── */
+
+.nav-chapters {
+    color: var(--canon-dim);
+    border-radius: 10px;
+}
+.nav-chapters:hover {
+    color: var(--canon-text);
+    background: transparent;
+    text-decoration: none;
+}
+
+.mobile-nav-chapters {
+    background: var(--canon-panel);
+    border: 1px solid var(--canon-border);
+    border-radius: 10px;
+    color: var(--canon-muted);
+}
+.mobile-nav-chapters:hover {
+    color: var(--canon-text);
+}
+
+/* ── scrollbars ──────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--canon-border-hi);
+    border-radius: 5px;
+    border: 2px solid var(--canon-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3a3a41;
+}
+
+/* ── runnable examples (run.js) ──────────────────────────────────── */
+
+.canon-run-button {
+    position: absolute;
+    /* placed inside pre > .buttons by run.js */
+}
+
+.canon-runner {
+    margin: -0.9em 0 1.4em;
+    border: 1px solid var(--canon-border);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    background: var(--canon-bg);
+}
+
+.canon-runner .canon-runner-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    font-family: var(--canon-mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--canon-dim);
+    border-bottom: 1px solid var(--canon-border);
+}
+.canon-runner .canon-runner-bar .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--canon-accent);
+    box-shadow: 0 0 8px var(--canon-accent-dim);
+}
+
+.canon-runner pre.canon-runner-out {
+    margin: 0;
+    border: none;
+    border-radius: 0 0 12px 12px;
+    background: transparent;
+    box-shadow: none;
+}
+.canon-runner pre.canon-runner-out code {
+    padding: 12px 20px 14px;
+    color: var(--canon-muted);
+    font-size: 13px;
+    min-height: 1em;
+}
+.canon-runner .canon-runner-err {
+    color: #e0787d;
+}
+
+/* pre that has a live runner below it joins onto it */
+.content pre.canon-has-runner {
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 0;
 }

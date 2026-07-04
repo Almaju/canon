@@ -95,7 +95,22 @@
         });
     }
 
+    // Replace the book title in the menu bar with the landing page's
+    // wordmark (`*canon`). The <title> tag keeps the full book title.
+    function brandMenuTitle() {
+        var title = document.querySelector('#menu-bar .menu-title');
+        if (!title) return;
+        title.textContent = '';
+        var glyph = document.createElement('span');
+        glyph.className = 'canon-glyph';
+        glyph.textContent = '*';
+        title.appendChild(glyph);
+        title.appendChild(document.createTextNode('canon'));
+    }
+
     function init() {
+        brandMenuTitle();
+
         // The print page concatenates every chapter; tabs and sidebar
         // filtering make no sense there.
         if (/(^|\/)print\.html$/.test(document.location.pathname)) return;
