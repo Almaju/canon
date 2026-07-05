@@ -156,7 +156,7 @@ The enclosing function's return type must be able to carry the
 short-circuited value (a `Result` whose error slot includes `E`, or an
 `Option`). Inline error unions compose at the signature:
 `Result<Unit, HttpError + InvalidUrl>` accepts short-circuits from both
-`Url(…)?` and `.get()?`.
+`Url(…)?` and `-> Fetched?`.
 
 **Error union widening.** Inline error unions widen along
 `?`-propagation: a `Result<T, IoError>` propagates out of a function

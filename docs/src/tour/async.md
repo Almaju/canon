@@ -69,7 +69,7 @@ the chain returns a `Future`:
 ```canon
 main = () -> Unit {
     Url("https://example.com")?
-        .get()?
+        -> Fetched?
         .body()?
         .print()
 }

@@ -33,7 +33,7 @@ canon run my-app                      # HTTP world: serves on 127.0.0.1:8080
 canon run my-app --addr 0.0.0.0:9000  # HTTP world: explicit address
 ```
 
-Exit codes are real: a guest `Exit(3).exit()` terminates the process
+Exit codes are real: a guest `3 -> Exited` terminates the process
 with status 3, and `canon test` exits nonzero on failure. Both are
 safe to wire into CI and shell scripts.
 

@@ -81,7 +81,7 @@ fn exit_code_propagates() {
         &src_path,
         r#"main = () -> Unit {
     "terminating with 3".print()
-    Exit(3).exit()
+    3 -> Exited
 }
 "#,
     )

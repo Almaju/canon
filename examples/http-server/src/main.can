@@ -4,8 +4,8 @@ main = () -> Result<Unit, IoError> {
     "  GET  /health  -> 200 ok".print()
     "  POST /echo    -> 200 received".print()
     HttpServer(Port(3000))
-        .get(HttpStatus(200), RoutePath("/"), "Hello from Canon!")
-        .get(HttpStatus(200), RoutePath("/health"), "ok")
-        .post(HttpStatus(200), RoutePath("/echo"), "received")
-        .serve()
+        .Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
+        .Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
+        .Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
+        -> Served
 }

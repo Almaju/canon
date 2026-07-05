@@ -80,7 +80,7 @@ Async-ness is not declared — it is read off the signature. A binding
 whose return type is `Future<T>` is a suspending import:
 
 ```canon
-serve = (HttpServer) -> Future<Result<Unit, IoError>>
+(HttpServer) -> Future<Result<Served, IoError>>
 ```
 
 The compiler lowers the call site through the *async* canonical ABI

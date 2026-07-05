@@ -41,13 +41,13 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Int` | `Int = (String) -> Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
 | `Byte` | `Byte = Int` | none | picks the byte→character reading of `String(…)`: `String(Byte(65))` is `"A"` |
-| `http/Url` | `Url`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `get` |
+| `http/Url` | `Url`, `Fetched`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
 | `http/HttpServer` | `HttpServer = String` | `canon:builtins/http-server` | HTTP/1.1 server, see [HTTP Server](#http-server) |
 | `http/Port`, `http/RoutePath`, `http/HttpStatus`, `http/Body` | various | none | HTTP-server helpers |
 | `Json` | `Json = String`, `MalformedJson` | `canon:builtins/json` | `Json` (validate), `ToJson` trait + primitive instances |
-| `TestResult` | `TestResult = Fail + Pass`, `assert` | pure Canon | for `canon test` |
-| `cli/Exit` | `Exit = Int`, `exit` | `wasi/cli/exit` | `Exit(3).exit()` terminates with that code |
+| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
+| `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | `3 -> Exited` terminates with that code |
 | `cli/Args` | `Args = () -> List<String>` | `wasi/cli/environment` | the program's argv |
 | `cli/Cwd` | `Cwd = () -> Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
@@ -310,31 +310,35 @@ body. TLS (`https://`) and async lowering arrive with the
 
 ## HTTP Server
 
-Construct `HttpServer(Port(…))`, chain `.get(…)` / `.post(…)` to
-register routes, and call `.serve()` to start listening on the bound
-port.
+Construct `HttpServer(Port(…))`, chain `.Route(…)` to register routes,
+and `-> Served` to start listening on the bound port. The HTTP method
+is **data** — a `Method` value (`Get()`, `Post()`, …), never a
+function name — so one `Route` constructor covers every verb
+([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
 main = () -> Result<Unit, IoError> {
     "Starting server on port 3000...".print()
     HttpServer(Port(3000))
-        .get(HttpStatus(200), RoutePath("/"), "Hello from Canon!")
-        .get(HttpStatus(200), RoutePath("/health"), "ok")
-        .post(HttpStatus(200), RoutePath("/echo"), "received")
-        .serve()
+        .Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
+        .Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
+        .Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
+        -> Served
 }
 ```
 
 ```canon
 HttpServer = String
 
-HttpServer = (Port) -> HttpServer
+Route = HttpServer
 
-get = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
+Served = Unit
 
-post = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
+(Port) -> HttpServer
 
-serve = (HttpServer) -> Result<Unit, IoError>
+(HttpServer * HttpStatus * Method * RoutePath * String) -> Route
+
+(HttpServer) -> Result<Served, IoError>
 ```
 
 ### Status
@@ -347,10 +351,10 @@ responses go out as `text/plain; charset=utf-8` with an explicit
 `Content-Length` and `Connection: close`.
 
 Route handlers can only produce static bodies, because `extern Wasm`
-imports don't yet support host-to-guest callbacks. `.get(…)` /
-`.post(…)` therefore take a fixed body string rather than a lambda.
-Dynamic handlers (reading the `Request`, threading state, streaming
-bodies) arrive with the `wasi:http/incoming-handler` migration.
+imports don't yet support host-to-guest callbacks. `.Route(…)`
+therefore takes a fixed body string rather than a lambda. Dynamic
+handlers (reading the `Request`, threading state, streaming bodies)
+arrive with the `wasi:http/incoming-handler` migration.
 
 ## `TestResult`
 

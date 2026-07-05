@@ -52,7 +52,7 @@ declared parameter type is `T`), the checker inserts the await:
 ```canon
 main = () -> Unit {
     Url("https://example.com")?
-        .get()?
+        -> Fetched?
         .body()?
         .print()
 }

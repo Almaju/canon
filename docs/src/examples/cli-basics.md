@@ -52,11 +52,11 @@ miniature.
 ```canon
 main = () -> Unit {
     "exiting cleanly".print()
-    Exit(0).exit()
+    0 -> Exited
 }
 ```
 
-`Exit = Int`; `.exit()` terminates the process with that code, riding
+`Exit = Int`; `n -> Exited` terminates the process with that code, riding
 the real `wasi:cli/exit` interface. Try `Exit(3)` and check `echo $?`.
 Canon programs are shell-scriptable and CI-safe; `canon test` uses the
 same mechanism to fail builds.
