@@ -305,7 +305,6 @@ pub(super) fn wrap(
     core_module: &[u8],
     externs: &[ExternImport],
     _async_set: &AsyncSet,
-    has_handler: bool,
 ) -> Vec<u8> {
     // Group externs by core namespace so we build one instance per interface.
     // BTreeMap keeps the iteration order deterministic (alphabetical).
@@ -341,11 +340,6 @@ pub(super) fn wrap(
     let stream_u8_type_idx: u32 = 5;
     let future_result_type_idx: u32 = 6;
     let mut extern_iface_type_idx: BTreeMap<&str, u32> = BTreeMap::new();
-    // Captured after the types section closes — used by the optional
-    // handler-export code at the bottom of `wrap` to know what the next
-    // free component-type index is when declaring the handler's
-    // top-level function type.
-    let next_top_level_type_idx: u32;
     {
         let mut types = ComponentTypeSection::new();
 
@@ -554,33 +548,7 @@ pub(super) fn wrap(
             next_type_idx += 1;
         }
 
-        // Optional handler-request instance type. When the user defined
-        // `handleRequest = (String) -> String`, the wrapper exports an
-        // `canon:http-handler/handler@0.1.0` instance carrying
-        // `handle-request: func(body: string) -> string`. The host's
-        // HTTP server runtime looks up this instance after
-        // instantiation and invokes it per request.
-        if has_handler {
-            let mut handler_iface_ty = InstanceType::new();
-            // The function type is the only thing in this instance; it
-            // takes one string param `body` and returns a string.
-            let mut fn_enc = handler_iface_ty.ty().function();
-            fn_enc.params([(
-                "body",
-                ComponentValType::Primitive(PrimitiveValType::String),
-            )]);
-            fn_enc.result(Some(ComponentValType::Primitive(PrimitiveValType::String)));
-            // Function-type index inside this instance type is 0 (it's
-            // the first definition we add).
-            handler_iface_ty.export("handle-request", ComponentTypeRef::Func(0));
-            types.instance(&handler_iface_ty);
-            // Track the resulting top-level type index for the export
-            // step below by reusing `next_type_idx`.
-            extern_iface_type_idx.insert("__canon_http_handler__", next_type_idx);
-            next_type_idx += 1;
-        }
-
-        next_top_level_type_idx = next_type_idx;
+        let _ = next_type_idx;
         c.section(&types);
     }
     let _ = stdout_instance_type_idx; // documented for readability
@@ -960,104 +928,6 @@ pub(super) fn wrap(
             None,
         );
         c.section(&exports);
-    }
-
-    // ── 14–17. Optional dynamic handler export. Only emitted when the
-    // program defines `handleRequest = (String) -> String`. The
-    // architecture matches `wasi:cli/run`: alias the wrapper's core
-    // function out of the user core instance, lift it with the
-    // canonical-ABI string-indirect-return convention, wrap in a
-    // component instance, and export under a stable interface name.
-    if has_handler {
-        // 14. Alias `__handle_request` from the user core instance.
-        //     This is the core function index of the synthesised
-        //     wrapper emitted by `WasmGen::build_handler_wrapper`.
-        {
-            let mut aliases = ComponentAliasSection::new();
-            aliases.alias(Alias::CoreInstanceExport {
-                instance: user_core_instance,
-                kind: ExportKind::Func,
-                name: "__handle_request",
-            });
-            c.section(&aliases);
-        }
-        // Core func index of the aliased user function. It sits one
-        // slot after `run` in the aliased-core-functions sequence.
-        // `run` was the previous alias and lives at `13 + N`, so the
-        // handler is at `14 + N`.
-        let handler_core_fn: u32 = 14 + externs.len() as u32;
-
-        // 15. Lift the user function directly as
-        //     `func(body: string) -> string`. The user function's core
-        //     signature `(i32, i32) -> (i32, i32)` already matches the
-        //     canonical-ABI direct multi-value return shape under the
-        //     default `MAX_FLAT_RESULTS=16`, so no wrapper is needed.
-        //     The lift options give the canonical-ABI machinery access
-        //     to guest memory and the realloc helper for marshalling
-        //     the string params/results across the boundary.
-        //
-        //     The function type is declared in a fresh type section
-        //     below; `next_top_level_type_idx` was captured right after
-        //     the original types section closed, so it names the index
-        //     this new function type will receive.
-        let handler_fn_type_idx = next_top_level_type_idx;
-        {
-            let mut more_types = ComponentTypeSection::new();
-            let mut fn_enc = more_types.function();
-            fn_enc.params([(
-                "body",
-                ComponentValType::Primitive(PrimitiveValType::String),
-            )]);
-            fn_enc.result(Some(ComponentValType::Primitive(PrimitiveValType::String)));
-            c.section(&more_types);
-        }
-
-        {
-            let mut canon = CanonicalFunctionSection::new();
-            canon.lift(
-                handler_core_fn,
-                handler_fn_type_idx,
-                [
-                    CanonicalOption::UTF8,
-                    CanonicalOption::Memory(0),
-                    CanonicalOption::Realloc(cabi_realloc_core_fn),
-                ],
-            );
-            c.section(&canon);
-        }
-        // The lifted handler is the next component-level function after
-        // the existing `run` lift, so its index is `run_component_fn + 1`.
-        let handler_component_fn: u32 = run_component_fn + 1;
-
-        // 16. Wrap in a component instance carrying `handle-request`.
-        //
-        // Instance-index counting: the existing `wasi:cli/run` export
-        // bumps the instance index by *two* — once for the wrapper
-        // instance created in section 12, once again for the
-        // exported-instance entry in section 13. So our handler
-        // wrapper instance sits at `wasi_run_instance + 2`.
-        let handler_instance_idx: u32 = wasi_run_instance + 2;
-        {
-            let mut comp_insts = ComponentInstanceSection::new();
-            comp_insts.export_items([(
-                "handle-request",
-                ComponentExportKind::Func,
-                handler_component_fn,
-            )]);
-            c.section(&comp_insts);
-        }
-
-        // 17. Export the instance as `canon:http-handler/handler@0.1.0`.
-        {
-            let mut exports = ComponentExportSection::new();
-            exports.export(
-                "canon:http-handler/handler@0.1.0",
-                ComponentExportKind::Instance,
-                handler_instance_idx,
-                None,
-            );
-            c.section(&exports);
-        }
     }
 
     c.finish()

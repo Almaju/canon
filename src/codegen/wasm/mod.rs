@@ -639,21 +639,6 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
     go(name, type_defs, 0)
 }
 
-// ── Dynamic HTTP handler export naming ─────────────────────────────────────────
-//
-// When the program defines a top-level function named `handleRequest =
-// (String) -> String { … }`, the compiler synthesises a canonical-ABI
-// wrapper and exports it from the component under this interface +
-// function name. The host's `host_builtin_http_server::run_server`
-// looks the export up after instantiation and invokes it per request.
-//
-// The interface + function names are duplicated in `runtime.rs` for the
-// host-side lookup. Keep them in sync if you ever rename either.
-#[allow(dead_code)]
-pub(super) const HTTP_HANDLER_INTERFACE: &str = "canon:http-handler/handler@0.1.0";
-#[allow(dead_code)]
-pub(super) const HTTP_HANDLER_FN_NAME: &str = "handle-request";
-
 // ── Global index constants ──────────────────────────────────────────────────────────
 // The bump pointer is now an *imported* mutable global so it can be shared
 // between the user core module and the component wrapper's `cabi_realloc`
@@ -661,7 +646,7 @@ pub(super) const HTTP_HANDLER_FN_NAME: &str = "handle-request";
 // data and host-allocated string returns in a single coherent heap.
 const GLOBAL_BUMP_PTR: u32 = 0;
 
-// ── WASM representation of an Canon expression ──────────────────────────────
+// ── WASM representation of a Canon expression ──────────────────────────────
 
 /// What a compiled expression leaves on the WASM stack.
 ///
@@ -1214,22 +1199,7 @@ struct WasmGen<'m> {
     /// `(ptr1, count1, ptr2, count2) -> (ptr, count)` — fresh list
     /// with the second list's slots after the first's.
     fn_list_concat: u32,
-    /// Synthesised wrapper that adapts a user-defined `handleRequest`
-    /// function (signature `(String) -> String`, direct multi-value
-    /// return) to the canonical-ABI shape required for a component
-    /// export of `func(body: string) -> string`. The wrapper has core
-    /// signature `(body_ptr: i32, body_len: i32, ret_area: i32) -> ()`
-    /// and writes `(out_ptr, out_len)` at offsets 0/4 of the ret-area.
-    ///
-    /// `Some(_)` only when the AST contains a top-level
-    /// `handleRequest = (String) -> String { … }` (or any function
-    /// with the matching signature — we check the name as a stable
-    /// convention for now; user-visible API on top can come later).
-    fn_handler_wrapper: Option<u32>,
     fn_user_start: u32,
-    /// Index of the user-defined `handleRequest` function in the core
-    /// function space. Populated alongside `fn_handler_wrapper`.
-    user_handler_func_idx: Option<u32>,
     /// `Some("Result")` / `Some("Option")` while compiling the body
     /// of a function whose declared return type is that shape (one
     /// i32 pointer at the core level). Gates `?`'s early return: an
@@ -1293,13 +1263,7 @@ impl<'m> WasmGen<'m> {
             fn_str_cmp: base_defined + 8,
             fn_list_append: base_defined + 9,
             fn_list_concat: base_defined + 10,
-            // Slot reservation for the handler wrapper is decided in
-            // `assign_func_indices` (it depends on whether the AST
-            // actually defines `handleRequest`). When present, it sits
-            // at the last available slot after user functions.
-            fn_handler_wrapper: None,
             fn_user_start: base_defined + 11,
-            user_handler_func_idx: None,
             cur_fn_early_return: None,
             http_mode: false,
         }
@@ -1406,39 +1370,6 @@ impl<'m> WasmGen<'m> {
         gen.fn_task_return = u32::MAX;
         gen.fn_subtask_cancel = u32::MAX;
         gen
-    }
-
-    /// Returns the core-module function index of the synthesised
-    /// handler wrapper when present. The component wrapper in
-    /// `wasm/component.rs` aliases and lifts this as the
-    /// `canon:http-handler/handler.handle-request` export.
-    pub(super) fn handler_wrapper_func_idx(&self) -> Option<u32> {
-        self.fn_handler_wrapper
-    }
-
-    /// Locates a user-defined function with the conventional name
-    /// `handleRequest` and signature `(String) -> String`. Returns its
-    /// core-module function index when present.
-    ///
-    /// The signature check guards against accidentally exporting a
-    /// same-named function that doesn't match the host's expected shape
-    /// — lifting a mismatched core function would fail component
-    /// validation at instantiation time.
-    fn find_handler_request_idx(&self) -> Option<u32> {
-        let key = (Some("String".to_string()), "handleRequest".to_string());
-        let info = self.func_table.get(&key)?;
-        // Verify the function's wasm type is `(i32, i32) -> (i32, i32)` —
-        // i.e. (String) -> String when both are flat-lowered.
-        let (params, results) = self
-            .user_type_sigs
-            .get((info.type_idx - TY_USER_START) as usize)?;
-        if params.as_slice() == [ValType::I32, ValType::I32]
-            && results.as_slice() == [ValType::I32, ValType::I32]
-        {
-            Some(info.func_idx)
-        } else {
-            None
-        }
     }
 
     /// Build the `fn_list_to_json_array` helper function.
@@ -1669,64 +1600,6 @@ impl<'m> WasmGen<'m> {
         // bytes.
         f.instruction(&Instruction::LocalGet(4));
         f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Build the canonical-ABI wrapper function for the dynamic handler.
-    ///
-    /// Core signature: `(body_ptr: i32, body_len: i32) -> i32`.
-    ///
-    /// Body:
-    ///   1. Call user `handleRequest(body_ptr, body_len)` — leaves
-    ///      `(out_ptr, out_len)` on the stack.
-    ///   2. Save them to scratch locals.
-    ///   3. Allocate 8 bytes for the ret-area via `$alloc`.
-    ///   4. Store `out_ptr` at ret_area+0, `out_len` at ret_area+4.
-    ///   5. Return the ret-area pointer.
-    ///
-    /// This is the **callee-allocated** indirect return shape the
-    /// canonical ABI uses for a `string` result under the default
-    /// MAX_FLAT_RESULTS limit — the host then reads `(ptr, len)` from
-    /// the returned address.
-    fn build_handler_wrapper(&self, user_handler_idx: u32) -> Function {
-        // Three extra i32 locals: scratch for the (ptr, len) pair from
-        // the user function and the alloc'd ret-area pointer.
-        let mut f = Function::new([(3, ValType::I32)]);
-        // Local layout:
-        //   0: body_ptr   (param)
-        //   1: body_len   (param)
-        //   2: out_ptr    (scratch)
-        //   3: out_len    (scratch)
-        //   4: ret_area   (scratch)
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::Call(user_handler_idx));
-        // Stack: [out_ptr, out_len]
-        f.instruction(&Instruction::LocalSet(3));
-        f.instruction(&Instruction::LocalSet(2));
-        // ret_area = alloc(8)
-        f.instruction(&Instruction::I32Const(8));
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::LocalSet(4));
-        // ret_area[0..4] = out_ptr
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I32Store(MemArg {
-            offset: 0,
-            align: 2,
-            memory_index: 0,
-        }));
-        // ret_area[4..8] = out_len
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Store(MemArg {
-            offset: 4,
-            align: 2,
-            memory_index: 0,
-        }));
-        // Return the ret-area pointer.
-        f.instruction(&Instruction::LocalGet(4));
         f.instruction(&Instruction::End);
         f
     }
@@ -2152,22 +2025,6 @@ impl<'m> WasmGen<'m> {
                 self.compiled_user_funcs.push((idx, type_idx, func.clone()));
                 idx += 1;
             }
-        }
-
-        // 3. Dynamic HTTP handler detection. When the AST defines a
-        //    top-level `handleRequest = (String) -> String { … }`, we
-        //    synthesise a canonical-ABI wrapper at the next available
-        //    index. The wrapper has core signature `(i32, i32) -> i32`
-        //    — the callee-allocated indirect-return shape the
-        //    component-level lift of `func(body: string) -> string`
-        //    expects under the default MAX_FLAT_RESULTS. See
-        //    `build_handler_wrapper` for the body.
-        if let Some(user_idx) = self.find_handler_request_idx() {
-            self.user_handler_func_idx = Some(user_idx);
-            self.fn_handler_wrapper = Some(idx);
-            // Register the wrapper's wasm type so the function section
-            // can declare it. Signature: `(i32, i32) -> i32`.
-            let _ = self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32]);
         }
     }
 
@@ -8345,17 +8202,6 @@ impl<'m> WasmGen<'m> {
         for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
-        // Optional handler wrapper sits at the very end of the function
-        // index space — see `assign_func_indices` and
-        // `build_handler_wrapper`. Type: `(i32, i32) -> i32`.
-        if self.fn_handler_wrapper.is_some() {
-            let wrapper_ty = self
-                .user_type_map
-                .get(&(vec![ValType::I32, ValType::I32], vec![ValType::I32]))
-                .copied()
-                .expect("handler wrapper type was reserved in assign_func_indices");
-            funcs.function(wrapper_ty);
-        }
         m.section(&funcs);
 
         // ── Memory section ───────────────────────────────────────────────────────────────
@@ -8369,15 +8215,8 @@ impl<'m> WasmGen<'m> {
 
         // ── Export section ─────────────────────────────────────────────────────────────
         // The Component Model wrapper lifts `run` as `wasi:cli/run.run`.
-        // When the user defined `handleRequest`, the synthesised
-        // wrapper (callee-allocated indirect-return shape) is exported
-        // under a stable core name so `component::wrap` can alias and
-        // lift it as `handle-request`.
         let mut exports = ExportSection::new();
         exports.export("run", ExportKind::Func, self.fn_start);
-        if let Some(wrapper_idx) = self.fn_handler_wrapper {
-            exports.export("__handle_request", ExportKind::Func, wrapper_idx);
-        }
         m.section(&exports);
 
         // ── Code section ─────────────────────────────────────────────────────────────
@@ -8403,17 +8242,6 @@ impl<'m> WasmGen<'m> {
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
-        }
-        // Optional handler wrapper goes last in the code section so it
-        // pairs with the function-section entry added above. The
-        // wrapper calls the already-compiled `handleRequest` user
-        // function and packages its return into a callee-allocated
-        // ret-area for the canonical-ABI lift.
-        if let (Some(_wrapper_idx), Some(user_idx)) =
-            (self.fn_handler_wrapper, self.user_handler_func_idx)
-        {
-            let wrapper = self.build_handler_wrapper(user_idx);
-            codes.function(&wrapper);
         }
         m.section(&codes);
 
@@ -8451,11 +8279,6 @@ impl<'m> WasmGen<'m> {
         self.build_variant_info();
         self.collect_all_strings();
         self.assign_func_indices();
-        assert!(
-            self.fn_handler_wrapper.is_none(),
-            "handleRequest (legacy dynamic handler) can't coexist with an HTTP entry"
-        );
-
         // Dynamic type registrations shared with `compile()` plus the
         // two http-specific shapes.
         let ty_i32x2_to_i32 =
@@ -8765,11 +8588,6 @@ impl<'m> WasmGen<'m> {
         self.build_variant_info();
         self.collect_all_strings();
         self.assign_func_indices();
-        assert!(
-            self.fn_handler_wrapper.is_none(),
-            "handleRequest (legacy dynamic handler) can't coexist with a web entry"
-        );
-
         let web = crate::ast::find_web_entry(&self.ast.items)
             .expect("checker guarantees a web entry exists");
         let model = web.model;
@@ -9352,22 +9170,6 @@ fn has_http_entry(module: &OModule) -> bool {
     })
 }
 
-/// Returns whether the program defines a `handleRequest` function that
-/// should be lifted as the component-level dynamic-handler export.
-///
-/// We re-run the relevant prefix of `WasmGen::compile()` to avoid
-/// threading the boolean through the existing `generate` /
-/// `generate_core_module` signatures. The work duplicated is just
-/// `assign_func_indices`, which is fast and side-effect-free.
-fn program_has_handler(module: &OModule) -> bool {
-    let mut gen = WasmGen::new(module);
-    gen.build_type_defs();
-    gen.build_variant_info();
-    gen.collect_all_strings();
-    gen.assign_func_indices();
-    gen.handler_wrapper_func_idx().is_some()
-}
-
 /// Builds the final Component Model component (`.wasm` bytes).
 ///
 /// The output is a WASI Preview 3 component that exports
@@ -9405,8 +9207,7 @@ pub fn generate(module: &OModule) -> Vec<u8> {
     // surface async metadata in the emitted WIT and — once async lowering
     // lands — attach `CanonicalOption::Async` to the right lifts/lowers.
     let async_set = crate::codegen::async_analysis::analyse(module);
-    let has_handler = program_has_handler(module);
-    let bytes = component::wrap(&core, &externs, &async_set, has_handler);
+    let bytes = component::wrap(&core, &externs, &async_set);
     validate(&bytes);
     bytes
 }

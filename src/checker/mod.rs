@@ -1018,7 +1018,7 @@ fn check_type_expr(
             if name == "Self" {
                 // allowed in method bodies / trait declarations; not validated here
             } else if name.starts_with("__extern__") {
-                // extern type alias body — the Rust path isn't an Canon type
+                // extern type alias body — the Rust path isn't a Canon type
             } else if generic_scope.contains(name) {
                 if !generics.is_empty() {
                     errors.push(CanonError::CheckError {

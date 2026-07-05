@@ -11,7 +11,7 @@ use crate::parser::Parser;
 
 const MAX_WIDTH: usize = 100;
 
-/// Format an Canon source string, returning the canonically formatted version.
+/// Format a Canon source string, returning the canonically formatted version.
 pub fn format(source: &str) -> Result<String> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;

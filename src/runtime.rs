@@ -10,10 +10,9 @@
 //! emits the canonical-ABI stream sequence around `write-via-stream`);
 //! no `canon:host/console` bridge is registered. A handful of
 //! `canon:builtins/*` bridges remain for cases without a WASI
-//! equivalent (math, strings, clock RFC-3339, URL parse) and for the
-//! Phase-5 http-server stub — each is documented in its own submodule
-//! and will be replaced with native WASI as the canonical-ABI lowerings
-//! for those interfaces land.
+//! equivalent (math, strings, clock RFC-3339, URL parse) — each is
+//! documented in its own submodule and will be replaced with native
+//! WASI as the canonical-ABI lowerings for those interfaces land.
 
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
@@ -39,12 +38,7 @@ struct State {
     ctx: WasiCtx,
     table: ResourceTable,
     http: WasiHttpCtx,
-    http_hooks: OneswayHttpHooks,
-    /// Optional reference to the guest's `canon:http-handler/handler.handle-request`
-    /// component export, when the program defined a `handleRequest`
-    /// function. The HTTP server runtime calls this Func per incoming
-    /// request to compute the response body.
-    handler_func: Option<wasmtime::component::Func>,
+    http_hooks: CanonHttpHooks,
 }
 
 impl WasiView for State {
@@ -80,9 +74,9 @@ impl WasiHttpView for State {
 /// `canon:builtins/http` bridge), this hook becomes a real outbound
 /// client — either by re-enabling `default-send-request` or by routing
 /// through a hyper client of our own.
-struct OneswayHttpHooks;
+struct CanonHttpHooks;
 
-impl WasiHttpHooks for OneswayHttpHooks {
+impl WasiHttpHooks for CanonHttpHooks {
     fn send_request(
         &mut self,
         _request: http::Request<UnsyncBoxBody<Bytes, ErrorCode>>,
@@ -117,8 +111,7 @@ impl State {
             ctx,
             table: ResourceTable::new(),
             http: WasiHttpCtx::new(),
-            http_hooks: OneswayHttpHooks,
-            handler_func: None,
+            http_hooks: CanonHttpHooks,
         }
     }
 }
@@ -160,31 +153,10 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
     let component = Component::new(&engine, bytes)
         .map_err(|e| wasmtime::Error::msg(format!("invalid wasm component: {e:?}")))?;
 
-    // Instantiate via the linker directly so we have access to the
-    // `Instance` handle. We use it to (a) look up the optional
-    // `canon:http-handler/handler.handle-request` export and stash it
-    // in `State`, and (b) drive `wasi:cli/run.run` ourselves — the
-    // bindgen-generated `Command` keeps its inner `Instance` private,
-    // and we need both the run call *and* the dynamic-handler export
-    // to reference the *same* instance (otherwise the handler `Func`
-    // we stash wouldn't match the instance executing `serve`).
+    // Instantiate via the linker directly and drive `wasi:cli/run.run`
+    // ourselves — the bindgen-generated `Command` keeps its inner
+    // `Instance` private.
     let instance = linker.instantiate_async(&mut store, &component).await?;
-
-    // Optional dynamic-handler export hookup. When present, stash the
-    // `Func` in `State` so `host_builtin_http_server::serve` can call
-    // it per request. When absent the handler stays unset and the
-    // HTTP server falls back to its static-body route table.
-    if let Some(iface_idx) =
-        instance.get_export_index(&mut store, None, "canon:http-handler/handler@0.1.0")
-    {
-        if let Some(fn_idx) =
-            instance.get_export_index(&mut store, Some(&iface_idx), "handle-request")
-        {
-            if let Some(func) = instance.get_func(&mut store, fn_idx) {
-                store.data_mut().handler_func = Some(func);
-            }
-        }
-    }
 
     // Look up `wasi:cli/run.run` and call it as an async-stackful
     // function returning `result<_, _>`. Mirrors what `Command::wasi_cli_run().call_run`
@@ -269,7 +241,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     host_builtin_string::add_to_linker(&mut linker)?;
     host_builtin_filesystem::add_to_linker(&mut linker)?;
     host_builtin_http::add_to_linker(&mut linker)?;
-    host_builtin_http_server::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
     host_builtin_url::add_to_linker(&mut linker)?;
 
@@ -631,6 +602,8 @@ mod host_builtin_string {
             interface strings {
                 to-lowercase: func(input: string) -> string;
                 to-uppercase: func(input: string) -> string;
+                echo: async func(input: string) -> string;
+                slow-echo: async func(input: string) -> string;
             }
             world host-shim {
                 import strings;
@@ -646,6 +619,41 @@ mod host_builtin_string {
 
         fn to_uppercase(&mut self, input: String) -> String {
             input.to_uppercase()
+        }
+    }
+
+    // Async functions go on the `HostWithStore` trait, with an
+    // `Accessor<T, Self>` first arg instead of `&mut self`. These two
+    // exist purely to exercise the guest-side async canonical-ABI call
+    // sequence from tests.
+    impl canon::builtins::strings::HostWithStore for HasSelf<State> {
+        async fn echo<U: Send>(
+            _accessor: &wasmtime::component::Accessor<U, Self>,
+            input: String,
+        ) -> String {
+            // Used by `tests/runtime/async_echo.can` to exercise the
+            // guest-side async call sequence (alloc ret-area, call,
+            // check status, decode result). The Future completes
+            // immediately so the guest's sync-completion fast path
+            // hits the `Returned` branch.
+            input
+        }
+
+        async fn slow_echo<U: Send>(
+            _accessor: &wasmtime::component::Accessor<U, Self>,
+            input: String,
+        ) -> String {
+            // Used by `tests/runtime/async_slow_echo.can` to exercise
+            // the *async-suspend* path of `emit_async_call`: the host
+            // future yields before producing a result, so wasmtime has
+            // to return a Started subtask handle to the guest. The
+            // guest's generated code then enters the waitable-set.wait
+            // block, blocks until this future resolves, and reads the
+            // result out of the ret-area. A 1ms sleep is enough to
+            // force at least one Pending poll on essentially every
+            // executor.
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            input
         }
     }
 
@@ -783,453 +791,6 @@ mod host_builtin_http {
     }
 }
 
-/// `canon:builtins/http-server` — host bridge for `std/http/http-server`.
-///
-/// The API surface is small and stateless: `create(port)` produces an
-/// opaque server-handle string, `route` threads routes through that
-/// handle by appending to it, and `serve` parses the encoded routes and
-/// runs a real tokio HTTP/1.1 listener.
-///
-/// ## Why encode routes inside the handle?
-///
-/// Routes can't be parameterised by guest lambdas yet — there's no
-/// host→guest callback path for `extern Wasm` imports. So instead of a
-/// host-side state map keyed by handle (which would also require some way
-/// for the guest to express handler bodies), we keep everything in the
-/// handle string itself: each `.get(…)` / `.post(…)` appends a record to
-/// the string and returns the new handle for the next chained call.
-/// `.serve()` reads the whole handle, decodes the route table, opens a
-/// TCP listener, and replies with the registered body+status for matching
-/// requests. Anything unmatched gets a `404 Not Found`.
-///
-/// ## Wire format of the handle string
-///
-/// ```text
-/// <port> RS <method> US <status> US <path> US <body> RS …
-/// ```
-///
-/// where `RS` is `\x1E` (record separator) and `US` is `\x1F` (unit
-/// separator). Both are ASCII control characters that don't appear in
-/// normal HTTP route content, so we avoid any escaping. The first record
-/// is just the port; every subsequent record is a route.
-mod host_builtin_http_server {
-    use super::State;
-    use std::collections::HashMap;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
-    use wasmtime::component::{HasSelf, Linker};
-
-    const RS: char = '\x1E';
-    const US: char = '\x1F';
-
-    // `serve` is declared `async func(…)` in the WIT (it pairs with
-    // `CanonicalOption::Async` on the canon.lower emitted by the codegen).
-    // The `async: { only_imports: [...] }` option tells wasmtime's bindgen
-    // to generate an `async fn` host-trait method for it, so wasmtime can
-    // drive it through its task scheduler. `route`/`create` remain
-    // sync and use the regular blocking trait method.
-    //
-    // The WIT signatures match what the codegen emits from the stdlib
-    // declarations in `std/http/http-server.can`. `Int` lowers to `s64` in
-    // the `canon:*` namespace (signed default for non-WASI imports);
-    // `HttpServer = String` is a string alias.
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface http-server {
-                create: func(port: s64) -> string;
-                route: func(server: string, status: s64, method: string, body: string, path: string) -> string;
-                serve: async func(server: string) -> s32;
-                echo: async func(input: string) -> string;
-                slow-echo: async func(input: string) -> string;
-            }
-            world host-shim {
-                import http-server;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    // Sync functions go on the `Host` trait.
-    impl canon::builtins::http_server::Host for State {
-        fn create(&mut self, port: i64) -> String {
-            // First record of the handle is just the port number. Each
-            // chained `.Route(…)` appends one route record.
-            port.to_string()
-        }
-
-        fn route(
-            &mut self,
-            server: String,
-            status: i64,
-            method: String,
-            body: String,
-            path: String,
-        ) -> String {
-            // The HTTP method arrives as data (an uppercased verb string
-            // produced by `String(Method)` in the stdlib), so one host
-            // function registers every method — the `get`/`post` verb
-            // split lived only in the old camelCase surface.
-            append_route(&server, &method, status, &path, &body)
-        }
-    }
-
-    // Async functions go on the `HostWithStore` trait, with an
-    // `Accessor<T, Self>` first arg instead of `&mut self`. The trait is
-    // generated by the bindgen macro above; we impl it on
-    // `HasSelf<State>` so the data getter `|state| state` we already pass
-    // into `add_to_linker` resolves the right way.
-    impl canon::builtins::http_server::HostWithStore for HasSelf<State> {
-        async fn serve<U: Send>(
-            accessor: &wasmtime::component::Accessor<U, Self>,
-            server: String,
-        ) -> i32 {
-            // Snapshot the (optional) guest-side `handle-request` Func
-            // from State. When present, every incoming request is
-            // dispatched through this Func via `call_concurrent` from
-            // inside the connection loop. When absent, we fall back to
-            // the static-body route table (existing behaviour).
-            let handler_func: Option<wasmtime::component::Func> =
-                accessor.with(|mut access| access.get().handler_func);
-            match run_server(accessor, &server, handler_func).await {
-                Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("http-server: {e}");
-                    1
-                }
-            }
-        }
-
-        async fn echo<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
-            input: String,
-        ) -> String {
-            // Used by `tests/runtime/async_echo.can` to exercise the
-            // guest-side async call sequence (alloc ret-area, call,
-            // check status, decode result). The Future completes
-            // immediately so the guest's sync-completion fast path
-            // hits the `Returned` branch.
-            input
-        }
-
-        async fn slow_echo<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
-            input: String,
-        ) -> String {
-            // Used by `tests/runtime/async_slow_echo.can` to exercise
-            // the *async-suspend* path of `emit_async_call`: the host
-            // future yields before producing a result, so wasmtime has
-            // to return a Started subtask handle to the guest. The
-            // guest's generated code then enters the waitable-set.wait
-            // block, blocks until this future resolves, and reads the
-            // result out of the ret-area. A 1ms sleep is enough to
-            // force at least one Pending poll on essentially every
-            // executor.
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-            input
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::http_server::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-
-    /// Append one route record to the handle string. See the module-level
-    /// comment for the wire format.
-    fn append_route(server: &str, method: &str, status: i64, path: &str, body: &str) -> String {
-        let mut out =
-            String::with_capacity(server.len() + method.len() + path.len() + body.len() + 16);
-        out.push_str(server);
-        out.push(RS);
-        out.push_str(method);
-        out.push(US);
-        out.push_str(&status.to_string());
-        out.push(US);
-        out.push_str(path);
-        out.push(US);
-        out.push_str(body);
-        out
-    }
-
-    /// A single registered route. Keyed by `(method, path)` in the route
-    /// table built from the handle string at `serve` time.
-    #[derive(Clone)]
-    struct Route {
-        status: u16,
-        body: String,
-    }
-
-    /// Parse the handle string into `(port, routes)`. Returns an error on
-    /// malformed input — but in practice the handle is always produced by
-    /// our own `create`/`route` impls, so this is mostly defensive.
-    #[allow(clippy::type_complexity)]
-    fn decode_handle(handle: &str) -> Result<(u16, HashMap<(String, String), Route>), String> {
-        let mut records = handle.split(RS);
-        let port_str = records
-            .next()
-            .ok_or_else(|| "empty server handle".to_string())?;
-        let port: u16 = port_str
-            .parse()
-            .map_err(|_| format!("invalid port `{port_str}`"))?;
-        let mut routes = HashMap::new();
-        for rec in records {
-            let mut fields = rec.split(US);
-            let method = fields.next().unwrap_or("").to_ascii_uppercase();
-            let status_str = fields.next().unwrap_or("");
-            let path = fields.next().unwrap_or("").to_string();
-            let body = fields.next().unwrap_or("").to_string();
-            let status: u16 = status_str
-                .parse()
-                .map_err(|_| format!("invalid status `{status_str}`"))?;
-            routes.insert((method, path), Route { status, body });
-        }
-        Ok((port, routes))
-    }
-
-    /// Bind a TCP listener and serve registered routes until cancelled.
-    /// Logs each accepted request to stderr so the example is
-    /// self-documenting (`curl localhost:3000/` shows up as a log line).
-    ///
-    /// Connections are handled **serially** when a dynamic handler is
-    /// present (because the wasmtime callback ABI needs the
-    /// `Accessor` we received in `serve`, which can't be cloned
-    /// across tasks). For the static-body fallback we keep the
-    /// per-connection `tokio::spawn` so multiple clients can be served
-    /// concurrently — the route table is `Clone` and bounded‐copy.
-    async fn run_server<U: Send>(
-        accessor: &wasmtime::component::Accessor<U, HasSelf<State>>,
-        handle: &str,
-        handler_func: Option<wasmtime::component::Func>,
-    ) -> Result<(), String> {
-        let (port, routes) = decode_handle(handle)?;
-        let addr = format!("127.0.0.1:{port}");
-        let listener = TcpListener::bind(&addr)
-            .await
-            .map_err(|e| format!("bind {addr}: {e}"))?;
-        eprintln!("http-server: listening on http://{addr}");
-        loop {
-            let (mut socket, peer) = match listener.accept().await {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("http-server: accept error: {e}");
-                    continue;
-                }
-            };
-            match handler_func {
-                Some(func) => {
-                    // Dynamic-handler path: handle inline so we can
-                    // call the guest export via `call_concurrent`. No
-                    // `tokio::spawn` because the accessor isn't `Send`
-                    // across task boundaries.
-                    if let Err(e) = handle_connection_dynamic(&mut socket, func, accessor).await {
-                        eprintln!("http-server: {peer}: {e}");
-                    }
-                }
-                None => {
-                    // Static-body path: spawn per-connection.
-                    let routes = routes.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_connection(&mut socket, &routes).await {
-                            eprintln!("http-server: {peer}: {e}");
-                        }
-                    });
-                }
-            }
-        }
-    }
-
-    /// Connection handler for the dynamic-handler path. Reads one HTTP
-    /// request, calls the guest's `handle-request` export with the
-    /// request body, and writes the returned string as the response
-    /// body (status fixed at 200 for now — routing comes later).
-    async fn handle_connection_dynamic<U: Send>(
-        socket: &mut tokio::net::TcpStream,
-        handler_func: wasmtime::component::Func,
-        accessor: &wasmtime::component::Accessor<U, HasSelf<State>>,
-    ) -> Result<(), String> {
-        use wasmtime::component::Val;
-        let mut buf = [0u8; 8192];
-        let n = socket
-            .read(&mut buf)
-            .await
-            .map_err(|e| format!("read: {e}"))?;
-        if n == 0 {
-            return Ok(());
-        }
-        let head = String::from_utf8_lossy(&buf[..n]);
-        let request_line = head.lines().next().unwrap_or("");
-        let mut parts = request_line.split_whitespace();
-        let method = parts.next().unwrap_or("").to_ascii_uppercase();
-        let target = parts.next().unwrap_or("");
-        let path = target.split('?').next().unwrap_or(target).to_string();
-        eprintln!("http-server: {method} {path}");
-
-        // Extract the request body. Naive parser: locate the
-        // header/body separator `\r\n\r\n` and treat everything after
-        // it as the body. Sufficient for the small payloads we test
-        // with; full streaming bodies come later.
-        let body_start = head.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
-        let body = if body_start < n {
-            String::from_utf8_lossy(&buf[body_start..n]).into_owned()
-        } else {
-            String::new()
-        };
-
-        // Call into the guest handler.
-        let params = vec![Val::String(body)];
-        let mut results = vec![Val::String(String::new())];
-        let response = match handler_func
-            .call_concurrent(accessor, &params, &mut results)
-            .await
-        {
-            Ok(()) => {
-                if let Val::String(s) = &results[0] {
-                    // Optional Content-Type override: when the handler
-                    // wants to return SSE / JSON / HTML / etc., it
-                    // prefixes its response with
-                    // `Content-Type: <mime>\r\n\r\n` and the rest is
-                    // the body. We detect this and honour it. Absent
-                    // the prefix we use `text/plain` as before.
-                    //
-                    // This is the minimum-viable SSE pathway — a single
-                    // event-stream payload returned in one shot. True
-                    // multi-event streaming (`SseSender` capability,
-                    // events pushed over time) builds on top of this
-                    // by passing a host-owned writer handle into the
-                    // handler; this MVP proves the Content-Type wiring.
-                    let (content_type, body_bytes) = parse_handler_response(s);
-                    build_response_with_type(200, content_type, body_bytes)
-                } else {
-                    build_response(500, "handler returned non-string value")
-                }
-            }
-            Err(e) => {
-                eprintln!("http-server: handler error: {e}");
-                build_response(500, "handler error")
-            }
-        };
-        socket
-            .write_all(response.as_bytes())
-            .await
-            .map_err(|e| format!("write: {e}"))?;
-        let _ = socket.shutdown().await;
-        Ok(())
-    }
-
-    /// Read one HTTP/1.1 request, match it against the route table, and
-    /// write back the registered response. Only the request line is
-    /// inspected — headers and body are read and discarded so the socket
-    /// drains cleanly before we close it. `Connection: close` is always
-    /// sent, so we don't need to worry about keep-alive bookkeeping.
-    async fn handle_connection(
-        socket: &mut tokio::net::TcpStream,
-        routes: &HashMap<(String, String), Route>,
-    ) -> Result<(), String> {
-        // Read up to 8 KiB of request data — enough for the request line
-        // plus typical headers. Real servers would stream this; for the
-        // demo a fixed buffer is fine and bounds memory use per connection.
-        let mut buf = [0u8; 8192];
-        let n = socket
-            .read(&mut buf)
-            .await
-            .map_err(|e| format!("read: {e}"))?;
-        if n == 0 {
-            return Ok(());
-        }
-        let head = String::from_utf8_lossy(&buf[..n]);
-        let request_line = head.lines().next().unwrap_or("");
-        let mut parts = request_line.split_whitespace();
-        let method = parts.next().unwrap_or("").to_ascii_uppercase();
-        let target = parts.next().unwrap_or("");
-        // Strip any query string — routes match on path only.
-        let path = target.split('?').next().unwrap_or(target).to_string();
-        eprintln!("http-server: {method} {path}");
-
-        let response = match routes.get(&(method, path)) {
-            Some(route) => build_response(route.status, &route.body),
-            None => build_response(404, "Not Found"),
-        };
-        socket
-            .write_all(response.as_bytes())
-            .await
-            .map_err(|e| format!("write: {e}"))?;
-        // Best-effort flush + shutdown so the client sees EOF promptly.
-        let _ = socket.shutdown().await;
-        Ok(())
-    }
-
-    /// Build a minimal HTTP/1.1 response. Body is sent as `text/plain`
-    /// with an explicit `Content-Length` so clients don't need chunked
-    /// decoding.
-    fn build_response(status: u16, body: &str) -> String {
-        build_response_with_type(status, "text/plain; charset=utf-8", body)
-    }
-
-    /// Build an HTTP/1.1 response with an explicit Content-Type.
-    /// Connection is always closed after the response.
-    fn build_response_with_type(status: u16, content_type: &str, body: &str) -> String {
-        let reason = reason_phrase(status);
-        format!(
-            "HTTP/1.1 {status} {reason}\r\n\
-             Content-Type: {content_type}\r\n\
-             Content-Length: {len}\r\n\
-             Connection: close\r\n\
-             \r\n\
-             {body}",
-            len = body.len(),
-        )
-    }
-
-    /// Parse the dynamic-handler's return string for an optional
-    /// `Content-Type: <mime>\r\n\r\n` prefix. Returns the chosen
-    /// content-type and the trailing body slice.
-    ///
-    /// This is the minimum-viable hook for SSE / JSON / HTML responses
-    /// without inventing a richer return type. Handlers stay
-    /// `(String) -> String` at the Canon level; the structure of the
-    /// returned string is the only place we look for metadata.
-    fn parse_handler_response(s: &str) -> (&str, &str) {
-        const DEFAULT: &str = "text/plain; charset=utf-8";
-        const PREFIX: &str = "Content-Type: ";
-        if !s.starts_with(PREFIX) {
-            return (DEFAULT, s);
-        }
-        // Find the `\r\n\r\n` separator between the header and body.
-        let Some(sep_idx) = s.find("\r\n\r\n") else {
-            return (DEFAULT, s);
-        };
-        let header_end = sep_idx;
-        let body_start = sep_idx + 4;
-        let header_value = s[PREFIX.len()..header_end].trim();
-        if header_value.is_empty() {
-            return (DEFAULT, s);
-        }
-        (header_value, &s[body_start..])
-    }
-
-    /// Reason phrases for the handful of statuses a demo server actually
-    /// emits. Anything else falls back to a generic label — clients only
-    /// care about the numeric code, so this is purely cosmetic.
-    fn reason_phrase(status: u16) -> &'static str {
-        match status {
-            200 => "OK",
-            201 => "Created",
-            202 => "Accepted",
-            204 => "No Content",
-            301 => "Moved Permanently",
-            302 => "Found",
-            304 => "Not Modified",
-            400 => "Bad Request",
-            401 => "Unauthorized",
-            403 => "Forbidden",
-            404 => "Not Found",
-            500 => "Internal Server Error",
-            502 => "Bad Gateway",
-            503 => "Service Unavailable",
-            _ => "OK",
-        }
-    }
-}
 
 /// `canon:builtins/json` — JSON validation + primitive builders.
 ///

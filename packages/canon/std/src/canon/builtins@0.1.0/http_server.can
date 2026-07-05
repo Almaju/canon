@@ -1,5 +1,0 @@
-create = (Int) => HttpServer
-
-route = (HttpServer * HttpStatus * MethodName * RouteBody * RoutePath) => HttpServer
-
-serve = (HttpServer) => Future<Result<Unit, IoError>>

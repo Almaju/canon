@@ -941,7 +941,7 @@ fn find_project_root_from(start: &Path) -> Option<PathBuf> {
 /// the module form. Stdlib imports go through [`stdlib_file_stem`]
 /// instead — the loader's `name → file_stem` mapping is non-trivial and
 /// duplicating it would just guarantee drift.
-fn resolve_local_ow_file(type_name: &str, current_file: &str) -> Option<String> {
+fn resolve_local_can_file(type_name: &str, current_file: &str) -> Option<String> {
     use std::path::Path;
     let stem = kebab_case(type_name);
     let dir = Path::new(current_file).parent().unwrap_or(Path::new("."));
@@ -970,7 +970,7 @@ fn find_definition_in_imports(
 ) -> Option<(String, crate::error::Span)> {
     use crate::error::Span;
     // Local: `word` → `<kebab>.can` / `<kebab>/main.can` next to the file.
-    if let Some(file_path) = resolve_local_ow_file(word, current_file) {
+    if let Some(file_path) = resolve_local_can_file(word, current_file) {
         if let Ok(src) = std::fs::read_to_string(&file_path) {
             if let Some(imported) = parse_source(&src) {
                 if let Some(span) = find_definition(&imported, word) {

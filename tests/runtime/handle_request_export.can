@@ -1,7 +1,0 @@
-handleRequest = (String) => String {
-    "echoed: " -> Joined(String)
-}
-
-main = () => Unit {
-    "compiled" -> Print
-}

@@ -69,7 +69,7 @@ fn print_help() {
     println!();
     println!("Commands:");
     println!("  run [target] [-p name] [--addr <ip:port>] [args...]");
-    println!("                            Compile and run an Canon program.");
+    println!("                            Compile and run a Canon program.");
     println!(
         "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
     );
@@ -900,7 +900,7 @@ fn cmd_fmt(args: &[String]) {
         let path = Path::new(input);
         if path.is_dir() {
             had_dir_input = true;
-            collect_ow_files(path, &mut files);
+            collect_can_files(path, &mut files);
         } else {
             files.push(path.to_path_buf());
         }
@@ -953,7 +953,7 @@ fn cmd_fmt(args: &[String]) {
 
 /// Recursively collect every `.can` file under `dir`, skipping common
 /// generated/build directories (`target`, `node_modules`, `.git`).
-fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_can_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(err) => {
@@ -978,7 +978,7 @@ fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
             ) {
                 continue;
             }
-            collect_ow_files(&path, out);
+            collect_can_files(&path, out);
         } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
             out.push(path);
         }
@@ -1457,7 +1457,7 @@ fn load_or_exit(file_path: &str) -> LoadResult {
 /// than exiting. Used by workspace iteration so one member's load failure
 /// doesn't terminate the whole run.
 fn load_or_print(file_path: &str) -> Option<LoadResult> {
-    // Auto-install: if the file lives inside an Canon project whose
+    // Auto-install: if the file lives inside a Canon project whose
     // `[imports]` are out-of-date with what's materialized under
     // `bindgen/`, run `canon install` first so the binding files exist
     // before the loader looks for them. This is what makes `canon run`
