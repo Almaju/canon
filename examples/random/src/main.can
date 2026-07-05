@@ -1,3 +1,3 @@
-main = () => Unit {
+() => Unit {
     Random() -> Print
 }

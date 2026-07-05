@@ -1,4 +1,4 @@
-main = () => Unit {
+() => Unit {
     Path("Cargo.toml")
         -> File?
         .read()?

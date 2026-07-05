@@ -659,6 +659,20 @@ pub fn resolve_new_syntax(module: &mut Module) {
                         // entry. Mirror the parser's named-entry guard: keep
                         // it a free function so entry selection sees it,
                         // instead of extracting `Request` as a receiver.
+                    } else if func.anonymous
+                        && func.params.is_empty()
+                        && entry_world_of(&func.return_ty) == Some(EntryWorld::Cli)
+                    {
+                        // `() => Unit { … }` — an anonymous CLI entry. The
+                        // entry needs no name; it's selected by its
+                        // world-shaped return like the HTTP handler. Rename
+                        // to the canonical `main` so entry selection, the
+                        // ordering exemption, and codegen's `$start`
+                        // inlining all recognize it with zero other changes.
+                        func.name = Ident {
+                            name: "main".to_string(),
+                            span: func.name.span,
+                        };
                     } else if !func.params.is_empty() {
                         // Trait impl: extract first component as receiver
                         let old_params = std::mem::take(&mut func.params);

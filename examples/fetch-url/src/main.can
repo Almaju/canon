@@ -1,4 +1,4 @@
-main = () => Unit {
+() => Unit {
     Url("http://example.com")?
         -> Fetched?
         -> Print
