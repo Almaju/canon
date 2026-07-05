@@ -1,5 +1,6 @@
-main = () -> Unit {
-    Url("http://example.com")?
-        .get()?
-        .print()
+Unit => Program {
+    "http://example.com"
+        -> Url?
+        -> Fetched?
+        -> Print
 }

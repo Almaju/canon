@@ -1,12 +1,12 @@
-main = () -> Unit {
+main = () => Unit {
     7
-        .add(35)
-        .print()
+        -> Sum(35)
+        -> Print
     10
-        .lt(20)
-        .print()
-    5.gt(3).(
-        * (False) -> Unit { "no".print() }
-        * (True) -> Unit { "yes".print() }
+        -> Lt(20)
+        -> Print
+    5 -> Gt(3) -> (
+        * False => Unit { "no" -> Print }
+        * True => Unit { "yes" -> Print }
     )
 }

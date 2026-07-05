@@ -1,99 +1,146 @@
+AddedTodo = Todos
+
+Cleared = Todos
+
+FirstLine = String
+
+ParsedNum = Int
+
+RemovedAt = Todos
+
+RenderedItems = Html
+
+RestLines = String
+
 Todos = String
 
-addTodo = (Title * Todos) -> Todos {
-    Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
+ToggledAt = Todos
+
+Title * Todos => AddedTodo {
+    Todos.String
+        -> Joined("0|")
+        -> Joined(Title.String)
+        -> Joined("\n")
+        -> Todos
 }
 
-clearDone = (Todos) -> Todos {
-    Todos.String.length().eq(0).(
-        * (False) -> Todos {
-            Todos.String.byteAt(1).eq(49).(
-                * (False) -> Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
+Todos => Cleared {
+    Todos.String -> Length -> Eq(0) -> (
+        * False => Cleared {
+            Todos.String -> ByteAt(1) -> Eq(49) -> (
+                * False => Cleared {
+                    Todos.String
+                        -> FirstLine
+                        -> Joined("\n")
+                        -> Joined(Todos.String -> RestLines -> Todos -> Cleared -> String)
+                        -> Todos
                 }
-                * (True) -> Todos { Todos(Todos.String.restLines()).clearDone() }
+                * True => Cleared { Todos.String -> RestLines -> Todos -> Cleared }
             )
         }
-        * (True) -> Todos { Todos }
+        * True => Cleared { Todos }
     )
 }
 
-firstLine = (String) -> String {
-    String.length().eq(0).(
-        * (False) -> String {
-            String.byteAt(1).eq(10).(
-                * (False) -> String {
+String => FirstLine {
+    String -> Length -> Eq(0) -> (
+        * False => FirstLine {
+            String -> ByteAt(1) -> Eq(10) -> (
+                * False => FirstLine {
                     String
-                        .substring(1, 1)
-                        .concat(String.substring(2, String.length()).firstLine())
+                        -> Substring(1 -> From * 1 -> To)
+                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> FirstLine)
                 }
-                * (True) -> String { "" }
+                * True => FirstLine { "" }
             )
         }
-        * (True) -> String { "" }
+        * True => FirstLine { "" }
     )
 }
 
-parseNum = (String) -> Int {
-    String.length().eq(0).(
-        * (False) -> Int {
+String => ParsedNum {
+    String -> Length -> Eq(0) -> (
+        * False => ParsedNum {
             String
-                .substring(1, String.length().sub(1))
-                .parseNum()
-                .mul(10)
-                .add(String.byteAt(String.length()).sub(48))
+                -> Substring(1 -> From * String -> Length -> Difference(1) -> To)
+                -> ParsedNum
+                -> Product(10)
+                -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
         }
-        * (True) -> Int { 0 }
+        * True => ParsedNum { 0 }
     )
 }
 
-removeAt = (Int * Todos) -> Todos {
-    Todos.String.length().eq(0).(
-        * (False) -> Todos {
-            Int.eq(1).(
-                * (False) -> Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Int.sub(1).removeAt(Todos(Todos.String.restLines())).String))
+Int * Todos => RemovedAt {
+    Todos.String -> Length -> Eq(0) -> (
+        * False => RemovedAt {
+            Int -> Eq(1) -> (
+                * False => RemovedAt {
+                    Todos.String
+                        -> FirstLine
+                        -> Joined("\n")
+                        -> Joined(Int -> Difference(1) -> RemovedAt(Todos.String -> RestLines -> Todos) -> String)
+                        -> Todos
                 }
-                * (True) -> Todos { Todos(Todos.String.restLines()) }
+                * True => RemovedAt { Todos.String -> RestLines -> Todos }
             )
         }
-        * (True) -> Todos { Todos }
+        * True => RemovedAt { Todos }
     )
 }
 
-renderItems = (Int * Todos) -> Html {
-    Todos.String.length().eq(0).(
-        * (False) -> Html {
-            Html(Int.renderItem(Line(Todos.String.firstLine())).String.concat(Int.add(1).renderItems(Todos(Todos.String.restLines())).String))
+Int * Todos => RenderedItems {
+    Todos.String -> Length -> Eq(0) -> (
+        * False => RenderedItems {
+            Int
+                -> RenderedItem(Todos.String -> FirstLine -> Line)
+                -> String
+                -> Joined(Int -> Sum(1) -> RenderedItems(Todos.String -> RestLines -> Todos) -> String)
+                -> Html
         }
-        * (True) -> Html { Html("") }
+        * True => RenderedItems { "" -> Html }
     )
 }
 
-restLines = (String) -> String {
-    String.length().eq(0).(
-        * (False) -> String {
-            String.byteAt(1).eq(10).(
-                * (False) -> String { String.substring(2, String.length()).restLines() }
-                * (True) -> String { String.substring(2, String.length()) }
+String => RestLines {
+    String -> Length -> Eq(0) -> (
+        * False => RestLines {
+            String -> ByteAt(1) -> Eq(10) -> (
+                * False => RestLines {
+                    String
+                        -> Substring(2 -> From * String -> Length -> To)
+                        -> RestLines
+                }
+                * True => RestLines { String -> Substring(2 -> From * String -> Length -> To) }
             )
         }
-        * (True) -> String { "" }
+        * True => RestLines { "" }
     )
 }
 
-toggleAt = (Int * Todos) -> Todos {
-    Todos.String.length().eq(0).(
-        * (False) -> Todos {
-            Int.eq(1).(
-                * (False) -> Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Int.sub(1).toggleAt(Todos(Todos.String.restLines())).String))
+Int * Todos => ToggledAt {
+    Todos.String -> Length -> Eq(0) -> (
+        * False => ToggledAt {
+            Int -> Eq(1) -> (
+                * False => ToggledAt {
+                    Todos.String
+                        -> FirstLine
+                        -> Joined("\n")
+                        -> Joined(Int -> Difference(1) -> ToggledAt(Todos.String -> RestLines -> Todos) -> String)
+                        -> Todos
                 }
-                * (True) -> Todos {
-                    Todos(Line(Todos.String.firstLine()).flip().String.concat("\n").concat(Todos.String.restLines()))
+                * True => ToggledAt {
+                    Todos.String
+                        -> FirstLine
+                        -> Line
+                        -> Flipped
+                        -> String
+                        -> Joined("\n")
+                        -> Joined(Todos.String -> RestLines)
+                        -> Todos
                 }
             )
         }
-        * (True) -> Todos { Todos }
+        * True => ToggledAt { Todos }
     )
 }

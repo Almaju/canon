@@ -4,6 +4,6 @@ Pair = First * Second
 
 Second = String
 
-main = () -> Unit {
-    Pair(First("hello") * Second("world")).First.print()
+main = () => Unit {
+    "hello" -> First -> Pair("world" -> Second).First -> Print
 }

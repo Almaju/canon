@@ -3,7 +3,7 @@
 A function is declared as:
 
 ```canon
-name = (Components) -> ReturnType {
+name = (Components) => ReturnType {
     body
 }
 ```
@@ -15,18 +15,20 @@ The components inside the parentheses form a product, the function's input. Any 
 ```canon,run=first-function
 Greeting = String
 
-shout = (Greeting) -> String {
+Shout = String
+
+Greeting => Shout {
     "HELLO"
 }
 
-main = () -> Unit {
+Unit => Program {
     Greeting("howdy")
-        .shout()
-        .print()
+        -> Shout
+        -> Print
 }
 ```
 
-`shout` takes a `Greeting` as its component. It is called with dot syntax via commutative calling: `Greeting("howdy").shout()`.
+The constructor produces a `Shout` from a `Greeting`. It is reached with the `->` pipe via commutative calling: `Greeting("howdy") -> Shout` feeds the greeting in as the constructor's component.
 
 ## Function Bodies
 
@@ -39,7 +41,7 @@ expression is the return value. There are no semicolons.
   side effects or `?` propagation).
 
 ```canon
-readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
+readConfig = (File * Path) => Result<Config, IoError + ParseError> {
     File
         .read(Path)?
         .parse()?
@@ -55,7 +57,7 @@ multiple operations is method chaining. That is the intended style.
 Inside a function body, each component is referenced by **its type name**:
 
 ```canon
-format = (Greeting * Name) -> String {
+format = (Greeting * Name) => String {
     Greeting
 }
 ```
@@ -66,8 +68,8 @@ product members must be distinct types:
 ```canon
 OtherInt = Int
 
-sum = (Int * OtherInt) -> Int {
-    Int.add(OtherInt)
+sum = (Int * OtherInt) => Int {
+    Int -> Sum(OtherInt)
 }
 ```
 
@@ -78,8 +80,8 @@ This is a compile-time requirement, not a convention:
 
 ```canon
 add    = (User * ...) -> ...
-export = (User * ...) -> ...
-remove = (User * ...) -> ...
+export = (User * ...) => ...
+remove = (User * ...) => ...
 ```
 
 ## Optional Parameters
@@ -87,7 +89,7 @@ remove = (User * ...) -> ...
 There is no special syntax. Use `Option<T>`:
 
 ```canon
-paint = (Option<Color> * String) -> Unit {
+paint = (Option<Color> * String) => Unit {
     ...
 }
 ```
@@ -111,8 +113,8 @@ and pass it where a matching signature is expected:
 ```canon
 Numbers = Int^*
 
-doubleAll = (Numbers) -> Numbers {
-    Numbers.map(Int.double)
+doubleAll = (Numbers) => Numbers {
+    Numbers -> Mapped(Int.double)
 }
 ```
 
@@ -122,8 +124,8 @@ For one-off operations, write a lambda literal with its **full signature**.
 There is no signature inference:
 
 ```canon
-tripleAll = (Numbers) -> Numbers {
-    Numbers.map((Int) -> Int { Int.mul(Int(3)) })
+tripleAll = (Numbers) => Numbers {
+    Numbers -> Mapped((Int) => Int { Int -> Product(Int(3)) })
 }
 ```
 
@@ -136,7 +138,7 @@ A function can be parameterized by a type. Declare type parameters with
 `<...>` before the parameter list, optionally with a trait constraint:
 
 ```canon
-print = <T: Print>(List<T>) -> Unit {
+print = <T: Print>(List<T>) => Unit {
     ...
 }
 ```
@@ -153,17 +155,20 @@ already determine the parameter. A function with an explicit
 `Result<List<Int>, _>` return type lets the compiler infer from the
 return position without an annotation.
 
-## The `main` Function
+## The CLI Entry
 
-`main` is the program's entry point. It takes no parameters and is lifted
-as the component's `wasi:cli/run.run` export:
+The program's entry point takes no input — `Unit` — and returns
+`Program`, the CLI world type (`Program = Unit`, from `canon/std`); it is
+selected by that return type — no name required, just as the HTTP handler
+is selected by returning `Response` — and lifted as the component's
+`wasi:cli/run.run` export:
 
 ```canon
-main = () -> Unit {
-    "hello".print()
+Unit => Program {
+    "hello" -> Print
 }
 ```
 
 For I/O, construct the value that carries the effect (`File`, `Url`,
-`HttpServer`) from inside `main` and thread it through the chain. See
+`HttpServer`) from inside the entry and thread it through the chain. See
 [Effects and Values](./effects.md) for the full domain-first story.

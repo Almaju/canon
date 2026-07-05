@@ -2,11 +2,13 @@ Greeting = String
 
 Name = String
 
-greet = (Greeting * Name) -> Greeting {
+greet = (Greeting * Name) => Greeting {
     Greeting
 }
 
-main = () -> Unit {
-    Greeting("hello").greet(Name("world"))
-    "ok".print()
+main = () => Unit {
+    "hello"
+        -> Greeting
+        .greet("world" -> Name)
+    "ok" -> Print
 }

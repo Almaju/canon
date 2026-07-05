@@ -1,21 +1,24 @@
-first = (Int) -> Option<String> {
-    Int.eq(0).(
-        * (False) -> Option<String> { Some("found") }
-        * (True) -> Option<String> { None() }
+first = (Int) => Option<String> {
+    Int -> Eq(0) -> (
+        * False => Option<String> { "found" -> Some }
+        * True => Option<String> { None() }
     )
 }
 
-second = (Int) -> Option<String> {
-    Some(Int.first()?.concat(" and used"))
+second = (Int) => Option<String> {
+    Int
+        -> First?
+        -> Joined(" and used")
+        -> Some
 }
 
-main = () -> Unit {
-    5.second().(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+main = () => Unit {
+    5.second() -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
-    0.second().(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+    0.second() -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
 }

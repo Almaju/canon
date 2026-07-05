@@ -3,7 +3,7 @@
 A trait is a callable type signature. It is declared like a function type:
 
 ```canon
-Show = () -> String
+Show = () => String
 ```
 
 Because traits are types, they are written in `PascalCase`. The case
@@ -20,39 +20,39 @@ Greeting = String
 
 Name = String
 
-Show = () -> String
+Show = () => String
 
-Show = (Greeting) -> String {
+Show = (Greeting) => String {
     "HELLO!"
 }
 
-Show = (Name) -> String {
+Show = (Name) => String {
     "Alice"
 }
 
-main = () -> Unit {
+Unit => Program {
     Greeting("hi")
-        .Show()
-        .print()
+        -> Show
+        -> Print
     Name("Alice")
-        .Show()
-        .print()
+        -> Show
+        -> Print
 }
 ```
 
 `Greeting.Show()` and `Name.Show()` both have the same signature
-(`() -> String`) and are called the same way.
+(`() => String`) and are called the same way.
 
 ## Multi-Method Traits
 
 A trait with multiple methods is a product of single-method traits:
 
 ```canon
-Debug = () -> String
+Debug = () => String
 
 Presentable = Debug * PrintString
 
-PrintString = () -> Unit
+PrintString = () => Unit
 ```
 
 Implementing `Presentable` for a type means implementing both `Debug`
@@ -64,7 +64,7 @@ A trait can be used directly as a parameter type. The parameter binds the
 trait implementation, which is then invocable:
 
 ```canon
-needsPrint = (Print) -> Unit {
+needsPrint = (Print) => Unit {
     Print()
 }
 ```
@@ -75,7 +75,7 @@ Constraints on generic parameters use `:`, naming a trait the parameter
 must implement:
 
 ```canon
-print = <T: Print>(List<T>) -> Unit {
+print = <T: Print>(List<T>) => Unit {
     ...
 }
 ```

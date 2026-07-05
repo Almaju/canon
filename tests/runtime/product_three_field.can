@@ -6,8 +6,9 @@ TotalTokens = Int
 
 Usage = CompletionTokens * PromptTokens * TotalTokens
 
-main = () -> Unit {
-    Usage(CompletionTokens(11) * PromptTokens(22) * TotalTokens(33)).CompletionTokens.print()
-    Usage(CompletionTokens(11) * PromptTokens(22) * TotalTokens(33)).PromptTokens.print()
-    Usage(CompletionTokens(11) * PromptTokens(22) * TotalTokens(33)).TotalTokens.print()
+main = () => Unit {
+    11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).CompletionTokens
+        -> Print
+    11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).PromptTokens -> Print
+    11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).TotalTokens -> Print
 }

@@ -8,16 +8,16 @@ There are no attributes, no test macros, no runner configuration.
 A test is any function with the signature `() -> TestResult`:
 
 ```canon
-testAddPositive = () -> TestResult {
+testAddPositive = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .assert("1 + 2 should be 3")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("1 + 2 should be 3")
 }
 ```
 
-`TestResult` and `assert` are ordinary stdlib definitions, written in pure
-Canon:
+`TestResult` and its constructor are ordinary stdlib definitions,
+written in pure Canon:
 
 ```canon
 Fail = String
@@ -26,11 +26,12 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-assert = (Bool * String) -> TestResult
+(Bool * String) => TestResult
 ```
 
-`assert` turns a `Bool` and a message into a `TestResult`: `True` becomes
-`Pass()`, `False` becomes `Fail(message)`. The message only appears when
+The `TestResult` constructor turns a `Bool` and a message into a
+`TestResult`: `True` becomes `Pass()`, `False` becomes `Fail(message)`
+(the assertion *is* construction).  The message only appears when
 the assertion fails.
 
 ## Running Tests
@@ -59,22 +60,22 @@ fails. `canon test` slots directly into CI and shell scripts.
 ## The Shape of a Test
 
 Without local variables, a test is a single chain ending in a
-`TestResult`, typically `.eq(expected).assert(message)`:
+`TestResult`, typically `.eq(expected).TestResult(message)`:
 
 ```canon
 Note = String
 
-render = (Note) -> String {
+render = (Note) => String {
     "{\"title\":\""
-        .concat(Note)
-        .concat("\"}")
+        -> Joined(Note)
+        -> Joined("\"}")
 }
 
-testRenderWrapsTitle = () -> TestResult {
+testRenderWrapsTitle = () => TestResult {
     Note("ship it")
         .render()
-        .eq({"title":"ship it"})
-        .assert("render should wrap the title in a JSON object")
+        -> Eq({"title":"ship it"})
+        -> TestResult("render should wrap the title in a JSON object")
 }
 ```
 

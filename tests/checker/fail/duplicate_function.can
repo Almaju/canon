@@ -1,0 +1,11 @@
+double = (Int) -> Int {
+    Int.mul(2)
+}
+
+double = (Int) -> Int {
+    Int.mul(3)
+}
+
+main = () -> Unit {
+    2.double().print()
+}

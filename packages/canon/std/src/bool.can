@@ -1,0 +1,22 @@
+OtherBool = Bool
+
+And = (Bool * OtherBool) => Bool {
+    Bool -> (
+        * False => Bool { False() }
+        * True => Bool { OtherBool }
+    )
+}
+
+Not = (Bool) => Bool {
+    Bool -> (
+        * False => Bool { True() }
+        * True => Bool { False() }
+    )
+}
+
+Or = (Bool * OtherBool) => Bool {
+    Bool -> (
+        * False => Bool { OtherBool }
+        * True => Bool { True() }
+    )
+}

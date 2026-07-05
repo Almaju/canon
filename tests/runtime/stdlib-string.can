@@ -1,8 +1,8 @@
-main = () -> Unit {
+main = () => Unit {
     "Hello, World"
         .toUppercase()
-        .print()
+        -> Print
     "GoodBye"
         .toLowercase()
-        .print()
+        -> Print
 }

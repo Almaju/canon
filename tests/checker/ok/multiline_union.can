@@ -2,6 +2,6 @@ Ord = Equal
   + Greater
   + Less
 
-main = () -> Unit {
-    "multi-line union defined".print()
+main = () => Unit {
+    "multi-line union defined" -> Print
 }

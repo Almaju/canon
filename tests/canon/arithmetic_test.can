@@ -1,40 +1,40 @@
-testAddIdentity = () -> TestResult {
+testAddIdentity = () => TestResult {
     5
-        .add(0)
-        .eq(5)
-        .assert("5 + 0 should be 5")
+        -> Sum(0)
+        -> Eq(5)
+        -> TestResult("5 + 0 should be 5")
 }
 
-testAddPositive = () -> TestResult {
+testAddPositive = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .assert("1 + 2 should be 3")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("1 + 2 should be 3")
 }
 
-testDiv = () -> TestResult {
+testDiv = () => TestResult {
     20
-        .div(4)
-        .eq(5)
-        .assert("20 / 4 should be 5")
+        -> Quotient(4)
+        -> Eq(5)
+        -> TestResult("20 / 4 should be 5")
 }
 
-testEqReflexive = () -> TestResult {
+testEqReflexive = () => TestResult {
     5
-        .eq(5)
-        .assert("5 should equal itself")
+        -> Eq(5)
+        -> TestResult("5 should equal itself")
 }
 
-testMul = () -> TestResult {
+testMul = () => TestResult {
     3
-        .mul(4)
-        .eq(12)
-        .assert("3 * 4 should be 12")
+        -> Product(4)
+        -> Eq(12)
+        -> TestResult("3 * 4 should be 12")
 }
 
-testSub = () -> TestResult {
+testSub = () => TestResult {
     10
-        .sub(3)
-        .eq(7)
-        .assert("10 - 3 should be 7")
+        -> Difference(3)
+        -> Eq(7)
+        -> TestResult("10 - 3 should be 7")
 }

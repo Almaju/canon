@@ -1,28 +1,40 @@
-corsHeaders = () -> Headers {
+CorsHeaders = Headers
+
+Unit => CorsHeaders {
     Headers()
-        .set("access-control-allow-origin", "*")
-        .set("content-type", "text/plain")
+        .set("access-control-allow-origin" * "*")
+        .set("content-type" * "text/plain")
 }
 
-serve = (Request) -> Response {
-    Request.method().(
-        * ("GET") -> Response {
-            Request.path().(
-                * (None) -> Response { Response(Body("bad request") * corsHeaders() * Status(400)) }
-                * (Some<String>) -> Response {
-                    String.(
-                        * ("/todos") -> Response {
-                            Response(Body(todos().String) * corsHeaders() * Status(200))
+Request => Response {
+    Request.method() -> (
+        * "GET" => Response {
+            Request.path() -> (
+                * None => Response {
+                    "bad request"
+                        -> Body
+                        -> Response(400 -> Status * CorsHeaders())
+                }
+                * Some<String> => Response {
+                    String -> (
+                        * "/todos" => Response {
+                            200
+                                -> Status
+                                -> Response(CorsHeaders() * Seeded() -> String -> Body)
                         }
-                        * (String) -> Response {
-                            Response(Body("not found") * corsHeaders() * Status(404))
+                        * String => Response {
+                            "not found"
+                                -> Body
+                                -> Response(404 -> Status * CorsHeaders())
                         }
                     )
                 }
             )
         }
-        * (String) -> Response {
-            Response(Body("method not allowed") * corsHeaders() * Status(405))
+        * String => Response {
+            "method not allowed"
+                -> Body
+                -> Response(405 -> Status * CorsHeaders())
         }
     )
 }

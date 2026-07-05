@@ -2,6 +2,6 @@ Mark = Int
 
 MonotonicClock = Unit
 
-getResolution = (MonotonicClock) -> Duration
+getResolution = (MonotonicClock) => Duration
 
-now = (MonotonicClock) -> Mark
+now = (MonotonicClock) => Mark

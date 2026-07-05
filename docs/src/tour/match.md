@@ -6,10 +6,10 @@ on a union: the value is the receiver, and the arms go inside `.( )`.
 ## Basic Form
 
 ```canon,run=dispatch
-main = () -> Unit {
+Unit => Program {
     True().(
-        * (False) -> Unit { "no".print() }
-        * (True) -> Unit { "yes".print() }
+        * (False) => Unit { "no" -> Print }
+        * (True) => Unit { "yes" -> Print }
     )
 }
 ```
@@ -30,26 +30,26 @@ Ord = Equal
   + Greater
   + Less
 
-classify = (Ord) -> Sign {
+classify = (Ord) => Sign {
     Ord.(
-        * (Equal) -> Sign { Zero() }
-        * (Greater) -> Sign { Positive() }
-        * (Less) -> Sign { Negative() }
+        * (Equal) => Sign { Zero() }
+        * (Greater) => Sign { Positive() }
+        * (Less) => Sign { Negative() }
     )
 }
 ```
 
 ## Matching Constructors with Payloads
 
-Each arm is written as `* (Pattern) -> ArmReturnType { body }`. For
+Each arm is written as `* (Pattern) => ArmReturnType { body }`. For
 union variants that carry a payload, name the payload's type in angle
 brackets; inside the arm body the value is referenced by that type
 name:
 
 ```canon
 List(7, 8, 9).first().(
-    * (None) -> Unit { "empty".print() }
-    * (Some<Int>) -> Unit { Int.print() }
+    * (None) => Unit { "empty".print() }
+    * (Some<Int>) => Unit { Int.print() }
 )
 ```
 
@@ -61,11 +61,11 @@ the scrutinee's type. Literal arms can never be exhaustive, so totality
 comes from the catch-all:
 
 ```canon
-route = (String) -> String {
+route = (String) => String {
     String.(
-        * ("/notes") -> String { "index" }
-        * ("/notes/1") -> String { "note one" }
-        * (String) -> String { "not found: ".concat(String) }
+        * ("/notes") => String { "index" }
+        * ("/notes/1") => String { "note one" }
+        * (String) => String { "not found: " -> Joined(String) }
     )
 }
 ```

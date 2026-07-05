@@ -1,17 +1,17 @@
 Headers = Handle
 
-Headers = () -> Headers
+Headers = () => Headers
 
 Request = Handle
 
 Response = Handle
 
-Response = (Body * Headers * Status) -> Response
+Response = (Body * Headers * Status) => Response
 
-body = (Request) -> Future<Result<String, HttpError>>
+body = (Request) => Future<Result<String, HttpError>>
 
-method = (Request) -> String
+method = (Request) => String
 
-path = (Request) -> Option<String>
+path = (Request) => Option<String>
 
-set = (Headers * String * String) -> Headers
+set = (Headers * String * String) => Headers

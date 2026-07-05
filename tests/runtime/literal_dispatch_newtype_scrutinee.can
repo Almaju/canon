@@ -1,17 +1,17 @@
 Prefix = String
 
-route = (Int * String) -> Int {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Int { Int.add(String.length()) }
-        * (Prefix) -> Int { Int }
+route = (Int * String) => Int {
+    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
+        * "Add:" => Int { Int -> Sum(String -> Length) }
+        * Prefix => Int { Int }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     10
         .route("Add:xyz")
-        .print()
+        -> Print
     10
         .route("Nope")
-        .print()
+        -> Print
 }

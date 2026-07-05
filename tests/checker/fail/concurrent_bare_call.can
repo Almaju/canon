@@ -1,4 +1,4 @@
 main = () -> Unit {
-    parallel("a".slowEcho(), "b".slowEcho())
-    race("a".slowEcho(), "b".slowEcho()).print()
+    parallel("a".slowEcho() * "b".slowEcho())
+    race("a".slowEcho() * "b".slowEcho()).print()
 }

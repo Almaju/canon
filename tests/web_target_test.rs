@@ -18,27 +18,31 @@ use std::path::PathBuf;
 use std::process::Command;
 use wasmtime::{Engine, Instance, Linker, Module, Store, TypedFunc};
 
-const COUNTER_SRC: &str = r#"Model = Int
+const COUNTER_SRC: &str = r#"Init = Model
 
-init = () -> Model {
-    Model(0)
-}
+Model = Int
 
-update = (Model * String) -> Model {
-    String.(
-        * ("Decrement") -> Model { Model(Model.sub(1)) }
-        * ("Increment") -> Model { Model(Model.add(1)) }
-        * (String) -> Model { Model }
-    )
-}
+Update = Model
 
-view = (Model) -> Html {
+Model => Html {
     "Canon Counter"
-        .h1()
-        .concat(Msg("Decrement").button("-"))
-        .concat(Model.String().span())
-        .concat(Msg("Increment").button("+"))
-        .div()
+        -> H1
+        -> Joined("Decrement" -> Msg -> Button("-"))
+        -> Joined(Model -> String -> Span)
+        -> Joined("Increment" -> Msg -> Button("+"))
+        -> Div
+}
+
+Unit => Init {
+    0 -> Model
+}
+
+Model * String => Update {
+    String -> (
+        * "Decrement" => Model { Model -> Difference(1) -> Model }
+        * "Increment" => Model { Model -> Sum(1) -> Model }
+        * String => Model { Model }
+    )
 }
 "#;
 

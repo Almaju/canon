@@ -1,57 +1,57 @@
-show = (Result) -> Unit {
-    Result.(
-        * (Err<MalformedJson>) -> Unit { "FAIL".print() }
-        * (Ok<Json>) -> Unit { "OK".print() }
+show = (Result) => Unit {
+    Result -> (
+        * Err<MalformedJson> => Unit { "FAIL" -> Print }
+        * Ok<Json> => Unit { "OK" -> Print }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     "true"
-        .Json()
+        -> Json
         .show()
     "false"
-        .Json()
+        -> Json
         .show()
     "null"
-        .Json()
+        -> Json
         .show()
     "42"
-        .Json()
+        -> Json
         .show()
     "-3.14e2"
-        .Json()
+        -> Json
         .show()
     "\"hello\""
-        .Json()
+        -> Json
         .show()
     "[1, 2, 3]"
-        .Json()
+        -> Json
         .show()
     "[]"
-        .Json()
+        -> Json
         .show()
     "{}"
-        .Json()
+        -> Json
         .show()
     "{\"a\": 1, \"b\": [true, false, null]}"
-        .Json()
+        -> Json
         .show()
     "{\"nested\": {\"deep\": [1, [2, [3]]]}}"
-        .Json()
+        -> Json
         .show()
     "  true  "
-        .Json()
+        -> Json
         .show()
     "garbage"
-        .Json()
+        -> Json
         .show()
     "{bad}"
-        .Json()
+        -> Json
         .show()
     "[1, 2,]"
-        .Json()
+        -> Json
         .show()
     "true junk"
-        .Json()
+        -> Json
         .show()
 }

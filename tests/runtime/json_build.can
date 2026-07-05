@@ -1,10 +1,10 @@
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     "{\"answer\":"
-        .concat(42.ToJson())
-        .concat(",\"label\":")
-        .concat("life".ToJson())
-        .concat("}")
-        .Json()?
-        .print()
-    Ok(Unit())
+        -> Joined(42 -> ToJson)
+        -> Joined(",\"label\":")
+        -> Joined("life" -> ToJson)
+        -> Joined("}")
+        -> Json?
+        -> Print
+    Unit() -> Ok
 }

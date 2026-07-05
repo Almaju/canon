@@ -9,31 +9,35 @@ For most collection work, use methods on the collection itself:
 `map`, `get`, `length`, `first`, `append`, `concat`.
 
 ```canon,run=list-map
-main = () -> Unit {
+Unit => Program {
     List(10, 20, 30)
-        .map((Int) -> Int { Int.mul(2) })
-        .length()
-        .print()
+        -> Mapped((Int) => Int { Int -> Product(2) })
+        -> Length
+        -> Print
 }
 ```
 
 ## Recursion
 
-Anything the collection methods don't cover is plain recursion —
-functions call themselves, and dispatch supplies the base case:
+Anything the collection methods don't cover is plain recursion — a
+constructor references itself, and dispatch supplies the base case.
+`Summed` is the running total up to a number, so it recurses on
+`Summed` of the predecessor:
 
 ```canon,run=sum-to
-sumTo = (Int) -> Int {
-    Int.eq(0).(
-        * (False) -> Int { Int.add(Int.sub(1).sumTo()) }
-        * (True) -> Int { 0 }
+Summed = Int
+
+Int => Summed {
+    Int -> Eq(0).(
+        * (False) => Summed { Int -> Sum(Int -> Difference(1) -> Summed) }
+        * (True) => Summed { 0 }
     )
 }
 
-main = () -> Unit {
+Unit => Program {
     5
-        .sumTo()
-        .print()
+        -> Summed
+        -> Print
 }
 ```
 

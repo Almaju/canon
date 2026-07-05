@@ -1,27 +1,27 @@
-main = () -> Unit {
+main = () => Unit {
     2.5
-        .lt(3.5)
-        .print()
+        -> Lt(3.5)
+        -> Print
     3.5
-        .le(3.5)
-        .print()
+        -> Le(3.5)
+        -> Print
     4.5
-        .gt(3.5)
-        .print()
+        -> Gt(3.5)
+        -> Print
     3.5
-        .ge(4.5)
-        .print()
+        -> Ge(4.5)
+        -> Print
     2.5
-        .eq(2.5)
-        .print()
+        -> Eq(2.5)
+        -> Print
     2.5
-        .ne(2.5)
-        .print()
+        -> Ne(2.5)
+        -> Print
     7.5
-        .rem(2.0)
-        .print()
+        -> Remainder(2.0)
+        -> Print
     0.0
-        .sub(7.5)
-        .rem(2.0)
-        .print()
+        -> Difference(7.5)
+        -> Remainder(2.0)
+        -> Print
 }

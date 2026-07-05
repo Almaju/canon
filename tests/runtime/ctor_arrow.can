@@ -1,0 +1,31 @@
+Greeting = String
+
+Unit => Greeting {
+    "hello" -> Greeting
+}
+
+Bool => Greeting {
+    Bool -> (
+        * False => Greeting { "bool:no" -> Greeting }
+        * True => Greeting { "bool:yes" -> Greeting }
+    )
+}
+
+Int => Greeting {
+    "int:"
+        -> Joined(Int -> String)
+        -> Greeting
+}
+
+main = () => Unit {
+    Greeting() -> Print
+    7
+        -> Greeting
+        -> Print
+    True()
+        -> Greeting
+        -> Print
+    7
+        -> Greeting
+        -> Print
+}

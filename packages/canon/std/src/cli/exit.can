@@ -1,5 +1,7 @@
 Exit = Int
 
-exit = (Int) -> Unit {
+Exited = Unit
+
+Exited = (Int) => Exited {
     Int.exitWithCode()
 }

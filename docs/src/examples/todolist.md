@@ -26,46 +26,57 @@ canon run examples/todolist-web        # serves on http://127.0.0.1:8080
 
 ## The whole app is the Elm triple
 
-A Canon program becomes a web app by defining three functions with the
-conventional shapes — `init`, `update`, `view` (see
-[The Web Target](../reference/web-target.md)).
-The model here is `Todos`, a newline-separated encoding of `flag|title`
-lines; messages are prefix-parsed strings decoded with the same
-pure-Canon string primitives the standard library uses everywhere else.
+A Canon program becomes a web app by defining three anonymous,
+type-selected constructors (see
+[The Web Target](../reference/web-target.md)): `Model => Html` (view),
+`Unit => Init` (init), and `Model * Msg => Update` (update). `Init` and
+`Update` are model-alias markers that give init and update distinct
+constructor keys. The model here is `Todos`, a newline-separated encoding
+of `flag|title` lines; messages are prefix-parsed strings decoded with
+the same pure-Canon string primitives the standard library uses
+everywhere else.
 
 ```canon
+AddForm = ElAttr
+
+ClearButton = Button
+
+Init = AddedTodo
+
 Prefix = String
 
-addForm = () -> Html {
+Update = Todos
+
+Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
-        .elAttr(Attr("placeholder=\"What needs doing?\"").elAttr("", Tag("input")).String, Tag("form"))
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
-clearButton = () -> Html {
-    Msg("Clear").button("Clear completed")
+Unit => ClearButton {
+    Msg("Clear") -> Button("Clear completed")
 }
 
-init = () -> Todos {
-    Title("toggle a task to mark it done")
-        .addTodo(Title("edit this list - it is saved in your browser").addTodo(Todos("")))
-}
-
-update = (Todos * String) -> Todos {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
-        * ("Clea") -> Todos { Todos.clearDone() }
-        * ("Dele") -> Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Togg") -> Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
-        * (Prefix) -> Todos { Todos }
-    )
-}
-
-view = (Todos) -> Html {
+Todos => Html {
     "<h1>Canon Todos</h1>"
-        .concat(addForm().String)
-        .concat(1.renderItems(Todos).ul().String)
-        .concat(clearButton().String)
-        .div()
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(ClearButton() -> String)
+        -> Div
+}
+
+Unit => Init {
+    Title("toggle a task to mark it done")
+        -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
+}
+
+Todos * String => Update {
+    Prefix(String -> Substring(1, 4)).(
+        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
+        * ("Clea") => Todos { Todos -> Cleared }
+        * ("Dele") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> RemovedAt(Todos) }
+        * ("Togg") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> ToggledAt(Todos) }
+        * (Prefix) => Todos { Todos }
+    )
 }
 ```
 
@@ -93,61 +104,73 @@ The model operations are shared, ordinary Canon — the same code would
 run in a backend. `Todos` holds the list and its folds:
 
 ```canon
+AddedTodo = Todos
+
+Cleared = Todos
+
 Todos = String
 
-addTodo = (Title * Todos) -> Todos {
-    Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
+(Title * Todos) => AddedTodo {
+    Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
-clearDone = (Todos) -> Todos {
-    Todos.String.length().eq(0).(
-        * (False) -> Todos {
-            Todos.String.byteAt(1).eq(49).(
-                * (False) -> Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
+Todos => Cleared {
+    Todos.String -> Length -> Eq(0).(
+        * (False) => Cleared {
+            Todos.String -> ByteAt(1) -> Eq(49).(
+                * (False) => Cleared {
+                    Todos(Todos.String -> FirstLine -> Joined("\n") -> Joined(Todos(Todos.String -> RestLines) -> Cleared -> String))
                 }
-                * (True) -> Todos { Todos(Todos.String.restLines()).clearDone() }
+                * (True) => Cleared { Todos(Todos.String -> RestLines) -> Cleared }
             )
         }
-        * (True) -> Todos { Todos }
+        * (True) => Cleared { Todos }
     )
 }
 ```
 
-(`firstLine`, `restLines`, `parseNum`, `removeAt`, `renderItems`, and
-`toggleAt` round out the file — see the
+Every operation is named after the value it produces: `AddedTodo`,
+`Cleared`, and so on — result newtypes over `Todos`, reached with the
+`->` pipe. (`FirstLine`, `RestLines`, `ParsedNum`, `RemovedAt`,
+`RenderedItems`, and `ToggledAt` round out the file — see the
 [full source](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src).)
 
 `Line` renders one item and toggles its done flag:
 
 ```canon
+Flipped = Line
+
 Line = String
 
-flip = (Line) -> Line {
-    Line.byteAt(1).eq(48).(
-        * (False) -> Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) -> Line { Line("1".concat(Line.substring(2, Line.length()))) }
+RenderedItem = Html
+
+Line => Flipped {
+    Line -> ByteAt(1) -> Eq(48).(
+        * (False) => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * (True) => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
     )
 }
 
-renderItem = (Int * Line) -> Html {
-    Line.byteAt(1).eq(49).(
-        * (False) -> Html {
-            Line.substring(3, Line.length()).text().String
-                .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("done").String)
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
-                .li()
+(Int * Line) => RenderedItem {
+    Line -> ByteAt(1) -> Eq(49).(
+        * (False) => RenderedItem {
+            Line
+                -> Substring(3, Line -> Length)
+                -> Escaped
+                -> Joined(" ")
+                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("done"))
+                -> Joined(" ")
+                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Li
         }
-        * (True) -> Html {
+        * (True) => RenderedItem {
             "<s>"
-                .concat(Line.substring(3, Line.length()).text().String)
-                .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("undo").String)
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
-                .li()
+                -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
+                -> Joined("</s> ")
+                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("undo"))
+                -> Joined(" ")
+                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Li
         }
     )
 }
@@ -155,8 +178,8 @@ renderItem = (Int * Line) -> Html {
 
 ## What it demonstrates
 
-- **A real frontend with no framework.** The `init`/`update`/`view`
-  triple *is* the app; `canon/std/web` supplies the HTML helpers and the
+- **A real frontend with no framework.** The view / init / update triple
+  *is* the app; `canon/std/web` supplies the HTML helpers and the
   declarative event attributes (`data-msg`, `data-msg-form`).
 - **State that persists, with no effect in the guest.** `localStorage`
   is a host capability layered onto the message log — the program stays

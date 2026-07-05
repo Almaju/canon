@@ -1,33 +1,60 @@
+AddForm = ElAttr
+
+Init = AddedTodo
+
+LoadButton = ElAttr
+
 Prefix = String
 
-addForm = () -> Html {
-    Attr("data-msg-form=\"Add:\"")
-        .elAttr(Attr("placeholder=\"What needs doing?\"").elAttr("", Tag("input")).String, Tag("form"))
+Update = Todos
+
+Unit => AddForm {
+    "data-msg-form=\"Add:\""
+        -> Attr
+        -> ElAttr("placeholder=\"What needs doing?\"" -> Attr -> ElAttr("" * "input" -> Tag) * "form" -> Tag)
 }
 
-init = () -> Todos {
-    Title("check the canon backend").addTodo(Title("build the canon frontend").addTodo(Todos("")))
-}
-
-loadButton = () -> Html {
-    Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
-        .elAttr("Load todos from the server", Tag("button"))
-}
-
-update = (Todos * String) -> Todos {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
-        * ("Dele") -> Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Load") -> Todos { Todos(String.substring(6, String.length())) }
-        * ("Togg") -> Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
-        * (Prefix) -> Todos { Todos }
-    )
-}
-
-view = (Todos) -> Html {
+Todos => Html {
     "<h1>Canon Todos</h1>"
-        .concat(addForm().String)
-        .concat(1.renderItems(Todos).ul().String)
-        .concat(loadButton().String)
-        .div()
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(LoadButton() -> String)
+        -> Div
+}
+
+Unit => Init {
+    "check the canon backend"
+        -> Title
+        -> AddedTodo("build the canon frontend" -> Title -> AddedTodo("" -> Todos))
+}
+
+Unit => LoadButton {
+    "data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\""
+        -> Attr
+        -> ElAttr("Load todos from the server" * "button" -> Tag)
+}
+
+Todos * String => Update {
+    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
+        * "Add:" => Todos {
+            String
+                -> Substring(5 -> From * String -> Length -> To)
+                -> Title
+                -> AddedTodo(Todos)
+        }
+        * "Dele" => Todos {
+            String
+                -> Substring(8 -> From * String -> Length -> To)
+                -> ParsedNum
+                -> RemovedAt(Todos)
+        }
+        * "Load" => Todos { String -> Substring(6 -> From * String -> Length -> To) -> Todos }
+        * "Togg" => Todos {
+            String
+                -> Substring(8 -> From * String -> Length -> To)
+                -> ParsedNum
+                -> ToggledAt(Todos)
+        }
+        * Prefix => Todos { Todos }
+    )
 }

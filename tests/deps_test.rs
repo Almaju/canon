@@ -120,25 +120,45 @@ fn malformed_version_is_rejected() {
     );
 }
 
+/// Load a fail-project whose function-only name collision passes the
+/// loader (constructor/shape families may co-declare a function name —
+/// DESIGN.md § Types-Only Canon, resolution rule 4) and return the
+/// checker's error messages. The conflict is caught by the checker's
+/// duplicate-definition guard because the colliding implementations
+/// share a receiver and first input, which no family may.
+fn check_errors(project: &str) -> Vec<String> {
+    let loaded = loader::load_module(&entry(project))
+        .unwrap_or_else(|err| panic!("`tests/deps/{}` should load: {}", project, err.message()));
+    checker::check_with_entry(&loaded.module, loaded.entry_items_start)
+        .iter()
+        .map(|e| e.message().to_string())
+        .collect()
+}
+
 #[test]
 fn two_vendored_versions_are_rejected() {
-    // Two versioned siblings both declare `shout`; the flat,
-    // globally-unique name rule catches it as an ambiguity naming both
-    // versioned directories (install removes old versions, so this only
-    // arises from manual tampering).
-    let msg = load_error("fail_two_versions");
-    assert!(msg.contains("is ambiguous"), "unexpected message: {msg}");
+    // Two versioned siblings both declare `shout` with the same
+    // signature. Co-declaring a function name is legal (families), but
+    // two implementations on the same receiver with the same first
+    // input are a duplicate — the checker names the collision (install
+    // removes old versions, so this only arises from manual tampering).
+    let msgs = check_errors("fail_two_versions");
     assert!(
-        msg.contains("greet@1.0.0") && msg.contains("greet@1.1.0"),
-        "message should name both versioned directories: {msg}"
+        msgs.iter()
+            .any(|m| m.contains("duplicate function `shout` on `String`")),
+        "expected a duplicate-function error, got: {msgs:?}"
     );
 }
 
 #[test]
 fn deps_and_local_resolution_is_ambiguous() {
-    let msg = load_error("fail_ambiguous");
+    // A local file and a vendored dep both implement `shout` on
+    // `String`. Both load (function names may co-resolve); the
+    // duplicate-definition guard reports the actual conflict.
+    let msgs = check_errors("fail_ambiguous");
     assert!(
-        msg.contains("`shout` is ambiguous"),
-        "unexpected message: {msg}"
+        msgs.iter()
+            .any(|m| m.contains("duplicate function `shout` on `String`")),
+        "expected a duplicate-function error, got: {msgs:?}"
     );
 }

@@ -78,7 +78,7 @@ binding file:
 ```canon
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl> {
+Url = (String) => Result<Url, InvalidUrl> {
     String.parse()
 }
 ```
@@ -91,7 +91,7 @@ expression's type is now whatever the constructor returns, so a fallible
 constructor *forces* `?` (or dispatch) at the call site:
 
 ```canon
-Url("https://example.com")?.get()?.print()
+Url("https://example.com")? -> Fetched?.print()
 ```
 
 External callers cannot bypass the constructor. The raw inner
@@ -105,12 +105,12 @@ family; converting a value to `T` is spelled `T(value)` (or
 `value.T()`, the method form of the same declaration):
 
 ```canon,run=conversions
-main = () -> Unit {
-    String(42).print()
+Unit => Program {
+    String(42) -> Print
     123
-        .String()
-        .concat("!")
-        .print()
+        -> String
+        -> Joined("!")
+        -> Print
 }
 ```
 

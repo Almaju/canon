@@ -1,5 +1,6 @@
-main = () -> Unit {
-    Greeter("hi")
-        .shout()
-        .print()
+Unit => Program {
+    "hi"
+        -> Greeter
+        -> Shout
+        -> Print
 }

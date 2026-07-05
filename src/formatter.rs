@@ -5,7 +5,7 @@
 //! spacing, indentation, and line breaking.
 
 use crate::ast::*;
-use crate::error::Result;
+use crate::error::{Result, Span};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
 
@@ -17,7 +17,233 @@ pub fn format(source: &str) -> Result<String> {
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let module = parser.parse()?;
+    let module = canonicalize_module(&module);
     Ok(emit_module(&module))
+}
+
+// ── Canonical call form ───────────────────────────────────────────────────────
+//
+// One way to spell a call: the first input always rides the pipe, the
+// rest ride in the parens as a partial application. `B(A)` is rewritten
+// to `A -> B`, `B(A * C)` to `A -> B(C)`, and `A.B(C)` / `A * C -> B` to
+// `A -> B(C)`. `A -> B(C)` reads as "apply `B`, which already has `C`,
+// to `A`". Zero-input calls stay prefix (`Now()`, `Map()`), and
+// `List(…)` keeps its elements (an ordered sequence, not a
+// subject-bearing call). The parser accepts every spelling; this pass is
+// what makes `canon fmt` pick the canonical one. The compiler treats a
+// piped call to a type constructor as construction (`A -> B(rest)` ≡
+// `B(A * rest)`), so the rewrite is semantics-preserving.
+
+fn canonicalize_module(m: &Module) -> Module {
+    Module {
+        items: m
+            .items
+            .iter()
+            .map(|it| match it {
+                Item::Function(f) => Item::Function(FunctionDef {
+                    body: canon_block(&f.body),
+                    ..f.clone()
+                }),
+                other => other.clone(),
+            })
+            .collect(),
+        span: m.span,
+    }
+}
+
+fn canon_block(b: &Block) -> Block {
+    Block {
+        exprs: b.exprs.iter().map(canon_expr).collect(),
+        span: b.span,
+    }
+}
+
+fn canon_arm(a: &MatchArm) -> MatchArm {
+    MatchArm {
+        body: canon_block(&a.body),
+        ..a.clone()
+    }
+}
+
+/// Flatten a call's argument list to its input factors: a single
+/// `ProductValue` argument (`B(a * b)`) becomes `[a, b]`; anything else
+/// is taken as written.
+fn flatten_inputs(args: &[Expr]) -> Vec<Expr> {
+    match args {
+        [Expr::ProductValue { fields, .. }] => fields.clone(),
+        _ => args.to_vec(),
+    }
+}
+
+/// A receiver splits into its subject (the piped value, `.1`) and any
+/// trailing factors. A product receiver (`A * C -> B`) contributes its
+/// first element as the subject and the rest as parens factors;
+/// position is preserved so a same-typed builtin (`Difference`) keeps
+/// its operand order.
+fn split_receiver(recv: Expr) -> (Expr, Vec<Expr>) {
+    match recv {
+        Expr::ProductValue { fields, .. } if fields.len() >= 2 => {
+            let mut it = fields.into_iter();
+            let subject = it.next().unwrap();
+            (subject, it.collect())
+        }
+        other => (other, Vec::new()),
+    }
+}
+
+/// Build the canonical pipe `subject -> name(rest…)`. With no trailing
+/// factors it is the bare `subject -> name`; with several it wraps them
+/// in a product.
+fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
+    let args = match rest.len() {
+        0 => Vec::new(),
+        1 => rest,
+        _ => vec![Expr::ProductValue { fields: rest, span }],
+    };
+    Expr::MethodCall {
+        receiver: Box::new(subject),
+        method: name,
+        type_args: Vec::new(),
+        args,
+        piped: true,
+        span,
+    }
+}
+
+fn canon_expr(e: &Expr) -> Expr {
+    match e {
+        Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => e.clone(),
+
+        Expr::FieldAccess {
+            receiver,
+            field,
+            span,
+        } => Expr::FieldAccess {
+            receiver: Box::new(canon_expr(receiver)),
+            field: field.clone(),
+            span: *span,
+        },
+
+        Expr::Try { inner, span } => Expr::Try {
+            inner: Box::new(canon_expr(inner)),
+            span: *span,
+        },
+
+        Expr::Await { inner, span } => Expr::Await {
+            inner: Box::new(canon_expr(inner)),
+            span: *span,
+        },
+
+        Expr::Match {
+            scrutinee,
+            arms,
+            span,
+        } => Expr::Match {
+            scrutinee: Box::new(canon_expr(scrutinee)),
+            arms: arms.iter().map(canon_arm).collect(),
+            span: *span,
+        },
+
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            span,
+        } => Expr::Lambda {
+            params: params.clone(),
+            return_ty: return_ty.clone(),
+            body: canon_block(body),
+            span: *span,
+        },
+
+        Expr::ProductValue { fields, span } => Expr::ProductValue {
+            fields: fields.iter().map(canon_expr).collect(),
+            span: *span,
+        },
+
+        Expr::JsonLit { parts, span } => Expr::JsonLit {
+            parts: parts
+                .iter()
+                .map(|p| match p {
+                    JsonLitPart::Static(s) => JsonLitPart::Static(s.clone()),
+                    JsonLitPart::Interp(e) => JsonLitPart::Interp(Box::new(canon_expr(e))),
+                })
+                .collect(),
+            span: *span,
+        },
+
+        Expr::HtmlLit { parts, span } => Expr::HtmlLit {
+            parts: parts
+                .iter()
+                .map(|p| match p {
+                    HtmlLitPart::Static(s) => HtmlLitPart::Static(s.clone()),
+                    HtmlLitPart::Interp(e) => HtmlLitPart::Interp(Box::new(canon_expr(e))),
+                })
+                .collect(),
+            span: *span,
+        },
+
+        // ── Prefix constructor: `B(inputs…)` ────────────────────────────
+        Expr::Constructor { name, args, span } => {
+            // `List(…)` is an ordered sequence literal, not a
+            // subject-bearing call — keep it prefix, elements in order.
+            if name.name == "List" {
+                return Expr::Constructor {
+                    name: name.clone(),
+                    args: args.iter().map(canon_expr).collect(),
+                    span: *span,
+                };
+            }
+            let mut inputs: Vec<Expr> = flatten_inputs(args).iter().map(canon_expr).collect();
+            if inputs.is_empty() {
+                // Zero-input call stays prefix: `Now()`, `Map()`, `None()`.
+                return Expr::Constructor {
+                    name: name.clone(),
+                    args: Vec::new(),
+                    span: *span,
+                };
+            }
+            // A prefix constructor binds its inputs by type (distinct
+            // field types — the product rule), so the order is free:
+            // sort for determinism, pipe the first, parens hold the rest.
+            inputs.sort_by_key(emit_inline);
+            let subject = inputs.remove(0);
+            make_pipe(subject, name.clone(), inputs, *span)
+        }
+
+        // ── Method / pipe: `recv.B(args…)` / `recv -> B(args…)` ──────────
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            piped,
+            span,
+        } => {
+            // camelCase methods are FFI binding calls at the boundary
+            // (`.now()`, `.set()`); `->` only pipes into PascalCase
+            // constructors, so leave these as dot-calls.
+            if !method.name.chars().next().is_some_and(char::is_uppercase) {
+                return Expr::MethodCall {
+                    receiver: Box::new(canon_expr(receiver)),
+                    method: method.clone(),
+                    type_args: type_args.clone(),
+                    args: args.iter().map(canon_expr).collect(),
+                    piped: *piped,
+                    span: *span,
+                };
+            }
+            let (subject, mut rest) = split_receiver(canon_expr(receiver));
+            for input in flatten_inputs(args) {
+                rest.push(canon_expr(&input));
+            }
+            make_pipe(subject, method.clone(), rest, *span)
+        }
+    }
 }
 
 // ── Module ──────────────────────────────────────────────────────────────────
@@ -103,7 +329,9 @@ fn is_pinned_entry(f: &FunctionDef) -> bool {
     if f.receiver.is_some() {
         return false;
     }
-    f.name.name == "main" || entry_world_of(&f.return_ty) == Some(EntryWorld::Http)
+    f.name.name == "main"
+        || entry_world_of(&f.return_ty) == Some(EntryWorld::Http)
+        || (f.anonymous && entry_world_of(&f.return_ty) == Some(EntryWorld::Cli))
 }
 
 fn emit_item(item: &Item) -> String {
@@ -161,13 +389,37 @@ fn emit_type_def(td: &TypeDef) -> String {
 fn emit_function(func: &FunctionDef) -> String {
     let mut out = String::new();
 
-    // Signature: name<G> = (params) -> ReturnType
-    out.push_str(&func.name.name);
-    out.push_str(&emit_generic_params(&func.generic_params));
-    out.push_str(" = (");
-    out.push_str(&emit_fn_params(func));
-    out.push_str(") -> ");
-    out.push_str(&emit_type_expr(&func.return_ty));
+    // An anonymous constructor drops every parenthesis around its input:
+    // `Request => Response`, the product `Todos * String => Update`, and
+    // the nullary `Unit => Program` (the single-value type is the name of
+    // "no input"). The declaration arrow `=>` binds looser than the type
+    // operators, so the input reads back unambiguously — the one case
+    // that still needs parens is a compound input whose *first* component
+    // is generic (`(List<Int> * B) => C`), since a leading `<` steers the
+    // parser to generic-params instead. Named function declarations
+    // (`name = (params) => R`) keep their `()`.
+    let anon_input = if func.anonymous && func.generic_params.is_empty() {
+        anon_input_paren_free(&func.params)
+    } else {
+        None
+    };
+    if let Some(input) = anon_input {
+        out.push_str(&input);
+        out.push_str(" => ");
+        out.push_str(&emit_type_expr(&func.return_ty));
+    } else {
+        if !func.anonymous {
+            out.push_str(&func.name.name);
+            out.push_str(&emit_generic_params(&func.generic_params));
+            out.push_str(" = (");
+        } else {
+            out.push_str(&emit_generic_params(&func.generic_params));
+            out.push('(');
+        }
+        out.push_str(&emit_fn_params(func));
+        out.push_str(") => ");
+        out.push_str(&emit_type_expr(&func.return_ty));
+    }
 
     // Body. Functions whose body was synthesized by the loader (i.e.
     // the `extern_wasm` field is populated because they came from a
@@ -186,6 +438,33 @@ fn emit_function(func: &FunctionDef) -> String {
     }
 
     out
+}
+
+/// The paren-free input rendering of an anonymous constructor, or `None`
+/// when it must keep its parentheses. Zero params render as `Unit` (the
+/// single-value "no input" type). A single non-mutable param renders bare
+/// — `Request`, or the product `Todos * String` — as long as its first
+/// atom is a generics-free named type, since only then does the parser's
+/// paren-free path (a leading bare ident, then `=>`/`*`/`+`) round-trip.
+/// A leading generic (`List<Int> * B`) or the multi-param comma form
+/// keeps parens.
+fn anon_input_paren_free(params: &[Param]) -> Option<String> {
+    match params {
+        [] => Some("Unit".to_string()),
+        [p] if !p.mutable && first_atom_is_bare_named(&p.ty) => Some(emit_type_expr(&p.ty)),
+        _ => None,
+    }
+}
+
+/// Whether a type's leading atom is a named type with no generic args —
+/// the shape the parser can re-read without parentheses.
+fn first_atom_is_bare_named(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Named { generics, .. } => generics.is_empty(),
+        TypeExpr::Product { fields, .. } => fields.first().is_some_and(first_atom_is_bare_named),
+        TypeExpr::Union { variants, .. } => variants.first().is_some_and(first_atom_is_bare_named),
+        _ => false,
+    }
 }
 
 fn emit_fn_params(func: &FunctionDef) -> String {
@@ -286,7 +565,7 @@ fn emit_type_expr(ty: &TypeExpr) -> String {
                     .collect::<Vec<_>>()
                     .join(" * ")
             };
-            format!("{}({}) -> {}", g, ps, emit_type_expr(return_ty))
+            format!("{}({}) => {}", g, ps, emit_type_expr(return_ty))
         }
     }
 }
@@ -407,6 +686,55 @@ fn emit_inline(expr: &Expr) -> String {
     emit_chain_inline(&flatten_chain(expr))
 }
 
+/// The PascalCase name a method pipes to, or `None` when it stays a
+/// dot-call. A method pipes when its name is a PascalCase
+/// user/stdlib constructor or a builtin with a PascalCase vocabulary
+/// spelling (`concat` → `Joined`, `add` → `Sum`, `print` → `Print`). A
+/// *camelCase* method with no builtin mapping is an FFI binding call
+/// (`.now()`, `.fetch()`, `.getRandomU64()`) — camelCase is legal at
+/// the binding boundary, so those keep the dot.
+fn method_pipe_name(name: &str) -> Option<&str> {
+    let piped = builtin_pipe_name(name);
+    if piped.chars().next().is_some_and(|c| c.is_uppercase()) {
+        Some(piped)
+    } else {
+        None
+    }
+}
+
+/// Emit a method as a pipe (`-> Name(args)`) or a dot-call (`.name(args)`).
+/// `broken` selects the continuation-line pipe lead (`-> `) vs the inline
+/// lead (` -> `). Field access (`.Field`) and dispatch (`.( )`) never
+/// reach here — those *read*, they don't apply a function.
+fn emit_method(
+    out: &mut String,
+    method: &Ident,
+    type_args: &[TypeExpr],
+    args: &[Expr],
+    broken: bool,
+) {
+    match method_pipe_name(&method.name) {
+        Some(pname) => {
+            out.push_str(if broken { "-> " } else { " -> " });
+            out.push_str(pname);
+            emit_turbofish(out, type_args);
+            if !args.is_empty() {
+                out.push('(');
+                emit_args_inline(out, args);
+                out.push(')');
+            }
+        }
+        None => {
+            out.push('.');
+            out.push_str(&method.name);
+            emit_turbofish(out, type_args);
+            out.push('(');
+            emit_args_inline(out, args);
+            out.push(')');
+        }
+    }
+}
+
 fn emit_chain_inline(chain: &[ChainPart]) -> String {
     let mut out = String::new();
     for part in chain {
@@ -416,16 +744,12 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
                 method,
                 type_args,
                 args,
+                ..
             } => {
-                out.push('.');
-                out.push_str(&method.name);
-                emit_turbofish(&mut out, type_args);
-                out.push('(');
-                emit_args_inline(&mut out, args);
-                out.push(')');
+                emit_method(&mut out, method, type_args, args, false);
             }
             ChainPart::Dispatch { arms } => {
-                out.push_str(".(");
+                out.push_str(" -> (");
                 for arm in arms.iter() {
                     out.push_str(" * ");
                     out.push_str(&emit_arm_inline(arm));
@@ -462,7 +786,7 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
         if let ChainPart::Dispatch { arms } = &chain[dpos] {
             let arm_pad = "    ".repeat(indent + 1);
             let close_pad = "    ".repeat(indent);
-            out.push_str(".(\n");
+            out.push_str(" -> (\n");
             for arm in arms.iter() {
                 out.push_str(&arm_pad);
                 out.push_str("* ");
@@ -481,13 +805,9 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
                     method,
                     type_args,
                     args,
+                    ..
                 } => {
-                    out.push('.');
-                    out.push_str(&method.name);
-                    emit_turbofish(&mut out, type_args);
-                    out.push('(');
-                    emit_args_inline(&mut out, args);
-                    out.push(')');
+                    emit_method(&mut out, method, type_args, args, false);
                 }
                 ChainPart::Try => out.push('?'),
                 _ => {}
@@ -515,21 +835,22 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
                 method,
                 type_args,
                 args,
+                ..
             } => {
                 out.push('\n');
                 out.push_str(&cont_pad);
-                out.push('.');
-                out.push_str(&method.name);
-                emit_turbofish(&mut out, type_args);
-                out.push('(');
-                emit_args_inline(&mut out, args);
-                out.push(')');
+                emit_method(&mut out, method, type_args, args, true);
             }
             ChainPart::Try => out.push('?'),
             ChainPart::Dispatch { arms } => {
+                // A dispatch is a pipe step (`-> ( … )`), so it gets its
+                // own continuation line like every other `->` in a
+                // broken chain.
+                out.push('\n');
+                out.push_str(&cont_pad);
                 let arm_pad = "    ".repeat(indent + 2);
                 let close_pad = "    ".repeat(indent + 1);
-                out.push_str(".(\n");
+                out.push_str("-> (\n");
                 for arm in arms.iter() {
                     out.push_str(&arm_pad);
                     out.push_str("* ");
@@ -559,7 +880,18 @@ fn emit_base_inline(expr: &Expr) -> String {
                 format!("{}()", name.name)
             } else {
                 let mut s = format!("{}(", name.name);
-                emit_args_inline(&mut s, args);
+                match args.as_slice() {
+                    // A product-type constructor is positionless: its
+                    // fields bind to type-named slots, so canonicalise
+                    // the order alphabetically. `List` is the exception —
+                    // its `*`-separated arguments are ordered sequence
+                    // elements, not product fields, so they keep their
+                    // order.
+                    [Expr::ProductValue { fields, .. }] if name.name != "List" => {
+                        emit_product_fields_sorted(&mut s, fields);
+                    }
+                    _ => emit_args_inline(&mut s, args),
+                }
                 s.push(')');
                 s
             }
@@ -578,7 +910,7 @@ fn emit_base_inline(expr: &Expr) -> String {
                 .map(emit_inline)
                 .collect::<Vec<_>>()
                 .join(" ");
-            format!("({}) -> {} {{ {} }}", ps, ret, body_str)
+            format!("({}) => {} {{ {} }}", ps, ret, body_str)
         }
         Expr::ProductValue { fields, .. } => fields
             .iter()
@@ -656,6 +988,16 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
     }
 }
 
+/// Emit the fields of a product-type constructor, sorted alphabetically
+/// by their rendered form. Construction is positionless (values bind to
+/// fields by type), so a canonical order keeps `canon fmt` output
+/// stable regardless of the order the author wrote the fields.
+fn emit_product_fields_sorted(out: &mut String, fields: &[Expr]) {
+    let mut parts: Vec<String> = fields.iter().map(emit_inline).collect();
+    parts.sort();
+    out.push_str(&parts.join(" * "));
+}
+
 fn emit_arm_pattern(arm: &MatchArm) -> String {
     match &arm.literal {
         Some(ArmLiteral::Str(s)) => format!("\"{}\"", escape_string(s)),
@@ -674,7 +1016,7 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
         .map(emit_inline)
         .collect::<Vec<_>>()
         .join(" ");
-    format!("({}) -> {} {{ {} }}", pat, ret, body)
+    format!("{} => {} {{ {} }}", pat, ret, body)
 }
 
 /// Render a dispatch arm at the given indent level. Short arms whose
@@ -699,7 +1041,7 @@ fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
         .map(|e| format!("{}{}", body_pad, emit_expr(e, arm_indent + 1)))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("({}) -> {} {{\n{}\n{}}}", pat, ret, body, close_pad)
+    format!("{} => {} {{\n{}\n{}}}", pat, ret, body, close_pad)
 }
 
 /// Does this expression (or any sub-expression) contain a dispatch?
@@ -789,8 +1131,8 @@ mod tests {
     #[test]
     fn test_simple_main() {
         assert_format(
-            "main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n",
-            "main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n",
+            "main = (Stdout) => Unit {\n    \"hello\".print(Stdout)\n}\n",
+            "main = (Stdout) => Unit {\n    \"hello\" -> Print(Stdout)\n}\n",
         );
     }
 
@@ -798,7 +1140,7 @@ mod tests {
     fn test_normalize_spacing() {
         assert_format(
             "main=(Stdout)->Unit{\n\"hello\".print(Stdout)\n}\n",
-            "main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n",
+            "main = (Stdout) => Unit {\n    \"hello\" -> Print(Stdout)\n}\n",
         );
     }
 
@@ -839,16 +1181,16 @@ mod tests {
     #[test]
     fn test_sorts_free_functions() {
         assert_format(
-            "beta = () -> Unit {\n    \"b\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
-            "alpha = () -> Unit {\n    \"a\".print()\n}\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n",
+            "beta = () => Unit {\n    \"b\".print()\n}\n\nalpha = () => Unit {\n    \"a\".print()\n}\n",
+            "alpha = () => Unit {\n    \"a\" -> Print\n}\n\nbeta = () => Unit {\n    \"b\" -> Print\n}\n",
         );
     }
 
     #[test]
     fn test_sorts_type_definitions() {
         assert_format(
-            "Zed = Int\n\nAlpha = Int\n\nmain = () -> Unit {\n    \"x\".print()\n}\n",
-            "Alpha = Int\n\nZed = Int\n\nmain = () -> Unit {\n    \"x\".print()\n}\n",
+            "Zed = Int\n\nAlpha = Int\n\nmain = () => Unit {\n    \"x\".print()\n}\n",
+            "Alpha = Int\n\nZed = Int\n\nmain = () => Unit {\n    \"x\" -> Print\n}\n",
         );
     }
 
@@ -858,7 +1200,7 @@ mod tests {
         // role, mirroring the checker) — it keeps its position while
         // its peers sort around it.
         assert_idempotent(
-            "main = () -> Unit {\n    \"hi\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
+            "main = () => Unit {\n    \"hi\" -> Print\n}\n\nalpha = () => Unit {\n    \"a\" -> Print\n}\n",
         );
     }
 
@@ -866,8 +1208,8 @@ mod tests {
     fn test_dispatch_arms_sorted() {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
-            "main = () -> Unit {\n    True().(\n        * (True) -> Unit { \"yes\".print() }\n        * (False) -> Unit { \"no\".print() }\n    )\n}\n",
-            "main = () -> Unit {\n    True().(\n        * (False) -> Unit { \"no\".print() }\n        * (True) -> Unit { \"yes\".print() }\n    )\n}\n",
+            "main = () => Unit {\n    True().(\n        * (True) => Unit { \"yes\".print() }\n        * (False) => Unit { \"no\".print() }\n    )\n}\n",
+            "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 
@@ -875,40 +1217,49 @@ mod tests {
     fn test_literal_dispatch_arms_sorted_catchall_last() {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
-            "route = (String) -> String {\n    String.(\n        * (String) -> String { \"other\" }\n        * (\"/b\") -> String { \"b\" }\n        * (\"/a\") -> String { \"a\" }\n    )\n}\n\nmain = () -> Unit {\n    \"/a\".route().print()\n}\n",
-            "route = (String) -> String {\n    String.(\n        * (\"/a\") -> String { \"a\" }\n        * (\"/b\") -> String { \"b\" }\n        * (String) -> String { \"other\" }\n    )\n}\n\nmain = () -> Unit {\n    \"/a\"\n        .route()\n        .print()\n}\n",
+            "Route = (String) => String {\n    String.(\n        * (String) => String { \"other\" }\n        * (\"/b\") => String { \"b\" }\n        * (\"/a\") => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_dispatch_pipe_form_idempotent() {
+        // The canonical dispatch spelling pipes the scrutinee in with
+        // `->` (the last `.` that used to execute a flow step).
+        assert_idempotent(
+            "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 
     #[test]
     fn test_literal_dispatch_int_arms_idempotent() {
         assert_idempotent(
-            "describe = (Int) -> Unit {\n    Int.(\n        * (0) -> Unit { \"zero\".print() }\n        * (1) -> Unit { \"one\".print() }\n        * (Int) -> Unit { Int.print() }\n    )\n}\n\nmain = () -> Unit {\n    0.describe()\n}\n",
+            "Describe = (Int) => Unit {\n    Int.(\n        * (0) => Unit { \"zero\" -> Print }\n        * (1) => Unit { \"one\" -> Print }\n        * (Int) => Unit { Int -> Print }\n    )\n}\n\nmain = () => Unit {\n    0 -> Describe\n}\n",
         );
     }
 
     #[test]
     fn test_literal_dispatch_string_escapes_round_trip() {
         assert_idempotent(
-            "kind = (String) -> String {\n    String.(\n        * (\"line\\none\") -> String { \"escaped\" }\n        * (String) -> String { \"plain\" }\n    )\n}\n\nmain = () -> Unit {\n    \"x\".kind().print()\n}\n",
+            "Kind = (String) => String {\n    String.(\n        * (\"line\\none\") => String { \"escaped\" }\n        * (String) => String { \"plain\" }\n    )\n}\n\nmain = () => Unit {\n    \"x\"\n        -> Kind\n        -> Print\n}\n",
         );
     }
 
     #[test]
     fn test_dispatch() {
-        let src = "Bool = False + True\n\nmain = (Stdout) -> Unit {\n    True.(\n        * (False) -> Unit { \"no\".print(Stdout) }\n        * (True) -> Unit { \"yes\".print(Stdout) }\n    )\n}\n";
+        let src = "Bool = False + True\n\nmain = (Stdout) => Unit {\n    True.(\n        * (False) => Unit { \"no\".print(Stdout) }\n        * (True) => Unit { \"yes\".print(Stdout) }\n    )\n}\n";
         assert_idempotent(src);
     }
 
     #[test]
     fn test_idempotent_hello() {
-        assert_idempotent("main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n");
+        assert_idempotent("main = (Stdout) => Unit {\n    \"hello\".print(Stdout)\n}\n");
     }
 
     #[test]
     fn test_idempotent_types() {
         assert_idempotent(
-            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) -> Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
+            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) => Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
         );
     }
 
@@ -918,35 +1269,54 @@ mod tests {
         // (the vendored path, not a header, carries the URN). The
         // formatter passes them through as ordinary type aliases.
         assert_format(
-            "getResolution = () -> Duration\n\nnow = () -> Mark\n",
-            "getResolution = () -> Duration\n\nnow = () -> Mark\n",
+            "getResolution = () => Duration\n\nnow = () => Mark\n",
+            "getResolution = () => Duration\n\nnow = () => Mark\n",
         );
     }
 
     #[test]
     fn test_generics() {
         assert_format(
-            "parse = <T: Deserialize>(Json * String) -> Result<T, MalformedJson>\n",
-            "parse = <T: Deserialize>(Json * String) -> Result<T, MalformedJson>\n",
+            "parse = <T: Deserialize>(Json * String) => Result<T, MalformedJson>\n",
+            "parse = <T: Deserialize>(Json * String) => Result<T, MalformedJson>\n",
         );
     }
 
     #[test]
     fn test_lambda() {
-        let input = "main = (Stdout) -> Unit {\n    List(10, 20, 30).map((Int) -> Int { Int.mul(2) }).print(Stdout)\n}\n";
+        let input = "main = (Stdout) => Unit {\n    List(10 * 20 * 30).map((Int) => Int { Int.mul(2) }).print(Stdout)\n}\n";
         assert_idempotent(input);
+    }
+
+    #[test]
+    fn test_product_values_canonicalized() {
+        // A product-type constructor is positionless, so its inputs sort
+        // deterministically; the canonical call form then pipes the first
+        // and keeps the rest in the parens as a partial application
+        // (`Node("c" * "a" * "b")` → `"a" -> Node("b" * "c")`).
+        assert_format(
+            "main = () => Unit {\n    Node(\"c\" * \"a\" * \"b\").print()\n}\n",
+            "main = () => Unit {\n    \"a\"\n        -> Node(\"b\" * \"c\")\n        -> Print\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_list_elements_not_sorted() {
+        // `List` is an ordered sequence, not a product — its `*`-joined
+        // elements keep their written order.
+        assert_idempotent("main = () => Unit {\n    List(30 * 10 * 20) -> Print\n}\n");
     }
 
     #[test]
     fn test_try_operator() {
         let input =
-            "main = (Stdout) -> Result<Unit, Unit> {\n    Ok(42)?.print(Stdout)\n    Ok(Unit)\n}\n";
+            "main = (Stdout) => Result<Unit, Unit> {\n    Ok(42)?.print(Stdout)\n    Ok(Unit)\n}\n";
         assert_idempotent(input);
     }
 
     #[test]
     fn test_trait_function_type() {
-        assert_format("Show = () -> String\n", "Show = () -> String\n");
+        assert_format("Show = () => String\n", "Show = () => String\n");
     }
 
     #[test]

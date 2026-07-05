@@ -1,9 +1,9 @@
-testStringConcat = () -> TestResult {
-    "hello".concat(" world")
+testStringConcat = () => TestResult {
+    "hello" -> Joined(" world")
     Pass()
 }
 
-testStringPrint = () -> TestResult {
-    "hello".print()
+testStringPrint = () => TestResult {
+    "hello" -> Print
     Pass()
 }

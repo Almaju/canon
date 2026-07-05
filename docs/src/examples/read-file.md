@@ -4,11 +4,11 @@
 the canonical demonstration of Canon's *type chain as access control*.
 
 ```canon
-main = () -> Unit {
+Unit => Program {
     Path("Cargo.toml")
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 
@@ -30,10 +30,10 @@ String ──Path()──> Path ──File()?──> File ──read()?──> S
 - `Path = String`, a newtype: constructing it costs nothing but says
   what the string *is*.
 - `Path.File()` is the **validated constructor** of `File`: it performs
-  the open, so its signature is `(Path) -> Result<File, IoError>`.
+  the open, so its signature is `(Path) => Result<File, IoError>`.
   Opening can fail, so the type says so, and the `?` is forced at the
   call site. You cannot forget to handle a missing file.
-- `File.read()` is `(File) -> Result<String, IoError>`. You can only
+- `File.read()` is `(File) => Result<String, IoError>`. You can only
   read a `File` value, and the only way to get one was to successfully
   open a path.
 

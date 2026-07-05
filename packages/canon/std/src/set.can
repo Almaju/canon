@@ -1,66 +1,70 @@
+Contains = Bool
+
 Entry = Item * Remaining
 
 Item = String
+
+Length = Int
 
 Remaining = Set
 
 Set = Absent + Entry
 
-Set = () -> Set {
-    Absent()
-}
-
-List = (Set) -> List<Item> {
-    Set.(
-        * (Absent) -> List<Item> { List() }
-        * (Entry) -> List<Item> { List(Entry.Item).concat(Entry.Remaining.List()) }
-    )
-}
-
-contains = (Set * String) -> Bool {
-    Set.(
-        * (Absent) -> Bool { False() }
-        * (Entry) -> Bool {
-            Entry.Item.eq(String).(
-                * (False) -> Bool { Entry.Remaining.contains(String) }
-                * (True) -> Bool { True() }
+Set * String => Contains {
+    Set -> (
+        * Absent => Contains { False() }
+        * Entry => Contains {
+            Entry.Item -> Eq(String) -> (
+                * False => Contains { Entry.Remaining -> Contains(String) }
+                * True => Contains { True() }
             )
         }
     )
 }
 
-insert = (Set * String) -> Set {
-    Set.(
-        * (Absent) -> Set { Entry(String, Absent()) }
-        * (Entry) -> Set {
-            String.lt(Entry.Item).(
-                * (False) -> Set {
-                    String.eq(Entry.Item).(
-                        * (False) -> Set { Entry(Entry.Item, Entry.Remaining.insert(String)) }
-                        * (True) -> Set { Set }
+Inserted = (Set * String) => Set {
+    Set -> (
+        * Absent => Set { Absent() -> Entry(String) }
+        * Entry => Set {
+            String -> Lt(Entry.Item) -> (
+                * False => Set {
+                    String -> Eq(Entry.Item) -> (
+                        * False => Set { Entry.Item -> Entry(Entry.Remaining -> Inserted(String)) }
+                        * True => Set { Set }
                     )
                 }
-                * (True) -> Set { Entry(String, Set) }
+                * True => Set { Set -> Entry(String) }
             )
         }
     )
 }
 
-length = (Set) -> Int {
-    Set.(
-        * (Absent) -> Int { 0 }
-        * (Entry) -> Int { Entry.Remaining.length().add(1) }
+Set => Length {
+    Set -> (
+        * Absent => Length { 0 }
+        * Entry => Length { Entry.Remaining -> Length -> Sum(1) }
     )
 }
 
-remove = (Set * String) -> Set {
-    Set.(
-        * (Absent) -> Set { Absent() }
-        * (Entry) -> Set {
-            Entry.Item.eq(String).(
-                * (False) -> Set { Entry(Entry.Item, Entry.Remaining.remove(String)) }
-                * (True) -> Set { Entry.Remaining }
+Set => List<Item> {
+    Set -> (
+        * Absent => List<Item> { List() }
+        * Entry => List<Item> { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
+    )
+}
+
+Removed = (Set * String) => Set {
+    Set -> (
+        * Absent => Set { Absent() }
+        * Entry => Set {
+            Entry.Item -> Eq(String) -> (
+                * False => Set { Entry.Item -> Entry(Entry.Remaining -> Removed(String)) }
+                * True => Set { Entry.Remaining }
             )
         }
     )
+}
+
+Unit => Set {
+    Absent()
 }

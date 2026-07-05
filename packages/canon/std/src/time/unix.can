@@ -1,5 +1,5 @@
 Unix = Int
 
-Unix = () -> Unix {
-    Unix(SystemClock.now().InstantSeconds)
+Unix = () => Unix {
+    SystemClock.now().InstantSeconds -> Unix
 }

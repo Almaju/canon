@@ -1,11 +1,11 @@
-greeting = (String) -> Json {
+greeting = (String) => Json {
     {"hello":String,"len":5}
 }
 
-main = () -> Unit {
+main = () => Unit {
     "world"
         .greeting()
-        .print()
-    {"escaped":"a \"b\" c"}.print()
-    {"control":"tab:\there"}.print()
+        -> Print
+    {"escaped":"a \"b\" c"} -> Print
+    {"control":"tab:\there"} -> Print
 }

@@ -10,9 +10,9 @@ Tree = Branch + Leaf
 
 Value = Int
 
-testDispatchOnLeaf = () -> TestResult {
-    Leaf().(
-        * (Branch) -> TestResult { Fail() }
-        * (Leaf) -> TestResult { Pass() }
+testDispatchOnLeaf = () => TestResult {
+    Leaf() -> (
+        * Branch => TestResult { Fail() }
+        * Leaf => TestResult { Pass() }
     )
 }

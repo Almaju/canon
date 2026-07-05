@@ -4,15 +4,15 @@ Mode = Closed + Opened
 
 Opened = Unit
 
-describe = (Mode) -> String {
-    Mode.(
-        * (Closed) -> String { "closed" }
-        * (Opened) -> String { "opened" }
+describe = (Mode) => String {
+    Mode -> (
+        * Closed => String { "closed" }
+        * Opened => String { "opened" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     Closed()
         .describe()
-        .print()
+        -> Print
 }

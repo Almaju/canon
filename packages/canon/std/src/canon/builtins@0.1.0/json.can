@@ -1,11 +1,11 @@
-asString = (Json) -> Result<String, MalformedJson>
+asString = (Json) => Result<String, MalformedJson>
 
-field = (Json * String) -> Result<Json, MalformedJson>
+field = (Json * String) => Result<Json, MalformedJson>
 
-fromBool = (Bool) -> Json
+fromBool = (Bool) => Json
 
-fromFloat = (Float) -> Json
+fromFloat = (Float) => Json
 
-fromInt = (Int) -> Json
+fromInt = (Int) => Json
 
-fromString = (String) -> Json
+fromString = (String) => Json

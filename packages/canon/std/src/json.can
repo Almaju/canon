@@ -1,435 +1,539 @@
+AfterDigits = Int
+
+AfterSign = Int
+
+AfterWs = Int
+
+CheckedTrailing = ParseStep
+
+ConsumedArrayTail = ParseStep
+
+ConsumedColonValue = ParseStep
+
+ConsumedObjectTail = ParseStep
+
+DispatchedValue = ParseStep
+
+IsDigit = Bool
+
+IsExpMarker = Bool
+
+IsSign = Bool
+
+IsWs = Bool
+
 Json = String
 
-Json = (String) -> Result<Json, MalformedJson> {
-    String
-        .validateOnly()
-        .fromStep(String)
+ParsedArray = ParseStep
+
+ParsedArrayItems = ParseStep
+
+ParsedArrayTail = ParseStep
+
+ParsedExp = ParseStep
+
+ParsedExpAfter = ParseStep
+
+ParsedFalse = ParseStep
+
+ParsedFrac = ParseStep
+
+ParsedFracExp = ParseStep
+
+ParsedIntPart = ParseStep
+
+ParsedNull = ParseStep
+
+ParsedNumber = ParseStep
+
+ParsedObject = ParseStep
+
+ParsedObjectColon = ParseStep
+
+ParsedObjectItems = ParseStep
+
+ParsedObjectTail = ParseStep
+
+ParsedString = ParseStep
+
+ParsedStringBody = ParseStep
+
+ParsedTrue = ParseStep
+
+ParsedValue = ParseStep
+
+RequiredDigits = ParseStep
+
+ToJson = () => Json
+
+Int * String => AfterDigits {
+    Int -> Gt(String -> Length) -> (
+        * False => AfterDigits {
+            String -> ByteAt(Int) -> IsDigit -> (
+                * False => AfterDigits { Int }
+                * True => AfterDigits { Int -> Sum(1) -> AfterDigits(String) }
+            )
+        }
+        * True => AfterDigits { Int }
+    )
 }
 
-ToJson = () -> Json
+Validated = ParseStep
 
-ToJson = (Bool) -> Json {
-    Bool.fromBool()
+Int * String => AfterSign {
+    Int -> Gt(String -> Length) -> (
+        * False => AfterSign {
+            String -> ByteAt(Int) -> IsSign -> (
+                * False => AfterSign { Int }
+                * True => AfterSign { Int -> Sum(1) }
+            )
+        }
+        * True => AfterSign { Int }
+    )
 }
 
-ToJson = (Float) -> Json {
-    Float.fromFloat()
+Int * String => AfterWs {
+    Int -> Gt(String -> Length) -> (
+        * False => AfterWs {
+            String -> ByteAt(Int) -> IsWs -> (
+                * False => AfterWs { Int }
+                * True => AfterWs { Int -> Sum(1) -> AfterWs(String) }
+            )
+        }
+        * True => AfterWs { Int }
+    )
 }
 
-ToJson = (Int) -> Json {
-    Int.fromInt()
-}
-
-ToJson = (String) -> Json {
-    String.fromString()
-}
-
-checkTrailing = (ParseStep * String) -> ParseStep {
-    ParseStep.(
-        * (ParseFail) -> ParseStep { ParseFail }
-        * (ParsePos) -> ParseStep {
-            ParsePos.Int.skipWs(String).eq(String.length().add(1)).(
-                * (False) -> ParseStep { ParseFail("trailing characters") }
-                * (True) -> ParseStep { ParsePos(ParsePos.Int) }
+ParseStep * String => CheckedTrailing {
+    ParseStep -> (
+        * ParseFail => CheckedTrailing { ParseFail }
+        * ParsePos => CheckedTrailing {
+            ParsePos.Int -> AfterWs(String) -> Eq(String -> Length -> Sum(1)) -> (
+                * False => CheckedTrailing { "trailing characters" -> ParseFail }
+                * True => CheckedTrailing { ParsePos.Int -> ParsePos }
             )
         }
     )
 }
 
-consumeArrayTail = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(44).(
-                * (False) -> ParseStep {
-                    String.byteAt(Int).eq(93).(
-                        * (False) -> ParseStep {
-                            ParseFail("expected comma or closing bracket in array")
+Int * String => ConsumedArrayTail {
+    Int -> Gt(String -> Length) -> (
+        * False => ConsumedArrayTail {
+            String -> ByteAt(Int) -> Eq(44) -> (
+                * False => ConsumedArrayTail {
+                    String -> ByteAt(Int) -> Eq(93) -> (
+                        * False => ConsumedArrayTail {
+                            "expected comma or closing bracket in array" -> ParseFail
                         }
-                        * (True) -> ParseStep { ParsePos(Int.add(1)) }
+                        * True => ConsumedArrayTail { Int -> Sum(1) -> ParsePos }
                     )
                 }
-                * (True) -> ParseStep {
+                * True => ConsumedArrayTail {
                     Int
-                        .add(1)
-                        .skipWs(String)
-                        .parseValue(String)
-                        .parseArrayTail(String)
+                        -> Sum(1)
+                        -> AfterWs(String)
+                        -> ParsedValue(String)
+                        -> ParsedArrayTail(String)
                 }
             )
         }
-        * (True) -> ParseStep { ParseFail("unterminated array") }
+        * True => ConsumedArrayTail { "unterminated array" -> ParseFail }
     )
 }
 
-consumeColonAndValue = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(58).(
-                * (False) -> ParseStep { ParseFail("expected colon after key") }
-                * (True) -> ParseStep { Int.add(1).parseValue(String).parseObjectTail(String) }
+Int * String => ConsumedColonValue {
+    Int -> Gt(String -> Length) -> (
+        * False => ConsumedColonValue {
+            String -> ByteAt(Int) -> Eq(58) -> (
+                * False => ConsumedColonValue { "expected colon after key" -> ParseFail }
+                * True => ConsumedColonValue {
+                    Int
+                        -> Sum(1)
+                        -> ParsedValue(String)
+                        -> ParsedObjectTail(String)
+                }
             )
         }
-        * (True) -> ParseStep { ParseFail("expected colon after key") }
+        * True => ConsumedColonValue { "expected colon after key" -> ParseFail }
     )
 }
 
-consumeObjectTail = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(44).(
-                * (False) -> ParseStep {
-                    String.byteAt(Int).eq(125).(
-                        * (False) -> ParseStep {
-                            ParseFail("expected comma or closing brace in object")
+Int * String => ConsumedObjectTail {
+    Int -> Gt(String -> Length) -> (
+        * False => ConsumedObjectTail {
+            String -> ByteAt(Int) -> Eq(44) -> (
+                * False => ConsumedObjectTail {
+                    String -> ByteAt(Int) -> Eq(125) -> (
+                        * False => ConsumedObjectTail {
+                            "expected comma or closing brace in object" -> ParseFail
                         }
-                        * (True) -> ParseStep { ParsePos(Int.add(1)) }
+                        * True => ConsumedObjectTail { Int -> Sum(1) -> ParsePos }
                     )
                 }
-                * (True) -> ParseStep {
+                * True => ConsumedObjectTail {
                     Int
-                        .add(1)
-                        .skipWs(String)
-                        .parseString(String)
-                        .parseObjectColon(String)
+                        -> Sum(1)
+                        -> AfterWs(String)
+                        -> ParsedString(String)
+                        -> ParsedObjectColon(String)
                 }
             )
         }
-        * (True) -> ParseStep { ParseFail("unterminated object") }
+        * True => ConsumedObjectTail { "unterminated object" -> ParseFail }
     )
 }
 
-dispatchValue = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(123).(
-                * (False) -> ParseStep {
-                    String.byteAt(Int).eq(91).(
-                        * (False) -> ParseStep {
-                            String.byteAt(Int).eq(34).(
-                                * (False) -> ParseStep {
-                                    String.byteAt(Int).eq(116).(
-                                        * (False) -> ParseStep {
-                                            String.byteAt(Int).eq(102).(
-                                                * (False) -> ParseStep {
-                                                    String.byteAt(Int).eq(110).(
-                                                        * (False) -> ParseStep {
-                                                            Int.parseNumber(String)
+Int * String => DispatchedValue {
+    Int -> Gt(String -> Length) -> (
+        * False => DispatchedValue {
+            String -> ByteAt(Int) -> Eq(123) -> (
+                * False => DispatchedValue {
+                    String -> ByteAt(Int) -> Eq(91) -> (
+                        * False => DispatchedValue {
+                            String -> ByteAt(Int) -> Eq(34) -> (
+                                * False => DispatchedValue {
+                                    String -> ByteAt(Int) -> Eq(116) -> (
+                                        * False => DispatchedValue {
+                                            String -> ByteAt(Int) -> Eq(102) -> (
+                                                * False => DispatchedValue {
+                                                    String -> ByteAt(Int) -> Eq(110) -> (
+                                                        * False => DispatchedValue {
+                                                            Int -> ParsedNumber(String)
                                                         }
-                                                        * (True) -> ParseStep {
-                                                            Int.parseNull(String)
+                                                        * True => DispatchedValue {
+                                                            Int -> ParsedNull(String)
                                                         }
                                                     )
                                                 }
-                                                * (True) -> ParseStep { Int.parseFalse(String) }
+                                                * True => DispatchedValue {
+                                                    Int -> ParsedFalse(String)
+                                                }
                                             )
                                         }
-                                        * (True) -> ParseStep { Int.parseTrue(String) }
+                                        * True => DispatchedValue { Int -> ParsedTrue(String) }
                                     )
                                 }
-                                * (True) -> ParseStep { Int.parseString(String) }
+                                * True => DispatchedValue { Int -> ParsedString(String) }
                             )
                         }
-                        * (True) -> ParseStep { Int.parseArray(String) }
+                        * True => DispatchedValue { Int -> ParsedArray(String) }
                     )
                 }
-                * (True) -> ParseStep { Int.parseObject(String) }
+                * True => DispatchedValue { Int -> ParsedObject(String) }
             )
         }
-        * (True) -> ParseStep { ParseFail("unexpected end of input") }
+        * True => DispatchedValue { "unexpected end of input" -> ParseFail }
     )
 }
 
-fromStep = (ParseStep * String) -> Result<Json, MalformedJson> {
-    ParseStep.(
-        * (ParseFail) -> Result<Json, MalformedJson> { Err(MalformedJson(ParseFail.String)) }
-        * (ParsePos) -> Result<Json, MalformedJson> { Ok(String) }
+Int => IsDigit {
+    Int -> Ge(48) -> (
+        * False => IsDigit { False() }
+        * True => IsDigit { Int -> Le(57) }
     )
 }
 
-isDigit = (Int) -> Bool {
-    Int.ge(48).(
-        * (False) -> Bool { False() }
-        * (True) -> Bool { Int.le(57) }
+Int => IsExpMarker {
+    Int -> Eq(101) -> (
+        * False => IsExpMarker { Int -> Eq(69) }
+        * True => IsExpMarker { True() }
     )
 }
 
-isExpMarker = (Int) -> Bool {
-    Int.eq(101).(
-        * (False) -> Bool { Int.eq(69) }
-        * (True) -> Bool { True() }
+Int => IsSign {
+    Int -> Eq(43) -> (
+        * False => IsSign { Int -> Eq(45) }
+        * True => IsSign { True() }
     )
 }
 
-isSign = (Int) -> Bool {
-    Int.eq(43).(
-        * (False) -> Bool { Int.eq(45) }
-        * (True) -> Bool { True() }
-    )
-}
-
-isWs = (Int) -> Bool {
-    Int.eq(32).(
-        * (False) -> Bool {
-            Int.eq(9).(
-                * (False) -> Bool {
-                    Int.eq(10).(
-                        * (False) -> Bool { Int.eq(13) }
-                        * (True) -> Bool { True() }
+Int => IsWs {
+    Int -> Eq(32) -> (
+        * False => IsWs {
+            Int -> Eq(9) -> (
+                * False => IsWs {
+                    Int -> Eq(10) -> (
+                        * False => IsWs { Int -> Eq(13) }
+                        * True => IsWs { True() }
                     )
                 }
-                * (True) -> Bool { True() }
+                * True => IsWs { True() }
             )
         }
-        * (True) -> Bool { True() }
+        * True => IsWs { True() }
     )
 }
 
-parseArray = (Int * String) -> ParseStep {
+String => Result<Json, MalformedJson> {
+    String
+        -> Validated
+        -> Json(String)
+}
+
+ParseStep * String => Result<Json, MalformedJson> {
+    ParseStep -> (
+        * ParseFail => Result<Json, MalformedJson> { ParseFail.String -> MalformedJson -> Err }
+        * ParsePos => Result<Json, MalformedJson> { String -> Ok }
+    )
+}
+
+Int * String => ParsedArray {
     Int
-        .add(1)
-        .skipWs(String)
-        .parseArrayItems(String)
+        -> Sum(1)
+        -> AfterWs(String)
+        -> ParsedArrayItems(String)
 }
 
-parseArrayItems = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(93).(
-                * (False) -> ParseStep { Int.parseValue(String).parseArrayTail(String) }
-                * (True) -> ParseStep { ParsePos(Int.add(1)) }
+Int * String => ParsedArrayItems {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedArrayItems {
+            String -> ByteAt(Int) -> Eq(93) -> (
+                * False => ParsedArrayItems {
+                    Int
+                        -> ParsedValue(String)
+                        -> ParsedArrayTail(String)
+                }
+                * True => ParsedArrayItems { Int -> Sum(1) -> ParsePos }
             )
         }
-        * (True) -> ParseStep { ParseFail("unterminated array") }
+        * True => ParsedArrayItems { "unterminated array" -> ParseFail }
     )
 }
 
-parseArrayTail = (ParseStep * String) -> ParseStep {
-    ParseStep.(
-        * (ParseFail) -> ParseStep { ParseFail }
-        * (ParsePos) -> ParseStep { ParsePos.Int.skipWs(String).consumeArrayTail(String) }
-    )
-}
-
-parseExp = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).isExpMarker().(
-                * (False) -> ParseStep { ParsePos(Int) }
-                * (True) -> ParseStep { Int.add(1).skipSign(String).requireDigits(String) }
-            )
-        }
-        * (True) -> ParseStep { ParsePos(Int) }
-    )
-}
-
-parseExpAfter = (ParseStep * String) -> ParseStep {
-    ParseStep.(
-        * (ParseFail) -> ParseStep { ParseFail }
-        * (ParsePos) -> ParseStep { ParsePos.Int.parseExp(String) }
-    )
-}
-
-parseFalse = (Int * String) -> ParseStep {
-    Int.add(4).le(String.length()).(
-        * (False) -> ParseStep { ParseFail("expected false") }
-        * (True) -> ParseStep {
-            String.substring(Int, Int.add(4)).eq("false").(
-                * (False) -> ParseStep { ParseFail("expected false") }
-                * (True) -> ParseStep { ParsePos(Int.add(5)) }
-            )
+ParseStep * String => ParsedArrayTail {
+    ParseStep -> (
+        * ParseFail => ParsedArrayTail { ParseFail }
+        * ParsePos => ParsedArrayTail {
+            ParsePos.Int
+                -> AfterWs(String)
+                -> ConsumedArrayTail(String)
         }
     )
 }
 
-parseFrac = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(46).(
-                * (False) -> ParseStep { ParsePos(Int) }
-                * (True) -> ParseStep { Int.add(1).requireDigits(String) }
+Int * String => ParsedExp {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedExp {
+            String -> ByteAt(Int) -> IsExpMarker -> (
+                * False => ParsedExp { Int -> ParsePos }
+                * True => ParsedExp { Int -> Sum(1) -> AfterSign(String) -> RequiredDigits(String) }
             )
         }
-        * (True) -> ParseStep { ParsePos(Int) }
+        * True => ParsedExp { Int -> ParsePos }
     )
 }
 
-parseFracExp = (Int * String) -> ParseStep {
+ParseStep * String => ParsedExpAfter {
+    ParseStep -> (
+        * ParseFail => ParsedExpAfter { ParseFail }
+        * ParsePos => ParsedExpAfter { ParsePos.Int -> ParsedExp(String) }
+    )
+}
+
+Int * String => ParsedFalse {
+    Int -> Sum(4) -> Le(String -> Length) -> (
+        * False => ParsedFalse { "expected false" -> ParseFail }
+        * True => ParsedFalse {
+            String -> Substring(Int -> From * Int -> Sum(4) -> To) -> Eq("false") -> (
+                * False => ParsedFalse { "expected false" -> ParseFail }
+                * True => ParsedFalse { Int -> Sum(5) -> ParsePos }
+            )
+        }
+    )
+}
+
+Int * String => ParsedFrac {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedFrac {
+            String -> ByteAt(Int) -> Eq(46) -> (
+                * False => ParsedFrac { Int -> ParsePos }
+                * True => ParsedFrac { Int -> Sum(1) -> RequiredDigits(String) }
+            )
+        }
+        * True => ParsedFrac { Int -> ParsePos }
+    )
+}
+
+Int * String => ParsedFracExp {
     Int
-        .parseFrac(String)
-        .parseExpAfter(String)
+        -> ParsedFrac(String)
+        -> ParsedExpAfter(String)
 }
 
-parseIntPart = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(48).(
-                * (False) -> ParseStep {
-                    String.byteAt(Int).isDigit().(
-                        * (False) -> ParseStep { ParseFail("expected digit") }
-                        * (True) -> ParseStep { Int.add(1).skipDigits(String).parseFracExp(String) }
+Int * String => ParsedIntPart {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedIntPart {
+            String -> ByteAt(Int) -> Eq(48) -> (
+                * False => ParsedIntPart {
+                    String -> ByteAt(Int) -> IsDigit -> (
+                        * False => ParsedIntPart { "expected digit" -> ParseFail }
+                        * True => ParsedIntPart {
+                            Int
+                                -> Sum(1)
+                                -> AfterDigits(String)
+                                -> ParsedFracExp(String)
+                        }
                     )
                 }
-                * (True) -> ParseStep { Int.add(1).parseFracExp(String) }
+                * True => ParsedIntPart { Int -> Sum(1) -> ParsedFracExp(String) }
             )
         }
-        * (True) -> ParseStep { ParseFail("expected digit") }
+        * True => ParsedIntPart { "expected digit" -> ParseFail }
     )
 }
 
-parseNull = (Int * String) -> ParseStep {
-    Int.add(3).le(String.length()).(
-        * (False) -> ParseStep { ParseFail("expected null") }
-        * (True) -> ParseStep {
-            String.substring(Int, Int.add(3)).eq("null").(
-                * (False) -> ParseStep { ParseFail("expected null") }
-                * (True) -> ParseStep { ParsePos(Int.add(4)) }
+Int * String => ParsedNull {
+    Int -> Sum(3) -> Le(String -> Length) -> (
+        * False => ParsedNull { "expected null" -> ParseFail }
+        * True => ParsedNull {
+            String -> Substring(Int -> From * Int -> Sum(3) -> To) -> Eq("null") -> (
+                * False => ParsedNull { "expected null" -> ParseFail }
+                * True => ParsedNull { Int -> Sum(4) -> ParsePos }
             )
         }
     )
 }
 
-parseNumber = (Int * String) -> ParseStep {
-    String.byteAt(Int).eq(45).(
-        * (False) -> ParseStep { Int.parseIntPart(String) }
-        * (True) -> ParseStep { Int.add(1).parseIntPart(String) }
+Int * String => ParsedNumber {
+    String -> ByteAt(Int) -> Eq(45) -> (
+        * False => ParsedNumber { Int -> ParsedIntPart(String) }
+        * True => ParsedNumber { Int -> Sum(1) -> ParsedIntPart(String) }
     )
 }
 
-parseObject = (Int * String) -> ParseStep {
+Int * String => ParsedObject {
     Int
-        .add(1)
-        .skipWs(String)
-        .parseObjectItems(String)
+        -> Sum(1)
+        -> AfterWs(String)
+        -> ParsedObjectItems(String)
 }
 
-parseObjectColon = (ParseStep * String) -> ParseStep {
-    ParseStep.(
-        * (ParseFail) -> ParseStep { ParseFail }
-        * (ParsePos) -> ParseStep { ParsePos.Int.skipWs(String).consumeColonAndValue(String) }
+ParseStep * String => ParsedObjectColon {
+    ParseStep -> (
+        * ParseFail => ParsedObjectColon { ParseFail }
+        * ParsePos => ParsedObjectColon {
+            ParsePos.Int
+                -> AfterWs(String)
+                -> ConsumedColonValue(String)
+        }
     )
 }
 
-parseObjectItems = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(125).(
-                * (False) -> ParseStep { Int.parseString(String).parseObjectColon(String) }
-                * (True) -> ParseStep { ParsePos(Int.add(1)) }
+Int * String => ParsedObjectItems {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedObjectItems {
+            String -> ByteAt(Int) -> Eq(125) -> (
+                * False => ParsedObjectItems {
+                    Int
+                        -> ParsedString(String)
+                        -> ParsedObjectColon(String)
+                }
+                * True => ParsedObjectItems { Int -> Sum(1) -> ParsePos }
             )
         }
-        * (True) -> ParseStep { ParseFail("unterminated object") }
+        * True => ParsedObjectItems { "unterminated object" -> ParseFail }
     )
 }
 
-parseObjectTail = (ParseStep * String) -> ParseStep {
-    ParseStep.(
-        * (ParseFail) -> ParseStep { ParseFail }
-        * (ParsePos) -> ParseStep { ParsePos.Int.skipWs(String).consumeObjectTail(String) }
+ParseStep * String => ParsedObjectTail {
+    ParseStep -> (
+        * ParseFail => ParsedObjectTail { ParseFail }
+        * ParsePos => ParsedObjectTail {
+            ParsePos.Int
+                -> AfterWs(String)
+                -> ConsumedObjectTail(String)
+        }
     )
 }
 
-parseString = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(34).(
-                * (False) -> ParseStep { ParseFail("expected quote to start string") }
-                * (True) -> ParseStep { Int.add(1).parseStringBody(String) }
+Int * String => ParsedString {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedString {
+            String -> ByteAt(Int) -> Eq(34) -> (
+                * False => ParsedString { "expected quote to start string" -> ParseFail }
+                * True => ParsedString { Int -> Sum(1) -> ParsedStringBody(String) }
             )
         }
-        * (True) -> ParseStep { ParseFail("expected quote to start string") }
+        * True => ParsedString { "expected quote to start string" -> ParseFail }
     )
 }
 
-parseStringBody = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).eq(34).(
-                * (False) -> ParseStep {
-                    String.byteAt(Int).eq(92).(
-                        * (False) -> ParseStep {
-                            String.byteAt(Int).lt(32).(
-                                * (False) -> ParseStep { Int.add(1).parseStringBody(String) }
-                                * (True) -> ParseStep { ParseFail("unescaped control character") }
+Int * String => ParsedStringBody {
+    Int -> Gt(String -> Length) -> (
+        * False => ParsedStringBody {
+            String -> ByteAt(Int) -> Eq(34) -> (
+                * False => ParsedStringBody {
+                    String -> ByteAt(Int) -> Eq(92) -> (
+                        * False => ParsedStringBody {
+                            String -> ByteAt(Int) -> Lt(32) -> (
+                                * False => ParsedStringBody {
+                                    Int
+                                        -> Sum(1)
+                                        -> ParsedStringBody(String)
+                                }
+                                * True => ParsedStringBody {
+                                    "unescaped control character" -> ParseFail
+                                }
                             )
                         }
-                        * (True) -> ParseStep { Int.add(2).parseStringBody(String) }
+                        * True => ParsedStringBody { Int -> Sum(2) -> ParsedStringBody(String) }
                     )
                 }
-                * (True) -> ParseStep { ParsePos(Int.add(1)) }
+                * True => ParsedStringBody { Int -> Sum(1) -> ParsePos }
             )
         }
-        * (True) -> ParseStep { ParseFail("unterminated string") }
+        * True => ParsedStringBody { "unterminated string" -> ParseFail }
     )
 }
 
-parseTrue = (Int * String) -> ParseStep {
-    Int.add(3).le(String.length()).(
-        * (False) -> ParseStep { ParseFail("expected true") }
-        * (True) -> ParseStep {
-            String.substring(Int, Int.add(3)).eq("true").(
-                * (False) -> ParseStep { ParseFail("expected true") }
-                * (True) -> ParseStep { ParsePos(Int.add(4)) }
+Int * String => ParsedTrue {
+    Int -> Sum(3) -> Le(String -> Length) -> (
+        * False => ParsedTrue { "expected true" -> ParseFail }
+        * True => ParsedTrue {
+            String -> Substring(Int -> From * Int -> Sum(3) -> To) -> Eq("true") -> (
+                * False => ParsedTrue { "expected true" -> ParseFail }
+                * True => ParsedTrue { Int -> Sum(4) -> ParsePos }
             )
         }
     )
 }
 
-parseValue = (Int * String) -> ParseStep {
+Int * String => ParsedValue {
     Int
-        .skipWs(String)
-        .dispatchValue(String)
+        -> AfterWs(String)
+        -> DispatchedValue(String)
 }
 
-requireDigits = (Int * String) -> ParseStep {
-    Int.gt(String.length()).(
-        * (False) -> ParseStep {
-            String.byteAt(Int).isDigit().(
-                * (False) -> ParseStep { ParseFail("expected digit") }
-                * (True) -> ParseStep { ParsePos(Int.add(1).skipDigits(String)) }
+Int * String => RequiredDigits {
+    Int -> Gt(String -> Length) -> (
+        * False => RequiredDigits {
+            String -> ByteAt(Int) -> IsDigit -> (
+                * False => RequiredDigits { "expected digit" -> ParseFail }
+                * True => RequiredDigits { Int -> Sum(1) -> AfterDigits(String) -> ParsePos }
             )
         }
-        * (True) -> ParseStep { ParseFail("expected digit") }
+        * True => RequiredDigits { "expected digit" -> ParseFail }
     )
 }
 
-skipDigits = (Int * String) -> Int {
-    Int.gt(String.length()).(
-        * (False) -> Int {
-            String.byteAt(Int).isDigit().(
-                * (False) -> Int { Int }
-                * (True) -> Int { Int.add(1).skipDigits(String) }
-            )
-        }
-        * (True) -> Int { Int }
-    )
+ToJson = (Bool) => Json {
+    Bool.fromBool()
 }
 
-skipSign = (Int * String) -> Int {
-    Int.gt(String.length()).(
-        * (False) -> Int {
-            String.byteAt(Int).isSign().(
-                * (False) -> Int { Int }
-                * (True) -> Int { Int.add(1) }
-            )
-        }
-        * (True) -> Int { Int }
-    )
+ToJson = (Float) => Json {
+    Float.fromFloat()
 }
 
-skipWs = (Int * String) -> Int {
-    Int.gt(String.length()).(
-        * (False) -> Int {
-            String.byteAt(Int).isWs().(
-                * (False) -> Int { Int }
-                * (True) -> Int { Int.add(1).skipWs(String) }
-            )
-        }
-        * (True) -> Int { Int }
-    )
+ToJson = (Int) => Json {
+    Int.fromInt()
 }
 
-validateOnly = (String) -> ParseStep {
+ToJson = (String) => Json {
+    String.fromString()
+}
+
+String => Validated {
     1
-        .parseValue(String)
-        .checkTrailing(String)
+        -> ParsedValue(String)
+        -> CheckedTrailing(String)
 }

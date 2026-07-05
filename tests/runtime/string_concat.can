@@ -1,8 +1,8 @@
-main = () -> Unit {
+main = () => Unit {
     "hello, "
-        .concat("world")
-        .print()
+        -> Joined("world")
+        -> Print
     "[FAIL] "
-        .concat("the message")
-        .print()
+        -> Joined("the message")
+        -> Print
 }

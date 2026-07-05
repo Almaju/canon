@@ -37,10 +37,12 @@ The file is named `note.can`, so it must declare a type named `Note`:
 ```canon
 Note = String
 
-render = (Note) -> String {
+Rendered = Json
+
+Note => Rendered {
     "{\"title\":\""
-        .concat(Note)
-        .concat("\"}")
+        -> Joined(Note)
+        -> Joined("\"}")
 }
 ```
 
@@ -51,8 +53,9 @@ Two ideas in eight lines:
   documents itself. Newtypes are Canon's answer to both naming and
   disambiguation: what you write where other languages write a
   comment, a variable name, or a wrapper class.
-- `render` is the serializer. It builds the JSON encoding of one note
-  by chaining `concat`. A JSON *literal* can't do this job yet:
+- The `Rendered` constructor is the serializer. It builds the JSON
+  encoding of one note by chaining `-> Joined`. A JSON *literal* can't
+  do this job yet:
   interpolating a value (`{"title":Note}`) rides `canon/std/Json`'s
   host-backed `ToJson`, which the HTTP world can't satisfy, so dynamic
   encoding in a handler is honest string concatenation, escapes and
@@ -64,33 +67,39 @@ Two ideas in eight lines:
 `src/main.can` refers to the module and gets out of the data business:
 
 ```canon
-indexBody = () -> Body {
-    Body(List(Note("ship canon v1").render(), Note("write the docs").render()).Json())
+IndexBody = Body
+
+NotFound = Body
+
+NoteOneBody = Body
+
+Unit => IndexBody {
+    Body(List(Note("ship canon v1") -> Rendered, Note("write the docs") -> Rendered) -> Json)
 }
 
-notFound = () -> Body {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 
-noteOneBody = () -> Body {
-    Body(Note("ship canon v1").render())
+Unit => NoteOneBody {
+    Body(Note("ship canon v1") -> Rendered)
 }
 
-serve = (Request) -> Response {
+Request => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOneBody() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(IndexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(NoteOneBody() * Headers() * Status(200)) }
+                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
             )
         }
     )
 }
 ```
 
-`indexBody` composes the array dynamically now:
+`IndexBody` composes the array dynamically now:
 `List<String>.Json()` is a compiler builtin that joins
 already-encoded JSON fragments into an array, so the static array
 literal from chapter 3 gives way to encoding each `Note` once. The
@@ -108,8 +117,8 @@ $ curl localhost:8080/notes
 - There is no import statement. `main.can` mentions `Note`, doesn't
   define it, and the loader resolves the reference by convention: a
   file named `note.can` in the project declares `Note`. The type
-  arrives **with its methods**, which is why `main.can` can call
-  `.render()` without any ceremony. No import lines; no wildcards; no
+  arrives **with its constructors**, which is why `main.can` can pipe
+  `-> Rendered` without any ceremony. No import lines; no wildcards; no
   `mod` declarations. A folder is a module.
 - The same rule fetched `Request`, `Response`, and the rest: a name
   not found in the project's files is looked up in `bindgen/`, then in
@@ -117,9 +126,10 @@ $ curl localhost:8080/notes
   in more than one place, the build fails naming every candidate —
   names are globally unique across a project, its deps, and the
   stdlib, so there is never shadowing to reason about.
-- `render` chains `.concat(Note)` where `concat` expects a `String`: a
-  newtype flows into its underlying type without unwrapping. The same
-  substitutability is why `Body(Note(…).render())` works.
+- `Rendered` chains `-> Joined(Note)` where `Joined` expects a
+  `String`: a newtype flows into its underlying type without
+  unwrapping. The same substitutability is why `Body(Note(…) -> Rendered)`
+  works.
 
 The service is now shaped like a real project: data and encoding in a
 module, one thin entry that routes and wraps. The logic is now

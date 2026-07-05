@@ -4,9 +4,9 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-assert = (Bool * String) -> TestResult {
-    Bool.(
-        * (False) -> TestResult { Fail(String) }
-        * (True) -> TestResult { Pass() }
+Bool * String => TestResult {
+    Bool -> (
+        * False => TestResult { String -> Fail }
+        * True => TestResult { Pass() }
     )
 }

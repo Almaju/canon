@@ -1,1 +1,1 @@
-getInsecureRandomU64 = () -> Int
+getInsecureRandomU64 = () => Int

@@ -1,9 +1,5 @@
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl> {
+Url = (String) => Result<Url, InvalidUrl> {
     String.parse()
-}
-
-get = (Url) -> Result<String, HttpError> {
-    Url.fetch()
 }

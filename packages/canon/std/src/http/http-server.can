@@ -1,5 +1,17 @@
 HttpServer = String
 
-HttpServer = (Port) -> HttpServer {
+Route = HttpServer
+
+Served = Unit
+
+HttpServer = (Port) => HttpServer {
     Port.create()
+}
+
+Route = (HttpServer * HttpStatus * Method * RoutePath * String) => Route {
+    HttpServer.route(HttpStatus * Method -> String -> MethodName * String -> RouteBody * RoutePath)
+}
+
+Served = (HttpServer) => Result<Served, IoError> {
+    HttpServer.serve()
 }

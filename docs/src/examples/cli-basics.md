@@ -7,8 +7,8 @@ objects. Construct the value, use it.
 ## `now`: Wall-Clock Time
 
 ```canon
-main = () -> Unit {
-    Now().print()
+Unit => Program {
+    Now() -> Print
 }
 ```
 
@@ -24,8 +24,8 @@ inherited straight through the alias.
 ## `clock`: Monotonic Time
 
 ```canon
-main = () -> Unit {
-    Instant().print()
+Unit => Program {
+    Instant() -> Print
 }
 ```
 
@@ -37,8 +37,8 @@ provides wall-clock Unix seconds.
 ## `random`: A Random Integer
 
 ```canon
-main = () -> Unit {
-    Random().print()
+Unit => Program {
+    Random() -> Print
 }
 ```
 
@@ -50,13 +50,13 @@ miniature.
 ## `exit-code`: Honest Process Exits
 
 ```canon
-main = () -> Unit {
-    "exiting cleanly".print()
-    Exit(0).exit()
+Unit => Program {
+    "exiting cleanly" -> Print
+    0 -> Exited
 }
 ```
 
-`Exit = Int`; `.exit()` terminates the process with that code, riding
+`Exit = Int`; `n -> Exited` terminates the process with that code, riding
 the real `wasi:cli/exit` interface. Try `Exit(3)` and check `echo $?`.
 Canon programs are shell-scriptable and CI-safe; `canon test` uses the
 same mechanism to fail builds.

@@ -38,18 +38,18 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key→value map (`String` keys/values); see [Map and Set](#map-and-set) |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set.List()` = members, alphabetically |
-| `Int` | `Int = (String) -> Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
+| `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
 | `Byte` | `Byte = Int` | none | picks the byte→character reading of `String(…)`: `String(Byte(65))` is `"A"` |
-| `http/Url` | `Url`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `get` |
+| `http/Url` | `Url`, `Fetched`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
 | `http/HttpServer` | `HttpServer = String` | `canon:builtins/http-server` | HTTP/1.1 server, see [HTTP Server](#http-server) |
 | `http/Port`, `http/RoutePath`, `http/HttpStatus`, `http/Body` | various | none | HTTP-server helpers |
 | `Json` | `Json = String`, `MalformedJson` | `canon:builtins/json` | `Json` (validate), `ToJson` trait + primitive instances |
-| `TestResult` | `TestResult = Fail + Pass`, `assert` | pure Canon | for `canon test` |
-| `cli/Exit` | `Exit = Int`, `exit` | `wasi/cli/exit` | `Exit(3).exit()` terminates with that code |
-| `cli/Args` | `Args = () -> List<String>` | `wasi/cli/environment` | the program's argv |
-| `cli/Cwd` | `Cwd = () -> Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
+| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
+| `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | `3 -> Exited` terminates with that code |
+| `cli/Args` | `Args = () => List<String>` | `wasi/cli/environment` | the program's argv |
+| `cli/Cwd` | `Cwd = () => Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../tour/http.md) |
 
@@ -63,15 +63,15 @@ newtype over `Int`, so the standard `Int` methods (`add`, `sub`,
 comparison, `.print`) work on it directly.
 
 ```canon
-main = () -> Unit {
-    Instant().print()
+Unit => Program {
+    Instant() -> Print
 }
 ```
 
 ```canon
 Instant = Int
 
-Instant = () -> Instant
+Instant = () => Instant
 ```
 
 Backed by the generated `wasi/clocks/monotonic_clock` binding, which
@@ -87,15 +87,15 @@ a fresh value from the WASI CSPRNG; `Random` is a newtype over `Int`,
 so arithmetic and printing work normally on the result.
 
 ```canon
-main = () -> Unit {
-    Random().print()
+Unit => Program {
+    Random() -> Print
 }
 ```
 
 ```canon
 Random = Int
 
-Random = () -> Random
+Random = () => Random
 ```
 
 Backed by the generated `wasi/random/random` binding, which imports
@@ -107,8 +107,8 @@ Current UTC wall-clock time, formatted as an RFC 3339 string. Useful
 for log lines.
 
 ```canon
-main = () -> Unit {
-    Now().print()
+Unit => Program {
+    Now() -> Print
 }
 ```
 
@@ -117,7 +117,7 @@ Prints an RFC 3339 timestamp, e.g. `2026-05-23T22:30:35Z`.
 ```canon
 Now = String
 
-Now = () -> Now
+Now = () => Now
 ```
 
 Currently backed by `canon:builtins/clock` (the host formats the
@@ -129,12 +129,12 @@ canonical-ABI shape lands.
 Synchronous file I/O — read and write.
 
 ```canon
-main = () -> Unit {
+Unit => Program {
     Contents("hello from canon")
         .write(Path("/tmp/greeting.txt"))?
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 
@@ -143,13 +143,13 @@ Contents = String
 
 File = String
 
-File = (Path) -> Result<File, IoError>
+File = (Path) => Result<File, IoError>
 
 Path = String
 
-read = (File) -> Result<String, IoError>
+read = (File) => Result<String, IoError>
 
-write = (Contents * Path) -> Result<Path, IoError>
+write = (Contents * Path) => Result<Path, IoError>
 ```
 
 `Path("…").File()` opens the file, returning a `File` handle or an
@@ -165,39 +165,49 @@ lands.
 Sorted collections, written in **pure Canon** — recursive unions built
 from nothing but dispatch, recursion, and `String` comparison. Keys
 (and Map values) are `String`s until stdlib generics land. All updates
-are functional: `insert` / `remove` return a new collection.
+are functional: `Inserted` / `Removed` return a new collection. Every
+operation is a constructor named after what it produces
+([Types-Only Canon](../spec/types-only.md)): `Inserted`, `Removed`,
+`Value` (the value at a key), `Keys`, `Values`, `Length`.
 
 ```canon
-main = () -> Unit {
-    Map().insert("b", "2").insert("a", "1").keys().Json().print()
-    Map().insert("k", "v").get("k").(
-        * (None) -> Unit { "absent".print() }
-        * (Some<String>) -> Unit { String.print() }
+Unit => Program {
+    Map()
+        -> Inserted("b", "2")
+        -> Inserted("a", "1")
+        -> Keys
+        -> Json
+        -> Print
+    Map() -> Inserted("k", "v") -> Value("k").(
+        * (None) => Unit { "absent" -> Print }
+        * (Some<String>) => Unit { String -> Print }
     )
 }
 ```
 
-Iteration order is **alphabetical by key** — `insert` is a sorted
-insert, so `keys()` / `values()` come back ordered no matter the
+Iteration order is **alphabetical by key** — `Inserted` is a sorted
+insert, so `Keys()` / `Values()` come back ordered no matter the
 insertion order. (Of course it is: wherever ordering is discretionary,
 Canon picks alphabetical.)
 
 ```canon
 Map = Empty + Node
 
-Map = () -> Map
+Value = String
 
-get = (Map * String) -> Option<Value>
+(Map) => Map
 
-insert = (Map * String * Value) -> Map
+(Map * String) => Option<Value>
 
-keys = (Map) -> List<Key>
+(Map * String * Value) => Map
 
-length = (Map) -> Int
+(Map) => Keys
 
-remove = (Map * String) -> Map
+(Map) => Length
 
-values = (Map) -> List<Value>
+(Map * String) => Map
+
+(Map) => Values
 ```
 
 `Set` is the set-shaped counterpart. `set.List()` — conversion is
@@ -205,27 +215,40 @@ construction — returns the members, alphabetically, as a
 `List<String>`:
 
 ```canon
-main = () -> Unit {
-    Set().insert("b").insert("a").insert("b").length().print()
-    Set().insert("x").contains("x").print()
-    Set().insert("b").insert("a").List().Json().print()
+Unit => Program {
+    Set()
+        -> Inserted("b")
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Length
+        -> Print
+    Set()
+        -> Inserted("x")
+        -> Contains("x")
+        -> Print
+    Set()
+        -> Inserted("b")
+        -> Inserted("a")
+        -> List
+        -> Json
+        -> Print
 }
 ```
 
 ```canon
+List = (Set) => List<Item>
+
 Set = Absent + Entry
 
-Set = () -> Set
+Set = () => Set
 
-List = (Set) -> List<Item>
+contains = (Set * String) => Bool
 
-contains = (Set * String) -> Bool
+insert = (Set * String) => Set
 
-insert = (Set * String) -> Set
+length = (Set) => Int
 
-length = (Set) -> Int
-
-remove = (Set * String) -> Set
+remove = (Set * String) => Set
 ```
 
 Both modules double as reference code for **recursive union types**:
@@ -240,12 +263,12 @@ Conversions follow one rule — **conversion is construction** (see
 directions are compiler builtins available without imports:
 
 ```canon
-main = () -> Unit {
-    String(42).print()
+Unit => Program {
+    String(42) -> Print
     123
-        .String()
-        .concat("!")
-        .print()
+        -> String
+        -> Joined("!")
+        -> Print
 }
 ```
 
@@ -254,13 +277,13 @@ in `canon/std/Int`, written in pure Canon (digit recursion over
 `byteAt`):
 
 ```canon
-double = (String) -> Result<Int, MalformedInt> {
-    Ok(Int(String)?.mul(2))
+double = (String) => Result<Int, MalformedInt> {
+    Ok(Int(String)? -> Product(2))
 }
 ```
 
 ```canon
-Int = (String) -> Result<Int, MalformedInt>
+Int = (String) => Result<Int, MalformedInt>
 
 MalformedInt = String
 ```
@@ -270,62 +293,70 @@ rendering vs. byte-to-character) the way Canon resolves everything:
 wrap to mean the other thing. `String(42)` is `"42"`;
 `String(Byte(42))` is `"*"`.
 
-## `Url`, `HttpError`
+## `Url`, `Fetched`, `HttpError`
 
-URL parsing plus blocking HTTP GET.
+URL parsing plus blocking HTTP GET. Fetching is a constructor:
+`Fetched = Body` is the evidence that a `Url` was retrieved
+([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
-main = () -> Unit {
+Unit => Program {
     Url("http://example.com")?
-        .get()?
-        .print()
+        -> Fetched?
+        -> Print
 }
 ```
 
 ```canon
+Fetched = Body
+
 HttpError = String
 
 InvalidUrl = String
 
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl>
+(String) => Result<Url, InvalidUrl>
 
-get = (Url) -> Result<String, HttpError>
+(Url) => Result<Fetched, HttpError>
 ```
 
 `Url(s)` is a validated constructor: malformed inputs are rejected.
-`.get()` performs a blocking HTTP GET and returns the response body.
-TLS (`https://`) and async lowering arrive with the
+`url -> Fetched` performs a blocking HTTP GET and returns the response
+body. TLS (`https://`) and async lowering arrive with the
 `wasi:http/outgoing-handler` migration.
 
 ## HTTP Server
 
-Construct `HttpServer(Port(…))`, chain `.get(…)` / `.post(…)` to
-register routes, and call `.serve()` to start listening on the bound
-port.
+Construct `HttpServer(Port(…))`, chain `.Route(…)` to register routes,
+and `-> Served` to start listening on the bound port. The HTTP method
+is **data** — a `Method` value (`Get()`, `Post()`, …), never a
+function name — so one `Route` constructor covers every verb
+([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
-main = () -> Result<Unit, IoError> {
-    "Starting server on port 3000...".print()
+Unit => Result<Program, IoError> {
+    "Starting server on port 3000..." -> Print
     HttpServer(Port(3000))
-        .get(HttpStatus(200), RoutePath("/"), "Hello from Canon!")
-        .get(HttpStatus(200), RoutePath("/health"), "ok")
-        .post(HttpStatus(200), RoutePath("/echo"), "received")
-        .serve()
+        -> Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
+        -> Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
+        -> Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
+        -> Served
 }
 ```
 
 ```canon
 HttpServer = String
 
-HttpServer = (Port) -> HttpServer
+Route = HttpServer
 
-get = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
+Served = Unit
 
-post = (HttpServer * HttpStatus * RoutePath * String) -> HttpServer
+(Port) => HttpServer
 
-serve = (HttpServer) -> Result<Unit, IoError>
+(HttpServer * HttpStatus * Method * RoutePath * String) => Route
+
+(HttpServer) => Result<Served, IoError>
 ```
 
 ### Status
@@ -338,10 +369,10 @@ responses go out as `text/plain; charset=utf-8` with an explicit
 `Content-Length` and `Connection: close`.
 
 Route handlers can only produce static bodies, because `extern Wasm`
-imports don't yet support host-to-guest callbacks. `.get(…)` /
-`.post(…)` therefore take a fixed body string rather than a lambda.
-Dynamic handlers (reading the `Request`, threading state, streaming
-bodies) arrive with the `wasi:http/incoming-handler` migration.
+imports don't yet support host-to-guest callbacks. `.Route(…)`
+therefore takes a fixed body string rather than a lambda. Dynamic
+handlers (reading the `Request`, threading state, streaming bodies)
+arrive with the `wasi:http/incoming-handler` migration.
 
 ## `TestResult`
 
@@ -349,11 +380,11 @@ The Canon-language testing primitive. See
 [Testing](../tour/testing.md) for the full convention.
 
 ```canon
-testAddPositive = () -> TestResult {
+testAddPositive = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .assert("1 + 2 != 3")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("1 + 2 != 3")
 }
 ```
 
@@ -364,8 +395,12 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-assert = (Bool * String) -> TestResult
+(Bool * String) => TestResult
 ```
+
+The assertion *is* the `TestResult` constructor
+([Types-Only Canon](../spec/types-only.md)): a `Bool` and a message
+construct a `Pass` or a `Fail`.
 
 `canon test <file>` discovers every `() -> TestResult` function in the
 entry file and runs them, printing `[ ok ] testName` or
@@ -403,23 +438,23 @@ interpolation, the `Json(...)` validator, or `.ToJson()`. A fully
 static literal is a plain constant and needs nothing at all.
 
 ```canon
-label = (Int) -> Json {
-    {"answer":Int,"doubled":Int.mul(2),"ok":True()}
+label = (Int) => Json {
+    {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
-main = () -> Result<Unit, MalformedJson> {
-    Json("[1, 2, 3]")?.print()
+Unit => Result<Program, MalformedJson> {
+    Json("[1, 2, 3]")? -> Print
     42
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     "hi"
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     42
         .label()
-        .print()
-    {"a":1,"b":[true,false,null]}.print()
-    {"escaped":"a \"b\" c"}.print()
+        -> Print
+    {"a":1,"b":[true,false,null]} -> Print
+    {"escaped":"a \"b\" c"} -> Print
     Ok(Unit())
 }
 ```

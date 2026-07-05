@@ -1,7 +1,12 @@
-main = () -> Unit {
-    Int(1).print()
-    Int(5)
-        .add(Int(2))
-        .print()
-    Float(2.5).print()
+main = () => Unit {
+    1
+        -> Int
+        -> Print
+    5
+        -> Int
+        -> Sum(2 -> Int)
+        -> Print
+    2.5
+        -> Float
+        -> Print
 }

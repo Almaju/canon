@@ -33,9 +33,9 @@ world:
 
 | Entry signature | World | Export |
 |---|---|---|
-| `main = () -> Unit` | `wasi:cli/command` | `wasi:cli/run.run` |
-| `f = (Request) -> Response` | `wasi:http/service` | `wasi:http/handler.handle` |
-| `init`/`update`/`view` triple | browser ([web target](../reference/web-target.md)) | core module + JS host |
+| `Unit => Program` | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Request => Response` | `wasi:http/service` | `wasi:http/handler.handle` |
+| `Model => Html` triple (+ `Unit => Init`, `Model * Msg => Update`) | browser ([web target](../reference/web-target.md)) | core module + JS host |
 
 The CLI and HTTP entries are lifted async-stackful, letting nested
 suspending calls yield through the canonical ABI. The web target emits a
@@ -67,9 +67,9 @@ sitting directly in a versioned package directory
 WIT interface — no directive, no header:
 
 ```canon
-getArguments = () -> List<String>
+getArguments = () => List<String>
 
-getInitialCwd = () -> Option<String>
+getInitialCwd = () => Option<String>
 ```
 
 The loader rewrites each alias into an external function bound to

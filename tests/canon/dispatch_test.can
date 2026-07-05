@@ -4,16 +4,16 @@ Light = Unit
 
 Mode = Dark + Light
 
-testDispatchOnDark = () -> TestResult {
-    Dark().(
-        * (Dark) -> TestResult { Pass() }
-        * (Light) -> TestResult { Fail() }
+testDispatchOnDark = () => TestResult {
+    Dark() -> (
+        * Dark => TestResult { Pass() }
+        * Light => TestResult { Fail() }
     )
 }
 
-testDispatchOnLight = () -> TestResult {
-    Light().(
-        * (Dark) -> TestResult { Fail() }
-        * (Light) -> TestResult { Pass() }
+testDispatchOnLight = () => TestResult {
+    Light() -> (
+        * Dark => TestResult { Fail() }
+        * Light => TestResult { Pass() }
     )
 }

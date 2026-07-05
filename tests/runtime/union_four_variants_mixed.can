@@ -11,32 +11,32 @@ Shape = Count
   + Name
   + Ratio
 
-makeCount = () -> Shape {
-    Count(42)
+makeCount = () => Shape {
+    42 -> Count
 }
 
-makeEmpty = () -> Shape {
+makeEmpty = () => Shape {
     Empty()
 }
 
-makeName = () -> Shape {
-    Name("alex")
+makeName = () => Shape {
+    "alex" -> Name
 }
 
-makeRatio = () -> Shape {
-    Ratio(2.5)
+makeRatio = () => Shape {
+    2.5 -> Ratio
 }
 
-show = (Shape) -> Unit {
-    Shape.(
-        * (Count) -> Unit { Count.print() }
-        * (Empty) -> Unit { "empty".print() }
-        * (Name) -> Unit { Name.print() }
-        * (Ratio) -> Unit { Ratio.print() }
+show = (Shape) => Unit {
+    Shape -> (
+        * Count => Unit { Count -> Print }
+        * Empty => Unit { "empty" -> Print }
+        * Name => Unit { Name -> Print }
+        * Ratio => Unit { Ratio -> Print }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     makeCount().show()
     makeEmpty().show()
     makeName().show()

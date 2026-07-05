@@ -1,0 +1,12 @@
+Age = Int
+
+Name = String
+
+Person = Age * Name
+
+Unit => Program {
+    "bob" -> Person(30).Age
+        -> String
+        -> Print
+    "bob" -> Person(30).Name -> Print
+}

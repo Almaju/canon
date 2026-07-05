@@ -1,30 +1,44 @@
+Flipped = Line
+
 Line = String
 
-flip = (Line) -> Line {
-    Line.byteAt(1).eq(48).(
-        * (False) -> Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) -> Line { Line("1".concat(Line.substring(2, Line.length()))) }
+RenderedItem = Html
+
+Line => Flipped {
+    Line -> ByteAt(1) -> Eq(48) -> (
+        * False => Flipped {
+            "0"
+                -> Joined(Line -> Substring(2 -> From * Line -> Length -> To))
+                -> Line
+        }
+        * True => Flipped {
+            "1"
+                -> Joined(Line -> Substring(2 -> From * Line -> Length -> To))
+                -> Line
+        }
     )
 }
 
-renderItem = (Int * Line) -> Html {
-    Line.byteAt(1).eq(49).(
-        * (False) -> Html {
-            Line.substring(3, Line.length()).text().String
-                .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.String())).button("done").String)
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).button("remove").String)
-                .li()
+Int * Line => RenderedItem {
+    Line -> ByteAt(1) -> Eq(49) -> (
+        * False => RenderedItem {
+            Line
+                -> Substring(3 -> From * Line -> Length -> To)
+                -> Escaped
+                -> Joined(" ")
+                -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("done"))
+                -> Joined(" ")
+                -> Joined("Delete:" -> Joined(Int -> String) -> Msg -> Button("remove"))
+                -> Li
         }
-        * (True) -> Html {
+        * True => RenderedItem {
             "<s>"
-                .concat(Line.substring(3, Line.length()).text().String)
-                .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.String())).button("undo").String)
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).button("remove").String)
-                .li()
+                -> Joined(Line -> Substring(3 -> From * Line -> Length -> To) -> Escaped)
+                -> Joined("</s> ")
+                -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("undo"))
+                -> Joined(" ")
+                -> Joined("Delete:" -> Joined(Int -> String) -> Msg -> Button("remove"))
+                -> Li
         }
     )
 }

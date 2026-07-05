@@ -28,7 +28,7 @@ Canon has **no local variables, no `let`**, and **no parameter names**.
 The shape of a function is described entirely by its types.
 
 ```canon
-compare = (OtherUser * User) -> Ord {
+compare = (OtherUser * User) => Ord {
     User.Birthday.compare(OtherUser.Birthday)
 }
 ```
@@ -54,9 +54,9 @@ an HTTP server requires an `HttpServer`. The values that carry the effect
 are ordinary arguments:
 
 ```canon
-get = (Url) -> Result<String, HttpError>
+get = (Url) => Result<String, HttpError>
 
-read = (File) -> Result<String, IoError>
+read = (File) => Result<String, IoError>
 ```
 
 There is no `unsafe`, no global mutable state, no service locator. A

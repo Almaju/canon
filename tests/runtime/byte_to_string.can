@@ -1,9 +1,15 @@
-main = () -> Unit {
-    String(Byte(65)).print()
-    String(Byte(97))
-        .concat(String(Byte(98)))
-        .print()
-    Byte(33)
-        .String()
-        .print()
+main = () => Unit {
+    65
+        -> Byte
+        -> String
+        -> Print
+    97
+        -> Byte
+        -> String
+        -> Joined(98 -> Byte -> String)
+        -> Print
+    33
+        -> Byte
+        -> String
+        -> Print
 }

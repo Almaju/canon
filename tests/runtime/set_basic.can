@@ -1,35 +1,35 @@
-main = () -> Unit {
+main = () => Unit {
     Set()
-        .insert("b")
-        .insert("a")
-        .insert("b")
-        .length()
-        .print()
+        -> Inserted("b")
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Length
+        -> Print
     Set()
-        .insert("x")
-        .contains("x")
-        .print()
+        -> Inserted("x")
+        -> Contains("x")
+        -> Print
     Set()
-        .insert("x")
-        .contains("y")
-        .print()
+        -> Inserted("x")
+        -> Contains("y")
+        -> Print
     Set()
-        .insert("b")
-        .insert("c")
-        .insert("a")
-        .List()
-        .Json()
-        .print()
+        -> Inserted("b")
+        -> Inserted("c")
+        -> Inserted("a")
+        -> List
+        -> Json
+        -> Print
     Set()
-        .insert("a")
-        .insert("b")
-        .remove("a")
-        .List()
-        .Json()
-        .print()
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Removed("a")
+        -> List
+        -> Json
+        -> Print
     Set()
-        .insert("a")
-        .remove("missing")
-        .length()
-        .print()
+        -> Inserted("a")
+        -> Removed("missing")
+        -> Length
+        -> Print
 }

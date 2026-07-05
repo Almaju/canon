@@ -13,8 +13,8 @@ value to a product of handlers, one arm per variant:
 
 ```canon
 Request.path().(
-    * (None) -> Response { ... }
-    * (Some<String>) -> Response { ... }
+    * (None) => Response { ... }
+    * (Some<String>) => Response { ... }
 )
 ```
 
@@ -31,19 +31,21 @@ never be exhaustive, so totality comes from the catch-all. Update
 `notes.can`:
 
 ```canon
-notFound = () -> Body {
+NotFound = Body
+
+Unit => NotFound {
     Body("not found")
 }
 
-serve = (Request) -> Response {
+Request => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response {
+                * ("/notes") => Response {
                     Response(Body("all the notes") * Headers() * Status(200))
                 }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -68,11 +70,11 @@ Three details:
 - The status is computed. Each arm builds its own `Response` with its
   own `Status`; error responses are values from a different branch, not
   a special mechanism.
-- `notFound` is a helper, and it returns `Body`, not `Response`. The
-  entry-point rule from chapter 1: only `serve` may return `Response`.
-  Helpers return data; the entry wraps data in the world type. Change
-  `notFound` to return a `Response` and the compiler rejects the
-  program as having an ambiguous HTTP entry.
+- `NotFound` is a helper constructor, and it returns `Body`, not
+  `Response`. The entry-point rule from chapter 1: only the entry may
+  return `Response`. Helpers return data; the entry wraps data in the
+  world type. Change `NotFound` to return a `Response` and the compiler
+  rejects the program as having an ambiguous HTTP entry.
 - Route order isn't yours to choose. Literal arms follow canonical
   order (alphabetical for strings, ascending for ints) and the
   catch-all comes last. Don't sort by hand; `canon fmt` does it.

@@ -166,6 +166,32 @@ fn parse_extern_path(path: &str) -> Option<(String, String, String)> {
 /// path, derives the WASM signature, and assigns each a function index. The
 /// resulting list is sorted by `(core_namespace, fn_name)` so the output is
 /// deterministic across runs (matching Canon's "alphabetical" ethos).
+/// The `(start, end)` bound expressions of a `substring`/`slice` call.
+/// Canonically the bounds arrive as a `From * To` product, which is
+/// *positionless*: the start is whichever component is `From(…)` and the
+/// end whichever is `To(…)`, regardless of written order. Two positional
+/// args are still accepted during migration (start, then end).
+fn substring_bounds(args: &[Expr]) -> Option<(&Expr, &Expr)> {
+    fn ctor_name(e: &Expr) -> Option<&str> {
+        match e {
+            Expr::Constructor { name, .. } => Some(name.name.as_str()),
+            _ => None,
+        }
+    }
+    match args {
+        [Expr::ProductValue { fields, .. }] if fields.len() == 2 => {
+            let (a, b) = (&fields[0], &fields[1]);
+            if ctor_name(a) == Some("To") || ctor_name(b) == Some("From") {
+                Some((b, a))
+            } else {
+                Some((a, b))
+            }
+        }
+        [a, b] => Some((a, b)),
+        _ => None,
+    }
+}
+
 fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
     let type_defs = build_type_defs_map(ast);
     let mut raw: Vec<ExternImport> = Vec::new();
@@ -1105,6 +1131,16 @@ struct WasmGen<'m> {
     // User function table: (Option<receiver_type_name>, method_name) → FuncInfo
     func_table: HashMap<(Option<String>, String), FuncInfo>,
 
+    // Every compiled user function in func-index order: (func_idx,
+    // type_idx, def). The single source of truth for the emitted
+    // function and code sections — `func_table` is a *lookup* structure
+    // whose keys can collide (constructor families register several
+    // bodies for one type name; the commutative aliases point several
+    // keys at one body), so deriving section contents from it lets the
+    // function-section and code-section lengths drift apart, which is
+    // invalid wasm. This list cannot: one entry per compiled body.
+    compiled_user_funcs: Vec<(u32, u32, FunctionDef)>,
+
     // WASM type deduplication
     user_type_sigs: Vec<(Vec<ValType>, Vec<ValType>)>, // index 0 → TY_USER_START
     user_type_map: HashMap<(Vec<ValType>, Vec<ValType>), u32>, // → absolute type idx
@@ -1234,6 +1270,7 @@ impl<'m> WasmGen<'m> {
             variant_parent: HashMap::new(),
             variant_tag: HashMap::new(),
             func_table: HashMap::new(),
+            compiled_user_funcs: Vec::new(),
             user_type_sigs: Vec::new(),
             user_type_map: HashMap::new(),
 
@@ -2046,7 +2083,22 @@ impl<'m> WasmGen<'m> {
                     indirect_return: None,
                     is_async: false,
                 };
-                self.func_table.insert(key, info.clone());
+                if is_self_ctor(func) {
+                    // Constructor families: several `Self`-renamed bodies
+                    // share the `(Type, "Self")` primary key. The zero-arg
+                    // member owns it (it's what a bare `Type()` call
+                    // dispatches through); parameterized members are
+                    // reached via the per-param commutative keys below,
+                    // so they only fill the primary slot when nothing
+                    // else has.
+                    if func.params.is_empty() {
+                        self.func_table.insert(key, info.clone());
+                    } else {
+                        self.func_table.entry(key).or_insert_with(|| info.clone());
+                    }
+                } else {
+                    self.func_table.insert(key, info.clone());
+                }
 
                 // Self-ctor commutative registration (mirrors the extern
                 // block above). After `resolve_new_syntax`, a function
@@ -2059,22 +2111,45 @@ impl<'m> WasmGen<'m> {
                 // -> Result<Json, MalformedJson> { … }`) fall through
                 // to the type-newtype constructor path in
                 // `compile_constructor`, silently dropping the body.
+                // Every param component registers (not just the first):
+                // commutative calling lets any component be the
+                // receiver, and for a constructor family the per-param
+                // keys are what keep members distinct — the checker
+                // guards that no two members collide on a component
+                // type.
                 if is_self_ctor(func) {
-                    if let Some(first_param) = func.params.first() {
-                        if let TypeExpr::Named {
-                            name: param_name, ..
-                        } = &first_param.ty
-                        {
-                            let recv_name = func
-                                .receiver
-                                .as_ref()
-                                .map(|r| r.name.clone())
-                                .unwrap_or_default();
-                            let commutative_key = (Some(param_name.clone()), recv_name);
-                            self.func_table.entry(commutative_key).or_insert(info);
+                    let recv_name = func
+                        .receiver
+                        .as_ref()
+                        .map(|r| r.name.clone())
+                        .unwrap_or_default();
+                    let mut components: Vec<String> = Vec::new();
+                    for param in &func.params {
+                        match &param.ty {
+                            TypeExpr::Named {
+                                name: param_name, ..
+                            } => components.push(param_name.clone()),
+                            TypeExpr::Product { fields, .. } => {
+                                for field in fields {
+                                    if let TypeExpr::Named {
+                                        name: field_name, ..
+                                    } = field
+                                    {
+                                        components.push(field_name.clone());
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
+                    for param_name in components {
+                        let commutative_key = (Some(param_name), recv_name.clone());
+                        self.func_table
+                            .entry(commutative_key)
+                            .or_insert_with(|| info.clone());
+                    }
                 }
+                self.compiled_user_funcs.push((idx, type_idx, func.clone()));
                 idx += 1;
             }
         }
@@ -2140,11 +2215,11 @@ impl<'m> WasmGen<'m> {
             _ => {
                 if let Some(body) = self.type_defs.get(name).cloned() {
                     match &body {
-                        TypeExpr::Named {
-                            name: inner,
-                            generics,
-                            ..
-                        } if generics.is_empty() => {
+                        TypeExpr::Named { name: inner, .. } => {
+                            // Newtype alias — generic args on the RHS don't
+                            // change the repr (`Keys = List<Key>` is a list
+                            // at the value level; the element type is a
+                            // checker-side fact).
                             let inner_repr = self.resolve_repr_depth(inner, depth + 1);
                             // Wrap with the outer name for method dispatch
                             match inner_repr {
@@ -2153,7 +2228,13 @@ impl<'m> WasmGen<'m> {
                                 Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) | Ty::Ptr => {
                                     Ty::NamedPtr(name.to_string())
                                 }
-                                Ty::List => Ty::NamedPtr("List".to_string()),
+                                // Keep the two-slot list repr — wrapping it
+                                // in a one-slot `NamedPtr` desynchronizes
+                                // the wasm function type from the body
+                                // ("values remaining on stack"). Like
+                                // scalar newtypes, list newtypes erase to
+                                // `List` at the value level.
+                                Ty::List => Ty::List,
                             }
                         }
                         TypeExpr::Product { .. } | TypeExpr::Union { .. } => {
@@ -3605,6 +3686,14 @@ impl<'m> WasmGen<'m> {
             Expr::Constructor { name, .. } => &name.name,
             Expr::Ident(id) => &id.name,
             Expr::FieldAccess { field, .. } => &field.name,
+            // Piped construction: `65 -> Byte` builds a `Byte` just like
+            // `Byte(65)`, but scalar-newtype erasure drops the name from
+            // the value, so recover it from the constructor's spelling.
+            Expr::MethodCall {
+                method,
+                piped: true,
+                ..
+            } => &method.name,
             _ => return false,
         };
         self.collect_alias_chain(name).iter().any(|n| n == "Byte")
@@ -3799,22 +3888,48 @@ impl<'m> WasmGen<'m> {
                     }
                 }
 
-                // 3. Single-arg constructor with an extern declared as a
-                //    method on the arg's type — lets `Url("http://…")` and
-                //    `Path("…")` dispatch to `Url = (String) -> Result<…>`
-                //    or any similar `T = (S) -> R` declaration.
-                if args.len() == 1 {
-                    // We need to know the arg's type *before* compiling it
-                    // (so the lookup can succeed without committing to an
-                    // emit). Use the existing static-shape inference rather
-                    // than fully compiling the arg up front.
-                    if let Some(recv_ty_name) = self.infer_static_type_name(&args[0]) {
-                        let key = (Some(recv_ty_name.clone()), name.to_string());
-                        if let Some(info) = self.func_table.get(&key).cloned() {
-                            // Compile the arg (this becomes the receiver) and
-                            // dispatch — no further args to push.
-                            let _ = self.compile_expr(&args[0], scope, f);
-                            return self.emit_func_table_call(&info, &[], scope, f);
+                // 3. Constructor declared as a method on the first arg's
+                //    type — lets `Url("http://…")` dispatch to
+                //    `Url = (String) -> Result<…>`, and selects the right
+                //    member of a constructor *family* (`Json = (Bool) ->
+                //    Json` vs `Json = (Int) -> Json`) by the argument's
+                //    type. Both call shapes reach here: `Value(map, k)`
+                //    (positional) and `Value(map * k)` (product value) —
+                //    the product form is flattened so its first field
+                //    drives the lookup and the rest ride as ordinary
+                //    trailing args.
+                if !args.is_empty() {
+                    let flat: Vec<Expr> = if args.len() == 1 {
+                        if let Expr::ProductValue { fields, .. } = &args[0] {
+                            fields.clone()
+                        } else {
+                            args.to_vec()
+                        }
+                    } else {
+                        args.to_vec()
+                    };
+                    if let Some(first_ty) = self.infer_ctor_arg_type_name(&flat[0]) {
+                        // The declared param type may sit anywhere on the
+                        // arg's widening chain: the exact name, the
+                        // variant's parent union (`True()` fills a `Bool`
+                        // param), or a newtype's underlying type.
+                        let mut candidates: Vec<String> = vec![first_ty.clone()];
+                        if let Some(parent) = self.variant_parent.get(&first_ty) {
+                            candidates.push(parent.clone());
+                        }
+                        for link in self.collect_alias_chain(&first_ty) {
+                            if !candidates.contains(&link) {
+                                candidates.push(link);
+                            }
+                        }
+                        for cand in candidates {
+                            let key = (Some(cand), name.to_string());
+                            if let Some(info) = self.func_table.get(&key).cloned() {
+                                // Compile the first arg (this becomes the
+                                // receiver) and dispatch with the rest.
+                                let _ = self.compile_expr(&flat[0], scope, f);
+                                return self.emit_func_table_call(&info, &flat[1..], scope, f);
+                            }
                         }
                     }
                 }
@@ -3891,6 +4006,100 @@ impl<'m> WasmGen<'m> {
         }
     }
 
+    /// `infer_static_type_name` extended for constructor-argument routing:
+    /// also resolves bare identifiers. In Canon an identifier in expression
+    /// position *is* a type name — parameters and dispatch-arm payloads are
+    /// referenced by the type they bind (there are no local variables) — so
+    /// the name itself is the best static type available. Kept separate from
+    /// `infer_static_type_name` so the method-call and async-classification
+    /// call sites keep their conservative behavior.
+    /// Static result type of a builtin-vocabulary method. Comparisons
+    /// yield `Bool`; the numeric operations preserve their receiver's
+    /// type (`Int` stays `Int`, `Float` stays `Float`); the string and
+    /// index operations yield `String` / `Int`. Returns `None` for
+    /// anything not in the builtin vocabulary, so a user shape of the
+    /// same name (resolved earlier via `func_table`) always wins.
+    fn builtin_result_type(&self, method: &str, receiver: &Expr) -> Option<String> {
+        match method {
+            "Eq" | "Ne" | "Lt" | "Le" | "Gt" | "Ge" | "And" | "Or" | "Not" => {
+                Some("Bool".to_string())
+            }
+            "Length" | "ByteAt" => Some("Int".to_string()),
+            "Joined" | "Substring" | "Slice" => Some("String".to_string()),
+            // List transforms preserve list-ness (`map`/`filter`/`append`).
+            "Mapped" | "Filtered" | "Appended" => Some("List".to_string()),
+            "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Minimum" | "Maximum"
+            | "Negated" => self.infer_ctor_arg_type_name(receiver),
+            _ => None,
+        }
+    }
+
+    fn infer_ctor_arg_type_name(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(ident) => Some(ident.name.clone()),
+            // Newtype unwrap (`x.String`) — a PascalCase field names the
+            // component's type, which *is* the value's type.
+            Expr::FieldAccess { field, .. }
+                if field.name.chars().next().is_some_and(char::is_uppercase) =>
+            {
+                Some(field.name.clone())
+            }
+            // A method chain's static type comes from the callee's
+            // registered result type — this is what lets a pipe hang off
+            // a chain (`Map().Inserted("a", "1") -> Keys`). Builtin
+            // methods aren't in `func_table`, so chains ending in them
+            // still return `None` and the call falls through to the
+            // pre-pipe routing paths.
+            Expr::MethodCall {
+                receiver, method, ..
+            } => {
+                let recv = self.infer_ctor_arg_type_name(receiver)?;
+                let mut cands: Vec<String> = vec![recv.clone()];
+                if let Some(p) = self.variant_parent.get(&recv) {
+                    cands.push(p.clone());
+                }
+                for link in self.collect_alias_chain(&recv) {
+                    if !cands.contains(&link) {
+                        cands.push(link);
+                    }
+                }
+                for c in cands {
+                    if let Some(info) = self.func_table.get(&(Some(c), method.name.clone())) {
+                        return match &info.result_ty {
+                            Ty::NamedPtr(n) | Ty::NamedStr(n) | Ty::NamedPtrStr(n, _, _) => {
+                                Some(n.clone())
+                            }
+                            Ty::Str => Some("String".to_string()),
+                            Ty::I64 => Some("Int".to_string()),
+                            Ty::F64 => Some("Float".to_string()),
+                            Ty::I32 => Some("Bool".to_string()),
+                            Ty::List => Some("List".to_string()),
+                            _ => None,
+                        };
+                    }
+                }
+                // Builtin vocabulary isn't in `func_table`; infer its
+                // result type so a constructor family keyed on that type
+                // still resolves through a builtin-terminated chain
+                // (`Eq(5) -> TestResult`, `Sum(1) -> Digits`).
+                if let Some(t) = self.builtin_result_type(&method.name, receiver) {
+                    return Some(t);
+                }
+                // Piped construction: `X -> Foo` builds a `Foo` (a
+                // variant widens to its union), so `7 -> Value` inside a
+                // product binds to the `Value` field by type.
+                if let Some(parent) = self.variant_parent.get(&method.name) {
+                    return Some(parent.clone());
+                }
+                if self.type_defs.contains_key(&method.name) {
+                    return Some(method.name.clone());
+                }
+                None
+            }
+            _ => self.infer_static_type_name(expr),
+        }
+    }
+
     /// Quick static inference of an expression's Canon-level type *name*,
     /// used to look up methods/constructors before compiling. Returns
     /// `Some("String")` for string literals, `Some("Int")` for ints, etc.;
@@ -3963,24 +4172,66 @@ impl<'m> WasmGen<'m> {
     /// (contents writer + body bytes + trailers writer) at fixed
     /// memory addresses, and `build_http_handle_wrapper` performs the
     /// writes after `task.return`.
+    /// Does `e` construct the HTTP component named `name` (`Headers` /
+    /// `Status`)? Matched by static type where inference succeeds, and
+    /// by the chain's *syntactic base* otherwise — a builder chain like
+    /// `Headers().set(…)` whose `.set` returns `Unit` breaks type
+    /// inference, so we walk the receivers back to the `Headers()`
+    /// constructor.
+    fn is_http_component(&self, e: &Expr, name: &str) -> bool {
+        if let Some(t) = self.infer_ctor_arg_type_name(e) {
+            if self.widening_chain(&t).iter().any(|n| n == name) {
+                return true;
+            }
+        }
+        match e {
+            Expr::Constructor { name: n, .. } => n.name == name,
+            Expr::MethodCall {
+                receiver, method, ..
+            } => method.name == name || self.is_http_component(receiver, name),
+            _ => false,
+        }
+    }
+
     fn build_http_response(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
         let mem = MemArg {
             offset: 0,
             align: 2,
             memory_index: 0,
         };
-        // Normalise `Response(a * b * c)` and `Response(a, b, c)`.
-        // Field order is alphabetical by construction:
-        // (Body, Headers, Status) or (Headers, Status).
+        // Normalise `Response(a * b * c)` (one `ProductValue`) to the
+        // component list.
         let exprs: Vec<Expr> = match args {
             [Expr::ProductValue { fields, .. }] => fields.clone(),
             _ => args.to_vec(),
         };
         let has_body = exprs.len() >= 3;
-        let (body_expr, headers_expr, status_expr) = if has_body {
-            (exprs.first(), exprs.get(1), exprs.get(2))
-        } else {
-            (None, exprs.first(), exprs.get(1))
+        // Positionless: pick each component by its type, not its slot.
+        // `Headers()` and `Status(n)` name themselves; the body is
+        // whatever remains. This keeps a formatter-sorted
+        // `Response(Headers() * NotFound() * Status(404))` correct even
+        // though the body (`NotFound()`) no longer sits first. Falls
+        // back to declaration order when a component's type can't be
+        // inferred statically.
+        let headers_i = exprs
+            .iter()
+            .position(|e| self.is_http_component(e, "Headers"));
+        let status_i = exprs
+            .iter()
+            .position(|e| self.is_http_component(e, "Status"));
+        let (body_expr, headers_expr, status_expr) = match (headers_i, status_i) {
+            (Some(hi), Some(si)) => {
+                let body = if has_body {
+                    (0..exprs.len())
+                        .find(|&i| i != hi && i != si)
+                        .map(|i| &exprs[i])
+                } else {
+                    None
+                };
+                (body, Some(&exprs[hi]), Some(&exprs[si]))
+            }
+            _ if has_body => (exprs.first(), exprs.get(1), exprs.get(2)),
+            _ => (None, exprs.first(), exprs.get(1)),
         };
 
         // ── Phase 1: user expressions (parked on the operand stack —
@@ -4547,6 +4798,45 @@ impl<'m> WasmGen<'m> {
     /// Field expressions are assumed to be positional (same order as
     /// the type-level field declaration, which the parser preserves
     /// and the alphabetical-ordering rule pins).
+    /// Every type `name` widens to, most-specific first: itself, its
+    /// newtype-alias targets (`Value` → `String`), and — if it names a
+    /// union variant — its parent union and that union's aliases
+    /// (`Empty` → `Map`). This is the set a value of type `name` can
+    /// satisfy, used to bind product values to fields by type rather
+    /// than by position.
+    fn widening_chain(&self, name: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for link in self.collect_alias_chain(name) {
+            if !out.contains(&link) {
+                out.push(link);
+            }
+        }
+        if let Some(parent) = self.variant_parent.get(name) {
+            for link in self.collect_alias_chain(parent) {
+                if !out.contains(&link) {
+                    out.push(link);
+                }
+            }
+        }
+        out
+    }
+
+    /// How well a value (given its widening chain) fits a field of type
+    /// `field_ty`: `2` when the field's exact newtype appears on the
+    /// value's chain (`Value` value → `Value` field), `1` when they
+    /// merely share a base type (`String` value → `Key` field, both
+    /// erase to `String`), `0` when unrelated.
+    fn field_match_score(&self, value_chain: &[String], field_ty: &str) -> u8 {
+        if value_chain.iter().any(|n| n == field_ty) {
+            return 2;
+        }
+        let field_chain = self.widening_chain(field_ty);
+        if value_chain.iter().any(|n| field_chain.contains(n)) {
+            return 1;
+        }
+        0
+    }
+
     fn build_product_value(
         &mut self,
         product_name: &str,
@@ -4561,6 +4851,57 @@ impl<'m> WasmGen<'m> {
             .sum::<u32>()
             .max(4); // `alloc` expects a non-zero size.
 
+        // ── Bind values to fields by type, not by position ────────────
+        // Fields are alphabetical and construction is positionless
+        // (`Node(String * Empty() * Value)` and `Node(Empty() * Value *
+        // String)` build the same struct). Each value is routed to the
+        // field whose type it best matches: an exact newtype match
+        // (`Value` → the `Value` field) wins over a shared-base match
+        // (a bare `String` → the `Key` field), and any leftovers fall
+        // back to declaration order. Same-typed fields (map's `Key` and
+        // `Value`, both `String`) are why newtypes matter — tag a value
+        // `Value(x)` and it lands in the `Value` slot regardless of
+        // where it was written.
+        let n_fields = layout.len().min(field_exprs.len());
+        let value_chains: Vec<Option<Vec<String>>> = field_exprs
+            .iter()
+            .map(|e| {
+                self.infer_ctor_arg_type_name(e)
+                    .map(|nm| self.widening_chain(&nm))
+            })
+            .collect();
+        let mut used = vec![false; field_exprs.len()];
+        let mut slot_val: Vec<Option<usize>> = vec![None; n_fields];
+        // Pass 1 (exact) then pass 2 (shared-base): a slot claims the
+        // first unused value that scores at the current threshold.
+        for threshold in [2u8, 1u8] {
+            for (si, (field_name, _, _)) in layout.iter().take(n_fields).enumerate() {
+                if slot_val[si].is_some() {
+                    continue;
+                }
+                if let Some(vi) = (0..field_exprs.len()).find(|&vi| {
+                    !used[vi]
+                        && value_chains[vi]
+                            .as_ref()
+                            .is_some_and(|vc| self.field_match_score(vc, field_name) == threshold)
+                }) {
+                    slot_val[si] = Some(vi);
+                    used[vi] = true;
+                }
+            }
+        }
+        // Pass 3 (positional): unresolved values fill remaining slots in
+        // order — the pre-typed-construction behaviour, kept as a floor.
+        for slot in slot_val.iter_mut().take(n_fields) {
+            if slot.is_some() {
+                continue;
+            }
+            if let Some(vi) = (0..field_exprs.len()).find(|&vi| !used[vi]) {
+                *slot = Some(vi);
+                used[vi] = true;
+            }
+        }
+
         // ── Allocate ──────────────────────────────────────────────────
         f.instruction(&Instruction::I32Const(total_size as i32));
         f.instruction(&Instruction::Call(self.fn_alloc));
@@ -4574,7 +4915,6 @@ impl<'m> WasmGen<'m> {
         // nested expression's own stack activity. So: one copy per
         // stored field (consumed bottom-up by the stores below) plus
         // one at the very bottom that survives as the result.
-        let n_fields = layout.len().min(field_exprs.len());
         for _ in 0..=n_fields {
             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
         }
@@ -4585,7 +4925,8 @@ impl<'m> WasmGen<'m> {
         // pre-pushed above.
         for (i, (_field_name, field_repr, field_offset)) in layout.iter().take(n_fields).enumerate()
         {
-            let _val_ty = self.compile_expr(&field_exprs[i], scope, f);
+            let vi = slot_val[i].unwrap_or(i);
+            let _val_ty = self.compile_expr(&field_exprs[vi], scope, f);
             self.store_payload_at_offset(*field_offset, field_repr, scope, f);
         }
 
@@ -4679,6 +5020,17 @@ impl<'m> WasmGen<'m> {
     /// dispatch on a `Ty::List` receiver and read back according to the
     /// expected element shape (see `compile_builtin_method`).
     fn build_list_literal(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+        // `List(a * b * c)` — the elements arrive as one product now that
+        // comma argument lists are gone; flatten it to the element list.
+        // A single non-product element (`List("x")`) stays one element.
+        let flat: Vec<Expr>;
+        let args: &[Expr] = match args {
+            [Expr::ProductValue { fields, .. }] => {
+                flat = fields.clone();
+                &flat
+            }
+            _ => args,
+        };
         let n = args.len() as u32;
         let byte_size = n * 8;
         f.instruction(&Instruction::I32Const(byte_size as i32));
@@ -4782,14 +5134,86 @@ impl<'m> WasmGen<'m> {
         // auto-await pass exempts these two methods); compile_parallel /
         // compile_race emit the non-blocking call for each side
         // themselves, so the receiver must NOT be compiled here.
-        if matches!(method, "parallel" | "race") && args.len() == 1 {
+        if matches!(method, "parallel" | "race" | "Parallel" | "Race") && args.len() == 1 {
             let combined = [receiver.clone(), args[0].clone()];
-            return if method == "parallel" {
+            return if method.eq_ignore_ascii_case("parallel") {
                 self.compile_parallel(&combined, scope, f)
             } else {
                 self.compile_race(&combined, scope, f)
             };
         }
+
+        // The pipe form of prefix construction: `A -> B(C)` is the same
+        // call as `B(A * C)` — the receiver fills the first slot of `B`'s
+        // input product. When `B` names a type constructor, route it
+        // through `compile_constructor` (the single construction path)
+        // so piped and prefix spellings build identically: products,
+        // union variants, newtypes, primitive conversions, constructor
+        // families, shapes, and the HTTP `Response` all handled there.
+        // Builtins (`Sum`, `Ge`, `Joined`, …) and pure operations are
+        // not type names, so they fall through to the method paths
+        // below. Runs before the receiver is compiled, so
+        // `compile_constructor` owns every input — no double emit.
+        // A name in the builtin vocabulary (`Length`, `Sum`, `Mapped`,
+        // `Eq`, …) is never construction even when it also names a type
+        // (`Length = Int`, `Mapped<U> = List<U>`): the method paths below
+        // own it as a builtin on the receiver (list length / map) or a
+        // stdlib shape. Excluding it keeps `list -> Length` a length, not
+        // a `Length(list)` newtype wrap.
+        let is_builtin_op = crate::ast::builtin_method_alias(method).is_some();
+        // A name with a func-table body is a shape / constructor family
+        // (`Route`, `Served`, `TestResult`, `Greeting`'s Int member, …).
+        // Those resolve on the method path below, keyed on the receiver's
+        // *compiled* type — routing them through `compile_constructor`
+        // would rebuild the receiver and lose handle/repr threading. Only
+        // *pure* construction (a product / newtype / variant / primitive
+        // with no func body) needs the construction route.
+        let has_func_body = self.func_table.keys().any(|(_, m)| m == method);
+        let is_ctor_name = (!is_builtin_op
+            && !has_func_body
+            && method.chars().next().is_some_and(char::is_uppercase)
+            && (self.type_defs.contains_key(method)
+                || self.variant_parent.contains_key(method)
+                || matches!(method, "Some" | "None" | "Ok" | "Err")))
+            // HTTP `Response` construction is owned by codegen
+            // (`build_http_response`) regardless of its checker binding,
+            // so route the piped form there too.
+            || (self.http_mode && method == "Response");
+        if is_ctor_name {
+            let mut ctor_inputs = vec![receiver.clone()];
+            match args {
+                [Expr::ProductValue { fields, .. }] => ctor_inputs.extend(fields.iter().cloned()),
+                _ => ctor_inputs.extend(args.iter().cloned()),
+            }
+            let ctor_args = if ctor_inputs.len() == 1 {
+                ctor_inputs
+            } else {
+                vec![Expr::ProductValue {
+                    fields: ctor_inputs,
+                    span: receiver.span(),
+                }]
+            };
+            return self.compile_constructor(method, &ctor_args, scope, f);
+        }
+
+        // A single product argument stands for its flattened components:
+        // `headers.set(Name * Value)`, `server.route(a * b * c * d)`, and
+        // every other multi-input builtin/binding receive positional args
+        // this way now that comma argument lists are gone. (The checker's
+        // `effective_call_arity` already flattens for arity; codegen
+        // matches here.) `substring`/`slice` keep the product intact —
+        // `substring_bounds` reads the `From`/`To` components by type, so
+        // it stays positionless.
+        let flat_args: Vec<Expr>;
+        let args: &[Expr] = match args {
+            [Expr::ProductValue { fields, .. }]
+                if !matches!(method, "substring" | "slice" | "Substring" | "Slice") =>
+            {
+                flat_args = fields.clone();
+                &flat_args
+            }
+            _ => args,
+        };
 
         let recv_ty = self.compile_expr(receiver, scope, f);
 
@@ -4819,15 +5243,59 @@ impl<'m> WasmGen<'m> {
         // Try the receiver's own type name first, then every name in
         // its newtype alias chain — `Foo("x").ToJson()` with `Foo =
         // String` must find a `ToJson` declared on `String`.
+        // A method resolves to a user/stdlib function under its written
+        // name or — for the types-only vocabulary — under its camelCase
+        // alias. `stream -> Mapped(f)` finds the `map` binding on
+        // `Stream` (a camelCase FFI function) before the `List` builtin
+        // `Mapped` claims it; `list -> Mapped(f)` misses both bindings
+        // and falls through to the builtin below.
+        let method_names: Vec<String> = match crate::ast::builtin_method_alias(method) {
+            Some(canonical) => vec![method.to_string(), canonical.to_string()],
+            None => vec![method.to_string()],
+        };
+        // A scalar newtype erases to its underlying primitive, so a piped
+        // construction like `3000 -> Port` leaves `Ty::I64` on the stack
+        // and `type_name` recovers only "Int" — losing "Port", which the
+        // next step (`Port -> HttpServer`) dispatches on. Recover the
+        // *static* type from the receiver's syntactic shape: `Foo(x)` or
+        // `x -> Foo` constructs a `Foo` when `Foo` names a type. Tried
+        // first so newtype-typed shapes still resolve.
+        let static_recv_type: Option<String> = match receiver {
+            Expr::Constructor { name, .. } if self.type_defs.contains_key(&name.name) => {
+                Some(name.name.clone())
+            }
+            Expr::MethodCall {
+                method: m,
+                piped: true,
+                ..
+            } if self.type_defs.contains_key(&m.name) => Some(m.name.clone()),
+            _ => None,
+        };
+        let mut candidate_types: Vec<String> = Vec::new();
+        if let Some(st) = &static_recv_type {
+            candidate_types.extend(self.collect_alias_chain(st));
+        }
         if let Some(name) = &type_name {
-            for alias in self.collect_alias_chain(name) {
-                let key = (Some(alias), method.to_string());
+            for a in self.collect_alias_chain(name) {
+                if !candidate_types.contains(&a) {
+                    candidate_types.push(a);
+                }
+            }
+        }
+        for alias in candidate_types {
+            for m in &method_names {
+                let key = (Some(alias.clone()), m.clone());
                 if let Some(info) = self.func_table.get(&key).cloned() {
                     return self.emit_func_table_call(&info, args, scope, f);
                 }
             }
-        } else if let Some(info) = self.func_table.get(&(None, method.to_string())).cloned() {
-            return self.emit_func_table_call(&info, args, scope, f);
+        }
+        if type_name.is_none() {
+            for m in &method_names {
+                if let Some(info) = self.func_table.get(&(None, m.clone())).cloned() {
+                    return self.emit_func_table_call(&info, args, scope, f);
+                }
+            }
         }
 
         // Also try without type name (free functions used as methods)
@@ -4837,6 +5305,11 @@ impl<'m> WasmGen<'m> {
                 return self.emit_func_table_call(&info, args, scope, f);
             }
         }
+
+        // No user/stdlib function matched — normalize the types-only
+        // vocabulary (`Print`/`Sum`/`Joined`/…) to its canonical builtin
+        // name so the `print`/`String`/builtin paths below recognize it.
+        let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
 
         // Conversion is construction (the language spec, docs/src/spec/):
         // `Int.String()` / `Byte.String()` are the method spellings of
@@ -4857,6 +5330,51 @@ impl<'m> WasmGen<'m> {
                 // the identity conversion — the value already is one.
                 ty if ty.is_str_like() => return Ty::Str,
                 _ => {}
+            }
+        }
+
+        // Primitive construction via pipe: `1 -> Int`, `2.5 -> Float`,
+        // `b -> Bool`. The receiver is already on the stack; widen /
+        // convert / pass through, mirroring `compile_constructor`'s
+        // primitive arm. (`"5" -> Int` parses via a `(String) -> Int`
+        // func-table member above, so only the non-string cases land
+        // here.)
+        if args.is_empty() {
+            match (method, &recv_ty) {
+                ("Int", Ty::I64) => return Ty::I64,
+                ("Int", Ty::I32) => {
+                    f.instruction(&Instruction::I64ExtendI32S);
+                    return Ty::I64;
+                }
+                ("Int", Ty::F64) => {
+                    f.instruction(&Instruction::I64TruncF64S);
+                    return Ty::I64;
+                }
+                ("Float", Ty::F64) => return Ty::F64,
+                ("Float", Ty::I64) => {
+                    f.instruction(&Instruction::F64ConvertI64S);
+                    return Ty::F64;
+                }
+                ("Bool", Ty::I32) => return Ty::I32,
+                _ => {}
+            }
+        }
+
+        // Newtype wrap via pipe: `"hi" -> Greeting` with `Greeting =
+        // String` is the identity — the receiver already carries the
+        // underlying representation, so relabel it to the newtype. Only
+        // fires when the newtype's repr matches the receiver's, so a
+        // *conversion* (`5 -> Json`, resolved above or a type error)
+        // never silently becomes an identity wrap.
+        if args.is_empty() {
+            if let Some(TypeExpr::Named { .. }) = self.type_defs.get(method) {
+                let wrapped = self.resolve_repr(method);
+                let compatible = std::mem::discriminant(&wrapped)
+                    == std::mem::discriminant(&recv_ty)
+                    || (wrapped.is_str_like() && recv_ty.is_str_like());
+                if compatible {
+                    return wrapped;
+                }
             }
         }
 
@@ -5952,6 +6470,11 @@ impl<'m> WasmGen<'m> {
         scope: &LocalScope,
         f: &mut Function,
     ) -> Ty {
+        // Types-only vocabulary: `-> Print` / `-> Sum(2)` / `-> Joined(s)`
+        // resolve to the same codegen as `print` / `add` / `concat`. Only
+        // reached after the func_table lookup missed, so a user/stdlib
+        // function of the same name always wins first.
+        let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
         match (method, &recv_ty) {
             // ── Int arithmetic ────────────────────────────────────────────────
             ("add", Ty::I64) => {
@@ -6014,20 +6537,6 @@ impl<'m> WasmGen<'m> {
             // (both sides evaluate) — acceptable because Canon
             // expressions are effect-free apart from capabilities, and
             // it matches the eager `.eq(..)` chains they compose with.
-            ("and", Ty::I32) => {
-                self.compile_bool_arg(args, scope, f);
-                f.instruction(&Instruction::I32And);
-                Ty::I32
-            }
-            ("or", Ty::I32) => {
-                self.compile_bool_arg(args, scope, f);
-                f.instruction(&Instruction::I32Or);
-                Ty::I32
-            }
-            ("not", Ty::I32) => {
-                f.instruction(&Instruction::I32Eqz);
-                Ty::I32
-            }
             // ── Float arithmetic ──────────────────────────────────────────────
             ("add", Ty::F64) => {
                 self.compile_f64_arg(args, scope, f);
@@ -6239,16 +6748,22 @@ impl<'m> WasmGen<'m> {
             // is independent of the receiver's lifetime (heap is
             // bump-allocated, so neither outlives the other; copying
             // makes mutation safe if it ever lands).
-            ("substring" | "slice", _) if recv_ty.is_str_like() && args.len() == 2 => {
-                // Compile start, then end (both `Int`).
-                let ty0 = self.compile_expr(&args[0], scope, f);
+            ("substring" | "slice", _)
+                if recv_ty.is_str_like() && substring_bounds(args).is_some() =>
+            {
+                // The bounds arrive either as a `From * To` product (the
+                // canonical, positionless form — alphabetical order puts
+                // `From` first) or, during migration, as two positional
+                // args. Either way: `start`, then `end` (both `Int`).
+                let (start_e, end_e) = substring_bounds(args).unwrap();
+                let ty0 = self.compile_expr(start_e, scope, f);
                 if !matches!(ty0, Ty::I64) {
                     self.drop_value(ty0, f);
                     f.instruction(&Instruction::I64Const(1));
                 }
                 f.instruction(&Instruction::I64Const(1));
                 f.instruction(&Instruction::I64Sub);
-                let ty1 = self.compile_expr(&args[1], scope, f);
+                let ty1 = self.compile_expr(end_e, scope, f);
                 if !matches!(ty1, Ty::I64) {
                     self.drop_value(ty1, f);
                     f.instruction(&Instruction::I64Const(0));
@@ -6708,21 +7223,6 @@ impl<'m> WasmGen<'m> {
                 }
                 Ty::Unit
             }
-        }
-    }
-
-    /// Compile a single argument expected to be a Bool (i32 0/1).
-    /// Non-bool shapes are dropped and replaced with 0 so the chain
-    /// stays type-correct instead of corrupting the stack.
-    fn compile_bool_arg(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) {
-        if let Some(a) = args.first() {
-            let ty = self.compile_expr(a, scope, f);
-            if ty != Ty::I32 {
-                self.drop_value(ty, f);
-                f.instruction(&Instruction::I32Const(0));
-            }
-        } else {
-            f.instruction(&Instruction::I32Const(0));
         }
     }
 
@@ -7838,21 +8338,11 @@ impl<'m> WasmGen<'m> {
         funcs.function(list_concat_ty); // list concat
                                         // User-compiled functions only — extern imports are already declared
                                         // in the import section and must NOT get a defined-function slot.
-                                        // Dedupe by `func_idx`: the same `FuncInfo` can be registered
-                                        // under multiple keys in `func_table` (the self-ctor commutative
-                                        // alias adds a second entry pointing at the same function body).
-                                        // Each function body must declare its type exactly once or the
-                                        // wasm function-section and code-section lengths drift apart.
-        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let mut user_func_defs: Vec<(u32, u32)> = self
-            .func_table
-            .values()
-            .filter(|info| info.func_idx >= self.fn_user_start)
-            .filter(|info| seen_idx.insert(info.func_idx))
-            .map(|info| (info.func_idx, info.type_idx))
-            .collect();
-        user_func_defs.sort_by_key(|(idx, _)| *idx);
-        for (_, type_idx) in &user_func_defs {
+                                        // `compiled_user_funcs` is the single source of truth shared
+                                        // with the code section below: one entry per compiled body, in
+                                        // func-index order, immune to `func_table` key collisions
+                                        // (constructor families register several bodies per name).
+        for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
         // Optional handler wrapper sits at the very end of the function
@@ -7903,29 +8393,13 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
-        // User functions — compile each FunctionDef in ascending func_idx order
-        let ordered_funcs: Vec<FunctionDef> = {
-            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
-            for item in self.ast.items.iter() {
-                if let Item::Function(func) = item {
-                    if func.name.name == "main" && func.receiver.is_none() {
-                        continue;
-                    }
-                    if func.extern_wasm.is_some() {
-                        continue;
-                    }
-                    let key = (
-                        func.receiver.as_ref().map(|r| r.name.clone()),
-                        func.name.name.clone(),
-                    );
-                    if let Some(info) = self.func_table.get(&key) {
-                        pairs.push((info.func_idx, func.clone()));
-                    }
-                }
-            }
-            pairs.sort_by_key(|(idx, _)| *idx);
-            pairs.into_iter().map(|(_, f)| f).collect()
-        };
+        // User functions — one body per `compiled_user_funcs` entry, in
+        // func-index order (matches the function section above exactly).
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
@@ -8188,16 +8662,7 @@ impl<'m> WasmGen<'m> {
         funcs.function(str_cmp_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
-        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let mut user_func_defs: Vec<(u32, u32)> = self
-            .func_table
-            .values()
-            .filter(|info| info.func_idx >= self.fn_user_start)
-            .filter(|info| seen_idx.insert(info.func_idx))
-            .map(|info| (info.func_idx, info.type_idx))
-            .collect();
-        user_func_defs.sort_by_key(|(idx, _)| *idx);
-        for (_, type_idx) in &user_func_defs {
+        for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
         funcs.function(ty_cabi_realloc); // cabi_realloc, appended last
@@ -8225,7 +8690,7 @@ impl<'m> WasmGen<'m> {
         m.section(&globals);
 
         // ── Exports ──────────────────────────────────────────────────
-        let cabi_realloc_idx = self.fn_user_start + user_func_defs.len() as u32;
+        let cabi_realloc_idx = self.fn_user_start + self.compiled_user_funcs.len() as u32;
         let mut exports = ExportSection::new();
         exports.export("memory", ExportKind::Memory, 0);
         exports.export("cabi_realloc", ExportKind::Func, cabi_realloc_idx);
@@ -8252,25 +8717,11 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
-        let ordered_funcs: Vec<FunctionDef> = {
-            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
-            for item in self.ast.items.iter() {
-                if let Item::Function(func) = item {
-                    if func.extern_wasm.is_some() {
-                        continue;
-                    }
-                    let key = (
-                        func.receiver.as_ref().map(|r| r.name.clone()),
-                        func.name.name.clone(),
-                    );
-                    if let Some(info) = self.func_table.get(&key) {
-                        pairs.push((info.func_idx, func.clone()));
-                    }
-                }
-            }
-            pairs.sort_by_key(|(idx, _)| *idx);
-            pairs.into_iter().map(|(_, f)| f).collect()
-        };
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
@@ -8350,17 +8801,17 @@ impl<'m> WasmGen<'m> {
         // core shape (from `init`'s result signature).
         let init_info = self
             .func_table
-            .get(&(None, "init".to_string()))
+            .get(&web.init)
             .cloned()
             .expect("web entry `init` missing from func table");
         let update_info = self
             .func_table
-            .get(&(Some(model.clone()), "update".to_string()))
+            .get(&web.update)
             .cloned()
             .expect("web entry `update` missing from func table");
         let view_info = self
             .func_table
-            .get(&(Some(model.clone()), "view".to_string()))
+            .get(&web.view)
             .cloned()
             .expect("web entry `view` missing from func table");
         let sig_of = |type_idx: u32| -> &(Vec<ValType>, Vec<ValType>) {
@@ -8476,16 +8927,7 @@ impl<'m> WasmGen<'m> {
         funcs.function(str_cmp_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
-        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let mut user_func_defs: Vec<(u32, u32)> = self
-            .func_table
-            .values()
-            .filter(|info| info.func_idx >= self.fn_user_start)
-            .filter(|info| seen_idx.insert(info.func_idx))
-            .map(|info| (info.func_idx, info.type_idx))
-            .collect();
-        user_func_defs.sort_by_key(|(idx, _)| *idx);
-        for (_, type_idx) in &user_func_defs {
+        for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
         m.section(&funcs);
@@ -8535,25 +8977,11 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
-        let ordered_funcs: Vec<FunctionDef> = {
-            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
-            for item in self.ast.items.iter() {
-                if let Item::Function(func) = item {
-                    if func.extern_wasm.is_some() {
-                        continue;
-                    }
-                    let key = (
-                        func.receiver.as_ref().map(|r| r.name.clone()),
-                        func.name.name.clone(),
-                    );
-                    if let Some(info) = self.func_table.get(&key) {
-                        pairs.push((info.func_idx, func.clone()));
-                    }
-                }
-            }
-            pairs.sort_by_key(|(idx, _)| *idx);
-            pairs.into_iter().map(|(_, f)| f).collect()
-        };
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
@@ -8735,6 +9163,7 @@ fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::erro
                 },
                 type_args: vec![],
                 args: vec![],
+                piped: false,
                 span,
             },
         })
@@ -8753,6 +9182,7 @@ fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::erro
             },
             type_args: vec![],
             args: vec![next],
+            piped: false,
             span,
         };
     }
@@ -8787,6 +9217,7 @@ fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::erro
                 },
                 type_args: vec![],
                 args: vec![],
+                piped: false,
                 span,
             },
         })
@@ -8805,6 +9236,7 @@ fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::erro
             },
             type_args: vec![],
             args: vec![next],
+            piped: false,
             span,
         };
     }

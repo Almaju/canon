@@ -8,16 +8,16 @@ Ord = Equal
   + Greater
   + Less
 
-describe = (Ord) -> String {
-    Ord.(
-        * (Equal) -> String { "equal" }
-        * (Greater) -> String { "greater" }
-        * (Less) -> String { "less" }
+describe = (Ord) => String {
+    Ord -> (
+        * Equal => String { "equal" }
+        * Greater => String { "greater" }
+        * Less => String { "less" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     Equal()
         .describe()
-        .print()
+        -> Print
 }

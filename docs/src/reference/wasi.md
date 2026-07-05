@@ -7,7 +7,7 @@ involved; you normally only touch the top one.
 ## The layers
 
 1. **The `canon/std` wrappers**: curated wrappers with Canon idioms
-   (`Random()`, `Args()`, `Exit(1).exit()`). This is the layer
+   (`Random()`, `Args()`, `1 -> Exited`). This is the layer
    programs reach — referencing a name like `Random` resolves to it
    automatically. See the [Standard Library](./stdlib.md).
 2. **The `wasi/…` bindings**: machine-generated, one file per WIT
@@ -46,9 +46,9 @@ and version, and the loader derives each declaration's binding from
 the path (a binding file is recognized by shape):
 
 ```canon
-getArguments = () -> List<String>
+getArguments = () => List<String>
 
-getInitialCwd = () -> Option<String>
+getInitialCwd = () => Option<String>
 ```
 
 Your code imports and calls them like any Canon function. `canon bindgen <wit-or-wasm> -o <dir>` does the same

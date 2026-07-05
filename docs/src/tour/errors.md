@@ -4,7 +4,7 @@ Errors are values, carried by the standard `Result<T, E>` type. The error
 slot is a regular type, so it can be a union written inline:
 
 ```canon
-read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
+read = (File * Path) => Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
 ```
@@ -22,11 +22,11 @@ The postfix `?` operator propagates failure. It works on both
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```canon
-main = () -> Result<Unit, Unit> {
-    Ok(42)?.print()
+Unit => Result<Program, Unit> {
+    Ok(42)? -> Print
     Some(7).(
-        * (None) -> Unit { "absent".print() }
-        * (Some<Int>) -> Unit { "present".print() }
+        * (None) => Unit { "absent" -> Print }
+        * (Some<Int>) => Unit { "present" -> Print }
     )
     Ok(Unit())
 }
@@ -53,7 +53,7 @@ Because `?` is postfix, error-propagating pipelines read top-down,
 left-to-right:
 
 ```canon
-readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
+readConfig = (File * Path) => Result<Config, IoError + ParseError> {
     File
         .read(Path)?
         .parse()?
@@ -72,12 +72,12 @@ A type with a declared constructor that returns `Result<Self, E>`
 forces callers to handle the failure mode:
 
 ```canon
-Url("https://example.com")?.get()?.print()
+Url("https://example.com")? -> Fetched?.print()
 ```
 
 Both `?`s do the same job: unwrapping a `Result` at the point of use.
 The first handles `Url` parsing failure (`InvalidUrl`); the second
-handles `.get()` failure (`HttpError`). The function's return type then
+handles fetch failure (`HttpError`). The function's return type then
 carries the union: `Result<Unit, HttpError + InvalidUrl>`.
 
 ## Error Naming

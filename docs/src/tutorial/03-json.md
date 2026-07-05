@@ -12,7 +12,7 @@ ordinary expression, and it evaluates to the encoded JSON text: a
 receive:
 
 ```canon
-notFound = () -> Body {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 ```
@@ -22,7 +22,7 @@ literal *is* the wire format. Arrays work the same way, and literals
 nest:
 
 ```canon
-indexBody = () -> Body {
+Unit => IndexBody {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 ```
@@ -47,26 +47,32 @@ can't provide. Inside a handler, keep literals fully static.
 ## The Full Program
 
 ```canon
-indexBody = () -> Body {
+IndexBody = Body
+
+NotFound = Body
+
+NoteOneBody = Body
+
+Unit => IndexBody {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 
-notFound = () -> Body {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 
-noteOneBody = () -> Body {
+Unit => NoteOneBody {
     Body({"title":"ship canon v1"})
 }
 
-serve = (Request) -> Response {
+Request => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOneBody() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(IndexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(NoteOneBody() * Headers() * Status(200)) }
+                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -83,8 +89,9 @@ $ curl localhost:8080/other
 {"error":"not found"}
 ```
 
-The ordering is everywhere: the functions (`indexBody`,
-`notFound`, `noteOneBody`, `serve`) are alphabetical, and so are the
+The ordering is everywhere: the newtype constructors (`IndexBody`,
+`NotFound`, `NoteOneBody`) are alphabetical — and the anonymous entry
+sorts in among them by its produced type, `Response` — and so are the
 literal route arms (`"/notes"`, `"/notes/1"`), catch-all last. Both are
 enforced, and both are auto-fixed by `canon fmt`, so you never sort by
 hand. This is the [ordering rule](../spec/ordering.md) that runs

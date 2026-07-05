@@ -1,6 +1,7 @@
-main = () -> Unit {
-    Path("Cargo.toml")
-        .File()?
+Unit => Program {
+    "Cargo.toml"
+        -> Path
+        -> File?
         .read()?
-        .print()
+        -> Print
 }

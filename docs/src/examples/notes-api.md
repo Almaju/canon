@@ -23,31 +23,39 @@ HTTP/1.1 404 Not Found
 ## The Source
 
 ```canon
-indexBody = () -> Body {
+IndexBody = Body
+
+NotFound = Body
+
+NoteOne = Body
+
+NoteTwo = Body
+
+Unit => IndexBody {
     Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
 }
 
-notFound = () -> Body {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 
-noteOne = () -> Body {
+Unit => NoteOne {
     Body({"id":1,"title":"ship canon v1"})
 }
 
-noteTwo = () -> Body {
+Unit => NoteTwo {
     Body({"id":2,"title":"write the docs"})
 }
 
-serve = (Request) -> Response {
+Request => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOne() * Headers() * Status(200)) }
-                * ("/notes/2") -> Response { Response(noteTwo() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(IndexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(NoteOne() * Headers() * Status(200)) }
+                * ("/notes/2") => Response { Response(NoteTwo() * Headers() * Status(200)) }
+                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -56,12 +64,13 @@ serve = (Request) -> Response {
 
 ## What It Demonstrates
 
-- **The entry-point rule.** The one function returning `Response` is
-  the service. No `main`, no port in the program; the host decides how
-  to serve it.
-- **Helpers return values, not worlds.** Only `serve` may return
-  `Response`, so the note bodies are `() -> Body` functions. This is
-  the layering the rule enforces.
+- **The entry-point rule.** The one arrow returning `Response` is the
+  service — an anonymous `Request => Response`, selected by signature.
+  No `main`, no port in the program; the host decides how to serve it.
+- **Constructors return values, not worlds.** Only the entry may return
+  `Response`, so each note body is a constructor for its own `Body`
+  newtype (`IndexBody`, `NoteOne`, …), built with `Unit => IndexBody`.
+  This is the layering the rule enforces.
 - **JSON literals.** The bodies are JSON object/array literals,
   ordinary expressions that evaluate to the encoded text, so a static
   body costs no imports and no serializer.

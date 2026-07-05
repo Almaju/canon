@@ -1,4 +1,4 @@
-main = () -> Unit {
-    "exiting cleanly".print()
-    Exit(0).exit()
+Unit => Program {
+    "exiting cleanly" -> Print
+    0 -> Exited
 }

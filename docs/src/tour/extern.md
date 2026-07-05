@@ -13,7 +13,7 @@ deps/wasi/random@0.3.0-rc-2026-03-15/random.can
 ```
 
 ```canon
-getRandomU64 = () -> Int
+getRandomU64 = () => Int
 ```
 
 The path spells the interface; the declaration's kebab-case form names
@@ -62,7 +62,7 @@ extern function:
 ```canon
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl> {
+Url = (String) => Result<Url, InvalidUrl> {
     String.parse()
 }
 ```
@@ -80,7 +80,7 @@ Async-ness is not declared — it is read off the signature. A binding
 whose return type is `Future<T>` is a suspending import:
 
 ```canon
-serve = (HttpServer) -> Future<Result<Unit, IoError>>
+(HttpServer) => Future<Result<Served, IoError>>
 ```
 
 The compiler lowers the call site through the *async* canonical ABI

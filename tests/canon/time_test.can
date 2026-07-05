@@ -1,5 +1,5 @@
-testUnixAfter2001 = () -> TestResult {
+testUnixAfter2001 = () => TestResult {
     Unix()
-        .ge(1000000000)
-        .assert("wall clock reads after 2001-09-09")
+        -> Ge(1000000000)
+        -> TestResult("wall clock reads after 2001-09-09")
 }

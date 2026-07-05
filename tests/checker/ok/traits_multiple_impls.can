@@ -2,21 +2,23 @@ Greeting = String
 
 Name = String
 
-Show = () -> String
+Show = () => String
 
-Show = (Greeting) -> String {
+Show = (Greeting) => String {
     "HELLO!"
 }
 
-Show = (Name) -> String {
+Show = (Name) => String {
     "Alice"
 }
 
-main = () -> Unit {
-    Greeting("hi")
-        .Show()
-        .print()
-    Name("Alice")
-        .Show()
-        .print()
+main = () => Unit {
+    "hi"
+        -> Greeting
+        -> Show
+        -> Print
+    "Alice"
+        -> Name
+        -> Show
+        -> Print
 }

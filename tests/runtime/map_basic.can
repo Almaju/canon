@@ -1,56 +1,56 @@
-main = () -> Unit {
-    Map().insert("b", "banana").insert("a", "apple").get("a").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+main = () => Unit {
+    Map() -> Inserted("b" * "banana") -> Inserted("a" * "apple") -> Value("a") -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
-    Map().insert("k", "v1").insert("k", "v2").get("k").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+    Map() -> Inserted("k" * "v1") -> Inserted("k" * "v2") -> Value("k") -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
-    Map().insert("a", "1").get("missing").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+    Map() -> Inserted("a" * "1") -> Value("missing") -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
     Map()
-        .insert("a", "1")
-        .insert("b", "2")
-        .length()
-        .print()
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
+        -> Length
+        -> Print
     Map()
-        .insert("a", "1")
-        .insert("b", "2")
-        .remove("a")
-        .length()
-        .print()
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
+        -> Removed("a")
+        -> Length
+        -> Print
     Map()
-        .insert("a", "1")
-        .insert("b", "2")
-        .keys()
-        .Json()
-        .print()
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
+        -> Keys
+        -> Json
+        -> Print
     Map()
-        .insert("a", "1")
-        .insert("b", "2")
-        .values()
-        .Json()
-        .print()
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
+        -> Values
+        -> Json
+        -> Print
     Map()
-        .insert("a", "1")
-        .remove("missing")
-        .length()
-        .print()
+        -> Inserted("a" * "1")
+        -> Removed("missing")
+        -> Length
+        -> Print
     Map()
-        .insert("b", "2")
-        .insert("c", "3")
-        .insert("a", "1")
-        .keys()
-        .Json()
-        .print()
+        -> Inserted("b" * "2")
+        -> Inserted("c" * "3")
+        -> Inserted("a" * "1")
+        -> Keys
+        -> Json
+        -> Print
     Map()
-        .insert("b", "2")
-        .insert("c", "3")
-        .insert("a", "1")
-        .values()
-        .Json()
-        .print()
+        -> Inserted("b" * "2")
+        -> Inserted("c" * "3")
+        -> Inserted("a" * "1")
+        -> Values
+        -> Json
+        -> Print
 }

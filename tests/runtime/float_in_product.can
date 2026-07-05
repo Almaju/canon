@@ -4,7 +4,7 @@ Price = Float
 
 Quote = Label * Price
 
-main = () -> Unit {
-    Quote(Label("widget") * Price(19.99)).Label.print()
-    Quote(Label("widget") * Price(19.99)).Price.print()
+main = () => Unit {
+    "widget" -> Label -> Quote(19.99 -> Price).Label -> Print
+    "widget" -> Label -> Quote(19.99 -> Price).Price -> Print
 }

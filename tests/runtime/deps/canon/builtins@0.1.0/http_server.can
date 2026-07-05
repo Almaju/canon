@@ -1,3 +1,3 @@
-echo = (String) -> Future<String>
+echo = (String) => Future<String>
 
-slowEcho = (String) -> Future<String>
+slowEcho = (String) => Future<String>

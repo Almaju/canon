@@ -5,7 +5,7 @@
 //!
 //!   - Type declarations (records → products, variants → unions, etc.),
 //!     emitted in alphabetical order.
-//!   - Function declarations as `extern Wasm("ns:pkg/iface@ver#fn") name = (...) -> T`,
+//!   - Function declarations as `extern Wasm("ns:pkg/iface@ver#fn") name = (...) => T`,
 //!     also in alphabetical order.
 //!
 //! V1 scope (per the design doc): no resources, no async, no streams /
@@ -575,7 +575,7 @@ fn emit_function(
     // interfaces both exporting `now`) can't be discovered by its bare
     // leaf name in the flat, `use`-free namespace. It is emitted as a
     // method on the interface's zero-data capability marker
-    // (`now = (MonotonicClock) -> Mark`): reference discovery resolves
+    // (`now = (MonotonicClock) => Mark`): reference discovery resolves
     // on the unique marker type (`MonotonicClock.now()`), the codegen
     // drops the Unit receiver so the WIT call stays zero-arg, and the
     // loader's shape rule derives `#now` from the path — the marker is
@@ -596,7 +596,7 @@ fn emit_function(
     } else {
         (params_str, false)
     };
-    let _ = writeln!(decl, "{} = {} -> {}", camel, params_str, ret);
+    let _ = writeln!(decl, "{} = {} => {}", camel, params_str, ret);
 
     Ok((camel, decl, used_capability))
 }

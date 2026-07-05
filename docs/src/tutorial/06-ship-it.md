@@ -50,13 +50,13 @@ Thirty-ish lines of Canon, and along the way, most of the language:
 
 | You used | The idea |
 |---|---|
-| `serve = (Request) -> Response` | the entry-point rule: programs are selected by signature |
+| `Request => Response` | the entry-point rule: selected by signature, no name needed |
 | `Request.path().( … )` | union dispatch, the only branching construct |
-| `String.( * ("/notes") -> … )` | literal dispatch with a mandatory catch-all: the route table |
+| `String.( * ("/notes") => … )` | literal dispatch with a mandatory catch-all: the route table |
 | `Body`, `Status(404)`, `Note` | newtypes as documentation and access control |
-| `.concat(…)` chains | no locals; data flows through method chains |
+| `-> Joined(…)` chains | no locals; data flows through the pipe |
 | `Note` in its own file | file-based modules, one type per file, imports by reference |
-| `() -> TestResult` | signature-driven test discovery |
+| `() => TestResult` | signature-driven test discovery |
 | `canon build` | one portable component, no toolchain |
 
 ## Where to Go Next

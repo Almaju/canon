@@ -8,18 +8,20 @@ Tree = Branch + Leaf
 
 Value = Int
 
-describe = (Tree) -> String {
-    Tree.(
-        * (Branch) -> String { "branch" }
-        * (Leaf) -> String { "leaf" }
+describe = (Tree) => String {
+    Tree -> (
+        * Branch => String { "branch" }
+        * Leaf => String { "leaf" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     Leaf()
         .describe()
-        .print()
-    Branch(Left(Leaf()) * Right(Leaf()) * Value(7))
+        -> Print
+    7
+        -> Value
+        -> Branch(Leaf() -> Left * Leaf() -> Right)
         .describe()
-        .print()
+        -> Print
 }
