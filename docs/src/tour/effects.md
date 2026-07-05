@@ -13,9 +13,9 @@ corresponding type.
 ```canon
 main = () => Unit {
     Path("./data.json")
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 

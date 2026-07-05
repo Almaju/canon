@@ -1,5 +1,5 @@
 main = () => Unit {
-    {"answer":42,"label":"life"}.print()
-    [1,2,3].print()
-    {"nested":{"x":1},"arr":[true,false,null]}.print()
+    {"answer":42,"label":"life"} -> Print
+    [1,2,3] -> Print
+    {"nested":{"x":1},"arr":[true,false,null]} -> Print
 }

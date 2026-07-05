@@ -6,9 +6,9 @@ the canonical demonstration of Canon's *type chain as access control*.
 ```canon
 main = () => Unit {
     Path("Cargo.toml")
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 

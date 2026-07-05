@@ -1,5 +1,5 @@
 Greeting = String
 
 main = () => Unit {
-    Greeting("hello").print()
+    Greeting("hello") -> Print
 }

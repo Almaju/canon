@@ -1,8 +1,8 @@
 main = () => Result<Unit, MalformedJson> {
-    Json("[1, 2, 3]")?.print()
-    Json("{\"a\":1,\"b\":[true,false,null]}")?.print()
-    Json("\"a plain string\"")?.print()
-    Json("42")?.print()
-    Json("null")?.print()
+    Json("[1, 2, 3]")? -> Print
+    Json("{\"a\":1,\"b\":[true,false,null]}")? -> Print
+    Json("\"a plain string\"")? -> Print
+    Json("42")? -> Print
+    Json("null")? -> Print
     Ok(Unit())
 }

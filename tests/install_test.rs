@@ -266,7 +266,7 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "main = () => Unit {\n    spin().print()\n}\n").expect("write entry");
+    fs::write(&entry, "main = () => Unit {\n    spin() -> Print\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
@@ -303,7 +303,7 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "main = () => Unit {\n    spin().print()\n}\n").expect("write entry");
+    fs::write(&entry, "main = () => Unit {\n    spin() -> Print\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 

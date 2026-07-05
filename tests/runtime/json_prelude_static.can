@@ -1,7 +1,7 @@
 main = () => Unit {
-    {"answer":42,"label":"life"}.print()
-    [1,2,3].print()
+    {"answer":42,"label":"life"} -> Print
+    [1,2,3] -> Print
     {"tag":"x"}
-        .length()
-        .print()
+        -> Length
+        -> Print
 }

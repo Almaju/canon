@@ -1,56 +1,56 @@
 main = () => Unit {
-    Map().Inserted("b", "banana").Inserted("a", "apple").Value("a").(
-        * (None) => Unit { "none".print() }
-        * (Some<String>) => Unit { String.print() }
+    Map() -> Inserted("b", "banana") -> Inserted("a", "apple") -> Value("a").(
+        * (None) => Unit { "none" -> Print }
+        * (Some<String>) => Unit { String -> Print }
     )
-    Map().Inserted("k", "v1").Inserted("k", "v2").Value("k").(
-        * (None) => Unit { "none".print() }
-        * (Some<String>) => Unit { String.print() }
+    Map() -> Inserted("k", "v1") -> Inserted("k", "v2") -> Value("k").(
+        * (None) => Unit { "none" -> Print }
+        * (Some<String>) => Unit { String -> Print }
     )
-    Map().Inserted("a", "1").Value("missing").(
-        * (None) => Unit { "none".print() }
-        * (Some<String>) => Unit { String.print() }
+    Map() -> Inserted("a", "1") -> Value("missing").(
+        * (None) => Unit { "none" -> Print }
+        * (Some<String>) => Unit { String -> Print }
     )
     Map()
-        .Inserted("a", "1")
-        .Inserted("b", "2")
-        .Length()
-        .print()
+        -> Inserted("a", "1")
+        -> Inserted("b", "2")
+        -> Length
+        -> Print
     Map()
-        .Inserted("a", "1")
-        .Inserted("b", "2")
-        .Removed("a")
-        .Length()
-        .print()
+        -> Inserted("a", "1")
+        -> Inserted("b", "2")
+        -> Removed("a")
+        -> Length
+        -> Print
     Map()
-        .Inserted("a", "1")
-        .Inserted("b", "2")
-        .Keys()
-        .Json()
-        .print()
+        -> Inserted("a", "1")
+        -> Inserted("b", "2")
+        -> Keys
+        -> Json
+        -> Print
     Map()
-        .Inserted("a", "1")
-        .Inserted("b", "2")
-        .Values()
-        .Json()
-        .print()
+        -> Inserted("a", "1")
+        -> Inserted("b", "2")
+        -> Values
+        -> Json
+        -> Print
     Map()
-        .Inserted("a", "1")
-        .Removed("missing")
-        .Length()
-        .print()
+        -> Inserted("a", "1")
+        -> Removed("missing")
+        -> Length
+        -> Print
     Map()
-        .Inserted("b", "2")
-        .Inserted("c", "3")
-        .Inserted("a", "1")
-        .Keys()
-        .Json()
-        .print()
+        -> Inserted("b", "2")
+        -> Inserted("c", "3")
+        -> Inserted("a", "1")
+        -> Keys
+        -> Json
+        -> Print
     Map()
-        .Inserted("b", "2")
-        .Inserted("c", "3")
-        .Inserted("a", "1")
-        .Values()
-        .Json()
-        .print()
+        -> Inserted("b", "2")
+        -> Inserted("c", "3")
+        -> Inserted("a", "1")
+        -> Values
+        -> Json
+        -> Print
 }

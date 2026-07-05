@@ -52,7 +52,9 @@ shout = (Greeter) => String {
 
 ```canon
 main = () => Unit {
-    Greeter("hi").shout().print()
+    Greeter("hi")
+        .shout()
+        -> Print
 }
 ```
 

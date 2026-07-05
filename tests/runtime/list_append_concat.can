@@ -1,15 +1,15 @@
 main = () => Unit {
     List(1, 2)
-        .append(3)
-        .length()
-        .print()
+        -> Appended(3)
+        -> Length
+        -> Print
     List("a")
-        .append("b")
-        .concat(List("c", "d"))
-        .Json()
-        .print()
-    List(10, 20).append(30).get(3).(
-        * (None) => Unit { "none".print() }
-        * (Some<Int>) => Unit { Int.print() }
+        -> Appended("b")
+        -> Joined(List("c", "d"))
+        -> Json
+        -> Print
+    List(10, 20) -> Appended(30) -> At(3).(
+        * (None) => Unit { "none" -> Print }
+        * (Some<Int>) => Unit { Int -> Print }
     )
 }

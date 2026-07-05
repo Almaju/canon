@@ -5,6 +5,6 @@ User = Birthday * Username
 Username = String
 
 main = () => Unit {
-    User(Birthday("1990") * Username("alice")).Username.print()
-    User(Birthday("1990") * Username("alice")).Birthday.print()
+    User(Birthday("1990") * Username("alice")).Username -> Print
+    User(Birthday("1990") * Username("alice")).Birthday -> Print
 }

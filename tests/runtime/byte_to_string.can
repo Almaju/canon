@@ -1,9 +1,9 @@
 main = () => Unit {
-    String(Byte(65)).print()
+    String(Byte(65)) -> Print
     String(Byte(97))
-        .concat(String(Byte(98)))
-        .print()
+        -> Joined(String(Byte(98)))
+        -> Print
     Byte(33)
-        .String()
-        .print()
+        -> String
+        -> Print
 }

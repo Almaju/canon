@@ -1,22 +1,22 @@
 main = () => Unit {
     Int("42").(
-        * (Err<MalformedInt>) => Unit { "err".print() }
-        * (Ok<Int>) => Unit { Int.print() }
+        * (Err<MalformedInt>) => Unit { "err" -> Print }
+        * (Ok<Int>) => Unit { Int -> Print }
     )
     Int("-7").(
-        * (Err<MalformedInt>) => Unit { "err".print() }
-        * (Ok<Int>) => Unit { Int.print() }
+        * (Err<MalformedInt>) => Unit { "err" -> Print }
+        * (Ok<Int>) => Unit { Int -> Print }
     )
-    "123".Int().(
-        * (Err<MalformedInt>) => Unit { "err".print() }
-        * (Ok<Int>) => Unit { Int.print() }
+    "123" -> Int.(
+        * (Err<MalformedInt>) => Unit { "err" -> Print }
+        * (Ok<Int>) => Unit { Int -> Print }
     )
     Int("abc").(
-        * (Err<MalformedInt>) => Unit { MalformedInt.print() }
-        * (Ok<Int>) => Unit { Int.print() }
+        * (Err<MalformedInt>) => Unit { MalformedInt -> Print }
+        * (Ok<Int>) => Unit { Int -> Print }
     )
     Int("").(
-        * (Err<MalformedInt>) => Unit { MalformedInt.print() }
-        * (Ok<Int>) => Unit { Int.print() }
+        * (Err<MalformedInt>) => Unit { MalformedInt -> Print }
+        * (Ok<Int>) => Unit { Int -> Print }
     )
 }

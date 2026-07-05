@@ -1,6 +1,6 @@
 main = () => Unit {
     True().(
-        * (False) => Unit { "no".print() }
-        * (True) => Unit { "yes".print() }
+        * (False) => Unit { "no" -> Print }
+        * (True) => Unit { "yes" -> Print }
     )
 }

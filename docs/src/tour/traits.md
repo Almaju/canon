@@ -32,11 +32,11 @@ Show = (Name) => String {
 
 main = () => Unit {
     Greeting("hi")
-        .Show()
-        .print()
+        -> Show
+        -> Print
     Name("Alice")
-        .Show()
-        .print()
+        -> Show
+        -> Print
 }
 ```
 

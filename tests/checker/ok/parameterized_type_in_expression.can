@@ -8,5 +8,5 @@ describeParam = (Option) => String {
 }
 
 main = () => Unit {
-    "ok".print()
+    "ok" -> Print
 }

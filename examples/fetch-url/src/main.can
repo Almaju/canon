@@ -1,5 +1,5 @@
 main = () => Unit {
     Url("http://example.com")?
         -> Fetched?
-        .print()
+        -> Print
 }

@@ -18,11 +18,11 @@ Inserted = (Map * String * Value) => Map {
     Map.(
         * (Empty) => Map { Node(String, Empty(), Value) }
         * (Node) => Map {
-            String.lt(Node.Key).(
+            String -> Lt(Node.Key).(
                 * (False) => Map {
-                    String.eq(Node.Key).(
+                    String -> Eq(Node.Key).(
                         * (False) => Map {
-                            Node(Node.Key, Node.Rest.Inserted(String, Value), Node.Value)
+                            Node(Node.Key, Node.Rest -> Inserted(String, Value), Node.Value)
                         }
                         * (True) => Map { Node(String, Node.Rest, Value) }
                     )
@@ -36,14 +36,14 @@ Inserted = (Map * String * Value) => Map {
 (Map) => Keys {
     Map.(
         * (Empty) => Keys { List() }
-        * (Node) => Keys { List(Node.Key).concat(Node.Rest.Keys()) }
+        * (Node) => Keys { List(Node.Key) -> Joined(Node.Rest -> Keys) }
     )
 }
 
 (Map) => Length {
     Map.(
         * (Empty) => Length { 0 }
-        * (Node) => Length { Node.Rest.Length().add(1) }
+        * (Node) => Length { Node.Rest -> Length -> Sum(1) }
     )
 }
 
@@ -55,8 +55,8 @@ Removed = (Map * String) => Map {
     Map.(
         * (Empty) => Map { Empty() }
         * (Node) => Map {
-            Node.Key.eq(String).(
-                * (False) => Map { Node(Node.Key, Node.Rest.Removed(String), Node.Value) }
+            Node.Key -> Eq(String).(
+                * (False) => Map { Node(Node.Key, Node.Rest -> Removed(String), Node.Value) }
                 * (True) => Map { Node.Rest }
             )
         }
@@ -67,8 +67,8 @@ Removed = (Map * String) => Map {
     Map.(
         * (Empty) => Option<Value> { None() }
         * (Node) => Option<Value> {
-            Node.Key.eq(String).(
-                * (False) => Option<Value> { Node.Rest.Value(String) }
+            Node.Key -> Eq(String).(
+                * (False) => Option<Value> { Node.Rest -> Value(String) }
                 * (True) => Option<Value> { Some(Node.Value) }
             )
         }
@@ -78,6 +78,6 @@ Removed = (Map * String) => Map {
 (Map) => Values {
     Map.(
         * (Empty) => Values { List() }
-        * (Node) => Values { List(Node.Value).concat(Node.Rest.Values()) }
+        * (Node) => Values { List(Node.Value) -> Joined(Node.Rest -> Values) }
     )
 }

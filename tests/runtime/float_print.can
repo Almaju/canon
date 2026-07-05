@@ -1,23 +1,23 @@
 main = () => Unit {
-    0.0.print()
-    2.5.print()
+    0.0 -> Print
+    2.5 -> Print
     3.25
-        .mul(4.0)
-        .print()
+        -> Product(4.0)
+        -> Print
     1.5
-        .sub(4.0)
-        .print()
-    100.125.print()
-    7.0.print()
-    0.000001.print()
+        -> Difference(4.0)
+        -> Print
+    100.125 -> Print
+    7.0 -> Print
+    0.000001 -> Print
     1.0
-        .div(0.0)
-        .print()
+        -> Quotient(0.0)
+        -> Print
     0.0
-        .div(0.0)
-        .print()
+        -> Quotient(0.0)
+        -> Print
     0.0
-        .sub(1.0)
-        .div(0.0)
-        .print()
+        -> Difference(1.0)
+        -> Quotient(0.0)
+        -> Print
 }

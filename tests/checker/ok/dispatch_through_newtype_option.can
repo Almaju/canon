@@ -10,5 +10,5 @@ describe = (MessageContent) => String {
 }
 
 main = () => Unit {
-    "ok".print()
+    "ok" -> Print
 }

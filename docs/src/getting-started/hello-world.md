@@ -4,7 +4,7 @@ Create a file named `hello.can`:
 
 ```canon,run=hello-world
 main = () => Unit {
-    "hello".print()
+    "hello" -> Print
 }
 ```
 

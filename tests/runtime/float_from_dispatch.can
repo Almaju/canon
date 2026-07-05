@@ -8,8 +8,8 @@ half = (Bool) => Float {
 main = () => Unit {
     True()
         .half()
-        .print()
+        -> Print
     False()
         .half()
-        .print()
+        -> Print
 }

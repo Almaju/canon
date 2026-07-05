@@ -1,5 +1,5 @@
 main = () => Unit {
     "hello"
         .shout()
-        .print()
+        -> Print
 }

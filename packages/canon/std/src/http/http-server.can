@@ -9,7 +9,7 @@ HttpServer = (Port) => HttpServer {
 }
 
 Route = (HttpServer * HttpStatus * Method * RoutePath * String) => Route {
-    HttpServer.route(HttpStatus, MethodName(Method.String()), RouteBody(String), RoutePath)
+    HttpServer.route(HttpStatus, MethodName(Method -> String), RouteBody(String), RoutePath)
 }
 
 Served = (HttpServer) => Result<Served, IoError> {

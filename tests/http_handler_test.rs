@@ -36,7 +36,7 @@ fn dynamic_handler_round_trip() {
 
 main = () => Result<Unit, IoError> {{
     HttpServer(Port({port}))
-        .Route(HttpStatus(200), Post(), RoutePath("/"), "unused")
+        -> Route(HttpStatus(200), Post(), RoutePath("/"), "unused")
         -> Served
 }}
 "#,
@@ -126,7 +126,7 @@ fn dynamic_handler_sse_content_type() {
 
 main = () => Result<Unit, IoError> {{
     HttpServer(Port({port}))
-        .Route(HttpStatus(200), Post(), RoutePath("/"), "unused")
+        -> Route(HttpStatus(200), Post(), RoutePath("/"), "unused")
         -> Served
 }}
 "#,

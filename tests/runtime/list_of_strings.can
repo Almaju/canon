@@ -1,5 +1,5 @@
 main = () => Unit {
     List("a", "b", "c")
-        .length()
-        .print()
+        -> Length
+        -> Print
 }

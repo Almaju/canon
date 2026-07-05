@@ -11,9 +11,9 @@ For most collection work, use methods on the collection itself:
 ```canon,run=list-map
 main = () => Unit {
     List(10, 20, 30)
-        .map((Int) => Int { Int.mul(2) })
-        .length()
-        .print()
+        -> Mapped((Int) => Int { Int -> Product(2) })
+        -> Length
+        -> Print
 }
 ```
 
@@ -24,8 +24,8 @@ functions call themselves, and dispatch supplies the base case:
 
 ```canon,run=sum-to
 sumTo = (Int) => Int {
-    Int.eq(0).(
-        * (False) => Int { Int.add(Int.sub(1).sumTo()) }
+    Int -> Eq(0).(
+        * (False) => Int { Int -> Sum(Int -> Difference(1).sumTo()) }
         * (True) => Int { 0 }
     )
 }
@@ -33,7 +33,7 @@ sumTo = (Int) => Int {
 main = () => Unit {
     5
         .sumTo()
-        .print()
+        -> Print
 }
 ```
 

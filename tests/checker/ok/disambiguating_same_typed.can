@@ -11,5 +11,5 @@ equals = (OtherUser * User) => Bool {
 }
 
 main = () => Unit {
-    "compared".print()
+    "compared" -> Print
 }

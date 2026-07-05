@@ -8,6 +8,6 @@ SseEvent = String
 
 (String) => SseEvent {
     "data: "
-        .concat(String)
-        .concat("\n\n")
+        -> Joined(String)
+        -> Joined("\n\n")
 }

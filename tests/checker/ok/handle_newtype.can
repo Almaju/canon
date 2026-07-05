@@ -3,5 +3,5 @@ Counter = Handle
 Gauge = Handle
 
 main = () => Unit {
-    "ok".print()
+    "ok" -> Print
 }

@@ -1,7 +1,7 @@
 main = () => Unit {
     "hello"
         .slowEcho()
-        .parallel("world".slowEcho())
-        .Json()
-        .print()
+        -> Parallel("world".slowEcho())
+        -> Json
+        -> Print
 }

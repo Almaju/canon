@@ -20,5 +20,5 @@ describe = (Tree) => String {
 main = () => Unit {
     Leaf()
         .describe()
-        .print()
+        -> Print
 }

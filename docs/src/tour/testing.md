@@ -10,9 +10,9 @@ A test is any function with the signature `() -> TestResult`:
 ```canon
 testAddPositive = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .TestResult("1 + 2 should be 3")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("1 + 2 should be 3")
 }
 ```
 
@@ -67,15 +67,15 @@ Note = String
 
 render = (Note) => String {
     "{\"title\":\""
-        .concat(Note)
-        .concat("\"}")
+        -> Joined(Note)
+        -> Joined("\"}")
 }
 
 testRenderWrapsTitle = () => TestResult {
     Note("ship it")
         .render()
-        .eq({"title":"ship it"})
-        .TestResult("render should wrap the title in a JSON object")
+        -> Eq({"title":"ship it"})
+        -> TestResult("render should wrap the title in a JSON object")
 }
 ```
 

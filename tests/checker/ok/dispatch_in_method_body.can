@@ -14,5 +14,5 @@ describe = (Mode) => String {
 main = () => Unit {
     Closed()
         .describe()
-        .print()
+        -> Print
 }

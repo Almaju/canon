@@ -1,12 +1,12 @@
 main = () => Unit {
-    String(42).print()
-    String(0).print()
-    String(0.sub(7)).print()
+    String(42) -> Print
+    String(0) -> Print
+    String(0 -> Difference(7)) -> Print
     123
-        .String()
-        .concat("!")
-        .print()
+        -> String
+        -> Joined("!")
+        -> Print
     String(9)
-        .concat(String(10))
-        .print()
+        -> Joined(String(10))
+        -> Print
 }

@@ -2,11 +2,11 @@ Prefix = String
 
 addForm = () => Html {
     Attr("data-msg-form=\"Add:\"")
-        .ElAttr(Attr("placeholder=\"What needs doing?\"").ElAttr("", Tag("input")), Tag("form"))
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
 clearButton = () => Html {
-    Msg("Clear").Button("Clear completed")
+    Msg("Clear") -> Button("Clear completed")
 }
 
 init = () => Todos {
@@ -15,19 +15,19 @@ init = () => Todos {
 }
 
 update = (Todos * String) => Todos {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") => Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
+    Prefix(String -> Substring(1, 4)).(
+        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)).addTodo(Todos) }
         * ("Clea") => Todos { Todos.clearDone() }
-        * ("Dele") => Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Togg") => Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
+        * ("Dele") => Todos { String -> Substring(8, String -> Length).parseNum().removeAt(Todos) }
+        * ("Togg") => Todos { String -> Substring(8, String -> Length).parseNum().toggleAt(Todos) }
         * (Prefix) => Todos { Todos }
     )
 }
 
 view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
-        .concat(addForm().String)
-        .concat(1.renderItems(Todos).Ul())
-        .concat(clearButton().String)
-        .Div()
+        -> Joined(addForm().String)
+        -> Joined(1.renderItems(Todos) -> Ul)
+        -> Joined(clearButton().String)
+        -> Div
 }

@@ -12,14 +12,14 @@ Greeting = String
 }
 
 (Int) => Greeting {
-    Greeting("int:".concat(Int.String()))
+    Greeting("int:" -> Joined(Int -> String))
 }
 
 main = () => Unit {
-    Greeting().print()
-    Greeting(7).print()
-    Greeting(True()).print()
+    Greeting() -> Print
+    Greeting(7) -> Print
+    Greeting(True()) -> Print
     7
-        .Greeting()
-        .print()
+        -> Greeting
+        -> Print
 }

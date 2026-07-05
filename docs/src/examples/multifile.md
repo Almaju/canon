@@ -27,7 +27,7 @@ shout = (Greeter) => String {
 main = () => Unit {
     Greeter("hi")
         .shout()
-        .print()
+        -> Print
 }
 ```
 

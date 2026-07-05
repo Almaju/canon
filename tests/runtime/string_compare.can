@@ -1,26 +1,26 @@
 main = () => Unit {
     "apple"
-        .lt("banana")
-        .print()
+        -> Lt("banana")
+        -> Print
     "banana"
-        .lt("apple")
-        .print()
+        -> Lt("apple")
+        -> Print
     "app"
-        .lt("apple")
-        .print()
+        -> Lt("apple")
+        -> Print
     "apple"
-        .le("apple")
-        .print()
+        -> Le("apple")
+        -> Print
     "apple"
-        .ge("banana")
-        .print()
+        -> Ge("banana")
+        -> Print
     "banana"
-        .gt("apple")
-        .print()
+        -> Gt("apple")
+        -> Print
     "apple"
-        .ne("banana")
-        .print()
+        -> Ne("banana")
+        -> Print
     "apple"
-        .ne("apple")
-        .print()
+        -> Ne("apple")
+        -> Print
 }

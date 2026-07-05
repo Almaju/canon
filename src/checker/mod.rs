@@ -62,7 +62,7 @@ const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 /// first parameter (`Future<T>`) would otherwise force the checker to
 /// look them up as methods on `Future`, which the `Constructor(…)` call
 /// shape doesn't support. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
-const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race"];
+const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race", "Parallel", "Race"];
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
@@ -1740,6 +1740,10 @@ fn method_known_via_aliases(
     arg_count: usize,
     symbols: &SymbolTable,
 ) -> bool {
+    // A types-only vocabulary method (`Mapped`, `Joined`, …) also
+    // matches a camelCase stdlib/binding function of its aliased name —
+    // `stream -> Mapped(f)` binds the `map` FFI function on `Stream`.
+    let alias = crate::ast::builtin_method_alias(method);
     let mut current = receiver_ty;
     let mut depth = 0;
     loop {
@@ -1752,6 +1756,15 @@ fn method_known_via_aliases(
             .is_some_and(|m| m.arity == arg_count)
         {
             return true;
+        }
+        if let Some(canonical) = alias {
+            if symbols
+                .methods
+                .get(&(current.to_string(), canonical.to_string()))
+                .is_some_and(|m| m.arity == arg_count)
+            {
+                return true;
+            }
         }
         if depth >= 20 {
             return false;
@@ -1770,6 +1783,10 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "<unknown>" || receiver_ty == "Self" {
         return true;
     }
+    // Types-only vocabulary (`Print`/`Sum`/`Joined`/…) maps to the
+    // camelCase builtin; only consulted here after user/stdlib lookup
+    // missed, so a same-named function still wins.
+    let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     // `print` is strictly zero-arg. The legacy capability-passing form
     // `.print(Stdout)` compiled to a silent no-op (the builtin only
     // fires on zero args), so accepting it here was a
@@ -1910,7 +1927,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::MethodCall {
             receiver, method, ..
         } => {
-            if method.name == "parallel" {
+            if method.name == "parallel" || method.name == "Parallel" {
                 // `a.parallel(b)` returns `Future<List<T>>`; the
                 // auto-await collapses `Future<List<T>>` → `List<T>` at
                 // any consuming site, so we report `List` here to keep
@@ -1918,7 +1935,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 // flowing.
                 return "List".to_string();
             }
-            if method.name == "race" {
+            if method.name == "race" || method.name == "Race" {
                 // `a.race(b) -> Future<T>` collapses to `T`. The receiver
                 // is `Future<T>` where T is what the inner async call
                 // returns; the auto-await transform peels the outer
@@ -1929,6 +1946,14 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             if let Some(sig) = symbols.methods.get(&(recv_ty.clone(), method.name.clone())) {
                 return sig.return_ty.clone();
+            }
+            if let Some(canonical) = crate::ast::builtin_method_alias(&method.name) {
+                if let Some(sig) = symbols
+                    .methods
+                    .get(&(recv_ty.clone(), canonical.to_string()))
+                {
+                    return sig.return_ty.clone();
+                }
             }
             method_return_type(&recv_ty, &method.name)
         }
@@ -2057,6 +2082,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
 }
 
 fn method_return_type(receiver_ty: &str, method: &str) -> String {
+    let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     match (receiver_ty, method) {
         ("String", "print")
         | ("Int", "print")

@@ -8,7 +8,7 @@ objects. Construct the value, use it.
 
 ```canon
 main = () => Unit {
-    Now().print()
+    Now() -> Print
 }
 ```
 
@@ -25,7 +25,7 @@ inherited straight through the alias.
 
 ```canon
 main = () => Unit {
-    Instant().print()
+    Instant() -> Print
 }
 ```
 
@@ -38,7 +38,7 @@ provides wall-clock Unix seconds.
 
 ```canon
 main = () => Unit {
-    Random().print()
+    Random() -> Print
 }
 ```
 
@@ -51,7 +51,7 @@ miniature.
 
 ```canon
 main = () => Unit {
-    "exiting cleanly".print()
+    "exiting cleanly" -> Print
     0 -> Exited
 }
 ```

@@ -1,11 +1,11 @@
 main = () => Result<Unit, IoError> {
-    "Starting server on port 3000...".print()
-    "  GET  /        -> 200 Hello from Canon!".print()
-    "  GET  /health  -> 200 ok".print()
-    "  POST /echo    -> 200 received".print()
+    "Starting server on port 3000..." -> Print
+    "  GET  /        -> 200 Hello from Canon!" -> Print
+    "  GET  /health  -> 200 ok" -> Print
+    "  POST /echo    -> 200 received" -> Print
     HttpServer(Port(3000))
-        .Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
-        .Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
-        .Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
+        -> Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
+        -> Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
+        -> Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
         -> Served
 }

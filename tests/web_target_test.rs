@@ -26,19 +26,19 @@ init = () => Model {
 
 update = (Model * String) => Model {
     String.(
-        * ("Decrement") => Model { Model(Model.sub(1)) }
-        * ("Increment") => Model { Model(Model.add(1)) }
+        * ("Decrement") => Model { Model(Model -> Difference(1)) }
+        * ("Increment") => Model { Model(Model -> Sum(1)) }
         * (String) => Model { Model }
     )
 }
 
 view = (Model) => Html {
     "Canon Counter"
-        .H1()
-        .concat(Msg("Decrement").Button("-"))
-        .concat(Model.String().Span())
-        .concat(Msg("Increment").Button("+"))
-        .Div()
+        -> H1
+        -> Joined(Msg("Decrement") -> Button("-"))
+        -> Joined(Model -> String -> Span)
+        -> Joined(Msg("Increment") -> Button("+"))
+        -> Div
 }
 "#;
 

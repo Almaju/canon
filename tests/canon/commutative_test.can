@@ -1,23 +1,25 @@
+Greeted = Greeting
+
 Greeting = String
 
 Name = String
 
-greet = (Greeting * Name) => Greeting {
+Greeted = (Greeting * Name) => Greeted {
     Greeting
 }
 
 testCallableBothWays = () => TestResult {
-    Greeting("hello").greet(Name("world"))
-    Name("world").greet(Greeting("hello"))
+    Greeting("hello") -> Greeted(Name("world"))
+    Name("world") -> Greeted(Greeting("hello"))
     Pass()
 }
 
 testCanonicalDirection = () => TestResult {
-    Greeting("hello").greet(Name("world"))
+    Greeting("hello") -> Greeted(Name("world"))
     Pass()
 }
 
 testNonCanonicalDirection = () => TestResult {
-    Name("world").greet(Greeting("hello"))
+    Name("world") -> Greeted(Greeting("hello"))
     Pass()
 }

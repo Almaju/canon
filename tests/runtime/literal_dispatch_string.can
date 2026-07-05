@@ -2,18 +2,18 @@ route = (String) => String {
     String.(
         * ("/notes") => String { "index" }
         * ("/notes/1") => String { "note one" }
-        * (String) => String { "not found: ".concat(String) }
+        * (String) => String { "not found: " -> Joined(String) }
     )
 }
 
 main = () => Unit {
     "/notes"
         .route()
-        .print()
+        -> Print
     "/notes/1"
         .route()
-        .print()
+        -> Print
     "/oops"
         .route()
-        .print()
+        -> Print
 }

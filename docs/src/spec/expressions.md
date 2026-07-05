@@ -121,7 +121,7 @@ route = (String) => String {
     String.(
         * ("/notes") => String { "index" }
         * ("/notes/1") => String { "note one" }
-        * (String) => String { "not found: ".concat(String) }
+        * (String) => String { "not found: " -> Joined(String) }
     )
 }
 ```
@@ -180,7 +180,7 @@ the moment a program uses its machinery (interpolation, the validating
 
 ```canon
 label = (Int) => Json {
-    {"answer":Int,"doubled":Int.mul(2),"ok":True()}
+    {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 ```
 
@@ -212,7 +212,7 @@ view = (Model) => Html {
     <div>
         <h1>Counter</h1>
         <button data-msg="Increment">+</button>
-        <span>{Model.String()}</span>
+        <span>{Model -> String}</span>
     </div>
 }
 ```
@@ -222,12 +222,12 @@ Interpolated values convert through the `ToHtml` trait: a `String` or
 passes through unchanged, so composing literals never double-escapes:
 
 ```canon
-row = (String) => Html {
-    <li>{String}</li>
-}
-
 list = (String) => Html {
     <ul>{String.row()}</ul>
+}
+
+row = (String) => Html {
+    <li>{String}</li>
 }
 ```
 

@@ -1,6 +1,6 @@
 main = () => Unit {
     Some(7).(
-        * (None) => Unit { "none".print() }
-        * (Some<Int>) => Unit { "some".print() }
+        * (None) => Unit { "none" -> Print }
+        * (Some<Int>) => Unit { "some" -> Print }
     )
 }

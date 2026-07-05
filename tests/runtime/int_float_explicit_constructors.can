@@ -1,7 +1,7 @@
 main = () => Unit {
-    Int(1).print()
+    Int(1) -> Print
     Int(5)
-        .add(Int(2))
-        .print()
-    Float(2.5).print()
+        -> Sum(Int(2))
+        -> Print
+    Float(2.5) -> Print
 }

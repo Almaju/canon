@@ -2,7 +2,7 @@ Prefix = String
 
 addForm = () => Html {
     Attr("data-msg-form=\"Add:\"")
-        .ElAttr(Attr("placeholder=\"What needs doing?\"").ElAttr("", Tag("input")), Tag("form"))
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
 init = () => Todos {
@@ -11,23 +11,23 @@ init = () => Todos {
 
 loadButton = () => Html {
     Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
-        .ElAttr("Load todos from the server", Tag("button"))
+        -> ElAttr("Load todos from the server", Tag("button"))
 }
 
 update = (Todos * String) => Todos {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") => Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
-        * ("Dele") => Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Load") => Todos { Todos(String.substring(6, String.length())) }
-        * ("Togg") => Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
+    Prefix(String -> Substring(1, 4)).(
+        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)).addTodo(Todos) }
+        * ("Dele") => Todos { String -> Substring(8, String -> Length).parseNum().removeAt(Todos) }
+        * ("Load") => Todos { Todos(String -> Substring(6, String -> Length)) }
+        * ("Togg") => Todos { String -> Substring(8, String -> Length).parseNum().toggleAt(Todos) }
         * (Prefix) => Todos { Todos }
     )
 }
 
 view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
-        .concat(addForm().String)
-        .concat(1.renderItems(Todos).Ul())
-        .concat(loadButton().String)
-        .Div()
+        -> Joined(addForm().String)
+        -> Joined(1.renderItems(Todos) -> Ul)
+        -> Joined(loadButton().String)
+        -> Div
 }

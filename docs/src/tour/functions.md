@@ -22,7 +22,7 @@ shout = (Greeting) => String {
 main = () => Unit {
     Greeting("howdy")
         .shout()
-        .print()
+        -> Print
 }
 ```
 
@@ -67,7 +67,7 @@ product members must be distinct types:
 OtherInt = Int
 
 sum = (Int * OtherInt) => Int {
-    Int.add(OtherInt)
+    Int -> Sum(OtherInt)
 }
 ```
 
@@ -112,7 +112,7 @@ and pass it where a matching signature is expected:
 Numbers = Int^*
 
 doubleAll = (Numbers) => Numbers {
-    Numbers.map(Int.double)
+    Numbers -> Mapped(Int.double)
 }
 ```
 
@@ -123,7 +123,7 @@ There is no signature inference:
 
 ```canon
 tripleAll = (Numbers) => Numbers {
-    Numbers.map((Int) => Int { Int.mul(Int(3)) })
+    Numbers -> Mapped((Int) => Int { Int -> Product(Int(3)) })
 }
 ```
 
@@ -160,7 +160,7 @@ as the component's `wasi:cli/run.run` export:
 
 ```canon
 main = () => Unit {
-    "hello".print()
+    "hello" -> Print
 }
 ```
 

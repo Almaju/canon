@@ -8,5 +8,5 @@ greet = (Greeting * Name) => Name {
 
 main = () => Unit {
     Greeting("hello").greet(Name("world"))
-    "ok".print()
+    "ok" -> Print
 }

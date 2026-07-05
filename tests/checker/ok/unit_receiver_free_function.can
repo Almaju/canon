@@ -5,5 +5,5 @@ assistantMessage = (Unit) => String {
 main = () => Unit {
     Unit
         .assistantMessage()
-        .print()
+        -> Print
 }

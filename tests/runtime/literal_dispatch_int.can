@@ -1,8 +1,8 @@
 describe = (Int) => Unit {
     Int.(
-        * (0) => Unit { "zero".print() }
-        * (1) => Unit { "one".print() }
-        * (Int) => Unit { Int.print() }
+        * (0) => Unit { "zero" -> Print }
+        * (1) => Unit { "one" -> Print }
+        * (Int) => Unit { Int -> Print }
     )
 }
 

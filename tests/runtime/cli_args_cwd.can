@@ -1,12 +1,12 @@
 main = () => Unit {
     Args()
-        .length()
-        .print()
+        -> Length
+        -> Print
     Args()
-        .Json()
-        .print()
+        -> Json
+        -> Print
     Cwd().(
-        * (None) => Unit { "no cwd".print() }
-        * (Some<String>) => Unit { "cwd: ".concat(String).print() }
+        * (None) => Unit { "no cwd" -> Print }
+        * (Some<String>) => Unit { "cwd: " -> Joined(String) -> Print }
     )
 }

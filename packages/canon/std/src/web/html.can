@@ -21,39 +21,39 @@ ToHtml = () => Html
 Ul = Html
 
 (Msg * String) => Button {
-    Html("<button data-msg=\"".concat(Msg).concat("\">").concat(String).concat("</button>"))
+    Html("<button data-msg=\"" -> Joined(Msg) -> Joined("\">") -> Joined(String) -> Joined("</button>"))
 }
 
 (String) => Div {
-    Html("<div>".concat(String).concat("</div>"))
+    Html("<div>" -> Joined(String) -> Joined("</div>"))
 }
 
 (String * Tag) => El {
-    Html("<".concat(Tag).concat(">").concat(String).concat("</").concat(Tag).concat(">"))
+    Html("<" -> Joined(Tag) -> Joined(">") -> Joined(String) -> Joined("</") -> Joined(Tag) -> Joined(">"))
 }
 
 (Attr * String * Tag) => ElAttr {
-    Html("<".concat(Tag).concat(" ").concat(Attr).concat(">").concat(String).concat("</").concat(Tag).concat(">"))
+    Html("<" -> Joined(Tag) -> Joined(" ") -> Joined(Attr) -> Joined(">") -> Joined(String) -> Joined("</") -> Joined(Tag) -> Joined(">"))
 }
 
 (String) => Escaped {
-    String.length().eq(0).(
+    String -> Length -> Eq(0).(
         * (False) => Escaped {
-            String.byteAt(1).(
+            String -> ByteAt(1).(
                 * (34) => Escaped {
-                    Html("&quot;".concat(String.substring(2, String.length()).Escaped()))
+                    Html("&quot;" -> Joined(String -> Substring(2, String -> Length) -> Escaped))
                 }
                 * (38) => Escaped {
-                    Html("&amp;".concat(String.substring(2, String.length()).Escaped()))
+                    Html("&amp;" -> Joined(String -> Substring(2, String -> Length) -> Escaped))
                 }
                 * (60) => Escaped {
-                    Html("&lt;".concat(String.substring(2, String.length()).Escaped()))
+                    Html("&lt;" -> Joined(String -> Substring(2, String -> Length) -> Escaped))
                 }
                 * (62) => Escaped {
-                    Html("&gt;".concat(String.substring(2, String.length()).Escaped()))
+                    Html("&gt;" -> Joined(String -> Substring(2, String -> Length) -> Escaped))
                 }
                 * (Int) => Escaped {
-                    Html(String.substring(1, 1).concat(String.substring(2, String.length()).Escaped()))
+                    Html(String -> Substring(1, 1) -> Joined(String -> Substring(2, String -> Length) -> Escaped))
                 }
             )
         }
@@ -62,15 +62,15 @@ Ul = Html
 }
 
 (String) => H1 {
-    Html("<h1>".concat(String).concat("</h1>"))
+    Html("<h1>" -> Joined(String) -> Joined("</h1>"))
 }
 
 (String) => Li {
-    Html("<li>".concat(String).concat("</li>"))
+    Html("<li>" -> Joined(String) -> Joined("</li>"))
 }
 
 (String) => Span {
-    Html("<span>".concat(String).concat("</span>"))
+    Html("<span>" -> Joined(String) -> Joined("</span>"))
 }
 
 ToHtml = (Html) => Html {
@@ -79,14 +79,14 @@ ToHtml = (Html) => Html {
 
 ToHtml = (Int) => Html {
     Int
-        .String()
-        .Escaped()
+        -> String
+        -> Escaped
 }
 
 ToHtml = (String) => Html {
-    String.Escaped()
+    String -> Escaped
 }
 
 (String) => Ul {
-    Html("<ul>".concat(String).concat("</ul>"))
+    Html("<ul>" -> Joined(String) -> Joined("</ul>"))
 }

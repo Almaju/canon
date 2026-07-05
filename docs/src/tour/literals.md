@@ -106,11 +106,11 @@ family; converting a value to `T` is spelled `T(value)` (or
 
 ```canon,run=conversions
 main = () => Unit {
-    String(42).print()
+    String(42) -> Print
     123
-        .String()
-        .concat("!")
-        .print()
+        -> String
+        -> Joined("!")
+        -> Print
 }
 ```
 

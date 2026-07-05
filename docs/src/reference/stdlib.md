@@ -64,7 +64,7 @@ comparison, `.print`) work on it directly.
 
 ```canon
 main = () => Unit {
-    Instant().print()
+    Instant() -> Print
 }
 ```
 
@@ -88,7 +88,7 @@ so arithmetic and printing work normally on the result.
 
 ```canon
 main = () => Unit {
-    Random().print()
+    Random() -> Print
 }
 ```
 
@@ -108,7 +108,7 @@ for log lines.
 
 ```canon
 main = () => Unit {
-    Now().print()
+    Now() -> Print
 }
 ```
 
@@ -132,9 +132,9 @@ Synchronous file I/O — read and write.
 main = () => Unit {
     Contents("hello from canon")
         .write(Path("/tmp/greeting.txt"))?
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 
@@ -172,10 +172,15 @@ operation is a constructor named after what it produces
 
 ```canon
 main = () => Unit {
-    Map().Inserted("b", "2").Inserted("a", "1").Keys().Json().print()
-    Map().Inserted("k", "v").Value("k").(
-        * (None) => Unit { "absent".print() }
-        * (Some<String>) => Unit { String.print() }
+    Map()
+        -> Inserted("b", "2")
+        -> Inserted("a", "1")
+        -> Keys
+        -> Json
+        -> Print
+    Map() -> Inserted("k", "v") -> Value("k").(
+        * (None) => Unit { "absent" -> Print }
+        * (Some<String>) => Unit { String -> Print }
     )
 }
 ```
@@ -211,18 +216,31 @@ construction — returns the members, alphabetically, as a
 
 ```canon
 main = () => Unit {
-    Set().Inserted("b").Inserted("a").Inserted("b").Length().print()
-    Set().Inserted("x").Contains("x").print()
-    Set().Inserted("b").Inserted("a").List().Json().print()
+    Set()
+        -> Inserted("b")
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Length
+        -> Print
+    Set()
+        -> Inserted("x")
+        -> Contains("x")
+        -> Print
+    Set()
+        -> Inserted("b")
+        -> Inserted("a")
+        -> List
+        -> Json
+        -> Print
 }
 ```
 
 ```canon
+List = (Set) => List<Item>
+
 Set = Absent + Entry
 
 Set = () => Set
-
-List = (Set) => List<Item>
 
 contains = (Set * String) => Bool
 
@@ -246,11 +264,11 @@ directions are compiler builtins available without imports:
 
 ```canon
 main = () => Unit {
-    String(42).print()
+    String(42) -> Print
     123
-        .String()
-        .concat("!")
-        .print()
+        -> String
+        -> Joined("!")
+        -> Print
 }
 ```
 
@@ -260,7 +278,7 @@ in `canon/std/Int`, written in pure Canon (digit recursion over
 
 ```canon
 double = (String) => Result<Int, MalformedInt> {
-    Ok(Int(String)?.mul(2))
+    Ok(Int(String)? -> Product(2))
 }
 ```
 
@@ -285,7 +303,7 @@ URL parsing plus blocking HTTP GET. Fetching is a constructor:
 main = () => Unit {
     Url("http://example.com")?
         -> Fetched?
-        .print()
+        -> Print
 }
 ```
 
@@ -318,11 +336,11 @@ function name — so one `Route` constructor covers every verb
 
 ```canon
 main = () => Result<Unit, IoError> {
-    "Starting server on port 3000...".print()
+    "Starting server on port 3000..." -> Print
     HttpServer(Port(3000))
-        .Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
-        .Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
-        .Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
+        -> Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
+        -> Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
+        -> Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
         -> Served
 }
 ```
@@ -364,9 +382,9 @@ The Canon-language testing primitive. See
 ```canon
 testAddPositive = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .TestResult("1 + 2 != 3")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("1 + 2 != 3")
 }
 ```
 
@@ -421,22 +439,22 @@ static literal is a plain constant and needs nothing at all.
 
 ```canon
 label = (Int) => Json {
-    {"answer":Int,"doubled":Int.mul(2),"ok":True()}
+    {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
 main = () => Result<Unit, MalformedJson> {
-    Json("[1, 2, 3]")?.print()
+    Json("[1, 2, 3]")? -> Print
     42
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     "hi"
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     42
         .label()
-        .print()
-    {"a":1,"b":[true,false,null]}.print()
-    {"escaped":"a \"b\" c"}.print()
+        -> Print
+    {"a":1,"b":[true,false,null]} -> Print
+    {"escaped":"a \"b\" c"} -> Print
     Ok(Unit())
 }
 ```

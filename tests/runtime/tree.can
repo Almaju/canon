@@ -18,8 +18,8 @@ describe = (Tree) => String {
 main = () => Unit {
     Leaf()
         .describe()
-        .print()
+        -> Print
     Branch(Left(Leaf()) * Right(Leaf()) * Value(7))
         .describe()
-        .print()
+        -> Print
 }

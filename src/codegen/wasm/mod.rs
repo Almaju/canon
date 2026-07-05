@@ -4920,9 +4920,9 @@ impl<'m> WasmGen<'m> {
         // auto-await pass exempts these two methods); compile_parallel /
         // compile_race emit the non-blocking call for each side
         // themselves, so the receiver must NOT be compiled here.
-        if matches!(method, "parallel" | "race") && args.len() == 1 {
+        if matches!(method, "parallel" | "race" | "Parallel" | "Race") && args.len() == 1 {
             let combined = [receiver.clone(), args[0].clone()];
-            return if method == "parallel" {
+            return if method.eq_ignore_ascii_case("parallel") {
                 self.compile_parallel(&combined, scope, f)
             } else {
                 self.compile_race(&combined, scope, f)
@@ -4957,15 +4957,31 @@ impl<'m> WasmGen<'m> {
         // Try the receiver's own type name first, then every name in
         // its newtype alias chain — `Foo("x").ToJson()` with `Foo =
         // String` must find a `ToJson` declared on `String`.
+        // A method resolves to a user/stdlib function under its written
+        // name or — for the types-only vocabulary — under its camelCase
+        // alias. `stream -> Mapped(f)` finds the `map` binding on
+        // `Stream` (a camelCase FFI function) before the `List` builtin
+        // `Mapped` claims it; `list -> Mapped(f)` misses both bindings
+        // and falls through to the builtin below.
+        let method_names: Vec<String> = match crate::ast::builtin_method_alias(method) {
+            Some(canonical) => vec![method.to_string(), canonical.to_string()],
+            None => vec![method.to_string()],
+        };
         if let Some(name) = &type_name {
             for alias in self.collect_alias_chain(name) {
-                let key = (Some(alias), method.to_string());
-                if let Some(info) = self.func_table.get(&key).cloned() {
+                for m in &method_names {
+                    let key = (Some(alias.clone()), m.clone());
+                    if let Some(info) = self.func_table.get(&key).cloned() {
+                        return self.emit_func_table_call(&info, args, scope, f);
+                    }
+                }
+            }
+        } else {
+            for m in &method_names {
+                if let Some(info) = self.func_table.get(&(None, m.clone())).cloned() {
                     return self.emit_func_table_call(&info, args, scope, f);
                 }
             }
-        } else if let Some(info) = self.func_table.get(&(None, method.to_string())).cloned() {
-            return self.emit_func_table_call(&info, args, scope, f);
         }
 
         // Also try without type name (free functions used as methods)
@@ -4975,6 +4991,11 @@ impl<'m> WasmGen<'m> {
                 return self.emit_func_table_call(&info, args, scope, f);
             }
         }
+
+        // No user/stdlib function matched — normalize the types-only
+        // vocabulary (`Print`/`Sum`/`Joined`/…) to its canonical builtin
+        // name so the `print`/`String`/builtin paths below recognize it.
+        let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
 
         // Conversion is construction (the language spec, docs/src/spec/):
         // `Int.String()` / `Byte.String()` are the method spellings of
@@ -6090,6 +6111,11 @@ impl<'m> WasmGen<'m> {
         scope: &LocalScope,
         f: &mut Function,
     ) -> Ty {
+        // Types-only vocabulary: `-> Print` / `-> Sum(2)` / `-> Joined(s)`
+        // resolve to the same codegen as `print` / `add` / `concat`. Only
+        // reached after the func_table lookup missed, so a user/stdlib
+        // function of the same name always wins first.
+        let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
         match (method, &recv_ty) {
             // ── Int arithmetic ────────────────────────────────────────────────
             ("add", Ty::I64) => {

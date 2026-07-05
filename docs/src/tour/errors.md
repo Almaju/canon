@@ -23,10 +23,10 @@ The postfix `?` operator propagates failure. It works on both
 
 ```canon
 main = () => Result<Unit, Unit> {
-    Ok(42)?.print()
+    Ok(42)? -> Print
     Some(7).(
-        * (None) => Unit { "absent".print() }
-        * (Some<Int>) => Unit { "present".print() }
+        * (None) => Unit { "absent" -> Print }
+        * (Some<Int>) => Unit { "present" -> Print }
     )
     Ok(Unit())
 }

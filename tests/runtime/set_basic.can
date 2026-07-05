@@ -1,35 +1,35 @@
 main = () => Unit {
     Set()
-        .Inserted("b")
-        .Inserted("a")
-        .Inserted("b")
-        .Length()
-        .print()
+        -> Inserted("b")
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Length
+        -> Print
     Set()
-        .Inserted("x")
-        .Contains("x")
-        .print()
+        -> Inserted("x")
+        -> Contains("x")
+        -> Print
     Set()
-        .Inserted("x")
-        .Contains("y")
-        .print()
+        -> Inserted("x")
+        -> Contains("y")
+        -> Print
     Set()
-        .Inserted("b")
-        .Inserted("c")
-        .Inserted("a")
-        .List()
-        .Json()
-        .print()
+        -> Inserted("b")
+        -> Inserted("c")
+        -> Inserted("a")
+        -> List
+        -> Json
+        -> Print
     Set()
-        .Inserted("a")
-        .Inserted("b")
-        .Removed("a")
-        .List()
-        .Json()
-        .print()
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Removed("a")
+        -> List
+        -> Json
+        -> Print
     Set()
-        .Inserted("a")
-        .Removed("missing")
-        .Length()
-        .print()
+        -> Inserted("a")
+        -> Removed("missing")
+        -> Length
+        -> Print
 }

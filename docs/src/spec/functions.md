@@ -14,7 +14,7 @@ are no commas, no parameter names, no defaults:
 
 ```canon
 greet = (Greeting * Name) => Line {
-    Line(Greeting.String.concat(Name.String))
+    Line(Greeting.String -> Joined(Name.String))
 }
 ```
 

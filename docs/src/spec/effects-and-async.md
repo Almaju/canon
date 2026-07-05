@@ -54,7 +54,7 @@ main = () => Unit {
     Url("https://example.com")?
         -> Fetched?
         .body()?
-        .print()
+        -> Print
 }
 ```
 

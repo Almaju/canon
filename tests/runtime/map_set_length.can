@@ -1,16 +1,16 @@
 main = () => Unit {
     Map()
-        .Inserted("a", "1")
+        -> Inserted("a", "1")
         -> Length
-        .print()
+        -> Print
     Set()
-        .Inserted("a")
-        .Inserted("b")
+        -> Inserted("a")
+        -> Inserted("b")
         -> Length
-        .print()
+        -> Print
     Map()
-        .Inserted("k", "v")
-        .Removed("k")
+        -> Inserted("k", "v")
+        -> Removed("k")
         -> Length
-        .print()
+        -> Print
 }

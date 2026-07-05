@@ -13,8 +13,8 @@ Add `src/note_test.can`:
 testRenderWrapsTitle = () => TestResult {
     Note("ship it")
         .render()
-        .eq({"title":"ship it"})
-        .TestResult("render should wrap the title in a JSON object")
+        -> Eq({"title":"ship it"})
+        -> TestResult("render should wrap the title in a JSON object")
 }
 ```
 

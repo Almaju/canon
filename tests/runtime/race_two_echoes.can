@@ -1,6 +1,6 @@
 main = () => Unit {
     "first"
         .slowEcho()
-        .race("second".slowEcho())
-        .print()
+        -> Race("second".slowEcho())
+        -> Print
 }

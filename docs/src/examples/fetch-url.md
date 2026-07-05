@@ -7,7 +7,7 @@ an HTTP GET in one chain, built on a **validated constructor**.
 main = () => Unit {
     Url("http://example.com")?
         -> Fetched?
-        .print()
+        -> Print
 }
 ```
 

@@ -8,8 +8,8 @@ JsonValue = JsonMissing + JsonObject
 
 describe = (JsonValue) => Unit {
     JsonValue.(
-        * (JsonMissing) => Unit { "missing".print() }
-        * (JsonObject) => Unit { JsonObject.extract().print() }
+        * (JsonMissing) => Unit { "missing" -> Print }
+        * (JsonObject) => Unit { JsonObject.extract() -> Print }
     )
 }
 
@@ -18,5 +18,5 @@ extract = (JsonObject) => String {
 }
 
 main = () => Unit {
-    "ok".print()
+    "ok" -> Print
 }

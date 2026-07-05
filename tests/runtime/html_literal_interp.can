@@ -7,10 +7,10 @@ tag = (Msg) => Html {
 }
 
 main = () => Unit {
-    <ul>{"a & b".row()}{"x<y".row()}</ul>.print()
-    <span>{1.add(41)}</span>.print()
+    <ul>{"a & b".row()}{"x<y".row()}</ul> -> Print
+    <span>{1 -> Sum(41)}</span> -> Print
     Msg("inc")
         .tag()
-        .print()
-    <p>5 &lt; 6 &amp; 7</p>.print()
+        -> Print
+    <p>5 &lt; 6 &amp; 7</p> -> Print
 }

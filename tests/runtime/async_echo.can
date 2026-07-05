@@ -1,5 +1,5 @@
 main = () => Unit {
     "hello async"
         .echo()
-        .print()
+        -> Print
 }

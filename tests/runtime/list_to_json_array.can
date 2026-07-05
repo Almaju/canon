@@ -1,11 +1,11 @@
 main = () => Unit {
     List("\"a\"", "\"b\"", "\"c\"")
-        .Json()
-        .print()
+        -> Json
+        -> Print
     List("1", "2", "3")
-        .Json()
-        .print()
+        -> Json
+        -> Print
     List("\"only\"")
-        .Json()
-        .print()
+        -> Json
+        -> Print
 }

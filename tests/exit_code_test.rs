@@ -23,16 +23,16 @@ fn canon_test_exit_codes() {
         &failing,
         r#"testBroken = () => TestResult {
     1
-        .add(2)
-        .eq(7)
-        .TestResult("math is broken")
+        -> Sum(2)
+        -> Eq(7)
+        -> TestResult("math is broken")
 }
 
 testFine = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .TestResult("math works")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("math works")
 }
 "#,
     )
@@ -55,9 +55,9 @@ testFine = () => TestResult {
         &passing,
         r#"testFine = () => TestResult {
     1
-        .add(2)
-        .eq(3)
-        .TestResult("math works")
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult("math works")
 }
 "#,
     )
@@ -80,7 +80,7 @@ fn exit_code_propagates() {
     std::fs::write(
         &src_path,
         r#"main = () => Unit {
-    "terminating with 3".print()
+    "terminating with 3" -> Print
     3 -> Exited
 }
 "#,

@@ -1,7 +1,7 @@
 handleRequest = (String) => String {
-    "echoed: ".concat(String)
+    "echoed: " -> Joined(String)
 }
 
 main = () => Unit {
-    "compiled".print()
+    "compiled" -> Print
 }

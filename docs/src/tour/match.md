@@ -8,8 +8,8 @@ on a union: the value is the receiver, and the arms go inside `.( )`.
 ```canon,run=dispatch
 main = () => Unit {
     True().(
-        * (False) => Unit { "no".print() }
-        * (True) => Unit { "yes".print() }
+        * (False) => Unit { "no" -> Print }
+        * (True) => Unit { "yes" -> Print }
     )
 }
 ```
@@ -65,7 +65,7 @@ route = (String) => String {
     String.(
         * ("/notes") => String { "index" }
         * ("/notes/1") => String { "note one" }
-        * (String) => String { "not found: ".concat(String) }
+        * (String) => String { "not found: " -> Joined(String) }
     )
 }
 ```

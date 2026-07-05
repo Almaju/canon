@@ -13,7 +13,7 @@ Show = (Name) => String {
 }
 
 testShowExists = () => TestResult {
-    Greeting("hi").Show()
-    Name("Alice").Show()
+    Greeting("hi") -> Show
+    Name("Alice") -> Show
     Pass()
 }

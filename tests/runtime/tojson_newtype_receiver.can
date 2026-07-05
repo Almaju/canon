@@ -2,9 +2,9 @@ Foo = String
 
 main = () => Unit {
     "x"
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     Foo("x")
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
 }

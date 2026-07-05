@@ -1,16 +1,16 @@
 main = () => Result<Unit, Unit> {
     Ok("model").(
-        * (Err<Unit>) => Unit { "err".print() }
+        * (Err<Unit>) => Unit { "err" -> Print }
         * (Ok<String>) => Unit {
             "first: "
-                .concat("literal")
-                .print()
-            String.print()
+                -> Joined("literal")
+                -> Print
+            String -> Print
             "echo: "
-                .concat(String)
-                .concat(":")
-                .concat(String)
-                .print()
+                -> Joined(String)
+                -> Joined(":")
+                -> Joined(String)
+                -> Print
         }
     )
     Ok(Unit())

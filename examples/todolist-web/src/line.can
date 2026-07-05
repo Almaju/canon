@@ -1,32 +1,32 @@
 Line = String
 
 flip = (Line) => Line {
-    Line.byteAt(1).eq(48).(
-        * (False) => Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) => Line { Line("1".concat(Line.substring(2, Line.length()))) }
+    Line -> ByteAt(1) -> Eq(48).(
+        * (False) => Line { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * (True) => Line { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
     )
 }
 
 renderItem = (Int * Line) => Html {
-    Line.byteAt(1).eq(49).(
+    Line -> ByteAt(1) -> Eq(49).(
         * (False) => Html {
             Line
-                .substring(3, Line.length())
-                .Escaped()
-                .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.String())).Button("done"))
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
-                .Li()
+                -> Substring(3, Line -> Length)
+                -> Escaped
+                -> Joined(" ")
+                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("done"))
+                -> Joined(" ")
+                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Li
         }
         * (True) => Html {
             "<s>"
-                .concat(Line.substring(3, Line.length()).Escaped())
-                .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.String())).Button("undo"))
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
-                .Li()
+                -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
+                -> Joined("</s> ")
+                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("undo"))
+                -> Joined(" ")
+                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Li
         }
     )
 }

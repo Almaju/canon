@@ -19,5 +19,5 @@ describe = (Ord) => String {
 main = () => Unit {
     Equal()
         .describe()
-        .print()
+        -> Print
 }

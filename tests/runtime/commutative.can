@@ -9,5 +9,5 @@ greet = (Greeting * Name) => Greeting {
 main = () => Unit {
     Greeting("hello").greet(Name("world"))
     Name("world").greet(Greeting("hello"))
-    "commutative calling works".print()
+    "commutative calling works" -> Print
 }

@@ -42,7 +42,7 @@ addForm = () => Html {
 }
 
 clearButton = () => Html {
-    Msg("Clear").Button("Clear completed")
+    Msg("Clear") -> Button("Clear completed")
 }
 
 init = () => Todos {
@@ -51,21 +51,21 @@ init = () => Todos {
 }
 
 update = (Todos * String) => Todos {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") => Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
+    Prefix(String -> Substring(1, 4)).(
+        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)).addTodo(Todos) }
         * ("Clea") => Todos { Todos.clearDone() }
-        * ("Dele") => Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Togg") => Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
+        * ("Dele") => Todos { String -> Substring(8, String -> Length).parseNum().removeAt(Todos) }
+        * ("Togg") => Todos { String -> Substring(8, String -> Length).parseNum().toggleAt(Todos) }
         * (Prefix) => Todos { Todos }
     )
 }
 
 view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
-        .concat(addForm().String)
-        .concat(1.renderItems(Todos).Ul().String)
-        .concat(clearButton().String)
-        .Div()
+        -> Joined(addForm().String)
+        -> Joined(1.renderItems(Todos) -> Ul.String)
+        -> Joined(clearButton().String)
+        -> Div
 }
 ```
 
@@ -96,15 +96,15 @@ run in a backend. `Todos` holds the list and its folds:
 Todos = String
 
 addTodo = (Title * Todos) => Todos {
-    Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
+    Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
 clearDone = (Todos) => Todos {
-    Todos.String.length().eq(0).(
+    Todos.String -> Length -> Eq(0).(
         * (False) => Todos {
-            Todos.String.byteAt(1).eq(49).(
+            Todos.String -> ByteAt(1) -> Eq(49).(
                 * (False) => Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
+                    Todos(Todos.String.firstLine() -> Joined("\n") -> Joined(Todos(Todos.String.restLines()).clearDone().String))
                 }
                 * (True) => Todos { Todos(Todos.String.restLines()).clearDone() }
             )
@@ -124,30 +124,32 @@ clearDone = (Todos) => Todos {
 Line = String
 
 flip = (Line) => Line {
-    Line.byteAt(1).eq(48).(
-        * (False) => Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) => Line { Line("1".concat(Line.substring(2, Line.length()))) }
+    Line -> ByteAt(1) -> Eq(48).(
+        * (False) => Line { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * (True) => Line { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
     )
 }
 
 renderItem = (Int * Line) => Html {
-    Line.byteAt(1).eq(49).(
+    Line -> ByteAt(1) -> Eq(49).(
         * (False) => Html {
-            Line.substring(3, Line.length()).Escaped()
-                .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.String())).Button("done"))
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
-                .Li()
+            Line
+                -> Substring(3, Line -> Length)
+                -> Escaped
+                -> Joined(" ")
+                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("done"))
+                -> Joined(" ")
+                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Li
         }
         * (True) => Html {
             "<s>"
-                .concat(Line.substring(3, Line.length()).Escaped())
-                .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.String())).Button("undo"))
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
-                .Li()
+                -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
+                -> Joined("</s> ")
+                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("undo"))
+                -> Joined(" ")
+                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Li
         }
     )
 }

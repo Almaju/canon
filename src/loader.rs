@@ -1470,6 +1470,34 @@ fn discover_bundled_references(
                 }
             }
             _ => {
+                // Constructor/shape families and structurally-identical
+                // type merges co-resolve here exactly as in
+                // `resolve_reference`: `Length` (declared `Length = Int`
+                // in both map.can and set.can, with per-receiver
+                // constructors) is one type reachable from a `-> Length`
+                // pipe, not a clash. Load every candidate when they're
+                // compatible; only genuinely divergent declarations
+                // error.
+                let profiles: Vec<Option<NameDeclProfile>> = candidates
+                    .iter()
+                    .map(|(_, file)| name_decl_profile(file.source, &name))
+                    .collect();
+                let compatible = profiles.iter().all(|p| p.is_some()) && {
+                    let mut bodies: Vec<&String> = Vec::new();
+                    for p in profiles.iter().flatten() {
+                        bodies.extend(p.type_bodies.iter());
+                    }
+                    bodies.windows(2).all(|w| w[0] == w[1])
+                };
+                if compatible {
+                    for (pkg, file) in &candidates {
+                        let key = format!("{}/{}", pkg.name, file.path);
+                        if ctx.seen_bundled.insert(key) {
+                            load_bundled_source(pkg, file, ctx)?;
+                        }
+                    }
+                    continue;
+                }
                 let labels: Vec<String> = candidates
                     .iter()
                     .map(|(pkg, file)| format!("{}/{}", pkg.name, file.path))

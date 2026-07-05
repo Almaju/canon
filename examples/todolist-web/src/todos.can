@@ -1,15 +1,15 @@
 Todos = String
 
 addTodo = (Title * Todos) => Todos {
-    Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
+    Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
 clearDone = (Todos) => Todos {
-    Todos.String.length().eq(0).(
+    Todos.String -> Length -> Eq(0).(
         * (False) => Todos {
-            Todos.String.byteAt(1).eq(49).(
+            Todos.String -> ByteAt(1) -> Eq(49).(
                 * (False) => Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
+                    Todos(Todos.String.firstLine() -> Joined("\n") -> Joined(Todos(Todos.String.restLines()).clearDone().String))
                 }
                 * (True) => Todos { Todos(Todos.String.restLines()).clearDone() }
             )
@@ -19,13 +19,13 @@ clearDone = (Todos) => Todos {
 }
 
 firstLine = (String) => String {
-    String.length().eq(0).(
+    String -> Length -> Eq(0).(
         * (False) => String {
-            String.byteAt(1).eq(10).(
+            String -> ByteAt(1) -> Eq(10).(
                 * (False) => String {
                     String
-                        .substring(1, 1)
-                        .concat(String.substring(2, String.length()).firstLine())
+                        -> Substring(1, 1)
+                        -> Joined(String -> Substring(2, String -> Length).firstLine())
                 }
                 * (True) => String { "" }
             )
@@ -35,24 +35,24 @@ firstLine = (String) => String {
 }
 
 parseNum = (String) => Int {
-    String.length().eq(0).(
+    String -> Length -> Eq(0).(
         * (False) => Int {
             String
-                .substring(1, String.length().sub(1))
+                -> Substring(1, String -> Length -> Difference(1))
                 .parseNum()
-                .mul(10)
-                .add(String.byteAt(String.length()).sub(48))
+                -> Product(10)
+                -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
         }
         * (True) => Int { 0 }
     )
 }
 
 removeAt = (Int * Todos) => Todos {
-    Todos.String.length().eq(0).(
+    Todos.String -> Length -> Eq(0).(
         * (False) => Todos {
-            Int.eq(1).(
+            Int -> Eq(1).(
                 * (False) => Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Int.sub(1).removeAt(Todos(Todos.String.restLines())).String))
+                    Todos(Todos.String.firstLine() -> Joined("\n") -> Joined(Int -> Difference(1).removeAt(Todos(Todos.String.restLines())).String))
                 }
                 * (True) => Todos { Todos(Todos.String.restLines()) }
             )
@@ -62,20 +62,20 @@ removeAt = (Int * Todos) => Todos {
 }
 
 renderItems = (Int * Todos) => Html {
-    Todos.String.length().eq(0).(
+    Todos.String -> Length -> Eq(0).(
         * (False) => Html {
-            Html(Int.renderItem(Line(Todos.String.firstLine())).String.concat(Int.add(1).renderItems(Todos(Todos.String.restLines())).String))
+            Html(Int.renderItem(Line(Todos.String.firstLine())).String -> Joined(Int -> Sum(1).renderItems(Todos(Todos.String.restLines())).String))
         }
         * (True) => Html { Html("") }
     )
 }
 
 restLines = (String) => String {
-    String.length().eq(0).(
+    String -> Length -> Eq(0).(
         * (False) => String {
-            String.byteAt(1).eq(10).(
-                * (False) => String { String.substring(2, String.length()).restLines() }
-                * (True) => String { String.substring(2, String.length()) }
+            String -> ByteAt(1) -> Eq(10).(
+                * (False) => String { String -> Substring(2, String -> Length).restLines() }
+                * (True) => String { String -> Substring(2, String -> Length) }
             )
         }
         * (True) => String { "" }
@@ -83,14 +83,14 @@ restLines = (String) => String {
 }
 
 toggleAt = (Int * Todos) => Todos {
-    Todos.String.length().eq(0).(
+    Todos.String -> Length -> Eq(0).(
         * (False) => Todos {
-            Int.eq(1).(
+            Int -> Eq(1).(
                 * (False) => Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Int.sub(1).toggleAt(Todos(Todos.String.restLines())).String))
+                    Todos(Todos.String.firstLine() -> Joined("\n") -> Joined(Int -> Difference(1).toggleAt(Todos(Todos.String.restLines())).String))
                 }
                 * (True) => Todos {
-                    Todos(Line(Todos.String.firstLine()).flip().String.concat("\n").concat(Todos.String.restLines()))
+                    Todos(Line(Todos.String.firstLine()).flip().String -> Joined("\n") -> Joined(Todos.String.restLines()))
                 }
             )
         }

@@ -5,5 +5,5 @@ Byte = Bit^8
 Bytes = Byte^*
 
 main = () => Unit {
-    "kleene star type defined".print()
+    "kleene star type defined" -> Print
 }

@@ -492,6 +492,83 @@ pub fn type_expr_canonical(ty: &TypeExpr) -> String {
     }
 }
 
+/// The PascalCase pipe/vocabulary spelling of a compiler builtin
+/// method → its canonical (camelCase) implementation name. This is the
+/// types-only surface for operations the compiler owns: `x -> Print`,
+/// `1 -> Sum(2)`, `"a" -> Joined("b")`, `list -> Mapped(f)`. The alias
+/// only resolves at the *builtin* layer — a user/stdlib function of the
+/// same name is found first (func_table lookup precedes the builtin
+/// fallback in both checker and codegen), so `map -> Length` still hits
+/// the stdlib `Length` on `Map` while `"hi" -> Length` falls through to
+/// the `String` builtin. camelCase spellings keep working during
+/// migration; they simply don't pass through here.
+pub fn builtin_method_alias(name: &str) -> Option<&'static str> {
+    Some(match name {
+        // Effects
+        "Print" => "print",
+        // Int / Float arithmetic — result-type nouns
+        "Sum" => "add",
+        "Difference" => "sub",
+        "Product" => "mul",
+        "Quotient" => "div",
+        "Remainder" => "rem",
+        // Comparison — boolean predicates
+        "Eq" => "eq",
+        "Ne" => "ne",
+        "Lt" => "lt",
+        "Le" => "le",
+        "Gt" => "gt",
+        "Ge" => "ge",
+        // String / List
+        "Joined" => "concat",
+        "ByteAt" => "byteAt",
+        "Length" => "length",
+        "Substring" => "substring",
+        // List
+        "Mapped" => "map",
+        "First" => "first",
+        "At" => "get",
+        "Appended" => "append",
+        // Concurrency combinators
+        "Parallel" => "parallel",
+        "Race" => "race",
+        _ => return None,
+    })
+}
+
+/// The PascalCase pipe spelling `canon fmt` emits for a builtin method
+/// — the inverse of `builtin_method_alias`. `concat` prints as
+/// `Joined`, `add` as `Sum`, `print` as `Print`. A name with no mapping
+/// (already-PascalCase user/stdlib methods, and the `String`/`Json`
+/// conversion methods) is emitted unchanged.
+pub fn builtin_pipe_name(name: &str) -> &str {
+    match name {
+        "print" => "Print",
+        "add" => "Sum",
+        "sub" => "Difference",
+        "mul" => "Product",
+        "div" => "Quotient",
+        "rem" | "mod" => "Remainder",
+        "eq" => "Eq",
+        "ne" => "Ne",
+        "lt" => "Lt",
+        "le" => "Le",
+        "gt" => "Gt",
+        "ge" => "Ge",
+        "concat" => "Joined",
+        "byteAt" => "ByteAt",
+        "length" => "Length",
+        "substring" | "slice" => "Substring",
+        "map" => "Mapped",
+        "first" => "First",
+        "get" => "At",
+        "append" => "Appended",
+        "parallel" => "Parallel",
+        "race" => "Race",
+        other => other,
+    }
+}
+
 /// The type an arrow *constructs*: its return type with the standard
 /// containers peeled — `Result<Url, InvalidUrl>` constructs `Url`,
 /// `Option<Value>` constructs `Value`, `Future<T>` constructs `T`.

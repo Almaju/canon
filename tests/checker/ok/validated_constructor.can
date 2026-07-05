@@ -7,5 +7,5 @@ Url = (String) => Result<Url, InvalidUrl> {
 }
 
 main = () => Unit {
-    "validated ctor declared".print()
+    "validated ctor declared" -> Print
 }

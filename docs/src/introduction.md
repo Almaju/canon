@@ -56,9 +56,9 @@ from a `String`. The type chain *is* the access control:
 ```canon
 main = () => Unit {
     Path("./data.json")
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 
@@ -70,12 +70,12 @@ control-flow construct) and iteration (methods on collections):
 ```canon,run=intro
 main = () => Unit {
     List(1, 2, 3)
-        .map((Int) => Int { Int.mul(2) })
-        .length()
-        .print()
+        -> Mapped((Int) => Int { Int -> Product(2) })
+        -> Length
+        -> Print
     True().(
-        * (False) => Unit { "no".print() }
-        * (True) => Unit { "yes".print() }
+        * (False) => Unit { "no" -> Print }
+        * (True) => Unit { "yes" -> Print }
     )
 }
 ```

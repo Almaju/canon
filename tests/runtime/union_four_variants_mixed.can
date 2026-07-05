@@ -29,10 +29,10 @@ makeRatio = () => Shape {
 
 show = (Shape) => Unit {
     Shape.(
-        * (Count) => Unit { Count.print() }
-        * (Empty) => Unit { "empty".print() }
-        * (Name) => Unit { Name.print() }
-        * (Ratio) => Unit { Ratio.print() }
+        * (Count) => Unit { Count -> Print }
+        * (Empty) => Unit { "empty" -> Print }
+        * (Name) => Unit { Name -> Print }
+        * (Ratio) => Unit { Ratio -> Print }
     )
 }
 

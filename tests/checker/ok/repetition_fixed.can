@@ -3,5 +3,5 @@ Bit = One + Zero
 Byte = Bit^8
 
 main = () => Unit {
-    "byte type defined".print()
+    "byte type defined" -> Print
 }

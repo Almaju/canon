@@ -39,8 +39,8 @@ Note = String
 
 render = (Note) => String {
     "{\"title\":\""
-        .concat(Note)
-        .concat("\"}")
+        -> Joined(Note)
+        -> Joined("\"}")
 }
 ```
 
@@ -65,7 +65,7 @@ Two ideas in eight lines:
 
 ```canon
 indexBody = () => Body {
-    Body(List(Note("ship canon v1").render(), Note("write the docs").render()).Json())
+    Body(List(Note("ship canon v1").render(), Note("write the docs").render()) -> Json)
 }
 
 notFound = () => Body {

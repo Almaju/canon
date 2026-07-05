@@ -1,4 +1,4 @@
 main = () => Unit {
-    "exiting cleanly".print()
+    "exiting cleanly" -> Print
     0 -> Exited
 }
