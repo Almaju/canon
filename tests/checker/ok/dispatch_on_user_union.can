@@ -9,7 +9,7 @@ Ord = Equal
   + Less
 
 describe = (Ord) => String {
-    Ord.(
+    Ord -> (
         * Equal => String { "equal" }
         * Greater => String { "greater" }
         * Less => String { "less" }

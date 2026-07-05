@@ -1,6 +1,6 @@
 main = () => Result<Unit, Unit> {
     Ok(42)? -> Print
-    Some(7).(
+    Some(7) -> (
         * None => Unit { "absent" -> Print }
         * Some<Int> => Unit { "present" -> Print }
     )

@@ -1,5 +1,5 @@
 classify = (Int) => Result<String, String> {
-    Int -> Eq(0).(
+    Int -> Eq(0) -> (
         * False => Result<String, String> { Ok("nonzero") }
         * True => Result<String, String> { Err("was zero") }
     )
@@ -10,11 +10,11 @@ describe = (Int) => Result<String, String> {
 }
 
 main = () => Unit {
-    3.describe().(
+    3.describe() -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }
     )
-    0.describe().(
+    0.describe() -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }
     )

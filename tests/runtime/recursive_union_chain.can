@@ -7,9 +7,9 @@ Link = Label * Next
 Next = Chain
 
 lastLabel = (Chain) => String {
-    Chain.(
+    Chain -> (
         * Link => String {
-            Link.Next.len() -> Eq(0).(
+            Link.Next.len() -> Eq(0) -> (
                 * False => String { Link.Next.lastLabel() }
                 * True => String { Link.Label }
             )
@@ -19,7 +19,7 @@ lastLabel = (Chain) => String {
 }
 
 len = (Chain) => Int {
-    Chain.(
+    Chain -> (
         * Link => Int { Link.Next.len() -> Sum(1) }
         * Stop => Int { 0 }
     )

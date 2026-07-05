@@ -5,7 +5,7 @@ main = () => Unit {
     Args()
         -> Json
         -> Print
-    Cwd().(
+    Cwd() -> (
         * None => Unit { "no cwd" -> Print }
         * Some<String> => Unit { "cwd: " -> Joined(String) -> Print }
     )

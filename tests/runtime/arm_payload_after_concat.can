@@ -1,5 +1,5 @@
 main = () => Result<Unit, Unit> {
-    Ok("model").(
+    Ok("model") -> (
         * Err<Unit> => Unit { "err" -> Print }
         * Ok<String> => Unit {
             "first: "

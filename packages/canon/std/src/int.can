@@ -9,9 +9,9 @@ Negative = Int
 Pos = Int
 
 Int * Pos * String => Result<Digits, MalformedInt> {
-    Pos -> Gt(String -> Length).(
+    Pos -> Gt(String -> Length) -> (
         * False => Result<Digits, MalformedInt> {
-            String -> ByteAt(Pos) -> IsIntDigit.(
+            String -> ByteAt(Pos) -> IsIntDigit -> (
                 * False => Result<Digits, MalformedInt> { Err(MalformedInt("invalid integer")) }
                 * True => Result<Digits, MalformedInt> {
                     Int
@@ -26,9 +26,9 @@ Int * Pos * String => Result<Digits, MalformedInt> {
 }
 
 String => Result<Int, MalformedInt> {
-    String -> Length -> Eq(0).(
+    String -> Length -> Eq(0) -> (
         * False => Result<Int, MalformedInt> {
-            String -> ByteAt(1) -> Eq(45).(
+            String -> ByteAt(1) -> Eq(45) -> (
                 * False => Result<Int, MalformedInt> { 0 -> Digits(Pos(1) * String) }
                 * True => Result<Int, MalformedInt> { String -> Negative }
             )
@@ -38,21 +38,21 @@ String => Result<Int, MalformedInt> {
 }
 
 Int => IsIntDigit {
-    Int -> Ge(48).(
+    Int -> Ge(48) -> (
         * False => IsIntDigit { False() }
         * True => IsIntDigit { Int -> Le(57) }
     )
 }
 
 Result => Result<Negated, MalformedInt> {
-    Result.(
+    Result -> (
         * Err<MalformedInt> => Result<Negated, MalformedInt> { Err(MalformedInt) }
         * Ok<Int> => Result<Negated, MalformedInt> { Ok(0 -> Difference(Int)) }
     )
 }
 
 String => Result<Negative, MalformedInt> {
-    String -> Length -> Eq(1).(
+    String -> Length -> Eq(1) -> (
         * False => Result<Negative, MalformedInt> { 0 -> Digits(Pos(2) * String) -> Negated }
         * True => Result<Negative, MalformedInt> { Err(MalformedInt("lone minus is not an Int")) }
     )

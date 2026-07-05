@@ -11,7 +11,7 @@ Tree = Branch + Leaf
 Value = Int
 
 describe = (Tree) => String {
-    Tree.(
+    Tree -> (
         * Branch => String { "branch" }
         * Leaf => String { "leaf" }
     )

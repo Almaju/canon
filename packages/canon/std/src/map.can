@@ -15,12 +15,12 @@ Value = String
 Values = List<Value>
 
 Inserted = (Map * String * Value) => Map {
-    Map.(
+    Map -> (
         * Empty => Map { Node(Empty() * String * Value) }
         * Node => Map {
-            String -> Lt(Node.Key).(
+            String -> Lt(Node.Key) -> (
                 * False => Map {
-                    String -> Eq(Node.Key).(
+                    String -> Eq(Node.Key) -> (
                         * False => Map {
                             Node(Node.Key * Node.Rest -> Inserted(String * Value) * Node.Value)
                         }
@@ -34,14 +34,14 @@ Inserted = (Map * String * Value) => Map {
 }
 
 Map => Keys {
-    Map.(
+    Map -> (
         * Empty => Keys { List() }
         * Node => Keys { List(Node.Key) -> Joined(Node.Rest -> Keys) }
     )
 }
 
 Map => Length {
-    Map.(
+    Map -> (
         * Empty => Length { 0 }
         * Node => Length { Node.Rest -> Length -> Sum(1) }
     )
@@ -52,10 +52,10 @@ Unit => Map {
 }
 
 Removed = (Map * String) => Map {
-    Map.(
+    Map -> (
         * Empty => Map { Empty() }
         * Node => Map {
-            Node.Key -> Eq(String).(
+            Node.Key -> Eq(String) -> (
                 * False => Map { Node(Node.Key * Node.Rest -> Removed(String) * Node.Value) }
                 * True => Map { Node.Rest }
             )
@@ -64,10 +64,10 @@ Removed = (Map * String) => Map {
 }
 
 Map * String => Option<Value> {
-    Map.(
+    Map -> (
         * Empty => Option<Value> { None() }
         * Node => Option<Value> {
-            Node.Key -> Eq(String).(
+            Node.Key -> Eq(String) -> (
                 * False => Option<Value> { Node.Rest -> Value(String) }
                 * True => Option<Value> { Some(Node.Value) }
             )
@@ -76,7 +76,7 @@ Map * String => Option<Value> {
 }
 
 Map => Values {
-    Map.(
+    Map -> (
         * Empty => Values { List() }
         * Node => Values { List(Node.Value) -> Joined(Node.Rest -> Values) }
     )

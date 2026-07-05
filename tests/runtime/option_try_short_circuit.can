@@ -1,5 +1,5 @@
 first = (Int) => Option<String> {
-    Int -> Eq(0).(
+    Int -> Eq(0) -> (
         * False => Option<String> { Some("found") }
         * True => Option<String> { None() }
     )
@@ -10,11 +10,11 @@ second = (Int) => Option<String> {
 }
 
 main = () => Unit {
-    5.second().(
+    5.second() -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    0.second().(
+    0.second() -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )

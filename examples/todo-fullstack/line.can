@@ -5,14 +5,14 @@ Line = String
 RenderedItem = Html
 
 Line => Flipped {
-    Line -> ByteAt(1) -> Eq(48).(
+    Line -> ByteAt(1) -> Eq(48) -> (
         * False => Flipped { Line("0" -> Joined(Line -> Substring(From(2) * To(Line -> Length)))) }
         * True => Flipped { Line("1" -> Joined(Line -> Substring(From(2) * To(Line -> Length)))) }
     )
 }
 
 Int * Line => RenderedItem {
-    Line -> ByteAt(1) -> Eq(49).(
+    Line -> ByteAt(1) -> Eq(49) -> (
         * False => RenderedItem {
             Line
                 -> Substring(From(3) * To(Line -> Length))

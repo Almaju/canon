@@ -198,7 +198,7 @@ fn wasi_http_service_method_dispatch() {
     std::fs::write(
         &src_path,
         r#"Request => Response {
-    Request.method().(
+    Request.method() -> (
         * "GET" => Response { Response(Body("got GET") * Headers() * Status(200)) }
         * "POST" => Response { Response(Body("got POST") * Headers() * Status(201)) }
         * String => Response { Response(Body("no " -> Joined(String)) * Headers() * Status(405)) }

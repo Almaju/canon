@@ -8,7 +8,7 @@ main = () => Unit {
         -> Joined(List("c" * "d"))
         -> Json
         -> Print
-    List(10 * 20) -> Appended(30) -> At(3).(
+    List(10 * 20) -> Appended(30) -> At(3) -> (
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )

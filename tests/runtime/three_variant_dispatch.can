@@ -9,17 +9,17 @@ Ord = Equal
   + Less
 
 main = () => Unit {
-    Equal().(
+    Equal() -> (
         * Equal => Unit { "equal" -> Print }
         * Greater => Unit { "greater" -> Print }
         * Less => Unit { "less" -> Print }
     )
-    Greater().(
+    Greater() -> (
         * Equal => Unit { "equal" -> Print }
         * Greater => Unit { "greater" -> Print }
         * Less => Unit { "less" -> Print }
     )
-    Less().(
+    Less() -> (
         * Equal => Unit { "equal" -> Print }
         * Greater => Unit { "greater" -> Print }
         * Less => Unit { "less" -> Print }

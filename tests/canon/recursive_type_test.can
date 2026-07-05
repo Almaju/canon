@@ -11,7 +11,7 @@ Tree = Branch + Leaf
 Value = Int
 
 testDispatchOnLeaf = () => TestResult {
-    Leaf().(
+    Leaf() -> (
         * Branch => TestResult { Fail() }
         * Leaf => TestResult { Pass() }
     )

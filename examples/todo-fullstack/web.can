@@ -32,7 +32,7 @@ Unit => LoadButton {
 }
 
 Todos * String => Update {
-    Prefix(String -> Substring(From(1) * To(4))).(
+    Prefix(String -> Substring(From(1) * To(4))) -> (
         * "Add:" => Todos {
             Title(String -> Substring(From(5) * To(String -> Length))) -> AddedTodo(Todos)
         }

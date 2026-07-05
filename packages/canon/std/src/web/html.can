@@ -37,9 +37,9 @@ Attr * String * Tag => ElAttr {
 }
 
 String => Escaped {
-    String -> Length -> Eq(0).(
+    String -> Length -> Eq(0) -> (
         * False => Escaped {
-            String -> ByteAt(1).(
+            String -> ByteAt(1) -> (
                 * 34 => Escaped {
                     Html("&quot;" -> Joined(String -> Substring(From(2) * To(String -> Length)) -> Escaped))
                 }

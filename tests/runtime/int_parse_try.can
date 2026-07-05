@@ -3,11 +3,11 @@ double = (String) => Result<Int, MalformedInt> {
 }
 
 main = () => Unit {
-    "21".double().(
+    "21".double() -> (
         * Err<MalformedInt> => Unit { "err" -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
-    "x".double().(
+    "x".double() -> (
         * Err<MalformedInt> => Unit { MalformedInt -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )

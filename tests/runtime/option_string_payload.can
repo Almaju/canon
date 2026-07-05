@@ -1,16 +1,16 @@
 pick = (Int) => Option<String> {
-    Int -> Eq(0).(
+    Int -> Eq(0) -> (
         * False => Option<String> { Some("payload") }
         * True => Option<String> { None() }
     )
 }
 
 main = () => Unit {
-    1.pick().(
+    1.pick() -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    0.pick().(
+    0.pick() -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )

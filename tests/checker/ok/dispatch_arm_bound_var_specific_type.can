@@ -7,7 +7,7 @@ JsonObject = JsonEntry
 JsonValue = JsonMissing + JsonObject
 
 describe = (JsonValue) => Unit {
-    JsonValue.(
+    JsonValue -> (
         * JsonMissing => Unit { "missing" -> Print }
         * JsonObject => Unit { JsonObject.extract() -> Print }
     )

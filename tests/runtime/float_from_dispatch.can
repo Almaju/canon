@@ -1,5 +1,5 @@
 half = (Bool) => Float {
-    Bool.(
+    Bool -> (
         * False => Float { 1.5 }
         * True => Float { 2.5 }
     )

@@ -349,14 +349,14 @@ Unit => Program {                              # CLI entry (anonymous, returns t
     "hello" -> Print
 }
 
-True().(                                       # dispatch (branch on union)
-    * (False) => Unit { "no" -> Print }
-    * (True)  => Unit { "yes" -> Print }
+True() -> (                                    # dispatch (branch on union); scrutinee pipes in with `->`
+    * False => Unit { "no" -> Print }
+    * True  => Unit { "yes" -> Print }
 )
 
-path.(                                         # literal dispatch (String/Int scrutinee);
-    * ("/notes") => Body { Index() }           # the catch-all arm is required, always last
-    * (String) => Body { NotFound() }
+path -> (                                      # literal dispatch (String/Int scrutinee);
+    * "/notes" => Body { Index() }             # the catch-all arm is required, always last
+    * String => Body { NotFound() }
 )
 
 List(1, 2, 3).map((Int) => Int { Int -> Product(2) }) # lambda (keeps parens)

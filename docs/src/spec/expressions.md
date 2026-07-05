@@ -53,15 +53,22 @@ readConfig = (File * Path) => Result<Config, IoError + ParseError> {
 ## Dispatch
 
 Dispatch is the language's only branching construct. The scrutinee (a
-union value) is the receiver; the arms are its handlers:
+union value) **pipes into** the arm group with `->`; the arms are its
+handlers:
 
 ```canon
-Ord.(
-    * (Equal) => Sign { Zero() }
-    * (Greater) => Sign { Positive() }
-    * (Less) => Sign { Negative() }
+Ord -> (
+    * Equal => Sign { Zero() }
+    * Greater => Sign { Positive() }
+    * Less => Sign { Negative() }
 )
 ```
+
+The `->` is the same pipe that carries a value into a constructor: the
+scrutinee flows into the dispatch. The parentheses group the arms — they
+isolate the match, they do not declare arguments. (The legacy spelling
+`Ord.( … )` still parses so old sources migrate cleanly, but `canon fmt`
+rewrites it to the pipe form; `.` no longer executes anything.)
 
 Rules:
 
@@ -88,9 +95,9 @@ name determined by the pattern:
   argument explicitly; it binds the *unwrapped* value.
 
   ```canon
-  result.(
-      * (Err<IoError>) => String { IoError.message() }
-      * (Ok<String>) => String { String }
+  result -> (
+      * Err<IoError> => String { IoError.message() }
+      * Ok<String> => String { String }
   )
   ```
 
@@ -118,10 +125,10 @@ catch-all** naming the scrutinee's type:
 
 ```canon
 route = (String) => String {
-    String.(
-        * ("/notes") => String { "index" }
-        * ("/notes/1") => String { "note one" }
-        * (String) => String { "not found: " -> Joined(String) }
+    String -> (
+        * "/notes" => String { "index" }
+        * "/notes/1" => String { "note one" }
+        * String => String { "not found: " -> Joined(String) }
     )
 }
 ```
@@ -258,8 +265,8 @@ hole or `.ToHtml()` is called. HTML literals power the
 | `<T>` | generic parameter |
 | `<T: Tr>` | generic with trait constraint |
 | `::<T>` | type argument at a call site (turbofish) |
-| `.` | call / field access / dispatch |
-| `.( )` | dispatch on a union |
+| `.` | call / field access (never executes a flow step) |
+| `-> ( )` | dispatch: pipe the scrutinee into an arm group |
 | `?` | propagate `Result` / `Option` failure |
 | `"..."` | string literal |
 | `{"k":v}` / `[v]` | JSON literal |

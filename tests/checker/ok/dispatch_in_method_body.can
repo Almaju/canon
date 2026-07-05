@@ -5,7 +5,7 @@ Mode = Closed + Opened
 Opened = Unit
 
 describe = (Mode) => String {
-    Mode.(
+    Mode -> (
         * Closed => String { "closed" }
         * Opened => String { "opened" }
     )

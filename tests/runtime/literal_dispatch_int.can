@@ -1,5 +1,5 @@
 describe = (Int) => Unit {
-    Int.(
+    Int -> (
         * 0 => Unit { "zero" -> Print }
         * 1 => Unit { "one" -> Print }
         * Int => Unit { Int -> Print }

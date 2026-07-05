@@ -558,31 +558,13 @@ impl Parser {
             }
             if self.check(TokenKind::Dot) {
                 self.advance();
-                // Dispatch syntax: value.( arms ) — desugars to match
+                // Legacy dispatch syntax: value.( arms ) — desugars to
+                // match. The canonical spelling is the pipe `value -> (
+                // arms )` (see the `->` branch below); `.(` stays
+                // accepted so old sources still parse.
                 if self.check(TokenKind::LParen) {
                     self.advance();
-                    let mut arms = Vec::new();
-                    self.skip_newlines();
-                    while !self.check(TokenKind::RParen) && !self.is_at_end() {
-                        // Consume optional `*` separator before each arm (including the first)
-                        if self.check(TokenKind::Star) {
-                            self.advance();
-                            self.skip_newlines();
-                        }
-                        if self.check(TokenKind::RParen) || self.is_at_end() {
-                            break;
-                        }
-                        arms.push(self.parse_match_arm()?);
-                        self.skip_newlines();
-                    }
-                    let rparen =
-                        self.expect(TokenKind::RParen, "expected `)` to close dispatch")?;
-                    let start_span = expr.span();
-                    expr = Expr::Match {
-                        scrutinee: Box::new(expr),
-                        arms,
-                        span: span_join(start_span, rparen.span),
-                    };
+                    expr = self.finish_dispatch(expr)?;
                 } else {
                     let name_tok =
                         self.expect(TokenKind::Ident, "expected method or field name after `.`")?;
@@ -668,6 +650,15 @@ impl Parser {
                 // *start* and consume their own arrow.
                 self.advance();
                 self.skip_newlines();
+                // Dispatch on the pipe: `value -> ( arms )`. The `(`
+                // opens an arm group (parens isolate the match, they
+                // don't declare arguments), distinguishing it from the
+                // pipe-into-constructor form `value -> Name(rest…)`.
+                if self.check(TokenKind::LParen) {
+                    self.advance();
+                    expr = self.finish_dispatch(expr)?;
+                    continue;
+                }
                 let name_tok = self.expect(TokenKind::Ident, "expected a type name after `->`")?;
                 if !Self::is_pascal_case_str(&name_tok.lexeme) {
                     return Err(CanonError::ParseError {
@@ -1100,6 +1091,33 @@ impl Parser {
                 .to_string(),
             span: self.peek().span,
         }
+    }
+
+    /// Parse the arm list of a dispatch, given the opening `(` was just
+    /// consumed. Shared by both spellings: the legacy `value.( … )` and
+    /// the pipe `value -> ( … )`.
+    fn finish_dispatch(&mut self, scrutinee: Expr) -> Result<Expr> {
+        let mut arms = Vec::new();
+        self.skip_newlines();
+        while !self.check(TokenKind::RParen) && !self.is_at_end() {
+            // Consume optional `*` separator before each arm (including the first)
+            if self.check(TokenKind::Star) {
+                self.advance();
+                self.skip_newlines();
+            }
+            if self.check(TokenKind::RParen) || self.is_at_end() {
+                break;
+            }
+            arms.push(self.parse_match_arm()?);
+            self.skip_newlines();
+        }
+        let rparen = self.expect(TokenKind::RParen, "expected `)` to close dispatch")?;
+        let start_span = scrutinee.span();
+        Ok(Expr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+            span: span_join(start_span, rparen.span),
+        })
     }
 
     fn parse_match_arm(&mut self) -> Result<MatchArm> {

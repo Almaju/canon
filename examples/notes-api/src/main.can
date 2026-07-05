@@ -23,10 +23,10 @@ Unit => NoteTwo {
 }
 
 Request => Response {
-    Request.path().(
+    Request.path() -> (
         * None => Response { Response(Headers() * NotFound() * Status(400)) }
         * Some<String> => Response {
-            String.(
+            String -> (
                 * "/notes" => Response { Response(Headers() * IndexBody() * Status(200)) }
                 * "/notes/1" => Response { Response(Headers() * NoteOne() * Status(200)) }
                 * "/notes/2" => Response { Response(Headers() * NoteTwo() * Status(200)) }

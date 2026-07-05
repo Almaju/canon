@@ -1,7 +1,7 @@
 Path = String
 
 classify = (Int) => String {
-    Int.(
+    Int -> (
         * 0 => String { "zero" }
         * 1 => String { "one" }
         * Int => String { "many" }
@@ -9,7 +9,7 @@ classify = (Int) => String {
 }
 
 route = (Path) => String {
-    Path.(
+    Path -> (
         * "/" => String { "home" }
         * "/notes" => String { "index" }
         * Path => String { "not found" }

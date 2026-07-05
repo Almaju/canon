@@ -523,7 +523,7 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
                 emit_method(&mut out, method, type_args, args, false);
             }
             ChainPart::Dispatch { arms } => {
-                out.push_str(".(");
+                out.push_str(" -> (");
                 for arm in arms.iter() {
                     out.push_str(" * ");
                     out.push_str(&emit_arm_inline(arm));
@@ -560,7 +560,7 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
         if let ChainPart::Dispatch { arms } = &chain[dpos] {
             let arm_pad = "    ".repeat(indent + 1);
             let close_pad = "    ".repeat(indent);
-            out.push_str(".(\n");
+            out.push_str(" -> (\n");
             for arm in arms.iter() {
                 out.push_str(&arm_pad);
                 out.push_str("* ");
@@ -617,9 +617,14 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
             }
             ChainPart::Try => out.push('?'),
             ChainPart::Dispatch { arms } => {
+                // A dispatch is a pipe step (`-> ( … )`), so it gets its
+                // own continuation line like every other `->` in a
+                // broken chain.
+                out.push('\n');
+                out.push_str(&cont_pad);
                 let arm_pad = "    ".repeat(indent + 2);
                 let close_pad = "    ".repeat(indent + 1);
-                out.push_str(".(\n");
+                out.push_str("-> (\n");
                 for arm in arms.iter() {
                     out.push_str(&arm_pad);
                     out.push_str("* ");
@@ -978,7 +983,7 @@ mod tests {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
             "main = () => Unit {\n    True().(\n        * (True) => Unit { \"yes\".print() }\n        * (False) => Unit { \"no\".print() }\n    )\n}\n",
-            "main = () => Unit {\n    True().(\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
+            "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 
@@ -987,7 +992,16 @@ mod tests {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
             "Route = (String) => String {\n    String.(\n        * (String) => String { \"other\" }\n        * (\"/b\") => String { \"b\" }\n        * (\"/a\") => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
-            "Route = (String) => String {\n    String.(\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_dispatch_pipe_form_idempotent() {
+        // The canonical dispatch spelling pipes the scrutinee in with
+        // `->` (the last `.` that used to execute a flow step).
+        assert_idempotent(
+            "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 

@@ -5,7 +5,7 @@ Greeting = () => Greeting {
 }
 
 Greeting = (Bool) => Greeting {
-    Bool.(
+    Bool -> (
         * False => Greeting { Greeting("bool:no") }
         * True => Greeting { Greeting("bool:yes") }
     )

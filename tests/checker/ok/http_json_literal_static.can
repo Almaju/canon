@@ -3,5 +3,5 @@ notFound = () => Body {
 }
 
 serve = (Request) => Response {
-    Response(notFound() * Headers() * Status(404))
+    Response(Headers() * Status(404) * notFound())
 }

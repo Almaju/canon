@@ -89,11 +89,11 @@ The migration collapses to a single execution operator. Three symbols, three non
 
 | Symbol | Job | Editor completion after it |
 |---|---|---|
-| `->` | **execute** — the only call / pipe / construct form | functions whose input product contains the left value's type |
-| `.` | **read** — field access and dispatch `.( )` only | the value's fields/components |
+| `->` | **execute** — the only call / pipe / construct / dispatch form | functions whose input product contains the left value's type |
+| `.` | **read** — field access only | the value's fields/components |
 | `=>` | **declare** — every constructor / shape / lambda / dispatch-arm definition | — |
 
-The point of the split: `.` and `.` stop competing to mean "call." `.` only *reads* a component; `->` only *applies* a function. So typing `.` offers fields and typing `->` offers functions — autocompletion on both, for different things. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.**
+The point of the split: `.` and `->` stop competing to mean "call." `.` only *reads* a component; `->` *applies* a function **and** pipes a scrutinee into a dispatch (`value -> ( * … )`). So typing `.` offers fields and typing `->` offers functions — autocompletion on both, for different things. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.**
 
 Every construct in one table:
 
@@ -108,7 +108,7 @@ Every construct in one table:
 | shape `Show = () => String` | `Show = () => String` |
 | lambda `(Int) => Int { … }` | `(Int) => Int { … }` |
 | dispatch arm `* (False) => Unit { … }` | `* (False) => Unit { … }` |
-| dispatch `bool.( … )` | unchanged |
+| dispatch `bool.( … )` | `bool -> ( … )` |
 | field `user.Birthday` | unchanged |
 
 The declaration/execution mirror is the payoff — the same shape, `=>` when defining, `->` when running:
@@ -137,7 +137,7 @@ Details still to pin: first-class function references (today `Int.Double` for pa
 - **Accessors** construct the accessed thing: `get = (Map * String) => Option<Value>` becomes a `Value` constructor — `map.Value("k")?` reads "the Value in this Map at this key, which might not exist." `keys` → `Keys = List<Key>` + `Keys = (Map) => Keys`.
 - **Endomorphisms** — operations whose output type equals an input type, the one place a type genuinely underdetermines the function — take **result newtypes**: `Inserted = Map`, `Removed = Map`, `Joined = String`. Newtype substitutability makes chaining free: `Map().Inserted("a" * "1").Removed("a")` composes because `Inserted` flows anywhere `Map` is expected. The verb's information relocates into a name that is now checked, sorted, globally resolvable, and usable in downstream signatures.
 - **Effects produce evidence**: `write` becomes `Written = Path` + `Written = (Contents * Path) => Result<Written, IoError>`. A downstream function that accepts `(Written)` instead of `(Path)` *requires proof the write happened* — capability-style sequencing with no new machinery, and the pattern composes with [capability entry points](#capability-entry-points-planned) (the capability joins the constructor's input product). Pure sinks (`-> Unit`) are shape implementations (`Print = () => Unit` — `"hi".Print()`) until capabilities land, after which printing returns the capability (`Stdout.Print("a").Print("b")`) and sinks disappear.
-- **Shared vocabulary** — operations whose meaning spans types — are shapes with per-type implementations, exactly what traits were built for: `Length` (`Map`, `Set`, `String`, `List`), the comparison surface `Eq`/`Lt`/`Le`/`Gt`/`Ge`, ordering via the `Ord` constructor (`a.Ord(b).( * (Less) … )` — `compare` was already constructor-shaped). Arithmetic takes the noun vocabulary: `Sum`, `Product`, `Difference`, `Quotient`, `Remainder`, `Minimum`, `Maximum` — `2.Sum(3)`, `price.Product(quantity)`, non-commutative cases disambiguated by `OtherInt` under the ordinary binding rule.
+- **Shared vocabulary** — operations whose meaning spans types — are shapes with per-type implementations, exactly what traits were built for: `Length` (`Map`, `Set`, `String`, `List`), the comparison surface `Eq`/`Lt`/`Le`/`Gt`/`Ge`, ordering via the `Ord` constructor (`a -> Ord(b) -> ( * Less => … )` — `compare` was already constructor-shaped). Arithmetic takes the noun vocabulary: `Sum`, `Product`, `Difference`, `Quotient`, `Remainder`, `Minimum`, `Maximum` — `2.Sum(3)`, `price.Product(quantity)`, non-commutative cases disambiguated by `OtherInt` under the ordinary binding rule.
 - **Higher-order operations** take generic result newtypes: `Mapped<U> = List<U>` + `Mapped = <T, U>(((T) => U) * List<T>) => Mapped<U>`; `Filtered<T> = List<T>`. First-class references generalize: `Int.Doubled` replaces `Int.double`. `Fold` stays a shape (its result is a bare parameter).
 - **Entry points**: the world registry becomes core shapes — the CLI entry `Unit => Program`, the HTTP handler `Request => Response`, and the web triple `Model => Html` (view) with `Unit => Init` and `Model * Msg => Update`. A program is a module implementing a world shape; selection is by declared implementation — the CLI entry is chosen by returning `Program` just as the HTTP handler is chosen by returning `Response`. The web triple is type-selected too: it anchors on the view (the sole `Model => Html` with a user-type receiver), with `Init` / `Update` model-alias markers giving init and update distinct constructor keys. No world keys on a function name.
 - **The FFI boundary keeps camelCase.** WIT functions are kebab-case verbs; no mechanical mapping can invent result nouns. Binding files keep the mechanical camelCase mapping and become the **only** place camelCase is legal. camelCase in a Canon program then has exactly one meaning — *this identifier is foreign* — the way `unsafe` marks a boundary in Rust.

@@ -11,10 +11,10 @@ Remaining = Set
 Set = Absent + Entry
 
 Set * String => Contains {
-    Set.(
+    Set -> (
         * Absent => Contains { False() }
         * Entry => Contains {
-            Entry.Item -> Eq(String).(
+            Entry.Item -> Eq(String) -> (
                 * False => Contains { Entry.Remaining -> Contains(String) }
                 * True => Contains { True() }
             )
@@ -23,12 +23,12 @@ Set * String => Contains {
 }
 
 Inserted = (Set * String) => Set {
-    Set.(
+    Set -> (
         * Absent => Set { Entry(Absent() * String) }
         * Entry => Set {
-            String -> Lt(Entry.Item).(
+            String -> Lt(Entry.Item) -> (
                 * False => Set {
-                    String -> Eq(Entry.Item).(
+                    String -> Eq(Entry.Item) -> (
                         * False => Set { Entry(Entry.Item * Entry.Remaining -> Inserted(String)) }
                         * True => Set { Set }
                     )
@@ -40,24 +40,24 @@ Inserted = (Set * String) => Set {
 }
 
 Set => Length {
-    Set.(
+    Set -> (
         * Absent => Length { 0 }
         * Entry => Length { Entry.Remaining -> Length -> Sum(1) }
     )
 }
 
 Set => List<Item> {
-    Set.(
+    Set -> (
         * Absent => List<Item> { List() }
         * Entry => List<Item> { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
     )
 }
 
 Removed = (Set * String) => Set {
-    Set.(
+    Set -> (
         * Absent => Set { Absent() }
         * Entry => Set {
-            Entry.Item -> Eq(String).(
+            Entry.Item -> Eq(String) -> (
                 * False => Set { Entry(Entry.Item * Entry.Remaining -> Removed(String)) }
                 * True => Set { Entry.Remaining }
             )

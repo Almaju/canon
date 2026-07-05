@@ -7,12 +7,12 @@ Unit => CorsHeaders {
 }
 
 Request => Response {
-    Request.method().(
+    Request.method() -> (
         * "GET" => Response {
-            Request.path().(
+            Request.path() -> (
                 * None => Response { Response(Body("bad request") * CorsHeaders() * Status(400)) }
                 * Some<String> => Response {
-                    String.(
+                    String -> (
                         * "/todos" => Response {
                             Response(Body(Seeded() -> String) * CorsHeaders() * Status(200))
                         }

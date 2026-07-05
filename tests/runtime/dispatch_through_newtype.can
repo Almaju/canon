@@ -3,7 +3,7 @@ Content = String
 MessageContent = Option<Content>
 
 dispatch = (MessageContent) => Unit {
-    MessageContent.(
+    MessageContent -> (
         * None => Unit { "absent" -> Print }
         * Some<Content> => Unit { "present" -> Print }
     )
