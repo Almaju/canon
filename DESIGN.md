@@ -1128,7 +1128,7 @@ If the full removal proves too costly in practice, the fallback that keeps most 
 
 1. **Constructor families, in-file** — ✅ landed. Several self-named constructors per type, selected by the first input's type; duplicate (receiver, name, first-input) definitions are a checked error (`tests/runtime/ctor_family.can`).
    1b. **Anonymous arrows** — ✅ landed. `(A) -> B { … }` declares the `B` constructor (`tests/runtime/ctor_arrow.can`); the named form stays legal until slice 6.
-2. **Stdlib cleanup to current spec** — 🔶 in progress. `map.can`/`set.can` ported (`Value`/`Keys`/`Values`/`List` as anonymous constructors, `Inserted`/`Removed` as shape implementations); remaining: `assert`, the json.can wrappers, http accessors, html helpers, the parser internals.
+2. **Stdlib cleanup to current spec** — 🔶 in progress. `map.can`/`set.can` ported (`Value`/`Keys`/`Values`/`List` as anonymous constructors, `Inserted`/`Removed` as shape implementations); remaining: the json.can wrappers, http accessors, html helpers, the parser internals.
 3. **Cross-file constructor families** — 🔶 partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
 4. **Core vocabulary** — `Sum`/`Product`/…, `Eq`/`Lt`/…, `Length`, `Mapped`/`Filtered`, `Joined`, `Print`; initially thin aliases over the existing builtins, camelCase spellings deprecated.
 5. **Stdlib port** — file by file, `json.can` first (the stress test). Decision checkpoint: full removal vs the fallback rule.
@@ -1354,7 +1354,7 @@ Three things ship with the language:
 | `canon/std/http/Url`, `canon/std/http/InvalidUrl`, `canon/std/http/HttpError` | `canon:builtins/url` + `canon:builtins/http` | ✅ — will move to `wasi/http/outgoing_handler` |
 | `canon/std/http/HttpServer`, `canon/std/http/HttpStatus`, `canon/std/http/Port`, `canon/std/http/RoutePath` | `canon:builtins/http-server` | ⏳ stub host; real `.serve()` semantics pending |
 | `canon/std/Json`, `canon/std/MalformedJson` | `canon:builtins/json` (primitive builders only) | ✅ — `Json` validator is pure Canon (recursive-descent parser over `String.byteAt` / `.length` / `.substring` / `.eq`); `ToJson` trait for primitive types; `{"k":v}` / `[v,...]` literal syntax with interpolation; structural derive for user types pending |
-| `canon/std/TestResult` (`Pass` / `Fail` + `assert`) | pure Canon | ✅ |
+| `canon/std/TestResult` (`Pass` / `Fail` + the `(Bool * String)` constructor) | pure Canon | ✅ |
 | `canon/std/Int` (`Int(String) -> Result<Int, MalformedInt>`), `canon/std/MalformedInt` | pure Canon | ✅ — the fallible half of [Conversions](#conversions); the infallible half (`String(Int)`, `String(Byte)`) is a compiler builtin |
 | `canon/std/Byte` (`Byte = Int`; `String(Byte(65))` is `"A"`) | pure Canon (rendering builtin) | ✅ |
 | `canon/std/Map` (sorted, alphabetical iteration; `String` keys/values for now) | pure Canon — recursive union | ✅ |

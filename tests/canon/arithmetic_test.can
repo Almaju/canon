@@ -2,39 +2,39 @@ testAddIdentity = () -> TestResult {
     5
         .add(0)
         .eq(5)
-        .assert("5 + 0 should be 5")
+        .TestResult("5 + 0 should be 5")
 }
 
 testAddPositive = () -> TestResult {
     1
         .add(2)
         .eq(3)
-        .assert("1 + 2 should be 3")
+        .TestResult("1 + 2 should be 3")
 }
 
 testDiv = () -> TestResult {
     20
         .div(4)
         .eq(5)
-        .assert("20 / 4 should be 5")
+        .TestResult("20 / 4 should be 5")
 }
 
 testEqReflexive = () -> TestResult {
     5
         .eq(5)
-        .assert("5 should equal itself")
+        .TestResult("5 should equal itself")
 }
 
 testMul = () -> TestResult {
     3
         .mul(4)
         .eq(12)
-        .assert("3 * 4 should be 12")
+        .TestResult("3 * 4 should be 12")
 }
 
 testSub = () -> TestResult {
     10
         .sub(3)
         .eq(7)
-        .assert("10 - 3 should be 7")
+        .TestResult("10 - 3 should be 7")
 }

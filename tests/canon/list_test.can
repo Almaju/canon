@@ -2,7 +2,7 @@ testListConstruction = () -> TestResult {
     List(1, 2, 3)
         .length()
         .eq(3)
-        .assert("List(1,2,3) should have length 3")
+        .TestResult("List(1,2,3) should have length 3")
 }
 
 testListMapPreservesLength = () -> TestResult {
@@ -10,5 +10,5 @@ testListMapPreservesLength = () -> TestResult {
         .map((Int) -> Int { Int.mul(2) })
         .length()
         .eq(3)
-        .assert("map should preserve length")
+        .TestResult("map should preserve length")
 }

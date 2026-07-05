@@ -1,0 +1,5 @@
+Fetched = Body
+
+(Url) -> Result<Fetched, HttpError> {
+    Url.fetch()
+}

@@ -25,14 +25,14 @@ fn canon_test_exit_codes() {
     1
         .add(2)
         .eq(7)
-        .assert("math is broken")
+        .TestResult("math is broken")
 }
 
 testFine = () -> TestResult {
     1
         .add(2)
         .eq(3)
-        .assert("math works")
+        .TestResult("math works")
 }
 "#,
     )
@@ -57,7 +57,7 @@ testFine = () -> TestResult {
     1
         .add(2)
         .eq(3)
-        .assert("math works")
+        .TestResult("math works")
 }
 "#,
     )

@@ -129,16 +129,16 @@ actual current output. The `git diff` is the review surface for
 
 ```
 testAddPositive = () -> TestResult {
-    1.add(2).eq(3).assert()
+    1.add(2).eq(3).TestResult("1+2=3")
 }
 ```
 
 (No import needed: the `TestResult` reference auto-loads the stdlib's `test-result.can`.)
 
 - `TestResult = Fail + Pass`, with `Fail = String` carrying the assertion's failure message.
-- `assert = (Bool * String) -> TestResult` turns a `Bool` and a message into a `TestResult`. When the bool is `True`, returns `Pass()`; when `False`, returns `Fail(message)`.
+- The `TestResult` constructor `(Bool * String) -> TestResult` turns a `Bool` and a message into a `TestResult`. When the bool is `True`, returns `Pass()`; when `False`, returns `Fail(message)`. (Formerly `assert` — renamed in the types-only port; conversion is construction.)
 - The synthesised `main` dispatches each test on its result and prints a `[ ok ] testName` line on `Pass` or a single `[FAIL] testName: message` line on `Fail`. Each dispatch yields 0/1; the failure count drives `wasi:cli/exit#exit-with-code` (any failure → exit 1), so `canon test` is honest to shells and CI.
-- Each test ends in a chain that produces a `TestResult` (typically `.eq(...).assert()`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
+- Each test ends in a chain that produces a `TestResult` (typically `.eq(...).TestResult("msg")`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
 - The synthesised `main` is exempt from free-function alphabetical ordering (main is the entry point, distinguished by role).
 - Exit codes are threaded: a failing suite exits 1, a passing one exits 0 (pinned by `tests/exit_code_test.rs::canon_test_exit_codes`). The `tests/canon_tests.rs` harness still parses stdout for `[FAIL]` as a belt-and-braces check.
 - `just test-ow` runs the same tests with pretty per-file output (faster local iteration); the canonical CI path is still `cargo test`.
