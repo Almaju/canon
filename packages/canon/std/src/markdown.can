@@ -1,3 +1,7 @@
+FenceBody = Frag
+
+FenceEnd = Int
+
 Frag = String
 
 HashCount = Int
@@ -6,19 +10,76 @@ HeadingHtml = Frag
 
 Inline = Frag
 
+IsFence = Bool
+
+IsItem = Bool
+
+IsPara = Bool
+
 LineEnd = Int
+
+ListEnd = Int
+
+ListItems = Frag
 
 Markdown = String
 
+ParaBody = Frag
+
+ParaEnd = Int
+
 RenderedBlocks = Frag
 
+RenderedFence = Frag
+
 RenderedHeading = Frag
+
+RenderedList = Frag
+
+RenderedNonList = Frag
 
 RenderedParagraph = Frag
 
 StarClose = Int
 
 TickClose = Int
+
+Int * String => FenceBody {
+    Int -> Gt(String -> Length) -> (
+        * False => FenceBody {
+            Int -> IsFence(String) -> (
+                * False => FenceBody {
+                    Int -> LineEnd(String) -> Gt(Int) -> (
+                        * False => FenceBody {
+                            "\n" -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+                        }
+                        * True => FenceBody {
+                            String
+                                -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)
+                                -> Escaped
+                                -> Joined("\n")
+                                -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+                        }
+                    )
+                }
+                * True => FenceBody { "" }
+            )
+        }
+        * True => FenceBody { "" }
+    )
+}
+
+Int * String => FenceEnd {
+    Int -> Gt(String -> Length) -> (
+        * False => FenceEnd {
+            Int -> IsFence(String) -> (
+                * False => FenceEnd { Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) }
+                * True => FenceEnd { Int -> LineEnd(String) -> Sum(1) }
+            )
+        }
+        * True => FenceEnd { Int }
+    )
+}
 
 Int * String => HashCount {
     Int -> Gt(String -> Length) -> (
@@ -94,6 +155,76 @@ Int * String => Inline {
     )
 }
 
+Int * String => IsFence {
+    Int -> Sum(2) -> Gt(String -> Length) -> (
+        * False => IsFence {
+            String -> ByteAt(Int) -> Eq(96) -> (
+                * False => IsFence { False() }
+                * True => IsFence {
+                    String -> ByteAt(Int -> Sum(1)) -> Eq(96) -> (
+                        * False => IsFence { False() }
+                        * True => IsFence { String -> ByteAt(Int -> Sum(2)) -> Eq(96) }
+                    )
+                }
+            )
+        }
+        * True => IsFence { False() }
+    )
+}
+
+Int * String => IsItem {
+    Int -> Sum(1) -> Gt(String -> Length) -> (
+        * False => IsItem {
+            String -> ByteAt(Int) -> Eq(45) -> (
+                * False => IsItem { False() }
+                * True => IsItem { String -> ByteAt(Int -> Sum(1)) -> Eq(32) }
+            )
+        }
+        * True => IsItem { False() }
+    )
+}
+
+Int * String => IsPara {
+    Int -> Gt(String -> Length) -> (
+        * False => IsPara {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => IsPara {
+                    Int -> IsItem(String) -> (
+                        * False => IsPara {
+                            Int -> IsFence(String) -> (
+                                * False => IsPara {
+                                    String -> ByteAt(Int) -> Eq(35) -> (
+                                        * False => IsPara { True() }
+                                        * True => IsPara {
+                                            Int
+                                                -> Sum(Int -> HashCount(String))
+                                                -> Gt(String -> Length) -> (
+                                                * False => IsPara {
+                                                    String
+                                                        -> ByteAt(Int -> Sum(Int -> HashCount(String)))
+                                                        -> Eq(32) -> (
+                                                        * False => IsPara { True() }
+                                                        * True => IsPara { False() }
+                                                    )
+                                                }
+                                                * True => IsPara { True() }
+                                            )
+                                        }
+                                    )
+                                }
+                                * True => IsPara { False() }
+                            )
+                        }
+                        * True => IsPara { False() }
+                    )
+                }
+                * True => IsPara { False() }
+            )
+        }
+        * True => IsPara { False() }
+    )
+}
+
 Int * String => LineEnd {
     Int -> Gt(String -> Length) -> (
         * False => LineEnd {
@@ -106,28 +237,58 @@ Int * String => LineEnd {
     )
 }
 
+Int * String => ListEnd {
+    Int -> IsItem(String) -> (
+        * False => ListEnd { Int }
+        * True => ListEnd { Int -> LineEnd(String) -> Sum(1) -> ListEnd(String) }
+    )
+}
+
+Int * String => ListItems {
+    Int -> IsItem(String) -> (
+        * False => ListItems { "" }
+        * True => ListItems {
+            Int -> Sum(2) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+                * False => ListItems {
+                    "<li>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+                        -> Joined("</li>")
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> ListItems(String))
+                }
+                * True => ListItems {
+                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> ListItems(String))
+                }
+            )
+        }
+    )
+}
+
+Int * String => ParaBody {
+    1
+        -> Inline(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsPara(String) -> ( * False => Frag { "" } * True => Frag { " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> ParaBody(String)) }))
+}
+
+Int * String => ParaEnd {
+    Int -> IsPara(String) -> (
+        * False => ParaEnd { Int }
+        * True => ParaEnd { Int -> LineEnd(String) -> Sum(1) -> ParaEnd(String) }
+    )
+}
+
 Int * String => RenderedBlocks {
     Int -> Gt(String -> Length) -> (
         * False => RenderedBlocks {
             String -> ByteAt(Int) -> Eq(10) -> (
                 * False => RenderedBlocks {
-                    String -> ByteAt(Int) -> Eq(35) -> (
-                        * False => RenderedBlocks { Int -> RenderedParagraph(String) }
-                        * True => RenderedBlocks {
-                            Int -> Sum(Int -> HashCount(String)) -> Gt(String -> Length) -> (
-                                * False => RenderedBlocks {
-                                    String
-                                        -> ByteAt(Int -> Sum(Int -> HashCount(String)))
-                                        -> Eq(32) -> (
-                                        * False => RenderedBlocks {
-                                            Int -> RenderedParagraph(String)
-                                        }
-                                        * True => RenderedBlocks { Int -> RenderedHeading(String) }
-                                    )
-                                }
-                                * True => RenderedBlocks { Int -> RenderedParagraph(String) }
+                    Int -> IsFence(String) -> (
+                        * False => RenderedBlocks {
+                            Int -> IsItem(String) -> (
+                                * False => RenderedBlocks { Int -> RenderedNonList(String) }
+                                * True => RenderedBlocks { Int -> RenderedList(String) }
                             )
                         }
+                        * True => RenderedBlocks { Int -> RenderedFence(String) }
                     )
                 }
                 * True => RenderedBlocks { Int -> Sum(1) -> RenderedBlocks(String) }
@@ -135,6 +296,13 @@ Int * String => RenderedBlocks {
         }
         * True => RenderedBlocks { "" }
     )
+}
+
+Int * String => RenderedFence {
+    "<pre><code>"
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+        -> Joined("</code></pre>")
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) -> RenderedBlocks(String))
 }
 
 Int * String => RenderedHeading {
@@ -154,11 +322,35 @@ Int * String => RenderedHeading {
     )
 }
 
+Int * String => RenderedList {
+    "<ul>"
+        -> Joined(Int -> ListItems(String))
+        -> Joined("</ul>")
+        -> Joined(Int -> ListEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedNonList {
+    String -> ByteAt(Int) -> Eq(35) -> (
+        * False => RenderedNonList { Int -> RenderedParagraph(String) }
+        * True => RenderedNonList {
+            Int -> Sum(Int -> HashCount(String)) -> Gt(String -> Length) -> (
+                * False => RenderedNonList {
+                    String -> ByteAt(Int -> Sum(Int -> HashCount(String))) -> Eq(32) -> (
+                        * False => RenderedNonList { Int -> RenderedParagraph(String) }
+                        * True => RenderedNonList { Int -> RenderedHeading(String) }
+                    )
+                }
+                * True => RenderedNonList { Int -> RenderedParagraph(String) }
+            )
+        }
+    )
+}
+
 Int * String => RenderedParagraph {
     "<p>"
-        -> Joined(1 -> Inline(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+        -> Joined(Int -> ParaBody(String))
         -> Joined("</p>")
-        -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+        -> Joined(Int -> ParaEnd(String) -> RenderedBlocks(String))
 }
 
 Int * String => StarClose {

@@ -79,23 +79,27 @@ rendered to HTML entirely in Canon with no JavaScript and no bundler.
 
 ## What it renders
 
-The renderer is a working subset, not a full CommonMark implementation:
+The renderer is a practical subset, not a full CommonMark implementation:
 
 | Markdown | HTML |
 |---|---|
 | `# H`, `## H`, `### H` (space required) | `<h1>`/`<h2>`/`<h3>`; deeper levels clamp to `<h3>` |
-| any other non-blank line | `<p>…</p>` |
+| consecutive text lines | one `<p>…</p>` (soft-wrapped lines join with a space) |
+| `- item` lines | `<ul><li>…</li></ul>` |
+| ` ``` ` fenced block | `<pre><code>…</code></pre>` (raw, escaped, no inline pass) |
+| `**bold**` | `<strong>…</strong>` (inner text formatted) |
+| `` `code` `` | `<code>…</code>` (contents escaped) |
 | blank lines | block separators |
 
-Text is HTML-escaped through the stdlib's `Escaped` (`"` `&` `<` `>`), so
-`a < b & c` renders as `a &lt; b &amp; c`. A `#` with no following space
-is treated as paragraph text, matching Markdown.
+Text is HTML-escaped as it is walked (`"` `&` `<` `>`), so `a < b & c`
+renders as `a &lt; b &amp; c`. A `#` with no following space, and a lone
+`*`, are treated as literal text.
 
-Two deliberate simplifications in this first cut: consecutive non-blank
-lines each become their own `<p>` (CommonMark would join them), and there
-is no inline formatting (`**bold**`, `` `code` ``, `[links](…)`), fenced
-code blocks, or lists yet. Each is an additive extension in the same
-byte-walking style.
+Not yet handled: italics (`*x*`), links (`[t](u)`), ordered lists,
+nested lists, and blockquotes — each an additive extension in the same
+byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8)
+text in string literals is subject to the compiler's existing lexer
+handling of multi-byte characters; ASCII markdown is unaffected.
 
 ## Why this exists
 
