@@ -69,13 +69,13 @@ control-flow construct) and iteration (methods on collections):
 
 ```canon,run=intro
 Unit => Program {
-    List(1, 2, 3)
+    List(1 * 2 * 3)
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length
         -> Print
-    True().(
-        * (False) => Unit { "no" -> Print }
-        * (True) => Unit { "yes" -> Print }
+    True() -> (
+        * False => Unit { "no" -> Print }
+        * True => Unit { "yes" -> Print }
     )
 }
 ```
