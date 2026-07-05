@@ -786,7 +786,7 @@ mod host_builtin_http {
 /// `canon:builtins/http-server` — host bridge for `std/http/http-server`.
 ///
 /// The API surface is small and stateless: `create(port)` produces an
-/// opaque server-handle string, `get`/`post` thread routes through that
+/// opaque server-handle string, `route` threads routes through that
 /// handle by appending to it, and `serve` parses the encoded routes and
 /// runs a real tokio HTTP/1.1 listener.
 ///
@@ -826,7 +826,7 @@ mod host_builtin_http_server {
     // `CanonicalOption::Async` on the canon.lower emitted by the codegen).
     // The `async: { only_imports: [...] }` option tells wasmtime's bindgen
     // to generate an `async fn` host-trait method for it, so wasmtime can
-    // drive it through its task scheduler. `get`/`post`/`create` remain
+    // drive it through its task scheduler. `route`/`create` remain
     // sync and use the regular blocking trait method.
     //
     // The WIT signatures match what the codegen emits from the stdlib
@@ -838,8 +838,7 @@ mod host_builtin_http_server {
             package canon:builtins@0.1.0;
             interface http-server {
                 create: func(port: s64) -> string;
-                get: func(server: string, status: s64, path: string, body: string) -> string;
-                post: func(server: string, status: s64, path: string, body: string) -> string;
+                route: func(server: string, status: s64, method: string, body: string, path: string) -> string;
                 serve: async func(server: string) -> s32;
                 echo: async func(input: string) -> string;
                 slow-echo: async func(input: string) -> string;
@@ -855,16 +854,23 @@ mod host_builtin_http_server {
     impl canon::builtins::http_server::Host for State {
         fn create(&mut self, port: i64) -> String {
             // First record of the handle is just the port number. Each
-            // chained `.get(…)` / `.post(…)` appends one route record.
+            // chained `.Route(…)` appends one route record.
             port.to_string()
         }
 
-        fn get(&mut self, server: String, status: i64, path: String, body: String) -> String {
-            append_route(&server, "GET", status, &path, &body)
-        }
-
-        fn post(&mut self, server: String, status: i64, path: String, body: String) -> String {
-            append_route(&server, "POST", status, &path, &body)
+        fn route(
+            &mut self,
+            server: String,
+            status: i64,
+            method: String,
+            body: String,
+            path: String,
+        ) -> String {
+            // The HTTP method arrives as data (an uppercased verb string
+            // produced by `String(Method)` in the stdlib), so one host
+            // function registers every method — the `get`/`post` verb
+            // split lived only in the old camelCase surface.
+            append_route(&server, &method, status, &path, &body)
         }
     }
 
@@ -955,7 +961,7 @@ mod host_builtin_http_server {
 
     /// Parse the handle string into `(port, routes)`. Returns an error on
     /// malformed input — but in practice the handle is always produced by
-    /// our own `create`/`get`/`post` impls, so this is mostly defensive.
+    /// our own `create`/`route` impls, so this is mostly defensive.
     #[allow(clippy::type_complexity)]
     fn decode_handle(handle: &str) -> Result<(u16, HashMap<(String, String), Route>), String> {
         let mut records = handle.split(RS);

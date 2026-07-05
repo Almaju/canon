@@ -136,9 +136,9 @@ Ord = Equal + Greater + Less
 
 describe = (Ord) -> String {
     Ord.(
-        * (Equal) -> String { "equal" }
-        * (Greater) -> String { "greater" }
-        * (Less) -> String { "less" }
+        * Equal => String { "equal" }
+        * Greater => String { "greater" }
+        * Less => String { "less" }
     )
 }
 

@@ -61,6 +61,17 @@ User = Birthday * Username
 - A component is accessed by its type name: `user.Birthday`.
 - For repeated or anonymous components (from `^N`), access is by
   1-based position: `byte.1`, `byte.2`.
+- **Construction is positionless.** A value binds to the field whose
+  type it is, not to the slot it is written in, so
+  `User(Username("ada") * Birthday("…"))` and
+  `User(Birthday("…") * Username("ada"))` build the same value — position
+  never carries meaning. Because the components are distinct types, each
+  value's type selects its field; `canon fmt` canonicalises the written
+  order alphabetically. Where two fields share an underlying type
+  (`Key = String` and `Value = String` in `Node = Key * Rest * Value`),
+  tag the values with the newtype — `Node(Key("k") * Value("v") * …)` —
+  so each still selects its field. A bare, untagged `String` carries no
+  such tag and falls back to declaration order.
 
 ## Newtypes
 
@@ -107,7 +118,7 @@ Types may be parameterized with angle brackets: `List<T>`,
 `Option<T>`, `Result<T, E>`. Constraints name a trait after `:`:
 
 ```canon
-showAll = <T: Show>(List<T>) -> Unit {
+showAll = <T: Show>(List<T>) => Unit {
     ...
 }
 ```
@@ -147,15 +158,15 @@ replace it by declaring a **function with the type's own name**:
 ```canon
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl> {
+Url = (String) => Result<Url, InvalidUrl> {
     ...
 }
 ```
 
 - If a constructor is declared, it *is* the constructor; the implicit
   total one is gone.
-- The signature is unconstrained: total (`-> Url`), fallible
-  (`-> Result<Url, E>`), or optional (`-> Option<Url>`).
+- The signature is unconstrained: total (`=> Url`), fallible
+  (`=> Result<Url, E>`), or optional (`=> Option<Url>`).
 - Call sites keep ordinary constructor syntax (`Url("…")`), but the
   expression's type is the constructor's return type, so a fallible
   constructor forces `?` or dispatch at every use.
@@ -193,7 +204,7 @@ List("1", "2").Json() # [1,2] — a list of JSON values as a JSON array
 
 User types opt in the same way the stdlib does: declare a function
 named after the target type taking the source type.
-`Celsius = (Fahrenheit) -> Celsius { … }` enables both `Celsius(f)`
+`Celsius = (Fahrenheit) => Celsius { … }` enables both `Celsius(f)`
 and `f.Celsius()`.
 
 ## Zero-Data Types
@@ -210,7 +221,7 @@ Two escape hatches exist, both deliberate:
   case that recursive builders grow from via `.concat(…)` /
   `.append(…)`.
 - A type may declare its own zero-arg [validated
-  constructor](#validated-constructors): `Map = () -> Map { Empty() }`
+  constructor](#validated-constructors): `Map = () => Map { Empty() }`
   in `canon/std/Map` makes `Map()` the empty map.
 
 ## No Type Inference

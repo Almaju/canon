@@ -1,7 +1,9 @@
-notFound = () -> Body {
-    Body({"error":"not found"})
+notFound = () => Body {
+    {"error":"not found"} -> Body
 }
 
-serve = (Request) -> Response {
-    Response(notFound() * Headers() * Status(404))
+serve = (Request) => Response {
+    404
+        -> Status
+        -> Response(Headers() * notFound())
 }

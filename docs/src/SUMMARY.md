@@ -20,6 +20,7 @@
 - [Modules and Packages](./spec/modules.md)
 - [Effects and the Async Model](./spec/effects-and-async.md)
 - [Compilation and the ABI](./spec/compilation.md)
+- [Types-Only Canon](./spec/types-only.md)
 
 # Examples
 

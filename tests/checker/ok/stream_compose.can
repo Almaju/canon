@@ -1,10 +1,10 @@
-main = () -> Unit {
-    List("a", "b", "c")
+main = () => Unit {
+    List("a" * "b" * "c")
         .streamOf()
-        .map((String) -> String { String.concat("!") })
-        .filter((String) -> Bool { True() })
+        -> Mapped((String) => String { String -> Joined("!") })
+        .filter((String) => Bool { True() })
         .take(2)
-        .concat(List("d").streamOf())
+        -> Joined(List("d").streamOf())
         .toString()
-        .print()
+        -> Print
 }

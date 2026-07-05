@@ -1,1 +1,1 @@
-getRandomU64 = () -> Int
+getRandomU64 = () => Int

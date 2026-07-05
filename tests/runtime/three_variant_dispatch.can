@@ -8,20 +8,20 @@ Ord = Equal
   + Greater
   + Less
 
-main = () -> Unit {
-    Equal().(
-        * (Equal) -> Unit { "equal".print() }
-        * (Greater) -> Unit { "greater".print() }
-        * (Less) -> Unit { "less".print() }
+main = () => Unit {
+    Equal() -> (
+        * Equal => Unit { "equal" -> Print }
+        * Greater => Unit { "greater" -> Print }
+        * Less => Unit { "less" -> Print }
     )
-    Greater().(
-        * (Equal) -> Unit { "equal".print() }
-        * (Greater) -> Unit { "greater".print() }
-        * (Less) -> Unit { "less".print() }
+    Greater() -> (
+        * Equal => Unit { "equal" -> Print }
+        * Greater => Unit { "greater" -> Print }
+        * Less => Unit { "less" -> Print }
     )
-    Less().(
-        * (Equal) -> Unit { "equal".print() }
-        * (Greater) -> Unit { "greater".print() }
-        * (Less) -> Unit { "less".print() }
+    Less() -> (
+        * Equal => Unit { "equal" -> Print }
+        * Greater => Unit { "greater" -> Print }
+        * Less => Unit { "less" -> Print }
     )
 }

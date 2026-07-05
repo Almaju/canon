@@ -1,3 +1,3 @@
-main = () -> Unit {
-    42.print()
+main = () => Unit {
+    42 -> Print
 }

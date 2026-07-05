@@ -4,7 +4,7 @@ User = Birthday * Username
 
 Username = String
 
-main = () -> Unit {
-    User(Birthday("1990") * Username("alice")).Username.print()
-    User(Birthday("1990") * Username("alice")).Birthday.print()
+main = () => Unit {
+    "1990" -> Birthday -> User("alice" -> Username).Username -> Print
+    "1990" -> Birthday -> User("alice" -> Username).Birthday -> Print
 }

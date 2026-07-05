@@ -1,15 +1,15 @@
-half = (Bool) -> Float {
-    Bool.(
-        * (False) -> Float { 1.5 }
-        * (True) -> Float { 2.5 }
+half = (Bool) => Float {
+    Bool -> (
+        * False => Float { 1.5 }
+        * True => Float { 2.5 }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     True()
         .half()
-        .print()
+        -> Print
     False()
         .half()
-        .print()
+        -> Print
 }

@@ -52,8 +52,8 @@ fn monotonic_clock_roundtrip() {
         "bindgen should not emit per-function `extern Wasm` anymore",
     );
     assert_eq!(f.urn, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15");
-    assert!(f.content.contains("getResolution = () -> Duration"));
-    assert!(f.content.contains("now = () -> Instant"));
+    assert!(f.content.contains("getResolution = () => Duration"));
+    assert!(f.content.contains("now = () => Instant"));
 
     // Alphabetical ordering: Duration < Instant; getResolution < now.
     let d = f.content.find("Duration = ").unwrap();
@@ -98,7 +98,7 @@ fn resources_emit_handle_newtypes() {
 
     // Plain free function still emitted.
     assert!(
-        f.content.contains("tick = () -> Int"),
+        f.content.contains("tick = () => Int"),
         "plain free fn `tick` should still be emitted:\n{}",
         f.content
     );
@@ -185,11 +185,11 @@ fn kitchen_sink_roundtrip() {
     );
 
     // Function signatures.
-    assert!(f.content.contains("centre = (Shape) -> Option<Point>"));
+    assert!(f.content.contains("centre = (Shape) => Option<Point>"));
     assert!(f
         .content
-        .contains("paint = (ColorList * Shape) -> Result<Style, String>"));
-    assert!(f.content.contains("reset = () -> Unit"));
+        .contains("paint = (ColorList * Shape) => Result<Style, String>"));
+    assert!(f.content.contains("reset = () => Unit"));
 
     parse_canon(&f.content);
 }

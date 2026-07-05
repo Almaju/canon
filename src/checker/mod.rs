@@ -62,7 +62,7 @@ const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 /// first parameter (`Future<T>`) would otherwise force the checker to
 /// look them up as methods on `Future`, which the `Constructor(…)` call
 /// shape doesn't support. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
-const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race"];
+const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race", "Parallel", "Race"];
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
@@ -167,19 +167,23 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
 
     check_ordering(module, entry_items_start, http_entry_name, &mut errors);
 
-    // Detect the web-app entry triple (`init` / `update` / `view`, see
-    // docs/src/reference/web-target.md). Scanned over the entry file's
-    // items, same as HTTP entries.
-    let web_entry = crate::ast::find_web_entry(&module.items[entry_items_start..]);
+    // Detect the web-app entry triple (view / init / update, see
+    // docs/src/reference/web-target.md). Scanned over the whole module —
+    // the marker newtypes (`Init` / `Update`) alias-resolve to the model
+    // through type definitions that may live in sibling files, and the
+    // detection is uniqueness-guarded so imports can't create a false
+    // positive. Codegen resolves it the same way.
+    let web_entry = crate::ast::find_web_entry(&module.items);
 
     match (main_found, http_entries.len(), web_entry.is_some()) {
         // CLI program: `main` exists, no other entry. Existing behaviour.
         (true, 0, false) => {}
         // Library or malformed: no entry shape is present.
         (false, 0, false) => errors.push(CanonError::CheckError {
-            message: "no entry point defined: expected a `main` function, a free function \
-                      returning `Response` (HTTP handler), or an `init`/`update`/`view` \
-                      triple (web app)."
+            message: "no entry point defined: expected a CLI entry (`Unit => Program`), an \
+                      HTTP handler (`Request => Response`), or a web-app triple (a \
+                      `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
+                      constructors)."
                 .to_string(),
             span: module.span,
         }),
@@ -245,10 +249,21 @@ fn check_ordering(
     for item in entry_items {
         if let Item::Function(func) = item {
             if let Some(recv) = &func.receiver {
+                // Compare *surface* names — a self-named constructor is
+                // rewritten to `Self` by `resolve_new_syntax`, but the
+                // source (and `canon fmt`'s sort) spells it as the type
+                // name. Comparing the resolved name made canonically
+                // formatted files fail the order check whenever a
+                // constructor sorted differently under "Self".
+                let surface = if func.name.name == "Self" {
+                    recv.name.clone()
+                } else {
+                    func.name.name.clone()
+                };
                 methods_per_receiver
                     .entry(recv.name.clone())
                     .or_default()
-                    .push((func.name.name.clone(), func.name.span));
+                    .push((surface, func.name.span));
             }
         }
     }
@@ -365,7 +380,21 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
                 for e in &func.body.exprs {
                     collect_expr_names(e, &mut out);
                 }
-                (func.name.name.clone(), out)
+                // A self-constructor (`() => IndexBody { … }`, rewritten
+                // to name `Self` with receiver `IndexBody`) is reached
+                // through a `IndexBody()` call, which references the
+                // *type* name, not `Self`. Key it under the receiver so
+                // reachability connects — otherwise every anonymous/
+                // self constructor reads as dead code.
+                let key = if func.name.name == "Self" {
+                    func.receiver
+                        .as_ref()
+                        .map(|r| r.name.clone())
+                        .unwrap_or_else(|| func.name.name.clone())
+                } else {
+                    func.name.name.clone()
+                };
+                (key, out)
             }
             Item::TypeDef(td) => {
                 let mut out = HashSet::new();
@@ -542,19 +571,30 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     variant_of.insert("False".to_string(), "Bool".to_string());
     variant_of.insert("True".to_string(), "Bool".to_string());
 
+    let mut type_canon: HashMap<String, String> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             let name = td.name.name.clone();
+            let canon = crate::ast::type_expr_canonical(&td.body);
             let already_known = types.contains(&name) || generic_types.contains(&name);
             if already_known {
-                errors.push(CanonError::CheckError {
-                    message: format!("duplicate type definition `{}`", name),
-                    span: td.name.span,
-                });
+                // Structurally identical duplicates merge — type
+                // equality is syntactic (one canonical spelling per
+                // type), so `Length = Int` declared by two loaded files
+                // is one type, not a clash. Only a *differing* body
+                // under the same name is an error.
+                if type_canon.get(&name) != Some(&canon) {
+                    errors.push(CanonError::CheckError {
+                        message: format!("duplicate type definition `{}`", name),
+                        span: td.name.span,
+                    });
+                }
             } else if td.generic_params.is_empty() {
-                types.insert(name);
+                types.insert(name.clone());
+                type_canon.insert(name, canon);
             } else {
-                generic_types.insert(name);
+                generic_types.insert(name.clone());
+                type_canon.insert(name, canon);
             }
         }
     }
@@ -631,39 +671,52 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         if let Item::Function(func) = item {
             if let Some(recv) = &func.receiver {
                 let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
-                methods.insert(
-                    (recv.name.clone(), func.name.name.clone()),
-                    MethodSig {
-                        arity: func.params.len(),
-                        return_ty: return_ty.clone(),
-                        result_ok_ty: result_ok_ty.clone(),
-                    },
-                );
+                let primary_key = (recv.name.clone(), func.name.name.clone());
+                let primary_sig = MethodSig {
+                    arity: func.params.len(),
+                    return_ty: return_ty.clone(),
+                    result_ok_ty: result_ok_ty.clone(),
+                };
+                // Constructor families: several `Self` members share the
+                // `(Type, "Self")` key. The zero-arg member owns it — the
+                // `T()` legality check reads this slot's arity — while
+                // parameterized members are typed through the per-param
+                // commutative entries below. Mirrors codegen's
+                // `assign_func_indices` keying.
+                if func.name.name == "Self" && !func.params.is_empty() {
+                    methods.entry(primary_key).or_insert(primary_sig);
+                } else {
+                    methods.insert(primary_key, primary_sig);
+                }
                 // Register under each param type for commutative calling.
                 // For constructors (name == "Self"), also register the TYPE NAME as the method
                 // so that `param_val.TypeName()` (commutative constructor call) is recognized.
                 // For product-type params (A * B), register each component separately.
                 // `ctor_arity` is the number of remaining args when that component is the receiver.
-                let mut components: Vec<(String, usize)> = Vec::new();
+                let mut components: Vec<String> = Vec::new();
                 for param in &func.params {
                     match &param.ty {
                         TypeExpr::Named { .. } => {
                             if let Some(n) = param.ty.simple_name() {
-                                components.push((n.to_string(), 0));
+                                components.push(n.to_string());
                             }
                         }
                         TypeExpr::Product { fields, .. } => {
-                            let remaining = fields.len().saturating_sub(1);
                             for field in fields {
                                 if let Some(n) = field.simple_name() {
-                                    components.push((n.to_string(), remaining));
+                                    components.push(n.to_string());
                                 }
                             }
                         }
                         _ => {}
                     }
                 }
-                for (param_name, ctor_arity) in &components {
+                // When one component is the receiver, the caller passes
+                // the rest as arguments — the same count regardless of
+                // whether the components were declared as one product
+                // param or (post-flatten, for constructors) as N params.
+                let ctor_arity = components.len().saturating_sub(1);
+                for param_name in &components {
                     methods
                         .entry((param_name.clone(), func.name.name.clone()))
                         .or_insert(MethodSig {
@@ -676,12 +729,68 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                         methods
                             .entry((param_name.clone(), recv.name.clone()))
                             .or_insert(MethodSig {
-                                arity: *ctor_arity,
+                                arity: ctor_arity,
                                 return_ty: return_ty.clone(),
                                 result_ok_ty: result_ok_ty.clone(),
                             });
                     }
                 }
+            }
+        }
+    }
+
+    // Duplicate-definition guard. Two function bodies that collide on
+    // (receiver, name, first-input-component) would land on the same
+    // dispatch slot in codegen — historically that surfaced as an
+    // internal invalid-wasm error ("inconsistent lengths") when a user
+    // name collided with a transitively-loaded stdlib declaration. It
+    // is a checked error now. Constructor *families* are the legal form
+    // this key deliberately carves out: same type, several `Self`
+    // members, each with a distinct first input component (selection is
+    // by argument type, so colliding first components would make the
+    // call site ambiguous).
+    let mut seen_defs: HashSet<(Option<String>, String, Option<String>)> = HashSet::new();
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            if func.name.name == "main" && func.receiver.is_none() {
+                continue;
+            }
+            let first_component = func.params.first().and_then(|p| match &p.ty {
+                TypeExpr::Named { name, .. } => Some(name.clone()),
+                TypeExpr::Product { fields, .. } => fields
+                    .first()
+                    .and_then(|f| f.simple_name().map(|s| s.to_string())),
+                _ => None,
+            });
+            let key = (
+                func.receiver.as_ref().map(|r| r.name.clone()),
+                func.name.name.clone(),
+                first_component,
+            );
+            if !seen_defs.insert(key.clone()) {
+                let (recv, fname, comp) = key;
+                let message = if fname == "Self" {
+                    let ty = recv.unwrap_or_default();
+                    match comp {
+                        Some(c) => format!(
+                            "duplicate constructor: `{}` already has a constructor whose first input is `{}`",
+                            ty, c
+                        ),
+                        None => format!(
+                            "duplicate constructor: `{}` already has a zero-argument constructor",
+                            ty
+                        ),
+                    }
+                } else {
+                    match recv {
+                        Some(r) => format!("duplicate function `{}` on `{}`", fname, r),
+                        None => format!("duplicate function `{}`", fname),
+                    }
+                };
+                errors.push(CanonError::CheckError {
+                    message,
+                    span: func.name.span,
+                });
             }
         }
     }
@@ -1046,7 +1155,38 @@ fn check_block(
         TypeExpr::Named { name, .. } => name.clone(),
         _ => "<complex>".to_string(),
     };
-    if last_ty != return_ty_name && last_ty != "<unknown>" {
+    // Newtype substitutability: the produced value satisfies the declared
+    // return when either type's alias chain reaches the other — a body
+    // producing `Html` satisfies `-> Button` where `Button = Html` (the
+    // underlying flows into the alias slot), and a body producing
+    // `Inserted` (`Inserted = Map`) satisfies `-> Map`.
+    let alias_compatible = |from: &str, to: &str| -> bool {
+        let mut cur = from.to_string();
+        for _ in 0..20 {
+            if cur == to {
+                return true;
+            }
+            match symbols.aliases.get(&cur) {
+                Some(next) => cur = next.clone(),
+                None => return false,
+            }
+        }
+        false
+    };
+    // `Unit` is zero-width and single-valued, so every type rooted at it
+    // (`Program`, `Exited`, …) holds the same one value — they are freely
+    // interchangeable in a return position. A `Unit => Program` entry
+    // whose body ends in `Exited` (`= Unit`) is fine; so is any effect
+    // marker flowing into another. (Data-carrying newtypes — `String`- or
+    // `Int`-rooted — stay strict: only a reachable alias chain compatible.)
+    let both_unit_rooted =
+        alias_compatible(&last_ty, "Unit") && alias_compatible(&return_ty_name, "Unit");
+    if last_ty != return_ty_name
+        && last_ty != "<unknown>"
+        && !both_unit_rooted
+        && !alias_compatible(&last_ty, &return_ty_name)
+        && !alias_compatible(&return_ty_name, &last_ty)
+    {
         errors.push(CanonError::CheckError {
             message: format!(
                 "function returns `{}` but last expression has type `{}`",
@@ -1304,6 +1444,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             type_args,
             args,
             span,
+            ..
         } => {
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
@@ -1344,7 +1485,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // async call, which ordinary method lookup can't see.
             let is_concurrent_combinator =
                 CONCURRENT_COMBINATORS.contains(&method.name.as_str()) && effective_arity == 1;
+            // Piped construction: `A -> B(rest)` is the same call as
+            // `B(A * rest)`, so a method whose name is a type constructor
+            // (a typedef, a union variant, or a primitive) is really
+            // building a `B` — the receiver fills the first input slot.
+            let is_piped_construction = symbols.standalone_types.contains(&method.name)
+                || symbols.variant_of.contains_key(&method.name)
+                || matches!(
+                    method.name.as_str(),
+                    "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
+                );
             let known = is_concurrent_combinator
+                || is_piped_construction
                 || method_known_via_aliases(
                     &recv_ty_specific,
                     &method.name,
@@ -1626,9 +1778,20 @@ fn method_known_via_aliases(
     arg_count: usize,
     symbols: &SymbolTable,
 ) -> bool {
+    // A types-only vocabulary method (`Mapped`, `Joined`, …) also
+    // matches a camelCase stdlib/binding function of its aliased name —
+    // `stream -> Mapped(f)` binds the `map` FFI function on `Stream`.
+    let alias = crate::ast::builtin_method_alias(method);
     let mut current = receiver_ty;
     let mut depth = 0;
     loop {
+        // Newtype unwrap projection reaches any ancestor type in the alias
+        // chain: `Cleared = Todos = String` makes `Cleared.String` (or the
+        // piped `-> String`) a valid unwrap. Newtypes are 1-component
+        // products, so the projection composes the whole way down.
+        if arg_count == 0 && current == method {
+            return true;
+        }
         if is_known_method(current, method, arg_count) {
             return true;
         }
@@ -1638,6 +1801,15 @@ fn method_known_via_aliases(
             .is_some_and(|m| m.arity == arg_count)
         {
             return true;
+        }
+        if let Some(canonical) = alias {
+            if symbols
+                .methods
+                .get(&(current.to_string(), canonical.to_string()))
+                .is_some_and(|m| m.arity == arg_count)
+            {
+                return true;
+            }
         }
         if depth >= 20 {
             return false;
@@ -1656,6 +1828,10 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "<unknown>" || receiver_ty == "Self" {
         return true;
     }
+    // Types-only vocabulary (`Print`/`Sum`/`Joined`/…) maps to the
+    // camelCase builtin; only consulted here after user/stdlib lookup
+    // missed, so a same-named function still wins.
+    let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     // `print` is strictly zero-arg. The legacy capability-passing form
     // `.print(Stdout)` compiled to a silent no-op (the builtin only
     // fires on zero args), so accepting it here was a
@@ -1683,12 +1859,6 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     // is the method spelling of the `String(Int)` constructor. `Byte`
     // receivers reach this arm through the alias chain (`Byte = Int`).
     if receiver_ty == "Int" && method == "String" && arg_count == 0 {
-        return true;
-    }
-    if receiver_ty == "Bool" && matches!(method, "not") && arg_count == 0 {
-        return true;
-    }
-    if receiver_ty == "Bool" && matches!(method, "and" | "or") && arg_count == 1 {
         return true;
     }
     if receiver_ty == "String"
@@ -1753,27 +1923,46 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             // itself (newtype wrap).
             if let Some(parent) = symbols.variant_of.get(&name.name) {
                 parent.clone()
-            } else if matches!(name.name.as_str(), "Int" | "Float" | "String") {
-                // Primitive constructors are identity when the argument
-                // already has the target type (`Int(1)` is an `Int`) and
-                // *conversions* otherwise (conversion is construction,
-                // the language spec § Conversions). A fallible conversion is
-                // declared as a self-named method on the source type
-                // (`Int = (String) -> Result<Int, MalformedInt>` in
-                // `canon/std/Int` registers as `("String", "Int")`), so
-                // that signature's return type wins for non-matching
-                // arguments. Infallible builtin conversions
-                // (`String(42)`) have no such declaration and keep the
-                // primitive's own name.
-                let arg_ty = args.first().map(|a| expr_type_name_in_scope(a, symbols));
-                match arg_ty {
-                    Some(t) if t != name.name => symbols
-                        .methods
-                        .get(&(t, name.name.clone()))
-                        .map(|sig| sig.return_ty.clone())
-                        .unwrap_or_else(|| name.name.clone()),
-                    _ => name.name.clone(),
+            } else if let Some(t) = args
+                .first()
+                .map(|a| expr_type_name_in_scope(a, symbols))
+                .filter(|t| t != &name.name)
+            {
+                // A constructor is identity when the argument already has
+                // the target type (`Int(1)` is an `Int`, `Label("x")`
+                // wraps) and a *declared conversion* otherwise
+                // (conversion is construction, the language spec
+                // § Conversions). A conversion is a self-named
+                // constructor on the source type — `Int = (String) ->
+                // Result<Int, MalformedInt>` registers as `("String",
+                // "Int")` — so its declared return type wins for
+                // non-matching arguments. This is what types each member
+                // of a constructor *family* (`Json = (Bool) -> Json` vs
+                // `Json = (String) -> Result<Json, MalformedJson>`) at
+                // its call site. The lookup walks the argument's alias
+                // chain so a newtyped argument still finds a member
+                // declared on its underlying type. No declaration found
+                // = plain newtype/product wrap, typed as the
+                // constructor's name.
+                let mut cur = t;
+                let mut found = None;
+                for _ in 0..20 {
+                    if let Some(sig) = symbols.methods.get(&(cur.clone(), name.name.clone())) {
+                        found = Some(sig.return_ty.clone());
+                        break;
+                    }
+                    match symbols.aliases.get(&cur) {
+                        Some(next) => cur = next.clone(),
+                        None => break,
+                    }
                 }
+                found.unwrap_or_else(|| {
+                    symbols
+                        .free_funcs
+                        .get(&name.name)
+                        .map(|sig| sig.return_ty.clone())
+                        .unwrap_or_else(|| name.name.clone())
+                })
             } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
                 sig.return_ty.clone()
             } else {
@@ -1783,7 +1972,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         Expr::MethodCall {
             receiver, method, ..
         } => {
-            if method.name == "parallel" {
+            if method.name == "parallel" || method.name == "Parallel" {
                 // `a.parallel(b)` returns `Future<List<T>>`; the
                 // auto-await collapses `Future<List<T>>` → `List<T>` at
                 // any consuming site, so we report `List` here to keep
@@ -1791,7 +1980,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 // flowing.
                 return "List".to_string();
             }
-            if method.name == "race" {
+            if method.name == "race" || method.name == "Race" {
                 // `a.race(b) -> Future<T>` collapses to `T`. The receiver
                 // is `Future<T>` where T is what the inner async call
                 // returns; the auto-await transform peels the outer
@@ -1802,6 +1991,48 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             if let Some(sig) = symbols.methods.get(&(recv_ty.clone(), method.name.clone())) {
                 return sig.return_ty.clone();
+            }
+            if let Some(canonical) = crate::ast::builtin_method_alias(&method.name) {
+                if let Some(sig) = symbols
+                    .methods
+                    .get(&(recv_ty.clone(), canonical.to_string()))
+                {
+                    return sig.return_ty.clone();
+                }
+            }
+            // Newtype unwrap projection: `cleared -> String` where
+            // `Cleared = Todos = String` yields `String` — the method name
+            // is an ancestor type reached along the receiver's alias chain.
+            {
+                let mut current = recv_ty.clone();
+                for _ in 0..20 {
+                    if current == method.name {
+                        return method.name.clone();
+                    }
+                    match symbols.aliases.get(&current) {
+                        Some(next) => current = next.clone(),
+                        None => break,
+                    }
+                }
+            }
+            // Piped construction (`A -> B(rest)` builds a `B`, exactly as
+            // `B(A * rest)` does): a variant widens to its parent union
+            // (`x -> Some` is an `Option`); a primitive or any other type
+            // constructor produces its own type (`5 -> Int`, `7 -> Left`).
+            // Mirrors the `Expr::Constructor` arm. Names with a
+            // shape/constructor body (`Served`, `Route`, `TestResult`) are
+            // excluded — their declared return type is resolved by the
+            // lookups above (or the builtin fallback), so a shape's result
+            // is never masked by its own newtype declaration.
+            if let Some(parent) = symbols.variant_of.get(&method.name) {
+                return parent.clone();
+            }
+            let is_shape = symbols.methods.keys().any(|(_, m)| m == &method.name);
+            if !is_shape
+                && (symbols.standalone_types.contains(&method.name)
+                    || matches!(method.name.as_str(), "Int" | "Float" | "String" | "Bool"))
+            {
+                return method.name.clone();
             }
             method_return_type(&recv_ty, &method.name)
         }
@@ -1930,6 +2161,7 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
 }
 
 fn method_return_type(receiver_ty: &str, method: &str) -> String {
+    let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     match (receiver_ty, method) {
         ("String", "print")
         | ("Int", "print")
@@ -1942,7 +2174,6 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("Float", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         // Conversion is construction: `Int.String()` renders decimal.
         ("Int", "String") => "String".to_string(),
-        ("Bool", "not" | "and" | "or") => "Bool".to_string(),
         ("String", "concat" | "substring" | "slice") => "String".to_string(),
         ("String", "length" | "len" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),

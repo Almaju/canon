@@ -2,4 +2,4 @@ Clock = String
 
 Datetime = String
 
-now = (Clock) -> Datetime
+now = (Clock) => Datetime

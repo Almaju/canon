@@ -8,13 +8,13 @@ at build time, no runtime of its own to ship.
 A complete HTTP service:
 
 ```canon
-greet = (Request) -> Response {
+Request => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
 
 ```sh
-$ canon run greet.can
+$ canon run service.can
 HTTP handler detected: serving on http://127.0.0.1:8080
 
 $ curl localhost:8080
@@ -40,7 +40,7 @@ comments, no parameter names. A function's inputs are a product of types,
 referenced in the body by their type names:
 
 ```canon
-compare = (OtherUser * User) -> Ord {
+compare = (OtherUser * User) => Ord {
     User.Birthday.compare(OtherUser.Birthday)
 }
 ```
@@ -54,11 +54,11 @@ value, which you can only get from a `Path`, which you can only build
 from a `String`. The type chain *is* the access control:
 
 ```canon
-main = () -> Unit {
+Unit => Program {
     Path("./data.json")
-        .File()?
+        -> File?
         .read()?
-        .print()
+        -> Print
 }
 ```
 
@@ -68,19 +68,19 @@ A CLI program, with branching (dispatch on a union, Canon's only
 control-flow construct) and iteration (methods on collections):
 
 ```canon,run=intro
-main = () -> Unit {
+Unit => Program {
     List(1, 2, 3)
-        .map((Int) -> Int { Int.mul(2) })
-        .length()
-        .print()
+        -> Mapped((Int) => Int { Int -> Product(2) })
+        -> Length
+        -> Print
     True().(
-        * (False) -> Unit { "no".print() }
-        * (True) -> Unit { "yes".print() }
+        * (False) => Unit { "no" -> Print }
+        * (True) => Unit { "yes" -> Print }
     )
 }
 ```
 
-- Functions are `name = (Components) -> Return { body }`; the last
+- Functions are `name = (Components) => Return { body }`; the last
   expression is the return value.
 - `Bool` is an ordinary union, `False + True`; dispatch applies the
   value to one handler arm per variant.

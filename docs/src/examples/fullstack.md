@@ -27,7 +27,7 @@ sibling files. The **frontend** is the Elm triple over `Todos`:
 {{#include ../../../examples/todo-fullstack/web.can}}
 ```
 
-The **backend** is a single `(Request) -> Response` — method dispatch,
+The **backend** is a single `Request => Response` — method dispatch,
 path routing, CORS headers, and `GET /todos` serving the seed list in
 the shared encoding:
 
@@ -41,11 +41,11 @@ Neither entry defines `Todos` or its operations. Both reference them,
 and the loader pulls in the same files for each compile:
 
 - [`todos.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/todos.can)
-  — the `Todos` wire/state encoding and its operations (`addTodo`,
-  `toggleAt`, `removeAt`), the list renderer, and the pure-Canon string
-  helpers. Compiled into *both* wasm binaries.
+  — the `Todos` wire/state encoding and its operations as result
+  newtypes (`AddedTodo`, `ToggledAt`, `RemovedAt`), the list renderer,
+  and the pure-Canon string helpers. Compiled into *both* wasm binaries.
 - [`line.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/line.can)
-  — one todo line: the `flip` toggle and the `<li>` renderer.
+  — one todo line: the `Flipped` toggle and the `<li>` renderer.
 - [`title.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/title.can)
   — the `Title` newtype.
 
@@ -67,7 +67,6 @@ run this one.)
   same stdlib, no flags.
 - **Host-mediated effects.** The frontend stays pure; the fetch happens
   in the JS host via the declarative `data-fetch` attribute, and the
-  response arrives as an ordinary message through `update`.
-- **CORS as plain data.**
-  `Headers().set("access-control-allow-origin", "*")` — response headers
-  are just values.
+  response arrives as an ordinary message through the `Update` arm.
+- **CORS as plain data.** Response headers are constructed with
+  `Headers()` and its setters — just values.

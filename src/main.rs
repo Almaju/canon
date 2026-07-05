@@ -1152,12 +1152,12 @@ fn build_spec(spec: &BuildSpec) -> bool {
 /// use std/TestResult
 ///
 /// testAdd = () -> TestResult {
-///     Int(1).add(Int(2)).eq(Int(3)).assert("1 + 2 != 3")
+///     Int(1).add(Int(2)).eq(Int(3)).TestResult("1 + 2 != 3")
 /// }
 /// ```
 ///
-/// We load the module via the regular loader (so `use std/TestResult`
-/// pulls in `Fail`, `Pass`, `assert`), collect every entry-file function
+/// We load the module via the regular loader (referencing `TestResult`
+/// pulls in `Fail`, `Pass`, and the `TestResult` constructor), collect every entry-file function
 /// with a zero-arg `() -> TestResult` signature, then synthesise a `main`
 /// that dispatches each test result to a pass/fail line. The synthesised
 /// `main` is parsed from a generated source string and appended to the

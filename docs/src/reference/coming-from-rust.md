@@ -12,16 +12,16 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `struct User { birthday: ..., username: ... }` | `User = Birthday * Username`        |
 | `enum Bool { False, True }`                | `Bool = False + True`                  |
 | `type Name = String;` (or `struct Name(String);`) | `Name = String`                  |
-| `impl User { fn greet(&self) -> String { ... } }` | `greet = (User) -> String { ... }` |
-| `fn main() { ... }`                        | `main = () -> Unit { ... }`             |
-| `trait Show { fn show(&self) -> String; }` | `Show = () -> String`                   |
-| `impl Show for User { ... }`               | `Show = (User) -> String { ... }`      |
+| `impl User { fn greet(&self) => String { ... } }` | `greet = (User) => String { ... }` |
+| `fn main() { ... }`                        | `Unit => Program { ... }`             |
+| `trait Show { fn show(&self) -> String; }` | `Show = () => String`                   |
+| `impl Show for User { ... }`               | `Show = (User) => String { ... }`      |
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |
 | `Option<T>`                                | `Option<T>`                             |
 | `?` operator                               | `?` operator (same semantics)           |
 | `match x { ... }`                          | `x.( ... )`                             |
 | `let x = ...;`                             | No equivalent; declare a newtype        |
-| `if cond { a } else { b }`                 | `cond.( * (False) -> R { b } * (True) -> R { a } )` |
+| `if cond { a } else { b }`                 | `cond.( * (False) => R { b } * (True) => R { a } )` |
 | `pub fn`                                   | Everything is public                    |
 | `mod foo;`                                 | No `mod`; `foo.can` declares `Foo`       |
 | `use crate::foo::Foo;`                     | Nothing — referencing `Foo` loads `foo.can` |
@@ -31,8 +31,8 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `async fn`, `.await`                       | Inferred; no source-level keyword       |
 | `String::from(x)` / `x.into()` / `x.to_string()` | `String(x)` / `x.String()` — conversion is construction |
 | `s.parse::<i64>()?`                        | `Int(s)?` / `s.Int()?` (stdlib, loads automatically) |
-| `HashMap::new()` + `.insert(k, v)`         | `Map().insert(k, v)` (stdlib; sorted, functional) |
-| `BTreeSet::new()` + `.insert(x)`           | `Set().insert(x)` (stdlib) |
+| `HashMap::new()` + `.insert(k, v)`         | `Map().Inserted(k, v)` (stdlib; sorted, functional) |
+| `BTreeSet::new()` + `.insert(x)`           | `Set().Inserted(x)` (stdlib) |
 
 ## Things Rust Has That Canon Doesn't
 

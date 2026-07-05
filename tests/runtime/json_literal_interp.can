@@ -1,16 +1,16 @@
-label = (Int) -> Json {
-    {"answer":Int,"doubled":Int.mul(2),"ok":True()}
+label = (Int) => Json {
+    {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     42
         .label()
-        .print()
-    {"label":"life"}.print()
-    [1,2,3].print()
-    [1.add(0),2.add(0),3.add(0)].print()
+        -> Print
+    {"label":"life"} -> Print
+    [1,2,3] -> Print
+    [1 -> Sum(0),2 -> Sum(0),3 -> Sum(0)] -> Print
     {"who":"team","members":["alice","bob","carol"]}
-        .Json()?
-        .print()
-    Ok(Unit())
+        -> Json?
+        -> Print
+    Unit() -> Ok
 }

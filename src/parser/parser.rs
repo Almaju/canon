@@ -46,11 +46,46 @@ impl Parser {
             });
         }
 
+        // Anonymous constructor: `(A) -> B { … }` declares the `B`
+        // constructor — its identity is the typed arrow itself, so there
+        // is no name to write (the language spec, § Types-Only Canon).
+        // Nothing
+        // else at top level starts with `(` or `<`.
+        if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
+            return self.parse_anonymous_ctor(start_span);
+        }
+
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),
             span: first.span,
         };
+
+        // Parens-free single-input anonymous constructor: `Request =>
+        // Response { … }`. A bare type name followed directly by the
+        // declaration arrow (no `=`, no generic params) is the
+        // unparenthesized form of `(Request) => Response { … }`.
+        if self.at_decl_arrow() {
+            return self.parse_paren_free_ctor(first_ident, start_span);
+        }
+
+        // Parens-free product/union input: `Todos * String => Update
+        // { … }`. The declaration arrow `=>` binds looser than the
+        // type operators `*` / `+`, so the leading ident starts a
+        // compound input type. Rewind to re-include it, parse the whole
+        // input type, then require the arrow. (Generic-arg inputs like
+        // `Foo<T> * Bar` still need parens — `<` steers to the
+        // generic-params path below.)
+        if self.check(TokenKind::Star) || self.check(TokenKind::Plus) {
+            self.pos -= 1;
+            let input = self.parse_type_expr()?;
+            let param = Param {
+                ty: input,
+                mutable: false,
+                span: start_span,
+            };
+            return self.finish_anonymous_ctor(Vec::new(), vec![param], start_span);
+        }
 
         let pre_eq_generics = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
@@ -81,6 +116,98 @@ impl Parser {
         }))
     }
 
+    /// `(A * B) -> C { … }` at top level — the anonymous constructor
+    /// declaration. The synthesized `name` is the constructed type
+    /// (`C`; `Result`/`Option`/`Future` wrappers peeled), so downstream
+    /// (resolve_new_syntax, checker, codegen) treats it exactly like a
+    /// self-named constructor; `anonymous` tells the formatter to emit
+    /// the arrow form back out.
+    fn parse_anonymous_ctor(&mut self, start_span: Span) -> Result<Item> {
+        let generic_params = if self.check(TokenKind::Lt) {
+            self.parse_generic_params()?
+        } else {
+            Vec::new()
+        };
+        self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
+        let mut params = Vec::new();
+        if !self.check(TokenKind::RParen) {
+            loop {
+                params.push(self.parse_param()?);
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
+        self.finish_anonymous_ctor(generic_params, params, start_span)
+    }
+
+    /// A single-input anonymous constructor with the parentheses dropped:
+    /// `Request => Response { … }` is exactly `(Request) => Response { … }`.
+    /// The leading type has already been consumed as `input`. Only the
+    /// unparenthesized *single named* input reaches here — products,
+    /// generics, and the nullary entry keep their parentheses, so the
+    /// parse stays unambiguous (`*` / `<` never open a paren-free arrow).
+    fn parse_paren_free_ctor(&mut self, input: Ident, start_span: Span) -> Result<Item> {
+        let param = Param {
+            ty: TypeExpr::Named {
+                name: input.name.clone(),
+                generics: Vec::new(),
+                span: input.span,
+            },
+            mutable: false,
+            span: input.span,
+        };
+        self.finish_anonymous_ctor(Vec::new(), vec![param], start_span)
+    }
+
+    /// Shared tail of every anonymous-constructor form: the declaration
+    /// arrow, return type, constructed-name derivation, and body.
+    fn finish_anonymous_ctor(
+        &mut self,
+        generic_params: Vec<GenericParam>,
+        params: Vec<Param>,
+        start_span: Span,
+    ) -> Result<Item> {
+        self.expect_decl_arrow("expected `->` before return type")?;
+        let return_ty = self.parse_type_expr()?;
+        let Some(ctor_name) = crate::ast::constructed_type_name(&return_ty) else {
+            return Err(CanonError::ParseError {
+                message: "an anonymous constructor's return type must name the constructed type \
+                          (`(A) -> B { … }` declares the `B` constructor)"
+                    .to_string(),
+                span: start_span,
+            });
+        };
+        if !self.check(TokenKind::LBrace) {
+            return Err(CanonError::ParseError {
+                message: "an anonymous constructor requires a body `{ … }` — a body-less \
+                          function type needs a name (`Shape = (A) -> B`)"
+                    .to_string(),
+                span: self.peek().span,
+            });
+        }
+        let body = self.parse_block()?;
+        let end_span = self.previous_span();
+        Ok(Item::Function(FunctionDef {
+            receiver: None,
+            receiver_mut: false,
+            name: Ident {
+                name: ctor_name,
+                span: start_span,
+            },
+            generic_params,
+            params,
+            return_ty,
+            body,
+            extern_wasm: None,
+            anonymous: true,
+            span: span_join(start_span, end_span),
+        }))
+    }
+
     fn parse_function_after_eq(
         &mut self,
         receiver: Option<Ident>,
@@ -106,7 +233,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
-        self.expect(TokenKind::Arrow, "expected `->` before return type")?;
+        self.expect_decl_arrow("expected `->` before return type")?;
         let return_ty = self.parse_type_expr()?;
 
         if self.check(TokenKind::LBrace) {
@@ -148,6 +275,7 @@ impl Parser {
                 return_ty,
                 body,
                 extern_wasm: None,
+                anonymous: false,
                 span: span_join(start_span, end_span),
             }));
         }
@@ -335,10 +463,10 @@ impl Parser {
             // product members (`Stream<T> * ((T) -> Bool)`), so the
             // parens must round-trip. Only the single-type, non-generic
             // form qualifies as a group.
-            if !self.check(TokenKind::Arrow) && generic_params.is_empty() && params.len() == 1 {
+            if !self.at_decl_arrow() && generic_params.is_empty() && params.len() == 1 {
                 return Ok(params.pop().unwrap());
             }
-            self.expect(TokenKind::Arrow, "expected `->` in function type")?;
+            self.expect_decl_arrow("expected `->` in function type")?;
             let return_ty = self.parse_type_postfix()?;
             let end = self.previous_span();
             return Ok(TypeExpr::Function {
@@ -422,36 +550,21 @@ impl Parser {
         let mut expr = self.parse_primary()?;
         loop {
             let next = self.peek_past_newlines();
-            if matches!(next, TokenKind::Dot | TokenKind::Question) {
+            if matches!(
+                next,
+                TokenKind::Dot | TokenKind::Question | TokenKind::Arrow
+            ) {
                 self.skip_newlines();
             }
             if self.check(TokenKind::Dot) {
                 self.advance();
-                // Dispatch syntax: value.( arms ) — desugars to match
+                // Legacy dispatch syntax: value.( arms ) — desugars to
+                // match. The canonical spelling is the pipe `value -> (
+                // arms )` (see the `->` branch below); `.(` stays
+                // accepted so old sources still parse.
                 if self.check(TokenKind::LParen) {
                     self.advance();
-                    let mut arms = Vec::new();
-                    self.skip_newlines();
-                    while !self.check(TokenKind::RParen) && !self.is_at_end() {
-                        // Consume optional `*` separator before each arm (including the first)
-                        if self.check(TokenKind::Star) {
-                            self.advance();
-                            self.skip_newlines();
-                        }
-                        if self.check(TokenKind::RParen) || self.is_at_end() {
-                            break;
-                        }
-                        arms.push(self.parse_match_arm()?);
-                        self.skip_newlines();
-                    }
-                    let rparen =
-                        self.expect(TokenKind::RParen, "expected `)` to close dispatch")?;
-                    let start_span = expr.span();
-                    expr = Expr::Match {
-                        scrutinee: Box::new(expr),
-                        arms,
-                        span: span_join(start_span, rparen.span),
-                    };
+                    expr = self.finish_dispatch(expr)?;
                 } else {
                     let name_tok =
                         self.expect(TokenKind::Ident, "expected method or field name after `.`")?;
@@ -497,15 +610,10 @@ impl Parser {
                     self.skip_newlines();
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_arg_expr()?);
-                            self.skip_newlines();
-                            if self.check(TokenKind::Comma) {
-                                self.advance();
-                                self.skip_newlines();
-                            } else {
-                                break;
-                            }
+                        args.push(self.parse_arg_expr()?);
+                        self.skip_newlines();
+                        if self.check(TokenKind::Comma) {
+                            return Err(self.comma_args_error());
                         }
                     }
                     let rparen =
@@ -516,6 +624,7 @@ impl Parser {
                         method: ident,
                         type_args,
                         args,
+                        piped: false,
                         span: span_join(start_span, rparen.span),
                     };
                 }
@@ -525,6 +634,71 @@ impl Parser {
                 expr = Expr::Try {
                     inner: Box::new(expr),
                     span: span_join(start_span, q.span),
+                };
+            } else if self.check(TokenKind::Arrow) {
+                // Value-level pipe: `value -> Name` (optionally
+                // `-> Name(rest…)`) sends the value along a declared
+                // constructor arrow — the call-site mirror of the
+                // declaration form `(A) -> B { … }`. Semantically
+                // identical to `Name(value, rest…)`; the value fills
+                // the first slot of the constructor's input product.
+                // The right-hand side is a PascalCase type name, so
+                // a following `.`, `?`, or `->` continues the chain
+                // on the pipe's result. Unambiguous in expression
+                // position: `->` otherwise appears only inside lambda
+                // signatures, which are opened by `(` at expression
+                // *start* and consume their own arrow.
+                self.advance();
+                self.skip_newlines();
+                // Dispatch on the pipe: `value -> ( arms )`. The `(`
+                // opens an arm group (parens isolate the match, they
+                // don't declare arguments), distinguishing it from the
+                // pipe-into-constructor form `value -> Name(rest…)`.
+                if self.check(TokenKind::LParen) {
+                    self.advance();
+                    expr = self.finish_dispatch(expr)?;
+                    continue;
+                }
+                let name_tok = self.expect(TokenKind::Ident, "expected a type name after `->`")?;
+                if !Self::is_pascal_case_str(&name_tok.lexeme) {
+                    return Err(CanonError::ParseError {
+                        message: format!(
+                            "`->` pipes into a constructor, which is named by its type: \
+                             expected a PascalCase type name, found `{}`",
+                            name_tok.lexeme
+                        ),
+                        span: name_tok.span,
+                    });
+                }
+                let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
+                let mut args = vec![expr];
+                let mut end_span = name_tok.span;
+                if self.check(TokenKind::LParen) {
+                    self.advance();
+                    self.skip_newlines();
+                    if !self.check(TokenKind::RParen) {
+                        args.push(self.parse_arg_expr()?);
+                        self.skip_newlines();
+                        if self.check(TokenKind::Comma) {
+                            return Err(self.comma_args_error());
+                        }
+                    }
+                    let rparen =
+                        self.expect(TokenKind::RParen, "expected `)` to close pipe arguments")?;
+                    end_span = rparen.span;
+                }
+                let receiver = args.remove(0);
+                let start_span = receiver.span();
+                expr = Expr::MethodCall {
+                    receiver: Box::new(receiver),
+                    method: Ident {
+                        name: name_tok.lexeme.clone(),
+                        span: name_tok.span,
+                    },
+                    type_args: Vec::new(),
+                    args,
+                    piped: true,
+                    span: span_join(start_span, end_span),
                 };
             } else {
                 break;
@@ -551,15 +725,10 @@ impl Parser {
                     self.skip_newlines();
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_arg_expr()?);
-                            self.skip_newlines();
-                            if self.check(TokenKind::Comma) {
-                                self.advance();
-                                self.skip_newlines();
-                            } else {
-                                break;
-                            }
+                        args.push(self.parse_arg_expr()?);
+                        self.skip_newlines();
+                        if self.check(TokenKind::Comma) {
+                            return Err(self.comma_args_error());
                         }
                     }
                     let rparen =
@@ -900,10 +1069,7 @@ impl Parser {
             TokenKind::RParen,
             "expected `)` to close lambda parameter list",
         )?;
-        self.expect(
-            TokenKind::Arrow,
-            "expected `->` after lambda parameter list",
-        )?;
+        self.expect_decl_arrow("expected `->` after lambda parameter list")?;
         let return_ty = self.parse_type_expr()?;
         let body = self.parse_block()?;
         Ok(Expr::Lambda {
@@ -914,11 +1080,59 @@ impl Parser {
         })
     }
 
+    /// Comma-separated argument lists are gone from the language: a call
+    /// takes at most one argument, and multiple inputs are combined into
+    /// a product. Position never carries meaning.
+    fn comma_args_error(&self) -> CanonError {
+        CanonError::ParseError {
+            message: "comma-separated arguments are not allowed: combine inputs into a \
+                      product with `*` — write `Name(a * b)`, not `Name(a, b)`. Position \
+                      never carries meaning in Canon."
+                .to_string(),
+            span: self.peek().span,
+        }
+    }
+
+    /// Parse the arm list of a dispatch, given the opening `(` was just
+    /// consumed. Shared by both spellings: the legacy `value.( … )` and
+    /// the pipe `value -> ( … )`.
+    fn finish_dispatch(&mut self, scrutinee: Expr) -> Result<Expr> {
+        let mut arms = Vec::new();
+        self.skip_newlines();
+        while !self.check(TokenKind::RParen) && !self.is_at_end() {
+            // Consume optional `*` separator before each arm (including the first)
+            if self.check(TokenKind::Star) {
+                self.advance();
+                self.skip_newlines();
+            }
+            if self.check(TokenKind::RParen) || self.is_at_end() {
+                break;
+            }
+            arms.push(self.parse_match_arm()?);
+            self.skip_newlines();
+        }
+        let rparen = self.expect(TokenKind::RParen, "expected `)` to close dispatch")?;
+        let start_span = scrutinee.span();
+        Ok(Expr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+            span: span_join(start_span, rparen.span),
+        })
+    }
+
     fn parse_match_arm(&mut self) -> Result<MatchArm> {
         let start = self.current_span();
-        // Each arm is: (VariantType) -> ReturnType { body }
-        // or a literal-pattern arm: ("literal") / (123) -> ReturnType { body }
-        self.expect(TokenKind::LParen, "expected `(` to begin dispatch arm")?;
+        // Each arm is: Pattern => ReturnType { body }, where the pattern
+        // is a variant type (`Some<String>`, `True`, `Prefix`) or a
+        // literal (`"Add:"`, `123`). Parentheses are no longer used to
+        // declare the pattern — `* "Add:" => …`, not `* ("Add:") => …` —
+        // since parens no longer delimit arguments anywhere. The
+        // parenthesized form is still accepted during migration; the
+        // formatter emits the bare form.
+        let parenthesized = self.check(TokenKind::LParen);
+        if parenthesized {
+            self.advance();
+        }
         // A literal token in pattern position makes this a literal arm
         // (equality dispatch on a `String` / `Int` scrutinee). The
         // `param_ty` records the matching primitive type name so every
@@ -954,8 +1168,10 @@ impl Parser {
             // Err<String>, Ok<Int>, Branch
             _ => (self.parse_type_atom()?, None),
         };
-        self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
-        self.expect(TokenKind::Arrow, "expected `->` in dispatch arm")?;
+        if parenthesized {
+            self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
+        }
+        self.expect_decl_arrow("expected `->` in dispatch arm")?;
         let return_ty = self.parse_type_expr()?;
         let body = self.parse_block()?;
         let end = self.previous_span();
@@ -1007,6 +1223,28 @@ impl Parser {
                 span: actual.span,
             })
         }
+    }
+
+    /// The arrow before a declaration's return type. The types-only
+    /// endgame spells declarations with `=>` (execution keeps `->`); both
+    /// are accepted during migration so a mixed tree parses while
+    /// `canon fmt` rewrites declarations to `=>` (the language spec,
+    /// § The One-Operator Endgame). Every declaration site — function
+    /// signatures, anonymous constructors, function *types* (shapes),
+    /// lambdas, and dispatch arms — routes through here; the two
+    /// *execution* sites (the postfix pipe) stay `->`-only.
+    fn expect_decl_arrow(&mut self, msg: &str) -> Result<Token> {
+        if self.check(TokenKind::FatArrow) {
+            return Ok(self.advance().clone());
+        }
+        self.expect(TokenKind::Arrow, msg)
+    }
+
+    /// True at a declaration arrow (`->` or `=>`) — used where the
+    /// presence of the arrow decides between a function type and plain
+    /// type grouping.
+    fn at_decl_arrow(&self) -> bool {
+        self.check(TokenKind::Arrow) || self.check(TokenKind::FatArrow)
     }
 
     fn peek(&self) -> &Token {

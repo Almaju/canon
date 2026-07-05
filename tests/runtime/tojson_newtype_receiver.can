@@ -1,10 +1,11 @@
 Foo = String
 
-main = () -> Unit {
+main = () => Unit {
     "x"
-        .ToJson()
-        .print()
-    Foo("x")
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
+    "x"
+        -> Foo
+        -> ToJson
+        -> Print
 }

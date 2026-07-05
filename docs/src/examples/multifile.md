@@ -11,7 +11,9 @@ multifile/
     main.can
 ```
 
-`src/greeter.can` must declare `Greeter`; the file name says so:
+`src/greeter.can` must declare `Greeter`; the file name says so. It also
+declares `Shout` — the result of shouting a greeting — and a constructor
+that produces one from a `Greeter`:
 
 ```canon
 {{#include ../../../examples/multifile/src/greeter.can}}
@@ -33,9 +35,9 @@ HELLO from greeter
 - **One type per file, file named after the type.** `greeter.can` ↔
   `Greeter`. The compiler enforces the correspondence, so "where is this
   type defined?" always has a mechanical answer.
-- **Referencing `Greeter` imports the type *and its methods*.**
+- **Referencing `Greeter` imports the type *and its constructors*.**
   `main.can` never writes an import line — mentioning `Greeter` loads
-  `greeter.can`, and `.shout()` travels with its type.
+  `greeter.can`, and `Shout` travels with it, so `-> Shout` resolves.
 - **No `mod`, no manifest of files.** The directory *is* the module
   structure; adding a file is adding a type.
 - **Everything is public.** There is no visibility to configure; see

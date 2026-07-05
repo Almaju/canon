@@ -1,7 +1,7 @@
 Greeting = String
 
-main = () -> Unit {
+main = () => Unit {
     "hello, "
-        .concat(Greeting("world"))
-        .print()
+        -> Joined("world" -> Greeting)
+        -> Print
 }

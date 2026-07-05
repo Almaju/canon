@@ -20,8 +20,8 @@ the component imports and exports.
 
 | Your entry | World | Exports |
 |---|---|---|
-| `main = () -> Unit` | `wasi:cli/command` | `wasi:cli/run@0.3.0-rc-2026-03-15` |
-| `f = (Request) -> Response` | `wasi:http/service` | `wasi:http/handler@0.3.0-rc-2026-03-15#handle` |
+| `Unit => Program` | `wasi:cli/command` | `wasi:cli/run@0.3.0-rc-2026-03-15` |
+| `Request => Response` | `wasi:http/service` | `wasi:http/handler@0.3.0-rc-2026-03-15#handle` |
 
 ## Running on the embedded host
 
@@ -33,7 +33,7 @@ canon run my-app                      # HTTP world: serves on 127.0.0.1:8080
 canon run my-app --addr 0.0.0.0:9000  # HTTP world: explicit address
 ```
 
-Exit codes are real: a guest `Exit(3).exit()` terminates the process
+Exit codes are real: a guest `3 -> Exited` terminates the process
 with status 3, and `canon test` exits nonzero on failure. Both are
 safe to wire into CI and shell scripts.
 

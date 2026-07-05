@@ -8,8 +8,8 @@ Profile = Home * Label
 
 Zip = Int
 
-main = () -> Unit {
-    Profile(Home(City("paris") * Zip(75)) * Label("primary")).Label.print()
-    Profile(Home(City("paris") * Zip(75)) * Label("primary")).Home.City.print()
-    Profile(Home(City("paris") * Zip(75)) * Label("primary")).Home.Zip.print()
+main = () => Unit {
+    "paris" -> City -> Home(75 -> Zip) -> Profile("primary" -> Label).Label -> Print
+    "paris" -> City -> Home(75 -> Zip) -> Profile("primary" -> Label).Home.City -> Print
+    "paris" -> City -> Home(75 -> Zip) -> Profile("primary" -> Label).Home.Zip -> Print
 }

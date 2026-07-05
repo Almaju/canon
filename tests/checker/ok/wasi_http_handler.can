@@ -1,3 +1,5 @@
-home = (Request) -> Response {
-    Response(Body("hello") * Headers() * Status(200))
+home = (Request) => Response {
+    "hello"
+        -> Body
+        -> Response(200 -> Status * Headers())
 }

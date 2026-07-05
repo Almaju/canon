@@ -2,12 +2,16 @@ Greeting = String
 
 Name = String
 
-greet = (Greeting * Name) -> Greeting {
+greet = (Greeting * Name) => Greeting {
     Greeting
 }
 
-main = () -> Unit {
-    Greeting("hello").greet(Name("world"))
-    Name("world").greet(Greeting("hello"))
-    "commutative calling works".print()
+main = () => Unit {
+    "hello"
+        -> Greeting
+        .greet("world" -> Name)
+    "world"
+        -> Name
+        .greet("hello" -> Greeting)
+    "commutative calling works" -> Print
 }

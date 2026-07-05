@@ -2,10 +2,12 @@ InvalidUrl = String
 
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl> {
-    Ok(Url(String))
+Url = (String) => Result<Url, InvalidUrl> {
+    String
+        -> Url
+        -> Ok
 }
 
-main = () -> Unit {
-    "validated ctor declared".print()
+main = () => Unit {
+    "validated ctor declared" -> Print
 }

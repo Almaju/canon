@@ -224,7 +224,10 @@ fn transform_expr(expr: &mut Expr, ctx: &Ctx<'_>) {
         receiver, method, ..
     } = expr
     {
-        if matches!(method.name.as_str(), "parallel" | "race") {
+        if matches!(
+            method.name.as_str(),
+            "parallel" | "race" | "Parallel" | "Race"
+        ) {
             return;
         }
         let recv_raw = infer_raw_type(receiver, ctx.returns);

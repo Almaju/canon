@@ -55,10 +55,10 @@ fn run_canon(cwd: &Path, config: &Path, args: &[&str]) -> (String, String, Optio
     )
 }
 
-const SHOUT_CAN: &str = "shout = (String) -> String {\n    String.concat(\"!\")\n}\n";
+const SHOUT_CAN: &str = "shout = (String) => String {\n    String -> Joined(\"!\")\n}\n";
 
 const MAIN_CAN: &str =
-    "main = () -> Unit {\n    \"hello\"\n        .shout()\n        .print()\n}\n";
+    "main = () => Unit {\n    \"hello\"\n        .shout()\n        -> Print\n}\n";
 
 #[test]
 fn publish_install_run_round_trip() {
@@ -146,7 +146,7 @@ fn published_dependency_list_surfaces_on_install() {
     fs::write(lib.join("shout.can"), SHOUT_CAN).unwrap();
     fs::write(
         lib.join("deps/other/pkg@2.0.0/thing.can"),
-        "thing = (String) -> String {\n    String.concat(\"?\")\n}\n",
+        "thing = (String) => String {\n    String -> Joined(\"?\")\n}\n",
     )
     .unwrap();
     let (_, stderr, code) = run_canon(&lib, &config, &["publish", "acme:combo@1.0.0"]);
@@ -176,7 +176,7 @@ fn publish_refuses_unformatted_source() {
     // Same program, non-canonical whitespace.
     fs::write(
         lib.join("shout.can"),
-        "shout = (String) -> String { String.concat(\"!\") }\n",
+        "shout = (String) => String { String -> Joined(\"!\") }\n",
     )
     .unwrap();
 

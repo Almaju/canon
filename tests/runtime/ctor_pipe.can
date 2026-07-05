@@ -1,0 +1,35 @@
+Greeting = String
+
+Loud = String
+
+Int => Greeting {
+    "int:"
+        -> Joined(Int -> String)
+        -> Greeting
+}
+
+Greeting => Loud {
+    Greeting.String
+        -> Joined("!")
+        -> Loud
+}
+
+main = () => Unit {
+    7
+        -> Greeting
+        -> Loud
+        -> Print
+    "41"
+        -> Int?
+        -> Sum(1)
+        -> Print
+    Map()
+        -> Inserted("a" * "1")
+        -> Keys
+        -> Json
+        -> Print
+    Map() -> Inserted("k" * "v") -> Value("k") -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+}

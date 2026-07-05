@@ -1,51 +1,63 @@
+Digits = Int
+
+IsIntDigit = Bool
+
+Negated = Int
+
+Negative = Int
+
 Pos = Int
 
-Int = (String) -> Result<Int, MalformedInt> {
-    String.length().eq(0).(
-        * (False) -> Result<Int, MalformedInt> {
-            String.byteAt(1).eq(45).(
-                * (False) -> Result<Int, MalformedInt> { 0.parseIntDigits(Pos(1), String) }
-                * (True) -> Result<Int, MalformedInt> { String.parseIntNegative() }
-            )
-        }
-        * (True) -> Result<Int, MalformedInt> { Err(MalformedInt("empty string is not an Int")) }
-    )
-}
-
-isIntDigit = (Int) -> Bool {
-    Int.ge(48).(
-        * (False) -> Bool { False() }
-        * (True) -> Bool { Int.le(57) }
-    )
-}
-
-negateParsed = (Result) -> Result<Int, MalformedInt> {
-    Result.(
-        * (Err<MalformedInt>) -> Result<Int, MalformedInt> { Err(MalformedInt) }
-        * (Ok<Int>) -> Result<Int, MalformedInt> { Ok(0.sub(Int)) }
-    )
-}
-
-parseIntDigits = (Int * Pos * String) -> Result<Int, MalformedInt> {
-    Pos.gt(String.length()).(
-        * (False) -> Result<Int, MalformedInt> {
-            String.byteAt(Pos).isIntDigit().(
-                * (False) -> Result<Int, MalformedInt> { Err(MalformedInt("invalid integer")) }
-                * (True) -> Result<Int, MalformedInt> {
+Int * Pos * String => Result<Digits, MalformedInt> {
+    Pos -> Gt(String -> Length) -> (
+        * False => Result<Digits, MalformedInt> {
+            String -> ByteAt(Pos) -> IsIntDigit -> (
+                * False => Result<Digits, MalformedInt> { "invalid integer" -> MalformedInt -> Err }
+                * True => Result<Digits, MalformedInt> {
                     Int
-                        .mul(10)
-                        .add(String.byteAt(Pos).sub(48))
-                        .parseIntDigits(Pos.add(1), String)
+                        -> Product(10)
+                        -> Sum(String -> ByteAt(Pos) -> Difference(48))
+                        -> Digits(Pos -> Sum(1) * String)
                 }
             )
         }
-        * (True) -> Result<Int, MalformedInt> { Ok(Int) }
+        * True => Result<Digits, MalformedInt> { Int -> Ok }
     )
 }
 
-parseIntNegative = (String) -> Result<Int, MalformedInt> {
-    String.length().eq(1).(
-        * (False) -> Result<Int, MalformedInt> { 0.parseIntDigits(Pos(2), String).negateParsed() }
-        * (True) -> Result<Int, MalformedInt> { Err(MalformedInt("lone minus is not an Int")) }
+String => Result<Int, MalformedInt> {
+    String -> Length -> Eq(0) -> (
+        * False => Result<Int, MalformedInt> {
+            String -> ByteAt(1) -> Eq(45) -> (
+                * False => Result<Int, MalformedInt> { 0 -> Digits(1 -> Pos * String) }
+                * True => Result<Int, MalformedInt> { String -> Negative }
+            )
+        }
+        * True => Result<Int, MalformedInt> { "empty string is not an Int" -> MalformedInt -> Err }
+    )
+}
+
+Int => IsIntDigit {
+    Int -> Ge(48) -> (
+        * False => IsIntDigit { False() }
+        * True => IsIntDigit { Int -> Le(57) }
+    )
+}
+
+Result => Result<Negated, MalformedInt> {
+    Result -> (
+        * Err<MalformedInt> => Result<Negated, MalformedInt> { MalformedInt -> Err }
+        * Ok<Int> => Result<Negated, MalformedInt> { 0 -> Difference(Int) -> Ok }
+    )
+}
+
+String => Result<Negative, MalformedInt> {
+    String -> Length -> Eq(1) -> (
+        * False => Result<Negative, MalformedInt> { 0 -> Digits(2 -> Pos * String) -> Negated }
+        * True => Result<Negative, MalformedInt> {
+            "lone minus is not an Int"
+                -> MalformedInt
+                -> Err
+        }
     )
 }

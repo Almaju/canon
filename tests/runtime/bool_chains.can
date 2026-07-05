@@ -1,25 +1,25 @@
-main = () -> Unit {
-    True().print()
-    False().print()
+main = () => Unit {
+    True() -> Print
+    False() -> Print
     True()
-        .and(False())
-        .print()
+        -> And(False())
+        -> Print
     True()
-        .and(True())
-        .print()
+        -> And(True())
+        -> Print
     False()
-        .or(True())
-        .print()
+        -> Or(True())
+        -> Print
     True()
-        .not()
-        .print()
+        -> Not
+        -> Print
     1
-        .eq(1)
-        .and(2.eq(2))
-        .print()
+        -> Eq(1)
+        -> And(2 -> Eq(2))
+        -> Print
     1
-        .eq(2)
-        .or(1.eq(1))
-        .not()
-        .print()
+        -> Eq(2)
+        -> Or(1 -> Eq(1))
+        -> Not
+        -> Print
 }

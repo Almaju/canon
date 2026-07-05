@@ -1,5 +1,5 @@
-main = () -> Unit {
-    42.print()
-    1.0.print()
-    0xFF.print()
+main = () => Unit {
+    42 -> Print
+    1.0 -> Print
+    0xFF -> Print
 }

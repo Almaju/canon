@@ -15,7 +15,7 @@ Two identifier classes, distinguished by their first character:
 | **camelCase** | `[a-z][A-Za-z0-9_]*` | functions |
 
 The case split is load-bearing: `print` is a function, `Print` is a
-trait (and `Print = (Foo) -> …` implements it for `Foo`). There is no
+trait (and `Print = (Foo) => …` implements it for `Foo`). There is no
 third class: no SCREAMING_CASE constants, no leading underscores with
 special meaning.
 

@@ -120,7 +120,7 @@ fn install_vendors_latest_release_and_project_checks() {
     // the formatter's chain-breaking rules.
     fs::write(
         project.join("main.can"),
-        "main = () -> Unit {\n    1.triple().print()\n}\n",
+        "main = () => Unit {\n    1\n        .triple()\n        -> Print\n}\n",
     )
     .unwrap();
     let (o, e, c) = run_canon(&project, &config, &["fmt", "main.can"]);

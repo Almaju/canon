@@ -1,0 +1,5 @@
+Request => Response {
+    "hello"
+        -> Body
+        -> Response(200 -> Status * Headers())
+}

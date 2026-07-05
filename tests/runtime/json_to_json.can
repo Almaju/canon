@@ -1,20 +1,20 @@
-main = () -> Unit {
+main = () => Unit {
     42
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     "hello"
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     1.5
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     True()
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     False()
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
     "with \"quotes\" and \nnewline"
-        .ToJson()
-        .print()
+        -> ToJson
+        -> Print
 }

@@ -1,0 +1,13 @@
+Label = String
+
+Label = (Int) -> Label {
+    Label("a")
+}
+
+Label = (Int) -> Label {
+    Label("b")
+}
+
+main = () -> Unit {
+    Label(1).print()
+}

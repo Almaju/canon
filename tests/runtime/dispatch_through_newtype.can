@@ -2,14 +2,19 @@ Content = String
 
 MessageContent = Option<Content>
 
-dispatch = (MessageContent) -> Unit {
-    MessageContent.(
-        * (None) -> Unit { "absent".print() }
-        * (Some<Content>) -> Unit { "present".print() }
+dispatch = (MessageContent) => Unit {
+    MessageContent -> (
+        * None => Unit { "absent" -> Print }
+        * Some<Content> => Unit { "present" -> Print }
     )
 }
 
-main = () -> Unit {
-    MessageContent(Some("hi")).dispatch()
-    MessageContent(None()).dispatch()
+main = () => Unit {
+    "hi"
+        -> Some
+        -> MessageContent
+        .dispatch()
+    None()
+        -> MessageContent
+        .dispatch()
 }

@@ -1,7 +1,7 @@
-main = () -> Unit {
-    List(1, 2, 3)
-        .map((Int) -> Int { Int.add(1) })
-        .map((Int) -> Int { Int.mul(2) })
-        .length()
-        .print()
+main = () => Unit {
+    List(1 * 2 * 3)
+        -> Mapped((Int) => Int { Int -> Sum(1) })
+        -> Mapped((Int) => Int { Int -> Product(2) })
+        -> Length
+        -> Print
 }
