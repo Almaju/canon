@@ -22,7 +22,7 @@ NoteTwo = Body
     Body({"id":2,"title":"write the docs"})
 }
 
-(Request) => Response {
+Request => Response {
     Request.path().(
         * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {

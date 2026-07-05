@@ -4,14 +4,14 @@ Greeting = String
     Greeting("hello")
 }
 
-(Bool) => Greeting {
+Bool => Greeting {
     Bool.(
         * (False) => Greeting { Greeting("bool:no") }
         * (True) => Greeting { Greeting("bool:yes") }
     )
 }
 
-(Int) => Greeting {
+Int => Greeting {
     Greeting("int:" -> Joined(Int -> String))
 }
 

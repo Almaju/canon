@@ -1,5 +1,5 @@
 Fetched = Body
 
-(Url) => Result<Fetched, HttpError> {
+Url => Result<Fetched, HttpError> {
     Url.fetch()
 }

@@ -33,14 +33,14 @@ Inserted = (Map * String * Value) => Map {
     )
 }
 
-(Map) => Keys {
+Map => Keys {
     Map.(
         * (Empty) => Keys { List() }
         * (Node) => Keys { List(Node.Key) -> Joined(Node.Rest -> Keys) }
     )
 }
 
-(Map) => Length {
+Map => Length {
     Map.(
         * (Empty) => Length { 0 }
         * (Node) => Length { Node.Rest -> Length -> Sum(1) }
@@ -75,7 +75,7 @@ Removed = (Map * String) => Map {
     )
 }
 
-(Map) => Values {
+Map => Values {
     Map.(
         * (Empty) => Values { List() }
         * (Node) => Values { List(Node.Value) -> Joined(Node.Rest -> Values) }

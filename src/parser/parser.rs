@@ -61,6 +61,14 @@ impl Parser {
             span: first.span,
         };
 
+        // Parens-free single-input anonymous constructor: `Request =>
+        // Response { … }`. A bare type name followed directly by the
+        // declaration arrow (no `=`, no generic params) is the
+        // unparenthesized form of `(Request) => Response { … }`.
+        if self.at_decl_arrow() {
+            return self.parse_paren_free_ctor(first_ident, start_span);
+        }
+
         let pre_eq_generics = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
         } else {
@@ -115,6 +123,36 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
+        self.finish_anonymous_ctor(generic_params, params, start_span)
+    }
+
+    /// A single-input anonymous constructor with the parentheses dropped:
+    /// `Request => Response { … }` is exactly `(Request) => Response { … }`.
+    /// The leading type has already been consumed as `input`. Only the
+    /// unparenthesized *single named* input reaches here — products,
+    /// generics, and the nullary entry keep their parentheses, so the
+    /// parse stays unambiguous (`*` / `<` never open a paren-free arrow).
+    fn parse_paren_free_ctor(&mut self, input: Ident, start_span: Span) -> Result<Item> {
+        let param = Param {
+            ty: TypeExpr::Named {
+                name: input.name.clone(),
+                generics: Vec::new(),
+                span: input.span,
+            },
+            mutable: false,
+            span: input.span,
+        };
+        self.finish_anonymous_ctor(Vec::new(), vec![param], start_span)
+    }
+
+    /// Shared tail of every anonymous-constructor form: the declaration
+    /// arrow, return type, constructed-name derivation, and body.
+    fn finish_anonymous_ctor(
+        &mut self,
+        generic_params: Vec<GenericParam>,
+        params: Vec<Param>,
+        start_span: Span,
+    ) -> Result<Item> {
         self.expect_decl_arrow("expected `->` before return type")?;
         let return_ty = self.parse_type_expr()?;
         let Some(ctor_name) = crate::ast::constructed_type_name(&return_ty) else {

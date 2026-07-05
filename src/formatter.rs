@@ -164,18 +164,37 @@ fn emit_function(func: &FunctionDef) -> String {
     // Signature: `name<G> = (params) -> ReturnType`, or the anonymous
     // constructor form `<G>(params) -> ReturnType` — the synthesized
     // name is derived from the return type, so writing it back out
-    // would be the redundancy the arrow form exists to remove.
-    if !func.anonymous {
-        out.push_str(&func.name.name);
-        out.push_str(&emit_generic_params(&func.generic_params));
-        out.push_str(" = (");
+    // would be the redundancy the arrow form exists to remove. A
+    // single *named* input on an anonymous constructor drops its
+    // parentheses entirely: `(Request) => Response` prints as
+    // `Request => Response`. Products, generics, and the nullary entry
+    // keep their parens (the parse of the paren-free form only accepts a
+    // bare type name).
+    let paren_free = func.anonymous
+        && func.generic_params.is_empty()
+        && func.params.len() == 1
+        && !func.params[0].mutable
+        && matches!(
+            &func.params[0].ty,
+            TypeExpr::Named { generics, .. } if generics.is_empty()
+        );
+    if paren_free {
+        out.push_str(&emit_type_expr(&func.params[0].ty));
+        out.push_str(" => ");
+        out.push_str(&emit_type_expr(&func.return_ty));
     } else {
-        out.push_str(&emit_generic_params(&func.generic_params));
-        out.push('(');
+        if !func.anonymous {
+            out.push_str(&func.name.name);
+            out.push_str(&emit_generic_params(&func.generic_params));
+            out.push_str(" = (");
+        } else {
+            out.push_str(&emit_generic_params(&func.generic_params));
+            out.push('(');
+        }
+        out.push_str(&emit_fn_params(func));
+        out.push_str(") => ");
+        out.push_str(&emit_type_expr(&func.return_ty));
     }
-    out.push_str(&emit_fn_params(func));
-    out.push_str(") => ");
-    out.push_str(&emit_type_expr(&func.return_ty));
 
     // Body. Functions whose body was synthesized by the loader (i.e.
     // the `extern_wasm` field is populated because they came from a

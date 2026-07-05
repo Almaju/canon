@@ -20,7 +20,7 @@ ToggledAt = Todos
     Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
-(Todos) => Cleared {
+Todos => Cleared {
     Todos.String -> Length -> Eq(0).(
         * (False) => Cleared {
             Todos.String -> ByteAt(1) -> Eq(49).(
@@ -34,7 +34,7 @@ ToggledAt = Todos
     )
 }
 
-(String) => FirstLine {
+String => FirstLine {
     String -> Length -> Eq(0).(
         * (False) => FirstLine {
             String -> ByteAt(1) -> Eq(10).(
@@ -50,7 +50,7 @@ ToggledAt = Todos
     )
 }
 
-(String) => ParsedNum {
+String => ParsedNum {
     String -> Length -> Eq(0).(
         * (False) => ParsedNum {
             String
@@ -86,7 +86,7 @@ ToggledAt = Todos
     )
 }
 
-(String) => RestLines {
+String => RestLines {
     String -> Length -> Eq(0).(
         * (False) => RestLines {
             String -> ByteAt(1) -> Eq(10).(

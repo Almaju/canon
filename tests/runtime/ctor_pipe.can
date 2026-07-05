@@ -2,11 +2,11 @@ Greeting = String
 
 Loud = String
 
-(Int) => Greeting {
+Int => Greeting {
     Greeting("int:" -> Joined(Int -> String))
 }
 
-(Greeting) => Loud {
+Greeting => Loud {
     Loud(Greeting.String -> Joined("!"))
 }
 

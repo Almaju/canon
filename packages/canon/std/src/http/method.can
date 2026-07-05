@@ -23,7 +23,7 @@ Post = Unit
 
 Put = Unit
 
-(Method) => String {
+Method => String {
     Method.(
         * (Delete) => String { "DELETE" }
         * (Get) => String { "GET" }

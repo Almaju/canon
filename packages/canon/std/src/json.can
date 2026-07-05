@@ -226,28 +226,28 @@ Validated = ParseStep
     )
 }
 
-(Int) => IsDigit {
+Int => IsDigit {
     Int -> Ge(48).(
         * (False) => IsDigit { False() }
         * (True) => IsDigit { Int -> Le(57) }
     )
 }
 
-(Int) => IsExpMarker {
+Int => IsExpMarker {
     Int -> Eq(101).(
         * (False) => IsExpMarker { Int -> Eq(69) }
         * (True) => IsExpMarker { True() }
     )
 }
 
-(Int) => IsSign {
+Int => IsSign {
     Int -> Eq(43).(
         * (False) => IsSign { Int -> Eq(45) }
         * (True) => IsSign { True() }
     )
 }
 
-(Int) => IsWs {
+Int => IsWs {
     Int -> Eq(32).(
         * (False) => IsWs {
             Int -> Eq(9).(
@@ -264,7 +264,7 @@ Validated = ParseStep
     )
 }
 
-(String) => Result<Json, MalformedJson> {
+String => Result<Json, MalformedJson> {
     String
         -> Validated
         -> Json(String)
@@ -537,7 +537,7 @@ ToJson = (String) => Json {
     String.fromString()
 }
 
-(String) => Validated {
+String => Validated {
     1
         -> ParsedValue(String)
         -> CheckedTrailing(String)

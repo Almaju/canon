@@ -25,7 +25,7 @@ Pos = Int
     )
 }
 
-(String) => Result<Int, MalformedInt> {
+String => Result<Int, MalformedInt> {
     String -> Length -> Eq(0).(
         * (False) => Result<Int, MalformedInt> {
             String -> ByteAt(1) -> Eq(45).(
@@ -37,21 +37,21 @@ Pos = Int
     )
 }
 
-(Int) => IsIntDigit {
+Int => IsIntDigit {
     Int -> Ge(48).(
         * (False) => IsIntDigit { False() }
         * (True) => IsIntDigit { Int -> Le(57) }
     )
 }
 
-(Result) => Result<Negated, MalformedInt> {
+Result => Result<Negated, MalformedInt> {
     Result.(
         * (Err<MalformedInt>) => Result<Negated, MalformedInt> { Err(MalformedInt) }
         * (Ok<Int>) => Result<Negated, MalformedInt> { Ok(0 -> Difference(Int)) }
     )
 }
 
-(String) => Result<Negative, MalformedInt> {
+String => Result<Negative, MalformedInt> {
     String -> Length -> Eq(1).(
         * (False) => Result<Negative, MalformedInt> { 0 -> Digits(Pos(2), String) -> Negated }
         * (True) => Result<Negative, MalformedInt> { Err(MalformedInt("lone minus is not an Int")) }

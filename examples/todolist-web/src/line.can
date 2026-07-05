@@ -4,7 +4,7 @@ Line = String
 
 RenderedItem = Html
 
-(Line) => Flipped {
+Line => Flipped {
     Line -> ByteAt(1) -> Eq(48).(
         * (False) => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
         * (True) => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }

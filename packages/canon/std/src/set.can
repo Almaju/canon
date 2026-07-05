@@ -39,14 +39,14 @@ Inserted = (Set * String) => Set {
     )
 }
 
-(Set) => Length {
+Set => Length {
     Set.(
         * (Absent) => Length { 0 }
         * (Entry) => Length { Entry.Remaining -> Length -> Sum(1) }
     )
 }
 
-(Set) => List<Item> {
+Set => List<Item> {
     Set.(
         * (Absent) => List<Item> { List() }
         * (Entry) => List<Item> { List(Entry.Item) -> Joined(Entry.Remaining -> List) }

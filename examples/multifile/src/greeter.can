@@ -2,6 +2,6 @@ Greeter = String
 
 Shout = String
 
-(Greeter) => Shout {
+Greeter => Shout {
     "HELLO from greeter"
 }

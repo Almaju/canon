@@ -24,7 +24,7 @@ Ul = Html
     Html("<button data-msg=\"" -> Joined(Msg) -> Joined("\">") -> Joined(String) -> Joined("</button>"))
 }
 
-(String) => Div {
+String => Div {
     Html("<div>" -> Joined(String) -> Joined("</div>"))
 }
 
@@ -36,7 +36,7 @@ Ul = Html
     Html("<" -> Joined(Tag) -> Joined(" ") -> Joined(Attr) -> Joined(">") -> Joined(String) -> Joined("</") -> Joined(Tag) -> Joined(">"))
 }
 
-(String) => Escaped {
+String => Escaped {
     String -> Length -> Eq(0).(
         * (False) => Escaped {
             String -> ByteAt(1).(
@@ -61,15 +61,15 @@ Ul = Html
     )
 }
 
-(String) => H1 {
+String => H1 {
     Html("<h1>" -> Joined(String) -> Joined("</h1>"))
 }
 
-(String) => Li {
+String => Li {
     Html("<li>" -> Joined(String) -> Joined("</li>"))
 }
 
-(String) => Span {
+String => Span {
     Html("<span>" -> Joined(String) -> Joined("</span>"))
 }
 
@@ -87,6 +87,6 @@ ToHtml = (String) => Html {
     String -> Escaped
 }
 
-(String) => Ul {
+String => Ul {
     Html("<ul>" -> Joined(String) -> Joined("</ul>"))
 }

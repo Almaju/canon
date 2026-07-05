@@ -6,7 +6,7 @@ SseEvent = String
     Headers().set("content-type", "text/event-stream")
 }
 
-(String) => SseEvent {
+String => SseEvent {
     "data: "
         -> Joined(String)
         -> Joined("\n\n")

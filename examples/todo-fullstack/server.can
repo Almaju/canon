@@ -6,7 +6,7 @@ CorsHeaders = Headers
         .set("content-type", "text/plain")
 }
 
-(Request) => Response {
+Request => Response {
     Request.method().(
         * ("GET") => Response {
             Request.path().(
