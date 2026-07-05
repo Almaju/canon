@@ -9,7 +9,7 @@ For most collection work, use methods on the collection itself:
 `map`, `get`, `length`, `first`, `append`, `concat`.
 
 ```canon,run=list-map
-main = () => Unit {
+() => Unit {
     List(10, 20, 30)
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length
@@ -27,14 +27,14 @@ constructor references itself, and dispatch supplies the base case.
 ```canon,run=sum-to
 Summed = Int
 
-(Int) => Summed {
+Int => Summed {
     Int -> Eq(0).(
         * (False) => Summed { Int -> Sum(Int -> Difference(1) -> Summed) }
         * (True) => Summed { 0 }
     )
 }
 
-main = () => Unit {
+() => Unit {
     5
         -> Summed
         -> Print

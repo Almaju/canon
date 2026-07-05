@@ -50,7 +50,7 @@ Thirty-ish lines of Canon, and along the way, most of the language:
 
 | You used | The idea |
 |---|---|
-| `(Request) => Response` | the entry-point rule: selected by signature, no name needed |
+| `Request => Response` | the entry-point rule: selected by signature, no name needed |
 | `Request.path().( … )` | union dispatch, the only branching construct |
 | `String.( * ("/notes") => … )` | literal dispatch with a mandatory catch-all: the route table |
 | `Body`, `Status(404)`, `Note` | newtypes as documentation and access control |

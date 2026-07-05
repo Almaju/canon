@@ -47,7 +47,7 @@ NoteTwo = Body
     Body({"id":2,"title":"write the docs"})
 }
 
-(Request) => Response {
+Request => Response {
     Request.path().(
         * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {
@@ -65,7 +65,7 @@ NoteTwo = Body
 ## What It Demonstrates
 
 - **The entry-point rule.** The one arrow returning `Response` is the
-  service — an anonymous `(Request) => Response`, selected by signature.
+  service — an anonymous `Request => Response`, selected by signature.
   No `main`, no port in the program; the host decides how to serve it.
 - **Constructors return values, not worlds.** Only the entry may return
   `Response`, so each note body is a constructor for its own `Body`

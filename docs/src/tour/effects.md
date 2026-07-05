@@ -11,7 +11,7 @@ objects. Access to a resource is represented by holding a value of the
 corresponding type.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Path("./data.json")
         -> File?
         .read()?

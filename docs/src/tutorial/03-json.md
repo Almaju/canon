@@ -65,7 +65,7 @@ NoteOneBody = Body
     Body({"title":"ship canon v1"})
 }
 
-(Request) => Response {
+Request => Response {
     Request.path().(
         * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {

@@ -41,11 +41,11 @@ A bodied declaration must be named after its return type or after a declared sha
 A constructor named after its return type repeats information the signature already carries (`Url = (String) => Result<Url, InvalidUrl>` spells `Url` twice). So the constructor declaration form is the **anonymous arrow** — the typed edge itself, with no name at all:
 
 ```
-(String) => Result<Url, InvalidUrl> { … }     # the Url constructor
-(Bool) => Json { … }                           # family members are just arrows
-(Int) => Json { … }
+String => Result<Url, InvalidUrl> { … }        # the Url constructor
+Bool => Json { … }                             # family members are just arrows
+Int => Json { … }
 () => Map { Empty() }                          # the empty-map constructor
-(Request) => Response { … }                    # an entire HTTP service
+Request => Response { … }                      # an entire HTTP service
 ```
 
 The constructed type is the return type with `Result`/`Option`/`Future` peeled, so fallible constructors stay anonymous too. Call sites are unchanged — a constructor is still invoked by its output type (`Url("…")?`, `"…".Url()?`); the arrow only removes the redundant *declaration-site* name.

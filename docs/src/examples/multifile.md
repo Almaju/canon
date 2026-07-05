@@ -20,7 +20,7 @@ Greeter = String
 
 Shout = String
 
-(Greeter) => Shout {
+Greeter => Shout {
     "HELLO from greeter"
 }
 ```
@@ -28,7 +28,7 @@ Shout = String
 `src/main.can`:
 
 ```canon
-main = () => Unit {
+() => Unit {
     Greeter("hi")
         -> Shout
         -> Print

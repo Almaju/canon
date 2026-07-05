@@ -3,7 +3,7 @@
 Create a file named `notes.can`:
 
 ```canon
-(Request) => Response {
+Request => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
@@ -41,7 +41,7 @@ Two consequences you'll run into later:
   own types). The restriction is the layering the rule wants: helpers
   return data, the entry returns the world.
 - The handler needs no name at all. It's an anonymous
-  `(Request) => Response` — the compiler selects it purely by its
+  `Request => Response` — the compiler selects it purely by its
   signature, so there is nothing to call it and nothing to name.
 
 ## The Response

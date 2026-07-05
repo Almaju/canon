@@ -63,7 +63,7 @@ newtype over `Int`, so the standard `Int` methods (`add`, `sub`,
 comparison, `.print`) work on it directly.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Instant() -> Print
 }
 ```
@@ -87,7 +87,7 @@ a fresh value from the WASI CSPRNG; `Random` is a newtype over `Int`,
 so arithmetic and printing work normally on the result.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Random() -> Print
 }
 ```
@@ -107,7 +107,7 @@ Current UTC wall-clock time, formatted as an RFC 3339 string. Useful
 for log lines.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Now() -> Print
 }
 ```
@@ -129,7 +129,7 @@ canonical-ABI shape lands.
 Synchronous file I/O — read and write.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Contents("hello from canon")
         .write(Path("/tmp/greeting.txt"))?
         -> File?
@@ -171,7 +171,7 @@ operation is a constructor named after what it produces
 `Value` (the value at a key), `Keys`, `Values`, `Length`.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Map()
         -> Inserted("b", "2")
         -> Inserted("a", "1")
@@ -215,7 +215,7 @@ construction — returns the members, alphabetically, as a
 `List<String>`:
 
 ```canon
-main = () => Unit {
+() => Unit {
     Set()
         -> Inserted("b")
         -> Inserted("a")
@@ -263,7 +263,7 @@ Conversions follow one rule — **conversion is construction** (see
 directions are compiler builtins available without imports:
 
 ```canon
-main = () => Unit {
+() => Unit {
     String(42) -> Print
     123
         -> String
@@ -300,7 +300,7 @@ URL parsing plus blocking HTTP GET. Fetching is a constructor:
 ([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
-main = () => Unit {
+() => Unit {
     Url("http://example.com")?
         -> Fetched?
         -> Print
@@ -335,7 +335,7 @@ function name — so one `Route` constructor covers every verb
 ([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
-main = () => Result<Unit, IoError> {
+() => Result<Unit, IoError> {
     "Starting server on port 3000..." -> Print
     HttpServer(Port(3000))
         -> Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
@@ -442,7 +442,7 @@ label = (Int) => Json {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
-main = () => Result<Unit, MalformedJson> {
+() => Result<Unit, MalformedJson> {
     Json("[1, 2, 3]")? -> Print
     42
         -> ToJson

@@ -7,7 +7,7 @@ objects. Construct the value, use it.
 ## `now`: Wall-Clock Time
 
 ```canon
-main = () => Unit {
+() => Unit {
     Now() -> Print
 }
 ```
@@ -24,7 +24,7 @@ inherited straight through the alias.
 ## `clock`: Monotonic Time
 
 ```canon
-main = () => Unit {
+() => Unit {
     Instant() -> Print
 }
 ```
@@ -37,7 +37,7 @@ provides wall-clock Unix seconds.
 ## `random`: A Random Integer
 
 ```canon
-main = () => Unit {
+() => Unit {
     Random() -> Print
 }
 ```
@@ -50,7 +50,7 @@ miniature.
 ## `exit-code`: Honest Process Exits
 
 ```canon
-main = () => Unit {
+() => Unit {
     "exiting cleanly" -> Print
     0 -> Exited
 }

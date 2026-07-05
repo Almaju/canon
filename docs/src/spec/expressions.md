@@ -226,11 +226,11 @@ Listing = Html
 
 Row = Html
 
-(String) => Listing {
+String => Listing {
     <ul>{String -> Row}</ul>
 }
 
-(String) => Row {
+String => Row {
     <li>{String}</li>
 }
 ```

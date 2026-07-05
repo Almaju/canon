@@ -4,7 +4,7 @@
 the canonical demonstration of Canon's *type chain as access control*.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Path("Cargo.toml")
         -> File?
         .read()?

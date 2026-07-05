@@ -107,7 +107,7 @@ Todos = String
     Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
-(Todos) => Cleared {
+Todos => Cleared {
     Todos.String -> Length -> Eq(0).(
         * (False) => Cleared {
             Todos.String -> ByteAt(1) -> Eq(49).(
@@ -137,7 +137,7 @@ Line = String
 
 RenderedItem = Html
 
-(Line) => Flipped {
+Line => Flipped {
     Line -> ByteAt(1) -> Eq(48).(
         * (False) => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
         * (True) => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }

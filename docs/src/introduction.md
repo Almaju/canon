@@ -54,7 +54,7 @@ value, which you can only get from a `Path`, which you can only build
 from a `String`. The type chain *is* the access control:
 
 ```canon
-main = () => Unit {
+() => Unit {
     Path("./data.json")
         -> File?
         .read()?
@@ -68,7 +68,7 @@ A CLI program, with branching (dispatch on a union, Canon's only
 control-flow construct) and iteration (methods on collections):
 
 ```canon,run=intro
-main = () => Unit {
+() => Unit {
     List(1, 2, 3)
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length

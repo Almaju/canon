@@ -37,7 +37,7 @@ NotFound = Body
     Body("not found")
 }
 
-(Request) => Response {
+Request => Response {
     Request.path().(
         * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {

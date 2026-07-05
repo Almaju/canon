@@ -3,7 +3,7 @@
 Create a file named `hello.can`:
 
 ```canon,run=hello-world
-main = () => Unit {
+() => Unit {
     "hello" -> Print
 }
 ```
@@ -23,12 +23,13 @@ hello
 ## Line by Line
 
 ```canon
-main = () => Unit {
+() => Unit {
 ```
 
-`main` is the entry point. Like every binding in Canon it has the shape
-`name = (parameters) => ReturnType { body }`. The empty `()` says it
-takes nothing; the compiler lifts `main` as the component's
+This is the entry point, selected by its `() => Unit` signature — no
+name needed. Like every arrow in Canon it has the shape
+`(parameters) => ReturnType { body }`. The empty `()` says it
+takes nothing; the compiler lifts it as the component's
 `wasi:cli/run.run` export.
 
 `Unit` is a singleton type: one value, named after itself. Returning

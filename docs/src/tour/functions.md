@@ -17,11 +17,11 @@ Greeting = String
 
 Shout = String
 
-(Greeting) => Shout {
+Greeting => Shout {
     "HELLO"
 }
 
-main = () => Unit {
+() => Unit {
     Greeting("howdy")
         -> Shout
         -> Print
@@ -155,17 +155,18 @@ already determine the parameter. A function with an explicit
 `Result<List<Int>, _>` return type lets the compiler infer from the
 return position without an annotation.
 
-## The `main` Function
+## The CLI Entry
 
-`main` is the program's entry point. It takes no parameters and is lifted
-as the component's `wasi:cli/run.run` export:
+The program's entry point takes no parameters and returns `Unit`; it is
+selected by that signature — no name required — and lifted as the
+component's `wasi:cli/run.run` export:
 
 ```canon
-main = () => Unit {
+() => Unit {
     "hello" -> Print
 }
 ```
 
 For I/O, construct the value that carries the effect (`File`, `Url`,
-`HttpServer`) from inside `main` and thread it through the chain. See
+`HttpServer`) from inside the entry and thread it through the chain. See
 [Effects and Values](./effects.md) for the full domain-first story.

@@ -4,7 +4,7 @@
 an HTTP GET in one chain, built on a **validated constructor**.
 
 ```canon
-main = () => Unit {
+() => Unit {
     Url("http://example.com")?
         -> Fetched?
         -> Print

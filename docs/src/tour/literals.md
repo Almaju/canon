@@ -105,7 +105,7 @@ family; converting a value to `T` is spelled `T(value)` (or
 `value.T()`, the method form of the same declaration):
 
 ```canon,run=conversions
-main = () => Unit {
+() => Unit {
     String(42) -> Print
     123
         -> String

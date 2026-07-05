@@ -125,7 +125,7 @@ A type with no underlying composition has exactly one value, referenced by
 writing the type name itself:
 
 ```canon
-main = () => Unit {
+() => Unit {
     Unit
 }
 ```

@@ -244,6 +244,19 @@ shape implementations. See the migration in the spec
   constructor (return type with `Result`/`Option`/`Future` peeled).
   `FunctionDef.anonymous` drives the formatter to round-trip the arrow
   form. Both the named (`B = (A) => …`) and anonymous forms are legal.
+  A **single named input drops its parentheses** — `A => B { … }` is
+  exactly `(A) => B { … }` (`Parser::parse_paren_free_ctor`; the
+  formatter emits the paren-free form). Products (`(A * B) => C`),
+  generic inputs (`(Some<T>) => C`), and the nullary entry (`() => C`)
+  keep their parens, so `*`/`<`/`(` never open a paren-free arrow.
+- **Entries are anonymous, selected by world-shaped return.** The CLI
+  entry is an anonymous `() => Unit` (or `() => Result<Unit, _>`) and the
+  HTTP handler an anonymous `Request => Response` — neither needs a name.
+  `resolve_new_syntax` renames an anonymous `() => Unit` back to the
+  canonical `main` so entry selection, the ordering exemption, and
+  codegen's `$start` inlining all still key on `main`; the `main` name
+  stays legal (the `canon test` harness synthesizes one). `init` /
+  `update` / `view` remain the one name-based selection (the web triple).
 - **Value-level pipe.** `value -> B` is the call-site mirror of the
   declaration arrow — parsed into a `MethodCall` with `piped: true`,
   semantically identical to `B(value)` / `value.B()`. `-> B?` is the
@@ -294,28 +307,28 @@ shape implementations. See the migration in the spec
 Bool = False + True                            # union
 User = Birthday * Username                     # product
 
-greet = (Greeting * Name) -> Greeting {        # function (free, commutative)
-    Greeting
+Greeting => Loud {                             # constructor (paren-free single input)
+    Greeting -> Joined("!")
 }
 
-main = () -> Unit {                            # entry point
-    "hello".print()
+() => Unit {                                   # CLI entry (anonymous, world-shaped return)
+    "hello" -> Print
 }
 
 True().(                                       # dispatch (branch on union)
-    * (False) -> Unit { "no".print() }
-    * (True)  -> Unit { "yes".print() }
+    * (False) => Unit { "no" -> Print }
+    * (True)  => Unit { "yes" -> Print }
 )
 
 path.(                                         # literal dispatch (String/Int scrutinee);
-    * ("/notes") -> Body { index() }           # the catch-all arm is required, always last
-    * (String) -> Body { notFound() }
+    * ("/notes") => Body { Index() }           # the catch-all arm is required, always last
+    * (String) => Body { NotFound() }
 )
 
-List(1, 2, 3).map((Int) -> Int { Int.mul(2) }) # lambda
+List(1, 2, 3).map((Int) => Int { Int -> Product(2) }) # lambda (keeps parens)
 
-view = (Model) -> Html {                       # HTML literal ({…} interpolates;
-    <div><span>{Model.String()}</span></div>   # String/Int escape, Html passes through)
+Model => Html {                                # HTML literal ({…} interpolates;
+    <div><span>{Model -> String}</span></div>  # String/Int escape, Html passes through)
 }
 ```
 

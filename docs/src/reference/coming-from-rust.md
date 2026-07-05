@@ -13,7 +13,7 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `enum Bool { False, True }`                | `Bool = False + True`                  |
 | `type Name = String;` (or `struct Name(String);`) | `Name = String`                  |
 | `impl User { fn greet(&self) => String { ... } }` | `greet = (User) => String { ... }` |
-| `fn main() { ... }`                        | `main = () => Unit { ... }`             |
+| `fn main() { ... }`                        | `() => Unit { ... }`             |
 | `trait Show { fn show(&self) -> String; }` | `Show = () => String`                   |
 | `impl Show for User { ... }`               | `Show = (User) => String { ... }`      |
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |

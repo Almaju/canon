@@ -50,7 +50,7 @@ Wherever a `Future<T>` value is used in a position that expects `T`
 declared parameter type is `T`), the checker inserts the await:
 
 ```canon
-main = () => Unit {
+() => Unit {
     Url("https://example.com")?
         -> Fetched?
         .body()?

@@ -39,7 +39,7 @@ Note = String
 
 Rendered = Json
 
-(Note) => Rendered {
+Note => Rendered {
     "{\"title\":\""
         -> Joined(Note)
         -> Joined("\"}")
@@ -85,7 +85,7 @@ NoteOneBody = Body
     Body(Note("ship canon v1") -> Rendered)
 }
 
-(Request) => Response {
+Request => Response {
     Request.path().(
         * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {
