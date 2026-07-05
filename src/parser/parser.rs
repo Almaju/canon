@@ -46,6 +46,14 @@ impl Parser {
             });
         }
 
+        // Anonymous constructor: `(A) -> B { … }` declares the `B`
+        // constructor — its identity is the typed arrow itself, so there
+        // is no name to write (DESIGN.md § Types-Only Canon). Nothing
+        // else at top level starts with `(` or `<`.
+        if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
+            return self.parse_anonymous_ctor(start_span);
+        }
+
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
         let first_ident = Ident {
             name: first.lexeme.clone(),
@@ -77,6 +85,68 @@ impl Parser {
             name: first_ident,
             generic_params: pre_eq_generics,
             body,
+            span: span_join(start_span, end_span),
+        }))
+    }
+
+    /// `(A * B) -> C { … }` at top level — the anonymous constructor
+    /// declaration. The synthesized `name` is the constructed type
+    /// (`C`; `Result`/`Option`/`Future` wrappers peeled), so downstream
+    /// (resolve_new_syntax, checker, codegen) treats it exactly like a
+    /// self-named constructor; `anonymous` tells the formatter to emit
+    /// the arrow form back out.
+    fn parse_anonymous_ctor(&mut self, start_span: Span) -> Result<Item> {
+        let generic_params = if self.check(TokenKind::Lt) {
+            self.parse_generic_params()?
+        } else {
+            Vec::new()
+        };
+        self.expect(TokenKind::LParen, "expected `(` to begin parameter list")?;
+        let mut params = Vec::new();
+        if !self.check(TokenKind::RParen) {
+            loop {
+                params.push(self.parse_param()?);
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
+        self.expect(TokenKind::Arrow, "expected `->` before return type")?;
+        let return_ty = self.parse_type_expr()?;
+        let Some(ctor_name) = crate::ast::constructed_type_name(&return_ty) else {
+            return Err(CanonError::ParseError {
+                message: "an anonymous constructor's return type must name the constructed type \
+                          (`(A) -> B { … }` declares the `B` constructor)"
+                    .to_string(),
+                span: start_span,
+            });
+        };
+        if !self.check(TokenKind::LBrace) {
+            return Err(CanonError::ParseError {
+                message: "an anonymous constructor requires a body `{ … }` — a body-less \
+                          function type needs a name (`Shape = (A) -> B`)"
+                    .to_string(),
+                span: self.peek().span,
+            });
+        }
+        let body = self.parse_block()?;
+        let end_span = self.previous_span();
+        Ok(Item::Function(FunctionDef {
+            receiver: None,
+            receiver_mut: false,
+            name: Ident {
+                name: ctor_name,
+                span: start_span,
+            },
+            generic_params,
+            params,
+            return_ty,
+            body,
+            extern_wasm: None,
+            anonymous: true,
             span: span_join(start_span, end_span),
         }))
     }
@@ -148,6 +218,7 @@ impl Parser {
                 return_ty,
                 body,
                 extern_wasm: None,
+                anonymous: false,
                 span: span_join(start_span, end_span),
             }));
         }

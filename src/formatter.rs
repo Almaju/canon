@@ -161,10 +161,18 @@ fn emit_type_def(td: &TypeDef) -> String {
 fn emit_function(func: &FunctionDef) -> String {
     let mut out = String::new();
 
-    // Signature: name<G> = (params) -> ReturnType
-    out.push_str(&func.name.name);
-    out.push_str(&emit_generic_params(&func.generic_params));
-    out.push_str(" = (");
+    // Signature: `name<G> = (params) -> ReturnType`, or the anonymous
+    // constructor form `<G>(params) -> ReturnType` — the synthesized
+    // name is derived from the return type, so writing it back out
+    // would be the redundancy the arrow form exists to remove.
+    if !func.anonymous {
+        out.push_str(&func.name.name);
+        out.push_str(&emit_generic_params(&func.generic_params));
+        out.push_str(" = (");
+    } else {
+        out.push_str(&emit_generic_params(&func.generic_params));
+        out.push('(');
+    }
     out.push_str(&emit_fn_params(func));
     out.push_str(") -> ");
     out.push_str(&emit_type_expr(&func.return_ty));

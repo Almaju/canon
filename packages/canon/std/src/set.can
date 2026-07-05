@@ -23,7 +23,7 @@ Inserted = (Set * String) -> Set {
     )
 }
 
-List = (Set) -> List<Item> {
+(Set) -> List<Item> {
     Set.(
         * (Absent) -> List<Item> { List() }
         * (Entry) -> List<Item> { List(Entry.Item).concat(Entry.Remaining.List()) }
@@ -42,7 +42,7 @@ Removed = (Set * String) -> Set {
     )
 }
 
-Set = () -> Set {
+() -> Set {
     Absent()
 }
 

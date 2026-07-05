@@ -38,6 +38,12 @@ pub struct FunctionDef {
     pub return_ty: TypeExpr,
     pub body: Block,
     pub extern_wasm: Option<ExternWasm>,
+    /// Declared in the anonymous-arrow form `(A) -> B { … }` (DESIGN.md
+    /// § Types-Only Canon): the constructor of its output type, with
+    /// `name` synthesized from the constructed type. The flag exists so
+    /// the formatter round-trips the arrow form instead of inventing a
+    /// `B = ` prefix.
+    pub anonymous: bool,
     pub span: Span,
 }
 
@@ -428,6 +434,25 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
     }
 }
 
+/// The type an arrow *constructs*: its return type with the standard
+/// containers peeled — `Result<Url, InvalidUrl>` constructs `Url`,
+/// `Option<Value>` constructs `Value`, `Future<T>` constructs `T`.
+/// `None` when the return type doesn't name a type (a bare function
+/// type, a product, …), in which case an anonymous declaration has no
+/// derivable identity and is rejected at parse time.
+pub fn constructed_type_name(ty: &TypeExpr) -> Option<String> {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            if matches!(name.as_str(), "Result" | "Option" | "Future") && !generics.is_empty() {
+                constructed_type_name(&generics[0])
+            } else {
+                Some(name.clone())
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Post-parse transformation: resolve PascalCase function definitions.
 /// - If the name matches a TypeDef in the same module → it's a validated constructor
 ///   (set receiver = type name, rename to "Self")
@@ -492,6 +517,13 @@ pub fn resolve_new_syntax(module: &mut Module) {
                                     .collect();
                             }
                         }
+                    } else if func.anonymous
+                        && entry_world_of(&func.return_ty) == Some(EntryWorld::Http)
+                    {
+                        // `(Request) -> Response { … }` — an anonymous HTTP
+                        // entry. Mirror the parser's named-entry guard: keep
+                        // it a free function so entry selection sees it,
+                        // instead of extracting `Request` as a receiver.
                     } else if !func.params.is_empty() {
                         // Trait impl: extract first component as receiver
                         let old_params = std::mem::take(&mut func.params);

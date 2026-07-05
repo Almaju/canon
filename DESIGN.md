@@ -1015,6 +1015,26 @@ Every declaration is `PascalName = rhs`, and the RHS shape decides the meaning:
 
 A bodied declaration must be named after its return type or after a declared shape. Anything else is a compile error — that error is the entire enforcement mechanism, checkable from signatures alone. (If the return type is a bare type parameter, as in `fold`, declare a shape.)
 
+### Anonymous Constructors — `(A) -> B { … }` *(implemented)*
+
+A constructor named after its return type repeats information the signature already carries (`Url = (String) -> Result<Url, InvalidUrl>` spells `Url` twice). So the constructor declaration form is the **anonymous arrow** — the typed edge itself, with no name at all:
+
+```
+(String) -> Result<Url, InvalidUrl> { … }     # the Url constructor
+(Bool) -> Json { … }                           # family members are just arrows
+(Int) -> Json { … }
+() -> Map { Empty() }                          # the empty-map constructor
+(Request) -> Response { … }                    # an entire HTTP service
+```
+
+The constructed type is the return type with `Result`/`Option`/`Future` peeled, so fallible constructors stay anonymous too. Call sites are unchanged — a constructor is still invoked by its output type (`Url("…")?`, `"…".Url()?`); the arrow only removes the redundant *declaration-site* name.
+
+This is not a second function syntax — it is the language's **only** function form, appearing at every level: top level it declares a constructor, in expression position it is a lambda, and every dispatch arm is one (`* (False) -> Unit { … }`). Named declarations (`Inserted = (Set * String) -> Set { … }`) remain for exactly one thing: shapes and their implementations, where the name carries the only information the types cannot — which is precisely the endomorphism boundary above. The rule reads: *if the types fully determine the operation, it has no name; if they don't, the name is a shape.*
+
+Coherence: at most one arrow per (input product, constructed type) pair — the same family-disjointness rule, with nothing left to name a conflict after.
+
+During migration the named form (`Url = (String) -> …`) remains legal and means the same thing; it is deprecated and will be removed with slice 6. `canon fmt` preserves whichever form is written until then.
+
 **Constructors form families.** A type may have any number of constructor implementations, distinguished by input product: `Json` has `(Bool)`, `(Float)`, `(Int)`, and `(String) -> Result<Json, MalformedJson>` constructors. Coherence generalizes from traits: at most one implementation per (name, input product) pair in the whole program, checked at link time. Traits and constructor overloads thereby collapse into one concept — *a PascalCase name is a family of implementations selected by input product* — and the trait system above is the shape/implementation half of it.
 
 ### What Replaces Each Kind of Function
@@ -1083,9 +1103,10 @@ If the full removal proves too costly in practice, the fallback that keeps most 
 
 ### Migration Plan
 
-1. **Constructor families, in-file** — relax the single-validated-constructor rule; selection by input product; disjointness errors. (Test surface: `Json(Bool/Float/Int/String)` replacing `from*`.)
-2. **Stdlib cleanup to current spec** — convert the existing § Conversions violations (`from*`, `parse`, `openFile`, `create`, `nowRfc3339`, `toString`, `asString`, `body`, `method`, `path`) to constructors. Ships value regardless of the endgame.
-3. **Cross-file constructor families** — loader relaxation + link-time coherence by (name, input product); reference-site ambiguity per the resolution rules above.
+1. **Constructor families, in-file** — ✅ landed. Several self-named constructors per type, selected by the first input's type; duplicate (receiver, name, first-input) definitions are a checked error (`tests/runtime/ctor_family.can`).
+   1b. **Anonymous arrows** — ✅ landed. `(A) -> B { … }` declares the `B` constructor (`tests/runtime/ctor_arrow.can`); the named form stays legal until slice 6.
+2. **Stdlib cleanup to current spec** — 🔶 in progress. `map.can`/`set.can` ported (`Value`/`Keys`/`Values`/`List` as anonymous constructors, `Inserted`/`Removed` as shape implementations); remaining: `assert`, the json.can wrappers, http accessors, html helpers, the parser internals.
+3. **Cross-file constructor families** — 🔶 partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
 4. **Core vocabulary** — `Sum`/`Product`/…, `Eq`/`Lt`/…, `Length`, `Mapped`/`Filtered`, `Joined`, `Print`; initially thin aliases over the existing builtins, camelCase spellings deprecated.
 5. **Stdlib port** — file by file, `json.can` first (the stress test). Decision checkpoint: full removal vs the fallback rule.
 6. **Enforcement** — camelCase outside binding files: warning, then error; delete deprecated aliases; entry-point worlds become shape implementations.

@@ -156,6 +156,7 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
                 span: body_span,
             },
             extern_wasm: Some(ExternWasm { path, is_async }),
+            anonymous: false,
             span: td.span,
         };
         *item = Item::Function(new_func);

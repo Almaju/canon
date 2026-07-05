@@ -19,7 +19,9 @@ Inserted = (Map * String * Value) -> Map {
             String.lt(Node.Key).(
                 * (False) -> Map {
                     String.eq(Node.Key).(
-                        * (False) -> Map { Node(Node.Key, Node.Rest.Inserted(String, Value), Node.Value) }
+                        * (False) -> Map {
+                            Node(Node.Key, Node.Rest.Inserted(String, Value), Node.Value)
+                        }
                         * (True) -> Map { Node(String, Node.Rest, Value) }
                     )
                 }
@@ -29,14 +31,14 @@ Inserted = (Map * String * Value) -> Map {
     )
 }
 
-Keys = (Map) -> Keys {
+(Map) -> Keys {
     Map.(
         * (Empty) -> Keys { List() }
         * (Node) -> Keys { List(Node.Key).concat(Node.Rest.Keys()) }
     )
 }
 
-Map = () -> Map {
+() -> Map {
     Empty()
 }
 
@@ -52,7 +54,7 @@ Removed = (Map * String) -> Map {
     )
 }
 
-Value = (Map * String) -> Option<Value> {
+(Map * String) -> Option<Value> {
     Map.(
         * (Empty) -> Option<Value> { None() }
         * (Node) -> Option<Value> {
@@ -64,7 +66,7 @@ Value = (Map * String) -> Option<Value> {
     )
 }
 
-Values = (Map) -> Values {
+(Map) -> Values {
     Map.(
         * (Empty) -> Values { List() }
         * (Node) -> Values { List(Node.Value).concat(Node.Rest.Values()) }
