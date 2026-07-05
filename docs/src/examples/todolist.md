@@ -28,69 +28,30 @@ canon run examples/todolist-web        # serves on http://127.0.0.1:8080
 
 A Canon program becomes a web app by defining three anonymous,
 type-selected constructors (see
-[The Web Target](../reference/web-target.md)): `Model => Html` (view),
-`Unit => Init` (init), and `Model * Msg => Update` (update). `Init` and
-`Update` are model-alias markers that give init and update distinct
+[The Web Target](../reference/web-target.md)): `Todos => Html` (view),
+`Unit => Init` (init), and `Todos * String => Update` (update). `Init`
+and `Update` are model-alias markers that give init and update distinct
 constructor keys. The model here is `Todos`, a newline-separated encoding
 of `flag|title` lines; messages are prefix-parsed strings decoded with
 the same pure-Canon string primitives the standard library uses
-everywhere else.
+everywhere else. This is the entire entry file, `src/main.can`:
 
 ```canon
-AddForm = ElAttr
-
-ClearButton = Button
-
-Init = AddedTodo
-
-Prefix = String
-
-Update = Todos
-
-Unit => AddForm {
-    Attr("data-msg-form=\"Add:\"")
-        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
-}
-
-Unit => ClearButton {
-    Msg("Clear") -> Button("Clear completed")
-}
-
-Todos => Html {
-    "<h1>Canon Todos</h1>"
-        -> Joined(AddForm() -> String)
-        -> Joined(1 -> RenderedItems(Todos) -> Ul)
-        -> Joined(ClearButton() -> String)
-        -> Div
-}
-
-Unit => Init {
-    Title("toggle a task to mark it done")
-        -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
-}
-
-Todos * String => Update {
-    Prefix(String -> Substring(1, 4)).(
-        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
-        * ("Clea") => Todos { Todos -> Cleared }
-        * ("Dele") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> RemovedAt(Todos) }
-        * ("Togg") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> ToggledAt(Todos) }
-        * (Prefix) => Todos { Todos }
-    )
-}
+{{#include ../../../examples/todolist-web/src/main.can}}
 ```
 
-`update` is a literal dispatch on the message's four-character prefix.
-Each arm is a pure fold: `Add:` appends, `Toggle:N` flips one line,
-`Delete:N` drops one, `Clear` filters out the completed. The catch-all
-returns the model unchanged. There is no mutation and no local state —
-the browser owns the event loop; the guest is pure functions.
+The `Update` constructor is a literal dispatch on the message's
+four-character `Prefix`. Each arm is a pure fold: `Add:` appends,
+`Toggle:N` flips one line, `Delete:N` drops one, `Clear` filters out the
+completed. The catch-all returns the model unchanged. There is no
+mutation and no local state — the browser owns the event loop; the guest
+is pure constructors piped with `->`.
 
 ## Persistence without a `localStorage` import
 
 The guest never touches `localStorage`. It doesn't need to. A Canon web
 app's model *is* a fold over its message history, so the host persists
-the **message log** and replays it through `update` on the next load —
+the **message log** and replays it through `Update` on the next load —
 rebuilding the identical model. That is the whole persistence story: the
 generated `index.html` passes a storage key to `canonWebStart`, the host
 appends each message to `localStorage` as it is sent, and reads the log
@@ -101,86 +62,32 @@ breaking. See [The Web Target](../reference/web-target.md).
 ## The rest of the program
 
 The model operations are shared, ordinary Canon — the same code would
-run in a backend. `Todos` holds the list and its folds:
+run in a backend. Each operation is a **result newtype** named after
+what it produces, so chaining is free (an `AddedTodo` flows anywhere a
+`Todos` is expected). The pieces are split one type per file, as the
+module system requires:
 
-```canon
-AddedTodo = Todos
+- [`src/todos.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/todos.can)
+  — `Todos` holds the list and its folds (`AddedTodo`, `Cleared`,
+  `ToggledAt`, `RemovedAt`, `RenderedItems`) plus the pure-Canon
+  `FirstLine` / `RestLines` / `ParsedNum` string helpers.
+- [`src/line.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/line.can)
+  — `Line` renders one item as an `<li>` and its `Flipped` newtype
+  toggles the done flag with recursive `ByteAt` / `Substring`
+  primitives.
+- [`src/title.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/title.can)
+  — the `Title` newtype.
 
-Cleared = Todos
-
-Todos = String
-
-(Title * Todos) => AddedTodo {
-    Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
-}
-
-Todos => Cleared {
-    Todos.String -> Length -> Eq(0).(
-        * (False) => Cleared {
-            Todos.String -> ByteAt(1) -> Eq(49).(
-                * (False) => Cleared {
-                    Todos(Todos.String -> FirstLine -> Joined("\n") -> Joined(Todos(Todos.String -> RestLines) -> Cleared -> String))
-                }
-                * (True) => Cleared { Todos(Todos.String -> RestLines) -> Cleared }
-            )
-        }
-        * (True) => Cleared { Todos }
-    )
-}
-```
-
-Every operation is named after the value it produces: `AddedTodo`,
-`Cleared`, and so on — result newtypes over `Todos`, reached with the
-`->` pipe. (`FirstLine`, `RestLines`, `ParsedNum`, `RemovedAt`,
-`RenderedItems`, and `ToggledAt` round out the file — see the
-[full source](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src).)
-
-`Line` renders one item and toggles its done flag:
-
-```canon
-Flipped = Line
-
-Line = String
-
-RenderedItem = Html
-
-Line => Flipped {
-    Line -> ByteAt(1) -> Eq(48).(
-        * (False) => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
-        * (True) => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
-    )
-}
-
-(Int * Line) => RenderedItem {
-    Line -> ByteAt(1) -> Eq(49).(
-        * (False) => RenderedItem {
-            Line
-                -> Substring(3, Line -> Length)
-                -> Escaped
-                -> Joined(" ")
-                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("done"))
-                -> Joined(" ")
-                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
-                -> Li
-        }
-        * (True) => RenderedItem {
-            "<s>"
-                -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
-                -> Joined("</s> ")
-                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("undo"))
-                -> Joined(" ")
-                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
-                -> Li
-        }
-    )
-}
-```
+They read the same way as `main.can`: recursive dispatch over string
+encodings, no host help. The same folds reappear, shared, in the
+[fullstack example](./fullstack.md).
 
 ## What it demonstrates
 
-- **A real frontend with no framework.** The view / init / update triple
-  *is* the app; `canon/std/web` supplies the HTML helpers and the
-  declarative event attributes (`data-msg`, `data-msg-form`).
+- **A real frontend with no framework.** The `Init` / `Update` /
+  `Todos => Html` triple *is* the app; `canon/std/web` supplies the HTML
+  helpers and the declarative event attributes (`data-msg`,
+  `data-msg-form`).
 - **State that persists, with no effect in the guest.** `localStorage`
   is a host capability layered onto the message log — the program stays
   pure and would compile unchanged for a server.

@@ -16,23 +16,13 @@ declares `Shout` — the result of shouting a greeting — and a constructor
 that produces one from a `Greeter`:
 
 ```canon
-Greeter = String
-
-Shout = String
-
-Greeter => Shout {
-    "HELLO from greeter"
-}
+{{#include ../../../examples/multifile/src/greeter.can}}
 ```
 
 `src/main.can`:
 
 ```canon
-Unit => Program {
-    Greeter("hi")
-        -> Shout
-        -> Print
-}
+{{#include ../../../examples/multifile/src/main.can}}
 ```
 
 ```sh
@@ -53,5 +43,6 @@ HELLO from greeter
 - **Everything is public.** There is no visibility to configure; see
   [Modules and Packages](../spec/modules.md#visibility) for why.
 
-The [tutorial's modules chapter](../tutorial/04-modules.md) applies this
-same move to a real service.
+The [modules section of the tour](../guide.md#modules) states the rule;
+[Modules and Packages](../spec/modules.md) has the full resolution
+algorithm.

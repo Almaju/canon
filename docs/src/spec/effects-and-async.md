@@ -115,4 +115,4 @@ Three places, all diagnostic:
    suspending.
 
 Day-to-day code sees none of it. See the [Async chapter of the
-Tour](../tour/async.md) for the design rationale and comparisons.
+Tour](../guide.md#async) for the design rationale and comparisons.

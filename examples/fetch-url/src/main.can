@@ -1,6 +1,0 @@
-Unit => Program {
-    "http://example.com"
-        -> Url?
-        -> Fetched?
-        -> Print
-}

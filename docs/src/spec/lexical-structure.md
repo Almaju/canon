@@ -32,7 +32,7 @@ The keyword set is small:
 There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
 `async`, `await`, `pub`, `mod`, or `use` (imports are automatic —
 [Modules and Packages](./modules.md)). The absences are deliberate; the
-[Tour](../tour/philosophy.md) lists what replaces each.
+[Tour](../guide.md) lists what replaces each.
 
 ## Literals
 

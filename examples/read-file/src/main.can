@@ -1,7 +1,0 @@
-Unit => Program {
-    "Cargo.toml"
-        -> Path
-        -> File?
-        .read()?
-        -> Print
-}

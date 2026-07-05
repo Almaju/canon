@@ -1,10 +1,9 @@
 # notes-api: A JSON Service
 
 [`examples/notes-api`](https://github.com/Almaju/canon/tree/main/examples/notes-api):
-the flagship example, a JSON API compiled to a standard
+the flagship backend example, a JSON API compiled to a standard
 `wasi:http/service` component. About forty lines, zero server
-boilerplate. The [tutorial](../tutorial/index.md) builds this program
-up step by step; this page is the finished artifact.
+boilerplate.
 
 ```sh
 $ canon run examples/notes-api
@@ -22,44 +21,10 @@ HTTP/1.1 404 Not Found
 
 ## The Source
 
+The whole program is one file, `src/main.can`:
+
 ```canon
-IndexBody = Body
-
-NotFound = Body
-
-NoteOne = Body
-
-NoteTwo = Body
-
-Unit => IndexBody {
-    Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
-}
-
-Unit => NotFound {
-    Body({"error":"not found"})
-}
-
-Unit => NoteOne {
-    Body({"id":1,"title":"ship canon v1"})
-}
-
-Unit => NoteTwo {
-    Body({"id":2,"title":"write the docs"})
-}
-
-Request => Response {
-    Request.path().(
-        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
-        * (Some<String>) => Response {
-            String.(
-                * ("/notes") => Response { Response(IndexBody() * Headers() * Status(200)) }
-                * ("/notes/1") => Response { Response(NoteOne() * Headers() * Status(200)) }
-                * ("/notes/2") => Response { Response(NoteTwo() * Headers() * Status(200)) }
-                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
-            )
-        }
-    )
-}
+{{#include ../../../examples/notes-api/src/main.can}}
 ```
 
 ## What It Demonstrates
@@ -79,11 +44,14 @@ Request => Response {
   live path.
 - **Routing as dispatch.** There is no router DSL. The route table is
   **literal dispatch** on the path: one arm per route, alphabetical,
-  with the mandatory `(String)` catch-all as the 404. Nested dispatch
+  with the mandatory `String` catch-all as the 404. Nested dispatch
   composes: union dispatch on the `Option`, literal dispatch on the
   payload inside the `Some` arm.
 - **Per-route status codes.** `Status` is a value; each arm computes
-  its own.
+  its own, piped in with `404 -> Status`.
+
+See the tour's [Serving HTTP](../guide.md#serving-http) for the rule in
+prose.
 
 ## The Compiled Shape
 
@@ -91,5 +59,4 @@ Request => Response {
 `wasi:*` interfaces and exports `wasi:http/handler#handle`: the same
 contract any compliant WASI Preview 3 HTTP host instantiates. Nothing
 in the artifact is Canon-specific. See
-[Ship a Component](../tutorial/06-ship-it.md) and
 [Deploying](../reference/deploying.md).
