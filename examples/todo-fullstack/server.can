@@ -1,28 +1,30 @@
-corsHeaders = () => Headers {
+CorsHeaders = Headers
+
+() => CorsHeaders {
     Headers()
         .set("access-control-allow-origin", "*")
         .set("content-type", "text/plain")
 }
 
-serve = (Request) => Response {
+(Request) => Response {
     Request.method().(
         * ("GET") => Response {
             Request.path().(
-                * (None) => Response { Response(Body("bad request") * corsHeaders() * Status(400)) }
+                * (None) => Response { Response(Body("bad request") * CorsHeaders() * Status(400)) }
                 * (Some<String>) => Response {
                     String.(
                         * ("/todos") => Response {
-                            Response(Body(todos().String) * corsHeaders() * Status(200))
+                            Response(Body(Seeded() -> String) * CorsHeaders() * Status(200))
                         }
                         * (String) => Response {
-                            Response(Body("not found") * corsHeaders() * Status(404))
+                            Response(Body("not found") * CorsHeaders() * Status(404))
                         }
                     )
                 }
             )
         }
         * (String) => Response {
-            Response(Body("method not allowed") * corsHeaders() * Status(405))
+            Response(Body("method not allowed") * CorsHeaders() * Status(405))
         }
     )
 }

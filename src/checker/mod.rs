@@ -1761,6 +1761,13 @@ fn method_known_via_aliases(
     let mut current = receiver_ty;
     let mut depth = 0;
     loop {
+        // Newtype unwrap projection reaches any ancestor type in the alias
+        // chain: `Cleared = Todos = String` makes `Cleared.String` (or the
+        // piped `-> String`) a valid unwrap. Newtypes are 1-component
+        // products, so the projection composes the whole way down.
+        if arg_count == 0 && current == method {
+            return true;
+        }
         if is_known_method(current, method, arg_count) {
             return true;
         }
@@ -1967,6 +1974,21 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                     .get(&(recv_ty.clone(), canonical.to_string()))
                 {
                     return sig.return_ty.clone();
+                }
+            }
+            // Newtype unwrap projection: `cleared -> String` where
+            // `Cleared = Todos = String` yields `String` — the method name
+            // is an ancestor type reached along the receiver's alias chain.
+            {
+                let mut current = recv_ty.clone();
+                for _ in 0..20 {
+                    if current == method.name {
+                        return method.name.clone();
+                    }
+                    match symbols.aliases.get(&current) {
+                        Some(next) => current = next.clone(),
+                        None => break,
+                    }
                 }
             }
             method_return_type(&recv_ty, &method.name)

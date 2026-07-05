@@ -1,33 +1,47 @@
+AddForm = ElAttr
+
+ClearButton = Button
+
 Prefix = String
 
-addForm = () => Html {
+() => AddForm {
     Attr("data-msg-form=\"Add:\"")
         -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
-clearButton = () => Html {
+() => ClearButton {
     Msg("Clear") -> Button("Clear completed")
 }
 
 init = () => Todos {
     Title("toggle a task to mark it done")
-        .addTodo(Title("edit this list - it is saved in your browser").addTodo(Todos("")))
+        -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
 }
 
 update = (Todos * String) => Todos {
     Prefix(String -> Substring(1, 4)).(
-        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)).addTodo(Todos) }
-        * ("Clea") => Todos { Todos.clearDone() }
-        * ("Dele") => Todos { String -> Substring(8, String -> Length).parseNum().removeAt(Todos) }
-        * ("Togg") => Todos { String -> Substring(8, String -> Length).parseNum().toggleAt(Todos) }
+        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
+        * ("Clea") => Todos { Todos -> Cleared }
+        * ("Dele") => Todos {
+            String
+                -> Substring(8, String -> Length)
+                -> ParsedNum
+                -> RemovedAt(Todos)
+        }
+        * ("Togg") => Todos {
+            String
+                -> Substring(8, String -> Length)
+                -> ParsedNum
+                -> ToggledAt(Todos)
+        }
         * (Prefix) => Todos { Todos }
     )
 }
 
 view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
-        -> Joined(addForm().String)
-        -> Joined(1.renderItems(Todos) -> Ul)
-        -> Joined(clearButton().String)
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(ClearButton() -> String)
         -> Div
 }
