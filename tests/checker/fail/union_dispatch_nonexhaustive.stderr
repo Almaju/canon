@@ -1,0 +1,1 @@
+error[tests/checker/fail/union_dispatch_nonexhaustive.can:3:11]: non-exhaustive dispatch on `Bool`: every variant must be handled (there is no wildcard arm) — missing `False`

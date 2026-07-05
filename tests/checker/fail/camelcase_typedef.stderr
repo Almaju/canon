@@ -1,0 +1,2 @@
+error[tests/checker/fail/camelcase_typedef.can:1:1]: camelCase names are not allowed: types are PascalCase — rename `speed`
+error[tests/checker/fail/camelcase_typedef.can:1:1]: `speed` is never used: dead code is not allowed to accumulate; delete it or wire it into the program

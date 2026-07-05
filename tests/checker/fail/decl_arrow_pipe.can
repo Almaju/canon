@@ -1,0 +1,9 @@
+Doubled = Int
+
+Doubled = (Int) -> Doubled {
+    Int -> Product(2)
+}
+
+Unit => Program {
+    3 -> Doubled -> String -> Print
+}

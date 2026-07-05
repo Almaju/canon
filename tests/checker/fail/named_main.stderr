@@ -1,0 +1,1 @@
+error[tests/checker/fail/named_main.can:1:1]: `main` is not a name: entries are anonymous and selected by their world-shaped return — write `Unit => Program { … }`

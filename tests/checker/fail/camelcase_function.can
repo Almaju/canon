@@ -1,0 +1,7 @@
+double = (Int) => Int {
+    Int -> Product(2)
+}
+
+Unit => Program {
+    2.double() -> String -> Print
+}

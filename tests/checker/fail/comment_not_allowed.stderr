@@ -1,0 +1,1 @@
+error[tests/checker/fail/comment_not_allowed.can:1:1]: Canon has no comments: delete the comment (the language spec, § Lexical Structure)

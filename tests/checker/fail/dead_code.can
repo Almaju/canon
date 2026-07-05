@@ -1,0 +1,5 @@
+Unused = String
+
+Unit => Program {
+    "hi" -> Print
+}

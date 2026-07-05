@@ -1,0 +1,1 @@
+error[tests/checker/fail/comma_params.can:7:13]: comma-separated parameters are not allowed: compose inputs into a product with `*` — write `(A * B) => C`, not `(A, B) => C`. Position never carries meaning in Canon.

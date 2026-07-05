@@ -1,0 +1,1 @@
+error[tests/checker/fail/dead_code.can:1:1]: `Unused` is never used: dead code is not allowed to accumulate; delete it or wire it into the program

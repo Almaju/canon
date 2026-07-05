@@ -1,0 +1,1 @@
+error[tests/checker/fail/camelcase_function.can:1:1]: camelCase names are not allowed: the only names are type names — replace `double` with a PascalCase constructor (`Input => Type { … }`)

@@ -1,0 +1,1 @@
+error[tests/checker/fail/parenthesized_arm_pattern.can:3:11]: dispatch arm patterns are bare: write `* Pattern => …`, not `* (Pattern) => …`

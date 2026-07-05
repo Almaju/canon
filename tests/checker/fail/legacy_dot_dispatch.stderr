@@ -1,0 +1,1 @@
+error[tests/checker/fail/legacy_dot_dispatch.can:2:12]: expected method or field name after `.` (got `(`)
