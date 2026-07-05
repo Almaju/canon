@@ -334,7 +334,7 @@ Int * String => ParsedFalse {
     Int -> Sum(4) -> Le(String -> Length).(
         * False => ParsedFalse { ParseFail("expected false") }
         * True => ParsedFalse {
-            String -> Substring(Int, Int -> Sum(4)) -> Eq("false").(
+            String -> Substring(From(Int) * To(Int -> Sum(4))) -> Eq("false").(
                 * False => ParsedFalse { ParseFail("expected false") }
                 * True => ParsedFalse { ParsePos(Int -> Sum(5)) }
             )
@@ -386,7 +386,7 @@ Int * String => ParsedNull {
     Int -> Sum(3) -> Le(String -> Length).(
         * False => ParsedNull { ParseFail("expected null") }
         * True => ParsedNull {
-            String -> Substring(Int, Int -> Sum(3)) -> Eq("null").(
+            String -> Substring(From(Int) * To(Int -> Sum(3))) -> Eq("null").(
                 * False => ParsedNull { ParseFail("expected null") }
                 * True => ParsedNull { ParsePos(Int -> Sum(4)) }
             )
@@ -490,7 +490,7 @@ Int * String => ParsedTrue {
     Int -> Sum(3) -> Le(String -> Length).(
         * False => ParsedTrue { ParseFail("expected true") }
         * True => ParsedTrue {
-            String -> Substring(Int, Int -> Sum(3)) -> Eq("true").(
+            String -> Substring(From(Int) * To(Int -> Sum(3))) -> Eq("true").(
                 * False => ParsedTrue { ParseFail("expected true") }
                 * True => ParsedTrue { ParsePos(Int -> Sum(4)) }
             )

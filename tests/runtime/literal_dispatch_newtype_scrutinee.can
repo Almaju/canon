@@ -1,7 +1,7 @@
 Prefix = String
 
 route = (Int * String) => Int {
-    Prefix(String -> Substring(1, 4)).(
+    Prefix(String -> Substring(From(1) * To(4))).(
         * "Add:" => Int { Int -> Sum(String -> Length) }
         * Prefix => Int { Int }
     )

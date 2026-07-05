@@ -166,6 +166,32 @@ fn parse_extern_path(path: &str) -> Option<(String, String, String)> {
 /// path, derives the WASM signature, and assigns each a function index. The
 /// resulting list is sorted by `(core_namespace, fn_name)` so the output is
 /// deterministic across runs (matching Canon's "alphabetical" ethos).
+/// The `(start, end)` bound expressions of a `substring`/`slice` call.
+/// Canonically the bounds arrive as a `From * To` product, which is
+/// *positionless*: the start is whichever component is `From(…)` and the
+/// end whichever is `To(…)`, regardless of written order. Two positional
+/// args are still accepted during migration (start, then end).
+fn substring_bounds(args: &[Expr]) -> Option<(&Expr, &Expr)> {
+    fn ctor_name(e: &Expr) -> Option<&str> {
+        match e {
+            Expr::Constructor { name, .. } => Some(name.name.as_str()),
+            _ => None,
+        }
+    }
+    match args {
+        [Expr::ProductValue { fields, .. }] if fields.len() == 2 => {
+            let (a, b) = (&fields[0], &fields[1]);
+            if ctor_name(a) == Some("To") || ctor_name(b) == Some("From") {
+                Some((b, a))
+            } else {
+                Some((a, b))
+            }
+        }
+        [a, b] => Some((a, b)),
+        _ => None,
+    }
+}
+
 fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
     let type_defs = build_type_defs_map(ast);
     let mut raw: Vec<ExternImport> = Vec::new();
@@ -6389,16 +6415,22 @@ impl<'m> WasmGen<'m> {
             // is independent of the receiver's lifetime (heap is
             // bump-allocated, so neither outlives the other; copying
             // makes mutation safe if it ever lands).
-            ("substring" | "slice", _) if recv_ty.is_str_like() && args.len() == 2 => {
-                // Compile start, then end (both `Int`).
-                let ty0 = self.compile_expr(&args[0], scope, f);
+            ("substring" | "slice", _)
+                if recv_ty.is_str_like() && substring_bounds(args).is_some() =>
+            {
+                // The bounds arrive either as a `From * To` product (the
+                // canonical, positionless form — alphabetical order puts
+                // `From` first) or, during migration, as two positional
+                // args. Either way: `start`, then `end` (both `Int`).
+                let (start_e, end_e) = substring_bounds(args).unwrap();
+                let ty0 = self.compile_expr(start_e, scope, f);
                 if !matches!(ty0, Ty::I64) {
                     self.drop_value(ty0, f);
                     f.instruction(&Instruction::I64Const(1));
                 }
                 f.instruction(&Instruction::I64Const(1));
                 f.instruction(&Instruction::I64Sub);
-                let ty1 = self.compile_expr(&args[1], scope, f);
+                let ty1 = self.compile_expr(end_e, scope, f);
                 if !matches!(ty1, Ty::I64) {
                     self.drop_value(ty1, f);
                     f.instruction(&Instruction::I64Const(0));

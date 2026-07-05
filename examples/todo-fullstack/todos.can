@@ -24,8 +24,8 @@ String => FirstLine {
             String -> ByteAt(1) -> Eq(10).(
                 * False => FirstLine {
                     String
-                        -> Substring(1, 1)
-                        -> Joined(String -> Substring(2, String -> Length) -> FirstLine)
+                        -> Substring(From(1) * To(1))
+                        -> Joined(String -> Substring(From(2) * To(String -> Length)) -> FirstLine)
                 }
                 * True => FirstLine { "" }
             )
@@ -38,7 +38,7 @@ String => ParsedNum {
     String -> Length -> Eq(0).(
         * False => ParsedNum {
             String
-                -> Substring(1, String -> Length -> Difference(1))
+                -> Substring(From(1) * To(String -> Length -> Difference(1)))
                 -> ParsedNum
                 -> Product(10)
                 -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
@@ -74,8 +74,12 @@ String => RestLines {
     String -> Length -> Eq(0).(
         * False => RestLines {
             String -> ByteAt(1) -> Eq(10).(
-                * False => RestLines { String -> Substring(2, String -> Length) -> RestLines }
-                * True => RestLines { String -> Substring(2, String -> Length) }
+                * False => RestLines {
+                    String
+                        -> Substring(From(2) * To(String -> Length))
+                        -> RestLines
+                }
+                * True => RestLines { String -> Substring(From(2) * To(String -> Length)) }
             )
         }
         * True => RestLines { "" }

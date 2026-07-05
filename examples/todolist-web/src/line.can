@@ -6,8 +6,8 @@ RenderedItem = Html
 
 Line => Flipped {
     Line -> ByteAt(1) -> Eq(48).(
-        * False => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
-        * True => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * False => Flipped { Line("0" -> Joined(Line -> Substring(From(2) * To(Line -> Length)))) }
+        * True => Flipped { Line("1" -> Joined(Line -> Substring(From(2) * To(Line -> Length)))) }
     )
 }
 
@@ -15,7 +15,7 @@ Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49).(
         * False => RenderedItem {
             Line
-                -> Substring(3, Line -> Length)
+                -> Substring(From(3) * To(Line -> Length))
                 -> Escaped
                 -> Joined(" ")
                 -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("done"))
@@ -25,7 +25,7 @@ Int * Line => RenderedItem {
         }
         * True => RenderedItem {
             "<s>"
-                -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
+                -> Joined(Line -> Substring(From(3) * To(Line -> Length)) -> Escaped)
                 -> Joined("</s> ")
                 -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("undo"))
                 -> Joined(" ")

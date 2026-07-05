@@ -31,18 +31,20 @@ Unit => Init {
 }
 
 Todos * String => Update {
-    Prefix(String -> Substring(1, 4)).(
-        * "Add:" => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
+    Prefix(String -> Substring(From(1) * To(4))).(
+        * "Add:" => Todos {
+            Title(String -> Substring(From(5) * To(String -> Length))) -> AddedTodo(Todos)
+        }
         * "Clea" => Todos { Todos -> Cleared }
         * "Dele" => Todos {
             String
-                -> Substring(8, String -> Length)
+                -> Substring(From(8) * To(String -> Length))
                 -> ParsedNum
                 -> RemovedAt(Todos)
         }
         * "Togg" => Todos {
             String
-                -> Substring(8, String -> Length)
+                -> Substring(From(8) * To(String -> Length))
                 -> ParsedNum
                 -> ToggledAt(Todos)
         }

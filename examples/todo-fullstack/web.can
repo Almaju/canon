@@ -32,18 +32,20 @@ Unit => LoadButton {
 }
 
 Todos * String => Update {
-    Prefix(String -> Substring(1, 4)).(
-        * "Add:" => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
+    Prefix(String -> Substring(From(1) * To(4))).(
+        * "Add:" => Todos {
+            Title(String -> Substring(From(5) * To(String -> Length))) -> AddedTodo(Todos)
+        }
         * "Dele" => Todos {
             String
-                -> Substring(8, String -> Length)
+                -> Substring(From(8) * To(String -> Length))
                 -> ParsedNum
                 -> RemovedAt(Todos)
         }
-        * "Load" => Todos { Todos(String -> Substring(6, String -> Length)) }
+        * "Load" => Todos { Todos(String -> Substring(From(6) * To(String -> Length))) }
         * "Togg" => Todos {
             String
-                -> Substring(8, String -> Length)
+                -> Substring(From(8) * To(String -> Length))
                 -> ParsedNum
                 -> ToggledAt(Todos)
         }
