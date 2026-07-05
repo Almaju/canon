@@ -208,7 +208,7 @@ arbitrary Canon expression; everything else (attributes, quotes, nested
 tags, comments, void elements like `<br>`) is raw markup:
 
 ```canon
-view = (Model) => Html {
+Model => Html {
     <div>
         <h1>Counter</h1>
         <button data-msg="Increment">+</button>
@@ -218,7 +218,7 @@ view = (Model) => Html {
 ```
 
 Interpolated values convert through the `ToHtml` trait: a `String` or
-`Int` is HTML-escaped (via the stdlib's `text()`), while an `Html` value
+`Int` is HTML-escaped (via the stdlib's `Escaped`), while an `Html` value
 passes through unchanged, so composing literals never double-escapes:
 
 ```canon

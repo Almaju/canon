@@ -8,13 +8,13 @@ at build time, no runtime of its own to ship.
 A complete HTTP service:
 
 ```canon
-greet = (Request) => Response {
+Request => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
 
 ```sh
-$ canon run greet.can
+$ canon run service.can
 HTTP handler detected: serving on http://127.0.0.1:8080
 
 $ curl localhost:8080

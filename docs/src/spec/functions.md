@@ -148,11 +148,13 @@ is by signature, not by name:
 | `Response`, `Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
 A third world — the browser [web target](../reference/web-target.md) — is
-selected differently. It can't key on a return type, because every view
-helper returns `Html`, so detection matches the conventional **triple of
-names and shapes**: `init = () => Model`, `update = (Model * String) ->
-Model`, and `view = (Model) => Html` together. The triple compiles to a
-core wasm module plus a generated JS host rather than a component.
+selected by a **triple of anonymous, type-selected constructors**:
+`Model => Html` (the view), `Unit => Init` (init), and
+`Model * Msg => Update` (update), where `Init` / `Update` are model-alias
+markers. Detection anchors on the view — the sole `Model => Html` with a
+user-type receiver — then finds the model's nullary and two-input
+constructors. The triple compiles to a core wasm module plus a generated
+JS host rather than a component.
 
 Rules the compiler enforces:
 

@@ -103,7 +103,7 @@ To serve HTTP, declare a `(Request) => Response` function; the
 program *is* the server (see [Serving HTTP](./http.md)):
 
 ```canon
-home = (Request) => Response {
+Request => Response {
     Response(Body("hello") * Headers() * Status(200))
 }
 ```

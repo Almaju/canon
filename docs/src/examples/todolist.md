@@ -26,19 +26,26 @@ canon run examples/todolist-web        # serves on http://127.0.0.1:8080
 
 ## The whole app is the Elm triple
 
-A Canon program becomes a web app by defining three functions with the
-conventional shapes — `init`, `update`, `view` (see
-[The Web Target](../reference/web-target.md)).
-The model here is `Todos`, a newline-separated encoding of `flag|title`
-lines; messages are prefix-parsed strings decoded with the same
-pure-Canon string primitives the standard library uses everywhere else.
+A Canon program becomes a web app by defining three anonymous,
+type-selected constructors (see
+[The Web Target](../reference/web-target.md)): `Model => Html` (view),
+`Unit => Init` (init), and `Model * Msg => Update` (update). `Init` and
+`Update` are model-alias markers that give init and update distinct
+constructor keys. The model here is `Todos`, a newline-separated encoding
+of `flag|title` lines; messages are prefix-parsed strings decoded with
+the same pure-Canon string primitives the standard library uses
+everywhere else.
 
 ```canon
 AddForm = ElAttr
 
 ClearButton = Button
 
+Init = AddedTodo
+
 Prefix = String
+
+Update = Todos
 
 Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
@@ -49,12 +56,20 @@ Unit => ClearButton {
     Msg("Clear") -> Button("Clear completed")
 }
 
-init = () => Todos {
+Todos => Html {
+    "<h1>Canon Todos</h1>"
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(ClearButton() -> String)
+        -> Div
+}
+
+Unit => Init {
     Title("toggle a task to mark it done")
         -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
 }
 
-update = (Todos * String) => Todos {
+Todos * String => Update {
     Prefix(String -> Substring(1, 4)).(
         * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
         * ("Clea") => Todos { Todos -> Cleared }
@@ -62,14 +77,6 @@ update = (Todos * String) => Todos {
         * ("Togg") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> ToggledAt(Todos) }
         * (Prefix) => Todos { Todos }
     )
-}
-
-view = (Todos) => Html {
-    "<h1>Canon Todos</h1>"
-        -> Joined(AddForm() -> String)
-        -> Joined(1 -> RenderedItems(Todos) -> Ul)
-        -> Joined(ClearButton() -> String)
-        -> Div
 }
 ```
 
@@ -171,8 +178,8 @@ Line => Flipped {
 
 ## What it demonstrates
 
-- **A real frontend with no framework.** The `init`/`update`/`view`
-  triple *is* the app; `canon/std/web` supplies the HTML helpers and the
+- **A real frontend with no framework.** The view / init / update triple
+  *is* the app; `canon/std/web` supplies the HTML helpers and the
   declarative event attributes (`data-msg`, `data-msg-form`).
 - **State that persists, with no effect in the guest.** `localStorage`
   is a host capability layered onto the message log — the program stays

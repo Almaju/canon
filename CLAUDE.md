@@ -266,8 +266,12 @@ shape implementations. See the migration in the spec
   name stay legal (the `canon test` harness synthesizes one). Because
   `Unit` is zero-width and single-valued, all `Unit`-rooted types
   (`Program`, `Exited`, …) are interchangeable in a return position.
-  `init` / `update` / `view` remain the one name-based selection (the
-  web triple — two of them return `Model`, so they can't be type-keyed).
+  The web-app triple is type-selected too — no names: `Model => Html`
+  (view), `Unit => Init` (init), `Model * Msg => Update` (update), where
+  `Init` / `Update` are model-alias marker newtypes giving `init` and
+  `update` distinct constructor keys. `find_web_entry` anchors on the
+  view (the sole non-primitive-receiver `_ => Html`) and returns each
+  member's func-table key for codegen.
 - **Value-level pipe.** `value -> B` is the call-site mirror of the
   declaration arrow — parsed into a `MethodCall` with `piped: true`,
   semantically identical to `B(value)` / `value.B()`. `-> B?` is the

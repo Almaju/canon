@@ -11,16 +11,29 @@ React's component-local state is unexpressible. The architecture React
 approximates, Canon states natively:
 
 ```canon
-init   = () => Model                 # the whole app state
-update = (Model * String) => Model   # a pure fold over messages
-view   = (Model) => Html             # a pure render
+Init = Model                     # marker: the initial model
+Update = Model                   # marker: the model after one message
+
+Model => Html { … }              # view — a pure render
+Unit => Init { … }               # init — the whole app state, initially
+Model * Msg => Update { … }      # update — a pure fold over messages
 ```
 
-`Model` is any user type. `Html` resolves to `canon/std/web/Html`
-automatically. When the triple is present — and no `main` or HTTP entry
-competes, which the checker rejects as mixed worlds — the program is a web
-app. Detection is by these **names and shapes**, not return type: every
-view helper returns `Html`, so "returns `Html`" can't mark the entry.
+All three are anonymous, type-selected constructors — no names. `Model`
+is any user type, `Msg` the message type (`String` today). `Init` and
+`Update` are **model-alias marker newtypes** (`Init = Model`,
+`Update = Model`); they exist because `init` and `update` both produce
+the model and would otherwise collide on one constructor key — the
+markers give each a distinct type. `Html` resolves to
+`canon/std/web/Html` automatically.
+
+Detection is **by shape**: the `view` is the sole `Model => Html` whose
+receiver is a user type (a primitive receiver marks a stdlib `ToHtml`
+conversion instead); from its model, `init` is the unique nullary
+constructor whose result aliases the model and `update` the unique
+two-input constructor whose first input is the model. When the triple is
+present — and no CLI or HTTP entry competes, which the checker rejects as
+mixed worlds — the program is a web app.
 
 ## What gets emitted
 
@@ -37,7 +50,7 @@ Browsers instantiate core wasm directly, so the web output is **not** a
 component; `canon-web.js` plays the role the component wrapper plays for the
 CLI and HTTP worlds. The model stays in guest memory between calls — the
 host only holds an opaque `i64`. Messages go in as strings, HTML comes out
-as a string; no serialization crosses the boundary. `.print()` maps to
+as a string; no serialization crosses the boundary. `-> Print` maps to
 `console.log`.
 
 ## Events
@@ -52,10 +65,10 @@ declarative attributes:
 | `data-msg-input="X:"` | change | `X:` + the control's value |
 
 Payload-carrying messages are plain string composition
-(`"Toggle:".concat(id.String())`) decoded in `update` with
-`substring`/`byteAt` — the same pure-Canon parsing the JSON validator uses.
-`canon/std/web` provides `button` (renders `data-msg`), `elAttr` (arbitrary
-attributes), and `text` (HTML-escapes user content).
+(`"Toggle:" -> Joined(Id -> String)`) decoded by the reducer with
+`Substring`/`ByteAt` — the same pure-Canon parsing the JSON validator uses.
+`canon/std/web` provides `Button` (renders `data-msg`), `ElAttr` (arbitrary
+attributes), and `Escaped` (HTML-escapes user content).
 
 There is no virtual DOM: `view` returns the whole page and the host swaps it
 in. Focus does not survive a re-render, which is why typing flows through

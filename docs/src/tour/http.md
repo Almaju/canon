@@ -6,13 +6,13 @@ router registration, no port in the program. The function *is* the
 service; the host decides how to run it.
 
 ```canon
-greet = (Request) => Response {
+Request => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
 
 ```sh
-$ canon run greet.can
+$ canon run service.can
 HTTP handler detected: serving on http://127.0.0.1:8080
 
 $ curl localhost:8080
@@ -23,20 +23,23 @@ hello from canon
 
 ## The entry-point rule
 
-The same rule that makes `main` a CLI program makes this an HTTP
-program: **the compiler selects the entry by return type**. A free
-function returning `Program` (the CLI world type) is a CLI command; a
-free function returning `Response` is an HTTP handler. Exactly one function per program may
-return a world type; helpers must return ordinary values:
+The same rule that selects a CLI program by its `Program` return
+selects this by return type: **the compiler picks the entry by what it
+produces**. An arrow returning `Program` (the CLI world type) is a CLI
+command; one returning `Response` is an HTTP handler. Exactly one arrow
+per program may return a world type; helpers return ordinary values —
+their own newtypes, built with anonymous constructors:
 
 ```canon
-notFound = () => Body {
+NotFound = Body
+
+Unit => NotFound {
     Body({"error":"not found"})
 }
 ```
 
-A second `Response`-returning function is a compile error ("ambiguous
-HTTP entry"), and mixing `main` with a handler is too: a component
+A second `Response`-returning arrow is a compile error ("ambiguous
+HTTP entry"), and mixing a CLI entry with a handler is too: a component
 exports exactly one world.
 
 ## Routing is dispatch
@@ -48,13 +51,13 @@ everywhere else in Canon. Union dispatch on the `Option`, then
 mandatory `(String)` catch-all as the 404:
 
 ```canon
-serve = (Request) => Response {
+Request => Response {
     Request.path().(
-        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {
             String.(
-                * ("/notes") => Response { Response(indexBody() * Headers() * Status(200)) }
-                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(IndexBody() * Headers() * Status(200)) }
+                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
             )
         }
     )
