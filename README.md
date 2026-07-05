@@ -10,23 +10,34 @@ See the [language specification](docs/src/spec/) for the full semantics.
 
 ## What It Looks Like
 
-```
-Bool = False + True
+The only names are type names. Types compose with `+` (union) and `*`
+(product) — `Bool = False + True`, `User = Birthday * Username`. A
+declaration is an arrow between types (`=>`); a program is a pipeline that
+pushes a value through them (`->`):
 
-main = () -> Unit {
-    List(1, 2, 3)
-        .map((Int) -> Int { Int.mul(2) })
-        .length()
-        .print()
+```
+Unit => Program {
+    List(1 * 2 * 3)
+        -> Mapped((Int) => Int { Int -> Product(2) })
+        -> Length
+        -> Print
 }
 ```
 
-And an HTTP service is just a function — the compiler picks the entry by
-its return type and emits a standard `wasi:http/service` component:
+There is no `main` keyword — the CLI entry is selected by its shape: the
+anonymous `Unit => Program` function. An HTTP service is just as anonymous
+— a `Request => Response` function — and the compiler emits a standard
+`wasi:http/service` component from it:
 
 ```
-serve = (Request) -> Response {
-    Response(Body("hello") * Headers() * Status(200))
+Greeting = Body
+
+Unit => Greeting {
+    "hello" -> Body
+}
+
+Request => Response {
+    200 -> Status -> Response(Greeting() * Headers())
 }
 ```
 
@@ -85,7 +96,7 @@ canon run hello.can              # compile and run
 canon run --addr 127.0.0.1:8080 # serve an HTTP-entry program (default: 127.0.0.1:8080)
 canon build hello.can            # compile to a WASM component (.wasm)
 canon check hello.can            # check sort order and types
-canon test hello_test.can        # run `() -> TestResult` functions
+canon test hello_test.can        # run `() => TestResult` functions
 canon fmt hello.can              # format source (use --check to verify only)
 canon inspect wat hello.can      # print generated WAT
 canon inspect ast hello.can      # print the parsed AST
@@ -100,8 +111,8 @@ A first program:
 
 ```sh
 cat > hello.can <<'EOF'
-main = () -> Unit {
-    "hello".print()
+Unit => Program {
+    "hello" -> Print
 }
 EOF
 canon run hello.can
@@ -118,7 +129,7 @@ canon run hello.can
 | [`docs/`](docs/) | Documentation site (mdBook) |
 | [`examples/`](examples/) | Example `.can` programs |
 | [`tests/`](tests/) | Integration tests |
-| [`editors/`](editors/) | Tree-sitter grammar and Zed extension |
+| [`editors/`](editors/) | Tree-sitter grammar, Zed extension, VS Code extension |
 
 ---
 
