@@ -1,12 +1,12 @@
 main = () => Unit {
-    List(1, 2, 3)
+    List(1 * 2 * 3)
         -> Length
         -> Print
-    List(10, 20, 30)
+    List(10 * 20 * 30)
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length
         -> Print
-    List(7, 8, 9) -> First.(
+    List(7 * 8 * 9) -> First.(
         * None => Unit { "empty" -> Print }
         * Some<Int> => Unit { "non-empty" -> Print }
     )

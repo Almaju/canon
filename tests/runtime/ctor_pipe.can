@@ -20,11 +20,11 @@ main = () => Unit {
         -> Sum(1)
         -> Print
     Map()
-        -> Inserted("a", "1")
+        -> Inserted("a" * "1")
         -> Keys
         -> Json
         -> Print
-    Map() -> Inserted("k", "v") -> Value("k").(
+    Map() -> Inserted("k" * "v") -> Value("k").(
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )

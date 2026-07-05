@@ -628,15 +628,10 @@ impl Parser {
                     self.skip_newlines();
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_arg_expr()?);
-                            self.skip_newlines();
-                            if self.check(TokenKind::Comma) {
-                                self.advance();
-                                self.skip_newlines();
-                            } else {
-                                break;
-                            }
+                        args.push(self.parse_arg_expr()?);
+                        self.skip_newlines();
+                        if self.check(TokenKind::Comma) {
+                            return Err(self.comma_args_error());
                         }
                     }
                     let rparen =
@@ -691,15 +686,10 @@ impl Parser {
                     self.advance();
                     self.skip_newlines();
                     if !self.check(TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_arg_expr()?);
-                            self.skip_newlines();
-                            if self.check(TokenKind::Comma) {
-                                self.advance();
-                                self.skip_newlines();
-                            } else {
-                                break;
-                            }
+                        args.push(self.parse_arg_expr()?);
+                        self.skip_newlines();
+                        if self.check(TokenKind::Comma) {
+                            return Err(self.comma_args_error());
                         }
                     }
                     let rparen =
@@ -744,15 +734,10 @@ impl Parser {
                     self.skip_newlines();
                     let mut args = Vec::new();
                     if !self.check(TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_arg_expr()?);
-                            self.skip_newlines();
-                            if self.check(TokenKind::Comma) {
-                                self.advance();
-                                self.skip_newlines();
-                            } else {
-                                break;
-                            }
+                        args.push(self.parse_arg_expr()?);
+                        self.skip_newlines();
+                        if self.check(TokenKind::Comma) {
+                            return Err(self.comma_args_error());
                         }
                     }
                     let rparen =
@@ -1102,6 +1087,19 @@ impl Parser {
             body,
             span: span_join(lparen.span, self.previous_span()),
         })
+    }
+
+    /// Comma-separated argument lists are gone from the language: a call
+    /// takes at most one argument, and multiple inputs are combined into
+    /// a product. Position never carries meaning.
+    fn comma_args_error(&self) -> CanonError {
+        CanonError::ParseError {
+            message: "comma-separated arguments are not allowed: combine inputs into a \
+                      product with `*` — write `Name(a * b)`, not `Name(a, b)`. Position \
+                      never carries meaning in Canon."
+                .to_string(),
+            span: self.peek().span,
+        }
     }
 
     fn parse_match_arm(&mut self) -> Result<MatchArm> {

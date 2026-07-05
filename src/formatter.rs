@@ -1023,7 +1023,7 @@ mod tests {
 
     #[test]
     fn test_lambda() {
-        let input = "main = (Stdout) => Unit {\n    List(10, 20, 30).map((Int) => Int { Int.mul(2) }).print(Stdout)\n}\n";
+        let input = "main = (Stdout) => Unit {\n    List(10 * 20 * 30).map((Int) => Int { Int.mul(2) }).print(Stdout)\n}\n";
         assert_idempotent(input);
     }
 

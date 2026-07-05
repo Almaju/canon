@@ -4,8 +4,8 @@ Unit => Result<Program, IoError> {
     "  GET  /health  -> 200 ok" -> Print
     "  POST /echo    -> 200 received" -> Print
     HttpServer(Port(3000))
-        -> Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
-        -> Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
-        -> Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
+        -> Route(HttpStatus(200) * Get() * RoutePath("/") * "Hello from Canon!")
+        -> Route(HttpStatus(200) * Get() * RoutePath("/health") * "ok")
+        -> Route(HttpStatus(200) * Post() * RoutePath("/echo") * "received")
         -> Served
 }

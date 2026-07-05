@@ -17,7 +17,7 @@ Int * Pos * String => Result<Digits, MalformedInt> {
                     Int
                         -> Product(10)
                         -> Sum(String -> ByteAt(Pos) -> Difference(48))
-                        -> Digits(Pos -> Sum(1), String)
+                        -> Digits(Pos -> Sum(1) * String)
                 }
             )
         }
@@ -29,7 +29,7 @@ String => Result<Int, MalformedInt> {
     String -> Length -> Eq(0).(
         * False => Result<Int, MalformedInt> {
             String -> ByteAt(1) -> Eq(45).(
-                * False => Result<Int, MalformedInt> { 0 -> Digits(Pos(1), String) }
+                * False => Result<Int, MalformedInt> { 0 -> Digits(Pos(1) * String) }
                 * True => Result<Int, MalformedInt> { String -> Negative }
             )
         }
@@ -53,7 +53,7 @@ Result => Result<Negated, MalformedInt> {
 
 String => Result<Negative, MalformedInt> {
     String -> Length -> Eq(1).(
-        * False => Result<Negative, MalformedInt> { 0 -> Digits(Pos(2), String) -> Negated }
+        * False => Result<Negative, MalformedInt> { 0 -> Digits(Pos(2) * String) -> Negated }
         * True => Result<Negative, MalformedInt> { Err(MalformedInt("lone minus is not an Int")) }
     )
 }

@@ -1,55 +1,55 @@
 main = () => Unit {
-    Map() -> Inserted("b", "banana") -> Inserted("a", "apple") -> Value("a").(
+    Map() -> Inserted("b" * "banana") -> Inserted("a" * "apple") -> Value("a").(
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map() -> Inserted("k", "v1") -> Inserted("k", "v2") -> Value("k").(
+    Map() -> Inserted("k" * "v1") -> Inserted("k" * "v2") -> Value("k").(
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map() -> Inserted("a", "1") -> Value("missing").(
+    Map() -> Inserted("a" * "1") -> Value("missing").(
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
     Map()
-        -> Inserted("a", "1")
-        -> Inserted("b", "2")
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
         -> Length
         -> Print
     Map()
-        -> Inserted("a", "1")
-        -> Inserted("b", "2")
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
         -> Removed("a")
         -> Length
         -> Print
     Map()
-        -> Inserted("a", "1")
-        -> Inserted("b", "2")
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
         -> Keys
         -> Json
         -> Print
     Map()
-        -> Inserted("a", "1")
-        -> Inserted("b", "2")
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
         -> Values
         -> Json
         -> Print
     Map()
-        -> Inserted("a", "1")
+        -> Inserted("a" * "1")
         -> Removed("missing")
         -> Length
         -> Print
     Map()
-        -> Inserted("b", "2")
-        -> Inserted("c", "3")
-        -> Inserted("a", "1")
+        -> Inserted("b" * "2")
+        -> Inserted("c" * "3")
+        -> Inserted("a" * "1")
         -> Keys
         -> Json
         -> Print
     Map()
-        -> Inserted("b", "2")
-        -> Inserted("c", "3")
-        -> Inserted("a", "1")
+        -> Inserted("b" * "2")
+        -> Inserted("c" * "3")
+        -> Inserted("a" * "1")
         -> Values
         -> Json
         -> Print

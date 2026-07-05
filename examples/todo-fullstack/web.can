@@ -10,7 +10,7 @@ Update = Todos
 
 Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
-        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("" * Tag("input")) * Tag("form"))
 }
 
 Todos => Html {
@@ -28,7 +28,7 @@ Unit => Init {
 
 Unit => LoadButton {
     Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
-        -> ElAttr("Load todos from the server", Tag("button"))
+        -> ElAttr("Load todos from the server" * Tag("button"))
 }
 
 Todos * String => Update {

@@ -1,17 +1,17 @@
 main = () => Unit {
-    List(1, 2, 3) -> Mapped((Int) => Int { Int -> Product(2) }) -> At(1).(
+    List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) }) -> At(1).(
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )
-    List(1, 2, 3) -> Mapped((Int) => Int { Int -> Product(2) }) -> At(3).(
+    List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) }) -> At(3).(
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )
-    List(1, 2, 3) -> At(7).(
+    List(1 * 2 * 3) -> At(7).(
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )
-    List(10, 20)
+    List(10 * 20)
         -> Mapped((Int) => Int { Int -> Sum(5) })
         -> Length
         -> Print

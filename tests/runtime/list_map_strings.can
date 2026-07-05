@@ -1,9 +1,9 @@
 main = () => Unit {
-    List("alpha", "beta")
+    List("alpha" * "beta")
         -> Mapped((String) => String { String -> Joined("!") })
         -> Json
         -> Print
-    List("xx", "yyy", "z") -> Mapped((String) => Int { String -> Length }) -> At(2).(
+    List("xx" * "yyy" * "z") -> Mapped((String) => Int { String -> Length }) -> At(2).(
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )

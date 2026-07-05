@@ -16,18 +16,18 @@ Values = List<Value>
 
 Inserted = (Map * String * Value) => Map {
     Map.(
-        * Empty => Map { Node(String, Empty(), Value) }
+        * Empty => Map { Node(String * Empty() * Value) }
         * Node => Map {
             String -> Lt(Node.Key).(
                 * False => Map {
                     String -> Eq(Node.Key).(
                         * False => Map {
-                            Node(Node.Key, Node.Rest -> Inserted(String, Value), Node.Value)
+                            Node(Node.Key * Node.Rest -> Inserted(String * Value) * Node.Value)
                         }
-                        * True => Map { Node(String, Node.Rest, Value) }
+                        * True => Map { Node(String * Node.Rest * Value) }
                     )
                 }
-                * True => Map { Node(String, Map, Value) }
+                * True => Map { Node(String * Map * Value) }
             )
         }
     )
@@ -56,7 +56,7 @@ Removed = (Map * String) => Map {
         * Empty => Map { Empty() }
         * Node => Map {
             Node.Key -> Eq(String).(
-                * False => Map { Node(Node.Key, Node.Rest -> Removed(String), Node.Value) }
+                * False => Map { Node(Node.Key * Node.Rest -> Removed(String) * Node.Value) }
                 * True => Map { Node.Rest }
             )
         }

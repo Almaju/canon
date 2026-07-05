@@ -4843,6 +4843,17 @@ impl<'m> WasmGen<'m> {
     /// dispatch on a `Ty::List` receiver and read back according to the
     /// expected element shape (see `compile_builtin_method`).
     fn build_list_literal(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+        // `List(a * b * c)` — the elements arrive as one product now that
+        // comma argument lists are gone; flatten it to the element list.
+        // A single non-product element (`List("x")`) stays one element.
+        let flat: Vec<Expr>;
+        let args: &[Expr] = match args {
+            [Expr::ProductValue { fields, .. }] => {
+                flat = fields.clone();
+                &flat
+            }
+            _ => args,
+        };
         let n = args.len() as u32;
         let byte_size = n * 8;
         f.instruction(&Instruction::I32Const(byte_size as i32));
@@ -4954,6 +4965,25 @@ impl<'m> WasmGen<'m> {
                 self.compile_race(&combined, scope, f)
             };
         }
+
+        // A single product argument stands for its flattened components:
+        // `headers.set(Name * Value)`, `server.route(a * b * c * d)`, and
+        // every other multi-input builtin/binding receive positional args
+        // this way now that comma argument lists are gone. (The checker's
+        // `effective_call_arity` already flattens for arity; codegen
+        // matches here.) `substring`/`slice` keep the product intact —
+        // `substring_bounds` reads the `From`/`To` components by type, so
+        // it stays positionless.
+        let flat_args: Vec<Expr>;
+        let args: &[Expr] = match args {
+            [Expr::ProductValue { fields, .. }]
+                if !matches!(method, "substring" | "slice" | "Substring" | "Slice") =>
+            {
+                flat_args = fields.clone();
+                &flat_args
+            }
+            _ => args,
+        };
 
         let recv_ty = self.compile_expr(receiver, scope, f);
 

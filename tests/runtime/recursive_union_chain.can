@@ -26,10 +26,10 @@ len = (Chain) => Int {
 }
 
 main = () => Unit {
-    Link("a", Link("b", Link("c", Stop())))
+    Link("a" * Link("b" * Link("c" * Stop())))
         .len()
         -> Print
-    Link("a", Link("b", Stop()))
+    Link("a" * Link("b" * Stop()))
         .lastLabel()
         -> Print
 }

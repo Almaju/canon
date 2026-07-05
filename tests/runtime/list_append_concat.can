@@ -1,14 +1,14 @@
 main = () => Unit {
-    List(1, 2)
+    List(1 * 2)
         -> Appended(3)
         -> Length
         -> Print
     List("a")
         -> Appended("b")
-        -> Joined(List("c", "d"))
+        -> Joined(List("c" * "d"))
         -> Json
         -> Print
-    List(10, 20) -> Appended(30) -> At(3).(
+    List(10 * 20) -> Appended(30) -> At(3).(
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )

@@ -117,7 +117,7 @@ fn wasi_http_service_response_headers() {
     std::fs::write(
         &src_path,
         r#"home = (Request) => Response {
-    Response(Body("<h1>hi</h1>") * Headers().set("content-type", "text/html").set("x-canon", "1") * Status(200))
+    Response(Body("<h1>hi</h1>") * Headers().set("content-type" * "text/html").set("x-canon" * "1") * Status(200))
 }
 "#,
     )

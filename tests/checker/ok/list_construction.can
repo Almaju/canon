@@ -1,5 +1,5 @@
 main = () => Unit {
-    List(1, 2, 3)
+    List(1 * 2 * 3)
         -> Length
         -> Print
 }
