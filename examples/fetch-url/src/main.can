@@ -1,4 +1,4 @@
-() => Unit {
+Unit => Program {
     Url("http://example.com")?
         -> Fetched?
         -> Print

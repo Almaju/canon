@@ -2,7 +2,7 @@ EventStream = Headers
 
 SseEvent = String
 
-() => EventStream {
+Unit => EventStream {
     Headers().set("content-type", "text/event-stream")
 }
 

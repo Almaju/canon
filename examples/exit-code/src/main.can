@@ -1,4 +1,4 @@
-() => Unit {
+Unit => Program {
     "exiting cleanly" -> Print
     0 -> Exited
 }

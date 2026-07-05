@@ -1,6 +1,6 @@
 CorsHeaders = Headers
 
-() => CorsHeaders {
+Unit => CorsHeaders {
     Headers()
         .set("access-control-allow-origin", "*")
         .set("content-type", "text/plain")

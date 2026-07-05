@@ -1,6 +1,6 @@
 Greeting = String
 
-() => Greeting {
+Unit => Greeting {
     Greeting("hello")
 }
 

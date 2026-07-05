@@ -103,7 +103,9 @@ fn is_pinned_entry(f: &FunctionDef) -> bool {
     if f.receiver.is_some() {
         return false;
     }
-    f.name.name == "main" || entry_world_of(&f.return_ty) == Some(EntryWorld::Http)
+    f.name.name == "main"
+        || entry_world_of(&f.return_ty) == Some(EntryWorld::Http)
+        || (f.anonymous && entry_world_of(&f.return_ty) == Some(EntryWorld::Cli))
 }
 
 fn emit_item(item: &Item) -> String {
@@ -170,6 +172,12 @@ fn emit_function(func: &FunctionDef) -> String {
     // `Request => Response`. Products, generics, and the nullary entry
     // keep their parens (the parse of the paren-free form only accepts a
     // bare type name).
+    // A nullary anonymous constructor prints its input as `Unit` — the
+    // single-value type is the name of "no input", so `() => AddForm`
+    // and the entry `() => Program` canonicalize to `Unit => AddForm` /
+    // `Unit => Program`. (A lone `Unit` param, the parsed shape of
+    // `Unit => X`, is the same case and is handled by `paren_free`.)
+    let nullary = func.anonymous && func.generic_params.is_empty() && func.params.is_empty();
     let paren_free = func.anonymous
         && func.generic_params.is_empty()
         && func.params.len() == 1
@@ -178,7 +186,10 @@ fn emit_function(func: &FunctionDef) -> String {
             &func.params[0].ty,
             TypeExpr::Named { generics, .. } if generics.is_empty()
         );
-    if paren_free {
+    if nullary {
+        out.push_str("Unit => ");
+        out.push_str(&emit_type_expr(&func.return_ty));
+    } else if paren_free {
         out.push_str(&emit_type_expr(&func.params[0].ty));
         out.push_str(" => ");
         out.push_str(&emit_type_expr(&func.return_ty));

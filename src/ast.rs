@@ -312,19 +312,24 @@ pub enum EntryWorld {
 ///
 /// Shape registry (matches the table in the language spec (docs/src/spec/)):
 ///
-/// | Return type                              | World |
-/// |------------------------------------------|-------|
-/// | `Unit`, `ExitCode`                       | Cli   |
-/// | `Result<Unit, _>`, `Result<ExitCode, _>` | Cli   |
-/// | `Response`                               | Http  |
-/// | `Result<Response, _>`                    | Http  |
+/// | Return type                                 | World |
+/// |---------------------------------------------|-------|
+/// | `Program`, `Unit`, `ExitCode`               | Cli   |
+/// | `Result<Program, _>` (and `Unit`/`ExitCode`)| Cli   |
+/// | `Response`                                  | Http  |
+/// | `Result<Response, _>`                       | Http  |
+///
+/// `Program` (`= Unit`, from `canon/std`) is the canonical CLI world
+/// type — the entry is `Unit => Program`, mirroring the HTTP entry's
+/// `Request => Response`. `Unit`/`ExitCode` stay accepted so the legacy
+/// `main` and the `canon test`-synthesized entry still classify.
 ///
 /// The unwrapping recurses through `Result` so wrapped and unwrapped
 /// shapes both classify.
 pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
     match ty {
         TypeExpr::Named { name, generics, .. } if generics.is_empty() => match name.as_str() {
-            "Unit" | "ExitCode" => Some(EntryWorld::Cli),
+            "Program" | "Unit" | "ExitCode" => Some(EntryWorld::Cli),
             "Response" => Some(EntryWorld::Http),
             _ => None,
         },
@@ -612,6 +617,20 @@ pub fn resolve_new_syntax(module: &mut Module) {
 
     for item in &mut module.items {
         if let Item::Function(func) = item {
+            // A lone `Unit` input is the nullary case: `Unit => AddForm` ≡
+            // `() => AddForm`, and `Unit => Program` ≡ the entry. `Unit`
+            // is the single-value type — it carries no data and is
+            // auto-supplied at call sites — so strip it to zero params and
+            // let the zero-arg-constructor machinery take over unchanged
+            // (`AddForm()` still calls it, the entry still renames to
+            // `main` below).
+            if func.anonymous && func.params.len() == 1 {
+                if let TypeExpr::Named { name, generics, .. } = &func.params[0].ty {
+                    if name == "Unit" && generics.is_empty() {
+                        func.params.clear();
+                    }
+                }
+            }
             if func.receiver.is_none() && func.name.name != "main" {
                 let is_pascal = func
                     .name

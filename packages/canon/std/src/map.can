@@ -47,7 +47,7 @@ Map => Length {
     )
 }
 
-() => Map {
+Unit => Map {
     Empty()
 }
 

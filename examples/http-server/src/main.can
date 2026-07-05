@@ -1,4 +1,4 @@
-() => Result<Unit, IoError> {
+Unit => Result<Program, IoError> {
     "Starting server on port 3000..." -> Print
     "  GET  /        -> 200 Hello from Canon!" -> Print
     "  GET  /health  -> 200 ok" -> Print

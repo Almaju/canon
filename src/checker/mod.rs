@@ -1169,8 +1169,17 @@ fn check_block(
         }
         false
     };
+    // `Unit` is zero-width and single-valued, so every type rooted at it
+    // (`Program`, `Exited`, …) holds the same one value — they are freely
+    // interchangeable in a return position. A `Unit => Program` entry
+    // whose body ends in `Exited` (`= Unit`) is fine; so is any effect
+    // marker flowing into another. (Data-carrying newtypes — `String`- or
+    // `Int`-rooted — stay strict: only a reachable alias chain compatible.)
+    let both_unit_rooted =
+        alias_compatible(&last_ty, "Unit") && alias_compatible(&return_ty_name, "Unit");
     if last_ty != return_ty_name
         && last_ty != "<unknown>"
+        && !both_unit_rooted
         && !alias_compatible(&last_ty, &return_ty_name)
         && !alias_compatible(&return_ty_name, &last_ty)
     {

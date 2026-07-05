@@ -4,12 +4,12 @@ LoadButton = ElAttr
 
 Prefix = String
 
-() => AddForm {
+Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
         -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
-() => LoadButton {
+Unit => LoadButton {
     Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
         -> ElAttr("Load todos from the server", Tag("button"))
 }

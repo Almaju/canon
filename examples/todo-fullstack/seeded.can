@@ -1,6 +1,6 @@
 Seeded = AddedTodo
 
-() => Seeded {
+Unit => Seeded {
     Title("write a todo of your own")
         -> AddedTodo(Title("load todos from the canon server") -> AddedTodo(Todos("")))
 }

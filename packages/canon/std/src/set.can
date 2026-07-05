@@ -65,6 +65,6 @@ Removed = (Set * String) => Set {
     )
 }
 
-() => Set {
+Unit => Set {
     Absent()
 }

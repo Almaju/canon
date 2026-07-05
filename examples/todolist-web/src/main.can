@@ -4,12 +4,12 @@ ClearButton = Button
 
 Prefix = String
 
-() => AddForm {
+Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
         -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
-() => ClearButton {
+Unit => ClearButton {
     Msg("Clear") -> Button("Clear completed")
 }
 
