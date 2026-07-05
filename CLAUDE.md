@@ -246,17 +246,28 @@ shape implementations. See the migration in the spec
   form. Both the named (`B = (A) => …`) and anonymous forms are legal.
   A **single named input drops its parentheses** — `A => B { … }` is
   exactly `(A) => B { … }` (`Parser::parse_paren_free_ctor`; the
-  formatter emits the paren-free form). Products (`(A * B) => C`),
-  generic inputs (`(Some<T>) => C`), and the nullary entry (`() => C`)
-  keep their parens, so `*`/`<`/`(` never open a paren-free arrow.
+  formatter emits the paren-free form). Products (`(A * B) => C`) and
+  generic inputs (`(Some<T>) => C`) keep their parens, so `*`/`<`/`(`
+  never open a paren-free arrow.
+- **Nullary is `Unit => X`, not `() => X`.** `Unit` is the single-value
+  type, so it is the name of "no input": a lone `Unit` parameter
+  normalizes to zero params in `resolve_new_syntax` (call sites stay
+  `X()` — `Unit` is auto-supplied), and the formatter prints every
+  nullary anonymous constructor as `Unit => X`. `()` is no longer a
+  declaration-position form; parens appear only to group a product.
 - **Entries are anonymous, selected by world-shaped return.** The CLI
-  entry is an anonymous `() => Unit` (or `() => Result<Unit, _>`) and the
-  HTTP handler an anonymous `Request => Response` — neither needs a name.
-  `resolve_new_syntax` renames an anonymous `() => Unit` back to the
-  canonical `main` so entry selection, the ordering exemption, and
-  codegen's `$start` inlining all still key on `main`; the `main` name
-  stays legal (the `canon test` harness synthesizes one). `init` /
-  `update` / `view` remain the one name-based selection (the web triple).
+  entry is `Unit => Program` (or `Unit => Result<Program, _>`) and the
+  HTTP handler `Request => Response` — neither needs a name. `Program`
+  (`= Unit`, from `canon/std`) is the CLI world type, the mirror of the
+  HTTP `Response`. `resolve_new_syntax` renames an anonymous
+  Cli-world-returning entry back to the canonical `main` so entry
+  selection, the ordering exemption, and codegen's `$start` inlining all
+  still key on `main`; `Unit`/`ExitCode` returns and the literal `main`
+  name stay legal (the `canon test` harness synthesizes one). Because
+  `Unit` is zero-width and single-valued, all `Unit`-rooted types
+  (`Program`, `Exited`, …) are interchangeable in a return position.
+  `init` / `update` / `view` remain the one name-based selection (the
+  web triple — two of them return `Model`, so they can't be type-keyed).
 - **Value-level pipe.** `value -> B` is the call-site mirror of the
   declaration arrow — parsed into a `MethodCall` with `piped: true`,
   semantically identical to `B(value)` / `value.B()`. `-> B?` is the
@@ -311,7 +322,11 @@ Greeting => Loud {                             # constructor (paren-free single 
     Greeting -> Joined("!")
 }
 
-() => Unit {                                   # CLI entry (anonymous, world-shaped return)
+Unit => Loud {                                 # nullary constructor (Unit = "no input")
+    "HELLO"
+}
+
+Unit => Program {                              # CLI entry (anonymous, returns the Program world)
     "hello" -> Print
 }
 
