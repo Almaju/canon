@@ -1,7 +1,10 @@
-message = () => Int {
+Message = Int
+
+Unit => Message {
     "not an int"
 }
 
 Unit => Program {
-    "ok".print()
+    Message()
+    "ok" -> Print
 }

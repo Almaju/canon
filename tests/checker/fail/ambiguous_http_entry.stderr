@@ -1,1 +1,2 @@
-error[tests/checker/fail/ambiguous_http_entry.can:5:1]: ambiguous HTTP entry: `about` and `home` both return `Response`. Exactly one free function may be the entry. Refactor helpers to return a non-world type.
+error[tests/checker/fail/ambiguous_http_entry.can:5:1]: duplicate function `Response`
+error[tests/checker/fail/ambiguous_http_entry.can:5:1]: ambiguous HTTP entry: `Response` and `Response` both return `Response`. Exactly one free function may be the entry. Refactor helpers to return a non-world type.

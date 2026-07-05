@@ -79,7 +79,7 @@ fn exit_code_propagates() {
     let src_path = workdir.join("exit3.can");
     std::fs::write(
         &src_path,
-        r#"main = () => Unit {
+        r#"Unit => Program {
     "terminating with 3" -> Print
     3 -> Exited
 }

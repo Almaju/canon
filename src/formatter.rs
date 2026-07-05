@@ -593,13 +593,8 @@ fn emit_type_in_postfix(ty: &TypeExpr) -> String {
 #[derive(Clone)]
 enum ChainPart {
     Base(Expr),
-    Method {
-        method: Ident,
-        args: Vec<Expr>,
-    },
-    Dispatch {
-        arms: Vec<MatchArm>,
-    },
+    Method { method: Ident, args: Vec<Expr> },
+    Dispatch { arms: Vec<MatchArm> },
     Try,
 }
 
@@ -700,12 +695,7 @@ fn method_pipe_name(name: &str) -> Option<&str> {
 /// `broken` selects the continuation-line pipe lead (`-> `) vs the inline
 /// lead (` -> `). Field access (`.Field`) and dispatch (`.( )`) never
 /// reach here — those *read*, they don't apply a function.
-fn emit_method(
-    out: &mut String,
-    method: &Ident,
-    args: &[Expr],
-    broken: bool,
-) {
+fn emit_method(out: &mut String, method: &Ident, args: &[Expr], broken: bool) {
     match method_pipe_name(&method.name) {
         Some(pname) => {
             out.push_str(if broken { "-> " } else { " -> " });
@@ -731,11 +721,7 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
     for part in chain {
         match part {
             ChainPart::Base(e) => out.push_str(&emit_base_inline(e)),
-            ChainPart::Method {
-                method,
-                    args,
-                ..
-            } => {
+            ChainPart::Method { method, args, .. } => {
                 emit_method(&mut out, method, args, false);
             }
             ChainPart::Dispatch { arms } => {
@@ -791,11 +777,7 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
         let after = &chain[dpos + 1..];
         for part in after {
             match part {
-                ChainPart::Method {
-                    method,
-                            args,
-                    ..
-                } => {
+                ChainPart::Method { method, args, .. } => {
                     emit_method(&mut out, method, args, false);
                 }
                 ChainPart::Try => out.push('?'),
@@ -820,11 +802,7 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
             ChainPart::Base(e) => {
                 out.push_str(&emit_base_inline(e));
             }
-            ChainPart::Method {
-                method,
-                    args,
-                ..
-            } => {
+            ChainPart::Method { method, args, .. } => {
                 out.push('\n');
                 out.push_str(&cont_pad);
                 emit_method(&mut out, method, args, true);

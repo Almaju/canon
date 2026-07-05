@@ -548,7 +548,10 @@ fn cmd_inspect(args: &[String]) {
         "tokens" => inspect_tokens(file_path),
         "ast" => inspect_ast(file_path),
         other => {
-            eprintln!("error: unknown stage '{}' (expected `tokens` or `ast`)", other);
+            eprintln!(
+                "error: unknown stage '{}' (expected `tokens` or `ast`)",
+                other
+            );
             process::exit(1);
         }
     }

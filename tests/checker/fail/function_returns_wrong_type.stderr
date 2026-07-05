@@ -1,1 +1,1 @@
-error[tests/checker/fail/function_returns_wrong_type.can:2:5]: function returns `Int` but last expression has type `String`
+error[tests/checker/fail/function_returns_wrong_type.can:4:5]: function returns `Message` but last expression has type `String`

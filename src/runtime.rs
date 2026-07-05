@@ -791,7 +791,6 @@ mod host_builtin_http {
     }
 }
 
-
 /// `canon:builtins/json` — JSON validation + primitive builders.
 ///
 /// The stdlib type `Json = String` (in `canon/std/json.can`) is just the

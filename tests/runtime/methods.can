@@ -1,12 +1,12 @@
 Greeting = String
 
-shout = (Greeting) => String {
+Shouted = (Greeting) => String {
     "HELLO"
 }
 
 Unit => Program {
     "howdy"
         -> Greeting
-        .shout()
+        -> Shouted
         -> Print
 }

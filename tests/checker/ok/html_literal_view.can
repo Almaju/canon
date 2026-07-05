@@ -1,19 +1,19 @@
 Model = String
 
-item = (String) => Html {
+Item = (String) => Html {
     <li>{String -> Escaped}</li>
 }
 
-view = (Model) => Html {
+View = (Model) => Html {
     <div>
         <h1>Notes</h1>
-        <ul>{Model.item()}</ul>
+        <ul>{Model -> Item}</ul>
     </div>
 }
 
 Unit => Program {
     "groceries"
         -> Model
-        .view()
+        -> View
         -> Print
 }

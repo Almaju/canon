@@ -5063,9 +5063,7 @@ impl<'m> WasmGen<'m> {
         // it stays positionless.
         let flat_args: Vec<Expr>;
         let args: &[Expr] = match args {
-            [Expr::ProductValue { fields, .. }]
-                if !matches!(method, "substring" | "Substring") =>
-            {
+            [Expr::ProductValue { fields, .. }] if !matches!(method, "substring" | "Substring") => {
                 flat_args = fields.clone();
                 &flat_args
             }
@@ -8979,7 +8977,7 @@ fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::erro
                     name: "ToJson".to_string(),
                     span,
                 },
-                    args: vec![],
+                args: vec![],
                 piped: false,
                 span,
             },
@@ -9031,7 +9029,7 @@ fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::erro
                     name: "ToHtml".to_string(),
                     span,
                 },
-                    args: vec![],
+                args: vec![],
                 piped: false,
                 span,
             },

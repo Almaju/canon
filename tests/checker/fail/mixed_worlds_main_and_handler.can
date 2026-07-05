@@ -1,7 +1,7 @@
-home = (Request) => Response {
+Request => Response {
     Response(Body("") * Headers() * Status(200))
 }
 
 Unit => Program {
-    "ok".print()
+    "ok" -> Print
 }

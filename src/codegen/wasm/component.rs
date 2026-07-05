@@ -301,11 +301,7 @@ pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
 /// sync lifts/lowers across the board, so the value is read but unused at
 /// the binary level. Once async lowering is implemented, this is where
 /// per-import and per-export decisions will be made.
-pub(super) fn wrap(
-    core_module: &[u8],
-    externs: &[ExternImport],
-    _async_set: &AsyncSet,
-) -> Vec<u8> {
+pub(super) fn wrap(core_module: &[u8], externs: &[ExternImport], _async_set: &AsyncSet) -> Vec<u8> {
     // Group externs by core namespace so we build one instance per interface.
     // BTreeMap keeps the iteration order deterministic (alphabetical).
     let mut by_iface: BTreeMap<&str, Vec<&ExternImport>> = BTreeMap::new();

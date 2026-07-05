@@ -8,7 +8,7 @@ Ord = Equal
   + Greater
   + Less
 
-describe = (Ord) => String {
+Described = (Ord) => String {
     Ord -> (
         * Equal => String { "equal" }
         * Greater => String { "greater" }
@@ -18,6 +18,6 @@ describe = (Ord) => String {
 
 Unit => Program {
     Equal()
-        .describe()
+        -> Described
         -> Print
 }

@@ -1,0 +1,3 @@
+Shouted = (String) => String {
+    String -> Joined("!")
+}

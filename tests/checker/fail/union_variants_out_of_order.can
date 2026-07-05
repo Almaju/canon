@@ -9,5 +9,6 @@ Fruit = Cherry
   + Apple
 
 Unit => Program {
-    "ok".print()
+    "a" -> Apple
+    "ok" -> Print
 }

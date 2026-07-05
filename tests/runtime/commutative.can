@@ -2,16 +2,16 @@ Greeting = String
 
 Name = String
 
-greet = (Greeting * Name) => Greeting {
+Greeted = (Greeting * Name) => Greeting {
     Greeting
 }
 
 Unit => Program {
     "hello"
         -> Greeting
-        .greet("world" -> Name)
+        -> Greeted("world" -> Name)
     "world"
         -> Name
-        .greet("hello" -> Greeting)
+        -> Greeted("hello" -> Greeting)
     "commutative calling works" -> Print
 }

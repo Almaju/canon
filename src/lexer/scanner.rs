@@ -422,11 +422,7 @@ impl<'a> Scanner<'a> {
                          § Lexical Structure)",
                     ));
                 }
-                return Err(self.err_at(
-                    start_line,
-                    start_col,
-                    "unexpected character `/`",
-                ));
+                return Err(self.err_at(start_line, start_col, "unexpected character `/`"));
             }
             b'=' => {
                 if self.peek_byte(1) == Some(b'>') {

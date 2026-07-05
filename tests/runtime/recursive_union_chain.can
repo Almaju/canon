@@ -6,11 +6,11 @@ Link = Label * Next
 
 Next = Chain
 
-lastLabel = (Chain) => String {
+LastLabel = (Chain) => String {
     Chain -> (
         * Link => String {
-            Link.Next.len() -> Eq(0) -> (
-                * False => String { Link.Next.lastLabel() }
+            Link.Next -> Length -> Eq(0) -> (
+                * False => String { Link.Next -> LastLabel }
                 * True => String { Link.Label }
             )
         }
@@ -18,9 +18,9 @@ lastLabel = (Chain) => String {
     )
 }
 
-len = (Chain) => Int {
+Length = (Chain) => Int {
     Chain -> (
-        * Link => Int { Link.Next.len() -> Sum(1) }
+        * Link => Int { Link.Next -> Length -> Sum(1) }
         * Stop => Int { 0 }
     )
 }
@@ -28,10 +28,10 @@ len = (Chain) => Int {
 Unit => Program {
     "a"
         -> Link("b" -> Link("c" -> Link(Stop())))
-        .len()
+        -> Length
         -> Print
     "a"
         -> Link("b" -> Link(Stop()))
-        .lastLabel()
+        -> LastLabel
         -> Print
 }

@@ -6,17 +6,21 @@ JsonObject = JsonEntry
 
 JsonValue = JsonMissing + JsonObject
 
-describe = (JsonValue) => Unit {
+Described = (JsonValue) => Unit {
     JsonValue -> (
         * JsonMissing => Unit { "missing" -> Print }
-        * JsonObject => Unit { JsonObject.extract() -> Print }
+        * JsonObject => Unit { JsonObject -> Extracted -> Print }
     )
 }
 
-extract = (JsonObject) => String {
+Extracted = (JsonObject) => String {
     "extracted"
 }
 
 Unit => Program {
+    "payload"
+        -> JsonEntry
+        -> JsonObject
+        -> Described
     "ok" -> Print
 }

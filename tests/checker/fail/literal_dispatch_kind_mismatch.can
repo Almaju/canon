@@ -1,4 +1,4 @@
-describe = (Int) => String {
+Described = (Int) => String {
     Int -> (
         * "zero" => String { "zero" }
         * Int => String { "many" }
@@ -6,5 +6,5 @@ describe = (Int) => String {
 }
 
 Unit => Program {
-    0.describe().print()
+    0 -> Described -> Print
 }

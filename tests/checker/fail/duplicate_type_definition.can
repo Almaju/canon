@@ -3,5 +3,6 @@ Foo = String
 Foo = Int
 
 Unit => Program {
-    "ok".print()
+    "ok" -> Foo
+    "ok" -> Print
 }

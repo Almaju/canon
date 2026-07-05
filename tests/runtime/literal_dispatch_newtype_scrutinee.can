@@ -1,6 +1,6 @@
 Prefix = String
 
-route = (Int * String) => Int {
+Routed = (Int * String) => Int {
     String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
         * "Add:" => Int { Int -> Sum(String -> Length) }
         * Prefix => Int { Int }
@@ -9,9 +9,9 @@ route = (Int * String) => Int {
 
 Unit => Program {
     10
-        .route("Add:xyz")
+        -> Routed("Add:xyz")
         -> Print
     10
-        .route("Nope")
+        -> Routed("Nope")
         -> Print
 }

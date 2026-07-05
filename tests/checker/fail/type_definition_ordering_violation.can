@@ -3,5 +3,7 @@ Zebra = String
 Apple = String
 
 Unit => Program {
-    "ok".print()
+    "a" -> Apple
+    "z" -> Zebra
+    "ok" -> Print
 }

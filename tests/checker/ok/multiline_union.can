@@ -1,7 +1,8 @@
-Ord = Equal
-  + Greater
-  + Less
+Ord = EqualBeyondAnyShadowOfADoubtWhatsoever
+  + GreaterByAConsiderableAndUndeniableMargin
+  + LessByAnEntirelyUnmistakableAmount
 
 Unit => Program {
+    EqualBeyondAnyShadowOfADoubtWhatsoever()
     "multi-line union defined" -> Print
 }

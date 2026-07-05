@@ -1,11 +1,12 @@
-zebra = () => Unit {
-    "z".print()
+Zebra = () => String {
+    "z"
 }
 
-apple = () => Unit {
-    "a".print()
+Apple = () => String {
+    "a"
 }
 
 Unit => Program {
-    "ok".print()
+    Apple() -> Print
+    Zebra() -> Print
 }

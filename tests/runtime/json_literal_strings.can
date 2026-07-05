@@ -1,10 +1,10 @@
-greeting = (String) => Json {
+Greeting = (String) => Json {
     {"hello":String,"len":5}
 }
 
 Unit => Program {
     "world"
-        .greeting()
+        -> Greeting
         -> Print
     {"escaped":"a \"b\" c"} -> Print
     {"control":"tab:\there"} -> Print

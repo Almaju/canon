@@ -6,10 +6,14 @@ User = Birthday * Username
 
 Username = String
 
-equals = (OtherUser * User) => Bool {
+Equality = (OtherUser * User) => Bool {
     True()
 }
 
 Unit => Program {
+    "1990"
+        -> Birthday
+        -> User("alice" -> Username)
+        -> Equality("1991" -> Birthday -> User("bob" -> Username) -> OtherUser)
     "compared" -> Print
 }

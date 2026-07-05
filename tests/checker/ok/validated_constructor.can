@@ -9,5 +9,6 @@ Url = (String) => Result<Url, InvalidUrl> {
 }
 
 Unit => Program {
+    "https://example.com" -> Url
     "validated ctor declared" -> Print
 }

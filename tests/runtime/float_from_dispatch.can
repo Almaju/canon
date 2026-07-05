@@ -1,4 +1,4 @@
-half = (Bool) => Float {
+Halved = (Bool) => Float {
     Bool -> (
         * False => Float { 1.5 }
         * True => Float { 2.5 }
@@ -7,9 +7,9 @@ half = (Bool) => Float {
 
 Unit => Program {
     True()
-        .half()
+        -> Halved
         -> Print
     False()
-        .half()
+        -> Halved
         -> Print
 }

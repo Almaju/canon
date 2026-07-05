@@ -11,23 +11,23 @@ Shape = Count
   + Name
   + Ratio
 
-makeCount = () => Shape {
+MadeCount = () => Shape {
     42 -> Count
 }
 
-makeEmpty = () => Shape {
+MadeEmpty = () => Shape {
     Empty()
 }
 
-makeName = () => Shape {
+MadeName = () => Shape {
     "alex" -> Name
 }
 
-makeRatio = () => Shape {
+MadeRatio = () => Shape {
     2.5 -> Ratio
 }
 
-show = (Shape) => Unit {
+Shown = (Shape) => Unit {
     Shape -> (
         * Count => Unit { Count -> Print }
         * Empty => Unit { "empty" -> Print }
@@ -37,8 +37,8 @@ show = (Shape) => Unit {
 }
 
 Unit => Program {
-    makeCount().show()
-    makeEmpty().show()
-    makeName().show()
-    makeRatio().show()
+    MadeCount() -> Shown
+    MadeEmpty() -> Shown
+    MadeName() -> Shown
+    MadeRatio() -> Shown
 }

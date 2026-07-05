@@ -569,7 +569,7 @@ impl Parser {
                 expr = Expr::MethodCall {
                     receiver: Box::new(expr),
                     method: ident,
-                                args,
+                    args,
                     piped: false,
                     span: span_join(start_span, rparen.span),
                 };
@@ -640,7 +640,7 @@ impl Parser {
                         name: name_tok.lexeme.clone(),
                         span: name_tok.span,
                     },
-                                args,
+                    args,
                     piped: true,
                     span: span_join(start_span, end_span),
                 };
