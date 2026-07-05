@@ -1,0 +1,112 @@
+Frag = String
+
+HashCount = Int
+
+HeadingHtml = Frag
+
+LineEnd = Int
+
+Markdown = String
+
+RenderedBlocks = Frag
+
+RenderedHeading = Frag
+
+RenderedParagraph = Frag
+
+Int * String => HashCount {
+    Int -> Gt(String -> Length) -> (
+        * False => HashCount {
+            String -> ByteAt(Int) -> Eq(35) -> (
+                * False => HashCount { 0 }
+                * True => HashCount { Int -> Sum(1) -> HashCount(String) -> Sum(1) }
+            )
+        }
+        * True => HashCount { 0 }
+    )
+}
+
+Int * String => HeadingHtml {
+    Int -> Eq(1) -> (
+        * False => HeadingHtml {
+            Int -> Eq(2) -> (
+                * False => HeadingHtml { "<h3>" -> Joined(String) -> Joined("</h3>") }
+                * True => HeadingHtml { "<h2>" -> Joined(String) -> Joined("</h2>") }
+            )
+        }
+        * True => HeadingHtml { "<h1>" -> Joined(String) -> Joined("</h1>") }
+    )
+}
+
+Markdown => Html {
+    1
+        -> RenderedBlocks(Markdown)
+        -> Html
+}
+
+Int * String => LineEnd {
+    Int -> Gt(String -> Length) -> (
+        * False => LineEnd {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => LineEnd { Int -> Sum(1) -> LineEnd(String) }
+                * True => LineEnd { Int }
+            )
+        }
+        * True => LineEnd { Int }
+    )
+}
+
+Int * String => RenderedBlocks {
+    Int -> Gt(String -> Length) -> (
+        * False => RenderedBlocks {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => RenderedBlocks {
+                    String -> ByteAt(Int) -> Eq(35) -> (
+                        * False => RenderedBlocks { Int -> RenderedParagraph(String) }
+                        * True => RenderedBlocks {
+                            Int -> Sum(Int -> HashCount(String)) -> Gt(String -> Length) -> (
+                                * False => RenderedBlocks {
+                                    String
+                                        -> ByteAt(Int -> Sum(Int -> HashCount(String)))
+                                        -> Eq(32) -> (
+                                        * False => RenderedBlocks {
+                                            Int -> RenderedParagraph(String)
+                                        }
+                                        * True => RenderedBlocks { Int -> RenderedHeading(String) }
+                                    )
+                                }
+                                * True => RenderedBlocks { Int -> RenderedParagraph(String) }
+                            )
+                        }
+                    )
+                }
+                * True => RenderedBlocks { Int -> Sum(1) -> RenderedBlocks(String) }
+            )
+        }
+        * True => RenderedBlocks { "" }
+    )
+}
+
+Int * String => RenderedHeading {
+    Int -> Sum(Int -> HashCount(String)) -> Sum(1) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+        * False => RenderedHeading {
+            Int
+                -> HashCount(String)
+                -> HeadingHtml(String -> Substring(Int -> Sum(Int -> HashCount(String)) -> Sum(1) -> From * Int -> LineEnd(String) -> Difference(1) -> To) -> Escaped)
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+        }
+        * True => RenderedHeading {
+            Int
+                -> HashCount(String)
+                -> HeadingHtml("")
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+        }
+    )
+}
+
+Int * String => RenderedParagraph {
+    "<p>"
+        -> Joined(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To) -> Escaped)
+        -> Joined("</p>")
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+}

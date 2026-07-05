@@ -1,0 +1,85 @@
+# Markdown
+
+Canon's standard library can render Markdown to HTML entirely in Canon —
+no external parser, no build plugin. The renderer is an ordinary Canon
+program that walks a `String` byte-by-byte and emits `Html`, compiled
+through the same pipeline as everything else. It lives in
+`canon/std` as `markdown.can` and is modelled on the JSON parser
+(`json.can`): a cursor threaded as an `Int`, dispatch on the byte at the
+cursor, recursion in place of loops.
+
+## Rendering
+
+`Markdown` is a `String` newtype. Piping it to `Html` runs the renderer:
+
+```canon
+Unit => Program {
+    "# Canon Docs\nRendered by Canon itself.\n\n## Why\nThe docs compile through the same pipeline as programs." -> Markdown -> Html -> Print
+}
+```
+
+Output:
+
+```html
+<h1>Canon Docs</h1><p>Rendered by Canon itself.</p><h2>Why</h2><p>The docs compile through the same pipeline as programs.</p>
+```
+
+Because `File` reads a document as a `String` (see [Using WASI
+Interfaces](./wasi.md)), a whole file renders in one pipe:
+
+```canon
+Unit => Program {
+    "notes.md" -> Path -> File? -> Read? -> Markdown -> Html -> Print
+}
+```
+
+## What it renders
+
+The renderer is a working subset, not a full CommonMark implementation:
+
+| Markdown | HTML |
+|---|---|
+| `# H`, `## H`, `### H` (space required) | `<h1>`/`<h2>`/`<h3>`; deeper levels clamp to `<h3>` |
+| any other non-blank line | `<p>…</p>` |
+| blank lines | block separators |
+
+Text is HTML-escaped through the stdlib's `Escaped` (`"` `&` `<` `>`), so
+`a < b & c` renders as `a &lt; b &amp; c`. A `#` with no following space
+is treated as paragraph text, matching Markdown.
+
+Two deliberate simplifications in this first cut: consecutive non-blank
+lines each become their own `<p>` (CommonMark would join them), and there
+is no inline formatting (`**bold**`, `` `code` ``, `[links](…)`), fenced
+code blocks, or lists yet. Each is an additive extension in the same
+byte-walking style.
+
+## Why this exists
+
+A language that compiles to WebAssembly components — and to the
+[web target](./web-target.md) — should be able to build its own
+documentation. Rendering Markdown in Canon is the first primitive toward
+that: a Canon CLI program can read the `docs/` sources and emit the HTML
+pages, dogfooding the language as its own static-site generator. That
+path needs no browser, no router, and no runtime lists, so it sidesteps
+the web target's current limits while exercising strings, dispatch,
+escaping, and file I/O end to end.
+
+## Current limits
+
+Extending the renderer surfaced two codegen rough edges worth knowing
+about, both around user-defined types that alias `Html`:
+
+- **A user constructor that returns a type aliasing `Html`
+  (`Frag = Html; String => Frag { … }`) miscompiles** in the CLI world —
+  the identical shape in `canon/std` (`Div = Html`) works. The renderer
+  works around it by typing its internal helpers as `String` newtypes and
+  wrapping to `Html` only at the public boundary (`… -> Html`).
+- **Piping into a product constructor binds by type, but codegen mislays
+  the stack when the piped receiver matches a *later* field than the
+  paren argument.** `content -> HeadingHtml(level)` (a `String` piped into
+  an `Int * String` constructor) miscompiles; `level -> HeadingHtml(content)`
+  is equivalent by the positionless-construction rule and compiles. The
+  renderer uses the second form.
+
+Both are compiler bugs, not language limits — fixing them lets the
+renderer's types read more naturally.

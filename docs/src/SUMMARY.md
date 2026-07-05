@@ -37,6 +37,7 @@
 # Reference
 
 - [Standard Library](./reference/stdlib.md)
+- [Markdown](./reference/markdown.md)
 - [Using WASI Interfaces](./reference/wasi.md)
 - [The Web Target](./reference/web-target.md)
 - [Deploying Components](./reference/deploying.md)
