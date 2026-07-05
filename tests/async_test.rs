@@ -18,11 +18,12 @@ fn parse(source: &str) -> Module {
     let mut parser = Parser::new(tokens);
     let mut module = parser.parse().expect("parser failed");
     resolve_new_syntax(&mut module);
-    // Mirror the loader pipeline so a `bindings "…"` directive in the
-    // test source produces FunctionDefs with `extern_wasm` populated
-    // — the rest of the test infrastructure (async_analysis,
-    // auto_await) expects that shape.
-    canon::loader::apply_bindings_directive(&mut module.items);
+    // Mirror the loader pipeline for a vendored binding file: seed the
+    // rewrite with a synthetic path-derived URN so the body-less
+    // camelCase declarations in the test source produce FunctionDefs
+    // with `extern_wasm` populated — the rest of the test
+    // infrastructure (async_analysis, auto_await) expects that shape.
+    canon::loader::apply_bindings(&mut module.items, Some("canon:builtins/x@0.1.0"));
     module
 }
 
@@ -42,8 +43,6 @@ fn future_is_a_known_generic_type_in_extern_decl() {
     // type-alias). This test asserts that recognising the name no longer
     // produces an "unknown type" error.
     let source = r#"
-bindings "canon:builtins/x@0.1.0"
-
 futureString = () -> Future<String>
 
 main = () -> Unit {
@@ -62,8 +61,6 @@ main = () -> Unit {
 #[test]
 fn stream_is_a_known_generic_type_in_extern_decl() {
     let source = r#"
-bindings "canon:builtins/x@0.1.0"
-
 tick = () -> Stream<Int>
 
 main = () -> Unit {
@@ -86,8 +83,6 @@ fn auto_await_wraps_future_receiver_in_method_call() {
     // call, the auto-await transform should wrap the receiver in
     // `Expr::Await`.
     let source = r#"
-bindings "canon:builtins/x@0.1.0"
-
 wait = (Network) -> Future<String>
 
 main = (Network) -> Unit {
@@ -165,8 +160,6 @@ fn auto_await_wraps_future_operand_of_try() {
     // `?` position (mirroring how it already fires at method-receiver
     // positions).
     let source = r#"
-bindings "wasi:filesystem/types@0.3.0"
-
 slowRead = (Filesystem) -> Future<Result<String, String>>
 
 main = (Filesystem) -> Unit {
@@ -252,8 +245,6 @@ fn auto_await_wraps_future_argument_at_method_call() {
     // exact. `slowFetch()` returns `Future<String>` (after the loader's
     // wrap rule), the param is `String`, so the arg gets wrapped.
     let source = r#"
-bindings "canon:builtins/x@0.1.0"
-
 slowFetch = () -> Future<String>
 
 append = (String * String) -> String {
@@ -316,8 +307,6 @@ fn auto_await_does_not_wrap_arg_when_param_expects_future() {
     // auto-await: the callee is asking for the unforced future. This is the
     // conservative-match property of `future_inner_matches`.
     let source = r#"
-bindings "canon:builtins/x@0.1.0"
-
 slowFetch = () -> Future<String>
 
 noAwait = (Future<String>) -> Unit {
@@ -360,8 +349,6 @@ fn async_analysis_seeds_extern_async_functions() {
     // A function whose return is `Future<T>` is a direct async trigger
     // — its caller must become suspending too.
     let source = r#"
-bindings "wasi:filesystem/types@0.3.0"
-
 slowRead = (Filesystem) -> Future<String>
 
 main = (Filesystem) -> Unit {
@@ -391,8 +378,6 @@ main = (Filesystem) -> Unit {
 fn async_analysis_propagates_through_call_graph() {
     // a → b → c, where c is extern async. All three should be suspending.
     let source = r#"
-bindings "wasi:filesystem/types@0.3.0"
-
 c = (Filesystem) -> Future<String>
 
 b = (Filesystem) -> String {
@@ -452,8 +437,6 @@ main = (Stdout) -> Unit {
 fn async_analysis_with_no_extern_async_returns_empty_for_sync_extern() {
     // A non-`.async` extern (synchronous) should not poison the async set.
     let source = r#"
-bindings "canon:builtins/x@0.1.0"
-
 syncRead = (Filesystem) -> String
 
 main = (Filesystem) -> Unit {

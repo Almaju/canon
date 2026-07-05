@@ -1,13 +1,3 @@
-bindings "wasi:filesystem/types@0.3.0-rc-2026-03-15"
-
-Filesystem = String
-
-IoError = String
-
-Path = String
-
-read = (Filesystem * Path) -> Future<Result<String, IoError>>
-
 main = () -> Unit {
     "ok".print()
 }

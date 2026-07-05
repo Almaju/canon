@@ -1,0 +1,6 @@
+package example:widget@1.0.0;
+
+interface gadget {
+    spin: func() -> u64;
+    wobble: func() -> u64;
+}

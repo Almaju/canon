@@ -1,5 +1,5 @@
 Instant = Int
 
 Instant = () -> Instant {
-    Instant(monotonicClockNow())
+    Instant(MonotonicClock.now())
 }

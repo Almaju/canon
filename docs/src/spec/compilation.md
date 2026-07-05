@@ -61,38 +61,33 @@ reported in Canon terms.
 ## Binding Files
 
 All interop happens at the Component Model boundary, declared in
-**binding files**: `.can` files whose declarations are body-less and
-bound to a WIT interface. Generated files use the `bindings` directive:
+**binding files**: `.can` files whose declarations are body-less,
+sitting directly in a versioned package directory
+(`wasi/cli@0.3.0-rc-2026-03-15/environment.can`) whose path spells the
+WIT interface — no directive, no header:
 
 ```canon
-bindings "wasi:cli/environment@0.3.0-rc-2026-03-15"
-
 getArguments = () -> List<String>
 
 getInitialCwd = () -> Option<String>
 ```
 
 The loader rewrites each alias into an external function bound to
-`<urn>#<kebab-case-name>`. Hand-written code can use the explicit
-per-function form instead:
+`<urn>#<kebab-case-name>`, deriving the URN from the file's vendored
+path:
 
-```canon
-extern Wasm("wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64")
-getRandomU64 = () -> Int
-```
-
-Body-less declarations are legal **only** under a `bindings` directive
-or an `extern Wasm` marker; anywhere else, a missing body is a compile
-error. Bound functions are first-class values like any other function.
+Body-less camelCase declarations are only meaningful inside a binding
+file — anywhere else they remain plain function-type aliases. Bound
+functions are first-class values like any other function.
 
 Bindings are produced mechanically:
 
 - `canon bindgen <wit-or-wasm>` emits one binding file per WIT
   interface (deterministic, alphabetical, `canon fmt`-clean).
 - `canon install` reads the manifest's `[imports]` table and
-  materializes bindings into `bindgen/`, recording provenance in an
-  `_install.toml` sidecar. Functions whose shape the codegen can't lower
-  yet are **skipped with a printed reason**, never emitted broken.
+  materializes bindings into `bindgen/` in the same versioned layout.
+  Functions whose shape the codegen can't lower yet are **skipped with
+  a printed reason**, never emitted broken.
 
 ## The WIT ↔ Canon Mapping
 

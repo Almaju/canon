@@ -237,6 +237,24 @@ fn needs_install(project_root: &Path, manifest: &Manifest, manifest_path: &Path)
     let Ok(index_meta) = fs::metadata(&index_path) else {
         return true;
     };
+
+    // Pre-slice-8 layout: index keys without a versioned package
+    // directory (`wasi/clocks/…` instead of `wasi/clocks@0.3.0/…`).
+    // The loader only resolves the versioned layout, so an old tree
+    // must be regenerated regardless of mtimes.
+    if let Ok(src) = fs::read_to_string(&index_path) {
+        if let Ok(index) = parse_install_index(&src) {
+            let unversioned = |key: &str| {
+                key.split('/')
+                    .rev()
+                    .skip(1) // the file segment carries no version
+                    .all(|seg| !seg.contains('@'))
+            };
+            if index.entries.keys().any(|k| unversioned(k)) {
+                return true;
+            }
+        }
+    }
     let Ok(index_mtime) = index_meta.modified() else {
         // Filesystem doesn't expose mtime; conservatively reinstall.
         return true;
@@ -376,11 +394,10 @@ fn write_install_index(path: &Path, index: &InstallIndex) -> Result<(), InstallE
 /// validate every emitted interface's path against the manifest-key
 /// prefix, and write the generated source under `<bindgen_root>/`.
 ///
-/// The bindgen's own output path includes a `src/` segment
-/// (`<ns>/src/<pkg>/<iface>.can`, matching the layout of a shipped
-/// Canon package). We strip it here because `bindgen/` is the source
-/// root for installed bindings — there's no manifest at
-/// `bindgen/<ns>/`, so the inner `src/` is redundant.
+/// The bindgen emits the vendored-package layout directly
+/// (`<ns>/<pkg>@<version>/<iface>.can`, see docs/src/spec/modules.md): the
+/// directory name carries the pin and the loader derives each
+/// binding's URN from the path — the files carry no directive.
 fn install_wit_entry(
     import_key: &str,
     wit_path: &Path,
@@ -422,20 +439,16 @@ fn install_wit_entry(
             continue;
         }
 
-        // Strip the `<ns>/src/` prefix; what's left is the path beneath
-        // `<bindgen_root>/<ns>/`.
-        let rel = strip_src_segment(&file.relative_path).ok_or_else(|| {
-            InstallError(format!(
-                "import `{}`: bindgen produced an unexpected path `{}` (expected `<ns>/src/<pkg>/<iface>.can`)",
-                import_key, file.relative_path
-            ))
-        })?;
+        let rel = file.relative_path.clone();
 
         // Prefix guard: every emitted file's path must sit under the
         // manifest key. This is what makes the manifest key meaningful
         // — a `"wasi"` import can install all WASI interfaces, but a
         // `"wasi/random"` import can't accidentally pull in `wasi/cli`.
-        if !rel.starts_with(&key_prefix) {
+        // The key is written without versions (`"wasi/clocks"`), so the
+        // comparison strips the `@<version>` suffixes the emitted path
+        // carries.
+        if !strip_version_suffixes(&rel).starts_with(&key_prefix) {
             return Err(InstallError(format!(
                 "import `{}`: WIT at `{}` produced interface at `{}`, which is not under `{}/`. The manifest key must be a path prefix of every emitted file.",
                 import_key,
@@ -472,22 +485,16 @@ fn install_wit_entry(
     })
 }
 
-/// Strip the `src/` segment that the bindgen inserts between the
-/// namespace and the package: `wasi/src/random/random.can` →
-/// `wasi/random/random.can`. Returns `None` if the input doesn't have
-/// the expected `<ns>/src/...` shape (bindgen producing an unexpected
-/// layout is a programmer error, not a user error).
-pub(crate) fn strip_src_segment(rel: &str) -> Option<String> {
-    let parts: Vec<&str> = rel.split('/').collect();
-    if parts.len() < 2 || parts[1] != "src" {
-        return None;
-    }
-    let mut out = String::from(parts[0]);
-    for part in &parts[2..] {
-        out.push('/');
-        out.push_str(part);
-    }
-    Some(out)
+/// Drop the `@<version>` suffix from every path segment:
+/// `wasi/clocks@0.3.0/monotonic_clock.can` →
+/// `wasi/clocks/monotonic_clock.can`. Used to compare version-carrying
+/// vendored paths against version-less keys (manifest `[imports]`
+/// keys, use paths) — source never states versions.
+pub(crate) fn strip_version_suffixes(rel: &str) -> String {
+    rel.split('/')
+        .map(|seg| seg.split_once('@').map(|(l, _)| l).unwrap_or(seg))
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// True when a generated file has no real Canon declarations — only
@@ -508,16 +515,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strip_src_segment_removes_src() {
+    fn strip_version_suffixes_drops_at_segments() {
         assert_eq!(
-            strip_src_segment("wasi/src/clocks/monotonic_clock.can").as_deref(),
-            Some("wasi/clocks/monotonic_clock.can"),
+            strip_version_suffixes("wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can"),
+            "wasi/clocks/monotonic_clock.can",
         );
-    }
-
-    #[test]
-    fn strip_src_segment_rejects_unexpected_shape() {
-        assert_eq!(strip_src_segment("wasi/clocks/monotonic_clock.can"), None);
-        assert_eq!(strip_src_segment("foo.can"), None);
+        assert_eq!(
+            strip_version_suffixes("wasi/clocks/monotonic_clock.can"),
+            "wasi/clocks/monotonic_clock.can",
+        );
     }
 }

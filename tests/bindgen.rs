@@ -28,22 +28,25 @@ fn monotonic_clock_roundtrip() {
     let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
     assert_eq!(files.len(), 1);
     let f = &files[0];
-    assert_eq!(f.relative_path, "wasi/src/clocks/monotonic_clock.can");
+    assert_eq!(
+        f.relative_path, "wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can",
+        "output lands in the vendored-package layout: the directory carries the pin"
+    );
     assert!(f.skipped.is_empty(), "no items should be skipped");
 
     // Types and functions both present, alphabetical.
     assert!(f.content.contains("Duration = Int"));
     assert!(f.content.contains("Instant = Int"));
-    // Bindgen emits a single file-level `bindings "<urn>"` directive
-    // followed by bare function-type aliases — no per-function `extern
-    // Wasm` marker. The loader (`apply_bindings_directive` in
-    // `src/loader.rs`) rewrites each alias into a real FunctionDef with
-    // the URN attached. The URN also lives in `EmittedFile.urn` and the
-    // companion `_install.toml` index for callers that need direct
-    // access.
-    assert!(f
-        .content
-        .contains("bindings \"wasi:clocks/monotonic-clock@"));
+    // Bindgen emits bare function-type aliases and nothing else — no
+    // header, no per-function marker. A binding file is recognized by
+    // shape, and the loader derives each declaration's URN from the
+    // vendored path. The URN also lives in
+    // `EmittedFile.urn` for callers that need direct access.
+    assert!(
+        !f.content.contains("bindings \""),
+        "bindgen should not emit the bindings header anymore:\n{}",
+        f.content
+    );
     assert!(
         !f.content.contains("extern Wasm"),
         "bindgen should not emit per-function `extern Wasm` anymore",
@@ -80,7 +83,7 @@ fn resources_emit_handle_newtypes() {
     let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
     assert_eq!(files.len(), 1);
     let f = &files[0];
-    assert_eq!(f.relative_path, "demo/src/resources/handles.can");
+    assert_eq!(f.relative_path, "demo/resources@1.0.0/handles.can");
 
     assert!(
         f.content.contains("Counter = Handle"),
@@ -139,7 +142,7 @@ fn kitchen_sink_roundtrip() {
     let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
     assert_eq!(files.len(), 1);
     let f = &files[0];
-    assert_eq!(f.relative_path, "demo/src/sink/kitchen_sink.can");
+    assert_eq!(f.relative_path, "demo/sink@1.0.0/kitchen_sink.can");
     assert!(f.skipped.is_empty(), "no items should be skipped");
 
     // Records emit prefixed field newtypes so the resulting product is

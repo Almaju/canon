@@ -1,0 +1,3 @@
+ianaId = () -> Option<String>
+
+toDebugString = () -> String

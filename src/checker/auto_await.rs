@@ -76,7 +76,7 @@ struct Ctx<'m> {
 /// return is `Future<X>` and recover `X` for further propagation.
 ///
 /// Async functions in Canon are declared by returning `Future<T>` in
-/// source. The loader's `apply_bindings_directive` unwraps that to `T`
+/// source. The loader's `apply_bindings` unwraps that to `T`
 /// inside `func.return_ty` so the codegen gets the canonical-ABI shape,
 /// and sets `extern_wasm.is_async = true`. The auto-await transform
 /// wants `Future<T>` *back* for its static-type analysis (so call

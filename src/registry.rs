@@ -2,9 +2,12 @@
 //!
 //! `canon install <ns>:<pkg>[@<version>]` fetches a WIT package from a
 //! package registry and vendors the generated Canon bindings under the
-//! project's `deps/<ns>/<pkg>/` tree, each file stamped with the
-//! `package` provenance directive (validated by the loader, see
-//! modules & packages, docs/src/spec/modules.md) followed by the usual `bindings` directive.
+//! project's `deps/<ns>/<pkg>@<version>/` tree. The directory name is
+//! the pin — identity lives in the path, not in a directive — and a
+//! binding file is recognized by shape (body-less declarations), its
+//! URN derived from the path by the loader. Installing a package
+//! removes any previously vendored version of it in the same
+//! operation, so at most one version exists per project.
 //!
 //! The transport is `wasm-pkg-client` (Bytecode Alliance
 //! wasm-pkg-tools): package names are `<namespace>:<name>` and versions
@@ -37,8 +40,8 @@
 //! every registry backend distributes — that carries the source in
 //! custom sections: `canon:package` holds the coordinate, `canon:deps`
 //! the newline-separated coordinates of the packages it was built
-//! against (read from the publisher's own `deps/` directives — still
-//! machine-recorded, never authored), and one `canon:src/<rel-path>`
+//! against (read from the publisher's own `deps/` directory names —
+//! still machine-recorded, never authored), and one `canon:src/<rel-path>`
 //! section per `.can` file. Keeping the dependency list in-band instead
 //! of in OCI annotations means it survives every backend (the `local`
 //! registry has nowhere to put annotations) and stays inside the one
@@ -57,7 +60,7 @@ use futures_util::TryStreamExt;
 use wasm_pkg_client::{Client, Config, PackageRef, PublishOpts, Version, VersionInfo};
 
 use crate::bindgen;
-use crate::install::{has_no_decls, strip_src_segment, InstallError, InstallOutcome};
+use crate::install::{has_no_decls, strip_version_suffixes, InstallError, InstallOutcome};
 
 /// Custom section holding a source artifact's own coordinate.
 const SECTION_PACKAGE: &str = "canon:package";
@@ -84,14 +87,53 @@ pub struct RegistrySpec {
 }
 
 impl RegistrySpec {
-    /// The `deps/`-relative directory this package vendors into.
+    /// The `<ns>/<name>/` prefix bindgen-emitted paths must sit under
+    /// to belong to this package (the emitted layout is unversioned;
+    /// the version joins the on-disk directory name at vendor time).
     fn deps_prefix(&self) -> String {
         format!("{}/{}/", self.namespace, self.name)
     }
+
+    /// The `deps/`-relative package directory this install writes:
+    /// `<ns>/<name>@<version>/`.
+    fn versioned_dir(&self, version: &Version) -> String {
+        format!("{}/{}@{version}", self.namespace, self.name)
+    }
+}
+
+/// Remove every previously vendored copy of `<ns>:<name>` — versioned
+/// (`name@…`) or stale-unversioned (`name`) — so the install that
+/// follows leaves exactly one version on disk. The loader rejects
+/// multi-version siblings; install is where the invariant is enforced
+/// constructively.
+fn remove_vendored_versions(deps_root: &Path, ns: &str, name: &str) -> Result<(), InstallError> {
+    let ns_dir = deps_root.join(ns);
+    let Ok(entries) = fs::read_dir(&ns_dir) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let dir_name = entry.file_name().to_string_lossy().into_owned();
+        let is_this_package = dir_name == name
+            || dir_name
+                .split_once('@')
+                .is_some_and(|(left, _)| left == name);
+        if is_this_package {
+            fs::remove_dir_all(entry.path()).map_err(|e| {
+                InstallError(format!(
+                    "could not remove stale `{}`: {e}",
+                    entry.path().display()
+                ))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// Parse an install spec. The namespace/name grammar matches the
-/// loader's `package` directive rule (lowercase kebab), so what install
+/// loader's vendored-directory rule (lowercase kebab), so what install
 /// accepts is exactly what the loader will re-validate on the next
 /// build.
 pub fn parse_spec(s: &str) -> Result<RegistrySpec, InstallError> {
@@ -236,9 +278,10 @@ fn render_versions(versions: &[VersionInfo]) -> String {
 }
 
 /// Run the wasm-encoded WIT package through bindgen and write every
-/// interface belonging to `spec` under `<root>/deps/<ns>/<name>/`, each
-/// file led by its `package` directive. Interfaces from other packages
-/// embedded in the encoding are skipped with a note.
+/// interface belonging to `spec` under
+/// `<root>/deps/<ns>/<name>@<version>/` — the directory name carries
+/// the pin, the files carry nothing but source. Interfaces from other
+/// packages embedded in the encoding are skipped with a note.
 fn vendor_wit_package(
     spec: &RegistrySpec,
     version: &Version,
@@ -255,6 +298,7 @@ fn vendor_wit_package(
     let coordinate = format!("{}:{}@{version}", spec.namespace, spec.name);
     let deps_root = root.join("deps");
     let prefix = spec.deps_prefix();
+    remove_vendored_versions(&deps_root, &spec.namespace, &spec.name)?;
 
     let mut written: Vec<PathBuf> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -263,18 +307,16 @@ fn vendor_wit_package(
             skipped.extend(file.skipped);
             continue;
         }
-        // `<ns>/src/<pkg>/<iface>.can` → `<ns>/<pkg>/<iface>.can`, same
-        // normalization as the manifest-driven install.
-        let rel = strip_src_segment(&file.relative_path).ok_or_else(|| {
-            InstallError(format!(
-                "bindgen produced an unexpected path `{}` (expected `<ns>/src/<pkg>/<iface>.can`)",
-                file.relative_path
-            ))
-        })?;
-        // Only the requested package may land in `deps/<ns>/<name>/` —
-        // the loader's coordinate check makes any other placement an
-        // error on the next build, so filter here and say so.
-        if !rel.starts_with(&prefix) {
+        // The bindgen emits the vendored layout directly —
+        // `<ns>/<pkg>@<version>/<iface>.can`, no directive; the loader
+        // derives each binding's URN from the path.
+        let rel = file.relative_path.clone();
+        // Only the requested package may land in its `deps/` directory —
+        // the loader derives every binding URN from that path, so any
+        // other placement would lie about provenance. Filter here and
+        // say so. (The comparison strips the `@<version>` the emitted
+        // path carries.)
+        if !strip_version_suffixes(&rel).starts_with(&prefix) {
             skipped.push(format!(
                 "interface `{}` belongs to another package embedded in the artifact; install it explicitly",
                 rel.trim_end_matches(".can"),
@@ -282,11 +324,7 @@ fn vendor_wit_package(
             continue;
         }
 
-        // Stamp provenance first, then canonical-format the whole file —
-        // the loader requires the `package` directive to be the first
-        // declaration and the formatter keeps it there.
-        let stamped = format!("package \"{coordinate}\"\n\n{}", file.content);
-        let content = crate::formatter::format(&stamped).map_err(|e| {
+        let content = crate::formatter::format(&file.content).map_err(|e| {
             InstallError(format!(
                 "generated bindings for `{rel}` do not parse: {e:?}"
             ))
@@ -366,9 +404,10 @@ fn parse_source_artifact(bytes: &[u8]) -> Option<SourceArtifact> {
     })
 }
 
-/// Vendor a fetched Canon source package under `<root>/deps/<ns>/<name>/`:
-/// every embedded file is stamped with the `package` directive and
-/// canonically formatted. Dependencies the package was published
+/// Vendor a fetched Canon source package under
+/// `<root>/deps/<ns>/<name>@<version>/`: the directory name is the
+/// pin, and every embedded file is canonically formatted pure source —
+/// no directive is stamped. Dependencies the package was published
 /// against are reported, not installed — transitive install is
 /// a later slice.
 fn vendor_source_package(
@@ -397,18 +436,19 @@ fn vendor_source_package(
         )));
     }
 
-    let pkg_root = root.join("deps").join(&spec.namespace).join(&spec.name);
+    let deps_root = root.join("deps");
+    remove_vendored_versions(&deps_root, &spec.namespace, &spec.name)?;
+    let pkg_root = deps_root.join(spec.versioned_dir(version));
     let mut written = Vec::new();
     for (rel, source) in &artifact.files {
         // Defensive: a hostile artifact must not write outside its own
-        // `deps/<ns>/<name>/` directory.
+        // `deps/<ns>/<name>@<version>/` directory.
         if rel.split('/').any(|seg| seg == ".." || seg.is_empty()) || rel.starts_with('/') {
             return Err(InstallError(format!(
                 "`{coordinate}` contains an invalid source path `{rel}`"
             )));
         }
-        let stamped = format!("package \"{coordinate}\"\n\n{source}");
-        let content = crate::formatter::format(&stamped).map_err(|e| {
+        let content = crate::formatter::format(source).map_err(|e| {
             InstallError(format!(
                 "source file `{rel}` in `{coordinate}` does not parse: {e:?}"
             ))
@@ -454,7 +494,7 @@ pub struct PublishOutcome {
 
 /// Publish the Canon package rooted at `root` as `spec`. The package is
 /// every `.can` file under `root` except the vendored/derived trees;
-/// its recorded dependency list is read off the `deps/` directives.
+/// its recorded dependency list is read off the `deps/` directory names.
 /// With no version in `spec`, the registry's newest release is
 /// patch-bumped (first publish starts at `0.1.0`).
 pub fn publish_to_registry(
@@ -600,38 +640,44 @@ fn preflight(files: &[(String, String)], root: &Path) -> Result<(), InstallError
     Ok(())
 }
 
-/// Read the unique package coordinates off the `deps/` tree's `package`
-/// directives — the machine-recorded dependency list a published
-/// artifact carries for consumers. A project with no `deps/` records
-/// none.
+/// Read the unique package coordinates off the `deps/` tree's
+/// directory names (`deps/<ns>/<name>@<version>/` → `ns:name@version`)
+/// — the machine-recorded dependency list a published artifact carries
+/// for consumers. A project with no `deps/` records none.
 fn collect_dep_coordinates(root: &Path) -> Result<Vec<String>, InstallError> {
     let deps_root = root.join("deps");
     let mut coords = std::collections::BTreeSet::new();
     if !deps_root.is_dir() {
         return Ok(Vec::new());
     }
-    let mut stack = vec![deps_root];
-    while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir)
-            .map_err(|e| InstallError(format!("could not read `{}`: {e}", dir.display())))?;
-        for entry in entries {
-            let entry = entry
-                .map_err(|e| InstallError(format!("could not read `{}`: {e}", dir.display())))?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
-                let source = fs::read_to_string(&path).map_err(|e| {
-                    InstallError(format!("could not read `{}`: {e}", path.display()))
-                })?;
-                if let Some(coord) = source
-                    .lines()
-                    .next()
-                    .and_then(|l| l.strip_prefix("package \""))
-                    .and_then(|l| l.strip_suffix('"'))
-                {
-                    coords.insert(coord.to_string());
-                }
+    let ns_entries = fs::read_dir(&deps_root)
+        .map_err(|e| InstallError(format!("could not read `{}`: {e}", deps_root.display())))?;
+    for ns_entry in ns_entries {
+        let ns_entry = ns_entry
+            .map_err(|e| InstallError(format!("could not read `{}`: {e}", deps_root.display())))?;
+        if !ns_entry.path().is_dir() {
+            continue;
+        }
+        let ns = ns_entry.file_name().to_string_lossy().into_owned();
+        let pkg_entries = fs::read_dir(ns_entry.path()).map_err(|e| {
+            InstallError(format!(
+                "could not read `{}`: {e}",
+                ns_entry.path().display()
+            ))
+        })?;
+        for pkg_entry in pkg_entries {
+            let pkg_entry = pkg_entry.map_err(|e| {
+                InstallError(format!(
+                    "could not read `{}`: {e}",
+                    ns_entry.path().display()
+                ))
+            })?;
+            if !pkg_entry.path().is_dir() {
+                continue;
+            }
+            let dir_name = pkg_entry.file_name().to_string_lossy().into_owned();
+            if let Some((name, version)) = dir_name.split_once('@') {
+                coords.insert(format!("{ns}:{name}@{version}"));
             }
         }
     }

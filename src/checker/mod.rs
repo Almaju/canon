@@ -144,14 +144,6 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         match item {
             Item::Function(func) => check_function(func, &symbols, &mut errors, &mut main_found),
             Item::TypeDef(td) => check_type_def(td, &symbols, &mut errors),
-            // `bindings` and `package` are file-level directives the
-            // loader has already digested by the time we get here. The
-            // loader patches function-type aliases under `bindings` into
-            // FunctionDefs with `extern_wasm` set and validates `package`
-            // placement/agreement; the original decl items are left in
-            // the module purely as breadcrumbs for tooling (formatter,
-            // LSP) and have nothing for the checker to enforce.
-            Item::Bindings(_) | Item::Package(_) => {}
         }
     }
 
@@ -380,7 +372,6 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
                 collect_type_names(&td.body, &mut out);
                 (td.name.name.clone(), out)
             }
-            Item::Bindings(_) | Item::Package(_) => continue,
         };
         if !refs.contains_key(&name) {
             declared_order.push(name.clone());

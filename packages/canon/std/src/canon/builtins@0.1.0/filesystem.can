@@ -1,0 +1,5 @@
+openFile = (Path) -> Result<File, IoError>
+
+read = (File) -> Result<String, IoError>
+
+write = (Contents * Path) -> Result<Path, IoError>

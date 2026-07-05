@@ -1,0 +1,3 @@
+toLowercase = (String) -> String
+
+toUppercase = (String) -> String
