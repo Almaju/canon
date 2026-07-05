@@ -329,6 +329,7 @@ enum ChainPart {
         method: Ident,
         type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
+        piped: bool,
     },
     Dispatch {
         arms: Vec<MatchArm>,
@@ -349,6 +350,7 @@ fn flatten_into(expr: &Expr, parts: &mut Vec<ChainPart>) {
             method,
             type_args,
             args,
+            piped,
             ..
         } => {
             flatten_into(receiver, parts);
@@ -356,6 +358,7 @@ fn flatten_into(expr: &Expr, parts: &mut Vec<ChainPart>) {
                 method: method.clone(),
                 type_args: type_args.clone(),
                 args: args.clone(),
+                piped: *piped,
             });
         }
         Expr::Match {
@@ -424,13 +427,25 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
                 method,
                 type_args,
                 args,
+                piped,
             } => {
-                out.push('.');
-                out.push_str(&method.name);
-                emit_turbofish(&mut out, type_args);
-                out.push('(');
-                emit_args_inline(&mut out, args);
-                out.push(')');
+                if *piped {
+                    out.push_str(" -> ");
+                    out.push_str(&method.name);
+                    emit_turbofish(&mut out, type_args);
+                    if !args.is_empty() {
+                        out.push('(');
+                        emit_args_inline(&mut out, args);
+                        out.push(')');
+                    }
+                } else {
+                    out.push('.');
+                    out.push_str(&method.name);
+                    emit_turbofish(&mut out, type_args);
+                    out.push('(');
+                    emit_args_inline(&mut out, args);
+                    out.push(')');
+                }
             }
             ChainPart::Dispatch { arms } => {
                 out.push_str(".(");
@@ -489,13 +504,25 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
                     method,
                     type_args,
                     args,
+                    piped,
                 } => {
-                    out.push('.');
-                    out.push_str(&method.name);
-                    emit_turbofish(&mut out, type_args);
-                    out.push('(');
-                    emit_args_inline(&mut out, args);
-                    out.push(')');
+                    if *piped {
+                        out.push_str(" -> ");
+                        out.push_str(&method.name);
+                        emit_turbofish(&mut out, type_args);
+                        if !args.is_empty() {
+                            out.push('(');
+                            emit_args_inline(&mut out, args);
+                            out.push(')');
+                        }
+                    } else {
+                        out.push('.');
+                        out.push_str(&method.name);
+                        emit_turbofish(&mut out, type_args);
+                        out.push('(');
+                        emit_args_inline(&mut out, args);
+                        out.push(')');
+                    }
                 }
                 ChainPart::Try => out.push('?'),
                 _ => {}
@@ -523,15 +550,27 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
                 method,
                 type_args,
                 args,
+                piped,
             } => {
                 out.push('\n');
                 out.push_str(&cont_pad);
-                out.push('.');
-                out.push_str(&method.name);
-                emit_turbofish(&mut out, type_args);
-                out.push('(');
-                emit_args_inline(&mut out, args);
-                out.push(')');
+                if *piped {
+                    out.push_str("-> ");
+                    out.push_str(&method.name);
+                    emit_turbofish(&mut out, type_args);
+                    if !args.is_empty() {
+                        out.push('(');
+                        emit_args_inline(&mut out, args);
+                        out.push(')');
+                    }
+                } else {
+                    out.push('.');
+                    out.push_str(&method.name);
+                    emit_turbofish(&mut out, type_args);
+                    out.push('(');
+                    emit_args_inline(&mut out, args);
+                    out.push(')');
+                }
             }
             ChainPart::Try => out.push('?'),
             ChainPart::Dispatch { arms } => {

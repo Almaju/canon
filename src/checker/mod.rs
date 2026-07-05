@@ -1387,6 +1387,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             type_args,
             args,
             span,
+            ..
         } => {
             check_expr(receiver, scope, symbols, errors);
             for arg in args {

@@ -175,6 +175,13 @@ pub enum Expr {
         method: Ident,
         type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
+        /// Written in the pipe form `value -> Name(rest…)` — the third
+        /// spelling of the commutative call (`Name(value, rest…)` /
+        /// `value.Name(rest…)`), mirroring the declaration arrow
+        /// `(A) -> B { … }` at the value level. Semantics are identical
+        /// to the dot form; the flag only preserves the surface
+        /// spelling for the formatter.
+        piped: bool,
         span: Span,
     },
     Match {

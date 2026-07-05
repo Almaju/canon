@@ -1035,6 +1035,29 @@ Coherence: at most one arrow per (input product, constructed type) pair — the 
 
 During migration the named form (`Url = (String) -> …`) remains legal and means the same thing; it is deprecated and will be removed with slice 6. `canon fmt` preserves whichever form is written until then.
 
+### The Value-Level Pipe — `value -> B` *(implemented)*
+
+The declaration arrow has a call-site mirror: `value -> B` sends a value along a declared arrow. It is the third spelling of the commutative call — `B(value)`, `value.B()`, and `value -> B` are the same call — and it composes with everything postfix:
+
+```
+7 -> Greeting -> Loud.print()          # pipe chains; `.` continues on the result
+"41" -> Int?.add(1)                    # a fallible arrow yields the Result; `?` is just `?`
+map -> Value("k")                      # remaining components ride in parens
+list -> Json                           # pipes reach methods/shapes too, by receiver type
+```
+
+`-> B?` needs no special rule: the pipe produces the `Result<B, E>` and the ordinary postfix `?` propagates it. The grammar is unambiguous because Canon has no parenthesized grouping expression — a `(` at expression *start* is always a lambda (which consumes its own arrow), so a postfix `->` can only be a pipe. The right-hand side must be a PascalCase name; `canon fmt` breaks long pipe chains onto continuation lines exactly like `.` chains:
+
+```
+Map()
+    .Inserted("a", "1")
+    -> Keys
+    -> Json
+    .print()
+```
+
+Three spellings of one call is a migration-period surplus; which become canonical (and whether `fmt` rewrites the others) is decided at slice 6 together with the named-constructor deprecation.
+
 **Constructors form families.** A type may have any number of constructor implementations, distinguished by input product: `Json` has `(Bool)`, `(Float)`, `(Int)`, and `(String) -> Result<Json, MalformedJson>` constructors. Coherence generalizes from traits: at most one implementation per (name, input product) pair in the whole program, checked at link time. Traits and constructor overloads thereby collapse into one concept — *a PascalCase name is a family of implementations selected by input product* — and the trait system above is the shape/implementation half of it.
 
 ### What Replaces Each Kind of Function

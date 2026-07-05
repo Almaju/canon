@@ -493,7 +493,10 @@ impl Parser {
         let mut expr = self.parse_primary()?;
         loop {
             let next = self.peek_past_newlines();
-            if matches!(next, TokenKind::Dot | TokenKind::Question) {
+            if matches!(
+                next,
+                TokenKind::Dot | TokenKind::Question | TokenKind::Arrow
+            ) {
                 self.skip_newlines();
             }
             if self.check(TokenKind::Dot) {
@@ -587,6 +590,7 @@ impl Parser {
                         method: ident,
                         type_args,
                         args,
+                        piped: false,
                         span: span_join(start_span, rparen.span),
                     };
                 }
@@ -596,6 +600,67 @@ impl Parser {
                 expr = Expr::Try {
                     inner: Box::new(expr),
                     span: span_join(start_span, q.span),
+                };
+            } else if self.check(TokenKind::Arrow) {
+                // Value-level pipe: `value -> Name` (optionally
+                // `-> Name(rest…)`) sends the value along a declared
+                // constructor arrow — the call-site mirror of the
+                // declaration form `(A) -> B { … }`. Semantically
+                // identical to `Name(value, rest…)`; the value fills
+                // the first slot of the constructor's input product.
+                // The right-hand side is a PascalCase type name, so
+                // a following `.`, `?`, or `->` continues the chain
+                // on the pipe's result. Unambiguous in expression
+                // position: `->` otherwise appears only inside lambda
+                // signatures, which are opened by `(` at expression
+                // *start* and consume their own arrow.
+                self.advance();
+                self.skip_newlines();
+                let name_tok = self.expect(TokenKind::Ident, "expected a type name after `->`")?;
+                if !Self::is_pascal_case_str(&name_tok.lexeme) {
+                    return Err(CanonError::ParseError {
+                        message: format!(
+                            "`->` pipes into a constructor, which is named by its type: \
+                             expected a PascalCase type name, found `{}`",
+                            name_tok.lexeme
+                        ),
+                        span: name_tok.span,
+                    });
+                }
+                let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
+                let mut args = vec![expr];
+                let mut end_span = name_tok.span;
+                if self.check(TokenKind::LParen) {
+                    self.advance();
+                    self.skip_newlines();
+                    if !self.check(TokenKind::RParen) {
+                        loop {
+                            args.push(self.parse_arg_expr()?);
+                            self.skip_newlines();
+                            if self.check(TokenKind::Comma) {
+                                self.advance();
+                                self.skip_newlines();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    let rparen =
+                        self.expect(TokenKind::RParen, "expected `)` to close pipe arguments")?;
+                    end_span = rparen.span;
+                }
+                let receiver = args.remove(0);
+                let start_span = receiver.span();
+                expr = Expr::MethodCall {
+                    receiver: Box::new(receiver),
+                    method: Ident {
+                        name: name_tok.lexeme.clone(),
+                        span: name_tok.span,
+                    },
+                    type_args: Vec::new(),
+                    args,
+                    piped: true,
+                    span: span_join(start_span, end_span),
                 };
             } else {
                 break;

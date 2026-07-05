@@ -3983,6 +3983,49 @@ impl<'m> WasmGen<'m> {
     fn infer_ctor_arg_type_name(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(ident) => Some(ident.name.clone()),
+            // Newtype unwrap (`x.String`) — a PascalCase field names the
+            // component's type, which *is* the value's type.
+            Expr::FieldAccess { field, .. }
+                if field.name.chars().next().is_some_and(char::is_uppercase) =>
+            {
+                Some(field.name.clone())
+            }
+            // A method chain's static type comes from the callee's
+            // registered result type — this is what lets a pipe hang off
+            // a chain (`Map().Inserted("a", "1") -> Keys`). Builtin
+            // methods aren't in `func_table`, so chains ending in them
+            // still return `None` and the call falls through to the
+            // pre-pipe routing paths.
+            Expr::MethodCall {
+                receiver, method, ..
+            } => {
+                let recv = self.infer_ctor_arg_type_name(receiver)?;
+                let mut cands: Vec<String> = vec![recv.clone()];
+                if let Some(p) = self.variant_parent.get(&recv) {
+                    cands.push(p.clone());
+                }
+                for link in self.collect_alias_chain(&recv) {
+                    if !cands.contains(&link) {
+                        cands.push(link);
+                    }
+                }
+                for c in cands {
+                    if let Some(info) = self.func_table.get(&(Some(c), method.name.clone())) {
+                        return match &info.result_ty {
+                            Ty::NamedPtr(n) | Ty::NamedStr(n) | Ty::NamedPtrStr(n, _, _) => {
+                                Some(n.clone())
+                            }
+                            Ty::Str => Some("String".to_string()),
+                            Ty::I64 => Some("Int".to_string()),
+                            Ty::F64 => Some("Float".to_string()),
+                            Ty::I32 => Some("Bool".to_string()),
+                            Ty::List => Some("List".to_string()),
+                            _ => None,
+                        };
+                    }
+                }
+                None
+            }
             _ => self.infer_static_type_name(expr),
         }
     }
@@ -8759,6 +8802,7 @@ fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::erro
                 },
                 type_args: vec![],
                 args: vec![],
+                piped: false,
                 span,
             },
         })
@@ -8777,6 +8821,7 @@ fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::erro
             },
             type_args: vec![],
             args: vec![next],
+            piped: false,
             span,
         };
     }
@@ -8811,6 +8856,7 @@ fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::erro
                 },
                 type_args: vec![],
                 args: vec![],
+                piped: false,
                 span,
             },
         })
@@ -8829,6 +8875,7 @@ fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::erro
             },
             type_args: vec![],
             args: vec![next],
+            piped: false,
             span,
         };
     }
