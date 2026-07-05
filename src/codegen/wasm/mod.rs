@@ -6153,20 +6153,6 @@ impl<'m> WasmGen<'m> {
             // (both sides evaluate) — acceptable because Canon
             // expressions are effect-free apart from capabilities, and
             // it matches the eager `.eq(..)` chains they compose with.
-            ("and", Ty::I32) => {
-                self.compile_bool_arg(args, scope, f);
-                f.instruction(&Instruction::I32And);
-                Ty::I32
-            }
-            ("or", Ty::I32) => {
-                self.compile_bool_arg(args, scope, f);
-                f.instruction(&Instruction::I32Or);
-                Ty::I32
-            }
-            ("not", Ty::I32) => {
-                f.instruction(&Instruction::I32Eqz);
-                Ty::I32
-            }
             // ── Float arithmetic ──────────────────────────────────────────────
             ("add", Ty::F64) => {
                 self.compile_f64_arg(args, scope, f);
@@ -6847,21 +6833,6 @@ impl<'m> WasmGen<'m> {
                 }
                 Ty::Unit
             }
-        }
-    }
-
-    /// Compile a single argument expected to be a Bool (i32 0/1).
-    /// Non-bool shapes are dropped and replaced with 0 so the chain
-    /// stays type-correct instead of corrupting the stack.
-    fn compile_bool_arg(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) {
-        if let Some(a) = args.first() {
-            let ty = self.compile_expr(a, scope, f);
-            if ty != Ty::I32 {
-                self.drop_value(ty, f);
-                f.instruction(&Instruction::I32Const(0));
-            }
-        } else {
-            f.instruction(&Instruction::I32Const(0));
         }
     }
 

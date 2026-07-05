@@ -1803,12 +1803,6 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if receiver_ty == "Int" && method == "String" && arg_count == 0 {
         return true;
     }
-    if receiver_ty == "Bool" && matches!(method, "not") && arg_count == 0 {
-        return true;
-    }
-    if receiver_ty == "Bool" && matches!(method, "and" | "or") && arg_count == 1 {
-        return true;
-    }
     if receiver_ty == "String"
         && matches!(
             (method, arg_count),
@@ -2078,7 +2072,6 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("Float", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         // Conversion is construction: `Int.String()` renders decimal.
         ("Int", "String") => "String".to_string(),
-        ("Bool", "not" | "and" | "or") => "Bool".to_string(),
         ("String", "concat" | "substring" | "slice") => "String".to_string(),
         ("String", "length" | "len" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),

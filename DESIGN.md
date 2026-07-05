@@ -1125,6 +1125,26 @@ The information doesn't disappear; it relocates — `Inserted` is `insert` weari
 
 If the full removal proves too costly in practice, the fallback that keeps most of the value: *a camelCase function's return type must appear in its input product (modulo newtype chains and `Result`/`Option`/`Future` wrapping) or be `Unit`; anything producing a type it wasn't given must be named after what it produces.* Verbs transform, constructors create. Slices 1–3 below are identical under both endpoints.
 
+### Minimal Primitives
+
+The compiler supplies a builtin only when it touches something the language *cannot* express. The test is mechanical — a builtin is justified by exactly one of:
+
+1. **wasm numerics** — `Int`/`Float` arithmetic and the base comparisons (`lt`, `eq`); machine ops have no decomposition.
+2. **linear-memory layout** — `String`'s `byteAt`/`length`/`substring`/`concat`, `List`'s slot access and growth (`get`/`first`/`append`/`concat`/`map`); Canon values don't expose their own bytes.
+3. **canonical-ABI machinery** — `Parallel`/`Race` waitable sequences, `Handle` resources, async lift/lower.
+4. **a host boundary** — `print` (stdout; becomes an ordinary binding once capability threading lands), the `canon:builtins/*` and `wasi:*` imports.
+
+Everything else lives in Canon source, like any user code. Already pure Canon: `Map`, `Set`, the entire JSON parser and validator, `Int(String)` parsing, `TestResult`, the HTML element vocabulary — and now `Bool`'s algebra (`And`/`Or`/`Not` in `canon/std/bool.can` are three dispatches; the compiler's `i32.and`/`or`/`eqz` arms are deleted). Note the boolean *operations* need no primitives at all — dispatch on the union is the machine op.
+
+Queued to move out of the compiler as their blockers clear:
+
+| Builtin today | Moves when |
+|---|---|
+| derived comparisons (`ne`, `le`, `gt`, `ge` on `Int`/`Float`/`String`) | with the comparison-vocabulary rename (each is one dispatch over `lt`/`eq`) |
+| `String(Int)` decimal rendering | needs a load trigger (nothing in `String(42)` references a file); one digit-recursion over `div`/`rem` + `String(Byte)` |
+| `List<String>.Json()` | blocked on the `list.get`-on-`List<String>` codegen gap (element types erased) |
+| `print` | becomes a binding + `Print` wrapper when capability entry points land |
+
 ### Migration Plan
 
 1. **Constructor families, in-file** — ✅ landed. Several self-named constructors per type, selected by the first input's type; duplicate (receiver, name, first-input) definitions are a checked error (`tests/runtime/ctor_family.can`).

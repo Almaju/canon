@@ -758,7 +758,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
 /// "load a file" — they're implemented by the codegen directly.
 const UNDISCOVERABLE_METHODS: &[&str] = &[
     "add",
-    "and",
     "append",
     "byteAt",
     "concat",
@@ -781,8 +780,6 @@ const UNDISCOVERABLE_METHODS: &[&str] = &[
     "mod",
     "mul",
     "ne",
-    "not",
-    "or",
     "parallel",
     "print",
     "race",
