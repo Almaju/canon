@@ -163,34 +163,22 @@ fn emit_type_def(td: &TypeDef) -> String {
 fn emit_function(func: &FunctionDef) -> String {
     let mut out = String::new();
 
-    // Signature: `name<G> = (params) -> ReturnType`, or the anonymous
-    // constructor form `<G>(params) -> ReturnType` — the synthesized
-    // name is derived from the return type, so writing it back out
-    // would be the redundancy the arrow form exists to remove. A
-    // single *named* input on an anonymous constructor drops its
-    // parentheses entirely: `(Request) => Response` prints as
-    // `Request => Response`. Products, generics, and the nullary entry
-    // keep their parens (the parse of the paren-free form only accepts a
-    // bare type name).
-    // A nullary anonymous constructor prints its input as `Unit` — the
-    // single-value type is the name of "no input", so `() => AddForm`
-    // and the entry `() => Program` canonicalize to `Unit => AddForm` /
-    // `Unit => Program`. (A lone `Unit` param, the parsed shape of
-    // `Unit => X`, is the same case and is handled by `paren_free`.)
-    let nullary = func.anonymous && func.generic_params.is_empty() && func.params.is_empty();
-    let paren_free = func.anonymous
-        && func.generic_params.is_empty()
-        && func.params.len() == 1
-        && !func.params[0].mutable
-        && matches!(
-            &func.params[0].ty,
-            TypeExpr::Named { generics, .. } if generics.is_empty()
-        );
-    if nullary {
-        out.push_str("Unit => ");
-        out.push_str(&emit_type_expr(&func.return_ty));
-    } else if paren_free {
-        out.push_str(&emit_type_expr(&func.params[0].ty));
+    // An anonymous constructor drops every parenthesis around its input:
+    // `Request => Response`, the product `Todos * String => Update`, and
+    // the nullary `Unit => Program` (the single-value type is the name of
+    // "no input"). The declaration arrow `=>` binds looser than the type
+    // operators, so the input reads back unambiguously — the one case
+    // that still needs parens is a compound input whose *first* component
+    // is generic (`(List<Int> * B) => C`), since a leading `<` steers the
+    // parser to generic-params instead. Named function declarations
+    // (`name = (params) => R`) keep their `()`.
+    let anon_input = if func.anonymous && func.generic_params.is_empty() {
+        anon_input_paren_free(&func.params)
+    } else {
+        None
+    };
+    if let Some(input) = anon_input {
+        out.push_str(&input);
         out.push_str(" => ");
         out.push_str(&emit_type_expr(&func.return_ty));
     } else {
@@ -224,6 +212,33 @@ fn emit_function(func: &FunctionDef) -> String {
     }
 
     out
+}
+
+/// The paren-free input rendering of an anonymous constructor, or `None`
+/// when it must keep its parentheses. Zero params render as `Unit` (the
+/// single-value "no input" type). A single non-mutable param renders bare
+/// — `Request`, or the product `Todos * String` — as long as its first
+/// atom is a generics-free named type, since only then does the parser's
+/// paren-free path (a leading bare ident, then `=>`/`*`/`+`) round-trip.
+/// A leading generic (`List<Int> * B`) or the multi-param comma form
+/// keeps parens.
+fn anon_input_paren_free(params: &[Param]) -> Option<String> {
+    match params {
+        [] => Some("Unit".to_string()),
+        [p] if !p.mutable && first_atom_is_bare_named(&p.ty) => Some(emit_type_expr(&p.ty)),
+        _ => None,
+    }
+}
+
+/// Whether a type's leading atom is a named type with no generic args —
+/// the shape the parser can re-read without parentheses.
+fn first_atom_is_bare_named(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Named { generics, .. } => generics.is_empty(),
+        TypeExpr::Product { fields, .. } => fields.first().is_some_and(first_atom_is_bare_named),
+        TypeExpr::Union { variants, .. } => variants.first().is_some_and(first_atom_is_bare_named),
+        _ => false,
+    }
 }
 
 fn emit_fn_params(func: &FunctionDef) -> String {

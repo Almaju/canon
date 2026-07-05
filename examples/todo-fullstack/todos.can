@@ -14,7 +14,7 @@ Todos = String
 
 ToggledAt = Todos
 
-(Title * Todos) => AddedTodo {
+Title * Todos => AddedTodo {
     Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
@@ -47,7 +47,7 @@ String => ParsedNum {
     )
 }
 
-(Int * Todos) => RemovedAt {
+Int * Todos => RemovedAt {
     Todos.String -> Length -> Eq(0).(
         * (False) => RemovedAt {
             Int -> Eq(1).(
@@ -61,7 +61,7 @@ String => ParsedNum {
     )
 }
 
-(Int * Todos) => RenderedItems {
+Int * Todos => RenderedItems {
     Todos.String -> Length -> Eq(0).(
         * (False) => RenderedItems {
             Html(Int -> RenderedItem(Line(Todos.String -> FirstLine)) -> String -> Joined(Int -> Sum(1) -> RenderedItems(Todos(Todos.String -> RestLines)) -> String))
@@ -82,7 +82,7 @@ String => RestLines {
     )
 }
 
-(Int * Todos) => ToggledAt {
+Int * Todos => ToggledAt {
     Todos.String -> Length -> Eq(0).(
         * (False) => ToggledAt {
             Int -> Eq(1).(

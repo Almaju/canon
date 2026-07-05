@@ -20,7 +20,7 @@ ToHtml = () => Html
 
 Ul = Html
 
-(Msg * String) => Button {
+Msg * String => Button {
     Html("<button data-msg=\"" -> Joined(Msg) -> Joined("\">") -> Joined(String) -> Joined("</button>"))
 }
 
@@ -28,11 +28,11 @@ String => Div {
     Html("<div>" -> Joined(String) -> Joined("</div>"))
 }
 
-(String * Tag) => El {
+String * Tag => El {
     Html("<" -> Joined(Tag) -> Joined(">") -> Joined(String) -> Joined("</") -> Joined(Tag) -> Joined(">"))
 }
 
-(Attr * String * Tag) => ElAttr {
+Attr * String * Tag => ElAttr {
     Html("<" -> Joined(Tag) -> Joined(" ") -> Joined(Attr) -> Joined(">") -> Joined(String) -> Joined("</") -> Joined(Tag) -> Joined(">"))
 }
 

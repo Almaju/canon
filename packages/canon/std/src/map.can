@@ -63,7 +63,7 @@ Removed = (Map * String) => Map {
     )
 }
 
-(Map * String) => Option<Value> {
+Map * String => Option<Value> {
     Map.(
         * (Empty) => Option<Value> { None() }
         * (Node) => Option<Value> {

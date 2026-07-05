@@ -8,7 +8,7 @@ Negative = Int
 
 Pos = Int
 
-(Int * Pos * String) => Result<Digits, MalformedInt> {
+Int * Pos * String => Result<Digits, MalformedInt> {
     Pos -> Gt(String -> Length).(
         * (False) => Result<Digits, MalformedInt> {
             String -> ByteAt(Pos) -> IsIntDigit.(

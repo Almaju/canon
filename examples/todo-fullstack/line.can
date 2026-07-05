@@ -11,7 +11,7 @@ Line => Flipped {
     )
 }
 
-(Int * Line) => RenderedItem {
+Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49).(
         * (False) => RenderedItem {
             Line

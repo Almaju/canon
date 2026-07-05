@@ -10,7 +10,7 @@ Remaining = Set
 
 Set = Absent + Entry
 
-(Set * String) => Contains {
+Set * String => Contains {
     Set.(
         * (Absent) => Contains { False() }
         * (Entry) => Contains {

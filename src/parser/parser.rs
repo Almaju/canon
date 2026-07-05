@@ -69,6 +69,24 @@ impl Parser {
             return self.parse_paren_free_ctor(first_ident, start_span);
         }
 
+        // Parens-free product/union input: `Todos * String => Update
+        // { … }`. The declaration arrow `=>` binds looser than the
+        // type operators `*` / `+`, so the leading ident starts a
+        // compound input type. Rewind to re-include it, parse the whole
+        // input type, then require the arrow. (Generic-arg inputs like
+        // `Foo<T> * Bar` still need parens — `<` steers to the
+        // generic-params path below.)
+        if self.check(TokenKind::Star) || self.check(TokenKind::Plus) {
+            self.pos -= 1;
+            let input = self.parse_type_expr()?;
+            let param = Param {
+                ty: input,
+                mutable: false,
+                span: start_span,
+            };
+            return self.finish_anonymous_ctor(Vec::new(), vec![param], start_span);
+        }
+
         let pre_eq_generics = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
         } else {
