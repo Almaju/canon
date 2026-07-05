@@ -79,6 +79,54 @@ Map()
 
 Three spellings of one call is a migration-period surplus; which become canonical (and whether `fmt` rewrites the others) is decided at slice 6 together with the named-constructor deprecation.
 
+### The One-Operator Endgame — `->` executes, `.` reads, `=>` declares *(proposed)*
+
+> **Status: design proposal, not yet implemented.** This is the intended slice-6 terminus. Everything above (three call spellings, `->` declarations) remains valid until it lands.
+
+The migration collapses to a single execution operator. Three symbols, three non-overlapping jobs:
+
+| Symbol | Job | Editor completion after it |
+|---|---|---|
+| `->` | **execute** — the only call / pipe / construct form | functions whose input product contains the left value's type |
+| `.` | **read** — field access and dispatch `.( )` only | the value's fields/components |
+| `=>` | **declare** — every constructor / shape / lambda / dispatch-arm definition | — |
+
+The point of the split: `.` and `.` stop competing to mean "call." `.` only *reads* a component; `->` only *applies* a function. So typing `.` offers fields and typing `->` offers functions — autocompletion on both, for different things. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.**
+
+Every construct in one table:
+
+| Migration-era form | Endgame form |
+|---|---|
+| `"hi".Print()` | `"hi" -> Print` |
+| `String.A().B().C()` | `String -> A -> B -> C` |
+| `alice.Compare(bob)` / `bob.Compare(alice)` | `alice -> Compare(bob)` / `bob -> Compare(alice)` |
+| `Now()` (zero input) | `-> Now` |
+| `"41".Int()?.add(1)` | `"41" -> Int? -> Add(1)` |
+| declaration `(A * B) -> C { … }` | `(A * B) => C { … }` |
+| shape `Show = () -> String` | `Show = () => String` |
+| lambda `(Int) -> Int { … }` | `(Int) => Int { … }` |
+| dispatch arm `* (False) -> Unit { … }` | `* (False) => Unit { … }` |
+| dispatch `bool.( … )` | unchanged |
+| field `user.Birthday` | unchanged |
+
+The declaration/execution mirror is the payoff — the same shape, `=>` when defining, `->` when running:
+
+```
+(End * Start * String) => String { … }        # declare
+string -> Substring(Start(1), End(4))          # execute
+```
+
+Commutativity is preserved: `(A * B) => C` is reachable from either side (`a -> C(b)` or `b -> C(a)`), because the pipe fills one component of the input product and the rest follow. A function stays linked to every type in its input, never bound to a single receiver.
+
+**Two open decisions** gate implementation:
+
+1. *Multi-input spelling.* Either the **parens tail** `a -> C(b)` (best for chaining and editor discovery — enter from any component, editor completes the rest; but `C(b)` resembles a call) or the **pure product** `a * b -> C` (mirrors the declaration exactly, no parens-with-args; but mixed chains need grouping — `(a -> B) * c -> D` — and real code gets noisier). Leaning parens-tail for ergonomics.
+2. *Declaration arrow.* `=>` (recommended — minimal, "maps to"), `<-` (arrows oppose, but reads backwards), or `~>` (maximally distinct, less conventional).
+
+Auto-discovery is the headline feature, not a side effect: `->` completion queries "functions whose input product mentions this type," `.` completion queries the value's fields. Building both in the LSP is its own slice, since it is the reason for the split.
+
+Details still to pin: first-class function references (today `Int.Double` for passing a function as a value) collide with `.`-means-field, so those become either bare names resolved by expected type or plain lambdas; and zero-input application spelled `-> Now` (leading arrow) needs a parser rule for statement-initial `->`.
+
 **Constructors form families.** A type may have any number of constructor implementations, distinguished by input product: `Json` has `(Bool)`, `(Float)`, `(Int)`, and `(String) -> Result<Json, MalformedJson>` constructors. Coherence generalizes from traits: at most one implementation per (name, input product) pair in the whole program, checked at link time. Traits and constructor overloads thereby collapse into one concept — *a PascalCase name is a family of implementations selected by input product* — and the trait system above is the shape/implementation half of it.
 
 ### What Replaces Each Kind of Function
