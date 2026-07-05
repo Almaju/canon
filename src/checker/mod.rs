@@ -167,19 +167,23 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
 
     check_ordering(module, entry_items_start, http_entry_name, &mut errors);
 
-    // Detect the web-app entry triple (`init` / `update` / `view`, see
-    // docs/src/reference/web-target.md). Scanned over the entry file's
-    // items, same as HTTP entries.
-    let web_entry = crate::ast::find_web_entry(&module.items[entry_items_start..]);
+    // Detect the web-app entry triple (view / init / update, see
+    // docs/src/reference/web-target.md). Scanned over the whole module —
+    // the marker newtypes (`Init` / `Update`) alias-resolve to the model
+    // through type definitions that may live in sibling files, and the
+    // detection is uniqueness-guarded so imports can't create a false
+    // positive. Codegen resolves it the same way.
+    let web_entry = crate::ast::find_web_entry(&module.items);
 
     match (main_found, http_entries.len(), web_entry.is_some()) {
         // CLI program: `main` exists, no other entry. Existing behaviour.
         (true, 0, false) => {}
         // Library or malformed: no entry shape is present.
         (false, 0, false) => errors.push(CanonError::CheckError {
-            message: "no entry point defined: expected a `main` function, a free function \
-                      returning `Response` (HTTP handler), or an `init`/`update`/`view` \
-                      triple (web app)."
+            message: "no entry point defined: expected a CLI entry (`Unit => Program`), an \
+                      HTTP handler (`Request => Response`), or a web-app triple (a \
+                      `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
+                      constructors)."
                 .to_string(),
             span: module.span,
         }),

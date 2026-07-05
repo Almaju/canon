@@ -8436,17 +8436,17 @@ impl<'m> WasmGen<'m> {
         // core shape (from `init`'s result signature).
         let init_info = self
             .func_table
-            .get(&(None, "init".to_string()))
+            .get(&web.init)
             .cloned()
             .expect("web entry `init` missing from func table");
         let update_info = self
             .func_table
-            .get(&(Some(model.clone()), "update".to_string()))
+            .get(&web.update)
             .cloned()
             .expect("web entry `update` missing from func table");
         let view_info = self
             .func_table
-            .get(&(Some(model.clone()), "view".to_string()))
+            .get(&web.view)
             .cloned()
             .expect("web entry `view` missing from func table");
         let sig_of = |type_idx: u32| -> &(Vec<ValType>, Vec<ValType>) {

@@ -341,54 +341,141 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 }
 
 /// The Elm-architecture entry triple that makes a program a web app
-/// (see the web target, docs/src/reference/web-target.md): a free `init = () -> Model`, an
-/// `update = (Model * String) -> Model`, and a `view = (Model) -> Html`.
-/// `Model` is the user's own type; `Html` comes from `canon/std/web`.
+/// (see the web target, docs/src/reference/web-target.md). All three are
+/// anonymous, type-selected constructors — no names:
+///
+///   - **view** — `Model => Html`: renders the model.
+///   - **init** — `Unit => Init` where `Init = Model`: the initial model.
+///   - **update** — `Model * Msg => Update` where `Update = Model`: the
+///     reducer. `Init` / `Update` are model-alias marker newtypes that
+///     give `init` and `update` distinct constructor keys (both would
+///     otherwise be `(Model, Self)`).
+///
+/// `Model` is the user's own type; `Html` / `Init` / `Update` are the
+/// distinguishing types. `WebEntry` carries the `func_table` key of each
+/// so codegen resolves them without re-scanning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebEntry {
     /// The model type name — `view`'s receiver as written in source.
     pub model: String,
+    /// `func_table` keys `(receiver, name)` for the three members.
+    pub init: (Option<String>, String),
+    pub update: (Option<String>, String),
+    pub view: (Option<String>, String),
 }
 
-/// Detects the web-app entry triple among `items`. Unlike the HTTP
-/// world, the web world can't key on a return type alone — every view
-/// helper returns `Html` — so detection keys on the conventional
-/// names `init` / `update` / `view` plus their shapes:
-///
-///   - `view`: a method (receiver = the model type) with no extra
-///     params returning `Html`,
-///   - `init`: a free zero-param function,
-///   - `update`: a method on the same receiver type as `view` with
-///     exactly one `String` param (the message).
-///
-/// Returns `None` unless all three line up.
+/// Detects the web-app entry triple among `items` by *shape*, not name.
+/// The anchor is `view` — the sole `Model => Html` whose receiver is a
+/// user type (excluding primitive receivers filters out stdlib `ToHtml`,
+/// which converts `Html`/`Int`/`String` to `Html`). From the model,
+/// `init` is the unique nullary constructor whose result aliases the
+/// model, and `update` the unique two-input constructor whose first
+/// input *is* the model and whose result aliases it. Returns `None`
+/// unless all three resolve uniquely.
 pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
-    let funcs = |name: &'static str| {
-        items.iter().filter_map(move |item| match item {
-            Item::Function(f) if f.name.name == name && f.extern_wasm.is_none() => Some(f),
+    use std::collections::HashMap;
+
+    // Newtype alias map (`X = Y`) for resolving marker types to the model.
+    let mut alias: HashMap<&str, &str> = HashMap::new();
+    for item in items {
+        if let Item::TypeDef(td) = item {
+            if let TypeExpr::Named { name, generics, .. } = &td.body {
+                if generics.is_empty() {
+                    alias.insert(td.name.name.as_str(), name.as_str());
+                }
+            }
+        }
+    }
+    let fns: Vec<&FunctionDef> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Function(f) if f.extern_wasm.is_none() => Some(f),
             _ => None,
         })
+        .collect();
+
+    // Primitive receivers can't be the model, so they mark stdlib
+    // conversions (`ToHtml`) rather than the user's `view`.
+    let is_primitive = |n: &str| {
+        matches!(
+            n,
+            "Html" | "String" | "Int" | "Float" | "Bool" | "Hex" | "Unit" | "Byte"
+        )
     };
-    let view = funcs("view").find(|f| {
-        f.receiver.is_some()
-            && f.params.is_empty()
-            && matches!(&f.return_ty, TypeExpr::Named { name, generics, .. }
-                        if name == "Html" && generics.is_empty())
-    })?;
+    let views: Vec<&&FunctionDef> = fns
+        .iter()
+        .filter(|f| {
+            f.params.is_empty()
+                && f.receiver.as_ref().is_some_and(|r| !is_primitive(&r.name))
+                && matches!(&f.return_ty, TypeExpr::Named { name, generics, .. }
+                            if name == "Html" && generics.is_empty())
+        })
+        .collect();
+    let view = match views.as_slice() {
+        [v] => **v,
+        _ => return None,
+    };
     let model = view.receiver.as_ref()?.name.clone();
-    funcs("init").find(|f| {
-        f.receiver.is_none()
-            && f.params.is_empty()
-            && matches!(&f.return_ty, TypeExpr::Named { name, .. } if *name == model)
-    })?;
-    funcs("update").find(|f| {
-        f.receiver.as_ref().map(|r| r.name.as_str()) == Some(model.as_str())
-            && f.params.len() == 1
-            && matches!(&f.params[0].ty, TypeExpr::Named { name, generics, .. }
-                        if name == "String" && generics.is_empty())
-            && matches!(&f.return_ty, TypeExpr::Named { name, .. } if *name == model)
-    })?;
-    Some(WebEntry { model })
+
+    // Does a named type alias-resolve to the model?
+    let aliases_model = |ty: &TypeExpr| -> bool {
+        let TypeExpr::Named { name, generics, .. } = ty else {
+            return false;
+        };
+        if !generics.is_empty() {
+            return false;
+        }
+        let mut cur = name.as_str();
+        for _ in 0..24 {
+            if cur == model {
+                return true;
+            }
+            match alias.get(cur) {
+                Some(next) => cur = next,
+                None => return false,
+            }
+        }
+        false
+    };
+
+    // init: nullary constructor returning a model-aliased type.
+    let inits: Vec<&&FunctionDef> = fns
+        .iter()
+        .filter(|f| f.name.name == "Self" && f.params.is_empty() && aliases_model(&f.return_ty))
+        .collect();
+    let init = match inits.as_slice() {
+        [i] => **i,
+        _ => return None,
+    };
+
+    // update: `(Model * Msg) => Update` — first input is the model,
+    // result aliases the model.
+    let updates: Vec<&&FunctionDef> = fns
+        .iter()
+        .filter(|f| {
+            f.name.name == "Self"
+                && f.params.len() == 2
+                && matches!(&f.params[0].ty, TypeExpr::Named { name, .. } if *name == model)
+                && aliases_model(&f.return_ty)
+        })
+        .collect();
+    let update = match updates.as_slice() {
+        [u] => **u,
+        _ => return None,
+    };
+
+    let key = |f: &FunctionDef| {
+        (
+            f.receiver.as_ref().map(|r| r.name.clone()),
+            f.name.name.clone(),
+        )
+    };
+    Some(WebEntry {
+        model,
+        init: key(init),
+        update: key(update),
+        view: key(view),
+    })
 }
 
 /// Extract the receiver type from the first component of a parameter list.

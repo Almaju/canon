@@ -1,12 +1,29 @@
 AddForm = ElAttr
 
+Init = AddedTodo
+
 LoadButton = ElAttr
 
 Prefix = String
 
+Update = Todos
+
 Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
         -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
+}
+
+Todos => Html {
+    "<h1>Canon Todos</h1>"
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(LoadButton() -> String)
+        -> Div
+}
+
+Unit => Init {
+    Title("check the canon backend")
+        -> AddedTodo(Title("build the canon frontend") -> AddedTodo(Todos("")))
 }
 
 Unit => LoadButton {
@@ -14,12 +31,7 @@ Unit => LoadButton {
         -> ElAttr("Load todos from the server", Tag("button"))
 }
 
-init = () => Todos {
-    Title("check the canon backend")
-        -> AddedTodo(Title("build the canon frontend") -> AddedTodo(Todos("")))
-}
-
-update = (Todos * String) => Todos {
+Todos * String => Update {
     Prefix(String -> Substring(1, 4)).(
         * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
         * ("Dele") => Todos {
@@ -37,12 +49,4 @@ update = (Todos * String) => Todos {
         }
         * (Prefix) => Todos { Todos }
     )
-}
-
-view = (Todos) => Html {
-    "<h1>Canon Todos</h1>"
-        -> Joined(AddForm() -> String)
-        -> Joined(1 -> RenderedItems(Todos) -> Ul)
-        -> Joined(LoadButton() -> String)
-        -> Div
 }

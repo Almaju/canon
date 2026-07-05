@@ -2,7 +2,11 @@ AddForm = ElAttr
 
 ClearButton = Button
 
+Init = AddedTodo
+
 Prefix = String
+
+Update = Todos
 
 Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
@@ -13,12 +17,20 @@ Unit => ClearButton {
     Msg("Clear") -> Button("Clear completed")
 }
 
-init = () => Todos {
+Todos => Html {
+    "<h1>Canon Todos</h1>"
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(ClearButton() -> String)
+        -> Div
+}
+
+Unit => Init {
     Title("toggle a task to mark it done")
         -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
 }
 
-update = (Todos * String) => Todos {
+Todos * String => Update {
     Prefix(String -> Substring(1, 4)).(
         * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
         * ("Clea") => Todos { Todos -> Cleared }
@@ -36,12 +48,4 @@ update = (Todos * String) => Todos {
         }
         * (Prefix) => Todos { Todos }
     )
-}
-
-view = (Todos) => Html {
-    "<h1>Canon Todos</h1>"
-        -> Joined(AddForm() -> String)
-        -> Joined(1 -> RenderedItems(Todos) -> Ul)
-        -> Joined(ClearButton() -> String)
-        -> Div
 }
