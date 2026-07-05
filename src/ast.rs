@@ -418,7 +418,14 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
             "Html" | "String" | "Int" | "Float" | "Bool" | "Hex" | "Unit" | "Byte"
         )
     };
-    let views: Vec<&&FunctionDef> = fns
+    // Every `_ => Html` with a non-primitive receiver is a *candidate*
+    // view. There can be more than one — e.g. the stdlib's own
+    // `Markdown => Html` renderer is a non-primitive `_ => Html` too — so
+    // the receiver being a user type is necessary but not sufficient. The
+    // real view is the candidate whose receiver is also the model of a
+    // complete init/update triple; a helper like `Markdown => Html` has
+    // no `Unit => Init` / `Model * Msg => Update`, so it drops out.
+    let candidate_views: Vec<&&FunctionDef> = fns
         .iter()
         .filter(|f| {
             f.params.is_empty()
@@ -427,14 +434,9 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
                             if name == "Html" && generics.is_empty())
         })
         .collect();
-    let view = match views.as_slice() {
-        [v] => **v,
-        _ => return None,
-    };
-    let model = view.receiver.as_ref()?.name.clone();
 
-    // Does a named type alias-resolve to the model?
-    let aliases_model = |ty: &TypeExpr| -> bool {
+    // Does a named type alias-resolve to `model`?
+    let aliases = |ty: &TypeExpr, model: &str| -> bool {
         let TypeExpr::Named { name, generics, .. } = ty else {
             return false;
         };
@@ -454,44 +456,59 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
         false
     };
 
-    // init: nullary constructor returning a model-aliased type.
-    let inits: Vec<&&FunctionDef> = fns
-        .iter()
-        .filter(|f| f.name.name == "Self" && f.params.is_empty() && aliases_model(&f.return_ty))
-        .collect();
-    let init = match inits.as_slice() {
-        [i] => **i,
-        _ => return None,
-    };
-
-    // update: `(Model * Msg) => Update` — first input is the model,
-    // result aliases the model.
-    let updates: Vec<&&FunctionDef> = fns
-        .iter()
-        .filter(|f| {
-            f.name.name == "Self"
-                && f.params.len() == 2
-                && matches!(&f.params[0].ty, TypeExpr::Named { name, .. } if *name == model)
-                && aliases_model(&f.return_ty)
-        })
-        .collect();
-    let update = match updates.as_slice() {
-        [u] => **u,
-        _ => return None,
-    };
-
     let key = |f: &FunctionDef| {
         (
             f.receiver.as_ref().map(|r| r.name.clone()),
             f.name.name.clone(),
         )
     };
-    Some(WebEntry {
-        model,
-        init: key(init),
-        update: key(update),
-        view: key(view),
-    })
+
+    // Resolve each candidate view to a full triple; keep only those that
+    // do. Exactly one complete triple makes a web app.
+    let mut resolved: Vec<WebEntry> = Vec::new();
+    for view in &candidate_views {
+        let Some(model) = view.receiver.as_ref().map(|r| r.name.clone()) else {
+            continue;
+        };
+
+        // init: nullary constructor returning a model-aliased type.
+        let inits: Vec<&&FunctionDef> = fns
+            .iter()
+            .filter(|f| {
+                f.name.name == "Self" && f.params.is_empty() && aliases(&f.return_ty, &model)
+            })
+            .collect();
+        let [init] = inits.as_slice() else {
+            continue;
+        };
+
+        // update: `(Model * Msg) => Update` — first input is the model,
+        // result aliases the model.
+        let updates: Vec<&&FunctionDef> = fns
+            .iter()
+            .filter(|f| {
+                f.name.name == "Self"
+                    && f.params.len() == 2
+                    && matches!(&f.params[0].ty, TypeExpr::Named { name, .. } if *name == model)
+                    && aliases(&f.return_ty, &model)
+            })
+            .collect();
+        let [update] = updates.as_slice() else {
+            continue;
+        };
+
+        resolved.push(WebEntry {
+            model,
+            init: key(init),
+            update: key(update),
+            view: key(view),
+        });
+    }
+
+    match resolved.as_slice() {
+        [entry] => Some(entry.clone()),
+        _ => None,
+    }
 }
 
 /// Extract the receiver type from the first component of a parameter list.
