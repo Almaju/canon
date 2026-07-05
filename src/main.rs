@@ -1495,6 +1495,12 @@ fn auto_install(file_path: &str) -> bool {
 fn enforce_format(loaded: &LoadResult) -> bool {
     let mut unformatted: Vec<&LoadedSource> = Vec::new();
     for src in &loaded.local_sources {
+        // `.md` assets are Markdown documents, not Canon source — their
+        // `LoadedSource` carries synthesized Canon, which the author never
+        // sees or edits. Never flag them as mis-formatted.
+        if src.path.extension().and_then(|e| e.to_str()) == Some("md") {
+            continue;
+        }
         match formatter::format(&src.source) {
             Ok(canonical) => {
                 if src.source != canonical {

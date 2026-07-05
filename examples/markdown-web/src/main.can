@@ -1,0 +1,22 @@
+Init = Page
+
+Page = String
+
+Update = Page
+
+Page => Html {
+    "<nav><button data-msg=\"Show:intro\">Intro</button> <button data-msg=\"Show:guide\">Guide</button></nav><hr>"
+        -> Joined(Page -> ( * "guide" => Html { Guide() -> Html } * String => Html { Intro() -> Html }))
+        -> Div
+}
+
+Unit => Init {
+    "intro" -> Page
+}
+
+Page * String => Update {
+    String -> Substring(1 -> From * 5 -> To) -> (
+        * "Show:" => Page { String -> Substring(6 -> From * String -> Length -> To) -> Page }
+        * String => Page { Page }
+    )
+}

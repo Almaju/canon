@@ -25,13 +25,57 @@ Output:
 ```
 
 Because `File` reads a document as a `String` (see [Using WASI
-Interfaces](./wasi.md)), a whole file renders in one pipe:
+Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
 Unit => Program {
     "notes.md" -> Path -> File? -> Read? -> Markdown -> Html -> Print
 }
 ```
+
+## Importing markdown files
+
+Writing markdown inside `.can` string literals is awkward. Canon has no
+`import` keyword — a reference resolves to a file by name — and that rule
+extends from `.can` to `.md`: **referencing the PascalCase name a
+markdown file kebab-cases to loads the document as a `Markdown` value**,
+baked in at compile time.
+
+Given `intro.md` beside your source, `Intro` names it:
+
+```canon
+Unit => Program {
+    Intro() -> Html -> Print
+}
+```
+
+The compiler synthesizes `Intro = Markdown` and a nullary constructor
+carrying the (escaped) file contents, then resolves `Markdown` to the
+stdlib renderer as usual. `Intro()` is the document; `Intro() -> Html`
+renders it. The markdown lives in `intro.md`, never in a string literal,
+and `canon fmt` leaves `.md` files untouched.
+
+## In the browser
+
+The renderer is pure string work — no host imports — so it runs in the
+[web target](./web-target.md) too. A web app's `view` can render an
+imported document client-side, so the page *is* a Canon program compiled
+to WebAssembly:
+
+```canon
+Page => Html {
+    "<nav>…</nav><hr>"
+        -> Joined(Page -> (
+            * "guide" => Html { Guide() -> Html }
+            * String => Html { Intro() -> Html }
+        ))
+        -> Div
+}
+```
+
+See `examples/markdown-web` for the full triple: nav messages switch the
+page held in the model, and each page is its own imported `.md` file,
+rendered to HTML entirely in Canon with no JavaScript and no bundler.
 
 ## What it renders
 
@@ -55,14 +99,14 @@ byte-walking style.
 
 ## Why this exists
 
-A language that compiles to WebAssembly components — and to the
-[web target](./web-target.md) — should be able to build its own
-documentation. Rendering Markdown in Canon is the first primitive toward
-that: a Canon CLI program can read the `docs/` sources and emit the HTML
-pages, dogfooding the language as its own static-site generator. That
-path needs no browser, no router, and no runtime lists, so it sidesteps
-the web target's current limits while exercising strings, dispatch,
-escaping, and file I/O end to end.
+A language that compiles to WebAssembly and runs in the browser should be
+able to present its own documentation as a Canon app, not a separate
+toolchain. The Markdown renderer plus `.md` import make that direct:
+content is authored as ordinary markdown files, imported by name, and
+rendered to HTML by the standard library — on the server for a CLI
+generator, or client-side inside the [web target](./web-target.md), where
+Canon acts as the frontend framework. The same renderer serves both,
+exercising strings, dispatch, escaping, and file resolution end to end.
 
 ## Current limits
 

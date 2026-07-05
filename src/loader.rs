@@ -1278,6 +1278,14 @@ fn build_stem_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
                     }
                 }
                 map.entry(stem.to_string()).or_default().push(path);
+            } else if let Some(stem) = file_name.strip_suffix(".md") {
+                // A `.md` file is a Markdown asset: referencing the
+                // PascalCase name it kebab-cases to (`Notes` → `notes.md`)
+                // loads its contents as a `Markdown` value — the same
+                // name → file rule that governs `.can`, extended to
+                // documents so markdown lives in `.md`, not in string
+                // literals. `load_into` synthesizes the Canon module.
+                map.entry(stem.to_string()).or_default().push(path);
             }
         }
     }
@@ -1509,14 +1517,54 @@ fn discover_bundled_references(
     Ok(())
 }
 
+/// Synthesize the Canon module for a Markdown asset file. A file
+/// `notes.md` referenced as `Notes` becomes a nullary constructor
+/// carrying the document's text as a `Markdown` value:
+///
+/// ```text
+/// Notes = Markdown
+///
+/// Unit => Notes {
+///     "…file contents, escaped…" -> Markdown
+/// }
+/// ```
+///
+/// So `Notes()` is the document and `Notes() -> Html` renders it — the
+/// markdown lives in the `.md` file, never in a `.can` string literal.
+/// The `= Markdown` alias pulls in `canon/std`'s renderer automatically.
+fn markdown_asset_source(path: &Path, content: &str) -> String {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Doc");
+    let name = crate::bindgen::naming::kebab_to_pascal(stem);
+    let mut lit = String::with_capacity(content.len() + 16);
+    for ch in content.chars() {
+        match ch {
+            '\\' => lit.push_str("\\\\"),
+            '"' => lit.push_str("\\\""),
+            '\n' => lit.push_str("\\n"),
+            '\r' => lit.push_str("\\r"),
+            '\t' => lit.push_str("\\t"),
+            c if (c as u32) < 0x20 => lit.push_str(&format!("\\x{:02x}", c as u32)),
+            c => lit.push(c),
+        }
+    }
+    format!("{name} = Markdown\n\nUnit => {name} {{\n    \"{lit}\" -> Markdown\n}}\n")
+}
+
 fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
     if !ctx.seen.insert(path.to_path_buf()) {
         return Ok(());
     }
-    let source = fs::read_to_string(path).map_err(|err| CanonError::CheckError {
+    let raw = fs::read_to_string(path).map_err(|err| CanonError::CheckError {
         message: format!("could not read `{}`: {}", path.display(), err),
         span: Span::default(),
     })?;
+    // A `.md` file isn't Canon source — it's a Markdown document loaded
+    // as a `Markdown` value. Synthesize the module that binds it.
+    let source = if path.extension().and_then(|e| e.to_str()) == Some("md") {
+        markdown_asset_source(path, &raw)
+    } else {
+        raw
+    };
     ctx.local_sources.push(LoadedSource {
         path: path.to_path_buf(),
         source: source.clone(),
