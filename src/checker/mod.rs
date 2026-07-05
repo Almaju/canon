@@ -1897,7 +1897,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 check_expr(expr, &inner_scope, symbols, errors);
             }
         }
-        // Await nodes are inserted by the checker itself (Phase 5) and are
+        // Await nodes are inserted by the checker itself and are
         // never produced by the parser. Nothing to validate structurally.
         Expr::Await { inner, .. } => {
             check_expr(inner, scope, symbols, errors);

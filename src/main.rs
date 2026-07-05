@@ -78,7 +78,7 @@ fn print_help() {
     println!("  test <file.can>            Run `() => TestResult` functions as tests");
     println!("  fmt [path...] [--check]   Format Canon source files or directories");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
-    println!("                              stages: tokens | ast | wat");
+    println!("                              stages: tokens | ast");
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
     println!(
         "                            Generate Canon bindings from a WIT package or WASM component"
@@ -547,12 +547,8 @@ fn cmd_inspect(args: &[String]) {
     match stage {
         "tokens" => inspect_tokens(file_path),
         "ast" => inspect_ast(file_path),
-        "wat" => inspect_wat(file_path),
         other => {
-            eprintln!(
-                "error: unknown stage '{}' (expected `tokens`, `ast`, or `wat`)",
-                other
-            );
+            eprintln!("error: unknown stage '{}' (expected `tokens` or `ast`)", other);
             process::exit(1);
         }
     }
@@ -564,7 +560,6 @@ fn print_inspect_help() {
     println!("  <stage>     One of:");
     println!("                tokens    Lexer output");
     println!("                ast       Parser output (Module debug dump)");
-    println!("                wat       Generated WebAssembly Text");
     println!("  <file.can>   Source file to inspect.");
 }
 
@@ -604,23 +599,6 @@ fn inspect_ast(file_path: &str) {
             process::exit(1);
         }
     }
-}
-
-fn inspect_wat(file_path: &str) {
-    let loaded = load_or_exit(file_path);
-    if !enforce_format(&loaded) {
-        process::exit(1);
-    }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
-    if !errors.is_empty() {
-        for err in &errors {
-            print_error(file_path, err);
-        }
-        eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
-    }
-    let wat = codegen::generate_wat(&loaded.module);
-    println!("{}", wat);
 }
 
 fn cmd_bindgen(args: &[String]) {

@@ -20,7 +20,7 @@
 //! This module is **target-agnostic**: it only walks the AST. The codegen
 //! consumes the resulting `AsyncSet` and acts on it.
 //!
-//! # Status (Phase 5, in progress)
+//! # Status
 //!
 //! The fixpoint and propagation are wired up. The `AsyncSet` is plumbed
 //! through to `component::wrap` and surfaced in the emitted WIT (via

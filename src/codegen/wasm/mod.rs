@@ -9213,12 +9213,3 @@ pub fn generate_wit(module: &OModule) -> String {
     let async_set = crate::codegen::async_analysis::analyse(module);
     component::generate_wit(module, &async_set)
 }
-
-/// Phase 1 stub — print a brief summary of the emitted component.
-pub fn generate_wat(module: &OModule) -> String {
-    let bytes = generate(module);
-    format!(
-        ";; WAT disassembly not yet implemented.\n;; Component is {} bytes.\n(component ...)\n",
-        bytes.len()
-    )
-}

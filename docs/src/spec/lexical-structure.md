@@ -89,8 +89,8 @@ prose belongs outside the source file.
 - A function body is a **newline-separated sequence of expressions**.
   There are no semicolons.
 - An expression may span multiple lines when the continuation is
-  syntactically unambiguous (e.g. a chain whose next line begins with
-  `.`).
+  syntactically unambiguous (e.g. a pipeline whose next line begins
+  with `->`).
 - Layout is **canonical**: `canon fmt` defines the one accepted
   formatting, and `canon check` / `canon run` refuse files that deviate
   from it. Formatting is part of the language surface, not a style
