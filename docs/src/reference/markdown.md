@@ -89,14 +89,15 @@ The renderer is a practical subset, not a full CommonMark implementation:
 | ` ``` ` fenced block | `<pre><code>…</code></pre>` (raw, escaped, no inline pass) |
 | `**bold**` | `<strong>…</strong>` (inner text formatted) |
 | `` `code` `` | `<code>…</code>` (contents escaped) |
+| `[text](url)` | `<a href="url">…</a>` (url escaped, text formatted) |
 | blank lines | block separators |
 
 Text is HTML-escaped as it is walked (`"` `&` `<` `>`), so `a < b & c`
 renders as `a &lt; b &amp; c`. A `#` with no following space, and a lone
 `*`, are treated as literal text.
 
-Not yet handled: italics (`*x*`), links (`[t](u)`), ordered lists,
-nested lists, and blockquotes — each an additive extension in the same
+Not yet handled: italics (`*x*`), ordered lists, nested lists,
+and blockquotes — each an additive extension in the same
 byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8)
 text in string literals is subject to the compiler's existing lexer
 handling of multi-byte characters; ASCII markdown is unaffected.

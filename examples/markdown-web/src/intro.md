@@ -8,5 +8,5 @@ document is loaded from `intro.md` and rendered to HTML by the standard
 library `Markdown` renderer, entirely in Canon.
 
 ## No framework
-There is no React, no bundler, no JavaScript you wrote. The `view`, the
+There is no React, no bundler, no JavaScript you wrote. See the [Canon repo](https://github.com/almaju/canon). The `view`, the
 `update` loop, and the **Markdown renderer** are all Canon.

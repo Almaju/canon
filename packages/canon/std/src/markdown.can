@@ -1,3 +1,5 @@
+BracketClose = Int
+
 FenceBody = Frag
 
 FenceEnd = Int
@@ -28,6 +30,8 @@ ParaBody = Frag
 
 ParaEnd = Int
 
+ParenClose = Int
+
 RenderedBlocks = Frag
 
 RenderedFence = Frag
@@ -43,6 +47,18 @@ RenderedParagraph = Frag
 StarClose = Int
 
 TickClose = Int
+
+Int * String => BracketClose {
+    Int -> Gt(String -> Length) -> (
+        * False => BracketClose {
+            String -> ByteAt(Int) -> Eq(93) -> (
+                * False => BracketClose { Int -> Sum(1) -> BracketClose(String) }
+                * True => BracketClose { Int }
+            )
+        }
+        * True => BracketClose { Int }
+    )
+}
 
 Int * String => FenceBody {
     Int -> Gt(String -> Length) -> (
@@ -118,10 +134,42 @@ Int * String => Inline {
                 * False => Inline {
                     String -> ByteAt(Int) -> Eq(42) -> (
                         * False => Inline {
-                            String
-                                -> Substring(Int -> From * Int -> To)
-                                -> Escaped
-                                -> Joined(Int -> Sum(1) -> Inline(String))
+                            String -> ByteAt(Int) -> Eq(91) -> (
+                                * False => Inline {
+                                    String
+                                        -> Substring(Int -> From * Int -> To)
+                                        -> Escaped
+                                        -> Joined(Int -> Sum(1) -> Inline(String))
+                                }
+                                * True => Inline {
+                                    Int
+                                        -> Sum(1)
+                                        -> BracketClose(String)
+                                        -> Sum(1)
+                                        -> Gt(String -> Length) -> (
+                                        * False => Inline {
+                                            String
+                                                -> ByteAt(Int -> Sum(1) -> BracketClose(String) -> Sum(1))
+                                                -> Eq(40) -> (
+                                                * False => Inline {
+                                                    "[" -> Joined(Int -> Sum(1) -> Inline(String))
+                                                }
+                                                * True => Inline {
+                                                    "<a href=\""
+                                                        -> Joined(String -> Substring(Int -> Sum(1) -> BracketClose(String) -> Sum(2) -> From * Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Difference(1) -> To) -> Escaped)
+                                                        -> Joined("\">")
+                                                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> BracketClose(String) -> Difference(1) -> To)))
+                                                        -> Joined("</a>")
+                                                        -> Joined(Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Sum(1) -> Inline(String))
+                                                }
+                                            )
+                                        }
+                                        * True => Inline {
+                                            "[" -> Joined(Int -> Sum(1) -> Inline(String))
+                                        }
+                                    )
+                                }
+                            )
                         }
                         * True => Inline {
                             Int -> Sum(1) -> Gt(String -> Length) -> (
@@ -273,6 +321,18 @@ Int * String => ParaEnd {
     Int -> IsPara(String) -> (
         * False => ParaEnd { Int }
         * True => ParaEnd { Int -> LineEnd(String) -> Sum(1) -> ParaEnd(String) }
+    )
+}
+
+Int * String => ParenClose {
+    Int -> Gt(String -> Length) -> (
+        * False => ParenClose {
+            String -> ByteAt(Int) -> Eq(41) -> (
+                * False => ParenClose { Int -> Sum(1) -> ParenClose(String) }
+                * True => ParenClose { Int }
+            )
+        }
+        * True => ParenClose { Int }
     )
 }
 
