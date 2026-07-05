@@ -46,6 +46,7 @@
 - [Modules and Packages](./spec/modules.md)
 - [Effects and the Async Model](./spec/effects-and-async.md)
 - [Compilation and the ABI](./spec/compilation.md)
+- [Types-Only Canon](./spec/types-only.md)
 
 # Examples
 
@@ -65,5 +66,6 @@
 
 - [Standard Library](./reference/stdlib.md)
 - [Using WASI Interfaces](./reference/wasi.md)
+- [The Web Target](./reference/web-target.md)
 - [Deploying Components](./reference/deploying.md)
 - [Coming from Rust](./reference/coming-from-rust.md)

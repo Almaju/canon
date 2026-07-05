@@ -14,7 +14,7 @@ const BUILTIN_TYPES: &[&str] = &[
     // resource as `Foo = Handle`. Users never write `Handle` directly —
     // they receive `Foo` values from binding constructors and thread them
     // through binding methods. The own/borrow distinction WIT exposes is
-    // intentionally invisible at the source level (see DESIGN.md §Resources):
+    // intentionally invisible at the source level (see the language spec §Resources):
     // the canonical-ABI lowering reads it from the WIT signature, the
     // source-level type is just `Foo`.
     "Handle",
@@ -148,8 +148,8 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
     }
 
     // Detect HTTP entries (free functions returning `Response` or
-    // `Result<Response, _>`). See `WASI-HTTP-HANDLER.md` §Entry-point
-    // selection for the rule.
+    // `Result<Response, _>`). See the entry-point rule in the language
+    // spec (docs/src/spec/functions.md).
     let http_entries: Vec<&FunctionDef> = module.items[entry_items_start..]
         .iter()
         .filter_map(|item| match item {
@@ -167,9 +167,9 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
 
     check_ordering(module, entry_items_start, http_entry_name, &mut errors);
 
-    // Detect the web-app entry triple (`init` / `update` / `view`,
-    // see `WEB-TARGET.md`). Scanned over the entry file's items, same
-    // as HTTP entries.
+    // Detect the web-app entry triple (`init` / `update` / `view`, see
+    // docs/src/reference/web-target.md). Scanned over the entry file's
+    // items, same as HTTP entries.
     let web_entry = crate::ast::find_web_entry(&module.items[entry_items_start..]);
 
     match (main_found, http_entries.len(), web_entry.is_some()) {
@@ -179,8 +179,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         (false, 0, false) => errors.push(CanonError::CheckError {
             message: "no entry point defined: expected a `main` function, a free function \
                       returning `Response` (HTTP handler), or an `init`/`update`/`view` \
-                      triple (web app). See `WASI-HTTP-HANDLER.md` §Entry-point selection \
-                      and `WEB-TARGET.md`."
+                      triple (web app)."
                 .to_string(),
             span: module.span,
         }),
@@ -188,8 +187,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         (true, n, _) if n > 0 => errors.push(CanonError::CheckError {
             message: format!(
                 "mixed worlds: this module defines `main` (CLI entry) and also `{}` returning \
-                  `Response` (HTTP entry). A component exports exactly one world. Remove one. \
-                  See `WASI-HTTP-HANDLER.md` §Entry-point selection.",
+                  `Response` (HTTP entry). A component exports exactly one world. Remove one.",
                 http_entries[0].name.name
             ),
             span: http_entries[0].span,
@@ -197,7 +195,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         (true, 0, true) => errors.push(CanonError::CheckError {
             message: "mixed worlds: this module defines `main` (CLI entry) and also the \
                       `init`/`update`/`view` triple (web app). A component exports exactly \
-                      one world. Remove one. See `WEB-TARGET.md`."
+                      one world. Remove one."
                 .to_string(),
             span: module.span,
         }),
@@ -205,7 +203,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             message: format!(
                 "mixed worlds: this module defines `{}` returning `Response` (HTTP entry) \
                   and also the `init`/`update`/`view` triple (web app). A component exports \
-                  exactly one world. Remove one. See `WEB-TARGET.md`.",
+                  exactly one world. Remove one.",
                 http_entries[0].name.name
             ),
             span: http_entries[0].span,
@@ -214,8 +212,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         (false, n, false) if n > 1 => errors.push(CanonError::CheckError {
             message: format!(
                 "ambiguous HTTP entry: `{}` and `{}` both return `Response`. Exactly one \
-                  free function may be the entry. Refactor helpers to return a non-world type. \
-                  See `WASI-HTTP-HANDLER.md` §Entry-point selection.",
+                  free function may be the entry. Refactor helpers to return a non-world type.",
                 http_entries[0].name.name, http_entries[1].name.name
             ),
             span: http_entries[1].span,
@@ -333,7 +330,7 @@ fn check_sorted_named(
 ///
 /// Canon has no private visibility and no comments — the code *is* the
 /// documentation — so unreachable declarations are pure noise and get
-/// flagged (see DESIGN.md § Dead Code). The walk is name-based and
+/// flagged (see the language spec § Dead Code). The walk is name-based and
 /// conservative: a method call `x.foo()` marks every declaration named
 /// `foo`, a type mention marks the type and (through its definition)
 /// its variants, and declarations sharing a name (trait impls,
@@ -612,7 +609,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     //   * `T = A * B * ...`  — a real product; each named component is a
     //     field on `T`.
     //   * `T = U`           — a newtype alias; `T` has a single field
-    //     named after the underlying type `U` (see DESIGN.md § "Newtypes
+    //     named after the underlying type `U` (see the language spec § "Newtypes
     //     Are 1-Component Products"). This makes `value.U` a valid
     //     unwrap expression: `Greeting("hi").String` yields the inner
     //     `String`. Method lookup still walks the alias chain (so
@@ -642,7 +639,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                     // Newtype `T = U` (or `T = U<…>`): one component named
                     // after the underlying type. The generic args don't
                     // affect the field's name — `MessageContent = Option<Content>`
-                    // still has a single field named `Option`. See DESIGN.md
+                    // still has a single field named `Option`. See the language spec
                     // § "Newtypes Are 1-Component Products".
                     product_fields.insert(td.name.name.clone(), vec![name.clone()]);
                 }
@@ -1176,7 +1173,7 @@ fn check_block(
 /// Validate a literal-pattern dispatch: `scrutinee.( * ("a") -> R {…}
 /// * ("b") -> R {…} * (String) -> R {…} )`.
 ///
-/// Rules (see DESIGN.md § Literal Dispatch):
+/// Rules (see the language spec § Literal Dispatch):
 ///   * The scrutinee must be `String` or `Int` (directly or through a
 ///     newtype alias chain), matching the literal kind of every arm.
 ///   * The final arm is a mandatory catch-all naming the scrutinee's
@@ -1609,7 +1606,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // two shapes:
             //   * `T = A * B * ...`  — each named component is a field.
             //   * `T = U`            — newtype with one field named `U`
-            //     (see DESIGN.md § "Newtypes Are 1-Component Products").
+            //     (see the language spec § "Newtypes Are 1-Component Products").
             let is_product = symbols.product_fields.contains_key(&recv_ty_for_lookup);
             if let Some(fields) = symbols.product_fields.get(&recv_ty_for_lookup) {
                 if fields.iter().any(|f| f == &field.name) {
@@ -1709,8 +1706,7 @@ fn effective_call_arity(args: &[Expr]) -> usize {
 /// producing a stream value that downstream combinators (`map`, `take`,
 /// `concat`, …) operate on directly. Stream consumption (auto-iteration)
 /// is handled at call sites via `.each` / `.next` recognition in
-/// `async_analysis::expr_has_async_trigger`, not by type-peel here. See
-/// `STREAMING.md`.
+/// `async_analysis::expr_has_async_trigger`, not by type-peel here.
 fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
     match ty {
         TypeExpr::Named { name, generics, .. } => {
@@ -1797,7 +1793,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     {
         return true;
     }
-    // Conversion is construction (DESIGN.md § Conversions): `Int.String()`
+    // Conversion is construction (the language spec § Conversions): `Int.String()`
     // is the method spelling of the `String(Int)` constructor. `Byte`
     // receivers reach this arm through the alias chain (`Byte = Int`).
     if receiver_ty == "Int" && method == "String" && arg_count == 0 {
@@ -1873,18 +1869,19 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                 // A constructor is identity when the argument already has
                 // the target type (`Int(1)` is an `Int`, `Label("x")`
                 // wraps) and a *declared conversion* otherwise
-                // (conversion is construction, DESIGN.md § Conversions).
-                // A conversion is a self-named constructor on the source
-                // type — `Int = (String) -> Result<Int, MalformedInt>`
-                // registers as `("String", "Int")` — so its declared
-                // return type wins for non-matching arguments. This is
-                // what types each member of a constructor *family*
-                // (`Json = (Bool) -> Json` vs `Json = (String) ->
-                // Result<Json, MalformedJson>`) at its call site. The
-                // lookup walks the argument's alias chain so a newtyped
-                // argument still finds a member declared on its
-                // underlying type. No declaration found = plain
-                // newtype/product wrap, typed as the constructor's name.
+                // (conversion is construction, the language spec
+                // § Conversions). A conversion is a self-named
+                // constructor on the source type — `Int = (String) ->
+                // Result<Int, MalformedInt>` registers as `("String",
+                // "Int")` — so its declared return type wins for
+                // non-matching arguments. This is what types each member
+                // of a constructor *family* (`Json = (Bool) -> Json` vs
+                // `Json = (String) -> Result<Json, MalformedJson>`) at
+                // its call site. The lookup walks the argument's alias
+                // chain so a newtyped argument still finds a member
+                // declared on its underlying type. No declaration found
+                // = plain newtype/product wrap, typed as the
+                // constructor's name.
                 let mut cur = t;
                 let mut found = None;
                 for _ in 0..20 {

@@ -2,7 +2,7 @@
 //!
 //! A package's manifest is a tiny TOML file declaring its identity, version,
 //! optional fetch information, dependencies, and external bindings. The
-//! compiler parses only the subset shown in DESIGN.md § Package Manifests —
+//! compiler parses only the subset shown in the language spec (docs/src/spec/) —
 //! top-level string keys plus at most one each of `[deps]`, `[imports]`, and
 //! `[workspace]`. Full TOML compatibility is a non-goal; we want editor
 //! support and human familiarity, not expressiveness. Keeping the parser

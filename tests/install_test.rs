@@ -89,8 +89,7 @@ version = "0.1.0"
     // The binding file is pure source: bare function-type aliases, no
     // header. The versioned directory name carries the interface's
     // package and version, and the loader derives each declaration's
-    // URN from that path (a binding file is recognized by shape —
-    // PACKAGES.md slice 8).
+    // URN from that path (a binding file is recognized by shape).
     assert!(
         !content.contains("bindings \""),
         "no bindings header should be emitted, got:\n{content}",

@@ -1,4 +1,4 @@
-//! Registry-backed `canon install` — PACKAGES.md slices 2 + 7.
+//! Registry-backed `canon install`.
 //!
 //! `canon install <ns>:<pkg>[@<version>]` fetches a WIT package from a
 //! package registry and vendors the generated Canon bindings under the
@@ -409,7 +409,7 @@ fn parse_source_artifact(bytes: &[u8]) -> Option<SourceArtifact> {
 /// pin, and every embedded file is canonically formatted pure source —
 /// no directive is stamped. Dependencies the package was published
 /// against are reported, not installed — transitive install is
-/// PACKAGES.md slice 4.
+/// a later slice.
 fn vendor_source_package(
     spec: &RegistrySpec,
     version: &Version,
@@ -469,7 +469,7 @@ fn vendor_source_package(
         .iter()
         .map(|dep| {
             format!(
-                "`{coordinate}` depends on `{dep}`: install it with `canon install {}` (transitive install lands with PACKAGES.md slice 4)",
+                "`{coordinate}` depends on `{dep}`: install it with `canon install {}` (transitive install is not yet implemented)",
                 dep.split('@').next().unwrap_or(dep),
             )
         })
@@ -614,7 +614,7 @@ fn collect_publish_sources(root: &Path) -> Result<Vec<(String, String)>, Install
 /// package has a `main.can` entry, the full checker runs too — a
 /// program that doesn't check doesn't publish. (Pure libraries have no
 /// entry point to check from; their errors surface in consumers, per
-/// DESIGN.md's dead-code stance.)
+/// the language spec's (docs/src/spec/) dead-code stance.)
 fn preflight(files: &[(String, String)], root: &Path) -> Result<(), InstallError> {
     for (rel, source) in files {
         let formatted = crate::formatter::format(source)

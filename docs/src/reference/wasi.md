@@ -71,8 +71,8 @@ one-shot, without a manifest.
 
 Functions whose shape the compiler can't lower yet are **skipped with
 a reason** at install time rather than emitted broken, notably
-resource *methods* and streams (tracked for V1.1 in `V1.md`). The
-skip list is printed by `canon install`.
+resource *methods* and streams. The skip list is printed by
+`canon install`.
 
 ## What the compiled component imports
 

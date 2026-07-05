@@ -100,7 +100,7 @@ position that expects `T`.
 
 `canon install <ns>:<pkg>[@ver]` fetches a WIT package from its
 registry and vendors the generated binding files under
-`deps/<ns>/<pkg>@<version>/` (see PACKAGES.md). The compiled
+`deps/<ns>/<pkg>@<version>/` (see docs/src/spec/modules.md). The compiled
 component's import list is then fully determined by the binding
 declarations the program actually uses, and resolved at
 component-instantiation time by the host. `canon build` produces a
@@ -121,8 +121,9 @@ This writes `<ns>/<pkg>@<ver>/<iface>.can` for each interface,
 alphabetically ordered, ready to reference. The mapping is mechanical:
 WIT records become
 products, variants become unions, `list<T>` becomes `List<T>`, kebab-case
-becomes Canon camelCase / PascalCase, and so on. See `DESIGN.md` for the
-full table.
+becomes Canon camelCase / PascalCase, and so on. See the
+[WIT ↔ Canon mapping](../spec/compilation.md#the-wit--canon-mapping) for
+the full table.
 
 The `wasi/…` bindings shipped with the compiler are produced this way
 from the WIT files vendored under `wit-vendor/wasi/`. Regenerate them
@@ -170,7 +171,7 @@ methods. The bridge swap is invisible.
   isn't yet usable from the canonical ABI (resources + streams, e.g.
   filesystem descriptors), Canon ships a `canon:builtins/*` stand-in.
   The user-facing API doesn't change when the bridge is later swapped
-  for native WASI. The remaining set is tracked in `V1.md`.
+  for native WASI.
 - **Hosts must support WASI Preview 3.** `canon run` embeds `wasmtime`
   with the P3 + component-model-async feature gates; other hosts will
   need equivalent support.

@@ -1,5 +1,4 @@
-//! End-to-end integration test for the `wasi:http/service` world
-//! (WASI-HTTP-HANDLER.md slice 1b).
+//! End-to-end integration test for the `wasi:http/service` world.
 //!
 //! A Canon program whose entry is a free `(Request) -> Response`
 //! function compiles to a standard WebAssembly component exporting

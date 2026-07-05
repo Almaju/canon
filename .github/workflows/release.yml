@@ -137,7 +137,7 @@ jobs:
           name="canon-${{ inputs.tag }}-${{ matrix.target }}"
           mkdir -p "dist/${name}"
           cp "target/${{ matrix.target }}/release/canon${{ matrix.exe }}" "dist/${name}/"
-          cp README.md LICENSE DESIGN.md "dist/${name}/" 2>/dev/null || true
+          cp README.md LICENSE "dist/${name}/" 2>/dev/null || true
           tar -czf "dist/${name}.tar.gz" -C dist "${name}"
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "dist/${name}.tar.gz" | awk '{print $1}'

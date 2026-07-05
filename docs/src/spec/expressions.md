@@ -197,6 +197,52 @@ label = (Int) -> Json {
 - Literal layout is canonical like all Canon code: no spaces after `:`
   or `,` (`{"k":v}`, not `{"k": v}`). `canon fmt` enforces it.
 
+## HTML Literals
+
+HTML literals are first-class expressions producing `Html` values, the
+markup mirror of JSON literals. A literal starts at a `<` immediately
+followed by a lowercase tag name — a position where `<` is never valid
+Canon, since generic arguments are PascalCase types — and spans one root
+element, closing tag included. `{…}` is an interpolation hole holding an
+arbitrary Canon expression; everything else (attributes, quotes, nested
+tags, comments, void elements like `<br>`) is raw markup:
+
+```canon
+view = (Model) -> Html {
+    <div>
+        <h1>Counter</h1>
+        <button data-msg="Increment">+</button>
+        <span>{Model.String()}</span>
+    </div>
+}
+```
+
+Interpolated values convert through the `ToHtml` trait: a `String` or
+`Int` is HTML-escaped (via the stdlib's `text()`), while an `Html` value
+passes through unchanged, so composing literals never double-escapes:
+
+```canon
+row = (String) -> Html {
+    <li>{String}</li>
+}
+
+list = (String) -> Html {
+    <ul>{String.row()}</ul>
+}
+```
+
+- Holes work in attribute values too (`<button data-msg="{Msg}">`).
+- Literal interpolations (`{42}`, `{"a & b"}`) fold to static text at
+  parse time — escaped where escaping applies — so an all-constant
+  literal costs one string constant at runtime, exactly like an
+  all-static JSON literal.
+- `{{` and `}}` escape literal braces.
+
+Like `Json`, `Html` is a prelude type (`Html = String` intrinsically);
+the loader pulls in `canon/std/web/Html` the moment a literal carries a
+hole or `.ToHtml()` is called. HTML literals power the
+[web target](../reference/web-target.md)'s `view`.
+
 ## Operator and Sigil Glossary
 
 | Symbol | Meaning |
@@ -213,3 +259,4 @@ label = (Int) -> Json {
 | `?` | propagate `Result` / `Option` failure |
 | `"..."` | string literal |
 | `{"k":v}` / `[v]` | JSON literal |
+| `<tag>…</tag>` | HTML literal |

@@ -35,9 +35,12 @@ world:
 |---|---|---|
 | `main = () -> Unit` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `f = (Request) -> Response` | `wasi:http/service` | `wasi:http/handler.handle` |
+| `init`/`update`/`view` triple | browser ([web target](../reference/web-target.md)) | core module + JS host |
 
-The entry is lifted async-stackful, letting nested suspending calls
-yield through the canonical ABI.
+The CLI and HTTP entries are lifted async-stackful, letting nested
+suspending calls yield through the canonical ABI. The web target emits a
+plain core module, not a component (browsers instantiate core wasm
+directly).
 
 ## Memory Model
 
@@ -98,7 +101,7 @@ Bindings are produced mechanically:
 | `option<T>` | `Option<T>` |
 | `result<T, E>` | `Result<T, E>` |
 | `result<T>` / bare `result` | `Result<T, Unit>` / `Result<Unit, Unit>` |
-| `tuple<A, B>` | product with positional fields |
+| `tuple<A, B>` | product with positional field names `_0`, `_1`, … |
 | `record { … }` | product (fields alphabetical in source, WIT order at the ABI) |
 | `variant` / `enum` | union |
 | `flags` | product of `Bool` |
@@ -118,6 +121,11 @@ linear ownership: it can only be passed to binding functions and
 dropped by going out of scope (the compiler emits the matching
 `resource.drop`). WIT's `own<T>` / `borrow<T>` distinction is read off
 the WIT and handled by the compiler; source never mentions it.
+
+The resource's members become ordinary body-less functions: a
+`[method]foo.bar` maps to a function whose first parameter is `Foo`
+(the prefix is implicit), a `[static]foo.bar` to one with no `Handle`
+parameter, and a `[constructor]foo` to one returning `Foo`.
 
 ## The Stdlib Layering
 

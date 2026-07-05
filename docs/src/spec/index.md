@@ -31,11 +31,7 @@ Each chapter is self-contained and cross-referenced:
 ## Status and Authority
 
 Canon is an experimental language. This specification describes the
-**reference implementation as it exists**, not a finished standard.
-When prose here and compiler behaviour disagree, the compiler is the
-fact and this text has a bug:
-[file an issue](https://github.com/Almaju/canon/issues).
-The repository's [`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md)
-is the working design document from which this section is distilled.
-It also records intentions that are not implemented yet; the chapters
-here flag those where relevant.
+**reference implementation as it exists**, not a finished standard, and
+is the canonical design document for the language. When prose here and
+compiler behaviour disagree, the compiler is the fact and this text has
+a bug: [file an issue](https://github.com/Almaju/canon/issues).

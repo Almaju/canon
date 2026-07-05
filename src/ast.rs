@@ -38,8 +38,8 @@ pub struct FunctionDef {
     pub return_ty: TypeExpr,
     pub body: Block,
     pub extern_wasm: Option<ExternWasm>,
-    /// Declared in the anonymous-arrow form `(A) -> B { … }` (DESIGN.md
-    /// § Types-Only Canon): the constructor of its output type, with
+    /// Declared in the anonymous-arrow form `(A) -> B { … }`
+    /// (the language spec, § Types-Only Canon): the constructor of its output type, with
     /// `name` synthesized from the constructed type. The flag exists so
     /// the formatter round-trips the arrow form instead of inventing a
     /// `B = ` prefix.
@@ -298,7 +298,7 @@ pub struct Ident {
 /// Which WASI world's primary export shape a function's return type
 /// matches, if any. Used by both the parser (to suppress receiver
 /// extraction for entry-shaped functions) and the checker (for the
-/// entry-detection rule documented in `WASI-HTTP-HANDLER.md`).
+/// entry-detection rule documented in the entry-point rule (docs/src/spec/functions.md)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryWorld {
     /// `wasi:cli/command`, exporting `wasi:cli/run.run`.
@@ -310,7 +310,7 @@ pub enum EntryWorld {
 /// Returns the WASI world whose primary export shape this return type
 /// matches, or `None` if it's not a world-shape type.
 ///
-/// Shape registry (matches the table in DESIGN.md §Entry Point):
+/// Shape registry (matches the table in the language spec (docs/src/spec/)):
 ///
 /// | Return type                              | World |
 /// |------------------------------------------|-------|
@@ -336,7 +336,7 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 }
 
 /// The Elm-architecture entry triple that makes a program a web app
-/// (see `WEB-TARGET.md`): a free `init = () -> Model`, an
+/// (see the web target, docs/src/reference/web-target.md): a free `init = () -> Model`, an
 /// `update = (Model * String) -> Model`, and a `view = (Model) -> Html`.
 /// `Model` is the user's own type; `Html` comes from `canon/std/web`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -447,7 +447,7 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
 /// same type iff their canonical spellings match. Used to merge
 /// structurally identical duplicate type definitions across files
 /// (`Length = Int` declared by both map.can and set.can is one type,
-/// not a clash — DESIGN.md § Types-Only Canon, name resolution).
+/// not a clash — the language spec, § Types-Only Canon).
 pub fn type_expr_canonical(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Named { name, generics, .. } => {

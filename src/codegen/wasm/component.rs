@@ -107,7 +107,7 @@ pub(super) const WASI_CLI_RUN: &str = "wasi:cli/run@0.3.0-rc-2026-03-15";
 
 /// WASI Preview 3 http/handler interface name. Emitted as the
 /// component-level export for programs whose entry has a
-/// `(Request) -> Response` signature. See `WASI-HTTP-HANDLER.md`.
+/// `(Request) -> Response` signature. See the HTTP handler docs (docs/src/tour/http.md).
 pub(super) const WASI_HTTP_HANDLER: &str = "wasi:http/handler@0.3.0-rc-2026-03-15";
 
 /// The vendored WASI Preview 3 WIT sources needed to resolve the

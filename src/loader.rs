@@ -15,8 +15,8 @@ use std::sync::OnceLock;
 
 /// Walk `items` and rewrite function-type aliases into real
 /// `Item::Function`s with `extern_wasm` populated, when the file is a
-/// binding file — recognized by *shape and path*, never by a header
-/// (PACKAGES.md slice 8): `seed_urn` is the WIT interface URN the
+/// binding file — recognized by *shape and path*, never by a header.
+/// `seed_urn` is the WIT interface URN the
 /// file's vendored path spells (`deps/<ns>/<name>@<ver>/<iface>.can`),
 /// and `None` means the file is ordinary source and nothing is
 /// rewritten.
@@ -329,10 +329,11 @@ struct LoadCtx {
     /// in the manifest's `[imports]` table.
     project_root: Option<PathBuf>,
     /// Canonicalized path of the project's vendored-dependency tree
-    /// (`<root>/deps/`, see PACKAGES.md), when it exists on disk. The
+    /// (`<root>/deps/`, see modules & packages (docs/src/spec/modules.md)),
+    /// when it exists on disk. The
     /// root is the project root when there is one, otherwise the entry
-    /// file's directory — so manifest-free projects (the PACKAGES.md
-    /// end state) resolve `deps/` without an `canon.toml` marker.
+    /// file's directory — so manifest-free projects (the modules &
+    /// packages end state) resolve `deps/` without an `canon.toml` marker.
     ///
     /// `Some` enables two things: reference discovery resolves names
     /// against the `deps/` tree, and `load_into` recognizes files under
@@ -342,8 +343,8 @@ struct LoadCtx {
     /// Canonicalized `<project_root>/bindgen/` — the directory the
     /// manifest-driven `canon install` materializes into. Same
     /// versioned layout and path-derived binding rules as `deps_dir`;
-    /// the separate root survives only until PACKAGES.md slice 6
-    /// deletes the manifest flow.
+    /// the separate root survives only until a later cleanup deletes
+    /// the manifest flow.
     bindgen_dir: Option<PathBuf>,
 }
 
@@ -705,8 +706,8 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 // filename-matched because binding files declare functions whose names
 // don't kebab-back to their file (`getRandomU64` lives in `random.can`).
 //
-// Ambiguity is a hard error, not a precedence (PACKAGES.md
-// § Resolution): a name resolving in more than one place fails the
+// Ambiguity is a hard error, not a precedence (modules & packages,
+// docs/src/spec/modules.md): a name resolving in more than one place fails the
 // build naming every candidate. A name resolving nowhere is *not* a
 // loader error — the checker reports undefined names with full type
 // context, so discovery stays best-effort and only ever adds files.
@@ -1118,7 +1119,8 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             }
         },
         _ => {
-            // Constructor/shape families (DESIGN.md § Types-Only Canon,
+            // Constructor/shape families (the language spec,
+            // § Types-Only Canon,
             // name-resolution rule 4): several files may declare the same
             // *function* name — one implementation per receiver type, like
             // `Inserted` on `Map` in map.can and on `Set` in set.can. A
@@ -1519,7 +1521,7 @@ struct DepsPkg {
 }
 
 /// True for a lowercase-kebab package namespace or name segment
-/// (matching the OCI / wkg package-name grammar PACKAGES.md adopts).
+/// (matching the OCI / wkg package-name grammar Canon adopts).
 fn valid_pkg_seg(seg: &str) -> bool {
     !seg.is_empty()
         && seg

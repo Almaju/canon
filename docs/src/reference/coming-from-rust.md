@@ -84,8 +84,7 @@ build path; the output `.wasm` is a portable WebAssembly Component.
 
 - Look at the [`examples/`](https://github.com/Almaju/canon/tree/main/examples)
   directory in the repo.
-- Read [`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md),
-  the authoritative spec.
-- Read [`WASM.md`](https://github.com/Almaju/canon/blob/main/WASM.md)
-  for the WASM-backend status and known gaps.
+- Read the [language specification](../spec/index.md), the authoritative
+  reference, and [Compilation and the ABI](../spec/compilation.md) for
+  how programs lower to WebAssembly.
 - `canon inspect wat path/to/file.can` prints the WAT the compiler produces.

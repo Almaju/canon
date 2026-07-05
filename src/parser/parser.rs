@@ -48,7 +48,8 @@ impl Parser {
 
         // Anonymous constructor: `(A) -> B { … }` declares the `B`
         // constructor — its identity is the typed arrow itself, so there
-        // is no name to write (DESIGN.md § Types-Only Canon). Nothing
+        // is no name to write (the language spec, § Types-Only Canon).
+        // Nothing
         // else at top level starts with `(` or `<`.
         if self.check(TokenKind::LParen) || self.check(TokenKind::Lt) {
             return self.parse_anonymous_ctor(start_span);
@@ -198,8 +199,8 @@ impl Parser {
                 // this is an HTTP entry, not a method. Suppress receiver
                 // extraction so `home = (Request) -> Response { … }` stays
                 // a free function with `Request` as its parameter (not
-                // a method on `Request`). See `WASI-HTTP-HANDLER.md`
-                // §Entry-point selection.
+                // a method on `Request`). See the entry-point rule
+                // (docs/src/spec/functions.md).
                 (None, false, params)
             } else if Self::is_pascal_case_str(&name.name) {
                 // PascalCase: defer to post-parse resolve_new_syntax
