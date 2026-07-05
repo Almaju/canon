@@ -31,8 +31,8 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `async fn`, `.await`                       | Inferred; no source-level keyword       |
 | `String::from(x)` / `x.into()` / `x.to_string()` | `String(x)` / `x.String()` — conversion is construction |
 | `s.parse::<i64>()?`                        | `Int(s)?` / `s.Int()?` (stdlib, loads automatically) |
-| `HashMap::new()` + `.insert(k, v)`         | `Map().insert(k, v)` (stdlib; sorted, functional) |
-| `BTreeSet::new()` + `.insert(x)`           | `Set().insert(x)` (stdlib) |
+| `HashMap::new()` + `.insert(k, v)`         | `Map().Inserted(k, v)` (stdlib; sorted, functional) |
+| `BTreeSet::new()` + `.insert(x)`           | `Set().Inserted(x)` (stdlib) |
 
 ## Things Rust Has That Canon Doesn't
 

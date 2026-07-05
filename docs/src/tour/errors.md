@@ -72,12 +72,12 @@ A type with a declared constructor that returns `Result<Self, E>`
 forces callers to handle the failure mode:
 
 ```canon
-Url("https://example.com")?.get()?.print()
+Url("https://example.com")? -> Fetched?.print()
 ```
 
 Both `?`s do the same job: unwrapping a `Result` at the point of use.
 The first handles `Url` parsing failure (`InvalidUrl`); the second
-handles `.get()` failure (`HttpError`). The function's return type then
+handles fetch failure (`HttpError`). The function's return type then
 carries the union: `Result<Unit, HttpError + InvalidUrl>`.
 
 ## Error Naming

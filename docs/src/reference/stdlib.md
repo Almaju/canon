@@ -165,39 +165,44 @@ lands.
 Sorted collections, written in **pure Canon** — recursive unions built
 from nothing but dispatch, recursion, and `String` comparison. Keys
 (and Map values) are `String`s until stdlib generics land. All updates
-are functional: `insert` / `remove` return a new collection.
+are functional: `Inserted` / `Removed` return a new collection. Every
+operation is a constructor named after what it produces
+([Types-Only Canon](../spec/types-only.md)): `Inserted`, `Removed`,
+`Value` (the value at a key), `Keys`, `Values`, `Length`.
 
 ```canon
 main = () -> Unit {
-    Map().insert("b", "2").insert("a", "1").keys().Json().print()
-    Map().insert("k", "v").get("k").(
+    Map().Inserted("b", "2").Inserted("a", "1").Keys().Json().print()
+    Map().Inserted("k", "v").Value("k").(
         * (None) -> Unit { "absent".print() }
         * (Some<String>) -> Unit { String.print() }
     )
 }
 ```
 
-Iteration order is **alphabetical by key** — `insert` is a sorted
-insert, so `keys()` / `values()` come back ordered no matter the
+Iteration order is **alphabetical by key** — `Inserted` is a sorted
+insert, so `Keys()` / `Values()` come back ordered no matter the
 insertion order. (Of course it is: wherever ordering is discretionary,
 Canon picks alphabetical.)
 
 ```canon
 Map = Empty + Node
 
-Map = () -> Map
+Value = String
 
-get = (Map * String) -> Option<Value>
+(Map) -> Map
 
-insert = (Map * String * Value) -> Map
+(Map * String) -> Option<Value>
 
-keys = (Map) -> List<Key>
+(Map * String * Value) -> Map
 
-length = (Map) -> Int
+(Map) -> Keys
 
-remove = (Map * String) -> Map
+(Map) -> Length
 
-values = (Map) -> List<Value>
+(Map * String) -> Map
+
+(Map) -> Values
 ```
 
 `Set` is the set-shaped counterpart. `set.List()` — conversion is
@@ -206,9 +211,9 @@ construction — returns the members, alphabetically, as a
 
 ```canon
 main = () -> Unit {
-    Set().insert("b").insert("a").insert("b").length().print()
-    Set().insert("x").contains("x").print()
-    Set().insert("b").insert("a").List().Json().print()
+    Set().Inserted("b").Inserted("a").Inserted("b").Length().print()
+    Set().Inserted("x").Contains("x").print()
+    Set().Inserted("b").Inserted("a").List().Json().print()
 }
 ```
 
@@ -270,33 +275,37 @@ rendering vs. byte-to-character) the way Canon resolves everything:
 wrap to mean the other thing. `String(42)` is `"42"`;
 `String(Byte(42))` is `"*"`.
 
-## `Url`, `HttpError`
+## `Url`, `Fetched`, `HttpError`
 
-URL parsing plus blocking HTTP GET.
+URL parsing plus blocking HTTP GET. Fetching is a constructor:
+`Fetched = Body` is the evidence that a `Url` was retrieved
+([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
 main = () -> Unit {
     Url("http://example.com")?
-        .get()?
+        -> Fetched?
         .print()
 }
 ```
 
 ```canon
+Fetched = Body
+
 HttpError = String
 
 InvalidUrl = String
 
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl>
+(String) -> Result<Url, InvalidUrl>
 
-get = (Url) -> Result<String, HttpError>
+(Url) -> Result<Fetched, HttpError>
 ```
 
 `Url(s)` is a validated constructor: malformed inputs are rejected.
-`.get()` performs a blocking HTTP GET and returns the response body.
-TLS (`https://`) and async lowering arrive with the
+`url -> Fetched` performs a blocking HTTP GET and returns the response
+body. TLS (`https://`) and async lowering arrive with the
 `wasi:http/outgoing-handler` migration.
 
 ## HTTP Server
@@ -353,7 +362,7 @@ testAddPositive = () -> TestResult {
     1
         .add(2)
         .eq(3)
-        .assert("1 + 2 != 3")
+        .TestResult("1 + 2 != 3")
 }
 ```
 
@@ -364,8 +373,12 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-assert = (Bool * String) -> TestResult
+(Bool * String) -> TestResult
 ```
+
+The assertion *is* the `TestResult` constructor
+([Types-Only Canon](../spec/types-only.md)): a `Bool` and a message
+construct a `Pass` or a `Fail`.
 
 `canon test <file>` discovers every `() -> TestResult` function in the
 entry file and runs them, printing `[ ok ] testName` or

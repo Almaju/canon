@@ -90,7 +90,7 @@ Random().print()
 An HTTP GET starts with a `Url`:
 
 ```canon
-Url("http://example.com")?.get()?.print()
+Url("http://example.com")? -> Fetched?.print()
 ```
 
 Reading a file starts with a `Path`:

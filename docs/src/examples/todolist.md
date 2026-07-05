@@ -42,7 +42,7 @@ addForm = () -> Html {
 }
 
 clearButton = () -> Html {
-    Msg("Clear").button("Clear completed")
+    Msg("Clear").Button("Clear completed")
 }
 
 init = () -> Todos {
@@ -63,9 +63,9 @@ update = (Todos * String) -> Todos {
 view = (Todos) -> Html {
     "<h1>Canon Todos</h1>"
         .concat(addForm().String)
-        .concat(1.renderItems(Todos).ul().String)
+        .concat(1.renderItems(Todos).Ul().String)
         .concat(clearButton().String)
-        .div()
+        .Div()
 }
 ```
 
@@ -133,21 +133,21 @@ flip = (Line) -> Line {
 renderItem = (Int * Line) -> Html {
     Line.byteAt(1).eq(49).(
         * (False) -> Html {
-            Line.substring(3, Line.length()).text().String
+            Line.substring(3, Line.length()).Escaped()
                 .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("done").String)
+                .concat(Msg("Toggle:".concat(Int.String())).Button("done"))
                 .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
-                .li()
+                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
+                .Li()
         }
         * (True) -> Html {
             "<s>"
-                .concat(Line.substring(3, Line.length()).text().String)
+                .concat(Line.substring(3, Line.length()).Escaped())
                 .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("undo").String)
+                .concat(Msg("Toggle:".concat(Int.String())).Button("undo"))
                 .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
-                .li()
+                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
+                .Li()
         }
     )
 }

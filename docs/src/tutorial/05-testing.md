@@ -14,7 +14,7 @@ testRenderWrapsTitle = () -> TestResult {
     Note("ship it")
         .render()
         .eq({"title":"ship it"})
-        .assert("render should wrap the title in a JSON object")
+        .TestResult("render should wrap the title in a JSON object")
 }
 ```
 
@@ -37,13 +37,15 @@ to it, so the test exercises the code the server runs, not a copy.
 ```canon
 TestResult = Fail + Pass
 
-assert = (Bool * String) -> TestResult
+(Bool * String) -> TestResult
 ```
 
 `TestResult` is a stdlib union (`Fail` carries a message, `Pass` is
-empty), and `assert` converts a `Bool` into one. The chain reads
-top-to-bottom: render the note, compare with `.eq` (giving a `Bool`),
-convert with `.assert`. When the bool is `False`, the message surfaces:
+empty), and its constructor converts a `Bool` and a message into one —
+the assertion *is* construction ([Types-Only
+Canon](../spec/types-only.md)). The chain reads top-to-bottom: render
+the note, compare with `.eq` (giving a `Bool`), construct the
+`TestResult` from it. When the bool is `False`, the message surfaces:
 
 ```sh
 [FAIL] testRenderWrapsTitle: render should wrap the title in a JSON object
