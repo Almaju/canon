@@ -197,11 +197,11 @@ fn wasi_http_service_method_dispatch() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"serve = (Request) => Response {
+        r#"Request => Response {
     Request.method().(
-        * ("GET") => Response { Response(Body("got GET") * Headers() * Status(200)) }
-        * ("POST") => Response { Response(Body("got POST") * Headers() * Status(201)) }
-        * (String) => Response { Response(Body("no " -> Joined(String)) * Headers() * Status(405)) }
+        * "GET" => Response { Response(Body("got GET") * Headers() * Status(200)) }
+        * "POST" => Response { Response(Body("got POST") * Headers() * Status(201)) }
+        * String => Response { Response(Body("no " -> Joined(String)) * Headers() * Status(405)) }
     )
 }
 "#,

@@ -1,8 +1,8 @@
 route = (String) => String {
     String.(
-        * ("/notes") => String { "index" }
-        * ("/notes/1") => String { "note one" }
-        * (String) => String { "not found: " -> Joined(String) }
+        * "/notes" => String { "index" }
+        * "/notes/1" => String { "note one" }
+        * String => String { "not found: " -> Joined(String) }
     )
 }
 

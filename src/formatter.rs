@@ -764,7 +764,7 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
         .map(emit_inline)
         .collect::<Vec<_>>()
         .join(" ");
-    format!("({}) => {} {{ {} }}", pat, ret, body)
+    format!("{} => {} {{ {} }}", pat, ret, body)
 }
 
 /// Render a dispatch arm at the given indent level. Short arms whose
@@ -789,7 +789,7 @@ fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
         .map(|e| format!("{}{}", body_pad, emit_expr(e, arm_indent + 1)))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("({}) => {} {{\n{}\n{}}}", pat, ret, body, close_pad)
+    format!("{} => {} {{\n{}\n{}}}", pat, ret, body, close_pad)
 }
 
 /// Does this expression (or any sub-expression) contain a dispatch?
@@ -957,7 +957,7 @@ mod tests {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
             "main = () => Unit {\n    True().(\n        * (True) => Unit { \"yes\".print() }\n        * (False) => Unit { \"no\".print() }\n    )\n}\n",
-            "main = () => Unit {\n    True().(\n        * (False) => Unit { \"no\" -> Print }\n        * (True) => Unit { \"yes\" -> Print }\n    )\n}\n",
+            "main = () => Unit {\n    True().(\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 
@@ -966,7 +966,7 @@ mod tests {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
             "Route = (String) => String {\n    String.(\n        * (String) => String { \"other\" }\n        * (\"/b\") => String { \"b\" }\n        * (\"/a\") => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
-            "Route = (String) => String {\n    String.(\n        * (\"/a\") => String { \"a\" }\n        * (\"/b\") => String { \"b\" }\n        * (String) => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
+            "Route = (String) => String {\n    String.(\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
         );
     }
 

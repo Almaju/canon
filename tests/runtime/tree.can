@@ -10,8 +10,8 @@ Value = Int
 
 describe = (Tree) => String {
     Tree.(
-        * (Branch) => String { "branch" }
-        * (Leaf) => String { "leaf" }
+        * Branch => String { "branch" }
+        * Leaf => String { "leaf" }
     )
 }
 

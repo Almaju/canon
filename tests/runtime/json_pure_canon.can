@@ -1,7 +1,7 @@
 show = (Result) => Unit {
     Result.(
-        * (Err<MalformedJson>) => Unit { "FAIL" -> Print }
-        * (Ok<Json>) => Unit { "OK" -> Print }
+        * Err<MalformedJson> => Unit { "FAIL" -> Print }
+        * Ok<Json> => Unit { "OK" -> Print }
     )
 }
 

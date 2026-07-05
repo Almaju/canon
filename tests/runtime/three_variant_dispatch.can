@@ -10,18 +10,18 @@ Ord = Equal
 
 main = () => Unit {
     Equal().(
-        * (Equal) => Unit { "equal" -> Print }
-        * (Greater) => Unit { "greater" -> Print }
-        * (Less) => Unit { "less" -> Print }
+        * Equal => Unit { "equal" -> Print }
+        * Greater => Unit { "greater" -> Print }
+        * Less => Unit { "less" -> Print }
     )
     Greater().(
-        * (Equal) => Unit { "equal" -> Print }
-        * (Greater) => Unit { "greater" -> Print }
-        * (Less) => Unit { "less" -> Print }
+        * Equal => Unit { "equal" -> Print }
+        * Greater => Unit { "greater" -> Print }
+        * Less => Unit { "less" -> Print }
     )
     Less().(
-        * (Equal) => Unit { "equal" -> Print }
-        * (Greater) => Unit { "greater" -> Print }
-        * (Less) => Unit { "less" -> Print }
+        * Equal => Unit { "equal" -> Print }
+        * Greater => Unit { "greater" -> Print }
+        * Less => Unit { "less" -> Print }
     )
 }

@@ -2,8 +2,8 @@ Content = String
 
 describeParam = (Option) => String {
     Option.(
-        * (None) => String { "none" }
-        * (Some<Content>) => String { "some" }
+        * None => String { "none" }
+        * Some<Content> => String { "some" }
     )
 }
 

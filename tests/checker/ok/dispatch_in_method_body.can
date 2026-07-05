@@ -6,8 +6,8 @@ Opened = Unit
 
 describe = (Mode) => String {
     Mode.(
-        * (Closed) => String { "closed" }
-        * (Opened) => String { "opened" }
+        * Closed => String { "closed" }
+        * Opened => String { "opened" }
     )
 }
 

@@ -1,7 +1,7 @@
 main = () => Result<Unit, Unit> {
     Ok("worked").(
-        * (Err<Unit>) => Unit { "err" -> Print }
-        * (Ok<String>) => Unit { String -> Print }
+        * Err<Unit> => Unit { "err" -> Print }
+        * Ok<String> => Unit { String -> Print }
     )
     Ok(Unit())
 }

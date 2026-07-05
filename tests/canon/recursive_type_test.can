@@ -12,7 +12,7 @@ Value = Int
 
 testDispatchOnLeaf = () => TestResult {
     Leaf().(
-        * (Branch) => TestResult { Fail() }
-        * (Leaf) => TestResult { Pass() }
+        * Branch => TestResult { Fail() }
+        * Leaf => TestResult { Pass() }
     )
 }

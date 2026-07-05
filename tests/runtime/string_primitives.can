@@ -12,15 +12,15 @@ main = () => Unit {
         -> Substring(2, 4)
         -> Print
     "hello" -> Eq("hello").(
-        * (False) => Unit { "ne" -> Print }
-        * (True) => Unit { "eq" -> Print }
+        * False => Unit { "ne" -> Print }
+        * True => Unit { "eq" -> Print }
     )
     "hello" -> Eq("world").(
-        * (False) => Unit { "ne" -> Print }
-        * (True) => Unit { "eq" -> Print }
+        * False => Unit { "ne" -> Print }
+        * True => Unit { "eq" -> Print }
     )
     "hello" -> Eq("hell").(
-        * (False) => Unit { "ne" -> Print }
-        * (True) => Unit { "eq" -> Print }
+        * False => Unit { "ne" -> Print }
+        * True => Unit { "eq" -> Print }
     )
 }

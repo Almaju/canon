@@ -4,8 +4,8 @@ MessageContent = Option<Content>
 
 describe = (MessageContent) => String {
     MessageContent.(
-        * (None) => String { "absent" }
-        * (Some<Content>) => String { "present" }
+        * None => String { "absent" }
+        * Some<Content> => String { "present" }
     )
 }
 

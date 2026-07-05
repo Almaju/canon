@@ -1106,9 +1106,17 @@ impl Parser {
 
     fn parse_match_arm(&mut self) -> Result<MatchArm> {
         let start = self.current_span();
-        // Each arm is: (VariantType) -> ReturnType { body }
-        // or a literal-pattern arm: ("literal") / (123) -> ReturnType { body }
-        self.expect(TokenKind::LParen, "expected `(` to begin dispatch arm")?;
+        // Each arm is: Pattern => ReturnType { body }, where the pattern
+        // is a variant type (`Some<String>`, `True`, `Prefix`) or a
+        // literal (`"Add:"`, `123`). Parentheses are no longer used to
+        // declare the pattern — `* "Add:" => …`, not `* ("Add:") => …` —
+        // since parens no longer delimit arguments anywhere. The
+        // parenthesized form is still accepted during migration; the
+        // formatter emits the bare form.
+        let parenthesized = self.check(TokenKind::LParen);
+        if parenthesized {
+            self.advance();
+        }
         // A literal token in pattern position makes this a literal arm
         // (equality dispatch on a `String` / `Int` scrutinee). The
         // `param_ty` records the matching primitive type name so every
@@ -1144,7 +1152,9 @@ impl Parser {
             // Err<String>, Ok<Int>, Branch
             _ => (self.parse_type_atom()?, None),
         };
-        self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
+        if parenthesized {
+            self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
+        }
         self.expect_decl_arrow("expected `->` in dispatch arm")?;
         let return_ty = self.parse_type_expr()?;
         let body = self.parse_block()?;

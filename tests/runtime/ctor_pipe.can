@@ -25,7 +25,7 @@ main = () => Unit {
         -> Json
         -> Print
     Map() -> Inserted("k", "v") -> Value("k").(
-        * (None) => Unit { "none" -> Print }
-        * (Some<String>) => Unit { String -> Print }
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
 }

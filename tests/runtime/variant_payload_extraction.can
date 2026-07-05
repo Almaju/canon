@@ -14,11 +14,11 @@ makePass = () => TestResult {
 
 main = () => Unit {
     makeFail().(
-        * (Fail) => Unit { Fail -> Print }
-        * (Pass) => Unit { "got pass" -> Print }
+        * Fail => Unit { Fail -> Print }
+        * Pass => Unit { "got pass" -> Print }
     )
     makePass().(
-        * (Fail) => Unit { Fail -> Print }
-        * (Pass) => Unit { "got pass" -> Print }
+        * Fail => Unit { Fail -> Print }
+        * Pass => Unit { "got pass" -> Print }
     )
 }

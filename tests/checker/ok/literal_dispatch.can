@@ -2,17 +2,17 @@ Path = String
 
 classify = (Int) => String {
     Int.(
-        * (0) => String { "zero" }
-        * (1) => String { "one" }
-        * (Int) => String { "many" }
+        * 0 => String { "zero" }
+        * 1 => String { "one" }
+        * Int => String { "many" }
     )
 }
 
 route = (Path) => String {
     Path.(
-        * ("/") => String { "home" }
-        * ("/notes") => String { "index" }
-        * (Path) => String { "not found" }
+        * "/" => String { "home" }
+        * "/notes" => String { "index" }
+        * Path => String { "not found" }
     )
 }
 

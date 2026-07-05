@@ -9,7 +9,7 @@ main = () => Unit {
         -> Json
         -> Print
     List(10, 20) -> Appended(30) -> At(3).(
-        * (None) => Unit { "none" -> Print }
-        * (Some<Int>) => Unit { Int -> Print }
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
     )
 }

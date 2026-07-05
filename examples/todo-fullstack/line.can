@@ -6,14 +6,14 @@ RenderedItem = Html
 
 Line => Flipped {
     Line -> ByteAt(1) -> Eq(48).(
-        * (False) => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
-        * (True) => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * False => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * True => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
     )
 }
 
 Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49).(
-        * (False) => RenderedItem {
+        * False => RenderedItem {
             Line
                 -> Substring(3, Line -> Length)
                 -> Escaped
@@ -23,7 +23,7 @@ Int * Line => RenderedItem {
                 -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
                 -> Li
         }
-        * (True) => RenderedItem {
+        * True => RenderedItem {
             "<s>"
                 -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
                 -> Joined("</s> ")

@@ -1,7 +1,7 @@
 main = () => Result<Unit, Unit> {
     Ok("model").(
-        * (Err<Unit>) => Unit { "err" -> Print }
-        * (Ok<String>) => Unit {
+        * Err<Unit> => Unit { "err" -> Print }
+        * Ok<String> => Unit {
             "first: "
                 -> Joined("literal")
                 -> Print

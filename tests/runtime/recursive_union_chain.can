@@ -8,20 +8,20 @@ Next = Chain
 
 lastLabel = (Chain) => String {
     Chain.(
-        * (Link) => String {
+        * Link => String {
             Link.Next.len() -> Eq(0).(
-                * (False) => String { Link.Next.lastLabel() }
-                * (True) => String { Link.Label }
+                * False => String { Link.Next.lastLabel() }
+                * True => String { Link.Label }
             )
         }
-        * (Stop) => String { "" }
+        * Stop => String { "" }
     )
 }
 
 len = (Chain) => Int {
     Chain.(
-        * (Link) => Int { Link.Next.len() -> Sum(1) }
-        * (Stop) => Int { 0 }
+        * Link => Int { Link.Next.len() -> Sum(1) }
+        * Stop => Int { 0 }
     )
 }
 

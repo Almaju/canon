@@ -1,15 +1,15 @@
 main = () => Unit {
     Map() -> Inserted("b", "banana") -> Inserted("a", "apple") -> Value("a").(
-        * (None) => Unit { "none" -> Print }
-        * (Some<String>) => Unit { String -> Print }
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
     Map() -> Inserted("k", "v1") -> Inserted("k", "v2") -> Value("k").(
-        * (None) => Unit { "none" -> Print }
-        * (Some<String>) => Unit { String -> Print }
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
     Map() -> Inserted("a", "1") -> Value("missing").(
-        * (None) => Unit { "none" -> Print }
-        * (Some<String>) => Unit { String -> Print }
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
     )
     Map()
         -> Inserted("a", "1")

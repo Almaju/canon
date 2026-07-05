@@ -6,8 +6,8 @@ Greeting = () => Greeting {
 
 Greeting = (Bool) => Greeting {
     Bool.(
-        * (False) => Greeting { Greeting("bool:no") }
-        * (True) => Greeting { Greeting("bool:yes") }
+        * False => Greeting { Greeting("bool:no") }
+        * True => Greeting { Greeting("bool:yes") }
     )
 }
 

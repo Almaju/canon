@@ -4,7 +4,7 @@ main = () => Unit {
         -> Json
         -> Print
     List("xx", "yyy", "z") -> Mapped((String) => Int { String -> Length }) -> At(2).(
-        * (None) => Unit { "none" -> Print }
-        * (Some<Int>) => Unit { Int -> Print }
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
     )
 }

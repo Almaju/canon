@@ -4,8 +4,8 @@ MessageContent = Option<Content>
 
 dispatch = (MessageContent) => Unit {
     MessageContent.(
-        * (None) => Unit { "absent" -> Print }
-        * (Some<Content>) => Unit { "present" -> Print }
+        * None => Unit { "absent" -> Print }
+        * Some<Content> => Unit { "present" -> Print }
     )
 }
 

@@ -6,7 +6,7 @@ main = () => Unit {
         -> Lt(20)
         -> Print
     5 -> Gt(3).(
-        * (False) => Unit { "no" -> Print }
-        * (True) => Unit { "yes" -> Print }
+        * False => Unit { "no" -> Print }
+        * True => Unit { "yes" -> Print }
     )
 }
