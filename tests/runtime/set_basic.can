@@ -3,7 +3,7 @@ main = () -> Unit {
         .Inserted("b")
         .Inserted("a")
         .Inserted("b")
-        .length()
+        .Length()
         .print()
     Set()
         .Inserted("x")
@@ -30,6 +30,6 @@ main = () -> Unit {
     Set()
         .Inserted("a")
         .Removed("missing")
-        .length()
+        .Length()
         .print()
 }

@@ -1130,13 +1130,27 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             // (duplicate (receiver, name, first-input) definitions) reports
             // real conflicts. Type names never multi-resolve: two type
             // definitions sharing a name stay a hard ambiguity error.
-            let function_only = unique.iter().all(|f| match f {
-                Found::Local(p) => fs::read_to_string(p)
-                    .ok()
-                    .is_some_and(|src| name_declared_as_function_only(&src, name)),
-                Found::Bundled(_, file) => name_declared_as_function_only(file.source, name),
-            });
-            if function_only {
+            let profiles: Vec<Option<NameDeclProfile>> = unique
+                .iter()
+                .map(|f| match f {
+                    Found::Local(p) => fs::read_to_string(p)
+                        .ok()
+                        .and_then(|src| name_decl_profile(&src, name)),
+                    Found::Bundled(_, file) => name_decl_profile(file.source, name),
+                })
+                .collect();
+            let compatible = profiles.iter().all(|p| p.is_some()) && {
+                // Type declarations under the name must all share one
+                // canonical spelling (`Length = Int` in two files is one
+                // type, not a clash); pure function declarations are
+                // always family-eligible.
+                let mut bodies: Vec<&String> = Vec::new();
+                for p in profiles.iter().flatten() {
+                    bodies.extend(p.type_bodies.iter());
+                }
+                bodies.windows(2).all(|w| w[0] == w[1])
+            };
+            if compatible {
                 for f in unique {
                     match f {
                         Found::Local(p) => {
@@ -1176,27 +1190,31 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
     }
 }
 
-/// Does `source` declare `name` exclusively as function bodies? True
-/// means the name is family-eligible — a reference may co-resolve with
-/// other declaring files (implementations are selected by receiver
-/// type). Any type definition under the name, including a body-less
-/// function-type alias, makes the file claim the name exclusively.
-fn name_declared_as_function_only(source: &str, name: &str) -> bool {
-    let Ok(tokens) = Scanner::new(source).scan_tokens() else {
-        return false;
-    };
-    let Ok(module) = Parser::new(tokens).parse() else {
-        return false;
-    };
+/// How `source` declares `name`: function bodies are always
+/// family-eligible; type definitions carry their canonical spelling so
+/// the caller can check that co-declared types are structurally
+/// identical (one type, merged) rather than a genuine clash. `None`
+/// when the file doesn't parse or doesn't declare the name at all.
+struct NameDeclProfile {
+    type_bodies: Vec<String>,
+}
+
+fn name_decl_profile(source: &str, name: &str) -> Option<NameDeclProfile> {
+    let tokens = Scanner::new(source).scan_tokens().ok()?;
+    let module = Parser::new(tokens).parse().ok()?;
     let mut declares = false;
+    let mut type_bodies = Vec::new();
     for item in &module.items {
         match item {
-            Item::TypeDef(td) if td.name.name == name => return false,
+            Item::TypeDef(td) if td.name.name == name => {
+                declares = true;
+                type_bodies.push(crate::ast::type_expr_canonical(&td.body));
+            }
             Item::Function(f) if f.name.name == name => declares = true,
             _ => {}
         }
     }
-    declares
+    declares.then_some(NameDeclProfile { type_bodies })
 }
 
 impl LoadCtx {

@@ -556,19 +556,30 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     variant_of.insert("False".to_string(), "Bool".to_string());
     variant_of.insert("True".to_string(), "Bool".to_string());
 
+    let mut type_canon: HashMap<String, String> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             let name = td.name.name.clone();
+            let canon = crate::ast::type_expr_canonical(&td.body);
             let already_known = types.contains(&name) || generic_types.contains(&name);
             if already_known {
-                errors.push(CanonError::CheckError {
-                    message: format!("duplicate type definition `{}`", name),
-                    span: td.name.span,
-                });
+                // Structurally identical duplicates merge — type
+                // equality is syntactic (one canonical spelling per
+                // type), so `Length = Int` declared by two loaded files
+                // is one type, not a clash. Only a *differing* body
+                // under the same name is an error.
+                if type_canon.get(&name) != Some(&canon) {
+                    errors.push(CanonError::CheckError {
+                        message: format!("duplicate type definition `{}`", name),
+                        span: td.name.span,
+                    });
+                }
             } else if td.generic_params.is_empty() {
-                types.insert(name);
+                types.insert(name.clone());
+                type_canon.insert(name, canon);
             } else {
-                generic_types.insert(name);
+                generic_types.insert(name.clone());
+                type_canon.insert(name, canon);
             }
         }
     }

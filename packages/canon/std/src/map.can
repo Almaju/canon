@@ -2,6 +2,8 @@ Key = String
 
 Keys = List<Key>
 
+Length = Int
+
 Map = Empty + Node
 
 Node = Key * Rest * Value
@@ -73,9 +75,9 @@ Removed = (Map * String) -> Map {
     )
 }
 
-length = (Map) -> Int {
+(Map) -> Length {
     Map.(
-        * (Empty) -> Int { 0 }
-        * (Node) -> Int { Node.Rest.length().add(1) }
+        * (Empty) -> Length { 0 }
+        * (Node) -> Length { Node.Rest.Length().add(1) }
     )
 }

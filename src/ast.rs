@@ -441,6 +441,57 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
     }
 }
 
+/// Canonical spelling of a type expression, ignoring spans — the
+/// language's type-equality story is *syntactic* (alphabetical order
+/// gives every type exactly one spelling), so two definitions are the
+/// same type iff their canonical spellings match. Used to merge
+/// structurally identical duplicate type definitions across files
+/// (`Length = Int` declared by both map.can and set.can is one type,
+/// not a clash — DESIGN.md § Types-Only Canon, name resolution).
+pub fn type_expr_canonical(ty: &TypeExpr) -> String {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            if generics.is_empty() {
+                name.clone()
+            } else {
+                let gs: Vec<String> = generics.iter().map(type_expr_canonical).collect();
+                format!("{}<{}>", name, gs.join(", "))
+            }
+        }
+        TypeExpr::Union { variants, .. } => {
+            let vs: Vec<String> = variants.iter().map(type_expr_canonical).collect();
+            vs.join(" + ")
+        }
+        TypeExpr::Product { fields, .. } => {
+            let fs: Vec<String> = fields.iter().map(type_expr_canonical).collect();
+            fs.join(" * ")
+        }
+        TypeExpr::Repeat { ty, count, .. } => format!("{}^{}", type_expr_canonical(ty), count),
+        TypeExpr::Spread { ty, .. } => format!("{}^*", type_expr_canonical(ty)),
+        TypeExpr::Function {
+            generic_params,
+            params,
+            return_ty,
+            ..
+        } => {
+            let gs = if generic_params.is_empty() {
+                String::new()
+            } else {
+                let names: Vec<String> =
+                    generic_params.iter().map(|g| g.name.name.clone()).collect();
+                format!("<{}>", names.join(", "))
+            };
+            let ps: Vec<String> = params.iter().map(type_expr_canonical).collect();
+            format!(
+                "{}({}) -> {}",
+                gs,
+                ps.join(" * "),
+                type_expr_canonical(return_ty)
+            )
+        }
+    }
+}
+
 /// The type an arrow *constructs*: its return type with the standard
 /// containers peeled — `Result<Url, InvalidUrl>` constructs `Url`,
 /// `Option<Value>` constructs `Value`, `Future<T>` constructs `T`.

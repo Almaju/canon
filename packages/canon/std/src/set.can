@@ -2,6 +2,8 @@ Entry = Item * Remaining
 
 Item = String
 
+Length = Int
+
 Remaining = Set
 
 Set = Absent + Entry
@@ -58,9 +60,9 @@ contains = (Set * String) -> Bool {
     )
 }
 
-length = (Set) -> Int {
+(Set) -> Length {
     Set.(
-        * (Absent) -> Int { 0 }
-        * (Entry) -> Int { Entry.Remaining.length().add(1) }
+        * (Absent) -> Length { 0 }
+        * (Entry) -> Length { Entry.Remaining.Length().add(1) }
     )
 }
