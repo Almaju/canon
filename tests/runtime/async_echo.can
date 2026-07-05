@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     "hello async"
         .echo()
         -> Print

@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     Some(7) -> (
         * None => Unit { "none".print() }
         * Ok<Int> => Unit { "wrong".print() }

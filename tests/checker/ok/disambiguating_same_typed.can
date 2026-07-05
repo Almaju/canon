@@ -10,6 +10,6 @@ equals = (OtherUser * User) => Bool {
     True()
 }
 
-main = () => Unit {
+Unit => Program {
     "compared" -> Print
 }

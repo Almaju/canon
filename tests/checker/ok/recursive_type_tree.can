@@ -17,7 +17,7 @@ describe = (Tree) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     Leaf()
         .describe()
         -> Print

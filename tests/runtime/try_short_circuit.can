@@ -12,7 +12,7 @@ describe = (Int) => Result<String, String> {
         -> Ok
 }
 
-main = () => Unit {
+Unit => Program {
     3.describe() -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }

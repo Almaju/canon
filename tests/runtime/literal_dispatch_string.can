@@ -6,7 +6,7 @@ route = (String) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "/notes"
         .route()
         -> Print

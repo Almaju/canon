@@ -2,6 +2,6 @@ home = (Request) => Response {
     Response(Body("") * Headers() * Status(200))
 }
 
-main = () => Unit {
+Unit => Program {
     "ok".print()
 }

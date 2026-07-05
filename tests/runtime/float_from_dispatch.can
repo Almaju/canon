@@ -5,7 +5,7 @@ half = (Bool) => Float {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     True()
         .half()
         -> Print

@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     Map() -> Inserted("b" * "banana") -> Inserted("a" * "apple") -> Value("a") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }

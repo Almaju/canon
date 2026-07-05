@@ -4,7 +4,7 @@ shout = (Greeting) => String {
     "HELLO"
 }
 
-main = () => Unit {
+Unit => Program {
     "howdy"
         -> Greeting
         .shout()

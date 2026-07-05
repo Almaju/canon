@@ -2,7 +2,7 @@ assistantMessage = (Unit) => String {
     "hello"
 }
 
-main = () => Unit {
+Unit => Program {
     Unit
         .assistantMessage()
         -> Print

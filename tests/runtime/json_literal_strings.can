@@ -2,7 +2,7 @@ greeting = (String) => Json {
     {"hello":String,"len":5}
 }
 
-main = () => Unit {
+Unit => Program {
     "world"
         .greeting()
         -> Print

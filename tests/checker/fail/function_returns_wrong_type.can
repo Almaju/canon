@@ -2,6 +2,6 @@ message = () => Int {
     "not an int"
 }
 
-main = () => Unit {
+Unit => Program {
     "ok".print()
 }

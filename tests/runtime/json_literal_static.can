@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     {"answer":42,"label":"life"} -> Print
     [1,2,3] -> Print
     {"nested":{"x":1},"arr":[true,false,null]} -> Print

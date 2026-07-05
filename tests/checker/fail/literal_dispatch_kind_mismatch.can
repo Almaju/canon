@@ -5,6 +5,6 @@ describe = (Int) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     0.describe().print()
 }

@@ -36,7 +36,7 @@ show = (Shape) => Unit {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     makeCount().show()
     makeEmpty().show()
     makeName().show()

@@ -16,7 +16,7 @@ describe = (Ord) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     Equal()
         .describe()
         -> Print

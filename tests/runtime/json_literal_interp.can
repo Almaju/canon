@@ -2,7 +2,7 @@ label = (Int) => Json {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
-main = () => Result<Unit, MalformedJson> {
+Unit => Result<Program, MalformedJson> {
     42
         .label()
         -> Print

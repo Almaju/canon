@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     "written from canon"
         -> Contents
         .write("/tmp/canon-fs-write-test.txt" -> Path)?

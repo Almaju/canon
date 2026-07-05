@@ -8,7 +8,7 @@ murmur = (Greeting) => String {
     "hello"
 }
 
-main = () => Unit {
+Unit => Program {
     Greeting("hi")
         .shout()
         .print()

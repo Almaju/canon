@@ -584,7 +584,7 @@ impl Parser {
                 // Value-level pipe: `value -> Name` (optionally
                 // `-> Name(rest…)`) sends the value along a declared
                 // constructor arrow — the call-site mirror of the
-                // declaration form `(A) -> B { … }`. Semantically
+                // declaration form `(A) => B { … }`. Semantically
                 // identical to `Name(value, rest…)`; the value fills
                 // the first slot of the constructor's input product.
                 // The right-hand side is a PascalCase type name, so

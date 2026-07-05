@@ -16,7 +16,7 @@ route = (Path) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "/notes"
         -> Path
         .route()

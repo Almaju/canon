@@ -6,7 +6,7 @@ describe = (Int) => Unit {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     0.describe()
     1.describe()
     42.describe()

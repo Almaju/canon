@@ -8,6 +8,6 @@ Url = (String) => Result<Url, InvalidUrl> {
         -> Ok
 }
 
-main = () => Unit {
+Unit => Program {
     "validated ctor declared" -> Print
 }

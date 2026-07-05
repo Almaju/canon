@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     42
         -> String
         -> Print

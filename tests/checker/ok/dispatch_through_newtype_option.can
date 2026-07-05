@@ -9,6 +9,6 @@ describe = (MessageContent) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "ok" -> Print
 }

@@ -6,7 +6,7 @@ greet = (Greeting * Name) => Name {
     Name
 }
 
-main = () => Unit {
+Unit => Program {
     "hello"
         -> Greeting
         .greet("world" -> Name)

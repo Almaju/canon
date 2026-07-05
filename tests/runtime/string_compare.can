@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     "apple"
         -> Lt("banana")
         -> Print

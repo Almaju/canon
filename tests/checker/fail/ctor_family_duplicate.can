@@ -8,6 +8,6 @@ Label = (Int) => Label {
     Label("b")
 }
 
-main = () => Unit {
+Unit => Program {
     Label(1).print()
 }

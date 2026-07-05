@@ -38,7 +38,7 @@ pub struct FunctionDef {
     pub return_ty: TypeExpr,
     pub body: Block,
     pub extern_wasm: Option<ExternWasm>,
-    /// Declared in the anonymous-arrow form `(A) -> B { … }`
+    /// Declared in the anonymous-arrow form `(A) => B { … }`
     /// (the language spec, § Types-Only Canon): the constructor of its output type, with
     /// `name` synthesized from the constructed type. The flag exists so
     /// the formatter round-trips the arrow form instead of inventing a
@@ -177,7 +177,7 @@ pub enum Expr {
         /// Written in the pipe form `value -> Name(rest…)` — the third
         /// spelling of the commutative call (`Name(value, rest…)` /
         /// `value.Name(rest…)`), mirroring the declaration arrow
-        /// `(A) -> B { … }` at the value level. Semantics are identical
+        /// `(A) => B { … }` at the value level. Semantics are identical
         /// to the dot form; the flag only preserves the surface
         /// spelling for the formatter.
         piped: bool,
@@ -594,70 +594,56 @@ pub fn type_expr_canonical(ty: &TypeExpr) -> String {
 /// the `String` builtin. camelCase spellings keep working during
 /// migration; they simply don't pass through here.
 pub fn builtin_method_alias(name: &str) -> Option<&'static str> {
-    Some(match name {
-        // Effects
-        "Print" => "print",
-        // Int / Float arithmetic — result-type nouns
-        "Sum" => "add",
-        "Difference" => "sub",
-        "Product" => "mul",
-        "Quotient" => "div",
-        "Remainder" => "rem",
-        // Comparison — boolean predicates
-        "Eq" => "eq",
-        "Ne" => "ne",
-        "Lt" => "lt",
-        "Le" => "le",
-        "Gt" => "gt",
-        "Ge" => "ge",
-        // String / List
-        "Joined" => "concat",
-        "ByteAt" => "byteAt",
-        "Length" => "length",
-        "Substring" => "substring",
-        // List
-        "Mapped" => "map",
-        "First" => "first",
-        "At" => "get",
-        "Appended" => "append",
-        // Concurrency combinators
-        "Parallel" => "parallel",
-        "Race" => "race",
-        _ => return None,
-    })
+    BUILTIN_ALIASES
+        .iter()
+        .find(|(pascal, _)| *pascal == name)
+        .map(|(_, camel)| *camel)
 }
 
+/// One table, both directions: (PascalCase pipe spelling, canonical
+/// camelCase implementation name) for every compiler builtin.
+const BUILTIN_ALIASES: &[(&str, &str)] = &[
+    // Effects
+    ("Print", "print"),
+    // Int / Float arithmetic — result-type nouns
+    ("Sum", "add"),
+    ("Difference", "sub"),
+    ("Product", "mul"),
+    ("Quotient", "div"),
+    ("Remainder", "rem"),
+    // Comparison — boolean predicates
+    ("Eq", "eq"),
+    ("Ne", "ne"),
+    ("Lt", "lt"),
+    ("Le", "le"),
+    ("Gt", "gt"),
+    ("Ge", "ge"),
+    // String / List
+    ("Joined", "concat"),
+    ("ByteAt", "byteAt"),
+    ("Length", "length"),
+    ("Substring", "substring"),
+    // List
+    ("Mapped", "map"),
+    ("First", "first"),
+    ("At", "get"),
+    ("Appended", "append"),
+    // Concurrency combinators
+    ("Parallel", "parallel"),
+    ("Race", "race"),
+];
+
 /// The PascalCase pipe spelling `canon fmt` emits for a builtin method
-/// — the inverse of `builtin_method_alias`. `concat` prints as
-/// `Joined`, `add` as `Sum`, `print` as `Print`. A name with no mapping
-/// (already-PascalCase user/stdlib methods, and the `String`/`Json`
-/// conversion methods) is emitted unchanged.
+/// — the inverse direction of `builtin_method_alias`, from the same
+/// table. A name with no mapping (already-PascalCase user/stdlib
+/// methods, and the `String`/`Json` conversion methods) is emitted
+/// unchanged.
 pub fn builtin_pipe_name(name: &str) -> &str {
-    match name {
-        "print" => "Print",
-        "add" => "Sum",
-        "sub" => "Difference",
-        "mul" => "Product",
-        "div" => "Quotient",
-        "rem" | "mod" => "Remainder",
-        "eq" => "Eq",
-        "ne" => "Ne",
-        "lt" => "Lt",
-        "le" => "Le",
-        "gt" => "Gt",
-        "ge" => "Ge",
-        "concat" => "Joined",
-        "byteAt" => "ByteAt",
-        "length" => "Length",
-        "substring" | "slice" => "Substring",
-        "map" => "Mapped",
-        "first" => "First",
-        "get" => "At",
-        "append" => "Appended",
-        "parallel" => "Parallel",
-        "race" => "Race",
-        other => other,
-    }
+    BUILTIN_ALIASES
+        .iter()
+        .find(|(_, camel)| *camel == name)
+        .map(|(pascal, _)| *pascal)
+        .unwrap_or(name)
 }
 
 /// The type an arrow *constructs*: its return type with the standard

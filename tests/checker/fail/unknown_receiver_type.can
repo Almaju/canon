@@ -2,6 +2,6 @@ describe = (Mystery) => String {
     "hello"
 }
 
-main = () => Unit {
+Unit => Program {
     "ok".print()
 }

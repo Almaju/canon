@@ -6,6 +6,6 @@ apple = () => Unit {
     "a".print()
 }
 
-main = () => Unit {
+Unit => Program {
     "ok".print()
 }

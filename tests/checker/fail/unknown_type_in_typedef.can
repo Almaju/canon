@@ -1,5 +1,5 @@
 Foo = NeverDeclared
 
-main = () => Unit {
+Unit => Program {
     "ok".print()
 }

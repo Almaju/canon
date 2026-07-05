@@ -7,6 +7,6 @@ describeParam = (Option) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "ok" -> Print
 }

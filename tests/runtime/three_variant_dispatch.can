@@ -8,7 +8,7 @@ Ord = Equal
   + Greater
   + Less
 
-main = () => Unit {
+Unit => Program {
     Equal() -> (
         * Equal => Unit { "equal" -> Print }
         * Greater => Unit { "greater" -> Print }

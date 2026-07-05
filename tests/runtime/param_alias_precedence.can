@@ -14,7 +14,7 @@ wrap = (Attr * String * Tag) => String {
         -> Joined(">")
 }
 
-main = () => Unit {
+Unit => Program {
     "class=\"x\""
         -> Attr
         .wrap("inner" * "div" -> Tag)

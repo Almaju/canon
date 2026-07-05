@@ -115,8 +115,8 @@ main = () => Unit {
         warnings
     );
     assert!(
-        warnings[0].contains("`deadHelper`"),
-        "warning should name the dead function: {:?}",
+        warnings[0].message().contains("`deadHelper`"),
+        "the error should name the dead function: {:?}",
         warnings
     );
 }

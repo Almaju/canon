@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     List(1 * 2 * 3)
         -> Length
         -> Print

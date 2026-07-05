@@ -6,7 +6,7 @@ TotalTokens = Int
 
 Usage = CompletionTokens * PromptTokens * TotalTokens
 
-main = () => Unit {
+Unit => Program {
     11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).CompletionTokens
         -> Print
     11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).PromptTokens -> Print

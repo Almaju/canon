@@ -11,7 +11,7 @@ view = (Model) => Html {
     </div>
 }
 
-main = () => Unit {
+Unit => Program {
     "groceries"
         -> Model
         .view()

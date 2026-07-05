@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     True() -> Print
     False() -> Print
     True()

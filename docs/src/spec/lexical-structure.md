@@ -11,28 +11,34 @@ Two identifier classes, distinguished by their first character:
 
 | Class | Form | Used for |
 |---|---|---|
-| **PascalCase** | `[A-Z][A-Za-z0-9_]*` | types, traits, trait implementations, constructors, variants |
-| **camelCase** | `[a-z][A-Za-z0-9_]*` | functions |
+| **PascalCase** | `[A-Z][A-Za-z0-9_]*` | types, shapes, constructors, variants — every name in a Canon program |
+| **camelCase** | `[a-z][A-Za-z0-9_]*` | foreign imports in [binding files](./compilation.md); `canon test` functions |
 
-The case split is load-bearing: `print` is a function, `Print` is a
-trait (and `Print = (Foo) => …` implements it for `Foo`). There is no
-third class: no SCREAMING_CASE constants, no leading underscores with
-special meaning.
+The case split is load-bearing: in Canon, **the only names are type
+names**, and type names are PascalCase. A camelCase declaration is a
+**checker error** everywhere except two places: binding files (the FFI
+boundary — camelCase means exactly "this identifier is foreign") and
+test functions (`testAddPositive = () => TestResult`, run by
+`canon test`). There is no third class: no SCREAMING_CASE constants, no
+leading underscores with special meaning.
 
 ## Keywords
 
-The keyword set is small:
+The keyword set is exactly three words:
 
 | Keyword | Role |
 |---|---|
-| `extern` | bind a declaration to a Component Model import ([Compilation](./compilation.md)) |
-| `bindings` | file-level directive naming the WIT interface a generated binding file covers |
-| `impl` | placeholder body marking a trait declaration's default implementation |
+| `impl` | placeholder body marking a shape declaration's default implementation |
+| `mut` | marks a mutable parameter |
+| `Self` | the implementing type, inside a shape declaration |
 
 There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
 `async`, `await`, `pub`, `mod`, or `use` (imports are automatic —
-[Modules and Packages](./modules.md)). The absences are deliberate; the
-[Tour](../guide.md) lists what replaces each.
+[Modules and Packages](./modules.md)). There is also no `extern` and no
+`bindings` keyword: the grammar has zero packaging or FFI vocabulary,
+and a [binding file](./compilation.md) is recognized by its shape and
+path alone. The absences are deliberate; the [Tour](../guide.md) lists
+what replaces each.
 
 ## Literals
 
@@ -62,21 +68,21 @@ There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
 An unrecognised escape (e.g. `\q`) is a **compile-time lexer error**.
 There are no raw string literals.
 
-A `String` is `Byte^*` interpreted as UTF-8. Indexing (`byteAt`) yields
+A `String` is `Byte^*` interpreted as UTF-8. Indexing (`ByteAt`) yields
 bytes, not code points. Higher-level text operations are stdlib
-functions, not language built-ins.
+constructors, not language built-ins.
 
-Strings carry the same comparison surface as `Int` — `eq`, `ne`, `lt`,
-`le`, `gt`, `ge` — one spelling for comparison regardless of type.
+Strings carry the same comparison surface as `Int` — `Eq`, `Ne`, `Lt`,
+`Le`, `Gt`, `Ge` — one spelling for comparison regardless of type.
 Order is byte-wise lexicographic, shorter-first on a shared prefix
-(`"app".lt("apple")` is `True`): the same order the compiler enforces
-on declarations, now available to programs.
+(`"app" -> Lt("apple")` is `True`): the same order the compiler
+enforces on declarations, now available to programs.
 
 ## No Comments
 
-There is no comment syntax. `//`, `/* */`, and `#` are all rejected at
-compile time. Documentation belongs in types and names; prose belongs
-outside the source file.
+There is no comment syntax. `//`, `/* */`, and `#` are all **lexer
+errors** with a source span. Documentation belongs in types and names;
+prose belongs outside the source file.
 
 ## Statement Separation and Layout
 

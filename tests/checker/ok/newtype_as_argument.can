@@ -1,6 +1,6 @@
 Greeting = String
 
-main = () => Unit {
+Unit => Program {
     "hello, "
         -> Joined("world" -> Greeting)
         -> Print

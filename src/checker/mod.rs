@@ -190,16 +190,17 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         // Mixed worlds: a component exports exactly one world.
         (true, n, _) if n > 0 => errors.push(CanonError::CheckError {
             message: format!(
-                "mixed worlds: this module defines `main` (CLI entry) and also `{}` returning \
-                  `Response` (HTTP entry). A component exports exactly one world. Remove one.",
+                "mixed worlds: this module defines a CLI entry (`Unit => Program`) and also `{}` \
+                  returning `Response` (HTTP entry). A component exports exactly one world. \
+                  Remove one.",
                 http_entries[0].name.name
             ),
             span: http_entries[0].span,
         }),
         (true, 0, true) => errors.push(CanonError::CheckError {
-            message: "mixed worlds: this module defines `main` (CLI entry) and also the \
-                      `init`/`update`/`view` triple (web app). A component exports exactly \
-                      one world. Remove one."
+            message: "mixed worlds: this module defines a CLI entry (`Unit => Program`) and also \
+                      the `init`/`update`/`view` triple (web app). A component exports \
+                      exactly one world. Remove one."
                 .to_string(),
             span: module.span,
         }),
@@ -229,6 +230,11 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         (false, 0, true) => {}
         _ => unreachable!(),
     }
+
+    // Dead code is an error, not a warning: unreachable declarations are
+    // not allowed to accumulate. (Empty for library modules — see
+    // `lint_dead_code`.)
+    errors.extend(lint_dead_code(module, entry_items_start));
 
     errors
 }
@@ -340,12 +346,12 @@ fn check_sorted_named(
 /// its variants, and declarations sharing a name (trait impls,
 /// validated constructors) live or die together.
 ///
-/// Returns human-readable warnings, one per unused name. Empty when
-/// the module has no entry point: a library's declarations are all
-/// exported surface, so there is nothing to flag. Only entry-file
-/// items (`entry_items_start..`) are reported — imported files are
-/// their own compilation concern.
-pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> {
+/// Returns one error per unused name. Empty when the module has no
+/// entry point: a library's declarations are all exported surface, so
+/// there is nothing to flag. Only entry-file items
+/// (`entry_items_start..`) are reported — imported files are their own
+/// compilation concern.
+pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonError> {
     let entry_items = &module.items[entry_items_start..];
 
     let mut seeds: HashSet<String> = HashSet::new();
@@ -366,6 +372,7 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
     // name -> union of names referenced by every declaration of it.
     let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
     let mut declared_order: Vec<String> = Vec::new();
+    let mut declared: HashSet<String> = HashSet::new();
     for item in entry_items {
         let (name, out) = match item {
             Item::Function(func) => {
@@ -399,10 +406,23 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
             Item::TypeDef(td) => {
                 let mut out = HashSet::new();
                 collect_type_names(&td.body, &mut out);
+                // A union is alive through its variants: dispatching on
+                // `Dark()` uses `Mode = Dark + Light` even when `Mode`
+                // itself is never spelled. Record the reverse edge
+                // variant → union.
+                if let TypeExpr::Union { variants, .. } = &td.body {
+                    for v in variants {
+                        if let TypeExpr::Named { name: vname, .. } = v {
+                            refs.entry(vname.clone())
+                                .or_default()
+                                .insert(td.name.name.clone());
+                        }
+                    }
+                }
                 (td.name.name.clone(), out)
             }
         };
-        if !refs.contains_key(&name) {
+        if declared.insert(name.clone()) {
             declared_order.push(name.clone());
         }
         refs.entry(name).or_default().extend(out);
@@ -423,15 +443,36 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
         }
     }
 
+    // Span lookup for reporting: the first declaration of each name.
+    let mut spans: HashMap<&str, crate::error::Span> = HashMap::new();
+    for item in entry_items {
+        let (name, span) = match item {
+            Item::Function(func) => {
+                let key = if func.name.name == "Self" {
+                    func.receiver
+                        .as_ref()
+                        .map(|r| r.name.as_str())
+                        .unwrap_or(func.name.name.as_str())
+                } else {
+                    func.name.name.as_str()
+                };
+                (key, func.name.span)
+            }
+            Item::TypeDef(td) => (td.name.name.as_str(), td.name.span),
+        };
+        spans.entry(name).or_insert(span);
+    }
+
     declared_order
         .iter()
         .filter(|n| !reached.contains(*n))
-        .map(|n| {
-            format!(
+        .map(|n| CanonError::CheckError {
+            message: format!(
                 "`{}` is never used: dead code is not allowed to accumulate; \
                  delete it or wire it into the program",
                 n
-            )
+            ),
+            span: spans.get(n.as_str()).copied().unwrap_or_default(),
         })
         .collect()
 }
@@ -926,6 +967,18 @@ fn check_self_constructor_signature(
 }
 
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
+    // Types are PascalCase. A camelCase type alias only means something
+    // in a binding file, where `apply_bindings` has already rewritten it
+    // into an extern function before the checker runs.
+    if starts_lowercase(&td.name.name) {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "camelCase names are not allowed: types are PascalCase — rename `{}`",
+                td.name.name
+            ),
+            span: td.name.span,
+        });
+    }
     let mut generic_scope: HashSet<String> = td
         .generic_params
         .iter()
@@ -949,7 +1002,8 @@ fn check_function(
     if func.name.name == "main" {
         if *main_found {
             errors.push(CanonError::CheckError {
-                message: "duplicate `main` definition".to_string(),
+                message: "duplicate entry point: only one `Unit => Program { … }` may be defined"
+                    .to_string(),
                 span: func.span,
             });
         }
@@ -957,8 +1011,39 @@ fn check_function(
 
         if func.receiver.is_some() {
             errors.push(CanonError::CheckError {
-                message: "`main` is the entry point and must not have a receiver".to_string(),
+                message: "the entry point must not have a receiver".to_string(),
                 span: func.span,
+            });
+        }
+
+        // Entries are anonymous, selected by their world-shaped return
+        // (`Unit => Program`). A literal `main` name is a leftover of
+        // the pre-types-only surface. Anonymous entries reach here
+        // already renamed to the internal `main` by
+        // `resolve_new_syntax`, distinguished by the `anonymous` flag.
+        if !func.anonymous {
+            errors.push(CanonError::CheckError {
+                message: "`main` is not a name: entries are anonymous and selected by their \
+                          world-shaped return — write `Unit => Program { … }`"
+                    .to_string(),
+                span: func.name.span,
+            });
+        }
+    } else if func.extern_wasm.is_none() && starts_lowercase(&func.name.name) {
+        // Types-only: the only names are type names (PascalCase).
+        // camelCase survives in exactly two places — binding files (the
+        // FFI boundary, `extern_wasm` above) and `canon test` functions
+        // (zero-arg, `TestResult`-returning), which need distinct
+        // non-type names because they would otherwise collide as
+        // constructor-family keys.
+        if !is_test_function_shape(func) {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "camelCase names are not allowed: the only names are type names — \
+                     replace `{}` with a PascalCase constructor (`Input => Type {{ … }}`)",
+                    func.name.name
+                ),
+                span: func.name.span,
             });
         }
     }
@@ -997,6 +1082,119 @@ fn check_function(
 
     let scope = ExprScope::from_function(func);
     check_block(&func.body, &func.return_ty, &scope, symbols, errors);
+}
+
+fn starts_lowercase(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_lowercase)
+}
+
+/// Union-dispatch shape rules (the ordering spec, "Dispatch arms follow
+/// the union's variant order", and "every variant must be handled;
+/// there is no wildcard arm"):
+///
+///   * arms appear in the union's variant order — alphabetical, since
+///     union variants themselves are enforced alphabetical;
+///   * no variant appears twice;
+///   * every variant of the scrutinee's union is covered.
+///
+/// Skipped when the scrutinee's union can't be resolved (unknown
+/// scrutinee, or an arm already failed membership — those cases produce
+/// their own errors) so one mistake doesn't cascade.
+fn check_union_dispatch_shape(
+    arms: &[MatchArm],
+    scrutinee_ty: &str,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
+    if scrutinee_ty.is_empty() || scrutinee_ty == "<unknown>" || arms.is_empty() {
+        return;
+    }
+    // Resolve the scrutinee to a union by walking the alias chain
+    // (`MessageContent = Option<Content>` dispatches on `Option`'s
+    // variants). The bound keeps a malformed alias cycle finite.
+    let is_union = |name: &str| symbols.variant_of.values().any(|u| u == name);
+    let mut union_name = scrutinee_ty;
+    for _ in 0..20 {
+        if is_union(union_name) {
+            break;
+        }
+        match symbols.aliases.get(union_name) {
+            Some(next) => union_name = next.as_str(),
+            None => return,
+        }
+    }
+    if !is_union(union_name) {
+        return;
+    }
+
+    let arm_names: Vec<(&str, crate::error::Span)> = arms
+        .iter()
+        .filter_map(|a| match &a.param_ty {
+            TypeExpr::Named { name, span, .. } => Some((name.as_str(), *span)),
+            _ => None,
+        })
+        .collect();
+
+    // Every arm must be a variant of this union for the shape rules to
+    // apply cleanly — membership failures already errored above.
+    if !arm_names
+        .iter()
+        .all(|(n, _)| symbols.variant_of.get(*n).is_some_and(|u| u == union_name))
+    {
+        return;
+    }
+
+    for pair in arm_names.windows(2) {
+        let ((a, _), (b, bspan)) = (pair[0], pair[1]);
+        if a > b {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "dispatch arms must follow the union's variant order: `{}` before `{}`",
+                    b, a
+                ),
+                span: bspan,
+            });
+        }
+        if a == b {
+            errors.push(CanonError::CheckError {
+                message: format!("duplicate dispatch arm `{}`", a),
+                span: bspan,
+            });
+        }
+    }
+
+    let covered: HashSet<&str> = arm_names.iter().map(|(n, _)| *n).collect();
+    let mut missing: Vec<&str> = symbols
+        .variant_of
+        .iter()
+        .filter(|(_, u)| u.as_str() == union_name)
+        .map(|(v, _)| v.as_str())
+        .filter(|v| !covered.contains(v))
+        .collect();
+    missing.sort_unstable();
+    if !missing.is_empty() {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "non-exhaustive dispatch on `{}`: every variant must be handled (there is \
+                 no wildcard arm) — missing `{}`",
+                union_name,
+                missing.join("`, `")
+            ),
+            span: arm_names.first().map(|(_, s)| *s).unwrap_or_default(),
+        });
+    }
+}
+
+/// The `canon test` discovery shape: a free, zero-arg function returning
+/// the named type `TestResult` (no generics). Mirrored by
+/// `is_test_function` in `main.rs`.
+fn is_test_function_shape(func: &FunctionDef) -> bool {
+    func.receiver.is_none()
+        && func.params.is_empty()
+        && matches!(
+            &func.return_ty,
+            TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
+        )
 }
 
 fn check_type_expr(
@@ -1603,6 +1801,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: *span,
                 });
             }
+            check_union_dispatch_shape(arms, &scrutinee_ty, symbols, errors);
         }
         Expr::Try { inner, .. } => {
             check_expr(inner, scope, symbols, errors);
@@ -1840,7 +2039,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     if matches!(receiver_ty, "Int" | "Float")
         && matches!(
             method,
-            "add" | "sub" | "mul" | "div" | "rem" | "mod" | "ne" | "eq" | "lt" | "gt" | "le" | "ge"
+            "add" | "sub" | "mul" | "div" | "rem" | "ne" | "eq" | "lt" | "gt" | "le" | "ge"
         )
         && arg_count == 1
     {
@@ -1857,10 +2056,8 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
             (method, arg_count),
             ("concat", 1)
                 | ("length", 0)
-                | ("len", 0)
                 | ("byteAt", 1)
                 | ("substring", 2)
-                | ("slice", 2)
                 | ("eq", 1)
                 | ("ne", 1)
                 | ("lt", 1)
@@ -2159,14 +2356,14 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         | ("Float", "print")
         | ("Hex", "print")
         | ("Bool", "print") => "Unit".to_string(),
-        ("Int", "add" | "sub" | "mul" | "div" | "rem" | "mod") => "Int".to_string(),
-        ("Float", "add" | "sub" | "mul" | "div" | "rem" | "mod") => "Float".to_string(),
+        ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
+        ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
         ("Int", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         ("Float", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         // Conversion is construction: `Int.String()` renders decimal.
         ("Int", "String") => "String".to_string(),
-        ("String", "concat" | "substring" | "slice") => "String".to_string(),
-        ("String", "length" | "len" | "byteAt") => "Int".to_string(),
+        ("String", "concat" | "substring") => "String".to_string(),
+        ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         ("List", "length") => "Int".to_string(),
         ("List", "map") => "List".to_string(),

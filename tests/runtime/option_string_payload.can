@@ -5,7 +5,7 @@ pick = (Int) => Option<String> {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     1.pick() -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }

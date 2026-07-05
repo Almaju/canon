@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     "hello\tworld\n" -> Print
     "quote: \"hi\"" -> Print
     "backslash: \\" -> Print

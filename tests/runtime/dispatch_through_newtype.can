@@ -9,7 +9,7 @@ dispatch = (MessageContent) => Unit {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "hi"
         -> Some
         -> MessageContent

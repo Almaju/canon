@@ -45,8 +45,8 @@ fn future_is_a_known_generic_type_in_extern_decl() {
     let source = r#"
 futureString = () => Future<String>
 
-main = () => Unit {
-    "hello".print()
+Unit => Unit {
+    futureString().print()
 }
 "#;
     let m = parse_and_transform(source);
@@ -63,8 +63,11 @@ fn stream_is_a_known_generic_type_in_extern_decl() {
     let source = r#"
 tick = () => Stream<Int>
 
-main = () => Unit {
-    "hello".print()
+Ticked = Stream<Int>
+
+Unit => Unit {
+    tick() -> Ticked
+    "done".print()
 }
 "#;
     let m = parse_and_transform(source);

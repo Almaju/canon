@@ -6,7 +6,7 @@ tag = (Msg) => Html {
     <button data-msg="{Msg}">go</button>
 }
 
-main = () => Unit {
+Unit => Program {
     <ul>{"a & b".row()}{"x<y".row()}</ul> -> Print
     <span>{1 -> Sum(41)}</span> -> Print
     "inc"

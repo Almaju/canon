@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) }) -> At(1) -> (
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }

@@ -6,6 +6,6 @@ double = (Int) => Int {
     Int.mul(3)
 }
 
-main = () => Unit {
+Unit => Program {
     2.double().print()
 }

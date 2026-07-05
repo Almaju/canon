@@ -2,6 +2,6 @@ Ord = Equal
   + Greater
   + Less
 
-main = () => Unit {
+Unit => Program {
     "multi-line union defined" -> Print
 }

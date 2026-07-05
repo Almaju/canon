@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     List("a" * "b" * "c")
         .streamOf()
         -> Mapped((String) => String { String -> Joined("!") })

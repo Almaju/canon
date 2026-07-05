@@ -17,6 +17,6 @@ extract = (JsonObject) => String {
     "extracted"
 }
 
-main = () => Unit {
+Unit => Program {
     "ok" -> Print
 }

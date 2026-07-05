@@ -11,7 +11,7 @@ describe = (Mode) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     Closed()
         .describe()
         -> Print

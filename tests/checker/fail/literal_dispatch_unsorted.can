@@ -6,6 +6,6 @@ route = (String) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "/a".route().print()
 }

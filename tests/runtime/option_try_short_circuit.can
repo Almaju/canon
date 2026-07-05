@@ -12,7 +12,7 @@ second = (Int) => Option<String> {
         -> Some
 }
 
-main = () => Unit {
+Unit => Program {
     5.second() -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }

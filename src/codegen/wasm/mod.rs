@@ -5064,7 +5064,7 @@ impl<'m> WasmGen<'m> {
         let flat_args: Vec<Expr>;
         let args: &[Expr] = match args {
             [Expr::ProductValue { fields, .. }]
-                if !matches!(method, "substring" | "slice" | "Substring" | "Slice") =>
+                if !matches!(method, "substring" | "Substring") =>
             {
                 flat_args = fields.clone();
                 &flat_args
@@ -6546,7 +6546,7 @@ impl<'m> WasmGen<'m> {
             //
             // Stack: [ptr, len] → [len_i64]. Drops the pointer; the
             // length is the i32 byte-count promoted to i64 (Canon `Int`).
-            ("length" | "len", _) if recv_ty.is_str_like() => {
+            ("length", _) if recv_ty.is_str_like() => {
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // save len
                 f.instruction(&Instruction::Drop); // drop ptr
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
@@ -6706,7 +6706,7 @@ impl<'m> WasmGen<'m> {
                 Ty::I32
             }
             // ── List methods ───────────────────────────────────────────────────
-            ("length" | "len", Ty::List) | ("length" | "len", Ty::NamedPtr(_)) => {
+            ("length", Ty::List) | ("length", Ty::NamedPtr(_)) => {
                 // Stack: (ptr: i32, len: i32) for List, or just i32 for NamedPtr
                 match &recv_ty {
                     Ty::List => {

@@ -7,7 +7,7 @@ route = (Int * String) => Int {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     10
         .route("Add:xyz")
         -> Print

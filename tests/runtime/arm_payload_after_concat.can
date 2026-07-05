@@ -1,4 +1,4 @@
-main = () => Result<Unit, Unit> {
+Unit => Result<Program, Unit> {
     "model" -> Ok -> (
         * Err<Unit> => Unit { "err" -> Print }
         * Ok<String> => Unit {

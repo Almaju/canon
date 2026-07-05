@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     200
         -> Status
         -> Print

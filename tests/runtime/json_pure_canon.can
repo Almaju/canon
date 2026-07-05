@@ -5,7 +5,7 @@ show = (Result) => Unit {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "true"
         -> Json
         .show()
