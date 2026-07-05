@@ -19,7 +19,9 @@ main = () => Unit {
     Leaf()
         .describe()
         -> Print
-    Branch(Left(Leaf()) * Right(Leaf()) * Value(7))
+    7
+        -> Value
+        -> Branch(Leaf() -> Left * Leaf() -> Right)
         .describe()
         -> Print
 }

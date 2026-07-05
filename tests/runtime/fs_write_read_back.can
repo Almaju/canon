@@ -1,6 +1,7 @@
 main = () => Unit {
-    Contents("written from canon")
-        .write(Path("/tmp/canon-fs-write-test.txt"))?
+    "written from canon"
+        -> Contents
+        .write("/tmp/canon-fs-write-test.txt" -> Path)?
         -> File?
         .read()?
         -> Print

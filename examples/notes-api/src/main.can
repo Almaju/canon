@@ -7,30 +7,30 @@ NoteOne = Body
 NoteTwo = Body
 
 Unit => IndexBody {
-    Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
+    [{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}] -> Body
 }
 
 Unit => NotFound {
-    Body({"error":"not found"})
+    {"error":"not found"} -> Body
 }
 
 Unit => NoteOne {
-    Body({"id":1,"title":"ship canon v1"})
+    {"id":1,"title":"ship canon v1"} -> Body
 }
 
 Unit => NoteTwo {
-    Body({"id":2,"title":"write the docs"})
+    {"id":2,"title":"write the docs"} -> Body
 }
 
 Request => Response {
     Request.path() -> (
-        * None => Response { Response(Headers() * NotFound() * Status(400)) }
+        * None => Response { 400 -> Status -> Response(Headers() * NotFound()) }
         * Some<String> => Response {
             String -> (
-                * "/notes" => Response { Response(Headers() * IndexBody() * Status(200)) }
-                * "/notes/1" => Response { Response(Headers() * NoteOne() * Status(200)) }
-                * "/notes/2" => Response { Response(Headers() * NoteTwo() * Status(200)) }
-                * String => Response { Response(Headers() * NotFound() * Status(404)) }
+                * "/notes" => Response { 200 -> Status -> Response(Headers() * IndexBody()) }
+                * "/notes/1" => Response { 200 -> Status -> Response(Headers() * NoteOne()) }
+                * "/notes/2" => Response { 200 -> Status -> Response(Headers() * NoteTwo()) }
+                * String => Response { 404 -> Status -> Response(Headers() * NotFound()) }
             )
         }
     )

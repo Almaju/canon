@@ -1,7 +1,12 @@
 main = () => Unit {
-    Int(1) -> Print
-    Int(5)
-        -> Sum(Int(2))
+    1
+        -> Int
         -> Print
-    Float(2.5) -> Print
+    5
+        -> Int
+        -> Sum(2 -> Int)
+        -> Print
+    2.5
+        -> Float
+        -> Print
 }

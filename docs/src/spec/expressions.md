@@ -33,6 +33,42 @@ needs one disambiguation rule, and it is the parentheses:
 position (signatures, dispatch patterns) a bare PascalCase name is
 always the type.
 
+## Canonical Call Form
+
+A call applies one PascalCase name to an input product. The three
+spellings — `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` — denote the
+*same* call (the receiver / left value fills the first slot of the input
+product). Since the choice between them is discretionary, the compiler
+picks one canonical form and `canon fmt` rewrites the rest to it,
+backstopped by the checker — the same instrument that enforces
+alphabetical ordering.
+
+**The first input always rides the pipe; the rest ride in the parens.**
+
+```canon
+Name("toto") -> Display          # not  Display(Name("toto"))
+5 -> Sum(5)                       # not  5 * 5 -> Sum   or  Sum(5 * 5)
+List -> List(Item)               # append: the list flows, the item is bound
+"bob" -> Person(30)              # a product built by piping its first field
+```
+
+`a -> Name(b)` reads as "apply `Name`, which already carries `b`, to
+`a`" — a partial application `Name(b)` fed the flowing value. `B(A)` (the
+subject alone in parens) is never canonical: it becomes `A -> B`. Two
+consequences:
+
+- **Zero-input calls stay prefix** — `Now()`, `Map()`, `None()`. A chain
+  *starts* with a prefix call or a leaf and *continues* with `->`.
+- **`List(…)` keeps its elements** — a list is an ordered sequence, not a
+  subject-bearing call, so `List(1 * 2 * 3)` is left as written.
+
+Because the spellings denote the same call, the rewrite is
+semantics-preserving: the compiler treats a piped call to a type
+constructor exactly as the prefix construction `Name(A * rest)`.
+Position-sensitive builtins keep their operand order — the pipe receiver
+is always the first operand, so `0 -> Difference(5)` (= −5) is never
+reordered.
+
 ## Function Bodies
 
 A body is a newline-separated sequence of expressions; the **last

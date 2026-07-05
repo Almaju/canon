@@ -3,11 +3,15 @@ Greeting = String
 Loud = String
 
 Int => Greeting {
-    Greeting("int:" -> Joined(Int -> String))
+    "int:"
+        -> Joined(Int -> String)
+        -> Greeting
 }
 
 Greeting => Loud {
-    Loud(Greeting.String -> Joined("!"))
+    Greeting.String
+        -> Joined("!")
+        -> Loud
 }
 
 main = () => Unit {

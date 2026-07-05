@@ -5,7 +5,7 @@
 //! spacing, indentation, and line breaking.
 
 use crate::ast::*;
-use crate::error::Result;
+use crate::error::{Result, Span};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
 
@@ -17,7 +17,233 @@ pub fn format(source: &str) -> Result<String> {
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let module = parser.parse()?;
+    let module = canonicalize_module(&module);
     Ok(emit_module(&module))
+}
+
+// ── Canonical call form ───────────────────────────────────────────────────────
+//
+// One way to spell a call: the first input always rides the pipe, the
+// rest ride in the parens as a partial application. `B(A)` is rewritten
+// to `A -> B`, `B(A * C)` to `A -> B(C)`, and `A.B(C)` / `A * C -> B` to
+// `A -> B(C)`. `A -> B(C)` reads as "apply `B`, which already has `C`,
+// to `A`". Zero-input calls stay prefix (`Now()`, `Map()`), and
+// `List(…)` keeps its elements (an ordered sequence, not a
+// subject-bearing call). The parser accepts every spelling; this pass is
+// what makes `canon fmt` pick the canonical one. The compiler treats a
+// piped call to a type constructor as construction (`A -> B(rest)` ≡
+// `B(A * rest)`), so the rewrite is semantics-preserving.
+
+fn canonicalize_module(m: &Module) -> Module {
+    Module {
+        items: m
+            .items
+            .iter()
+            .map(|it| match it {
+                Item::Function(f) => Item::Function(FunctionDef {
+                    body: canon_block(&f.body),
+                    ..f.clone()
+                }),
+                other => other.clone(),
+            })
+            .collect(),
+        span: m.span,
+    }
+}
+
+fn canon_block(b: &Block) -> Block {
+    Block {
+        exprs: b.exprs.iter().map(canon_expr).collect(),
+        span: b.span,
+    }
+}
+
+fn canon_arm(a: &MatchArm) -> MatchArm {
+    MatchArm {
+        body: canon_block(&a.body),
+        ..a.clone()
+    }
+}
+
+/// Flatten a call's argument list to its input factors: a single
+/// `ProductValue` argument (`B(a * b)`) becomes `[a, b]`; anything else
+/// is taken as written.
+fn flatten_inputs(args: &[Expr]) -> Vec<Expr> {
+    match args {
+        [Expr::ProductValue { fields, .. }] => fields.clone(),
+        _ => args.to_vec(),
+    }
+}
+
+/// A receiver splits into its subject (the piped value, `.1`) and any
+/// trailing factors. A product receiver (`A * C -> B`) contributes its
+/// first element as the subject and the rest as parens factors;
+/// position is preserved so a same-typed builtin (`Difference`) keeps
+/// its operand order.
+fn split_receiver(recv: Expr) -> (Expr, Vec<Expr>) {
+    match recv {
+        Expr::ProductValue { fields, .. } if fields.len() >= 2 => {
+            let mut it = fields.into_iter();
+            let subject = it.next().unwrap();
+            (subject, it.collect())
+        }
+        other => (other, Vec::new()),
+    }
+}
+
+/// Build the canonical pipe `subject -> name(rest…)`. With no trailing
+/// factors it is the bare `subject -> name`; with several it wraps them
+/// in a product.
+fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
+    let args = match rest.len() {
+        0 => Vec::new(),
+        1 => rest,
+        _ => vec![Expr::ProductValue { fields: rest, span }],
+    };
+    Expr::MethodCall {
+        receiver: Box::new(subject),
+        method: name,
+        type_args: Vec::new(),
+        args,
+        piped: true,
+        span,
+    }
+}
+
+fn canon_expr(e: &Expr) -> Expr {
+    match e {
+        Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. }
+        | Expr::HexLit { .. } => e.clone(),
+
+        Expr::FieldAccess {
+            receiver,
+            field,
+            span,
+        } => Expr::FieldAccess {
+            receiver: Box::new(canon_expr(receiver)),
+            field: field.clone(),
+            span: *span,
+        },
+
+        Expr::Try { inner, span } => Expr::Try {
+            inner: Box::new(canon_expr(inner)),
+            span: *span,
+        },
+
+        Expr::Await { inner, span } => Expr::Await {
+            inner: Box::new(canon_expr(inner)),
+            span: *span,
+        },
+
+        Expr::Match {
+            scrutinee,
+            arms,
+            span,
+        } => Expr::Match {
+            scrutinee: Box::new(canon_expr(scrutinee)),
+            arms: arms.iter().map(canon_arm).collect(),
+            span: *span,
+        },
+
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            span,
+        } => Expr::Lambda {
+            params: params.clone(),
+            return_ty: return_ty.clone(),
+            body: canon_block(body),
+            span: *span,
+        },
+
+        Expr::ProductValue { fields, span } => Expr::ProductValue {
+            fields: fields.iter().map(canon_expr).collect(),
+            span: *span,
+        },
+
+        Expr::JsonLit { parts, span } => Expr::JsonLit {
+            parts: parts
+                .iter()
+                .map(|p| match p {
+                    JsonLitPart::Static(s) => JsonLitPart::Static(s.clone()),
+                    JsonLitPart::Interp(e) => JsonLitPart::Interp(Box::new(canon_expr(e))),
+                })
+                .collect(),
+            span: *span,
+        },
+
+        Expr::HtmlLit { parts, span } => Expr::HtmlLit {
+            parts: parts
+                .iter()
+                .map(|p| match p {
+                    HtmlLitPart::Static(s) => HtmlLitPart::Static(s.clone()),
+                    HtmlLitPart::Interp(e) => HtmlLitPart::Interp(Box::new(canon_expr(e))),
+                })
+                .collect(),
+            span: *span,
+        },
+
+        // ── Prefix constructor: `B(inputs…)` ────────────────────────────
+        Expr::Constructor { name, args, span } => {
+            // `List(…)` is an ordered sequence literal, not a
+            // subject-bearing call — keep it prefix, elements in order.
+            if name.name == "List" {
+                return Expr::Constructor {
+                    name: name.clone(),
+                    args: args.iter().map(canon_expr).collect(),
+                    span: *span,
+                };
+            }
+            let mut inputs: Vec<Expr> = flatten_inputs(args).iter().map(canon_expr).collect();
+            if inputs.is_empty() {
+                // Zero-input call stays prefix: `Now()`, `Map()`, `None()`.
+                return Expr::Constructor {
+                    name: name.clone(),
+                    args: Vec::new(),
+                    span: *span,
+                };
+            }
+            // A prefix constructor binds its inputs by type (distinct
+            // field types — the product rule), so the order is free:
+            // sort for determinism, pipe the first, parens hold the rest.
+            inputs.sort_by_key(emit_inline);
+            let subject = inputs.remove(0);
+            make_pipe(subject, name.clone(), inputs, *span)
+        }
+
+        // ── Method / pipe: `recv.B(args…)` / `recv -> B(args…)` ──────────
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            piped,
+            span,
+        } => {
+            // camelCase methods are FFI binding calls at the boundary
+            // (`.now()`, `.set()`); `->` only pipes into PascalCase
+            // constructors, so leave these as dot-calls.
+            if !method.name.chars().next().is_some_and(char::is_uppercase) {
+                return Expr::MethodCall {
+                    receiver: Box::new(canon_expr(receiver)),
+                    method: method.clone(),
+                    type_args: type_args.clone(),
+                    args: args.iter().map(canon_expr).collect(),
+                    piped: *piped,
+                    span: *span,
+                };
+            }
+            let (subject, mut rest) = split_receiver(canon_expr(receiver));
+            for input in flatten_inputs(args) {
+                rest.push(canon_expr(&input));
+            }
+            make_pipe(subject, method.clone(), rest, *span)
+        }
+    }
 }
 
 // ── Module ──────────────────────────────────────────────────────────────────
@@ -1063,13 +1289,14 @@ mod tests {
     }
 
     #[test]
-    fn test_product_values_sorted() {
-        // A product-type constructor is positionless (its fields bind to
-        // type-named slots), so the formatter canonicalises the values
-        // into alphabetical order.
+    fn test_product_values_canonicalized() {
+        // A product-type constructor is positionless, so its inputs sort
+        // deterministically; the canonical call form then pipes the first
+        // and keeps the rest in the parens as a partial application
+        // (`Node("c" * "a" * "b")` → `"a" -> Node("b" * "c")`).
         assert_format(
             "main = () => Unit {\n    Node(\"c\" * \"a\" * \"b\").print()\n}\n",
-            "main = () => Unit {\n    Node(\"a\" * \"b\" * \"c\") -> Print\n}\n",
+            "main = () => Unit {\n    \"a\"\n        -> Node(\"b\" * \"c\")\n        -> Print\n}\n",
         );
     }
 

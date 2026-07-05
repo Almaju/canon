@@ -1,12 +1,15 @@
 first = (Int) => Option<String> {
     Int -> Eq(0) -> (
-        * False => Option<String> { Some("found") }
+        * False => Option<String> { "found" -> Some }
         * True => Option<String> { None() }
     )
 }
 
 second = (Int) => Option<String> {
-    Some(Int -> First? -> Joined(" and used"))
+    Int
+        -> First?
+        -> Joined(" and used")
+        -> Some
 }
 
 main = () => Unit {

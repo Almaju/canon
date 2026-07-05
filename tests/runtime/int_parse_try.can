@@ -1,5 +1,8 @@
 double = (String) => Result<Int, MalformedInt> {
-    Ok(Int(String)? -> Product(2))
+    String
+        -> Int?
+        -> Product(2)
+        -> Ok
 }
 
 main = () => Unit {

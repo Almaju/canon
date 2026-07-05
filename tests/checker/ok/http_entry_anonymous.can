@@ -1,3 +1,5 @@
 Request => Response {
-    Response(Body("hello") * Headers() * Status(200))
+    "hello"
+        -> Body
+        -> Response(200 -> Status * Headers())
 }

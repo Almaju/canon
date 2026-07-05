@@ -3,7 +3,9 @@ InvalidUrl = String
 Url = String
 
 Url = (String) => Result<Url, InvalidUrl> {
-    Ok(Url(String))
+    String
+        -> Url
+        -> Ok
 }
 
 main = () => Unit {

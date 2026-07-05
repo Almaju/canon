@@ -12,7 +12,8 @@ view = (Model) => Html {
 }
 
 main = () => Unit {
-    Model("groceries")
+    "groceries"
+        -> Model
         .view()
         -> Print
 }

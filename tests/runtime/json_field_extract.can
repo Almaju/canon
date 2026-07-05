@@ -1,7 +1,8 @@
 main = () => Result<Unit, MalformedJson> {
-    Json("{\"model\":\"gpt-4\",\"stream\":true}")?
+    "{\"model\":\"gpt-4\",\"stream\":true}"
+        -> Json?
         .field("model")?
         .asString()?
         -> Print
-    Ok(Unit())
+    Unit() -> Ok
 }

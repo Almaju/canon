@@ -6,5 +6,5 @@ main = () => Result<Unit, MalformedJson> {
         -> Joined("}")
         -> Json?
         -> Print
-    Ok(Unit())
+    Unit() -> Ok
 }

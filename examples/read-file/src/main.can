@@ -1,5 +1,6 @@
 Unit => Program {
-    Path("Cargo.toml")
+    "Cargo.toml"
+        -> Path
         -> File?
         .read()?
         -> Print

@@ -17,7 +17,8 @@ route = (Path) => String {
 }
 
 main = () => Unit {
-    Path("/notes")
+    "/notes"
+        -> Path
         .route()
         -> Print
     2

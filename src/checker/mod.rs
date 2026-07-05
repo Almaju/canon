@@ -1485,7 +1485,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // async call, which ordinary method lookup can't see.
             let is_concurrent_combinator =
                 CONCURRENT_COMBINATORS.contains(&method.name.as_str()) && effective_arity == 1;
+            // Piped construction: `A -> B(rest)` is the same call as
+            // `B(A * rest)`, so a method whose name is a type constructor
+            // (a typedef, a union variant, or a primitive) is really
+            // building a `B` — the receiver fills the first input slot.
+            let is_piped_construction = symbols.standalone_types.contains(&method.name)
+                || symbols.variant_of.contains_key(&method.name)
+                || matches!(
+                    method.name.as_str(),
+                    "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
+                );
             let known = is_concurrent_combinator
+                || is_piped_construction
                 || method_known_via_aliases(
                     &recv_ty_specific,
                     &method.name,
@@ -2003,6 +2014,25 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                         None => break,
                     }
                 }
+            }
+            // Piped construction (`A -> B(rest)` builds a `B`, exactly as
+            // `B(A * rest)` does): a variant widens to its parent union
+            // (`x -> Some` is an `Option`); a primitive or any other type
+            // constructor produces its own type (`5 -> Int`, `7 -> Left`).
+            // Mirrors the `Expr::Constructor` arm. Names with a
+            // shape/constructor body (`Served`, `Route`, `TestResult`) are
+            // excluded — their declared return type is resolved by the
+            // lookups above (or the builtin fallback), so a shape's result
+            // is never masked by its own newtype declaration.
+            if let Some(parent) = symbols.variant_of.get(&method.name) {
+                return parent.clone();
+            }
+            let is_shape = symbols.methods.keys().any(|(_, m)| m == &method.name);
+            if !is_shape
+                && (symbols.standalone_types.contains(&method.name)
+                    || matches!(method.name.as_str(), "Int" | "Float" | "String" | "Bool"))
+            {
+                return method.name.clone();
             }
             method_return_type(&recv_ty, &method.name)
         }

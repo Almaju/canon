@@ -24,16 +24,16 @@ Set * String => Contains {
 
 Inserted = (Set * String) => Set {
     Set -> (
-        * Absent => Set { Entry(Absent() * String) }
+        * Absent => Set { Absent() -> Entry(String) }
         * Entry => Set {
             String -> Lt(Entry.Item) -> (
                 * False => Set {
                     String -> Eq(Entry.Item) -> (
-                        * False => Set { Entry(Entry.Item * Entry.Remaining -> Inserted(String)) }
+                        * False => Set { Entry.Item -> Entry(Entry.Remaining -> Inserted(String)) }
                         * True => Set { Set }
                     )
                 }
-                * True => Set { Entry(Set * String) }
+                * True => Set { Set -> Entry(String) }
             )
         }
     )
@@ -58,7 +58,7 @@ Removed = (Set * String) => Set {
         * Absent => Set { Absent() }
         * Entry => Set {
             Entry.Item -> Eq(String) -> (
-                * False => Set { Entry(Entry.Item * Entry.Remaining -> Removed(String)) }
+                * False => Set { Entry.Item -> Entry(Entry.Remaining -> Removed(String)) }
                 * True => Set { Entry.Remaining }
             )
         }

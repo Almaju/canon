@@ -5,7 +5,8 @@ shout = (Greeting) => String {
 }
 
 main = () => Unit {
-    Greeting("howdy")
+    "howdy"
+        -> Greeting
         .shout()
         -> Print
 }

@@ -1,5 +1,5 @@
 main = () => Unit {
-    Some("hello") -> (
+    "hello" -> Some -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { "some" -> Print }
     )

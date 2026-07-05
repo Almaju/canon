@@ -10,6 +10,11 @@ dispatch = (MessageContent) => Unit {
 }
 
 main = () => Unit {
-    MessageContent(Some("hi")).dispatch()
-    MessageContent(None()).dispatch()
+    "hi"
+        -> Some
+        -> MessageContent
+        .dispatch()
+    None()
+        -> MessageContent
+        .dispatch()
 }

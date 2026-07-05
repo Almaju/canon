@@ -7,6 +7,8 @@ greet = (Greeting * Name) => Greeting {
 }
 
 main = () => Unit {
-    Greeting("hello").greet(Name("world"))
+    "hello"
+        -> Greeting
+        .greet("world" -> Name)
     "ok" -> Print
 }

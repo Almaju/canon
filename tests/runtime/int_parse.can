@@ -1,9 +1,9 @@
 main = () => Unit {
-    Int("42") -> (
+    "42" -> Int -> (
         * Err<MalformedInt> => Unit { "err" -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
-    Int("-7") -> (
+    "-7" -> Int -> (
         * Err<MalformedInt> => Unit { "err" -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
@@ -11,11 +11,11 @@ main = () => Unit {
         * Err<MalformedInt> => Unit { "err" -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
-    Int("abc") -> (
+    "abc" -> Int -> (
         * Err<MalformedInt> => Unit { MalformedInt -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
-    Int("") -> (
+    "" -> Int -> (
         * Err<MalformedInt> => Unit { MalformedInt -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )

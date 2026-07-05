@@ -1,7 +1,7 @@
 main = () => Result<Unit, Unit> {
-    Ok(42) -> (
+    42 -> Ok -> (
         * Err<Unit> => Unit { "err" -> Print }
         * Ok<Int> => Unit { "ok" -> Print }
     )
-    Ok(Unit())
+    Unit() -> Ok
 }

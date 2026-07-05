@@ -6,8 +6,16 @@ RenderedItem = Html
 
 Line => Flipped {
     Line -> ByteAt(1) -> Eq(48) -> (
-        * False => Flipped { Line("0" -> Joined(Line -> Substring(From(2) * To(Line -> Length)))) }
-        * True => Flipped { Line("1" -> Joined(Line -> Substring(From(2) * To(Line -> Length)))) }
+        * False => Flipped {
+            "0"
+                -> Joined(Line -> Substring(2 -> From * Line -> Length -> To))
+                -> Line
+        }
+        * True => Flipped {
+            "1"
+                -> Joined(Line -> Substring(2 -> From * Line -> Length -> To))
+                -> Line
+        }
     )
 }
 
@@ -15,21 +23,21 @@ Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49) -> (
         * False => RenderedItem {
             Line
-                -> Substring(From(3) * To(Line -> Length))
+                -> Substring(3 -> From * Line -> Length -> To)
                 -> Escaped
                 -> Joined(" ")
-                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("done"))
+                -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("done"))
                 -> Joined(" ")
-                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Joined("Delete:" -> Joined(Int -> String) -> Msg -> Button("remove"))
                 -> Li
         }
         * True => RenderedItem {
             "<s>"
-                -> Joined(Line -> Substring(From(3) * To(Line -> Length)) -> Escaped)
+                -> Joined(Line -> Substring(3 -> From * Line -> Length -> To) -> Escaped)
                 -> Joined("</s> ")
-                -> Joined(Msg("Toggle:" -> Joined(Int -> String)) -> Button("undo"))
+                -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("undo"))
                 -> Joined(" ")
-                -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
+                -> Joined("Delete:" -> Joined(Int -> String) -> Msg -> Button("remove"))
                 -> Li
         }
     )

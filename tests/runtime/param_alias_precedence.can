@@ -15,7 +15,8 @@ wrap = (Attr * String * Tag) => String {
 }
 
 main = () => Unit {
-    Attr("class=\"x\"")
-        .wrap("inner" * Tag("div"))
+    "class=\"x\""
+        -> Attr
+        .wrap("inner" * "div" -> Tag)
         -> Print
 }

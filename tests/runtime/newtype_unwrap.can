@@ -1,5 +1,5 @@
 Greeting = String
 
 main = () => Unit {
-    Greeting("hello").String -> Print
+    "hello" -> Greeting.String -> Print
 }

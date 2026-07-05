@@ -2,6 +2,6 @@ Greeting = String
 
 main = () => Unit {
     "hello, "
-        -> Joined(Greeting("world"))
+        -> Joined("world" -> Greeting)
         -> Print
 }

@@ -1,5 +1,6 @@
 Unit => Program {
-    Url("http://example.com")?
+    "http://example.com"
+        -> Url?
         -> Fetched?
         -> Print
 }

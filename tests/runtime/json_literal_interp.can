@@ -12,5 +12,5 @@ main = () => Result<Unit, MalformedJson> {
     {"who":"team","members":["alice","bob","carol"]}
         -> Json?
         -> Print
-    Ok(Unit())
+    Unit() -> Ok
 }

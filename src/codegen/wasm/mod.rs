@@ -3686,6 +3686,14 @@ impl<'m> WasmGen<'m> {
             Expr::Constructor { name, .. } => &name.name,
             Expr::Ident(id) => &id.name,
             Expr::FieldAccess { field, .. } => &field.name,
+            // Piped construction: `65 -> Byte` builds a `Byte` just like
+            // `Byte(65)`, but scalar-newtype erasure drops the name from
+            // the value, so recover it from the constructor's spelling.
+            Expr::MethodCall {
+                method,
+                piped: true,
+                ..
+            } => &method.name,
             _ => return false,
         };
         self.collect_alias_chain(name).iter().any(|n| n == "Byte")
@@ -4005,6 +4013,27 @@ impl<'m> WasmGen<'m> {
     /// the name itself is the best static type available. Kept separate from
     /// `infer_static_type_name` so the method-call and async-classification
     /// call sites keep their conservative behavior.
+    /// Static result type of a builtin-vocabulary method. Comparisons
+    /// yield `Bool`; the numeric operations preserve their receiver's
+    /// type (`Int` stays `Int`, `Float` stays `Float`); the string and
+    /// index operations yield `String` / `Int`. Returns `None` for
+    /// anything not in the builtin vocabulary, so a user shape of the
+    /// same name (resolved earlier via `func_table`) always wins.
+    fn builtin_result_type(&self, method: &str, receiver: &Expr) -> Option<String> {
+        match method {
+            "Eq" | "Ne" | "Lt" | "Le" | "Gt" | "Ge" | "And" | "Or" | "Not" => {
+                Some("Bool".to_string())
+            }
+            "Length" | "ByteAt" => Some("Int".to_string()),
+            "Joined" | "Substring" | "Slice" => Some("String".to_string()),
+            // List transforms preserve list-ness (`map`/`filter`/`append`).
+            "Mapped" | "Filtered" | "Appended" => Some("List".to_string()),
+            "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Minimum" | "Maximum"
+            | "Negated" => self.infer_ctor_arg_type_name(receiver),
+            _ => None,
+        }
+    }
+
     fn infer_ctor_arg_type_name(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(ident) => Some(ident.name.clone()),
@@ -4048,6 +4077,22 @@ impl<'m> WasmGen<'m> {
                             _ => None,
                         };
                     }
+                }
+                // Builtin vocabulary isn't in `func_table`; infer its
+                // result type so a constructor family keyed on that type
+                // still resolves through a builtin-terminated chain
+                // (`Eq(5) -> TestResult`, `Sum(1) -> Digits`).
+                if let Some(t) = self.builtin_result_type(&method.name, receiver) {
+                    return Some(t);
+                }
+                // Piped construction: `X -> Foo` builds a `Foo` (a
+                // variant widens to its union), so `7 -> Value` inside a
+                // product binds to the `Value` field by type.
+                if let Some(parent) = self.variant_parent.get(&method.name) {
+                    return Some(parent.clone());
+                }
+                if self.type_defs.contains_key(&method.name) {
+                    return Some(method.name.clone());
                 }
                 None
             }
@@ -4127,6 +4172,27 @@ impl<'m> WasmGen<'m> {
     /// (contents writer + body bytes + trailers writer) at fixed
     /// memory addresses, and `build_http_handle_wrapper` performs the
     /// writes after `task.return`.
+    /// Does `e` construct the HTTP component named `name` (`Headers` /
+    /// `Status`)? Matched by static type where inference succeeds, and
+    /// by the chain's *syntactic base* otherwise — a builder chain like
+    /// `Headers().set(…)` whose `.set` returns `Unit` breaks type
+    /// inference, so we walk the receivers back to the `Headers()`
+    /// constructor.
+    fn is_http_component(&self, e: &Expr, name: &str) -> bool {
+        if let Some(t) = self.infer_ctor_arg_type_name(e) {
+            if self.widening_chain(&t).iter().any(|n| n == name) {
+                return true;
+            }
+        }
+        match e {
+            Expr::Constructor { name: n, .. } => n.name == name,
+            Expr::MethodCall {
+                receiver, method, ..
+            } => method.name == name || self.is_http_component(receiver, name),
+            _ => false,
+        }
+    }
+
     fn build_http_response(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
         let mem = MemArg {
             offset: 0,
@@ -4147,17 +4213,12 @@ impl<'m> WasmGen<'m> {
         // though the body (`NotFound()`) no longer sits first. Falls
         // back to declaration order when a component's type can't be
         // inferred statically.
-        let chains: Vec<Vec<String>> = exprs
+        let headers_i = exprs
             .iter()
-            .map(|e| {
-                self.infer_ctor_arg_type_name(e)
-                    .map(|n| self.widening_chain(&n))
-                    .unwrap_or_default()
-            })
-            .collect();
-        let idx_of = |ty: &str| chains.iter().position(|c| c.iter().any(|n| n == ty));
-        let headers_i = idx_of("Headers");
-        let status_i = idx_of("Status");
+            .position(|e| self.is_http_component(e, "Headers"));
+        let status_i = exprs
+            .iter()
+            .position(|e| self.is_http_component(e, "Status"));
         let (body_expr, headers_expr, status_expr) = match (headers_i, status_i) {
             (Some(hi), Some(si)) => {
                 let body = if has_body {
@@ -5082,6 +5143,59 @@ impl<'m> WasmGen<'m> {
             };
         }
 
+        // The pipe form of prefix construction: `A -> B(C)` is the same
+        // call as `B(A * C)` — the receiver fills the first slot of `B`'s
+        // input product. When `B` names a type constructor, route it
+        // through `compile_constructor` (the single construction path)
+        // so piped and prefix spellings build identically: products,
+        // union variants, newtypes, primitive conversions, constructor
+        // families, shapes, and the HTTP `Response` all handled there.
+        // Builtins (`Sum`, `Ge`, `Joined`, …) and pure operations are
+        // not type names, so they fall through to the method paths
+        // below. Runs before the receiver is compiled, so
+        // `compile_constructor` owns every input — no double emit.
+        // A name in the builtin vocabulary (`Length`, `Sum`, `Mapped`,
+        // `Eq`, …) is never construction even when it also names a type
+        // (`Length = Int`, `Mapped<U> = List<U>`): the method paths below
+        // own it as a builtin on the receiver (list length / map) or a
+        // stdlib shape. Excluding it keeps `list -> Length` a length, not
+        // a `Length(list)` newtype wrap.
+        let is_builtin_op = crate::ast::builtin_method_alias(method).is_some();
+        // A name with a func-table body is a shape / constructor family
+        // (`Route`, `Served`, `TestResult`, `Greeting`'s Int member, …).
+        // Those resolve on the method path below, keyed on the receiver's
+        // *compiled* type — routing them through `compile_constructor`
+        // would rebuild the receiver and lose handle/repr threading. Only
+        // *pure* construction (a product / newtype / variant / primitive
+        // with no func body) needs the construction route.
+        let has_func_body = self.func_table.keys().any(|(_, m)| m == method);
+        let is_ctor_name = (!is_builtin_op
+            && !has_func_body
+            && method.chars().next().is_some_and(char::is_uppercase)
+            && (self.type_defs.contains_key(method)
+                || self.variant_parent.contains_key(method)
+                || matches!(method, "Some" | "None" | "Ok" | "Err")))
+            // HTTP `Response` construction is owned by codegen
+            // (`build_http_response`) regardless of its checker binding,
+            // so route the piped form there too.
+            || (self.http_mode && method == "Response");
+        if is_ctor_name {
+            let mut ctor_inputs = vec![receiver.clone()];
+            match args {
+                [Expr::ProductValue { fields, .. }] => ctor_inputs.extend(fields.iter().cloned()),
+                _ => ctor_inputs.extend(args.iter().cloned()),
+            }
+            let ctor_args = if ctor_inputs.len() == 1 {
+                ctor_inputs
+            } else {
+                vec![Expr::ProductValue {
+                    fields: ctor_inputs,
+                    span: receiver.span(),
+                }]
+            };
+            return self.compile_constructor(method, &ctor_args, scope, f);
+        }
+
         // A single product argument stands for its flattened components:
         // `headers.set(Name * Value)`, `server.route(a * b * c * d)`, and
         // every other multi-input builtin/binding receive positional args
@@ -5139,16 +5253,44 @@ impl<'m> WasmGen<'m> {
             Some(canonical) => vec![method.to_string(), canonical.to_string()],
             None => vec![method.to_string()],
         };
+        // A scalar newtype erases to its underlying primitive, so a piped
+        // construction like `3000 -> Port` leaves `Ty::I64` on the stack
+        // and `type_name` recovers only "Int" — losing "Port", which the
+        // next step (`Port -> HttpServer`) dispatches on. Recover the
+        // *static* type from the receiver's syntactic shape: `Foo(x)` or
+        // `x -> Foo` constructs a `Foo` when `Foo` names a type. Tried
+        // first so newtype-typed shapes still resolve.
+        let static_recv_type: Option<String> = match receiver {
+            Expr::Constructor { name, .. } if self.type_defs.contains_key(&name.name) => {
+                Some(name.name.clone())
+            }
+            Expr::MethodCall {
+                method: m,
+                piped: true,
+                ..
+            } if self.type_defs.contains_key(&m.name) => Some(m.name.clone()),
+            _ => None,
+        };
+        let mut candidate_types: Vec<String> = Vec::new();
+        if let Some(st) = &static_recv_type {
+            candidate_types.extend(self.collect_alias_chain(st));
+        }
         if let Some(name) = &type_name {
-            for alias in self.collect_alias_chain(name) {
-                for m in &method_names {
-                    let key = (Some(alias.clone()), m.clone());
-                    if let Some(info) = self.func_table.get(&key).cloned() {
-                        return self.emit_func_table_call(&info, args, scope, f);
-                    }
+            for a in self.collect_alias_chain(name) {
+                if !candidate_types.contains(&a) {
+                    candidate_types.push(a);
                 }
             }
-        } else {
+        }
+        for alias in candidate_types {
+            for m in &method_names {
+                let key = (Some(alias.clone()), m.clone());
+                if let Some(info) = self.func_table.get(&key).cloned() {
+                    return self.emit_func_table_call(&info, args, scope, f);
+                }
+            }
+        }
+        if type_name.is_none() {
             for m in &method_names {
                 if let Some(info) = self.func_table.get(&(None, m.clone())).cloned() {
                     return self.emit_func_table_call(&info, args, scope, f);
@@ -5188,6 +5330,51 @@ impl<'m> WasmGen<'m> {
                 // the identity conversion — the value already is one.
                 ty if ty.is_str_like() => return Ty::Str,
                 _ => {}
+            }
+        }
+
+        // Primitive construction via pipe: `1 -> Int`, `2.5 -> Float`,
+        // `b -> Bool`. The receiver is already on the stack; widen /
+        // convert / pass through, mirroring `compile_constructor`'s
+        // primitive arm. (`"5" -> Int` parses via a `(String) -> Int`
+        // func-table member above, so only the non-string cases land
+        // here.)
+        if args.is_empty() {
+            match (method, &recv_ty) {
+                ("Int", Ty::I64) => return Ty::I64,
+                ("Int", Ty::I32) => {
+                    f.instruction(&Instruction::I64ExtendI32S);
+                    return Ty::I64;
+                }
+                ("Int", Ty::F64) => {
+                    f.instruction(&Instruction::I64TruncF64S);
+                    return Ty::I64;
+                }
+                ("Float", Ty::F64) => return Ty::F64,
+                ("Float", Ty::I64) => {
+                    f.instruction(&Instruction::F64ConvertI64S);
+                    return Ty::F64;
+                }
+                ("Bool", Ty::I32) => return Ty::I32,
+                _ => {}
+            }
+        }
+
+        // Newtype wrap via pipe: `"hi" -> Greeting` with `Greeting =
+        // String` is the identity — the receiver already carries the
+        // underlying representation, so relabel it to the newtype. Only
+        // fires when the newtype's repr matches the receiver's, so a
+        // *conversion* (`5 -> Json`, resolved above or a type error)
+        // never silently becomes an identity wrap.
+        if args.is_empty() {
+            if let Some(TypeExpr::Named { .. }) = self.type_defs.get(method) {
+                let wrapped = self.resolve_repr(method);
+                let compatible = std::mem::discriminant(&wrapped)
+                    == std::mem::discriminant(&recv_ty)
+                    || (wrapped.is_str_like() && recv_ty.is_str_like());
+                if compatible {
+                    return wrapped;
+                }
             }
         }
 

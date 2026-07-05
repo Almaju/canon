@@ -17,7 +17,11 @@ Todos = String
 ToggledAt = Todos
 
 Title * Todos => AddedTodo {
-    Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
+    Todos.String
+        -> Joined("0|")
+        -> Joined(Title.String)
+        -> Joined("\n")
+        -> Todos
 }
 
 Todos => Cleared {
@@ -25,9 +29,13 @@ Todos => Cleared {
         * False => Cleared {
             Todos.String -> ByteAt(1) -> Eq(49) -> (
                 * False => Cleared {
-                    Todos(Todos.String -> FirstLine -> Joined("\n") -> Joined(Todos(Todos.String -> RestLines) -> Cleared -> String))
+                    Todos.String
+                        -> FirstLine
+                        -> Joined("\n")
+                        -> Joined(Todos.String -> RestLines -> Todos -> Cleared -> String)
+                        -> Todos
                 }
-                * True => Cleared { Todos(Todos.String -> RestLines) -> Cleared }
+                * True => Cleared { Todos.String -> RestLines -> Todos -> Cleared }
             )
         }
         * True => Cleared { Todos }
@@ -40,8 +48,8 @@ String => FirstLine {
             String -> ByteAt(1) -> Eq(10) -> (
                 * False => FirstLine {
                     String
-                        -> Substring(From(1) * To(1))
-                        -> Joined(String -> Substring(From(2) * To(String -> Length)) -> FirstLine)
+                        -> Substring(1 -> From * 1 -> To)
+                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> FirstLine)
                 }
                 * True => FirstLine { "" }
             )
@@ -54,7 +62,7 @@ String => ParsedNum {
     String -> Length -> Eq(0) -> (
         * False => ParsedNum {
             String
-                -> Substring(From(1) * To(String -> Length -> Difference(1)))
+                -> Substring(1 -> From * String -> Length -> Difference(1) -> To)
                 -> ParsedNum
                 -> Product(10)
                 -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
@@ -68,9 +76,13 @@ Int * Todos => RemovedAt {
         * False => RemovedAt {
             Int -> Eq(1) -> (
                 * False => RemovedAt {
-                    Todos(Todos.String -> FirstLine -> Joined("\n") -> Joined(Int -> Difference(1) -> RemovedAt(Todos(Todos.String -> RestLines)) -> String))
+                    Todos.String
+                        -> FirstLine
+                        -> Joined("\n")
+                        -> Joined(Int -> Difference(1) -> RemovedAt(Todos.String -> RestLines -> Todos) -> String)
+                        -> Todos
                 }
-                * True => RemovedAt { Todos(Todos.String -> RestLines) }
+                * True => RemovedAt { Todos.String -> RestLines -> Todos }
             )
         }
         * True => RemovedAt { Todos }
@@ -80,9 +92,13 @@ Int * Todos => RemovedAt {
 Int * Todos => RenderedItems {
     Todos.String -> Length -> Eq(0) -> (
         * False => RenderedItems {
-            Html(Int -> RenderedItem(Line(Todos.String -> FirstLine)) -> String -> Joined(Int -> Sum(1) -> RenderedItems(Todos(Todos.String -> RestLines)) -> String))
+            Int
+                -> RenderedItem(Todos.String -> FirstLine -> Line)
+                -> String
+                -> Joined(Int -> Sum(1) -> RenderedItems(Todos.String -> RestLines -> Todos) -> String)
+                -> Html
         }
-        * True => RenderedItems { Html("") }
+        * True => RenderedItems { "" -> Html }
     )
 }
 
@@ -92,10 +108,10 @@ String => RestLines {
             String -> ByteAt(1) -> Eq(10) -> (
                 * False => RestLines {
                     String
-                        -> Substring(From(2) * To(String -> Length))
+                        -> Substring(2 -> From * String -> Length -> To)
                         -> RestLines
                 }
-                * True => RestLines { String -> Substring(From(2) * To(String -> Length)) }
+                * True => RestLines { String -> Substring(2 -> From * String -> Length -> To) }
             )
         }
         * True => RestLines { "" }
@@ -107,10 +123,21 @@ Int * Todos => ToggledAt {
         * False => ToggledAt {
             Int -> Eq(1) -> (
                 * False => ToggledAt {
-                    Todos(Todos.String -> FirstLine -> Joined("\n") -> Joined(Int -> Difference(1) -> ToggledAt(Todos(Todos.String -> RestLines)) -> String))
+                    Todos.String
+                        -> FirstLine
+                        -> Joined("\n")
+                        -> Joined(Int -> Difference(1) -> ToggledAt(Todos.String -> RestLines -> Todos) -> String)
+                        -> Todos
                 }
                 * True => ToggledAt {
-                    Todos(Line(Todos.String -> FirstLine) -> Flipped -> String -> Joined("\n") -> Joined(Todos.String -> RestLines))
+                    Todos.String
+                        -> FirstLine
+                        -> Line
+                        -> Flipped
+                        -> String
+                        -> Joined("\n")
+                        -> Joined(Todos.String -> RestLines)
+                        -> Todos
                 }
             )
         }

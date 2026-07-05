@@ -7,20 +7,20 @@ Update = Model
 Model => Html {
     "Canon Counter"
         -> H1
-        -> Joined(Msg("Decrement") -> Button("-"))
+        -> Joined("Decrement" -> Msg -> Button("-"))
         -> Joined(Model -> String -> Span)
-        -> Joined(Msg("Increment") -> Button("+"))
+        -> Joined("Increment" -> Msg -> Button("+"))
         -> Div
 }
 
 Unit => Init {
-    Model(0)
+    0 -> Model
 }
 
 Model * String => Update {
     String -> (
-        * "Decrement" => Model { Model(Model -> Difference(1)) }
-        * "Increment" => Model { Model(Model -> Sum(1)) }
+        * "Decrement" => Model { Model -> Difference(1) -> Model }
+        * "Increment" => Model { Model -> Sum(1) -> Model }
         * String => Model { Model }
     )
 }

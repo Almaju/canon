@@ -12,7 +12,7 @@ Int * Pos * String => Result<Digits, MalformedInt> {
     Pos -> Gt(String -> Length) -> (
         * False => Result<Digits, MalformedInt> {
             String -> ByteAt(Pos) -> IsIntDigit -> (
-                * False => Result<Digits, MalformedInt> { Err(MalformedInt("invalid integer")) }
+                * False => Result<Digits, MalformedInt> { "invalid integer" -> MalformedInt -> Err }
                 * True => Result<Digits, MalformedInt> {
                     Int
                         -> Product(10)
@@ -21,7 +21,7 @@ Int * Pos * String => Result<Digits, MalformedInt> {
                 }
             )
         }
-        * True => Result<Digits, MalformedInt> { Ok(Int) }
+        * True => Result<Digits, MalformedInt> { Int -> Ok }
     )
 }
 
@@ -29,11 +29,11 @@ String => Result<Int, MalformedInt> {
     String -> Length -> Eq(0) -> (
         * False => Result<Int, MalformedInt> {
             String -> ByteAt(1) -> Eq(45) -> (
-                * False => Result<Int, MalformedInt> { 0 -> Digits(Pos(1) * String) }
+                * False => Result<Int, MalformedInt> { 0 -> Digits(1 -> Pos * String) }
                 * True => Result<Int, MalformedInt> { String -> Negative }
             )
         }
-        * True => Result<Int, MalformedInt> { Err(MalformedInt("empty string is not an Int")) }
+        * True => Result<Int, MalformedInt> { "empty string is not an Int" -> MalformedInt -> Err }
     )
 }
 
@@ -46,14 +46,18 @@ Int => IsIntDigit {
 
 Result => Result<Negated, MalformedInt> {
     Result -> (
-        * Err<MalformedInt> => Result<Negated, MalformedInt> { Err(MalformedInt) }
-        * Ok<Int> => Result<Negated, MalformedInt> { Ok(0 -> Difference(Int)) }
+        * Err<MalformedInt> => Result<Negated, MalformedInt> { MalformedInt -> Err }
+        * Ok<Int> => Result<Negated, MalformedInt> { 0 -> Difference(Int) -> Ok }
     )
 }
 
 String => Result<Negative, MalformedInt> {
     String -> Length -> Eq(1) -> (
-        * False => Result<Negative, MalformedInt> { 0 -> Digits(Pos(2) * String) -> Negated }
-        * True => Result<Negative, MalformedInt> { Err(MalformedInt("lone minus is not an Int")) }
+        * False => Result<Negative, MalformedInt> { 0 -> Digits(2 -> Pos * String) -> Negated }
+        * True => Result<Negative, MalformedInt> {
+            "lone minus is not an Int"
+                -> MalformedInt
+                -> Err
+        }
     )
 }

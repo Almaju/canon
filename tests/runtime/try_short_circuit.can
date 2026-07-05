@@ -1,12 +1,15 @@
 classify = (Int) => Result<String, String> {
     Int -> Eq(0) -> (
-        * False => Result<String, String> { Ok("nonzero") }
-        * True => Result<String, String> { Err("was zero") }
+        * False => Result<String, String> { "nonzero" -> Ok }
+        * True => Result<String, String> { "was zero" -> Err }
     )
 }
 
 describe = (Int) => Result<String, String> {
-    Ok(Int.classify()? -> Joined(" indeed"))
+    Int
+        .classify()?
+        -> Joined(" indeed")
+        -> Ok
 }
 
 main = () => Unit {

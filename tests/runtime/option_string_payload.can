@@ -1,6 +1,6 @@
 pick = (Int) => Option<String> {
     Int -> Eq(0) -> (
-        * False => Option<String> { Some("payload") }
+        * False => Option<String> { "payload" -> Some }
         * True => Option<String> { None() }
     )
 }

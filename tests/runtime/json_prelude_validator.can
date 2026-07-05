@@ -1,4 +1,6 @@
 main = () => Result<Unit, MalformedJson> {
-    Json("[1, 2, 3]")? -> Print
-    Ok(Unit())
+    "[1, 2, 3]"
+        -> Json?
+        -> Print
+    Unit() -> Ok
 }

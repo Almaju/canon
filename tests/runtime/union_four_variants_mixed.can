@@ -12,7 +12,7 @@ Shape = Count
   + Ratio
 
 makeCount = () => Shape {
-    Count(42)
+    42 -> Count
 }
 
 makeEmpty = () => Shape {
@@ -20,11 +20,11 @@ makeEmpty = () => Shape {
 }
 
 makeName = () => Shape {
-    Name("alex")
+    "alex" -> Name
 }
 
 makeRatio = () => Shape {
-    Ratio(2.5)
+    2.5 -> Ratio
 }
 
 show = (Shape) => Unit {

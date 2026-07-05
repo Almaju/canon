@@ -10,19 +10,31 @@ Request => Response {
     Request.method() -> (
         * "GET" => Response {
             Request.path() -> (
-                * None => Response { Response(Body("bad request") * CorsHeaders() * Status(400)) }
+                * None => Response {
+                    "bad request"
+                        -> Body
+                        -> Response(400 -> Status * CorsHeaders())
+                }
                 * Some<String> => Response {
                     String -> (
                         * "/todos" => Response {
-                            Response(Body(Seeded() -> String) * CorsHeaders() * Status(200))
+                            200
+                                -> Status
+                                -> Response(CorsHeaders() * Seeded() -> String -> Body)
                         }
                         * String => Response {
-                            Response(Body("not found") * CorsHeaders() * Status(404))
+                            "not found"
+                                -> Body
+                                -> Response(404 -> Status * CorsHeaders())
                         }
                     )
                 }
             )
         }
-        * String => Response { Response(Body("method not allowed") * CorsHeaders() * Status(405)) }
+        * String => Response {
+            "method not allowed"
+                -> Body
+                -> Response(405 -> Status * CorsHeaders())
+        }
     )
 }

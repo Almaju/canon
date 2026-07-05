@@ -1,24 +1,30 @@
 Greeting = String
 
 Greeting = () => Greeting {
-    Greeting("hello")
+    "hello" -> Greeting
 }
 
 Greeting = (Bool) => Greeting {
     Bool -> (
-        * False => Greeting { Greeting("bool:no") }
-        * True => Greeting { Greeting("bool:yes") }
+        * False => Greeting { "bool:no" -> Greeting }
+        * True => Greeting { "bool:yes" -> Greeting }
     )
 }
 
 Greeting = (Int) => Greeting {
-    Greeting("int:" -> Joined(Int -> String))
+    "int:"
+        -> Joined(Int -> String)
+        -> Greeting
 }
 
 main = () => Unit {
     Greeting() -> Print
-    Greeting(7) -> Print
-    Greeting(True()) -> Print
+    7
+        -> Greeting
+        -> Print
+    True()
+        -> Greeting
+        -> Print
     7
         -> Greeting
         -> Print

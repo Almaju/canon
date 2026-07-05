@@ -5,7 +5,7 @@ Pass = Unit
 TestResult = Fail + Pass
 
 makeFail = () => TestResult {
-    Fail("the message")
+    "the message" -> Fail
 }
 
 makePass = () => TestResult {

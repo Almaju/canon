@@ -1,4 +1,6 @@
 main = () => Result<Unit, Unit> {
-    Ok(42)? -> Print
-    Ok(Unit())
+    42
+        -> Ok?
+        -> Print
+    Unit() -> Ok
 }

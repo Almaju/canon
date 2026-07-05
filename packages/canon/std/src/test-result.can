@@ -6,7 +6,7 @@ TestResult = Fail + Pass
 
 Bool * String => TestResult {
     Bool -> (
-        * False => TestResult { Fail(String) }
+        * False => TestResult { String -> Fail }
         * True => TestResult { Pass() }
     )
 }

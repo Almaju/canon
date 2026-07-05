@@ -13,7 +13,11 @@ Show = (Name) => String {
 }
 
 testShowExists = () => TestResult {
-    Greeting("hi") -> Show
-    Name("Alice") -> Show
+    "hi"
+        -> Greeting
+        -> Show
+    "Alice"
+        -> Name
+        -> Show
     Pass()
 }

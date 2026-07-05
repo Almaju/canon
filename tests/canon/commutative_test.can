@@ -9,17 +9,25 @@ Greeted = (Greeting * Name) => Greeted {
 }
 
 testCallableBothWays = () => TestResult {
-    Greeting("hello") -> Greeted(Name("world"))
-    Name("world") -> Greeted(Greeting("hello"))
+    "hello"
+        -> Greeting
+        -> Greeted("world" -> Name)
+    "world"
+        -> Name
+        -> Greeted("hello" -> Greeting)
     Pass()
 }
 
 testCanonicalDirection = () => TestResult {
-    Greeting("hello") -> Greeted(Name("world"))
+    "hello"
+        -> Greeting
+        -> Greeted("world" -> Name)
     Pass()
 }
 
 testNonCanonicalDirection = () => TestResult {
-    Name("world") -> Greeted(Greeting("hello"))
+    "world"
+        -> Name
+        -> Greeted("hello" -> Greeting)
     Pass()
 }

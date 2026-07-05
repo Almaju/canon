@@ -35,7 +35,10 @@ fn wasi_http_service_smoke() {
     std::fs::write(
         &src_path,
         r#"home = (Request) => Response {
-    Response(Body("created: " -> Joined("ok")) * Headers() * Status(201))
+    "created: "
+        -> Joined("ok")
+        -> Body
+        -> Response(201 -> Status * Headers())
 }
 "#,
     )
@@ -117,7 +120,9 @@ fn wasi_http_service_response_headers() {
     std::fs::write(
         &src_path,
         r#"home = (Request) => Response {
-    Response(Body("<h1>hi</h1>") * Headers().set("content-type" * "text/html").set("x-canon" * "1") * Status(200))
+    "<h1>hi</h1>"
+        -> Body
+        -> Response(200 -> Status * Headers().set("content-type" * "text/html").set("x-canon" * "1"))
 }
 "#,
     )
@@ -199,9 +204,14 @@ fn wasi_http_service_method_dispatch() {
         &src_path,
         r#"Request => Response {
     Request.method() -> (
-        * "GET" => Response { Response(Body("got GET") * Headers() * Status(200)) }
-        * "POST" => Response { Response(Body("got POST") * Headers() * Status(201)) }
-        * String => Response { Response(Body("no " -> Joined(String)) * Headers() * Status(405)) }
+        * "GET" => Response { "got GET" -> Body -> Response(200 -> Status * Headers()) }
+        * "POST" => Response { "got POST" -> Body -> Response(201 -> Status * Headers()) }
+        * String => Response {
+            "no "
+                -> Joined(String)
+                -> Body
+                -> Response(405 -> Status * Headers())
+        }
     )
 }
 "#,

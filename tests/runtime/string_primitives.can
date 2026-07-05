@@ -9,7 +9,7 @@ main = () => Unit {
         -> ByteAt(5)
         -> Print
     "hello"
-        -> Substring(From(2) * To(4))
+        -> Substring(2 -> From * 4 -> To)
         -> Print
     "hello" -> Eq("hello") -> (
         * False => Unit { "ne" -> Print }

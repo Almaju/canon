@@ -13,10 +13,12 @@ Show = (Name) => String {
 }
 
 main = () => Unit {
-    Greeting("hi")
+    "hi"
+        -> Greeting
         -> Show
         -> Print
-    Name("Alice")
+    "Alice"
+        -> Name
         -> Show
         -> Print
 }

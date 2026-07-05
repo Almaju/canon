@@ -5,8 +5,8 @@ Name = String
 Person = Age * Name
 
 Unit => Program {
-    Person("bob" * 30).Age
+    "bob" -> Person(30).Age
         -> String
         -> Print
-    Person("bob" * 30).Name -> Print
+    "bob" -> Person(30).Name -> Print
 }

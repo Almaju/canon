@@ -222,6 +222,28 @@ Non-obvious invariants the code won't spell out for you:
   (`.set(name * value)` is positional). `build_http_response` picks
   `Headers`/`Status` by type and treats the leftover as the body for the
   same reason.
+- **Canonical call form: the first input pipes, the rest ride the
+  parens.** `canon fmt` rewrites every call to `A -> B(rest)` (the
+  `canon_expr` pass in `src/formatter.rs`): `B(A)` → `A -> B`, `B(A * C)`
+  → `A -> B(C)`, `A.B(C)` / `A * C -> B` → `A -> B(C)`. Zero-arg calls
+  and `List(…)` stay prefix. This is semantics-preserving because the
+  compiler treats a piped call to a **type constructor** as construction:
+  `compile_method_call` routes any type-name method (product / variant /
+  newtype / primitive `Int`/`Float`/`String`/`Bool` / HTTP `Response`)
+  through `compile_constructor` — the single construction path — *unless*
+  the name is a builtin (`builtin_method_alias`) or has a func-table body
+  (a shape / constructor family like `Route`, `TestResult`, keyed on the
+  receiver's compiled type). Newtype-wrap (`"hi" -> Greeting`) and
+  primitive (`1 -> Int`) piped forms are handled as method-path
+  fallbacks. Scalar newtypes erase, so a piped `3000 -> Port` loses
+  "Port" on the stack — `static_recv_type` recovers it from the
+  receiver's *syntactic* constructor name, and `builtin_result_type` +
+  the piped-construction arm of `infer_ctor_arg_type_name` give static
+  types to builtin-terminated (`Eq(5)`) and construction (`7 -> Value`)
+  chains so family dispatch and by-type product binding still resolve.
+  The checker mirrors this: a piped call to a type name is construction
+  (`is_piped_construction`; a variant widens to its union; a name with a
+  shape body keeps its declared return type).
 - **Three codegen encoder modes** (CLI / HTTP / web) each carry a fixed
   import block; adding a defined helper function shifts `fn_user_start`
   in all three. The emitted function/code sections derive from the
