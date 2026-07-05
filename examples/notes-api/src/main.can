@@ -1,28 +1,36 @@
-indexBody = () => Body {
+IndexBody = Body
+
+NotFound = Body
+
+NoteOne = Body
+
+NoteTwo = Body
+
+() => IndexBody {
     Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
 }
 
-notFound = () => Body {
+() => NotFound {
     Body({"error":"not found"})
 }
 
-noteOne = () => Body {
+() => NoteOne {
     Body({"id":1,"title":"ship canon v1"})
 }
 
-noteTwo = () => Body {
+() => NoteTwo {
     Body({"id":2,"title":"write the docs"})
 }
 
-serve = (Request) => Response {
+(Request) => Response {
     Request.path().(
-        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (None) => Response { Response(NotFound() * Headers() * Status(400)) }
         * (Some<String>) => Response {
             String.(
-                * ("/notes") => Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") => Response { Response(noteOne() * Headers() * Status(200)) }
-                * ("/notes/2") => Response { Response(noteTwo() * Headers() * Status(200)) }
-                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(IndexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(NoteOne() * Headers() * Status(200)) }
+                * ("/notes/2") => Response { Response(NoteTwo() * Headers() * Status(200)) }
+                * (String) => Response { Response(NotFound() * Headers() * Status(404)) }
             )
         }
     )

@@ -376,7 +376,21 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<String> 
                 for e in &func.body.exprs {
                     collect_expr_names(e, &mut out);
                 }
-                (func.name.name.clone(), out)
+                // A self-constructor (`() => IndexBody { … }`, rewritten
+                // to name `Self` with receiver `IndexBody`) is reached
+                // through a `IndexBody()` call, which references the
+                // *type* name, not `Self`. Key it under the receiver so
+                // reachability connects — otherwise every anonymous/
+                // self constructor reads as dead code.
+                let key = if func.name.name == "Self" {
+                    func.receiver
+                        .as_ref()
+                        .map(|r| r.name.clone())
+                        .unwrap_or_else(|| func.name.name.clone())
+                } else {
+                    func.name.name.clone()
+                };
+                (key, out)
             }
             Item::TypeDef(td) => {
                 let mut out = HashSet::new();
