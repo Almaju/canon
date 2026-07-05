@@ -1,0 +1,5 @@
+Styles = Frag
+
+Unit => Styles {
+    "<style>body{margin:0;background:#0d1117;color:#c9d1d9;font:16px/1.65 -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif}.doc{max-width:720px;margin:0 auto;padding:32px 24px}nav{display:flex;gap:8px;margin-bottom:8px}nav button{background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:6px 14px;font-size:14px;cursor:pointer}nav button:hover{border-color:#8b949e}hr{border:0;border-top:1px solid #21262d;margin:16px 0 24px}h1{font-size:28px;border-bottom:1px solid #21262d;padding-bottom:8px}h2{font-size:21px;margin-top:28px}h3{font-size:17px}a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}code{background:#161b22;border:1px solid #21262d;border-radius:4px;padding:1px 6px;font-size:85%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}pre{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;overflow-x:auto}pre code{background:none;border:0;padding:0}strong{color:#f0f6fc}ul{padding-left:22px}li{margin:4px 0}</style>"
+}
