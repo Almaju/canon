@@ -4,6 +4,8 @@ HashCount = Int
 
 HeadingHtml = Frag
 
+Inline = Frag
+
 LineEnd = Int
 
 Markdown = String
@@ -13,6 +15,10 @@ RenderedBlocks = Frag
 RenderedHeading = Frag
 
 RenderedParagraph = Frag
+
+StarClose = Int
+
+TickClose = Int
 
 Int * String => HashCount {
     Int -> Gt(String -> Length) -> (
@@ -42,6 +48,50 @@ Markdown => Html {
     1
         -> RenderedBlocks(Markdown)
         -> Html
+}
+
+Int * String => Inline {
+    Int -> Gt(String -> Length) -> (
+        * False => Inline {
+            String -> ByteAt(Int) -> Eq(96) -> (
+                * False => Inline {
+                    String -> ByteAt(Int) -> Eq(42) -> (
+                        * False => Inline {
+                            String
+                                -> Substring(Int -> From * Int -> To)
+                                -> Escaped
+                                -> Joined(Int -> Sum(1) -> Inline(String))
+                        }
+                        * True => Inline {
+                            Int -> Sum(1) -> Gt(String -> Length) -> (
+                                * False => Inline {
+                                    String -> ByteAt(Int -> Sum(1)) -> Eq(42) -> (
+                                        * False => Inline {
+                                            "*" -> Joined(Int -> Sum(1) -> Inline(String))
+                                        }
+                                        * True => Inline {
+                                            "<strong>"
+                                                -> Joined(1 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> Sum(2) -> StarClose(String) -> Difference(1) -> To)))
+                                                -> Joined("</strong>")
+                                                -> Joined(Int -> Sum(2) -> StarClose(String) -> Sum(2) -> Inline(String))
+                                        }
+                                    )
+                                }
+                                * True => Inline { "*" }
+                            )
+                        }
+                    )
+                }
+                * True => Inline {
+                    "<code>"
+                        -> Joined(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> TickClose(String) -> Difference(1) -> To) -> Escaped)
+                        -> Joined("</code>")
+                        -> Joined(Int -> Sum(1) -> TickClose(String) -> Sum(1) -> Inline(String))
+                }
+            )
+        }
+        * True => Inline { "" }
+    )
 }
 
 Int * String => LineEnd {
@@ -92,7 +142,7 @@ Int * String => RenderedHeading {
         * False => RenderedHeading {
             Int
                 -> HashCount(String)
-                -> HeadingHtml(String -> Substring(Int -> Sum(Int -> HashCount(String)) -> Sum(1) -> From * Int -> LineEnd(String) -> Difference(1) -> To) -> Escaped)
+                -> HeadingHtml(1 -> Inline(String -> Substring(Int -> Sum(Int -> HashCount(String)) -> Sum(1) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
                 -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
         }
         * True => RenderedHeading {
@@ -106,7 +156,36 @@ Int * String => RenderedHeading {
 
 Int * String => RenderedParagraph {
     "<p>"
-        -> Joined(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To) -> Escaped)
+        -> Joined(1 -> Inline(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
         -> Joined("</p>")
         -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+}
+
+Int * String => StarClose {
+    Int -> Sum(1) -> Gt(String -> Length) -> (
+        * False => StarClose {
+            String -> ByteAt(Int) -> Eq(42) -> (
+                * False => StarClose { Int -> Sum(1) -> StarClose(String) }
+                * True => StarClose {
+                    String -> ByteAt(Int -> Sum(1)) -> Eq(42) -> (
+                        * False => StarClose { Int -> Sum(1) -> StarClose(String) }
+                        * True => StarClose { Int }
+                    )
+                }
+            )
+        }
+        * True => StarClose { Int }
+    )
+}
+
+Int * String => TickClose {
+    Int -> Gt(String -> Length) -> (
+        * False => TickClose {
+            String -> ByteAt(Int) -> Eq(96) -> (
+                * False => TickClose { Int -> Sum(1) -> TickClose(String) }
+                * True => TickClose { Int }
+            )
+        }
+        * True => TickClose { Int }
+    )
 }
