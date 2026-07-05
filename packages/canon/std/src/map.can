@@ -16,7 +16,7 @@ Values = List<Value>
 
 Inserted = (Map * String * Value) => Map {
     Map.(
-        * Empty => Map { Node(String * Empty() * Value) }
+        * Empty => Map { Node(Empty() * String * Value) }
         * Node => Map {
             String -> Lt(Node.Key).(
                 * False => Map {
@@ -24,10 +24,10 @@ Inserted = (Map * String * Value) => Map {
                         * False => Map {
                             Node(Node.Key * Node.Rest -> Inserted(String * Value) * Node.Value)
                         }
-                        * True => Map { Node(String * Node.Rest * Value) }
+                        * True => Map { Node(Node.Rest * String * Value) }
                     )
                 }
-                * True => Map { Node(String * Map * Value) }
+                * True => Map { Node(Map * String * Value) }
             )
         }
     )

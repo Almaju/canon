@@ -4133,18 +4133,44 @@ impl<'m> WasmGen<'m> {
             align: 2,
             memory_index: 0,
         };
-        // Normalise `Response(a * b * c)` and `Response(a, b, c)`.
-        // Field order is alphabetical by construction:
-        // (Body, Headers, Status) or (Headers, Status).
+        // Normalise `Response(a * b * c)` (one `ProductValue`) to the
+        // component list.
         let exprs: Vec<Expr> = match args {
             [Expr::ProductValue { fields, .. }] => fields.clone(),
             _ => args.to_vec(),
         };
         let has_body = exprs.len() >= 3;
-        let (body_expr, headers_expr, status_expr) = if has_body {
-            (exprs.first(), exprs.get(1), exprs.get(2))
-        } else {
-            (None, exprs.first(), exprs.get(1))
+        // Positionless: pick each component by its type, not its slot.
+        // `Headers()` and `Status(n)` name themselves; the body is
+        // whatever remains. This keeps a formatter-sorted
+        // `Response(Headers() * NotFound() * Status(404))` correct even
+        // though the body (`NotFound()`) no longer sits first. Falls
+        // back to declaration order when a component's type can't be
+        // inferred statically.
+        let chains: Vec<Vec<String>> = exprs
+            .iter()
+            .map(|e| {
+                self.infer_ctor_arg_type_name(e)
+                    .map(|n| self.widening_chain(&n))
+                    .unwrap_or_default()
+            })
+            .collect();
+        let idx_of = |ty: &str| chains.iter().position(|c| c.iter().any(|n| n == ty));
+        let headers_i = idx_of("Headers");
+        let status_i = idx_of("Status");
+        let (body_expr, headers_expr, status_expr) = match (headers_i, status_i) {
+            (Some(hi), Some(si)) => {
+                let body = if has_body {
+                    (0..exprs.len())
+                        .find(|&i| i != hi && i != si)
+                        .map(|i| &exprs[i])
+                } else {
+                    None
+                };
+                (body, Some(&exprs[hi]), Some(&exprs[si]))
+            }
+            _ if has_body => (exprs.first(), exprs.get(1), exprs.get(2)),
+            _ => (None, exprs.first(), exprs.get(1)),
         };
 
         // ── Phase 1: user expressions (parked on the operand stack —
@@ -4711,6 +4737,45 @@ impl<'m> WasmGen<'m> {
     /// Field expressions are assumed to be positional (same order as
     /// the type-level field declaration, which the parser preserves
     /// and the alphabetical-ordering rule pins).
+    /// Every type `name` widens to, most-specific first: itself, its
+    /// newtype-alias targets (`Value` → `String`), and — if it names a
+    /// union variant — its parent union and that union's aliases
+    /// (`Empty` → `Map`). This is the set a value of type `name` can
+    /// satisfy, used to bind product values to fields by type rather
+    /// than by position.
+    fn widening_chain(&self, name: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for link in self.collect_alias_chain(name) {
+            if !out.contains(&link) {
+                out.push(link);
+            }
+        }
+        if let Some(parent) = self.variant_parent.get(name) {
+            for link in self.collect_alias_chain(parent) {
+                if !out.contains(&link) {
+                    out.push(link);
+                }
+            }
+        }
+        out
+    }
+
+    /// How well a value (given its widening chain) fits a field of type
+    /// `field_ty`: `2` when the field's exact newtype appears on the
+    /// value's chain (`Value` value → `Value` field), `1` when they
+    /// merely share a base type (`String` value → `Key` field, both
+    /// erase to `String`), `0` when unrelated.
+    fn field_match_score(&self, value_chain: &[String], field_ty: &str) -> u8 {
+        if value_chain.iter().any(|n| n == field_ty) {
+            return 2;
+        }
+        let field_chain = self.widening_chain(field_ty);
+        if value_chain.iter().any(|n| field_chain.contains(n)) {
+            return 1;
+        }
+        0
+    }
+
     fn build_product_value(
         &mut self,
         product_name: &str,
@@ -4725,6 +4790,57 @@ impl<'m> WasmGen<'m> {
             .sum::<u32>()
             .max(4); // `alloc` expects a non-zero size.
 
+        // ── Bind values to fields by type, not by position ────────────
+        // Fields are alphabetical and construction is positionless
+        // (`Node(String * Empty() * Value)` and `Node(Empty() * Value *
+        // String)` build the same struct). Each value is routed to the
+        // field whose type it best matches: an exact newtype match
+        // (`Value` → the `Value` field) wins over a shared-base match
+        // (a bare `String` → the `Key` field), and any leftovers fall
+        // back to declaration order. Same-typed fields (map's `Key` and
+        // `Value`, both `String`) are why newtypes matter — tag a value
+        // `Value(x)` and it lands in the `Value` slot regardless of
+        // where it was written.
+        let n_fields = layout.len().min(field_exprs.len());
+        let value_chains: Vec<Option<Vec<String>>> = field_exprs
+            .iter()
+            .map(|e| {
+                self.infer_ctor_arg_type_name(e)
+                    .map(|nm| self.widening_chain(&nm))
+            })
+            .collect();
+        let mut used = vec![false; field_exprs.len()];
+        let mut slot_val: Vec<Option<usize>> = vec![None; n_fields];
+        // Pass 1 (exact) then pass 2 (shared-base): a slot claims the
+        // first unused value that scores at the current threshold.
+        for threshold in [2u8, 1u8] {
+            for (si, (field_name, _, _)) in layout.iter().take(n_fields).enumerate() {
+                if slot_val[si].is_some() {
+                    continue;
+                }
+                if let Some(vi) = (0..field_exprs.len()).find(|&vi| {
+                    !used[vi]
+                        && value_chains[vi]
+                            .as_ref()
+                            .is_some_and(|vc| self.field_match_score(vc, field_name) == threshold)
+                }) {
+                    slot_val[si] = Some(vi);
+                    used[vi] = true;
+                }
+            }
+        }
+        // Pass 3 (positional): unresolved values fill remaining slots in
+        // order — the pre-typed-construction behaviour, kept as a floor.
+        for slot in slot_val.iter_mut().take(n_fields) {
+            if slot.is_some() {
+                continue;
+            }
+            if let Some(vi) = (0..field_exprs.len()).find(|&vi| !used[vi]) {
+                *slot = Some(vi);
+                used[vi] = true;
+            }
+        }
+
         // ── Allocate ──────────────────────────────────────────────────
         f.instruction(&Instruction::I32Const(total_size as i32));
         f.instruction(&Instruction::Call(self.fn_alloc));
@@ -4738,7 +4854,6 @@ impl<'m> WasmGen<'m> {
         // nested expression's own stack activity. So: one copy per
         // stored field (consumed bottom-up by the stores below) plus
         // one at the very bottom that survives as the result.
-        let n_fields = layout.len().min(field_exprs.len());
         for _ in 0..=n_fields {
             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
         }
@@ -4749,7 +4864,8 @@ impl<'m> WasmGen<'m> {
         // pre-pushed above.
         for (i, (_field_name, field_repr, field_offset)) in layout.iter().take(n_fields).enumerate()
         {
-            let _val_ty = self.compile_expr(&field_exprs[i], scope, f);
+            let vi = slot_val[i].unwrap_or(i);
+            let _val_ty = self.compile_expr(&field_exprs[vi], scope, f);
             self.store_payload_at_offset(*field_offset, field_repr, scope, f);
         }
 

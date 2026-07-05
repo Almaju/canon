@@ -61,6 +61,17 @@ User = Birthday * Username
 - A component is accessed by its type name: `user.Birthday`.
 - For repeated or anonymous components (from `^N`), access is by
   1-based position: `byte.1`, `byte.2`.
+- **Construction is positionless.** A value binds to the field whose
+  type it is, not to the slot it is written in, so
+  `User(Username("ada") * Birthday("…"))` and
+  `User(Birthday("…") * Username("ada"))` build the same value — position
+  never carries meaning. Because the components are distinct types, each
+  value's type selects its field; `canon fmt` canonicalises the written
+  order alphabetically. Where two fields share an underlying type
+  (`Key = String` and `Value = String` in `Node = Key * Rest * Value`),
+  tag the values with the newtype — `Node(Key("k") * Value("v") * …)` —
+  so each still selects its field. A bare, untagged `String` carries no
+  such tag and falls back to declaration order.
 
 ## Newtypes
 

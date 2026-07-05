@@ -207,6 +207,21 @@ Non-obvious invariants the code won't spell out for you:
   an interpolating handler fails at build with a clear error.
 - **`le` / `ge` is the one comparison spelling** — there is no
   `lte` / `gte`.
+- **Product construction is positionless (by type, not slot).**
+  `build_product_value` binds each value to the field whose type it
+  matches — exact newtype match first (`Value(x)` → the `Value` field),
+  then shared base type, then declaration order as a floor
+  (`field_match_score` / `widening_chain`). So `canon fmt` sorts a
+  product-type constructor's values alphabetically and codegen still
+  routes them correctly. Two consequences: (1) same-underlying-type
+  fields (map's `Key` and `Value`, both `String`) must be **distinct
+  newtypes** and their values tagged to bind unambiguously — the spec's
+  "components are distinct types" rule guarantees the field types differ;
+  (2) the formatter sorts **only** `Expr::Constructor` product args —
+  never `List(…)` (ordered elements) and never method/pipe args
+  (`.set(name * value)` is positional). `build_http_response` picks
+  `Headers`/`Status` by type and treats the leftover as the body for the
+  same reason.
 - **Three codegen encoder modes** (CLI / HTTP / web) each carry a fixed
   import block; adding a defined helper function shifts `fn_user_start`
   in all three. The emitted function/code sections derive from the

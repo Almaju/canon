@@ -649,7 +649,18 @@ fn emit_base_inline(expr: &Expr) -> String {
                 format!("{}()", name.name)
             } else {
                 let mut s = format!("{}(", name.name);
-                emit_args_inline(&mut s, args);
+                match args.as_slice() {
+                    // A product-type constructor is positionless: its
+                    // fields bind to type-named slots, so canonicalise
+                    // the order alphabetically. `List` is the exception —
+                    // its `*`-separated arguments are ordered sequence
+                    // elements, not product fields, so they keep their
+                    // order.
+                    [Expr::ProductValue { fields, .. }] if name.name != "List" => {
+                        emit_product_fields_sorted(&mut s, fields);
+                    }
+                    _ => emit_args_inline(&mut s, args),
+                }
                 s.push(')');
                 s
             }
@@ -744,6 +755,16 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
         }
         out.push_str(&emit_inline(arg));
     }
+}
+
+/// Emit the fields of a product-type constructor, sorted alphabetically
+/// by their rendered form. Construction is positionless (values bind to
+/// fields by type), so a canonical order keeps `canon fmt` output
+/// stable regardless of the order the author wrote the fields.
+fn emit_product_fields_sorted(out: &mut String, fields: &[Expr]) {
+    let mut parts: Vec<String> = fields.iter().map(emit_inline).collect();
+    parts.sort();
+    out.push_str(&parts.join(" * "));
 }
 
 fn emit_arm_pattern(arm: &MatchArm) -> String {
@@ -1025,6 +1046,24 @@ mod tests {
     fn test_lambda() {
         let input = "main = (Stdout) => Unit {\n    List(10 * 20 * 30).map((Int) => Int { Int.mul(2) }).print(Stdout)\n}\n";
         assert_idempotent(input);
+    }
+
+    #[test]
+    fn test_product_values_sorted() {
+        // A product-type constructor is positionless (its fields bind to
+        // type-named slots), so the formatter canonicalises the values
+        // into alphabetical order.
+        assert_format(
+            "main = () => Unit {\n    Node(\"c\" * \"a\" * \"b\").print()\n}\n",
+            "main = () => Unit {\n    Node(\"a\" * \"b\" * \"c\") -> Print\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_list_elements_not_sorted() {
+        // `List` is an ordered sequence, not a product — its `*`-joined
+        // elements keep their written order.
+        assert_idempotent("main = () => Unit {\n    List(30 * 10 * 20) -> Print\n}\n");
     }
 
     #[test]
