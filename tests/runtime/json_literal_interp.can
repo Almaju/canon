@@ -1,8 +1,8 @@
-label = (Int) -> Json {
+label = (Int) => Json {
     {"answer":Int,"doubled":Int.mul(2),"ok":True()}
 }
 
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     42
         .label()
         .print()

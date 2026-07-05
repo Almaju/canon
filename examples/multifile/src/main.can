@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     Greeter("hi")
         .shout()
         .print()

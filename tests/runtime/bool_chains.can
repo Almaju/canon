@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     True().print()
     False().print()
     True()

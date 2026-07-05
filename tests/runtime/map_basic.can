@@ -1,15 +1,15 @@
-main = () -> Unit {
+main = () => Unit {
     Map().Inserted("b", "banana").Inserted("a", "apple").Value("a").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<String>) => Unit { String.print() }
     )
     Map().Inserted("k", "v1").Inserted("k", "v2").Value("k").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<String>) => Unit { String.print() }
     )
     Map().Inserted("a", "1").Value("missing").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<String>) => Unit { String.print() }
     )
     Map()
         .Inserted("a", "1")

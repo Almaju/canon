@@ -98,8 +98,8 @@ version = "0.1.0"
         !content.contains("extern Wasm"),
         "bindgen should not emit per-function `extern Wasm`, got:\n{content}",
     );
-    assert!(content.contains("now = () -> Instant"));
-    assert!(content.contains("getResolution = () -> Duration"));
+    assert!(content.contains("now = () => Instant"));
+    assert!(content.contains("getResolution = () => Duration"));
 
     // The index sidecar should map this file to the correct URN.
     let index_content = fs::read_to_string(&expected_index).expect("read index");
@@ -266,7 +266,7 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "main = () -> Unit {\n    spin().print()\n}\n").expect("write entry");
+    fs::write(&entry, "main = () => Unit {\n    spin().print()\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
@@ -303,7 +303,7 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "main = () -> Unit {\n    spin().print()\n}\n").expect("write entry");
+    fs::write(&entry, "main = () => Unit {\n    spin().print()\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 
@@ -388,7 +388,7 @@ fn ensure_installed_no_project_when_outside_any_canon_toml() {
     // project (e.g. our own `tests/runtime/` fixtures).
     let root = tmpdir("ensure_no_project");
     let loose = root.join("loose.can");
-    fs::write(&loose, "main = () -> Unit { Unit() }\n").unwrap();
+    fs::write(&loose, "main = () => Unit { Unit() }\n").unwrap();
 
     let outcome = install::ensure_installed(&loose).expect("ensure_installed should not fail");
     assert!(

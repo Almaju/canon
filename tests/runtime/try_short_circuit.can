@@ -1,21 +1,21 @@
-classify = (Int) -> Result<String, String> {
+classify = (Int) => Result<String, String> {
     Int.eq(0).(
-        * (False) -> Result<String, String> { Ok("nonzero") }
-        * (True) -> Result<String, String> { Err("was zero") }
+        * (False) => Result<String, String> { Ok("nonzero") }
+        * (True) => Result<String, String> { Err("was zero") }
     )
 }
 
-describe = (Int) -> Result<String, String> {
+describe = (Int) => Result<String, String> {
     Ok(Int.classify()?.concat(" indeed"))
 }
 
-main = () -> Unit {
+main = () => Unit {
     3.describe().(
-        * (Err<String>) -> Unit { String.print() }
-        * (Ok<String>) -> Unit { String.print() }
+        * (Err<String>) => Unit { String.print() }
+        * (Ok<String>) => Unit { String.print() }
     )
     0.describe().(
-        * (Err<String>) -> Unit { String.print() }
-        * (Ok<String>) -> Unit { String.print() }
+        * (Err<String>) => Unit { String.print() }
+        * (Ok<String>) => Unit { String.print() }
     )
 }

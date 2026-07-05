@@ -78,7 +78,7 @@ binding file:
 ```canon
 Url = String
 
-Url = (String) -> Result<Url, InvalidUrl> {
+Url = (String) => Result<Url, InvalidUrl> {
     String.parse()
 }
 ```
@@ -105,7 +105,7 @@ family; converting a value to `T` is spelled `T(value)` (or
 `value.T()`, the method form of the same declaration):
 
 ```canon,run=conversions
-main = () -> Unit {
+main = () => Unit {
     String(42).print()
     123
         .String()

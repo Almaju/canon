@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     2.5
         .lt(3.5)
         .print()

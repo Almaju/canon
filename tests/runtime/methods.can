@@ -1,10 +1,10 @@
 Greeting = String
 
-shout = (Greeting) -> String {
+shout = (Greeting) => String {
     "HELLO"
 }
 
-main = () -> Unit {
+main = () => Unit {
     Greeting("howdy")
         .shout()
         .print()

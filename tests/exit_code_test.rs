@@ -21,14 +21,14 @@ fn canon_test_exit_codes() {
     let failing = workdir.join("failing_test.can");
     std::fs::write(
         &failing,
-        r#"testBroken = () -> TestResult {
+        r#"testBroken = () => TestResult {
     1
         .add(2)
         .eq(7)
         .TestResult("math is broken")
 }
 
-testFine = () -> TestResult {
+testFine = () => TestResult {
     1
         .add(2)
         .eq(3)
@@ -53,7 +53,7 @@ testFine = () -> TestResult {
     let passing = workdir.join("passing_test.can");
     std::fs::write(
         &passing,
-        r#"testFine = () -> TestResult {
+        r#"testFine = () => TestResult {
     1
         .add(2)
         .eq(3)
@@ -79,7 +79,7 @@ fn exit_code_propagates() {
     let src_path = workdir.join("exit3.can");
     std::fs::write(
         &src_path,
-        r#"main = () -> Unit {
+        r#"main = () => Unit {
     "terminating with 3".print()
     3 -> Exited
 }

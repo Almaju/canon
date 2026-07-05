@@ -11,7 +11,7 @@ objects. Access to a resource is represented by holding a value of the
 corresponding type.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Path("./data.json")
         .File()?
         .read()?
@@ -26,7 +26,7 @@ system.
 
 ## Print
 
-`print = (String) -> Unit` is a built-in that writes to stdout. No
+`print = (String) => Unit` is a built-in that writes to stdout. No
 capability token, no parameter to thread; any `String` can be printed:
 
 ```canon
@@ -51,7 +51,7 @@ its signature. No capability type system enforces this; it is the
 natural consequence of needing the value to do the work:
 
 ```canon
-save = (Database * User) -> Result<Unit, DbError>
+save = (Database * User) => Result<Unit, DbError>
 ```
 
 `user.save(database)` and `database.save(user)` are both valid
@@ -99,11 +99,11 @@ Reading a file starts with a `Path`:
 Path("./Cargo.toml").File()?.read()?.print()
 ```
 
-To serve HTTP, declare a `(Request) -> Response` function; the
+To serve HTTP, declare a `(Request) => Response` function; the
 program *is* the server (see [Serving HTTP](./http.md)):
 
 ```canon
-home = (Request) -> Response {
+home = (Request) => Response {
     Response(Body("hello") * Headers() * Status(200))
 }
 ```

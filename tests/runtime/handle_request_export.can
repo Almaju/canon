@@ -1,7 +1,7 @@
-handleRequest = (String) -> String {
+handleRequest = (String) => String {
     "echoed: ".concat(String)
 }
 
-main = () -> Unit {
+main = () => Unit {
     "compiled".print()
 }

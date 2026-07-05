@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     "first"
         .slowEcho()
         .race("second".slowEcho())

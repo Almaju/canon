@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     {"answer":42,"label":"life"}.print()
     [1,2,3].print()
     {"tag":"x"}

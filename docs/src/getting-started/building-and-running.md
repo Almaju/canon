@@ -79,7 +79,7 @@ host that supports WASI Preview 3 and satisfies its imports:
 
 ## Serve as an HTTP Handler
 
-A program whose entry is `(Request) -> Response` compiles to a
+A program whose entry is `(Request) => Response` compiles to a
 `wasi:http/service` component, and `canon run` serves it instead of
 running it once:
 

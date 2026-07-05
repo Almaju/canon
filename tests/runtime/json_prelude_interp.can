@@ -1,8 +1,8 @@
-label = (Int) -> Json {
+label = (Int) => Json {
     {"answer":Int,"doubled":Int.mul(2)}
 }
 
-main = () -> Unit {
+main = () => Unit {
     42
         .label()
         .print()

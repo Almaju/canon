@@ -9,9 +9,9 @@ For most collection work, use methods on the collection itself:
 `map`, `get`, `length`, `first`, `append`, `concat`.
 
 ```canon,run=list-map
-main = () -> Unit {
+main = () => Unit {
     List(10, 20, 30)
-        .map((Int) -> Int { Int.mul(2) })
+        .map((Int) => Int { Int.mul(2) })
         .length()
         .print()
 }
@@ -23,14 +23,14 @@ Anything the collection methods don't cover is plain recursion —
 functions call themselves, and dispatch supplies the base case:
 
 ```canon,run=sum-to
-sumTo = (Int) -> Int {
+sumTo = (Int) => Int {
     Int.eq(0).(
-        * (False) -> Int { Int.add(Int.sub(1).sumTo()) }
-        * (True) -> Int { 0 }
+        * (False) => Int { Int.add(Int.sub(1).sumTo()) }
+        * (True) => Int { 0 }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     5
         .sumTo()
         .print()

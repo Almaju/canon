@@ -2,15 +2,15 @@ Greeting = String
 
 Loud = String
 
-(Int) -> Greeting {
+(Int) => Greeting {
     Greeting("int:".concat(Int.String()))
 }
 
-(Greeting) -> Loud {
+(Greeting) => Loud {
     Loud(Greeting.String.concat("!"))
 }
 
-main = () -> Unit {
+main = () => Unit {
     7
         -> Greeting
         -> Loud
@@ -25,7 +25,7 @@ main = () -> Unit {
         -> Json
         .print()
     Map().Inserted("k", "v") -> Value("k").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<String>) => Unit { String.print() }
     )
 }

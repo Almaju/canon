@@ -12,7 +12,7 @@ ordinary expression, and it evaluates to the encoded JSON text: a
 receive:
 
 ```canon
-notFound = () -> Body {
+notFound = () => Body {
     Body({"error":"not found"})
 }
 ```
@@ -22,7 +22,7 @@ literal *is* the wire format. Arrays work the same way, and literals
 nest:
 
 ```canon
-indexBody = () -> Body {
+indexBody = () => Body {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 ```
@@ -47,26 +47,26 @@ can't provide. Inside a handler, keep literals fully static.
 ## The Full Program
 
 ```canon
-indexBody = () -> Body {
+indexBody = () => Body {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 
-notFound = () -> Body {
+notFound = () => Body {
     Body({"error":"not found"})
 }
 
-noteOneBody = () -> Body {
+noteOneBody = () => Body {
     Body({"title":"ship canon v1"})
 }
 
-serve = (Request) -> Response {
+serve = (Request) => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOneBody() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(indexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(noteOneBody() * Headers() * Status(200)) }
+                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )

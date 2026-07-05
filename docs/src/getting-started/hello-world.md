@@ -3,7 +3,7 @@
 Create a file named `hello.can`:
 
 ```canon,run=hello-world
-main = () -> Unit {
+main = () => Unit {
     "hello".print()
 }
 ```
@@ -23,11 +23,11 @@ hello
 ## Line by Line
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
 ```
 
 `main` is the entry point. Like every binding in Canon it has the shape
-`name = (parameters) -> ReturnType { body }`. The empty `()` says it
+`name = (parameters) => ReturnType { body }`. The empty `()` says it
 takes nothing; the compiler lifts `main` as the component's
 `wasi:cli/run.run` export.
 
@@ -46,7 +46,7 @@ of expressions separated by newlines; the last one is the return value.
 component and writes it to stdout:
 
 ```canon
-print = (String) -> Unit
+print = (String) => Unit
 ```
 
 There is no `Stdout` capability to thread through. The compiler lowers

@@ -2,7 +2,7 @@ Attr = String
 
 Tag = String
 
-wrap = (Attr * String * Tag) -> String {
+wrap = (Attr * String * Tag) => String {
     "<"
         .concat(Tag)
         .concat(" ")
@@ -14,7 +14,7 @@ wrap = (Attr * String * Tag) -> String {
         .concat(">")
 }
 
-main = () -> Unit {
+main = () => Unit {
     Attr("class=\"x\"")
         .wrap("inner", Tag("div"))
         .print()

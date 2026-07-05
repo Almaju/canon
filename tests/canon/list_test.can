@@ -1,13 +1,13 @@
-testListConstruction = () -> TestResult {
+testListConstruction = () => TestResult {
     List(1, 2, 3)
         .length()
         .eq(3)
         .TestResult("List(1,2,3) should have length 3")
 }
 
-testListMapPreservesLength = () -> TestResult {
+testListMapPreservesLength = () => TestResult {
     List(1, 2, 3)
-        .map((Int) -> Int { Int.mul(2) })
+        .map((Int) => Int { Int.mul(2) })
         .length()
         .eq(3)
         .TestResult("map should preserve length")

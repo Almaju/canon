@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     "apple"
         .lt("banana")
         .print()

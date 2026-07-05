@@ -2,17 +2,17 @@ Greeting = String
 
 Name = String
 
-Show = () -> String
+Show = () => String
 
-Show = (Greeting) -> String {
+Show = (Greeting) => String {
     "HELLO!"
 }
 
-Show = (Name) -> String {
+Show = (Name) => String {
     "Alice"
 }
 
-testShowExists = () -> TestResult {
+testShowExists = () => TestResult {
     Greeting("hi").Show()
     Name("Alice").Show()
     Pass()

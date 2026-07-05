@@ -115,7 +115,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
-        self.expect(TokenKind::Arrow, "expected `->` before return type")?;
+        self.expect_decl_arrow("expected `->` before return type")?;
         let return_ty = self.parse_type_expr()?;
         let Some(ctor_name) = crate::ast::constructed_type_name(&return_ty) else {
             return Err(CanonError::ParseError {
@@ -177,7 +177,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "expected `)` to close parameter list")?;
-        self.expect(TokenKind::Arrow, "expected `->` before return type")?;
+        self.expect_decl_arrow("expected `->` before return type")?;
         let return_ty = self.parse_type_expr()?;
 
         if self.check(TokenKind::LBrace) {
@@ -407,10 +407,10 @@ impl Parser {
             // product members (`Stream<T> * ((T) -> Bool)`), so the
             // parens must round-trip. Only the single-type, non-generic
             // form qualifies as a group.
-            if !self.check(TokenKind::Arrow) && generic_params.is_empty() && params.len() == 1 {
+            if !self.at_decl_arrow() && generic_params.is_empty() && params.len() == 1 {
                 return Ok(params.pop().unwrap());
             }
-            self.expect(TokenKind::Arrow, "expected `->` in function type")?;
+            self.expect_decl_arrow("expected `->` in function type")?;
             let return_ty = self.parse_type_postfix()?;
             let end = self.previous_span();
             return Ok(TypeExpr::Function {
@@ -1037,10 +1037,7 @@ impl Parser {
             TokenKind::RParen,
             "expected `)` to close lambda parameter list",
         )?;
-        self.expect(
-            TokenKind::Arrow,
-            "expected `->` after lambda parameter list",
-        )?;
+        self.expect_decl_arrow("expected `->` after lambda parameter list")?;
         let return_ty = self.parse_type_expr()?;
         let body = self.parse_block()?;
         Ok(Expr::Lambda {
@@ -1092,7 +1089,7 @@ impl Parser {
             _ => (self.parse_type_atom()?, None),
         };
         self.expect(TokenKind::RParen, "expected `)` to close dispatch arm")?;
-        self.expect(TokenKind::Arrow, "expected `->` in dispatch arm")?;
+        self.expect_decl_arrow("expected `->` in dispatch arm")?;
         let return_ty = self.parse_type_expr()?;
         let body = self.parse_block()?;
         let end = self.previous_span();
@@ -1144,6 +1141,28 @@ impl Parser {
                 span: actual.span,
             })
         }
+    }
+
+    /// The arrow before a declaration's return type. The types-only
+    /// endgame spells declarations with `=>` (execution keeps `->`); both
+    /// are accepted during migration so a mixed tree parses while
+    /// `canon fmt` rewrites declarations to `=>` (the language spec,
+    /// § The One-Operator Endgame). Every declaration site — function
+    /// signatures, anonymous constructors, function *types* (shapes),
+    /// lambdas, and dispatch arms — routes through here; the two
+    /// *execution* sites (the postfix pipe) stay `->`-only.
+    fn expect_decl_arrow(&mut self, msg: &str) -> Result<Token> {
+        if self.check(TokenKind::FatArrow) {
+            return Ok(self.advance().clone());
+        }
+        self.expect(TokenKind::Arrow, msg)
+    }
+
+    /// True at a declaration arrow (`->` or `=>`) — used where the
+    /// presence of the arrow decides between a function type and plain
+    /// type grouping.
+    fn at_decl_arrow(&self) -> bool {
+        self.check(TokenKind::Arrow) || self.check(TokenKind::FatArrow)
     }
 
     fn peek(&self) -> &Token {

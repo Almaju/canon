@@ -1,4 +1,4 @@
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     Json("[1, 2, 3]")?.print()
     Ok(Unit())
 }

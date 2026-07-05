@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     0.0.print()
     2.5.print()
     3.25

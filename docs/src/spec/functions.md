@@ -3,7 +3,7 @@
 ## Declaration
 
 ```canon
-name = (Components) -> ReturnType {
+name = (Components) => ReturnType {
     body
 }
 ```
@@ -13,7 +13,7 @@ is a product type, written with the same `*` used everywhere else. There
 are no commas, no parameter names, no defaults:
 
 ```canon
-greet = (Greeting * Name) -> Line {
+greet = (Greeting * Name) => Line {
     Line(Greeting.String.concat(Name.String))
 }
 ```
@@ -58,12 +58,12 @@ ambiguity. Arguments (including the receiver) bind to components by:
 3. **Anything else is a compile error.** If two same-typed bare values
    could each fill two alias-related slots, the call is ambiguous and
    the caller must wrap one explicitly. For
-   `compare = (OtherUser * User) -> Ord`, `alice.compare(bob)` is
+   `compare = (OtherUser * User) => Ord`, `alice.compare(bob)` is
    rejected: which value is the `OtherUser` decides `Less` versus
    `Greater`. Write `alice.compare(OtherUser(bob))`.
 
 **Repeated components bind positionally.** A function over a fixed
-repetition, such as `merge = (User^2) -> User`, has positional
+repetition, such as `merge = (User^2) => User`, has positional
 components (`.1`, `.2`, …), so binding is positional too: the receiver
 fills `.1`, remaining arguments fill `.2` and onward in the order
 written. Commutative reordering does not apply, because position *is*
@@ -77,7 +77,7 @@ No special syntax; optionality is `Option<T>` in the signature, and the
 call site may omit the component:
 
 ```canon
-paint = (Option<Color> * String) -> Unit { ... }
+paint = (Option<Color> * String) => Unit { ... }
 
 "hello".paint()
 "hello".paint(Red(0xFF0000))
@@ -85,7 +85,7 @@ paint = (Option<Color> * String) -> Unit { ... }
 
 Omission is legal **only when the component's type implements the
 `Default` trait**; the compiler inserts `T.Default()` for the missing
-component. `Default = <T>() -> T` is an ordinary trait, and core ships
+component. `Default = <T>() => T` is an ordinary trait, and core ships
 exactly one implementation: `Option<T>`'s, which returns `None()`. So
 omitting an `Option<Color>` means `None()`, but the defaulting is not a
 special case: it is opt-in, declared in source, and a user type that
@@ -99,7 +99,7 @@ is expected. Anonymous functions are lambda literals with a **full
 signature** (there is no inference):
 
 ```canon
-Numbers.map((Int) -> Int { Int.mul(Int(3)) })
+Numbers.map((Int) => Int { Int.mul(Int(3)) })
 ```
 
 Lambda syntax is declaration syntax minus the `name =` prefix.
@@ -110,14 +110,14 @@ A trait is a **callable type signature**, declared like a body-less
 function type and named in PascalCase (traits are types):
 
 ```canon
-Show = () -> String
+Show = () => String
 ```
 
 **Implementation** declares a function with the trait's name, prepending
 the implementing type to the parameter list:
 
 ```canon
-Show = (Greeting) -> String {
+Show = (Greeting) => String {
     "HELLO!"
 }
 ```
@@ -131,7 +131,7 @@ syntax: `Greeting("hi").Show()`.
   implementing every factor.
 - **Traits as components**: a trait may appear directly in a parameter
   list; the component binds the implementation, which is invocable:
-  `needsShow = (Show) -> Unit { Show().print() }`.
+  `needsShow = (Show) => Unit { Show().print() }`.
 - **Defaults**: a trait declaration may carry a default body marked
   `{ impl }`; implementing types may override or inherit it.
 - **Constraints**: `<T: Show>` bounds a generic parameter by a trait.
@@ -150,8 +150,8 @@ is by signature, not by name:
 A third world — the browser [web target](../reference/web-target.md) — is
 selected differently. It can't key on a return type, because every view
 helper returns `Html`, so detection matches the conventional **triple of
-names and shapes**: `init = () -> Model`, `update = (Model * String) ->
-Model`, and `view = (Model) -> Html` together. The triple compiles to a
+names and shapes**: `init = () => Model`, `update = (Model * String) ->
+Model`, and `view = (Model) => Html` together. The triple compiles to a
 core wasm module plus a generated JS host rather than a component.
 
 Rules the compiler enforces:
@@ -167,7 +167,7 @@ Rules the compiler enforces:
   trapping ([Effects and the Async Model](./effects-and-async.md)).
 
 The same signature-driven selection powers testing: every
-`() -> TestResult` function in a file is a test under `canon test`
+`() => TestResult` function in a file is a test under `canon test`
 ([Testing](../tour/testing.md)).
 
 ## Declaration Order

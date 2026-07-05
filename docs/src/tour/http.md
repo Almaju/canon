@@ -6,7 +6,7 @@ router registration, no port in the program. The function *is* the
 service; the host decides how to run it.
 
 ```canon
-greet = (Request) -> Response {
+greet = (Request) => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
@@ -30,7 +30,7 @@ function returning `Unit` is a CLI command; a free function returning
 return a world type; helpers must return ordinary values:
 
 ```canon
-notFound = () -> Body {
+notFound = () => Body {
     Body({"error":"not found"})
 }
 ```
@@ -48,13 +48,13 @@ everywhere else in Canon. Union dispatch on the `Option`, then
 mandatory `(String)` catch-all as the 404:
 
 ```canon
-serve = (Request) -> Response {
+serve = (Request) => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(indexBody() * Headers() * Status(200)) }
+                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )

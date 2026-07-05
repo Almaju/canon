@@ -114,7 +114,7 @@ Constraints on type parameters use `:`, naming a trait the parameter must
 implement:
 
 ```canon
-print = <T: Print>(List<T>) -> Unit {
+print = <T: Print>(List<T>) => Unit {
     ...
 }
 ```
@@ -125,7 +125,7 @@ A type with no underlying composition has exactly one value, referenced by
 writing the type name itself:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Unit
 }
 ```

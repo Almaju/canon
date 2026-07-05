@@ -1,30 +1,30 @@
 Prefix = String
 
-addForm = () -> Html {
+addForm = () => Html {
     Attr("data-msg-form=\"Add:\"")
         .ElAttr(Attr("placeholder=\"What needs doing?\"").ElAttr("", Tag("input")), Tag("form"))
 }
 
-clearButton = () -> Html {
+clearButton = () => Html {
     Msg("Clear").Button("Clear completed")
 }
 
-init = () -> Todos {
+init = () => Todos {
     Title("toggle a task to mark it done")
         .addTodo(Title("edit this list - it is saved in your browser").addTodo(Todos("")))
 }
 
-update = (Todos * String) -> Todos {
+update = (Todos * String) => Todos {
     Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
-        * ("Clea") -> Todos { Todos.clearDone() }
-        * ("Dele") -> Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Togg") -> Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
-        * (Prefix) -> Todos { Todos }
+        * ("Add:") => Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
+        * ("Clea") => Todos { Todos.clearDone() }
+        * ("Dele") => Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
+        * ("Togg") => Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
+        * (Prefix) => Todos { Todos }
     )
 }
 
-view = (Todos) -> Html {
+view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
         .concat(addForm().String)
         .concat(1.renderItems(Todos).Ul())

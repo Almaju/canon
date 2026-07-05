@@ -1,7 +1,7 @@
-main = () -> Result<Unit, Unit> {
+main = () => Result<Unit, Unit> {
     Ok("worked").(
-        * (Err<Unit>) -> Unit { "err".print() }
-        * (Ok<String>) -> Unit { String.print() }
+        * (Err<Unit>) => Unit { "err".print() }
+        * (Ok<String>) => Unit { String.print() }
     )
     Ok(Unit())
 }

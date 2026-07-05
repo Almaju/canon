@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     "hello slow"
         .slowEcho()
         .print()

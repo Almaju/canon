@@ -1,15 +1,15 @@
 Line = String
 
-flip = (Line) -> Line {
+flip = (Line) => Line {
     Line.byteAt(1).eq(48).(
-        * (False) -> Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) -> Line { Line("1".concat(Line.substring(2, Line.length()))) }
+        * (False) => Line { Line("0".concat(Line.substring(2, Line.length()))) }
+        * (True) => Line { Line("1".concat(Line.substring(2, Line.length()))) }
     )
 }
 
-renderItem = (Int * Line) -> Html {
+renderItem = (Int * Line) => Html {
     Line.byteAt(1).eq(49).(
-        * (False) -> Html {
+        * (False) => Html {
             Line
                 .substring(3, Line.length())
                 .Escaped()
@@ -19,7 +19,7 @@ renderItem = (Int * Line) -> Html {
                 .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
                 .Li()
         }
-        * (True) -> Html {
+        * (True) => Html {
             "<s>"
                 .concat(Line.substring(3, Line.length()).Escaped())
                 .concat("</s> ")

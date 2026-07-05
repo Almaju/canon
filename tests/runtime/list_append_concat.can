@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     List(1, 2)
         .append(3)
         .length()
@@ -9,7 +9,7 @@ main = () -> Unit {
         .Json()
         .print()
     List(10, 20).append(30).get(3).(
-        * (None) -> Unit { "none".print() }
-        * (Some<Int>) -> Unit { Int.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<Int>) => Unit { Int.print() }
     )
 }

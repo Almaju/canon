@@ -43,7 +43,7 @@ examples/multifile/
 ```canon
 Greeter = String
 
-shout = (Greeter) -> String {
+shout = (Greeter) => String {
     "HELLO from greeter"
 }
 ```
@@ -51,7 +51,7 @@ shout = (Greeter) -> String {
 `main.can`:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Greeter("hi").shout().print()
 }
 ```

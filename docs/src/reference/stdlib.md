@@ -38,7 +38,7 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key→value map (`String` keys/values); see [Map and Set](#map-and-set) |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set.List()` = members, alphabetically |
-| `Int` | `Int = (String) -> Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
+| `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
 | `Byte` | `Byte = Int` | none | picks the byte→character reading of `String(…)`: `String(Byte(65))` is `"A"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `Fetched` (blocking GET) |
@@ -48,8 +48,8 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Json` | `Json = String`, `MalformedJson` | `canon:builtins/json` | `Json` (validate), `ToJson` trait + primitive instances |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | `3 -> Exited` terminates with that code |
-| `cli/Args` | `Args = () -> List<String>` | `wasi/cli/environment` | the program's argv |
-| `cli/Cwd` | `Cwd = () -> Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
+| `cli/Args` | `Args = () => List<String>` | `wasi/cli/environment` | the program's argv |
+| `cli/Cwd` | `Cwd = () => Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../tour/http.md) |
 
@@ -63,7 +63,7 @@ newtype over `Int`, so the standard `Int` methods (`add`, `sub`,
 comparison, `.print`) work on it directly.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Instant().print()
 }
 ```
@@ -71,7 +71,7 @@ main = () -> Unit {
 ```canon
 Instant = Int
 
-Instant = () -> Instant
+Instant = () => Instant
 ```
 
 Backed by the generated `wasi/clocks/monotonic_clock` binding, which
@@ -87,7 +87,7 @@ a fresh value from the WASI CSPRNG; `Random` is a newtype over `Int`,
 so arithmetic and printing work normally on the result.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Random().print()
 }
 ```
@@ -95,7 +95,7 @@ main = () -> Unit {
 ```canon
 Random = Int
 
-Random = () -> Random
+Random = () => Random
 ```
 
 Backed by the generated `wasi/random/random` binding, which imports
@@ -107,7 +107,7 @@ Current UTC wall-clock time, formatted as an RFC 3339 string. Useful
 for log lines.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Now().print()
 }
 ```
@@ -117,7 +117,7 @@ Prints an RFC 3339 timestamp, e.g. `2026-05-23T22:30:35Z`.
 ```canon
 Now = String
 
-Now = () -> Now
+Now = () => Now
 ```
 
 Currently backed by `canon:builtins/clock` (the host formats the
@@ -129,7 +129,7 @@ canonical-ABI shape lands.
 Synchronous file I/O — read and write.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Contents("hello from canon")
         .write(Path("/tmp/greeting.txt"))?
         .File()?
@@ -143,13 +143,13 @@ Contents = String
 
 File = String
 
-File = (Path) -> Result<File, IoError>
+File = (Path) => Result<File, IoError>
 
 Path = String
 
-read = (File) -> Result<String, IoError>
+read = (File) => Result<String, IoError>
 
-write = (Contents * Path) -> Result<Path, IoError>
+write = (Contents * Path) => Result<Path, IoError>
 ```
 
 `Path("…").File()` opens the file, returning a `File` handle or an
@@ -171,11 +171,11 @@ operation is a constructor named after what it produces
 `Value` (the value at a key), `Keys`, `Values`, `Length`.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Map().Inserted("b", "2").Inserted("a", "1").Keys().Json().print()
     Map().Inserted("k", "v").Value("k").(
-        * (None) -> Unit { "absent".print() }
-        * (Some<String>) -> Unit { String.print() }
+        * (None) => Unit { "absent".print() }
+        * (Some<String>) => Unit { String.print() }
     )
 }
 ```
@@ -190,19 +190,19 @@ Map = Empty + Node
 
 Value = String
 
-(Map) -> Map
+(Map) => Map
 
-(Map * String) -> Option<Value>
+(Map * String) => Option<Value>
 
-(Map * String * Value) -> Map
+(Map * String * Value) => Map
 
-(Map) -> Keys
+(Map) => Keys
 
-(Map) -> Length
+(Map) => Length
 
-(Map * String) -> Map
+(Map * String) => Map
 
-(Map) -> Values
+(Map) => Values
 ```
 
 `Set` is the set-shaped counterpart. `set.List()` — conversion is
@@ -210,7 +210,7 @@ construction — returns the members, alphabetically, as a
 `List<String>`:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Set().Inserted("b").Inserted("a").Inserted("b").Length().print()
     Set().Inserted("x").Contains("x").print()
     Set().Inserted("b").Inserted("a").List().Json().print()
@@ -220,17 +220,17 @@ main = () -> Unit {
 ```canon
 Set = Absent + Entry
 
-Set = () -> Set
+Set = () => Set
 
-List = (Set) -> List<Item>
+List = (Set) => List<Item>
 
-contains = (Set * String) -> Bool
+contains = (Set * String) => Bool
 
-insert = (Set * String) -> Set
+insert = (Set * String) => Set
 
-length = (Set) -> Int
+length = (Set) => Int
 
-remove = (Set * String) -> Set
+remove = (Set * String) => Set
 ```
 
 Both modules double as reference code for **recursive union types**:
@@ -245,7 +245,7 @@ Conversions follow one rule — **conversion is construction** (see
 directions are compiler builtins available without imports:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     String(42).print()
     123
         .String()
@@ -259,13 +259,13 @@ in `canon/std/Int`, written in pure Canon (digit recursion over
 `byteAt`):
 
 ```canon
-double = (String) -> Result<Int, MalformedInt> {
+double = (String) => Result<Int, MalformedInt> {
     Ok(Int(String)?.mul(2))
 }
 ```
 
 ```canon
-Int = (String) -> Result<Int, MalformedInt>
+Int = (String) => Result<Int, MalformedInt>
 
 MalformedInt = String
 ```
@@ -282,7 +282,7 @@ URL parsing plus blocking HTTP GET. Fetching is a constructor:
 ([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Url("http://example.com")?
         -> Fetched?
         .print()
@@ -298,9 +298,9 @@ InvalidUrl = String
 
 Url = String
 
-(String) -> Result<Url, InvalidUrl>
+(String) => Result<Url, InvalidUrl>
 
-(Url) -> Result<Fetched, HttpError>
+(Url) => Result<Fetched, HttpError>
 ```
 
 `Url(s)` is a validated constructor: malformed inputs are rejected.
@@ -317,7 +317,7 @@ function name — so one `Route` constructor covers every verb
 ([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
-main = () -> Result<Unit, IoError> {
+main = () => Result<Unit, IoError> {
     "Starting server on port 3000...".print()
     HttpServer(Port(3000))
         .Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
@@ -334,11 +334,11 @@ Route = HttpServer
 
 Served = Unit
 
-(Port) -> HttpServer
+(Port) => HttpServer
 
-(HttpServer * HttpStatus * Method * RoutePath * String) -> Route
+(HttpServer * HttpStatus * Method * RoutePath * String) => Route
 
-(HttpServer) -> Result<Served, IoError>
+(HttpServer) => Result<Served, IoError>
 ```
 
 ### Status
@@ -362,7 +362,7 @@ The Canon-language testing primitive. See
 [Testing](../tour/testing.md) for the full convention.
 
 ```canon
-testAddPositive = () -> TestResult {
+testAddPositive = () => TestResult {
     1
         .add(2)
         .eq(3)
@@ -377,7 +377,7 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-(Bool * String) -> TestResult
+(Bool * String) => TestResult
 ```
 
 The assertion *is* the `TestResult` constructor
@@ -420,11 +420,11 @@ interpolation, the `Json(...)` validator, or `.ToJson()`. A fully
 static literal is a plain constant and needs nothing at all.
 
 ```canon
-label = (Int) -> Json {
+label = (Int) => Json {
     {"answer":Int,"doubled":Int.mul(2),"ok":True()}
 }
 
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     Json("[1, 2, 3]")?.print()
     42
         .ToJson()

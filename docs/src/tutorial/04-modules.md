@@ -37,7 +37,7 @@ The file is named `note.can`, so it must declare a type named `Note`:
 ```canon
 Note = String
 
-render = (Note) -> String {
+render = (Note) => String {
     "{\"title\":\""
         .concat(Note)
         .concat("\"}")
@@ -64,26 +64,26 @@ Two ideas in eight lines:
 `src/main.can` refers to the module and gets out of the data business:
 
 ```canon
-indexBody = () -> Body {
+indexBody = () => Body {
     Body(List(Note("ship canon v1").render(), Note("write the docs").render()).Json())
 }
 
-notFound = () -> Body {
+notFound = () => Body {
     Body({"error":"not found"})
 }
 
-noteOneBody = () -> Body {
+noteOneBody = () => Body {
     Body(Note("ship canon v1").render())
 }
 
-serve = (Request) -> Response {
+serve = (Request) => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOneBody() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(indexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(noteOneBody() * Headers() * Status(200)) }
+                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )

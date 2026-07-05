@@ -23,15 +23,15 @@ Post = Unit
 
 Put = Unit
 
-(Method) -> String {
+(Method) => String {
     Method.(
-        * (Delete) -> String { "DELETE" }
-        * (Get) -> String { "GET" }
-        * (Head) -> String { "HEAD" }
-        * (Options) -> String { "OPTIONS" }
-        * (Other) -> String { Other }
-        * (Patch) -> String { "PATCH" }
-        * (Post) -> String { "POST" }
-        * (Put) -> String { "PUT" }
+        * (Delete) => String { "DELETE" }
+        * (Get) => String { "GET" }
+        * (Head) => String { "HEAD" }
+        * (Options) => String { "OPTIONS" }
+        * (Other) => String { Other }
+        * (Patch) => String { "PATCH" }
+        * (Post) => String { "POST" }
+        * (Put) => String { "PUT" }
     )
 }

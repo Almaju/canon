@@ -20,19 +20,19 @@ use wasmtime::{Engine, Instance, Linker, Module, Store, TypedFunc};
 
 const COUNTER_SRC: &str = r#"Model = Int
 
-init = () -> Model {
+init = () => Model {
     Model(0)
 }
 
-update = (Model * String) -> Model {
+update = (Model * String) => Model {
     String.(
-        * ("Decrement") -> Model { Model(Model.sub(1)) }
-        * ("Increment") -> Model { Model(Model.add(1)) }
-        * (String) -> Model { Model }
+        * ("Decrement") => Model { Model(Model.sub(1)) }
+        * ("Increment") => Model { Model(Model.add(1)) }
+        * (String) => Model { Model }
     )
 }
 
-view = (Model) -> Html {
+view = (Model) => Html {
     "Canon Counter"
         .H1()
         .concat(Msg("Decrement").Button("-"))

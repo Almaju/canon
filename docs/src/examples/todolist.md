@@ -36,31 +36,31 @@ pure-Canon string primitives the standard library uses everywhere else.
 ```canon
 Prefix = String
 
-addForm = () -> Html {
+addForm = () => Html {
     Attr("data-msg-form=\"Add:\"")
         .elAttr(Attr("placeholder=\"What needs doing?\"").elAttr("", Tag("input")).String, Tag("form"))
 }
 
-clearButton = () -> Html {
+clearButton = () => Html {
     Msg("Clear").Button("Clear completed")
 }
 
-init = () -> Todos {
+init = () => Todos {
     Title("toggle a task to mark it done")
         .addTodo(Title("edit this list - it is saved in your browser").addTodo(Todos("")))
 }
 
-update = (Todos * String) -> Todos {
+update = (Todos * String) => Todos {
     Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
-        * ("Clea") -> Todos { Todos.clearDone() }
-        * ("Dele") -> Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Togg") -> Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
-        * (Prefix) -> Todos { Todos }
+        * ("Add:") => Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
+        * ("Clea") => Todos { Todos.clearDone() }
+        * ("Dele") => Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
+        * ("Togg") => Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
+        * (Prefix) => Todos { Todos }
     )
 }
 
-view = (Todos) -> Html {
+view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
         .concat(addForm().String)
         .concat(1.renderItems(Todos).Ul().String)
@@ -95,21 +95,21 @@ run in a backend. `Todos` holds the list and its folds:
 ```canon
 Todos = String
 
-addTodo = (Title * Todos) -> Todos {
+addTodo = (Title * Todos) => Todos {
     Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
 }
 
-clearDone = (Todos) -> Todos {
+clearDone = (Todos) => Todos {
     Todos.String.length().eq(0).(
-        * (False) -> Todos {
+        * (False) => Todos {
             Todos.String.byteAt(1).eq(49).(
-                * (False) -> Todos {
+                * (False) => Todos {
                     Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
                 }
-                * (True) -> Todos { Todos(Todos.String.restLines()).clearDone() }
+                * (True) => Todos { Todos(Todos.String.restLines()).clearDone() }
             )
         }
-        * (True) -> Todos { Todos }
+        * (True) => Todos { Todos }
     )
 }
 ```
@@ -123,16 +123,16 @@ clearDone = (Todos) -> Todos {
 ```canon
 Line = String
 
-flip = (Line) -> Line {
+flip = (Line) => Line {
     Line.byteAt(1).eq(48).(
-        * (False) -> Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) -> Line { Line("1".concat(Line.substring(2, Line.length()))) }
+        * (False) => Line { Line("0".concat(Line.substring(2, Line.length()))) }
+        * (True) => Line { Line("1".concat(Line.substring(2, Line.length()))) }
     )
 }
 
-renderItem = (Int * Line) -> Html {
+renderItem = (Int * Line) => Html {
     Line.byteAt(1).eq(49).(
-        * (False) -> Html {
+        * (False) => Html {
             Line.substring(3, Line.length()).Escaped()
                 .concat(" ")
                 .concat(Msg("Toggle:".concat(Int.String())).Button("done"))
@@ -140,7 +140,7 @@ renderItem = (Int * Line) -> Html {
                 .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
                 .Li()
         }
-        * (True) -> Html {
+        * (True) => Html {
             "<s>"
                 .concat(Line.substring(3, Line.length()).Escaped())
                 .concat("</s> ")

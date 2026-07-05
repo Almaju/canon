@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     7
         .add(35)
         .print()
@@ -6,7 +6,7 @@ main = () -> Unit {
         .lt(20)
         .print()
     5.gt(3).(
-        * (False) -> Unit { "no".print() }
-        * (True) -> Unit { "yes".print() }
+        * (False) => Unit { "no".print() }
+        * (True) => Unit { "yes".print() }
     )
 }

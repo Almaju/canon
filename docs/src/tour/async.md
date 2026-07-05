@@ -67,7 +67,7 @@ hood, `wasi:http/outgoing-handler` is an async interface; every step of
 the chain returns a `Future`:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Url("https://example.com")?
         -> Fetched?
         .body()?
@@ -175,7 +175,7 @@ returns the first to finish and cancels the loser. Both sides must
 produce the same payload type:
 
 ```
-parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
+parallel = <T>(Future<T> * Future<T>) => Future<List<T>>
 race     = <T>(Future<T> * Future<T>) -> Future<T>
 ```
 
@@ -211,7 +211,7 @@ A hypothetical `tail -f`, where `lines()` would return
 `Stream<String>`:
 
 ```canon
-Path("./log.txt").File()?.lines().each((String) -> Unit {
+Path("./log.txt").File()?.lines().each((String) => Unit {
     String.print()
 })
 ```

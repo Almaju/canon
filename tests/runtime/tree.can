@@ -8,14 +8,14 @@ Tree = Branch + Leaf
 
 Value = Int
 
-describe = (Tree) -> String {
+describe = (Tree) => String {
     Tree.(
-        * (Branch) -> String { "branch" }
-        * (Leaf) -> String { "leaf" }
+        * (Branch) => String { "branch" }
+        * (Leaf) => String { "leaf" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     Leaf()
         .describe()
         .print()

@@ -231,11 +231,19 @@ shape implementations. See the migration in the spec
   is what closed the old name-collision hazard (defining `button` while
   referencing `Html` now reports `duplicate function …` instead of
   emitting invalid wasm).
-- **Anonymous arrows.** `(A) -> B { … }` at top level declares the `B`
+- **`=>` declares, `->` executes.** Declarations (constructor/shape
+  signatures, lambdas, dispatch arms, function types) use the fat arrow
+  `=>`; the value-level pipe uses `->`. `Parser::expect_decl_arrow`
+  accepts *either* at every declaration site so mixed sources parse
+  during migration, but `canon fmt` writes `=>` for declarations (and
+  the whole tree + bindgen emitter are migrated). Execution sites (the
+  postfix pipe) stay `->`-only. The endgame retires `.`-method-calls and
+  `B(a)` prefix-calls in favour of `->`; see the spec
+  (`docs/src/spec/types-only.md` § The One-Operator Endgame).
+- **Anonymous arrows.** `(A) => B { … }` at top level declares the `B`
   constructor (return type with `Result`/`Option`/`Future` peeled).
   `FunctionDef.anonymous` drives the formatter to round-trip the arrow
-  form. Both the named (`B = (A) -> …`) and anonymous forms are legal
-  during migration.
+  form. Both the named (`B = (A) => …`) and anonymous forms are legal.
 - **Value-level pipe.** `value -> B` is the call-site mirror of the
   declaration arrow — parsed into a `MethodCall` with `piped: true`,
   semantically identical to `B(value)` / `value.B()`. `-> B?` is the

@@ -42,7 +42,7 @@ local variables, the way a value threads through several operations is a
 method chain:
 
 ```canon
-readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
+readConfig = (File * Path) => Result<Config, IoError + ParseError> {
     File
         .read(Path)?
         .parse()?
@@ -57,9 +57,9 @@ union value) is the receiver; the arms are its handlers:
 
 ```canon
 Ord.(
-    * (Equal) -> Sign { Zero() }
-    * (Greater) -> Sign { Positive() }
-    * (Less) -> Sign { Negative() }
+    * (Equal) => Sign { Zero() }
+    * (Greater) => Sign { Positive() }
+    * (Less) => Sign { Negative() }
 )
 ```
 
@@ -89,8 +89,8 @@ name determined by the pattern:
 
   ```canon
   result.(
-      * (Err<IoError>) -> String { IoError.message() }
-      * (Ok<String>) -> String { String }
+      * (Err<IoError>) => String { IoError.message() }
+      * (Ok<String>) => String { String }
   )
   ```
 
@@ -117,11 +117,11 @@ scrutinees: arms are literals, and the final arm is a **mandatory
 catch-all** naming the scrutinee's type:
 
 ```canon
-route = (String) -> String {
+route = (String) => String {
     String.(
-        * ("/notes") -> String { "index" }
-        * ("/notes/1") -> String { "note one" }
-        * (String) -> String { "not found: ".concat(String) }
+        * ("/notes") => String { "index" }
+        * ("/notes/1") => String { "note one" }
+        * (String) => String { "not found: ".concat(String) }
     )
 }
 ```
@@ -179,7 +179,7 @@ the moment a program uses its machinery (interpolation, the validating
 `Json(...)` constructor, or `.ToJson()`):
 
 ```canon
-label = (Int) -> Json {
+label = (Int) => Json {
     {"answer":Int,"doubled":Int.mul(2),"ok":True()}
 }
 ```
@@ -208,7 +208,7 @@ arbitrary Canon expression; everything else (attributes, quotes, nested
 tags, comments, void elements like `<br>`) is raw markup:
 
 ```canon
-view = (Model) -> Html {
+view = (Model) => Html {
     <div>
         <h1>Counter</h1>
         <button data-msg="Increment">+</button>
@@ -222,11 +222,11 @@ Interpolated values convert through the `ToHtml` trait: a `String` or
 passes through unchanged, so composing literals never double-escapes:
 
 ```canon
-row = (String) -> Html {
+row = (String) => Html {
     <li>{String}</li>
 }
 
-list = (String) -> Html {
+list = (String) => Html {
     <ul>{String.row()}</ul>
 }
 ```

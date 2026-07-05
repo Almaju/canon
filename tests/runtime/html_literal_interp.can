@@ -1,12 +1,12 @@
-row = (String) -> Html {
+row = (String) => Html {
     <li>{String}</li>
 }
 
-tag = (Msg) -> Html {
+tag = (Msg) => Html {
     <button data-msg="{Msg}">go</button>
 }
 
-main = () -> Unit {
+main = () => Unit {
     <ul>{"a & b".row()}{"x<y".row()}</ul>.print()
     <span>{1.add(41)}</span>.print()
     Msg("inc")

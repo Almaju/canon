@@ -1,10 +1,10 @@
-main = () -> Unit {
+main = () => Unit {
     List("alpha", "beta")
-        .map((String) -> String { String.concat("!") })
+        .map((String) => String { String.concat("!") })
         .Json()
         .print()
-    List("xx", "yyy", "z").map((String) -> Int { String.length() }).get(2).(
-        * (None) -> Unit { "none".print() }
-        * (Some<Int>) -> Unit { Int.print() }
+    List("xx", "yyy", "z").map((String) => Int { String.length() }).get(2).(
+        * (None) => Unit { "none".print() }
+        * (Some<Int>) => Unit { Int.print() }
     )
 }

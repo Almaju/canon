@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     Set()
         .Inserted("b")
         .Inserted("a")

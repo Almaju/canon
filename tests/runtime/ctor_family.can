@@ -1,21 +1,21 @@
 Greeting = String
 
-Greeting = () -> Greeting {
+Greeting = () => Greeting {
     Greeting("hello")
 }
 
-Greeting = (Bool) -> Greeting {
+Greeting = (Bool) => Greeting {
     Bool.(
-        * (False) -> Greeting { Greeting("bool:no") }
-        * (True) -> Greeting { Greeting("bool:yes") }
+        * (False) => Greeting { Greeting("bool:no") }
+        * (True) => Greeting { Greeting("bool:yes") }
     )
 }
 
-Greeting = (Int) -> Greeting {
+Greeting = (Int) => Greeting {
     Greeting("int:".concat(Int.String()))
 }
 
-main = () -> Unit {
+main = () => Unit {
     Greeting().print()
     Greeting(7).print()
     Greeting(True()).print()

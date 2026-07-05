@@ -1,6 +1,6 @@
 Greeting = String
 
-main = () -> Unit {
+main = () => Unit {
     Greeting("hello")
         .concat(" world")
         .print()

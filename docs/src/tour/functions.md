@@ -3,7 +3,7 @@
 A function is declared as:
 
 ```canon
-name = (Components) -> ReturnType {
+name = (Components) => ReturnType {
     body
 }
 ```
@@ -15,11 +15,11 @@ The components inside the parentheses form a product, the function's input. Any 
 ```canon,run=first-function
 Greeting = String
 
-shout = (Greeting) -> String {
+shout = (Greeting) => String {
     "HELLO"
 }
 
-main = () -> Unit {
+main = () => Unit {
     Greeting("howdy")
         .shout()
         .print()
@@ -39,7 +39,7 @@ expression is the return value. There are no semicolons.
   side effects or `?` propagation).
 
 ```canon
-readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
+readConfig = (File * Path) => Result<Config, IoError + ParseError> {
     File
         .read(Path)?
         .parse()?
@@ -55,7 +55,7 @@ multiple operations is method chaining. That is the intended style.
 Inside a function body, each component is referenced by **its type name**:
 
 ```canon
-format = (Greeting * Name) -> String {
+format = (Greeting * Name) => String {
     Greeting
 }
 ```
@@ -66,7 +66,7 @@ product members must be distinct types:
 ```canon
 OtherInt = Int
 
-sum = (Int * OtherInt) -> Int {
+sum = (Int * OtherInt) => Int {
     Int.add(OtherInt)
 }
 ```
@@ -78,8 +78,8 @@ This is a compile-time requirement, not a convention:
 
 ```canon
 add    = (User * ...) -> ...
-export = (User * ...) -> ...
-remove = (User * ...) -> ...
+export = (User * ...) => ...
+remove = (User * ...) => ...
 ```
 
 ## Optional Parameters
@@ -87,7 +87,7 @@ remove = (User * ...) -> ...
 There is no special syntax. Use `Option<T>`:
 
 ```canon
-paint = (Option<Color> * String) -> Unit {
+paint = (Option<Color> * String) => Unit {
     ...
 }
 ```
@@ -111,7 +111,7 @@ and pass it where a matching signature is expected:
 ```canon
 Numbers = Int^*
 
-doubleAll = (Numbers) -> Numbers {
+doubleAll = (Numbers) => Numbers {
     Numbers.map(Int.double)
 }
 ```
@@ -122,8 +122,8 @@ For one-off operations, write a lambda literal with its **full signature**.
 There is no signature inference:
 
 ```canon
-tripleAll = (Numbers) -> Numbers {
-    Numbers.map((Int) -> Int { Int.mul(Int(3)) })
+tripleAll = (Numbers) => Numbers {
+    Numbers.map((Int) => Int { Int.mul(Int(3)) })
 }
 ```
 
@@ -136,7 +136,7 @@ A function can be parameterized by a type. Declare type parameters with
 `<...>` before the parameter list, optionally with a trait constraint:
 
 ```canon
-print = <T: Print>(List<T>) -> Unit {
+print = <T: Print>(List<T>) => Unit {
     ...
 }
 ```
@@ -159,7 +159,7 @@ return position without an annotation.
 as the component's `wasi:cli/run.run` export:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     "hello".print()
 }
 ```

@@ -20,12 +20,12 @@ When a function performs an effect, the value carrying that effect
 appears in its signature:
 
 ```canon
-save = (Database * User) -> Result<Unit, DbError>
+save = (Database * User) => Result<Unit, DbError>
 ```
 
 There is no other way to reach the effect. No globals, no singletons,
 no ambient authority. The one exception is deliberate:
-`print = (String) -> Unit` writes to stdout with no token, lowered
+`print = (String) => Unit` writes to stdout with no token, lowered
 against `wasi:cli/stdout`.
 
 ## Suspension Is Inferred
@@ -50,7 +50,7 @@ Wherever a `Future<T>` value is used in a position that expects `T`
 declared parameter type is `T`), the checker inserts the await:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Url("https://example.com")?
         -> Fetched?
         .body()?
@@ -90,8 +90,8 @@ Canon call:
 ```
 
 ```
-parallel = <T>(Future<T> * Future<T>) -> Future<List<T>>
-race     = <T>(Future<T> * Future<T>) -> Future<T>
+parallel = <T>(Future<T> * Future<T>) => Future<List<T>>
+race     = <T>(Future<T> * Future<T>) => Future<T>
 ```
 
 `a.parallel(b)` awaits both and returns results in receiver-then-argument

@@ -1,8 +1,8 @@
-assistantMessage = (Unit) -> String {
+assistantMessage = (Unit) => String {
     "hello"
 }
 
-main = () -> Unit {
+main = () => Unit {
     Unit
         .assistantMessage()
         .print()

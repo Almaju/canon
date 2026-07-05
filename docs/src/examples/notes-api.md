@@ -23,31 +23,31 @@ HTTP/1.1 404 Not Found
 ## The Source
 
 ```canon
-indexBody = () -> Body {
+indexBody = () => Body {
     Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
 }
 
-notFound = () -> Body {
+notFound = () => Body {
     Body({"error":"not found"})
 }
 
-noteOne = () -> Body {
+noteOne = () => Body {
     Body({"id":1,"title":"ship canon v1"})
 }
 
-noteTwo = () -> Body {
+noteTwo = () => Body {
     Body({"id":2,"title":"write the docs"})
 }
 
-serve = (Request) -> Response {
+serve = (Request) => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOne() * Headers() * Status(200)) }
-                * ("/notes/2") -> Response { Response(noteTwo() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * ("/notes") => Response { Response(indexBody() * Headers() * Status(200)) }
+                * ("/notes/1") => Response { Response(noteOne() * Headers() * Status(200)) }
+                * ("/notes/2") => Response { Response(noteTwo() * Headers() * Status(200)) }
+                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )
@@ -60,7 +60,7 @@ serve = (Request) -> Response {
   the service. No `main`, no port in the program; the host decides how
   to serve it.
 - **Helpers return values, not worlds.** Only `serve` may return
-  `Response`, so the note bodies are `() -> Body` functions. This is
+  `Response`, so the note bodies are `() => Body` functions. This is
   the layering the rule enforces.
 - **JSON literals.** The bodies are JSON object/array literals,
   ordinary expressions that evaluate to the encoded text, so a static

@@ -1,1 +1,1 @@
-parse = (String) -> Result<Url, InvalidUrl>
+parse = (String) => Result<Url, InvalidUrl>

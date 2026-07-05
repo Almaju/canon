@@ -16,69 +16,77 @@ Li = Html
 
 Span = Html
 
-ToHtml = () -> Html
+ToHtml = () => Html
 
 Ul = Html
 
-(Msg * String) -> Button {
+(Msg * String) => Button {
     Html("<button data-msg=\"".concat(Msg).concat("\">").concat(String).concat("</button>"))
 }
 
-(String) -> Div {
+(String) => Div {
     Html("<div>".concat(String).concat("</div>"))
 }
 
-(String * Tag) -> El {
+(String * Tag) => El {
     Html("<".concat(Tag).concat(">").concat(String).concat("</").concat(Tag).concat(">"))
 }
 
-(Attr * String * Tag) -> ElAttr {
+(Attr * String * Tag) => ElAttr {
     Html("<".concat(Tag).concat(" ").concat(Attr).concat(">").concat(String).concat("</").concat(Tag).concat(">"))
 }
 
-(String) -> Escaped {
+(String) => Escaped {
     String.length().eq(0).(
-        * (False) -> Escaped {
+        * (False) => Escaped {
             String.byteAt(1).(
-                * (34) -> Escaped {
+                * (34) => Escaped {
                     Html("&quot;".concat(String.substring(2, String.length()).Escaped()))
                 }
-                * (38) -> Escaped { Html("&amp;".concat(String.substring(2, String.length()).Escaped())) }
-                * (60) -> Escaped { Html("&lt;".concat(String.substring(2, String.length()).Escaped())) }
-                * (62) -> Escaped { Html("&gt;".concat(String.substring(2, String.length()).Escaped())) }
-                * (Int) -> Escaped {
+                * (38) => Escaped {
+                    Html("&amp;".concat(String.substring(2, String.length()).Escaped()))
+                }
+                * (60) => Escaped {
+                    Html("&lt;".concat(String.substring(2, String.length()).Escaped()))
+                }
+                * (62) => Escaped {
+                    Html("&gt;".concat(String.substring(2, String.length()).Escaped()))
+                }
+                * (Int) => Escaped {
                     Html(String.substring(1, 1).concat(String.substring(2, String.length()).Escaped()))
                 }
             )
         }
-        * (True) -> Escaped { Html("") }
+        * (True) => Escaped { Html("") }
     )
 }
 
-(String) -> H1 {
+(String) => H1 {
     Html("<h1>".concat(String).concat("</h1>"))
 }
 
-(String) -> Li {
+(String) => Li {
     Html("<li>".concat(String).concat("</li>"))
 }
 
-(String) -> Span {
+(String) => Span {
     Html("<span>".concat(String).concat("</span>"))
 }
 
-ToHtml = (Html) -> Html {
+ToHtml = (Html) => Html {
     Html
 }
 
-ToHtml = (Int) -> Html {
-    Int.String().Escaped()
+ToHtml = (Int) => Html {
+    Int
+        .String()
+        .Escaped()
 }
 
-ToHtml = (String) -> Html {
+ToHtml = (String) => Html {
     String.Escaped()
 }
 
-(String) -> Ul {
+(String) => Ul {
     Html("<ul>".concat(String).concat("</ul>"))
 }

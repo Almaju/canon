@@ -6,26 +6,26 @@ Link = Label * Next
 
 Next = Chain
 
-lastLabel = (Chain) -> String {
+lastLabel = (Chain) => String {
     Chain.(
-        * (Link) -> String {
+        * (Link) => String {
             Link.Next.len().eq(0).(
-                * (False) -> String { Link.Next.lastLabel() }
-                * (True) -> String { Link.Label }
+                * (False) => String { Link.Next.lastLabel() }
+                * (True) => String { Link.Label }
             )
         }
-        * (Stop) -> String { "" }
+        * (Stop) => String { "" }
     )
 }
 
-len = (Chain) -> Int {
+len = (Chain) => Int {
     Chain.(
-        * (Link) -> Int { Link.Next.len().add(1) }
-        * (Stop) -> Int { 0 }
+        * (Link) => Int { Link.Next.len().add(1) }
+        * (Stop) => Int { 0 }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     Link("a", Link("b", Link("c", Stop())))
         .len()
         .print()

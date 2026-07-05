@@ -14,70 +14,70 @@ Value = String
 
 Values = List<Value>
 
-Inserted = (Map * String * Value) -> Map {
+Inserted = (Map * String * Value) => Map {
     Map.(
-        * (Empty) -> Map { Node(String, Empty(), Value) }
-        * (Node) -> Map {
+        * (Empty) => Map { Node(String, Empty(), Value) }
+        * (Node) => Map {
             String.lt(Node.Key).(
-                * (False) -> Map {
+                * (False) => Map {
                     String.eq(Node.Key).(
-                        * (False) -> Map {
+                        * (False) => Map {
                             Node(Node.Key, Node.Rest.Inserted(String, Value), Node.Value)
                         }
-                        * (True) -> Map { Node(String, Node.Rest, Value) }
+                        * (True) => Map { Node(String, Node.Rest, Value) }
                     )
                 }
-                * (True) -> Map { Node(String, Map, Value) }
+                * (True) => Map { Node(String, Map, Value) }
             )
         }
     )
 }
 
-(Map) -> Keys {
+(Map) => Keys {
     Map.(
-        * (Empty) -> Keys { List() }
-        * (Node) -> Keys { List(Node.Key).concat(Node.Rest.Keys()) }
+        * (Empty) => Keys { List() }
+        * (Node) => Keys { List(Node.Key).concat(Node.Rest.Keys()) }
     )
 }
 
-() -> Map {
+(Map) => Length {
+    Map.(
+        * (Empty) => Length { 0 }
+        * (Node) => Length { Node.Rest.Length().add(1) }
+    )
+}
+
+() => Map {
     Empty()
 }
 
-Removed = (Map * String) -> Map {
+Removed = (Map * String) => Map {
     Map.(
-        * (Empty) -> Map { Empty() }
-        * (Node) -> Map {
+        * (Empty) => Map { Empty() }
+        * (Node) => Map {
             Node.Key.eq(String).(
-                * (False) -> Map { Node(Node.Key, Node.Rest.Removed(String), Node.Value) }
-                * (True) -> Map { Node.Rest }
+                * (False) => Map { Node(Node.Key, Node.Rest.Removed(String), Node.Value) }
+                * (True) => Map { Node.Rest }
             )
         }
     )
 }
 
-(Map * String) -> Option<Value> {
+(Map * String) => Option<Value> {
     Map.(
-        * (Empty) -> Option<Value> { None() }
-        * (Node) -> Option<Value> {
+        * (Empty) => Option<Value> { None() }
+        * (Node) => Option<Value> {
             Node.Key.eq(String).(
-                * (False) -> Option<Value> { Node.Rest.Value(String) }
-                * (True) -> Option<Value> { Some(Node.Value) }
+                * (False) => Option<Value> { Node.Rest.Value(String) }
+                * (True) => Option<Value> { Some(Node.Value) }
             )
         }
     )
 }
 
-(Map) -> Values {
+(Map) => Values {
     Map.(
-        * (Empty) -> Values { List() }
-        * (Node) -> Values { List(Node.Value).concat(Node.Rest.Values()) }
-    )
-}
-
-(Map) -> Length {
-    Map.(
-        * (Empty) -> Length { 0 }
-        * (Node) -> Length { Node.Rest.Length().add(1) }
+        * (Empty) => Values { List() }
+        * (Node) => Values { List(Node.Value).concat(Node.Rest.Values()) }
     )
 }

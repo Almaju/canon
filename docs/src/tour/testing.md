@@ -8,7 +8,7 @@ There are no attributes, no test macros, no runner configuration.
 A test is any function with the signature `() -> TestResult`:
 
 ```canon
-testAddPositive = () -> TestResult {
+testAddPositive = () => TestResult {
     1
         .add(2)
         .eq(3)
@@ -26,7 +26,7 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-(Bool * String) -> TestResult
+(Bool * String) => TestResult
 ```
 
 The `TestResult` constructor turns a `Bool` and a message into a
@@ -65,13 +65,13 @@ Without local variables, a test is a single chain ending in a
 ```canon
 Note = String
 
-render = (Note) -> String {
+render = (Note) => String {
     "{\"title\":\""
         .concat(Note)
         .concat("\"}")
 }
 
-testRenderWrapsTitle = () -> TestResult {
+testRenderWrapsTitle = () => TestResult {
     Note("ship it")
         .render()
         .eq({"title":"ship it"})

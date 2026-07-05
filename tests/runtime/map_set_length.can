@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     Map()
         .Inserted("a", "1")
         -> Length

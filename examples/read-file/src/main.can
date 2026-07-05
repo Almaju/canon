@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     Path("Cargo.toml")
         .File()?
         .read()?

@@ -6,6 +6,6 @@ InstantSeconds = Int
 
 SystemClock = Unit
 
-getResolution = (SystemClock) -> Duration
+getResolution = (SystemClock) => Duration
 
-now = (SystemClock) -> Instant
+now = (SystemClock) => Instant

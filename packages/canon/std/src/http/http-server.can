@@ -4,14 +4,14 @@ Route = HttpServer
 
 Served = Unit
 
-HttpServer = (Port) -> HttpServer {
+HttpServer = (Port) => HttpServer {
     Port.create()
 }
 
-Route = (HttpServer * HttpStatus * Method * RoutePath * String) -> Route {
+Route = (HttpServer * HttpStatus * Method * RoutePath * String) => Route {
     HttpServer.route(HttpStatus, MethodName(Method.String()), RouteBody(String), RoutePath)
 }
 
-Served = (HttpServer) -> Result<Served, IoError> {
+Served = (HttpServer) => Result<Served, IoError> {
     HttpServer.serve()
 }

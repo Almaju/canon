@@ -1,4 +1,4 @@
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     Json("{\"model\":\"gpt-4\",\"stream\":true}")?
         .field("model")?
         .asString()?

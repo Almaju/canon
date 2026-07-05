@@ -46,9 +46,9 @@ and version, and the loader derives each declaration's binding from
 the path (a binding file is recognized by shape):
 
 ```canon
-getArguments = () -> List<String>
+getArguments = () => List<String>
 
-getInitialCwd = () -> Option<String>
+getInitialCwd = () => Option<String>
 ```
 
 Your code imports and calls them like any Canon function. `canon bindgen <wit-or-wasm> -o <dir>` does the same

@@ -1,6 +1,6 @@
-main = () -> Unit {
+main = () => Unit {
     Some("hello").(
-        * (None) -> Unit { "none".print() }
-        * (Some<String>) -> Unit { String.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<String>) => Unit { String.print() }
     )
 }

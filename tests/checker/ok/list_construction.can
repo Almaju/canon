@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     List(1, 2, 3)
         .length()
         .print()

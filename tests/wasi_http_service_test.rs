@@ -1,6 +1,6 @@
 //! End-to-end integration test for the `wasi:http/service` world.
 //!
-//! A Canon program whose entry is a free `(Request) -> Response`
+//! A Canon program whose entry is a free `(Request) => Response`
 //! function compiles to a standard WebAssembly component exporting
 //! `wasi:http/handler@0.3.0-rc-2026-03-15#handle` — the same export
 //! `wasmtime serve` and any compliant WASI HTTP host instantiate. This
@@ -34,7 +34,7 @@ fn wasi_http_service_smoke() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"home = (Request) -> Response {
+        r#"home = (Request) => Response {
     Response(Body("created: ".concat("ok")) * Headers() * Status(201))
 }
 "#,
@@ -116,7 +116,7 @@ fn wasi_http_service_response_headers() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"home = (Request) -> Response {
+        r#"home = (Request) => Response {
     Response(Body("<h1>hi</h1>") * Headers().set("content-type", "text/html").set("x-canon", "1") * Status(200))
 }
 "#,
@@ -197,11 +197,11 @@ fn wasi_http_service_method_dispatch() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"serve = (Request) -> Response {
+        r#"serve = (Request) => Response {
     Request.method().(
-        * ("GET") -> Response { Response(Body("got GET") * Headers() * Status(200)) }
-        * ("POST") -> Response { Response(Body("got POST") * Headers() * Status(201)) }
-        * (String) -> Response { Response(Body("no ".concat(String)) * Headers() * Status(405)) }
+        * ("GET") => Response { Response(Body("got GET") * Headers() * Status(200)) }
+        * ("POST") => Response { Response(Body("got POST") * Headers() * Status(201)) }
+        * (String) => Response { Response(Body("no ".concat(String)) * Headers() * Status(405)) }
     )
 }
 "#,

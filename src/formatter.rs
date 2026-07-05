@@ -174,7 +174,7 @@ fn emit_function(func: &FunctionDef) -> String {
         out.push('(');
     }
     out.push_str(&emit_fn_params(func));
-    out.push_str(") -> ");
+    out.push_str(") => ");
     out.push_str(&emit_type_expr(&func.return_ty));
 
     // Body. Functions whose body was synthesized by the loader (i.e.
@@ -294,7 +294,7 @@ fn emit_type_expr(ty: &TypeExpr) -> String {
                     .collect::<Vec<_>>()
                     .join(" * ")
             };
-            format!("{}({}) -> {}", g, ps, emit_type_expr(return_ty))
+            format!("{}({}) => {}", g, ps, emit_type_expr(return_ty))
         }
     }
 }
@@ -625,7 +625,7 @@ fn emit_base_inline(expr: &Expr) -> String {
                 .map(emit_inline)
                 .collect::<Vec<_>>()
                 .join(" ");
-            format!("({}) -> {} {{ {} }}", ps, ret, body_str)
+            format!("({}) => {} {{ {} }}", ps, ret, body_str)
         }
         Expr::ProductValue { fields, .. } => fields
             .iter()
@@ -721,7 +721,7 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
         .map(emit_inline)
         .collect::<Vec<_>>()
         .join(" ");
-    format!("({}) -> {} {{ {} }}", pat, ret, body)
+    format!("({}) => {} {{ {} }}", pat, ret, body)
 }
 
 /// Render a dispatch arm at the given indent level. Short arms whose
@@ -746,7 +746,7 @@ fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
         .map(|e| format!("{}{}", body_pad, emit_expr(e, arm_indent + 1)))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("({}) -> {} {{\n{}\n{}}}", pat, ret, body, close_pad)
+    format!("({}) => {} {{\n{}\n{}}}", pat, ret, body, close_pad)
 }
 
 /// Does this expression (or any sub-expression) contain a dispatch?
@@ -836,8 +836,8 @@ mod tests {
     #[test]
     fn test_simple_main() {
         assert_format(
-            "main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n",
-            "main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n",
+            "main = (Stdout) => Unit {\n    \"hello\".print(Stdout)\n}\n",
+            "main = (Stdout) => Unit {\n    \"hello\".print(Stdout)\n}\n",
         );
     }
 
@@ -845,7 +845,7 @@ mod tests {
     fn test_normalize_spacing() {
         assert_format(
             "main=(Stdout)->Unit{\n\"hello\".print(Stdout)\n}\n",
-            "main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n",
+            "main = (Stdout) => Unit {\n    \"hello\".print(Stdout)\n}\n",
         );
     }
 
@@ -886,16 +886,16 @@ mod tests {
     #[test]
     fn test_sorts_free_functions() {
         assert_format(
-            "beta = () -> Unit {\n    \"b\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
-            "alpha = () -> Unit {\n    \"a\".print()\n}\n\nbeta = () -> Unit {\n    \"b\".print()\n}\n",
+            "beta = () => Unit {\n    \"b\".print()\n}\n\nalpha = () => Unit {\n    \"a\".print()\n}\n",
+            "alpha = () => Unit {\n    \"a\".print()\n}\n\nbeta = () => Unit {\n    \"b\".print()\n}\n",
         );
     }
 
     #[test]
     fn test_sorts_type_definitions() {
         assert_format(
-            "Zed = Int\n\nAlpha = Int\n\nmain = () -> Unit {\n    \"x\".print()\n}\n",
-            "Alpha = Int\n\nZed = Int\n\nmain = () -> Unit {\n    \"x\".print()\n}\n",
+            "Zed = Int\n\nAlpha = Int\n\nmain = () => Unit {\n    \"x\".print()\n}\n",
+            "Alpha = Int\n\nZed = Int\n\nmain = () => Unit {\n    \"x\".print()\n}\n",
         );
     }
 
@@ -905,7 +905,7 @@ mod tests {
         // role, mirroring the checker) — it keeps its position while
         // its peers sort around it.
         assert_idempotent(
-            "main = () -> Unit {\n    \"hi\".print()\n}\n\nalpha = () -> Unit {\n    \"a\".print()\n}\n",
+            "main = () => Unit {\n    \"hi\".print()\n}\n\nalpha = () => Unit {\n    \"a\".print()\n}\n",
         );
     }
 
@@ -913,8 +913,8 @@ mod tests {
     fn test_dispatch_arms_sorted() {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
-            "main = () -> Unit {\n    True().(\n        * (True) -> Unit { \"yes\".print() }\n        * (False) -> Unit { \"no\".print() }\n    )\n}\n",
-            "main = () -> Unit {\n    True().(\n        * (False) -> Unit { \"no\".print() }\n        * (True) -> Unit { \"yes\".print() }\n    )\n}\n",
+            "main = () => Unit {\n    True().(\n        * (True) => Unit { \"yes\".print() }\n        * (False) => Unit { \"no\".print() }\n    )\n}\n",
+            "main = () => Unit {\n    True().(\n        * (False) => Unit { \"no\".print() }\n        * (True) => Unit { \"yes\".print() }\n    )\n}\n",
         );
     }
 
@@ -922,40 +922,40 @@ mod tests {
     fn test_literal_dispatch_arms_sorted_catchall_last() {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
-            "route = (String) -> String {\n    String.(\n        * (String) -> String { \"other\" }\n        * (\"/b\") -> String { \"b\" }\n        * (\"/a\") -> String { \"a\" }\n    )\n}\n\nmain = () -> Unit {\n    \"/a\".route().print()\n}\n",
-            "route = (String) -> String {\n    String.(\n        * (\"/a\") -> String { \"a\" }\n        * (\"/b\") -> String { \"b\" }\n        * (String) -> String { \"other\" }\n    )\n}\n\nmain = () -> Unit {\n    \"/a\"\n        .route()\n        .print()\n}\n",
+            "route = (String) => String {\n    String.(\n        * (String) => String { \"other\" }\n        * (\"/b\") => String { \"b\" }\n        * (\"/a\") => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".route().print()\n}\n",
+            "route = (String) => String {\n    String.(\n        * (\"/a\") => String { \"a\" }\n        * (\"/b\") => String { \"b\" }\n        * (String) => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        .route()\n        .print()\n}\n",
         );
     }
 
     #[test]
     fn test_literal_dispatch_int_arms_idempotent() {
         assert_idempotent(
-            "describe = (Int) -> Unit {\n    Int.(\n        * (0) -> Unit { \"zero\".print() }\n        * (1) -> Unit { \"one\".print() }\n        * (Int) -> Unit { Int.print() }\n    )\n}\n\nmain = () -> Unit {\n    0.describe()\n}\n",
+            "describe = (Int) => Unit {\n    Int.(\n        * (0) => Unit { \"zero\".print() }\n        * (1) => Unit { \"one\".print() }\n        * (Int) => Unit { Int.print() }\n    )\n}\n\nmain = () => Unit {\n    0.describe()\n}\n",
         );
     }
 
     #[test]
     fn test_literal_dispatch_string_escapes_round_trip() {
         assert_idempotent(
-            "kind = (String) -> String {\n    String.(\n        * (\"line\\none\") -> String { \"escaped\" }\n        * (String) -> String { \"plain\" }\n    )\n}\n\nmain = () -> Unit {\n    \"x\".kind().print()\n}\n",
+            "kind = (String) => String {\n    String.(\n        * (\"line\\none\") => String { \"escaped\" }\n        * (String) => String { \"plain\" }\n    )\n}\n\nmain = () => Unit {\n    \"x\".kind().print()\n}\n",
         );
     }
 
     #[test]
     fn test_dispatch() {
-        let src = "Bool = False + True\n\nmain = (Stdout) -> Unit {\n    True.(\n        * (False) -> Unit { \"no\".print(Stdout) }\n        * (True) -> Unit { \"yes\".print(Stdout) }\n    )\n}\n";
+        let src = "Bool = False + True\n\nmain = (Stdout) => Unit {\n    True.(\n        * (False) => Unit { \"no\".print(Stdout) }\n        * (True) => Unit { \"yes\".print(Stdout) }\n    )\n}\n";
         assert_idempotent(src);
     }
 
     #[test]
     fn test_idempotent_hello() {
-        assert_idempotent("main = (Stdout) -> Unit {\n    \"hello\".print(Stdout)\n}\n");
+        assert_idempotent("main = (Stdout) => Unit {\n    \"hello\".print(Stdout)\n}\n");
     }
 
     #[test]
     fn test_idempotent_types() {
         assert_idempotent(
-            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) -> Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
+            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) => Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
         );
     }
 
@@ -965,35 +965,35 @@ mod tests {
         // (the vendored path, not a header, carries the URN). The
         // formatter passes them through as ordinary type aliases.
         assert_format(
-            "getResolution = () -> Duration\n\nnow = () -> Mark\n",
-            "getResolution = () -> Duration\n\nnow = () -> Mark\n",
+            "getResolution = () => Duration\n\nnow = () => Mark\n",
+            "getResolution = () => Duration\n\nnow = () => Mark\n",
         );
     }
 
     #[test]
     fn test_generics() {
         assert_format(
-            "parse = <T: Deserialize>(Json * String) -> Result<T, MalformedJson>\n",
-            "parse = <T: Deserialize>(Json * String) -> Result<T, MalformedJson>\n",
+            "parse = <T: Deserialize>(Json * String) => Result<T, MalformedJson>\n",
+            "parse = <T: Deserialize>(Json * String) => Result<T, MalformedJson>\n",
         );
     }
 
     #[test]
     fn test_lambda() {
-        let input = "main = (Stdout) -> Unit {\n    List(10, 20, 30).map((Int) -> Int { Int.mul(2) }).print(Stdout)\n}\n";
+        let input = "main = (Stdout) => Unit {\n    List(10, 20, 30).map((Int) => Int { Int.mul(2) }).print(Stdout)\n}\n";
         assert_idempotent(input);
     }
 
     #[test]
     fn test_try_operator() {
         let input =
-            "main = (Stdout) -> Result<Unit, Unit> {\n    Ok(42)?.print(Stdout)\n    Ok(Unit)\n}\n";
+            "main = (Stdout) => Result<Unit, Unit> {\n    Ok(42)?.print(Stdout)\n    Ok(Unit)\n}\n";
         assert_idempotent(input);
     }
 
     #[test]
     fn test_trait_function_type() {
-        assert_format("Show = () -> String\n", "Show = () -> String\n");
+        assert_format("Show = () => String\n", "Show = () => String\n");
     }
 
     #[test]

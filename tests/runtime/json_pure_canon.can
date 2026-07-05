@@ -1,11 +1,11 @@
-show = (Result) -> Unit {
+show = (Result) => Unit {
     Result.(
-        * (Err<MalformedJson>) -> Unit { "FAIL".print() }
-        * (Ok<Json>) -> Unit { "OK".print() }
+        * (Err<MalformedJson>) => Unit { "FAIL".print() }
+        * (Ok<Json>) => Unit { "OK".print() }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     "true"
         .Json()
         .show()

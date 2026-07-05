@@ -1,17 +1,17 @@
 Model = String
 
-item = (String) -> Html {
+item = (String) => Html {
     <li>{String.Escaped()}</li>
 }
 
-view = (Model) -> Html {
+view = (Model) => Html {
     <div>
         <h1>Notes</h1>
         <ul>{Model.item()}</ul>
     </div>
 }
 
-main = () -> Unit {
+main = () => Unit {
     Model("groceries")
         .view()
         .print()

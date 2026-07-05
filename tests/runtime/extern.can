@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     5
         .min(3)
         .print()

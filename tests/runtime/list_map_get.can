@@ -1,18 +1,18 @@
-main = () -> Unit {
-    List(1, 2, 3).map((Int) -> Int { Int.mul(2) }).get(1).(
-        * (None) -> Unit { "none".print() }
-        * (Some<Int>) -> Unit { Int.print() }
+main = () => Unit {
+    List(1, 2, 3).map((Int) => Int { Int.mul(2) }).get(1).(
+        * (None) => Unit { "none".print() }
+        * (Some<Int>) => Unit { Int.print() }
     )
-    List(1, 2, 3).map((Int) -> Int { Int.mul(2) }).get(3).(
-        * (None) -> Unit { "none".print() }
-        * (Some<Int>) -> Unit { Int.print() }
+    List(1, 2, 3).map((Int) => Int { Int.mul(2) }).get(3).(
+        * (None) => Unit { "none".print() }
+        * (Some<Int>) => Unit { Int.print() }
     )
     List(1, 2, 3).get(7).(
-        * (None) -> Unit { "none".print() }
-        * (Some<Int>) -> Unit { Int.print() }
+        * (None) => Unit { "none".print() }
+        * (Some<Int>) => Unit { Int.print() }
     )
     List(10, 20)
-        .map((Int) -> Int { Int.add(5) })
+        .map((Int) => Int { Int.add(5) })
         .length()
         .print()
 }

@@ -11,9 +11,9 @@ React's component-local state is unexpressible. The architecture React
 approximates, Canon states natively:
 
 ```canon
-init   = () -> Model                 # the whole app state
-update = (Model * String) -> Model   # a pure fold over messages
-view   = (Model) -> Html             # a pure render
+init   = () => Model                 # the whole app state
+update = (Model * String) => Model   # a pure fold over messages
+view   = (Model) => Html             # a pure render
 ```
 
 `Model` is any user type. `Html` resolves to `canon/std/web/Html`

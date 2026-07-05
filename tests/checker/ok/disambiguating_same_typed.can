@@ -6,10 +6,10 @@ User = Birthday * Username
 
 Username = String
 
-equals = (OtherUser * User) -> Bool {
+equals = (OtherUser * User) => Bool {
     True()
 }
 
-main = () -> Unit {
+main = () => Unit {
     "compared".print()
 }

@@ -1,7 +1,7 @@
 //! End-to-end integration test for the dynamic HTTP handler ABI.
 //!
 //! Spawns a child `canon run` process that binds an HTTP server with
-//! a `handleRequest = (String) -> String` user function defined, then
+//! a `handleRequest = (String) => String` user function defined, then
 //! opens a TCP connection to it, sends an HTTP request, and asserts
 //! that the response body matches what the handler returned.
 //!
@@ -30,11 +30,11 @@ fn dynamic_handler_round_trip() {
     std::fs::write(
         &ow_path,
         format!(
-            r#"handleRequest = (String) -> String {{
+            r#"handleRequest = (String) => String {{
     "echoed via dynamic handler"
 }}
 
-main = () -> Result<Unit, IoError> {{
+main = () => Result<Unit, IoError> {{
     HttpServer(Port({port}))
         .Route(HttpStatus(200), Post(), RoutePath("/"), "unused")
         -> Served
@@ -120,11 +120,11 @@ fn dynamic_handler_sse_content_type() {
     std::fs::write(
         &ow_path,
         format!(
-            r#"handleRequest = (String) -> String {{
+            r#"handleRequest = (String) => String {{
     "Content-Type: text/event-stream\r\n\r\ndata: hello\n\ndata: world\n\n"
 }}
 
-main = () -> Result<Unit, IoError> {{
+main = () => Result<Unit, IoError> {{
     HttpServer(Port({port}))
         .Route(HttpStatus(200), Post(), RoutePath("/"), "unused")
         -> Served

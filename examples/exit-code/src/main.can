@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     "exiting cleanly".print()
     0 -> Exited
 }

@@ -1,12 +1,12 @@
 Content = String
 
-describeParam = (Option<Content>) -> String {
-    Option<Content>.(
-        * (None) -> String { "none" }
-        * (Some<Content>) -> String { "some" }
+describeParam = (Option) => String {
+    Option.(
+        * (None) => String { "none" }
+        * (Some<Content>) => String { "some" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     "ok".print()
 }

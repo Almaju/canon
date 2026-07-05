@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     Int(1).print()
     Int(5)
         .add(Int(2))

@@ -2,11 +2,11 @@ EventStream = Headers
 
 SseEvent = String
 
-() -> EventStream {
+() => EventStream {
     Headers().set("content-type", "text/event-stream")
 }
 
-(String) -> SseEvent {
+(String) => SseEvent {
     "data: "
         .concat(String)
         .concat("\n\n")

@@ -12,16 +12,16 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `struct User { birthday: ..., username: ... }` | `User = Birthday * Username`        |
 | `enum Bool { False, True }`                | `Bool = False + True`                  |
 | `type Name = String;` (or `struct Name(String);`) | `Name = String`                  |
-| `impl User { fn greet(&self) -> String { ... } }` | `greet = (User) -> String { ... }` |
-| `fn main() { ... }`                        | `main = () -> Unit { ... }`             |
-| `trait Show { fn show(&self) -> String; }` | `Show = () -> String`                   |
-| `impl Show for User { ... }`               | `Show = (User) -> String { ... }`      |
+| `impl User { fn greet(&self) => String { ... } }` | `greet = (User) => String { ... }` |
+| `fn main() { ... }`                        | `main = () => Unit { ... }`             |
+| `trait Show { fn show(&self) -> String; }` | `Show = () => String`                   |
+| `impl Show for User { ... }`               | `Show = (User) => String { ... }`      |
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |
 | `Option<T>`                                | `Option<T>`                             |
 | `?` operator                               | `?` operator (same semantics)           |
 | `match x { ... }`                          | `x.( ... )`                             |
 | `let x = ...;`                             | No equivalent; declare a newtype        |
-| `if cond { a } else { b }`                 | `cond.( * (False) -> R { b } * (True) -> R { a } )` |
+| `if cond { a } else { b }`                 | `cond.( * (False) => R { b } * (True) => R { a } )` |
 | `pub fn`                                   | Everything is public                    |
 | `mod foo;`                                 | No `mod`; `foo.can` declares `Foo`       |
 | `use crate::foo::Foo;`                     | Nothing — referencing `Foo` loads `foo.can` |

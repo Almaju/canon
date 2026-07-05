@@ -4,21 +4,21 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-makeFail = () -> TestResult {
+makeFail = () => TestResult {
     Fail("the message")
 }
 
-makePass = () -> TestResult {
+makePass = () => TestResult {
     Pass()
 }
 
-main = () -> Unit {
+main = () => Unit {
     makeFail().(
-        * (Fail) -> Unit { Fail.print() }
-        * (Pass) -> Unit { "got pass".print() }
+        * (Fail) => Unit { Fail.print() }
+        * (Pass) => Unit { "got pass".print() }
     )
     makePass().(
-        * (Fail) -> Unit { Fail.print() }
-        * (Pass) -> Unit { "got pass".print() }
+        * (Fail) => Unit { Fail.print() }
+        * (Pass) => Unit { "got pass".print() }
     )
 }

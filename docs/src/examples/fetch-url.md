@@ -4,7 +4,7 @@
 an HTTP GET in one chain, built on a **validated constructor**.
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Url("http://example.com")?
         -> Fetched?
         .print()
@@ -21,9 +21,9 @@ $ canon run examples/fetch-url
 ## Two Failure Modes, Two `?`s
 
 ```canon
-(String) -> Result<Url, InvalidUrl>
+(String) => Result<Url, InvalidUrl>
 
-(Url) -> Result<Fetched, HttpError>
+(Url) => Result<Fetched, HttpError>
 ```
 
 The first `?` handles *parse* failure. `Url` declares its own

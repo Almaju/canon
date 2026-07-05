@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     "hello"
         .length()
         .print()
@@ -12,15 +12,15 @@ main = () -> Unit {
         .substring(2, 4)
         .print()
     "hello".eq("hello").(
-        * (False) -> Unit { "ne".print() }
-        * (True) -> Unit { "eq".print() }
+        * (False) => Unit { "ne".print() }
+        * (True) => Unit { "eq".print() }
     )
     "hello".eq("world").(
-        * (False) -> Unit { "ne".print() }
-        * (True) -> Unit { "eq".print() }
+        * (False) => Unit { "ne".print() }
+        * (True) => Unit { "eq".print() }
     )
     "hello".eq("hell").(
-        * (False) -> Unit { "ne".print() }
-        * (True) -> Unit { "eq".print() }
+        * (False) => Unit { "ne".print() }
+        * (True) => Unit { "eq".print() }
     )
 }

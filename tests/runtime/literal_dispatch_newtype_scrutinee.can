@@ -1,13 +1,13 @@
 Prefix = String
 
-route = (Int * String) -> Int {
+route = (Int * String) => Int {
     Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Int { Int.add(String.length()) }
-        * (Prefix) -> Int { Int }
+        * ("Add:") => Int { Int.add(String.length()) }
+        * (Prefix) => Int { Int }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     10
         .route("Add:xyz")
         .print()

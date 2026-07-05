@@ -13,8 +13,8 @@ value to a product of handlers, one arm per variant:
 
 ```canon
 Request.path().(
-    * (None) -> Response { ... }
-    * (Some<String>) -> Response { ... }
+    * (None) => Response { ... }
+    * (Some<String>) => Response { ... }
 )
 ```
 
@@ -31,19 +31,19 @@ never be exhaustive, so totality comes from the catch-all. Update
 `notes.can`:
 
 ```canon
-notFound = () -> Body {
+notFound = () => Body {
     Body("not found")
 }
 
-serve = (Request) -> Response {
+serve = (Request) => Response {
     Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
+        * (None) => Response { Response(notFound() * Headers() * Status(400)) }
+        * (Some<String>) => Response {
             String.(
-                * ("/notes") -> Response {
+                * ("/notes") => Response {
                     Response(Body("all the notes") * Headers() * Status(200))
                 }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
+                * (String) => Response { Response(notFound() * Headers() * Status(404)) }
             )
         }
     )

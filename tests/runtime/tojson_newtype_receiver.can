@@ -1,6 +1,6 @@
 Foo = String
 
-main = () -> Unit {
+main = () => Unit {
     "x"
         .ToJson()
         .print()

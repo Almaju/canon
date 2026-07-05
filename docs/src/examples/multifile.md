@@ -16,7 +16,7 @@ multifile/
 ```canon
 Greeter = String
 
-shout = (Greeter) -> String {
+shout = (Greeter) => String {
     "HELLO from greeter"
 }
 ```
@@ -24,7 +24,7 @@ shout = (Greeter) -> String {
 `src/main.can`:
 
 ```canon
-main = () -> Unit {
+main = () => Unit {
     Greeter("hi")
         .shout()
         .print()

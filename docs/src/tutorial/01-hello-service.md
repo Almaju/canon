@@ -3,7 +3,7 @@
 Create a file named `notes.can`:
 
 ```canon
-serve = (Request) -> Response {
+serve = (Request) => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```

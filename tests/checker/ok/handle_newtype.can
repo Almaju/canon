@@ -2,6 +2,6 @@ Counter = Handle
 
 Gauge = Handle
 
-main = () -> Unit {
+main = () => Unit {
     "ok".print()
 }

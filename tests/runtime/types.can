@@ -16,6 +16,6 @@ User = Birthday * Username
 
 Username = String
 
-main = () -> Unit {
+main = () => Unit {
     "type definitions parsed".print()
 }

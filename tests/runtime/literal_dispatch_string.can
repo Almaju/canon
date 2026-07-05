@@ -1,12 +1,12 @@
-route = (String) -> String {
+route = (String) => String {
     String.(
-        * ("/notes") -> String { "index" }
-        * ("/notes/1") -> String { "note one" }
-        * (String) -> String { "not found: ".concat(String) }
+        * ("/notes") => String { "index" }
+        * ("/notes/1") => String { "note one" }
+        * (String) => String { "not found: ".concat(String) }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     "/notes"
         .route()
         .print()

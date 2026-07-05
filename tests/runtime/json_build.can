@@ -1,4 +1,4 @@
-main = () -> Result<Unit, MalformedJson> {
+main = () => Result<Unit, MalformedJson> {
     "{\"answer\":"
         .concat(42.ToJson())
         .concat(",\"label\":")

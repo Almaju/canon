@@ -4,7 +4,7 @@ Errors are values, carried by the standard `Result<T, E>` type. The error
 slot is a regular type, so it can be a union written inline:
 
 ```canon
-read = (File * Path) -> Result<Bytes, IoError + NotFound + PermissionDenied> {
+read = (File * Path) => Result<Bytes, IoError + NotFound + PermissionDenied> {
     ...
 }
 ```
@@ -22,11 +22,11 @@ The postfix `?` operator propagates failure. It works on both
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```canon
-main = () -> Result<Unit, Unit> {
+main = () => Result<Unit, Unit> {
     Ok(42)?.print()
     Some(7).(
-        * (None) -> Unit { "absent".print() }
-        * (Some<Int>) -> Unit { "present".print() }
+        * (None) => Unit { "absent".print() }
+        * (Some<Int>) => Unit { "present".print() }
     )
     Ok(Unit())
 }
@@ -53,7 +53,7 @@ Because `?` is postfix, error-propagating pipelines read top-down,
 left-to-right:
 
 ```canon
-readConfig = (File * Path) -> Result<Config, IoError + ParseError> {
+readConfig = (File * Path) => Result<Config, IoError + ParseError> {
     File
         .read(Path)?
         .parse()?
