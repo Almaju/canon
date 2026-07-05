@@ -1,5 +1,7 @@
 Key = String
 
+Keys = List<Key>
+
 Map = Empty + Node
 
 Node = Key * Rest * Value
@@ -8,30 +10,16 @@ Rest = Map
 
 Value = String
 
-Map = () -> Map {
-    Empty()
-}
+Values = List<Value>
 
-get = (Map * String) -> Option<Value> {
-    Map.(
-        * (Empty) -> Option<Value> { None() }
-        * (Node) -> Option<Value> {
-            Node.Key.eq(String).(
-                * (False) -> Option<Value> { Node.Rest.get(String) }
-                * (True) -> Option<Value> { Some(Node.Value) }
-            )
-        }
-    )
-}
-
-insert = (Map * String * Value) -> Map {
+Inserted = (Map * String * Value) -> Map {
     Map.(
         * (Empty) -> Map { Node(String, Empty(), Value) }
         * (Node) -> Map {
             String.lt(Node.Key).(
                 * (False) -> Map {
                     String.eq(Node.Key).(
-                        * (False) -> Map { Node(Node.Key, Node.Rest.insert(String, Value), Node.Value) }
+                        * (False) -> Map { Node(Node.Key, Node.Rest.Inserted(String, Value), Node.Value) }
                         * (True) -> Map { Node(String, Node.Rest, Value) }
                     )
                 }
@@ -41,10 +29,45 @@ insert = (Map * String * Value) -> Map {
     )
 }
 
-keys = (Map) -> List<Key> {
+Keys = (Map) -> Keys {
     Map.(
-        * (Empty) -> List<Key> { List() }
-        * (Node) -> List<Key> { List(Node.Key).concat(Node.Rest.keys()) }
+        * (Empty) -> Keys { List() }
+        * (Node) -> Keys { List(Node.Key).concat(Node.Rest.Keys()) }
+    )
+}
+
+Map = () -> Map {
+    Empty()
+}
+
+Removed = (Map * String) -> Map {
+    Map.(
+        * (Empty) -> Map { Empty() }
+        * (Node) -> Map {
+            Node.Key.eq(String).(
+                * (False) -> Map { Node(Node.Key, Node.Rest.Removed(String), Node.Value) }
+                * (True) -> Map { Node.Rest }
+            )
+        }
+    )
+}
+
+Value = (Map * String) -> Option<Value> {
+    Map.(
+        * (Empty) -> Option<Value> { None() }
+        * (Node) -> Option<Value> {
+            Node.Key.eq(String).(
+                * (False) -> Option<Value> { Node.Rest.Value(String) }
+                * (True) -> Option<Value> { Some(Node.Value) }
+            )
+        }
+    )
+}
+
+Values = (Map) -> Values {
+    Map.(
+        * (Empty) -> Values { List() }
+        * (Node) -> Values { List(Node.Value).concat(Node.Rest.Values()) }
     )
 }
 
@@ -52,24 +75,5 @@ length = (Map) -> Int {
     Map.(
         * (Empty) -> Int { 0 }
         * (Node) -> Int { Node.Rest.length().add(1) }
-    )
-}
-
-remove = (Map * String) -> Map {
-    Map.(
-        * (Empty) -> Map { Empty() }
-        * (Node) -> Map {
-            Node.Key.eq(String).(
-                * (False) -> Map { Node(Node.Key, Node.Rest.remove(String), Node.Value) }
-                * (True) -> Map { Node.Rest }
-            )
-        }
-    )
-}
-
-values = (Map) -> List<Value> {
-    Map.(
-        * (Empty) -> List<Value> { List() }
-        * (Node) -> List<Value> { List(Node.Value).concat(Node.Rest.values()) }
     )
 }

@@ -1120,6 +1120,46 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             }
         },
         _ => {
+            // Constructor/shape families (DESIGN.md § Types-Only Canon,
+            // name-resolution rule 4): several files may declare the same
+            // *function* name — one implementation per receiver type, like
+            // `Inserted` on `Map` in map.can and on `Set` in set.can. A
+            // reference to such a name loads every declaring file; call
+            // sites select by receiver, and the checker's coherence guard
+            // (duplicate (receiver, name, first-input) definitions) reports
+            // real conflicts. Type names never multi-resolve: two type
+            // definitions sharing a name stay a hard ambiguity error.
+            let function_only = unique.iter().all(|f| match f {
+                Found::Local(p) => fs::read_to_string(p)
+                    .ok()
+                    .is_some_and(|src| name_declared_as_function_only(&src, name)),
+                Found::Bundled(_, file) => name_declared_as_function_only(file.source, name),
+            });
+            if function_only {
+                for f in unique {
+                    match f {
+                        Found::Local(p) => {
+                            let canonical =
+                                p.canonicalize().map_err(|err| CanonError::CheckError {
+                                    message: format!(
+                                        "could not resolve `{}`: {}",
+                                        p.display(),
+                                        err
+                                    ),
+                                    span,
+                                })?;
+                            load_into(&canonical, ctx)?;
+                        }
+                        Found::Bundled(pkg, file) => {
+                            let key = format!("{}/{}", pkg.name, file.path);
+                            if ctx.seen_bundled.insert(key) {
+                                load_bundled_source(pkg, file, ctx)?;
+                            }
+                        }
+                    }
+                }
+                return Ok(());
+            }
             let labels: Vec<String> = unique.iter().map(Found::label).collect();
             Err(CanonError::CheckError {
                 message: format!(
@@ -1133,6 +1173,29 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             })
         }
     }
+}
+
+/// Does `source` declare `name` exclusively as function bodies? True
+/// means the name is family-eligible — a reference may co-resolve with
+/// other declaring files (implementations are selected by receiver
+/// type). Any type definition under the name, including a body-less
+/// function-type alias, makes the file claim the name exclusively.
+fn name_declared_as_function_only(source: &str, name: &str) -> bool {
+    let Ok(tokens) = Scanner::new(source).scan_tokens() else {
+        return false;
+    };
+    let Ok(module) = Parser::new(tokens).parse() else {
+        return false;
+    };
+    let mut declares = false;
+    for item in &module.items {
+        match item {
+            Item::TypeDef(td) if td.name.name == name => return false,
+            Item::Function(f) if f.name.name == name => declares = true,
+            _ => {}
+        }
+    }
+    declares
 }
 
 impl LoadCtx {

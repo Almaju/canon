@@ -472,6 +472,26 @@ pub fn resolve_new_syntax(module: &mut Module) {
                             name: "Self".to_string(),
                             span: func.name.span,
                         };
+                        // A multi-input constructor parses its input product
+                        // as ONE Product param (`Inserted = (Map * String *
+                        // Value) -> …`). Trait impls split that product via
+                        // `extract_receiver_from_params`; constructors keep
+                        // no runtime receiver, so flatten it into one param
+                        // per component here — downstream (wasm param
+                        // lowering, local-scope registration, commutative
+                        // keying) only understands `Named` params.
+                        if func.params.len() == 1 {
+                            if let TypeExpr::Product { fields, .. } = &func.params[0].ty {
+                                func.params = fields
+                                    .iter()
+                                    .map(|f| Param {
+                                        ty: f.clone(),
+                                        mutable: false,
+                                        span: f.span(),
+                                    })
+                                    .collect();
+                            }
+                        }
                     } else if !func.params.is_empty() {
                         // Trait impl: extract first component as receiver
                         let old_params = std::mem::take(&mut func.params);

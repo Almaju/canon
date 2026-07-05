@@ -248,10 +248,21 @@ fn check_ordering(
     for item in entry_items {
         if let Item::Function(func) = item {
             if let Some(recv) = &func.receiver {
+                // Compare *surface* names — a self-named constructor is
+                // rewritten to `Self` by `resolve_new_syntax`, but the
+                // source (and `canon fmt`'s sort) spells it as the type
+                // name. Comparing the resolved name made canonically
+                // formatted files fail the order check whenever a
+                // constructor sorted differently under "Self".
+                let surface = if func.name.name == "Self" {
+                    recv.name.clone()
+                } else {
+                    func.name.name.clone()
+                };
                 methods_per_receiver
                     .entry(recv.name.clone())
                     .or_default()
-                    .push((func.name.name.clone(), func.name.span));
+                    .push((surface, func.name.span));
             }
         }
     }
@@ -656,26 +667,30 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 // so that `param_val.TypeName()` (commutative constructor call) is recognized.
                 // For product-type params (A * B), register each component separately.
                 // `ctor_arity` is the number of remaining args when that component is the receiver.
-                let mut components: Vec<(String, usize)> = Vec::new();
+                let mut components: Vec<String> = Vec::new();
                 for param in &func.params {
                     match &param.ty {
                         TypeExpr::Named { .. } => {
                             if let Some(n) = param.ty.simple_name() {
-                                components.push((n.to_string(), 0));
+                                components.push(n.to_string());
                             }
                         }
                         TypeExpr::Product { fields, .. } => {
-                            let remaining = fields.len().saturating_sub(1);
                             for field in fields {
                                 if let Some(n) = field.simple_name() {
-                                    components.push((n.to_string(), remaining));
+                                    components.push(n.to_string());
                                 }
                             }
                         }
                         _ => {}
                     }
                 }
-                for (param_name, ctor_arity) in &components {
+                // When one component is the receiver, the caller passes
+                // the rest as arguments — the same count regardless of
+                // whether the components were declared as one product
+                // param or (post-flatten, for constructors) as N params.
+                let ctor_arity = components.len().saturating_sub(1);
+                for param_name in &components {
                     methods
                         .entry((param_name.clone(), func.name.name.clone()))
                         .or_insert(MethodSig {
@@ -688,7 +703,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                         methods
                             .entry((param_name.clone(), recv.name.clone()))
                             .or_insert(MethodSig {
-                                arity: *ctor_arity,
+                                arity: ctor_arity,
                                 return_ty: return_ty.clone(),
                                 result_ok_ty: result_ok_ty.clone(),
                             });

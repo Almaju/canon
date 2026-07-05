@@ -2190,11 +2190,11 @@ impl<'m> WasmGen<'m> {
             _ => {
                 if let Some(body) = self.type_defs.get(name).cloned() {
                     match &body {
-                        TypeExpr::Named {
-                            name: inner,
-                            generics,
-                            ..
-                        } if generics.is_empty() => {
+                        TypeExpr::Named { name: inner, .. } => {
+                            // Newtype alias — generic args on the RHS don't
+                            // change the repr (`Keys = List<Key>` is a list
+                            // at the value level; the element type is a
+                            // checker-side fact).
                             let inner_repr = self.resolve_repr_depth(inner, depth + 1);
                             // Wrap with the outer name for method dispatch
                             match inner_repr {
@@ -2203,7 +2203,13 @@ impl<'m> WasmGen<'m> {
                                 Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) | Ty::Ptr => {
                                     Ty::NamedPtr(name.to_string())
                                 }
-                                Ty::List => Ty::NamedPtr("List".to_string()),
+                                // Keep the two-slot list repr — wrapping it
+                                // in a one-slot `NamedPtr` desynchronizes
+                                // the wasm function type from the body
+                                // ("values remaining on stack"). Like
+                                // scalar newtypes, list newtypes erase to
+                                // `List` at the value level.
+                                Ty::List => Ty::List,
                             }
                         }
                         TypeExpr::Product { .. } | TypeExpr::Union { .. } => {
