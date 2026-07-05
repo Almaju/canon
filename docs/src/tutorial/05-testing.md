@@ -1,9 +1,9 @@
 # Testing the API
 
 The refactor in the last chapter did more than tidy up: it made the
-interesting logic pure. `render` takes a `Note` and returns a `String`,
-with nothing about HTTP anywhere near it. Pure functions are what
-Canon's test framework wants.
+interesting logic pure. The `Rendered` constructor takes a `Note` and
+produces JSON text, with nothing about HTTP anywhere near it. Pure
+functions are what Canon's test framework wants.
 
 ## A Test File
 
@@ -12,7 +12,7 @@ Add `src/note_test.can`:
 ```canon
 testRenderWrapsTitle = () => TestResult {
     Note("ship it")
-        .render()
+        -> Rendered
         -> Eq({"title":"ship it"})
         -> TestResult("render should wrap the title in a JSON object")
 }
@@ -56,7 +56,7 @@ into CI is a one-liner.
 
 ## Keep the Entry Thin
 
-You can't call `serve` from a test: it returns `Response`, a world
+You can't call the entry from a test: it returns `Response`, a world
 type, and the language offers no way to construct a fake `Request`.
 That is by design, and it points at the architecture the entry-point
 rule has been nudging toward all along:
@@ -64,9 +64,9 @@ rule has been nudging toward all along:
 - **helpers** hold the logic, take values, return values → *test these*;
 - **the entry** routes and wraps → keep it too thin to get wrong.
 
-If a branch of `serve` feels like it needs a test, extract the branch's
-work into a helper that returns a `Body` or a `String`, test the helper,
-and let `serve` stay a table of routes.
+If a branch of the entry feels like it needs a test, extract the
+branch's work into a helper that returns a `Body` or a `String`, test
+the helper, and let the entry stay a table of routes.
 
 One more chapter: [turning this into an artifact you can deploy
 anywhere](./06-ship-it.md).

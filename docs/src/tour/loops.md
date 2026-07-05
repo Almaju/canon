@@ -19,20 +19,24 @@ main = () => Unit {
 
 ## Recursion
 
-Anything the collection methods don't cover is plain recursion —
-functions call themselves, and dispatch supplies the base case:
+Anything the collection methods don't cover is plain recursion — a
+constructor references itself, and dispatch supplies the base case.
+`Summed` is the running total up to a number, so it recurses on
+`Summed` of the predecessor:
 
 ```canon,run=sum-to
-sumTo = (Int) => Int {
+Summed = Int
+
+(Int) => Summed {
     Int -> Eq(0).(
-        * (False) => Int { Int -> Sum(Int -> Difference(1).sumTo()) }
-        * (True) => Int { 0 }
+        * (False) => Summed { Int -> Sum(Int -> Difference(1) -> Summed) }
+        * (True) => Summed { 0 }
     )
 }
 
 main = () => Unit {
     5
-        .sumTo()
+        -> Summed
         -> Print
 }
 ```

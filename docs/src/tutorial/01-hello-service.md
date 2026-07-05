@@ -3,7 +3,7 @@
 Create a file named `notes.can`:
 
 ```canon
-serve = (Request) => Response {
+(Request) => Response {
     Response(Body("hello from canon") * Headers() * Status(200))
 }
 ```
@@ -36,12 +36,13 @@ type, and lifts it as the component's export, here
 
 Two consequences you'll run into later:
 
-- **Exactly one** function per program may return `Response`. Helper
-  functions must return ordinary values (`Body`, `String`, your own
-  types). The restriction is the layering the rule wants: helpers
+- **Exactly one** function per program may return `Response`. Helpers
+  are constructors that return ordinary values (`Body`, `String`, your
+  own types). The restriction is the layering the rule wants: helpers
   return data, the entry returns the world.
-- The function's name doesn't matter. We call it `serve`; `greet` or
-  `handle` would work identically.
+- The handler needs no name at all. It's an anonymous
+  `(Request) => Response` — the compiler selects it purely by its
+  signature, so there is nothing to call it and nothing to name.
 
 ## The Response
 

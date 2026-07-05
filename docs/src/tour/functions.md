@@ -15,18 +15,20 @@ The components inside the parentheses form a product, the function's input. Any 
 ```canon,run=first-function
 Greeting = String
 
-shout = (Greeting) => String {
+Shout = String
+
+(Greeting) => Shout {
     "HELLO"
 }
 
 main = () => Unit {
     Greeting("howdy")
-        .shout()
+        -> Shout
         -> Print
 }
 ```
 
-`shout` takes a `Greeting` as its component. It is called with dot syntax via commutative calling: `Greeting("howdy").shout()`.
+The constructor produces a `Shout` from a `Greeting`. It is reached with the `->` pipe via commutative calling: `Greeting("howdy") -> Shout` feeds the greeting in as the constructor's component.
 
 ## Function Bodies
 

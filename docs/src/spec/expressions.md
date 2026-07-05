@@ -222,11 +222,15 @@ Interpolated values convert through the `ToHtml` trait: a `String` or
 passes through unchanged, so composing literals never double-escapes:
 
 ```canon
-list = (String) => Html {
-    <ul>{String.row()}</ul>
+Listing = Html
+
+Row = Html
+
+(String) => Listing {
+    <ul>{String -> Row}</ul>
 }
 
-row = (String) => Html {
+(String) => Row {
     <li>{String}</li>
 }
 ```

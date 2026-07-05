@@ -34,37 +34,41 @@ lines; messages are prefix-parsed strings decoded with the same
 pure-Canon string primitives the standard library uses everywhere else.
 
 ```canon
+AddForm = ElAttr
+
+ClearButton = Button
+
 Prefix = String
 
-addForm = () => Html {
+() => AddForm {
     Attr("data-msg-form=\"Add:\"")
-        .elAttr(Attr("placeholder=\"What needs doing?\"").elAttr("", Tag("input")).String, Tag("form"))
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("", Tag("input")), Tag("form"))
 }
 
-clearButton = () => Html {
+() => ClearButton {
     Msg("Clear") -> Button("Clear completed")
 }
 
 init = () => Todos {
     Title("toggle a task to mark it done")
-        .addTodo(Title("edit this list - it is saved in your browser").addTodo(Todos("")))
+        -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
 }
 
 update = (Todos * String) => Todos {
     Prefix(String -> Substring(1, 4)).(
-        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)).addTodo(Todos) }
-        * ("Clea") => Todos { Todos.clearDone() }
-        * ("Dele") => Todos { String -> Substring(8, String -> Length).parseNum().removeAt(Todos) }
-        * ("Togg") => Todos { String -> Substring(8, String -> Length).parseNum().toggleAt(Todos) }
+        * ("Add:") => Todos { Title(String -> Substring(5, String -> Length)) -> AddedTodo(Todos) }
+        * ("Clea") => Todos { Todos -> Cleared }
+        * ("Dele") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> RemovedAt(Todos) }
+        * ("Togg") => Todos { String -> Substring(8, String -> Length) -> ParsedNum -> ToggledAt(Todos) }
         * (Prefix) => Todos { Todos }
     )
 }
 
 view = (Todos) => Html {
     "<h1>Canon Todos</h1>"
-        -> Joined(addForm().String)
-        -> Joined(1.renderItems(Todos) -> Ul.String)
-        -> Joined(clearButton().String)
+        -> Joined(AddForm() -> String)
+        -> Joined(1 -> RenderedItems(Todos) -> Ul)
+        -> Joined(ClearButton() -> String)
         -> Div
 }
 ```
@@ -93,46 +97,56 @@ The model operations are shared, ordinary Canon — the same code would
 run in a backend. `Todos` holds the list and its folds:
 
 ```canon
+AddedTodo = Todos
+
+Cleared = Todos
+
 Todos = String
 
-addTodo = (Title * Todos) => Todos {
+(Title * Todos) => AddedTodo {
     Todos(Todos.String -> Joined("0|") -> Joined(Title.String) -> Joined("\n"))
 }
 
-clearDone = (Todos) => Todos {
+(Todos) => Cleared {
     Todos.String -> Length -> Eq(0).(
-        * (False) => Todos {
+        * (False) => Cleared {
             Todos.String -> ByteAt(1) -> Eq(49).(
-                * (False) => Todos {
-                    Todos(Todos.String.firstLine() -> Joined("\n") -> Joined(Todos(Todos.String.restLines()).clearDone().String))
+                * (False) => Cleared {
+                    Todos(Todos.String -> FirstLine -> Joined("\n") -> Joined(Todos(Todos.String -> RestLines) -> Cleared -> String))
                 }
-                * (True) => Todos { Todos(Todos.String.restLines()).clearDone() }
+                * (True) => Cleared { Todos(Todos.String -> RestLines) -> Cleared }
             )
         }
-        * (True) => Todos { Todos }
+        * (True) => Cleared { Todos }
     )
 }
 ```
 
-(`firstLine`, `restLines`, `parseNum`, `removeAt`, `renderItems`, and
-`toggleAt` round out the file — see the
+Every operation is named after the value it produces: `AddedTodo`,
+`Cleared`, and so on — result newtypes over `Todos`, reached with the
+`->` pipe. (`FirstLine`, `RestLines`, `ParsedNum`, `RemovedAt`,
+`RenderedItems`, and `ToggledAt` round out the file — see the
 [full source](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src).)
 
 `Line` renders one item and toggles its done flag:
 
 ```canon
+Flipped = Line
+
 Line = String
 
-flip = (Line) => Line {
+RenderedItem = Html
+
+(Line) => Flipped {
     Line -> ByteAt(1) -> Eq(48).(
-        * (False) => Line { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
-        * (True) => Line { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * (False) => Flipped { Line("0" -> Joined(Line -> Substring(2, Line -> Length))) }
+        * (True) => Flipped { Line("1" -> Joined(Line -> Substring(2, Line -> Length))) }
     )
 }
 
-renderItem = (Int * Line) => Html {
+(Int * Line) => RenderedItem {
     Line -> ByteAt(1) -> Eq(49).(
-        * (False) => Html {
+        * (False) => RenderedItem {
             Line
                 -> Substring(3, Line -> Length)
                 -> Escaped
@@ -142,7 +156,7 @@ renderItem = (Int * Line) => Html {
                 -> Joined(Msg("Delete:" -> Joined(Int -> String)) -> Button("remove"))
                 -> Li
         }
-        * (True) => Html {
+        * (True) => RenderedItem {
             "<s>"
                 -> Joined(Line -> Substring(3, Line -> Length) -> Escaped)
                 -> Joined("</s> ")
