@@ -166,10 +166,10 @@ showAll = <T: Show>(List<T>) -> Unit {
 Where Canon cannot infer a generic function's type parameters from context, the caller pins them with `::<...>` after the function name (the same "turbofish" form Rust uses):
 
 ```
-"[1, 2, 3]".parse::<List<Int>>()?
+"[1, 2, 3]".List::<Int>()?
 ```
 
-Reads as: call `parse` with `T = List<Int>`. The `::` separator disambiguates the `<` from a comparison.
+Reads as: call the `List` constructor with `T = Int` ([conversion is construction](#conversions), so parsing a list *is* constructing one). The `::` separator disambiguates the `<` from a comparison.
 
 Turbofish is only required when the surrounding type context is insufficient. A function with an explicit `Result<List<Int>, _>` return type, for instance, lets the compiler infer `T` from the return position without an annotation.
 
@@ -976,6 +976,120 @@ needsShow = (Show) -> Unit {
 ### `Self`
 
 There is no `Self` keyword. Inside a function body, components are referenced by their type names directly — every component is explicit in the signature, so there is no ambiguity and no need for an alias.
+
+## Types-Only Canon
+
+> **Status: adopted direction, migration in progress.** The sections above describe the language as implemented today; this section describes where it is going and governs all new design decisions. Individual pieces land in slices (see the migration plan at the end of this section); until a slice lands, the old form remains valid.
+
+Canon removed local variables with the argument "names lie; types don't." The same argument now applies to the last remaining name-space: **camelCase function names are removed from the language**. Every named callable is a PascalCase declaration — a type. What is today
+
+```
+insert = (Map * String * Value) -> Map { … }
+map.insert("k", "v")
+```
+
+becomes
+
+```
+Inserted = Map
+
+Inserted = (Map * String * Value) -> Inserted { … }
+
+map.Inserted("k" * "v")
+```
+
+The result is a language in which **the only names are type names**. Values are already unnamed (no `let`); operations become unnamed too — an operation is identified by *what it produces*, never by a verb. Function names lie (`nowRfc3339 = () -> Now` was in the stdlib — named after RFC 3339, returning `Now`); a constructor named after its return type is checked by the compiler. The naming treadmill (`fromX`, `intoX`, `parseX`, `tryX`) disappears because there is nothing left to name.
+
+What survives unchanged: the dot syntax, commutative calling, dispatch, `?`, lambdas. Removing methods removes the *names*, not the calling convention — `x.Foo(y)` still reads left to right, lambdas stay anonymous (dispatch arms and `map` arguments never had names), and `x.Foo` vs `x.Foo()` stays field-access vs construction.
+
+### The Unified Declaration
+
+Every declaration is `PascalName = rhs`, and the RHS shape decides the meaning:
+
+| RHS shape | Meaning | Formerly |
+|---|---|---|
+| type expression (`A * B`, `A + B`, `T^N`, alias) | type definition | type definition |
+| signature, no body | **shape** — a named function type others implement | trait declaration / callback type |
+| signature + body, name = return type | **constructor** — an implementation of the type | validated constructor |
+| signature + body, name = a declared shape | **shape implementation** | trait implementation |
+
+A bodied declaration must be named after its return type or after a declared shape. Anything else is a compile error — that error is the entire enforcement mechanism, checkable from signatures alone. (If the return type is a bare type parameter, as in `fold`, declare a shape.)
+
+**Constructors form families.** A type may have any number of constructor implementations, distinguished by input product: `Json` has `(Bool)`, `(Float)`, `(Int)`, and `(String) -> Result<Json, MalformedJson>` constructors. Coherence generalizes from traits: at most one implementation per (name, input product) pair in the whole program, checked at link time. Traits and constructor overloads thereby collapse into one concept — *a PascalCase name is a family of implementations selected by input product* — and the trait system above is the shape/implementation half of it.
+
+### What Replaces Each Kind of Function
+
+- **Conversions and creations** are already constructors (§ [Conversions](#conversions)): `fromBool` → `Json(Bool)`, `openFile` → `File(Path)`, `create` → `HttpServer(Port)`.
+- **Accessors** construct the accessed thing: `get = (Map * String) -> Option<Value>` becomes a `Value` constructor — `map.Value("k")?` reads "the Value in this Map at this key, which might not exist." `keys` → `Keys = List<Key>` + `Keys = (Map) -> Keys`.
+- **Endomorphisms** — operations whose output type equals an input type, the one place a type genuinely underdetermines the function — take **result newtypes**: `Inserted = Map`, `Removed = Map`, `Joined = String`. Newtype substitutability makes chaining free: `Map().Inserted("a" * "1").Removed("a")` composes because `Inserted` flows anywhere `Map` is expected. The verb's information relocates into a name that is now checked, sorted, globally resolvable, and usable in downstream signatures.
+- **Effects produce evidence**: `write` becomes `Written = Path` + `Written = (Contents * Path) -> Result<Written, IoError>`. A downstream function that accepts `(Written)` instead of `(Path)` *requires proof the write happened* — capability-style sequencing with no new machinery, and the pattern composes with [capability entry points](#capability-entry-points-planned) (the capability joins the constructor's input product). Pure sinks (`-> Unit`) are shape implementations (`Print = () -> Unit` — `"hi".Print()`) until capabilities land, after which printing returns the capability (`Stdout.Print("a").Print("b")`) and sinks disappear.
+- **Shared vocabulary** — operations whose meaning spans types — are shapes with per-type implementations, exactly what traits were built for: `Length` (`Map`, `Set`, `String`, `List`), the comparison surface `Eq`/`Lt`/`Le`/`Gt`/`Ge`, ordering via the `Ord` constructor (`a.Ord(b).( * (Less) … )` — `compare` was already constructor-shaped). Arithmetic takes the noun vocabulary: `Sum`, `Product`, `Difference`, `Quotient`, `Remainder`, `Minimum`, `Maximum` — `2.Sum(3)`, `price.Product(quantity)`, non-commutative cases disambiguated by `OtherInt` under the ordinary binding rule.
+- **Higher-order operations** take generic result newtypes: `Mapped<U> = List<U>` + `Mapped = <T, U>(((T) -> U) * List<T>) -> Mapped<U>`; `Filtered<T> = List<T>`. First-class references generalize: `Int.Doubled` replaces `Int.double`. `Fold` stays a shape (its result is a bare parameter).
+- **Entry points**: the world registry becomes core shapes — `Main = () -> Unit`, `Handler = (Request) -> Response`, `Init`/`Update`/`View` for the web triple. A program is a module implementing a world shape; selection is by declared implementation, uniformly (this also removes the web triple's name-based selection, the one place the language currently keys on function names).
+- **The FFI boundary keeps camelCase.** WIT functions are kebab-case verbs; no mechanical mapping can invent result nouns. Binding files keep the mechanical camelCase mapping and become the **only** place camelCase is legal. camelCase in a Canon program then has exactly one meaning — *this identifier is foreign* — the way `unsafe` marks a boundary in Rust.
+
+### Name Resolution Under Types-Only
+
+Moving every operation into the type namespace multiplies name pressure (`Item`, `Value`, `Key` recur across files), so the resolution rules sharpen:
+
+1. **Duplicate declarations are legal; ambiguity is an error only at a reference site.** Two files may each declare `Item`. The hard error moves from "two files declare `Item`" to "a third file references `Item` bare while both are in scope." (No shadowing, no precedence — the ambiguous *reference* is still a hard error.)
+2. **Riding-along types resolve lexically, in their defining file's scope.** `set.List()` returns `List<Item>` where `Item` is set.can's `Item`, because the `List` constructor was declared there. Consumers never spell it — Canon has no local variables, so types are only written in signatures.
+3. **Qualification through the owner, when a signature genuinely must name a foreign helper type**: `Set.Item` in type position. This reuses existing syntax — `user.Birthday` is already "the Birthday of user" — so no module system and no new grammar. Needing it is a signal the helper leaked; newtype substitutability (`Item = String` flows into a `String` slot) usually makes the underlying type the better signature.
+4. **Constructor families cross files.** `List = (Set) -> List<Item>` and `List = (Map) -> List<Pair>` coexist: a reference to a family name loads *all* declaring files, and the error is input-product overlap, not co-declaration. Plain type definitions do **not** get this relaxation — two reachable `Key = String` definitions referenced bare remain an error under rule 1.
+
+Distinct same-shaped operations stay distinct the same way same-typed parameters do: newtypes. Two different `String -> Int` operations are two result newtypes (`Length = Int`, `ByteCount = Int`) — which is a feature: `Length` and `Age` can no longer accidentally interchange.
+
+### Worked Example
+
+`map.can` ported (excerpt — see `packages/canon/std/src/map.can` once slice 5 lands):
+
+```
+Inserted = Map
+
+Inserted = (Map * String * Value) -> Inserted {
+    Map.(
+        * (Empty) -> Inserted { Node(String, Empty(), Value) }
+        * (Node) -> Inserted {
+            String.Lt(Node.Key).(
+                * (False) -> Inserted { … Node.Rest.Inserted(String * Value) … }
+                * (True) -> Inserted { Node(String, Map, Value) }
+            )
+        }
+    )
+}
+
+Value = String
+
+Value = (Map * String) -> Option<Value> {
+    Map.(
+        * (Empty) -> Option<Value> { None() }
+        * (Node) -> Option<Value> {
+            Node.Key.Eq(String).(
+                * (False) -> Option<Value> { Node.Rest.Value(String) }
+                * (True) -> Option<Value> { Some(Node.Value) }
+            )
+        }
+    )
+}
+```
+
+Call site: `Map().Inserted("a" * "1").Inserted("b" * "2").Value("a")?`. Note `Value` carries two constructors — the total newtype wrap `Value(String)` and the fallible lookup `Value(Map * String)` — a family with disjoint inputs, which is the feature working, not a collision. The recursive call stores `Inserted` into the `Rest = Map` field through ordinary newtype substitutability.
+
+### Costs, Named Honestly
+
+The information doesn't disappear; it relocates — `Inserted` is `insert` wearing PascalCase, and the claim is only that the relocation makes the name checked, sorted, resolvable, and usable as evidence. Naming pressure shifts to English participles, and recursive helper chains (the pure-Canon JSON parser: ~20 same-signature `(Int * String) -> ParseStep` steps) are the stress test — the migration ports that file early on purpose. Overload resolution enters the checker, mitigated by the absence of inference: selection uses declared types only, and disjointness is checked at declaration.
+
+If the full removal proves too costly in practice, the fallback that keeps most of the value: *a camelCase function's return type must appear in its input product (modulo newtype chains and `Result`/`Option`/`Future` wrapping) or be `Unit`; anything producing a type it wasn't given must be named after what it produces.* Verbs transform, constructors create. Slices 1–3 below are identical under both endpoints.
+
+### Migration Plan
+
+1. **Constructor families, in-file** — relax the single-validated-constructor rule; selection by input product; disjointness errors. (Test surface: `Json(Bool/Float/Int/String)` replacing `from*`.)
+2. **Stdlib cleanup to current spec** — convert the existing § Conversions violations (`from*`, `parse`, `openFile`, `create`, `nowRfc3339`, `toString`, `asString`, `body`, `method`, `path`) to constructors. Ships value regardless of the endgame.
+3. **Cross-file constructor families** — loader relaxation + link-time coherence by (name, input product); reference-site ambiguity per the resolution rules above.
+4. **Core vocabulary** — `Sum`/`Product`/…, `Eq`/`Lt`/…, `Length`, `Mapped`/`Filtered`, `Joined`, `Print`; initially thin aliases over the existing builtins, camelCase spellings deprecated.
+5. **Stdlib port** — file by file, `json.can` first (the stress test). Decision checkpoint: full removal vs the fallback rule.
+6. **Enforcement** — camelCase outside binding files: warning, then error; delete deprecated aliases; entry-point worlds become shape implementations.
+7. **Spec rewrite** — this section becomes the Functions/Traits/Naming sections; the old ones are deleted.
 
 ## Concurrency
 
