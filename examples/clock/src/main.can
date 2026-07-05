@@ -1,3 +1,0 @@
-main = () -> Unit {
-    Instant().print()
-}

@@ -168,7 +168,7 @@ Rules the compiler enforces:
 
 The same signature-driven selection powers testing: every
 `() -> TestResult` function in a file is a test under `canon test`
-([Testing](../tour/testing.md)).
+([Testing](../guide.md#testing)).
 
 ## Declaration Order
 

@@ -32,41 +32,10 @@ conventional shapes — `init`, `update`, `view` (see
 The model here is `Todos`, a newline-separated encoding of `flag|title`
 lines; messages are prefix-parsed strings decoded with the same
 pure-Canon string primitives the standard library uses everywhere else.
+This is the entire entry file, `src/main.can`:
 
 ```canon
-Prefix = String
-
-addForm = () -> Html {
-    Attr("data-msg-form=\"Add:\"")
-        .elAttr(Attr("placeholder=\"What needs doing?\"").elAttr("", Tag("input")).String, Tag("form"))
-}
-
-clearButton = () -> Html {
-    Msg("Clear").button("Clear completed")
-}
-
-init = () -> Todos {
-    Title("toggle a task to mark it done")
-        .addTodo(Title("edit this list - it is saved in your browser").addTodo(Todos("")))
-}
-
-update = (Todos * String) -> Todos {
-    Prefix(String.substring(1, 4)).(
-        * ("Add:") -> Todos { Title(String.substring(5, String.length())).addTodo(Todos) }
-        * ("Clea") -> Todos { Todos.clearDone() }
-        * ("Dele") -> Todos { String.substring(8, String.length()).parseNum().removeAt(Todos) }
-        * ("Togg") -> Todos { String.substring(8, String.length()).parseNum().toggleAt(Todos) }
-        * (Prefix) -> Todos { Todos }
-    )
-}
-
-view = (Todos) -> Html {
-    "<h1>Canon Todos</h1>"
-        .concat(addForm().String)
-        .concat(1.renderItems(Todos).ul().String)
-        .concat(clearButton().String)
-        .div()
-}
+{{#include ../../../examples/todolist-web/src/main.can}}
 ```
 
 `update` is a literal dispatch on the message's four-character prefix.
@@ -90,68 +59,22 @@ breaking. See [The Web Target](../reference/web-target.md).
 ## The rest of the program
 
 The model operations are shared, ordinary Canon — the same code would
-run in a backend. `Todos` holds the list and its folds:
+run in a backend. The pieces are split one type per file, as the module
+system requires:
 
-```canon
-Todos = String
+- [`src/todos.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/todos.can)
+  — `Todos` holds the list and its folds (`addTodo`, `clearDone`,
+  `toggleAt`, `removeAt`, `renderItems`) plus the pure-Canon
+  `firstLine` / `restLines` / `parseNum` string helpers.
+- [`src/line.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/line.can)
+  — `Line` renders one item as an `<li>` and toggles its done flag with
+  recursive `byteAt` / `substring` primitives.
+- [`src/title.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/title.can)
+  — the `Title` newtype.
 
-addTodo = (Title * Todos) -> Todos {
-    Todos(Todos.String.concat("0|").concat(Title.String).concat("\n"))
-}
-
-clearDone = (Todos) -> Todos {
-    Todos.String.length().eq(0).(
-        * (False) -> Todos {
-            Todos.String.byteAt(1).eq(49).(
-                * (False) -> Todos {
-                    Todos(Todos.String.firstLine().concat("\n").concat(Todos(Todos.String.restLines()).clearDone().String))
-                }
-                * (True) -> Todos { Todos(Todos.String.restLines()).clearDone() }
-            )
-        }
-        * (True) -> Todos { Todos }
-    )
-}
-```
-
-(`firstLine`, `restLines`, `parseNum`, `removeAt`, `renderItems`, and
-`toggleAt` round out the file — see the
-[full source](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src).)
-
-`Line` renders one item and toggles its done flag:
-
-```canon
-Line = String
-
-flip = (Line) -> Line {
-    Line.byteAt(1).eq(48).(
-        * (False) -> Line { Line("0".concat(Line.substring(2, Line.length()))) }
-        * (True) -> Line { Line("1".concat(Line.substring(2, Line.length()))) }
-    )
-}
-
-renderItem = (Int * Line) -> Html {
-    Line.byteAt(1).eq(49).(
-        * (False) -> Html {
-            Line.substring(3, Line.length()).text().String
-                .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("done").String)
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
-                .li()
-        }
-        * (True) -> Html {
-            "<s>"
-                .concat(Line.substring(3, Line.length()).text().String)
-                .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.toText())).button("undo").String)
-                .concat(" ")
-                .concat(Msg("Delete:".concat(Int.toText())).button("remove").String)
-                .li()
-        }
-    )
-}
-```
+They read the same way as `main.can`: recursive dispatch over string
+encodings, no host help. The same folds reappear, shared, in the
+[fullstack example](./fullstack.md).
 
 ## What it demonstrates
 

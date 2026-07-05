@@ -1,5 +1,0 @@
-main = () -> Unit {
-    Url("http://example.com")?
-        .get()?
-        .print()
-}

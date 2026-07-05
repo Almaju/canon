@@ -1,10 +1,9 @@
 # notes-api: A JSON Service
 
 [`examples/notes-api`](https://github.com/Almaju/canon/tree/main/examples/notes-api):
-the flagship example, a JSON API compiled to a standard
+the flagship backend example, a JSON API compiled to a standard
 `wasi:http/service` component. About forty lines, zero server
-boilerplate. The [tutorial](../tutorial/index.md) builds this program
-up step by step; this page is the finished artifact.
+boilerplate.
 
 ```sh
 $ canon run examples/notes-api
@@ -22,36 +21,10 @@ HTTP/1.1 404 Not Found
 
 ## The Source
 
+The whole program is one file, `src/main.can`:
+
 ```canon
-indexBody = () -> Body {
-    Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
-}
-
-notFound = () -> Body {
-    Body({"error":"not found"})
-}
-
-noteOne = () -> Body {
-    Body({"id":1,"title":"ship canon v1"})
-}
-
-noteTwo = () -> Body {
-    Body({"id":2,"title":"write the docs"})
-}
-
-serve = (Request) -> Response {
-    Request.path().(
-        * (None) -> Response { Response(notFound() * Headers() * Status(400)) }
-        * (Some<String>) -> Response {
-            String.(
-                * ("/notes") -> Response { Response(indexBody() * Headers() * Status(200)) }
-                * ("/notes/1") -> Response { Response(noteOne() * Headers() * Status(200)) }
-                * ("/notes/2") -> Response { Response(noteTwo() * Headers() * Status(200)) }
-                * (String) -> Response { Response(notFound() * Headers() * Status(404)) }
-            )
-        }
-    )
-}
+{{#include ../../../examples/notes-api/src/main.can}}
 ```
 
 ## What It Demonstrates
@@ -76,11 +49,13 @@ serve = (Request) -> Response {
 - **Per-route status codes.** `Status` is a value; each arm computes
   its own.
 
+See the tour's [Serving HTTP](../guide.md#serving-http) for the rule in
+prose.
+
 ## The Compiled Shape
 
 `canon build examples/notes-api` produces a component that imports only
 `wasi:*` interfaces and exports `wasi:http/handler#handle`: the same
 contract any compliant WASI Preview 3 HTTP host instantiates. Nothing
 in the artifact is Canon-specific. See
-[Ship a Component](../tutorial/06-ship-it.md) and
 [Deploying](../reference/deploying.md).

@@ -3,7 +3,7 @@
 This section defines Canon's rules: what the lexer accepts, how the
 type algebra works, how expressions evaluate, what the compiler
 enforces, and what a compiled program *is* at the WebAssembly Component
-level. The [Tour](../tour/philosophy.md) motivates; this section
+level. The [Tour](../guide.md) motivates; this section
 defines.
 
 ## How to Read It

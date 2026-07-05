@@ -96,14 +96,14 @@ main = () -> Unit {
 
 The book is split into sections; use the tabs at the top.
 
-- **Start**: install the toolchain and run your first program.
-- **Tour**: every language feature, one short chapter each. Read it
-  straight through; it's an afternoon.
-- **Tutorial**: build and ship a small JSON API, step by step. Start
-  here if you learn by doing.
+- **Getting Started**: install the toolchain, run your first program,
+  and read [A Tour of Canon](./guide.md) — the whole language on one
+  page, an afternoon's read.
 - **Specification**: the precise rules: lexical structure, the type
-  algebra, ordering, the compilation model and ABI.
-- **Examples**: annotated real programs from the repository.
+  algebra, ordering, the compilation model and ABI. The authoritative
+  description of the language.
+- **Examples**: a curated set of real programs from the repository —
+  their source is pulled in live, so it always matches what compiles.
 - **Reference**: the standard library, WASI interfaces, deployment.
 
 ## Status

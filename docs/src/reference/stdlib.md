@@ -8,7 +8,7 @@ never write the path — each name resolves to exactly one module, and a
 name that clashes with one of your own types is a compile error.
 
 Each module exposes a single primary type. The modules are written in
-ordinary Canon on top of [`extern Wasm`](../tour/extern.md)
+ordinary Canon on top of [`extern Wasm`](../guide.md#binding-files)
 declarations against either standard
 [WASI](https://github.com/WebAssembly/WASI) interfaces or temporary
 `canon:builtins/*` host bridges. The `canon run` runtime fulfils both
@@ -51,7 +51,7 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `cli/Args` | `Args = () -> List<String>` | `wasi/cli/environment` | the program's argv |
 | `cli/Cwd` | `Cwd = () -> Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
-| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../tour/http.md) |
+| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../guide.md#serving-http) |
 
 ---
 
@@ -346,7 +346,7 @@ bodies) arrive with the `wasi:http/incoming-handler` migration.
 ## `TestResult`
 
 The Canon-language testing primitive. See
-[Testing](../tour/testing.md) for the full convention.
+[Testing](../guide.md#testing) for the full convention.
 
 ```canon
 testAddPositive = () -> TestResult {

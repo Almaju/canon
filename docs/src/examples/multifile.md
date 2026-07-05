@@ -14,21 +14,13 @@ multifile/
 `src/greeter.can` must declare `Greeter`; the file name says so:
 
 ```canon
-Greeter = String
-
-shout = (Greeter) -> String {
-    "HELLO from greeter"
-}
+{{#include ../../../examples/multifile/src/greeter.can}}
 ```
 
 `src/main.can`:
 
 ```canon
-main = () -> Unit {
-    Greeter("hi")
-        .shout()
-        .print()
-}
+{{#include ../../../examples/multifile/src/main.can}}
 ```
 
 ```sh
@@ -49,5 +41,6 @@ HELLO from greeter
 - **Everything is public.** There is no visibility to configure; see
   [Modules and Packages](../spec/modules.md#visibility) for why.
 
-The [tutorial's modules chapter](../tutorial/04-modules.md) applies this
-same move to a real service.
+The [modules section of the tour](../guide.md#modules) states the rule;
+[Modules and Packages](../spec/modules.md) has the full resolution
+algorithm.

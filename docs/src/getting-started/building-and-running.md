@@ -91,7 +91,7 @@ canon run hello.can --addr 127.0.0.1:8080  # single-file mode
 
 The runtime opens a TCP listener and dispatches each incoming HTTP/1.1
 request to the guest's `handle` export. See
-[Serving HTTP](../tour/http.md).
+[Serving HTTP](../guide.md#serving-http).
 
 ## Inspect Compiler Stages
 
@@ -133,7 +133,7 @@ canon test mymod_test.can
 Discovers every `() -> TestResult` function in the file and prints a
 `[ ok ]` / `[FAIL]` line per test. The process exits `1` when any test
 fails, so `canon test` slots straight into CI. See
-[Testing](../tour/testing.md) for the conventions.
+[Testing](../guide.md#testing) for the conventions.
 
 ## Language Server
 
@@ -156,4 +156,4 @@ There is no `canon new` or project scaffolder yet. For quick
 experimentation, drop a `.can` file anywhere and `canon run` it. For
 proper projects, create an `canon.toml` next to a `src/main.can` and
 run `canon build` / `canon run` from that directory. For multi-file
-projects, see [Modules](../tour/modules.md).
+projects, see [Modules](../guide.md#modules).

@@ -1,6 +1,0 @@
-main = () -> Unit {
-    Path("Cargo.toml")
-        .File()?
-        .read()?
-        .print()
-}
