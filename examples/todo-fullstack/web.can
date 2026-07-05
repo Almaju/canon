@@ -2,7 +2,7 @@ Prefix = String
 
 addForm = () -> Html {
     Attr("data-msg-form=\"Add:\"")
-        .elAttr(Attr("placeholder=\"What needs doing?\"").elAttr("", Tag("input")).String, Tag("form"))
+        .ElAttr(Attr("placeholder=\"What needs doing?\"").ElAttr("", Tag("input")), Tag("form"))
 }
 
 init = () -> Todos {
@@ -11,7 +11,7 @@ init = () -> Todos {
 
 loadButton = () -> Html {
     Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
-        .elAttr("Load todos from the server", Tag("button"))
+        .ElAttr("Load todos from the server", Tag("button"))
 }
 
 update = (Todos * String) -> Todos {
@@ -27,7 +27,7 @@ update = (Todos * String) -> Todos {
 view = (Todos) -> Html {
     "<h1>Canon Todos</h1>"
         .concat(addForm().String)
-        .concat(1.renderItems(Todos).ul().String)
+        .concat(1.renderItems(Todos).Ul())
         .concat(loadButton().String)
-        .div()
+        .Div()
 }

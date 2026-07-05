@@ -34,11 +34,11 @@ update = (Model * String) -> Model {
 
 view = (Model) -> Html {
     "Canon Counter"
-        .h1()
-        .concat(Msg("Decrement").button("-"))
-        .concat(Model.String().span())
-        .concat(Msg("Increment").button("+"))
-        .div()
+        .H1()
+        .concat(Msg("Decrement").Button("-"))
+        .concat(Model.String().Span())
+        .concat(Msg("Increment").Button("+"))
+        .Div()
 }
 "#;
 

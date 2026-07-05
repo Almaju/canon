@@ -10,21 +10,23 @@ flip = (Line) -> Line {
 renderItem = (Int * Line) -> Html {
     Line.byteAt(1).eq(49).(
         * (False) -> Html {
-            Line.substring(3, Line.length()).text().String
+            Line
+                .substring(3, Line.length())
+                .Escaped()
                 .concat(" ")
-                .concat(Msg("Toggle:".concat(Int.String())).button("done").String)
+                .concat(Msg("Toggle:".concat(Int.String())).Button("done"))
                 .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).button("remove").String)
-                .li()
+                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
+                .Li()
         }
         * (True) -> Html {
             "<s>"
-                .concat(Line.substring(3, Line.length()).text().String)
+                .concat(Line.substring(3, Line.length()).Escaped())
                 .concat("</s> ")
-                .concat(Msg("Toggle:".concat(Int.String())).button("undo").String)
+                .concat(Msg("Toggle:".concat(Int.String())).Button("undo"))
                 .concat(" ")
-                .concat(Msg("Delete:".concat(Int.String())).button("remove").String)
-                .li()
+                .concat(Msg("Delete:".concat(Int.String())).Button("remove"))
+                .Li()
         }
     )
 }

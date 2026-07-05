@@ -1,7 +1,7 @@
 Model = String
 
 item = (String) -> Html {
-    <li>{String.text()}</li>
+    <li>{String.Escaped()}</li>
 }
 
 view = (Model) -> Html {

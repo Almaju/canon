@@ -1140,7 +1140,29 @@ fn check_block(
         TypeExpr::Named { name, .. } => name.clone(),
         _ => "<complex>".to_string(),
     };
-    if last_ty != return_ty_name && last_ty != "<unknown>" {
+    // Newtype substitutability: the produced value satisfies the declared
+    // return when either type's alias chain reaches the other — a body
+    // producing `Html` satisfies `-> Button` where `Button = Html` (the
+    // underlying flows into the alias slot), and a body producing
+    // `Inserted` (`Inserted = Map`) satisfies `-> Map`.
+    let alias_compatible = |from: &str, to: &str| -> bool {
+        let mut cur = from.to_string();
+        for _ in 0..20 {
+            if cur == to {
+                return true;
+            }
+            match symbols.aliases.get(&cur) {
+                Some(next) => cur = next.clone(),
+                None => return false,
+            }
+        }
+        false
+    };
+    if last_ty != return_ty_name
+        && last_ty != "<unknown>"
+        && !alias_compatible(&last_ty, &return_ty_name)
+        && !alias_compatible(&return_ty_name, &last_ty)
+    {
         errors.push(CanonError::CheckError {
             message: format!(
                 "function returns `{}` but last expression has type `{}`",
