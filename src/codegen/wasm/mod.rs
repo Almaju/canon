@@ -1106,6 +1106,16 @@ struct WasmGen<'m> {
     // User function table: (Option<receiver_type_name>, method_name) → FuncInfo
     func_table: HashMap<(Option<String>, String), FuncInfo>,
 
+    // Every compiled user function in func-index order: (func_idx,
+    // type_idx, def). The single source of truth for the emitted
+    // function and code sections — `func_table` is a *lookup* structure
+    // whose keys can collide (constructor families register several
+    // bodies for one type name; the commutative aliases point several
+    // keys at one body), so deriving section contents from it lets the
+    // function-section and code-section lengths drift apart, which is
+    // invalid wasm. This list cannot: one entry per compiled body.
+    compiled_user_funcs: Vec<(u32, u32, FunctionDef)>,
+
     // WASM type deduplication
     user_type_sigs: Vec<(Vec<ValType>, Vec<ValType>)>, // index 0 → TY_USER_START
     user_type_map: HashMap<(Vec<ValType>, Vec<ValType>), u32>, // → absolute type idx
@@ -1235,6 +1245,7 @@ impl<'m> WasmGen<'m> {
             variant_parent: HashMap::new(),
             variant_tag: HashMap::new(),
             func_table: HashMap::new(),
+            compiled_user_funcs: Vec::new(),
             user_type_sigs: Vec::new(),
             user_type_map: HashMap::new(),
 
@@ -2047,7 +2058,22 @@ impl<'m> WasmGen<'m> {
                     indirect_return: None,
                     is_async: false,
                 };
-                self.func_table.insert(key, info.clone());
+                if is_self_ctor(func) {
+                    // Constructor families: several `Self`-renamed bodies
+                    // share the `(Type, "Self")` primary key. The zero-arg
+                    // member owns it (it's what a bare `Type()` call
+                    // dispatches through); parameterized members are
+                    // reached via the per-param commutative keys below,
+                    // so they only fill the primary slot when nothing
+                    // else has.
+                    if func.params.is_empty() {
+                        self.func_table.insert(key, info.clone());
+                    } else {
+                        self.func_table.entry(key).or_insert_with(|| info.clone());
+                    }
+                } else {
+                    self.func_table.insert(key, info.clone());
+                }
 
                 // Self-ctor commutative registration (mirrors the extern
                 // block above). After `resolve_new_syntax`, a function
@@ -2060,22 +2086,45 @@ impl<'m> WasmGen<'m> {
                 // -> Result<Json, MalformedJson> { … }`) fall through
                 // to the type-newtype constructor path in
                 // `compile_constructor`, silently dropping the body.
+                // Every param component registers (not just the first):
+                // commutative calling lets any component be the
+                // receiver, and for a constructor family the per-param
+                // keys are what keep members distinct — the checker
+                // guards that no two members collide on a component
+                // type.
                 if is_self_ctor(func) {
-                    if let Some(first_param) = func.params.first() {
-                        if let TypeExpr::Named {
-                            name: param_name, ..
-                        } = &first_param.ty
-                        {
-                            let recv_name = func
-                                .receiver
-                                .as_ref()
-                                .map(|r| r.name.clone())
-                                .unwrap_or_default();
-                            let commutative_key = (Some(param_name.clone()), recv_name);
-                            self.func_table.entry(commutative_key).or_insert(info);
+                    let recv_name = func
+                        .receiver
+                        .as_ref()
+                        .map(|r| r.name.clone())
+                        .unwrap_or_default();
+                    let mut components: Vec<String> = Vec::new();
+                    for param in &func.params {
+                        match &param.ty {
+                            TypeExpr::Named {
+                                name: param_name, ..
+                            } => components.push(param_name.clone()),
+                            TypeExpr::Product { fields, .. } => {
+                                for field in fields {
+                                    if let TypeExpr::Named {
+                                        name: field_name, ..
+                                    } = field
+                                    {
+                                        components.push(field_name.clone());
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
+                    for param_name in components {
+                        let commutative_key = (Some(param_name), recv_name.clone());
+                        self.func_table
+                            .entry(commutative_key)
+                            .or_insert_with(|| info.clone());
+                    }
                 }
+                self.compiled_user_funcs.push((idx, type_idx, func.clone()));
                 idx += 1;
             }
         }
@@ -3800,22 +3849,48 @@ impl<'m> WasmGen<'m> {
                     }
                 }
 
-                // 3. Single-arg constructor with an extern declared as a
-                //    method on the arg's type — lets `Url("http://…")` and
-                //    `Path("…")` dispatch to `Url = (String) -> Result<…>`
-                //    or any similar `T = (S) -> R` declaration.
-                if args.len() == 1 {
-                    // We need to know the arg's type *before* compiling it
-                    // (so the lookup can succeed without committing to an
-                    // emit). Use the existing static-shape inference rather
-                    // than fully compiling the arg up front.
-                    if let Some(recv_ty_name) = self.infer_static_type_name(&args[0]) {
-                        let key = (Some(recv_ty_name.clone()), name.to_string());
-                        if let Some(info) = self.func_table.get(&key).cloned() {
-                            // Compile the arg (this becomes the receiver) and
-                            // dispatch — no further args to push.
-                            let _ = self.compile_expr(&args[0], scope, f);
-                            return self.emit_func_table_call(&info, &[], scope, f);
+                // 3. Constructor declared as a method on the first arg's
+                //    type — lets `Url("http://…")` dispatch to
+                //    `Url = (String) -> Result<…>`, and selects the right
+                //    member of a constructor *family* (`Json = (Bool) ->
+                //    Json` vs `Json = (Int) -> Json`) by the argument's
+                //    type. Both call shapes reach here: `Value(map, k)`
+                //    (positional) and `Value(map * k)` (product value) —
+                //    the product form is flattened so its first field
+                //    drives the lookup and the rest ride as ordinary
+                //    trailing args.
+                if !args.is_empty() {
+                    let flat: Vec<Expr> = if args.len() == 1 {
+                        if let Expr::ProductValue { fields, .. } = &args[0] {
+                            fields.clone()
+                        } else {
+                            args.to_vec()
+                        }
+                    } else {
+                        args.to_vec()
+                    };
+                    if let Some(first_ty) = self.infer_ctor_arg_type_name(&flat[0]) {
+                        // The declared param type may sit anywhere on the
+                        // arg's widening chain: the exact name, the
+                        // variant's parent union (`True()` fills a `Bool`
+                        // param), or a newtype's underlying type.
+                        let mut candidates: Vec<String> = vec![first_ty.clone()];
+                        if let Some(parent) = self.variant_parent.get(&first_ty) {
+                            candidates.push(parent.clone());
+                        }
+                        for link in self.collect_alias_chain(&first_ty) {
+                            if !candidates.contains(&link) {
+                                candidates.push(link);
+                            }
+                        }
+                        for cand in candidates {
+                            let key = (Some(cand), name.to_string());
+                            if let Some(info) = self.func_table.get(&key).cloned() {
+                                // Compile the first arg (this becomes the
+                                // receiver) and dispatch with the rest.
+                                let _ = self.compile_expr(&flat[0], scope, f);
+                                return self.emit_func_table_call(&info, &flat[1..], scope, f);
+                            }
                         }
                     }
                 }
@@ -3889,6 +3964,20 @@ impl<'m> WasmGen<'m> {
                 }
                 Ty::Unit
             }
+        }
+    }
+
+    /// `infer_static_type_name` extended for constructor-argument routing:
+    /// also resolves bare identifiers. In Canon an identifier in expression
+    /// position *is* a type name — parameters and dispatch-arm payloads are
+    /// referenced by the type they bind (there are no local variables) — so
+    /// the name itself is the best static type available. Kept separate from
+    /// `infer_static_type_name` so the method-call and async-classification
+    /// call sites keep their conservative behavior.
+    fn infer_ctor_arg_type_name(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(ident) => Some(ident.name.clone()),
+            _ => self.infer_static_type_name(expr),
         }
     }
 
@@ -7839,21 +7928,11 @@ impl<'m> WasmGen<'m> {
         funcs.function(list_concat_ty); // list concat
                                         // User-compiled functions only — extern imports are already declared
                                         // in the import section and must NOT get a defined-function slot.
-                                        // Dedupe by `func_idx`: the same `FuncInfo` can be registered
-                                        // under multiple keys in `func_table` (the self-ctor commutative
-                                        // alias adds a second entry pointing at the same function body).
-                                        // Each function body must declare its type exactly once or the
-                                        // wasm function-section and code-section lengths drift apart.
-        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let mut user_func_defs: Vec<(u32, u32)> = self
-            .func_table
-            .values()
-            .filter(|info| info.func_idx >= self.fn_user_start)
-            .filter(|info| seen_idx.insert(info.func_idx))
-            .map(|info| (info.func_idx, info.type_idx))
-            .collect();
-        user_func_defs.sort_by_key(|(idx, _)| *idx);
-        for (_, type_idx) in &user_func_defs {
+                                        // `compiled_user_funcs` is the single source of truth shared
+                                        // with the code section below: one entry per compiled body, in
+                                        // func-index order, immune to `func_table` key collisions
+                                        // (constructor families register several bodies per name).
+        for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
         // Optional handler wrapper sits at the very end of the function
@@ -7904,29 +7983,13 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
-        // User functions — compile each FunctionDef in ascending func_idx order
-        let ordered_funcs: Vec<FunctionDef> = {
-            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
-            for item in self.ast.items.iter() {
-                if let Item::Function(func) = item {
-                    if func.name.name == "main" && func.receiver.is_none() {
-                        continue;
-                    }
-                    if func.extern_wasm.is_some() {
-                        continue;
-                    }
-                    let key = (
-                        func.receiver.as_ref().map(|r| r.name.clone()),
-                        func.name.name.clone(),
-                    );
-                    if let Some(info) = self.func_table.get(&key) {
-                        pairs.push((info.func_idx, func.clone()));
-                    }
-                }
-            }
-            pairs.sort_by_key(|(idx, _)| *idx);
-            pairs.into_iter().map(|(_, f)| f).collect()
-        };
+        // User functions — one body per `compiled_user_funcs` entry, in
+        // func-index order (matches the function section above exactly).
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
@@ -8189,16 +8252,7 @@ impl<'m> WasmGen<'m> {
         funcs.function(str_cmp_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
-        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let mut user_func_defs: Vec<(u32, u32)> = self
-            .func_table
-            .values()
-            .filter(|info| info.func_idx >= self.fn_user_start)
-            .filter(|info| seen_idx.insert(info.func_idx))
-            .map(|info| (info.func_idx, info.type_idx))
-            .collect();
-        user_func_defs.sort_by_key(|(idx, _)| *idx);
-        for (_, type_idx) in &user_func_defs {
+        for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
         funcs.function(ty_cabi_realloc); // cabi_realloc, appended last
@@ -8226,7 +8280,7 @@ impl<'m> WasmGen<'m> {
         m.section(&globals);
 
         // ── Exports ──────────────────────────────────────────────────
-        let cabi_realloc_idx = self.fn_user_start + user_func_defs.len() as u32;
+        let cabi_realloc_idx = self.fn_user_start + self.compiled_user_funcs.len() as u32;
         let mut exports = ExportSection::new();
         exports.export("memory", ExportKind::Memory, 0);
         exports.export("cabi_realloc", ExportKind::Func, cabi_realloc_idx);
@@ -8253,25 +8307,11 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
-        let ordered_funcs: Vec<FunctionDef> = {
-            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
-            for item in self.ast.items.iter() {
-                if let Item::Function(func) = item {
-                    if func.extern_wasm.is_some() {
-                        continue;
-                    }
-                    let key = (
-                        func.receiver.as_ref().map(|r| r.name.clone()),
-                        func.name.name.clone(),
-                    );
-                    if let Some(info) = self.func_table.get(&key) {
-                        pairs.push((info.func_idx, func.clone()));
-                    }
-                }
-            }
-            pairs.sort_by_key(|(idx, _)| *idx);
-            pairs.into_iter().map(|(_, f)| f).collect()
-        };
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
@@ -8477,16 +8517,7 @@ impl<'m> WasmGen<'m> {
         funcs.function(str_cmp_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
-        let mut seen_idx: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        let mut user_func_defs: Vec<(u32, u32)> = self
-            .func_table
-            .values()
-            .filter(|info| info.func_idx >= self.fn_user_start)
-            .filter(|info| seen_idx.insert(info.func_idx))
-            .map(|info| (info.func_idx, info.type_idx))
-            .collect();
-        user_func_defs.sort_by_key(|(idx, _)| *idx);
-        for (_, type_idx) in &user_func_defs {
+        for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
         m.section(&funcs);
@@ -8536,25 +8567,11 @@ impl<'m> WasmGen<'m> {
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
-        let ordered_funcs: Vec<FunctionDef> = {
-            let mut pairs: Vec<(u32, FunctionDef)> = Vec::new();
-            for item in self.ast.items.iter() {
-                if let Item::Function(func) = item {
-                    if func.extern_wasm.is_some() {
-                        continue;
-                    }
-                    let key = (
-                        func.receiver.as_ref().map(|r| r.name.clone()),
-                        func.name.name.clone(),
-                    );
-                    if let Some(info) = self.func_table.get(&key) {
-                        pairs.push((info.func_idx, func.clone()));
-                    }
-                }
-            }
-            pairs.sort_by_key(|(idx, _)| *idx);
-            pairs.into_iter().map(|(_, f)| f).collect()
-        };
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
         for func in ordered_funcs {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);

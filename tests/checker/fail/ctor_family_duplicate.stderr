@@ -1,0 +1,1 @@
+error[tests/checker/fail/ctor_family_duplicate.can:7:1]: duplicate constructor: `Label` already has a constructor whose first input is `Int`

@@ -1,0 +1,25 @@
+Greeting = String
+
+Greeting = () -> Greeting {
+    Greeting("hello")
+}
+
+Greeting = (Bool) -> Greeting {
+    Bool.(
+        * (False) -> Greeting { Greeting("bool:no") }
+        * (True) -> Greeting { Greeting("bool:yes") }
+    )
+}
+
+Greeting = (Int) -> Greeting {
+    Greeting("int:".concat(Int.String()))
+}
+
+main = () -> Unit {
+    Greeting().print()
+    Greeting(7).print()
+    Greeting(True()).print()
+    7
+        .Greeting()
+        .print()
+}

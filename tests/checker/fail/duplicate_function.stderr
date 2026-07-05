@@ -1,0 +1,1 @@
+error[tests/checker/fail/duplicate_function.can:5:1]: duplicate function `double` on `Int`

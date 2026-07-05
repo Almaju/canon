@@ -634,14 +634,23 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         if let Item::Function(func) = item {
             if let Some(recv) = &func.receiver {
                 let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
-                methods.insert(
-                    (recv.name.clone(), func.name.name.clone()),
-                    MethodSig {
-                        arity: func.params.len(),
-                        return_ty: return_ty.clone(),
-                        result_ok_ty: result_ok_ty.clone(),
-                    },
-                );
+                let primary_key = (recv.name.clone(), func.name.name.clone());
+                let primary_sig = MethodSig {
+                    arity: func.params.len(),
+                    return_ty: return_ty.clone(),
+                    result_ok_ty: result_ok_ty.clone(),
+                };
+                // Constructor families: several `Self` members share the
+                // `(Type, "Self")` key. The zero-arg member owns it — the
+                // `T()` legality check reads this slot's arity — while
+                // parameterized members are typed through the per-param
+                // commutative entries below. Mirrors codegen's
+                // `assign_func_indices` keying.
+                if func.name.name == "Self" && !func.params.is_empty() {
+                    methods.entry(primary_key).or_insert(primary_sig);
+                } else {
+                    methods.insert(primary_key, primary_sig);
+                }
                 // Register under each param type for commutative calling.
                 // For constructors (name == "Self"), also register the TYPE NAME as the method
                 // so that `param_val.TypeName()` (commutative constructor call) is recognized.
@@ -685,6 +694,62 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                             });
                     }
                 }
+            }
+        }
+    }
+
+    // Duplicate-definition guard. Two function bodies that collide on
+    // (receiver, name, first-input-component) would land on the same
+    // dispatch slot in codegen — historically that surfaced as an
+    // internal invalid-wasm error ("inconsistent lengths") when a user
+    // name collided with a transitively-loaded stdlib declaration. It
+    // is a checked error now. Constructor *families* are the legal form
+    // this key deliberately carves out: same type, several `Self`
+    // members, each with a distinct first input component (selection is
+    // by argument type, so colliding first components would make the
+    // call site ambiguous).
+    let mut seen_defs: HashSet<(Option<String>, String, Option<String>)> = HashSet::new();
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            if func.name.name == "main" && func.receiver.is_none() {
+                continue;
+            }
+            let first_component = func.params.first().and_then(|p| match &p.ty {
+                TypeExpr::Named { name, .. } => Some(name.clone()),
+                TypeExpr::Product { fields, .. } => fields
+                    .first()
+                    .and_then(|f| f.simple_name().map(|s| s.to_string())),
+                _ => None,
+            });
+            let key = (
+                func.receiver.as_ref().map(|r| r.name.clone()),
+                func.name.name.clone(),
+                first_component,
+            );
+            if !seen_defs.insert(key.clone()) {
+                let (recv, fname, comp) = key;
+                let message = if fname == "Self" {
+                    let ty = recv.unwrap_or_default();
+                    match comp {
+                        Some(c) => format!(
+                            "duplicate constructor: `{}` already has a constructor whose first input is `{}`",
+                            ty, c
+                        ),
+                        None => format!(
+                            "duplicate constructor: `{}` already has a zero-argument constructor",
+                            ty
+                        ),
+                    }
+                } else {
+                    match recv {
+                        Some(r) => format!("duplicate function `{}` on `{}`", fname, r),
+                        None => format!("duplicate function `{}`", fname),
+                    }
+                };
+                errors.push(CanonError::CheckError {
+                    message,
+                    span: func.name.span,
+                });
             }
         }
     }
@@ -1757,27 +1822,45 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
             // itself (newtype wrap).
             if let Some(parent) = symbols.variant_of.get(&name.name) {
                 parent.clone()
-            } else if matches!(name.name.as_str(), "Int" | "Float" | "String") {
-                // Primitive constructors are identity when the argument
-                // already has the target type (`Int(1)` is an `Int`) and
-                // *conversions* otherwise (conversion is construction,
-                // DESIGN.md § Conversions). A fallible conversion is
-                // declared as a self-named method on the source type
-                // (`Int = (String) -> Result<Int, MalformedInt>` in
-                // `canon/std/Int` registers as `("String", "Int")`), so
-                // that signature's return type wins for non-matching
-                // arguments. Infallible builtin conversions
-                // (`String(42)`) have no such declaration and keep the
-                // primitive's own name.
-                let arg_ty = args.first().map(|a| expr_type_name_in_scope(a, symbols));
-                match arg_ty {
-                    Some(t) if t != name.name => symbols
-                        .methods
-                        .get(&(t, name.name.clone()))
-                        .map(|sig| sig.return_ty.clone())
-                        .unwrap_or_else(|| name.name.clone()),
-                    _ => name.name.clone(),
+            } else if let Some(t) = args
+                .first()
+                .map(|a| expr_type_name_in_scope(a, symbols))
+                .filter(|t| t != &name.name)
+            {
+                // A constructor is identity when the argument already has
+                // the target type (`Int(1)` is an `Int`, `Label("x")`
+                // wraps) and a *declared conversion* otherwise
+                // (conversion is construction, DESIGN.md § Conversions).
+                // A conversion is a self-named constructor on the source
+                // type — `Int = (String) -> Result<Int, MalformedInt>`
+                // registers as `("String", "Int")` — so its declared
+                // return type wins for non-matching arguments. This is
+                // what types each member of a constructor *family*
+                // (`Json = (Bool) -> Json` vs `Json = (String) ->
+                // Result<Json, MalformedJson>`) at its call site. The
+                // lookup walks the argument's alias chain so a newtyped
+                // argument still finds a member declared on its
+                // underlying type. No declaration found = plain
+                // newtype/product wrap, typed as the constructor's name.
+                let mut cur = t;
+                let mut found = None;
+                for _ in 0..20 {
+                    if let Some(sig) = symbols.methods.get(&(cur.clone(), name.name.clone())) {
+                        found = Some(sig.return_ty.clone());
+                        break;
+                    }
+                    match symbols.aliases.get(&cur) {
+                        Some(next) => cur = next.clone(),
+                        None => break,
+                    }
                 }
+                found.unwrap_or_else(|| {
+                    symbols
+                        .free_funcs
+                        .get(&name.name)
+                        .map(|sig| sig.return_ty.clone())
+                        .unwrap_or_else(|| name.name.clone())
+                })
             } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
                 sig.return_ty.clone()
             } else {
