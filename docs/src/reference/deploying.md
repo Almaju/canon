@@ -20,7 +20,7 @@ the component imports and exports.
 
 | Your entry | World | Exports |
 |---|---|---|
-| `() => Unit` | `wasi:cli/command` | `wasi:cli/run@0.3.0-rc-2026-03-15` |
+| `Unit => Program` | `wasi:cli/command` | `wasi:cli/run@0.3.0-rc-2026-03-15` |
 | `f = (Request) => Response` | `wasi:http/service` | `wasi:http/handler@0.3.0-rc-2026-03-15#handle` |
 
 ## Running on the embedded host

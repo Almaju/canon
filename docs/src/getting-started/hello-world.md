@@ -3,7 +3,7 @@
 Create a file named `hello.can`:
 
 ```canon,run=hello-world
-() => Unit {
+Unit => Program {
     "hello" -> Print
 }
 ```
@@ -23,17 +23,20 @@ hello
 ## Line by Line
 
 ```canon
-() => Unit {
+Unit => Program {
 ```
 
-This is the entry point, selected by its `() => Unit` signature — no
-name needed. Like every arrow in Canon it has the shape
-`(parameters) => ReturnType { body }`. The empty `()` says it
-takes nothing; the compiler lifts it as the component's
-`wasi:cli/run.run` export.
+This is the entry point, selected by returning `Program`, the CLI world
+type — no name needed, just as an HTTP handler is selected by returning
+`Response`. Like every arrow in Canon it has the shape
+`Input => ReturnType { body }`. The `Unit` on the left says it
+takes nothing (`Unit` is the name of "no input"); returning `Program`
+(`= Unit`, from `canon/std`) is what the compiler lifts as the
+component's `wasi:cli/run.run` export.
 
-`Unit` is a singleton type: one value, named after itself. Returning
-`Unit` means the function produces nothing useful.
+`Program` is the CLI world type; because `Program = Unit`, the body can
+end in `Unit` — one value, named after itself — and still satisfy the
+return.
 
 ```canon
     "hello".print()

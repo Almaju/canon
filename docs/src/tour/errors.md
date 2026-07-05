@@ -22,7 +22,7 @@ The postfix `?` operator propagates failure. It works on both
 - On `Option<T>`: short-circuits with `None`, otherwise unwraps to `T`.
 
 ```canon
-() => Result<Unit, Unit> {
+Unit => Result<Program, Unit> {
     Ok(42)? -> Print
     Some(7).(
         * (None) => Unit { "absent" -> Print }

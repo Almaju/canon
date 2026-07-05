@@ -33,7 +33,7 @@ never be exhaustive, so totality comes from the catch-all. Update
 ```canon
 NotFound = Body
 
-() => NotFound {
+Unit => NotFound {
     Body("not found")
 }
 

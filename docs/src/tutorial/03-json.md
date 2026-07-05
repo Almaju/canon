@@ -12,7 +12,7 @@ ordinary expression, and it evaluates to the encoded JSON text: a
 receive:
 
 ```canon
-() => NotFound {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 ```
@@ -22,7 +22,7 @@ literal *is* the wire format. Arrays work the same way, and literals
 nest:
 
 ```canon
-() => IndexBody {
+Unit => IndexBody {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 ```
@@ -53,15 +53,15 @@ NotFound = Body
 
 NoteOneBody = Body
 
-() => IndexBody {
+Unit => IndexBody {
     Body([{"title":"ship canon v1"},{"title":"write the docs"}])
 }
 
-() => NotFound {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 
-() => NoteOneBody {
+Unit => NoteOneBody {
     Body({"title":"ship canon v1"})
 }
 

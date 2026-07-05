@@ -28,7 +28,7 @@ Greeter => Shout {
 `src/main.can`:
 
 ```canon
-() => Unit {
+Unit => Program {
     Greeter("hi")
         -> Shout
         -> Print

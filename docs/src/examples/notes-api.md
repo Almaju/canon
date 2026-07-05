@@ -31,19 +31,19 @@ NoteOne = Body
 
 NoteTwo = Body
 
-() => IndexBody {
+Unit => IndexBody {
     Body([{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}])
 }
 
-() => NotFound {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 
-() => NoteOne {
+Unit => NoteOne {
     Body({"id":1,"title":"ship canon v1"})
 }
 
-() => NoteTwo {
+Unit => NoteTwo {
     Body({"id":2,"title":"write the docs"})
 }
 
@@ -69,7 +69,7 @@ Request => Response {
   No `main`, no port in the program; the host decides how to serve it.
 - **Constructors return values, not worlds.** Only the entry may return
   `Response`, so each note body is a constructor for its own `Body`
-  newtype (`IndexBody`, `NoteOne`, …), built with `() => IndexBody`.
+  newtype (`IndexBody`, `NoteOne`, …), built with `Unit => IndexBody`.
   This is the layering the rule enforces.
 - **JSON literals.** The bodies are JSON object/array literals,
   ordinary expressions that evaluate to the encoded text, so a static

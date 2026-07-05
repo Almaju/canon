@@ -6,7 +6,7 @@ on a union: the value is the receiver, and the arms go inside `.( )`.
 ## Basic Form
 
 ```canon,run=dispatch
-() => Unit {
+Unit => Program {
     True().(
         * (False) => Unit { "no" -> Print }
         * (True) => Unit { "yes" -> Print }

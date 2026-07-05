@@ -25,8 +25,8 @@ hello from canon
 
 The same rule that makes `main` a CLI program makes this an HTTP
 program: **the compiler selects the entry by return type**. A free
-function returning `Unit` is a CLI command; a free function returning
-`Response` is an HTTP handler. Exactly one function per program may
+function returning `Program` (the CLI world type) is a CLI command; a
+free function returning `Response` is an HTTP handler. Exactly one function per program may
 return a world type; helpers must return ordinary values:
 
 ```canon

@@ -144,7 +144,7 @@ is by signature, not by name:
 
 | Return type | World | Export |
 |---|---|---|
-| `Unit`, `ExitCode`, `Result<Unit, _>`, `Result<ExitCode, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Program`, `ExitCode`, `Result<Program, _>`, `Result<ExitCode, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Response`, `Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
 A third world — the browser [web target](../reference/web-target.md) — is

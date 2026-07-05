@@ -21,7 +21,7 @@ Greeting => Shout {
     "HELLO"
 }
 
-() => Unit {
+Unit => Program {
     Greeting("howdy")
         -> Shout
         -> Print
@@ -157,12 +157,14 @@ return position without an annotation.
 
 ## The CLI Entry
 
-The program's entry point takes no parameters and returns `Unit`; it is
-selected by that signature — no name required — and lifted as the
-component's `wasi:cli/run.run` export:
+The program's entry point takes no input — `Unit` — and returns
+`Program`, the CLI world type (`Program = Unit`, from `canon/std`); it is
+selected by that return type — no name required, just as the HTTP handler
+is selected by returning `Response` — and lifted as the component's
+`wasi:cli/run.run` export:
 
 ```canon
-() => Unit {
+Unit => Program {
     "hello" -> Print
 }
 ```

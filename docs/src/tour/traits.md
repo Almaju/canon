@@ -30,7 +30,7 @@ Show = (Name) => String {
     "Alice"
 }
 
-() => Unit {
+Unit => Program {
     Greeting("hi")
         -> Show
         -> Print

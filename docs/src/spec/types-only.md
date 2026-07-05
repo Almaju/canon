@@ -44,11 +44,13 @@ A constructor named after its return type repeats information the signature alre
 String => Result<Url, InvalidUrl> { … }        # the Url constructor
 Bool => Json { … }                             # family members are just arrows
 Int => Json { … }
-() => Map { Empty() }                          # the empty-map constructor
+Unit => Map { Empty() }                        # the empty-map constructor
 Request => Response { … }                      # an entire HTTP service
 ```
 
 The constructed type is the return type with `Result`/`Option`/`Future` peeled, so fallible constructors stay anonymous too. Call sites are unchanged — a constructor is still invoked by its output type (`Url("…")?`, `"…".Url()?`); the arrow only removes the redundant *declaration-site* name.
+
+`Unit` is the name of "no input": a nullary constructor is `Unit => Map`, not `() => Map` — `()` is not a declaration form. The CLI entry follows the same rule paired with a world type: `Program` (`= Unit`, from `canon/std`) is the CLI world type, so the entry is `Unit => Program`, selected by its return type exactly as the HTTP handler is selected by returning `Response`.
 
 This is not a second function syntax — it is the language's **only** function form, appearing at every level: top level it declares a constructor, in expression position it is a lambda, and every dispatch arm is one (`* (False) => Unit { … }`). Named declarations (`Inserted = (Set * String) => Set { … }`) remain for exactly one thing: shapes and their implementations, where the name carries the only information the types cannot — which is precisely the endomorphism boundary above. The rule reads: *if the types fully determine the operation, it has no name; if they don't, the name is a shape.*
 
@@ -137,7 +139,7 @@ Details still to pin: first-class function references (today `Int.Double` for pa
 - **Effects produce evidence**: `write` becomes `Written = Path` + `Written = (Contents * Path) => Result<Written, IoError>`. A downstream function that accepts `(Written)` instead of `(Path)` *requires proof the write happened* — capability-style sequencing with no new machinery, and the pattern composes with [capability entry points](#capability-entry-points-planned) (the capability joins the constructor's input product). Pure sinks (`-> Unit`) are shape implementations (`Print = () => Unit` — `"hi".Print()`) until capabilities land, after which printing returns the capability (`Stdout.Print("a").Print("b")`) and sinks disappear.
 - **Shared vocabulary** — operations whose meaning spans types — are shapes with per-type implementations, exactly what traits were built for: `Length` (`Map`, `Set`, `String`, `List`), the comparison surface `Eq`/`Lt`/`Le`/`Gt`/`Ge`, ordering via the `Ord` constructor (`a.Ord(b).( * (Less) … )` — `compare` was already constructor-shaped). Arithmetic takes the noun vocabulary: `Sum`, `Product`, `Difference`, `Quotient`, `Remainder`, `Minimum`, `Maximum` — `2.Sum(3)`, `price.Product(quantity)`, non-commutative cases disambiguated by `OtherInt` under the ordinary binding rule.
 - **Higher-order operations** take generic result newtypes: `Mapped<U> = List<U>` + `Mapped = <T, U>(((T) => U) * List<T>) => Mapped<U>`; `Filtered<T> = List<T>`. First-class references generalize: `Int.Doubled` replaces `Int.double`. `Fold` stays a shape (its result is a bare parameter).
-- **Entry points**: the world registry becomes core shapes — `Main = () => Unit`, `Handler = (Request) => Response`, `Init`/`Update`/`View` for the web triple. A program is a module implementing a world shape; selection is by declared implementation, uniformly (this also removes the web triple's name-based selection, the one place the language currently keys on function names).
+- **Entry points**: the world registry becomes core shapes — the CLI entry `Unit => Program`, `Handler = (Request) => Response`, `Init`/`Update`/`View` for the web triple. A program is a module implementing a world shape; selection is by declared implementation — the CLI entry is chosen by returning `Program` just as the HTTP handler is chosen by returning `Response` (this also removes the web triple's name-based selection, the one place the language currently keys on function names).
 - **The FFI boundary keeps camelCase.** WIT functions are kebab-case verbs; no mechanical mapping can invent result nouns. Binding files keep the mechanical camelCase mapping and become the **only** place camelCase is legal. camelCase in a Canon program then has exactly one meaning — *this identifier is foreign* — the way `unsafe` marks a boundary in Rust.
 
 ### Name Resolution Under Types-Only

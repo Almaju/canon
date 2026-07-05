@@ -51,7 +51,7 @@ shout = (Greeter) => String {
 `main.can`:
 
 ```canon
-() => Unit {
+Unit => Program {
     Greeter("hi")
         .shout()
         -> Print

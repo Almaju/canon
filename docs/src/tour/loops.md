@@ -9,7 +9,7 @@ For most collection work, use methods on the collection itself:
 `map`, `get`, `length`, `first`, `append`, `concat`.
 
 ```canon,run=list-map
-() => Unit {
+Unit => Program {
     List(10, 20, 30)
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length
@@ -34,7 +34,7 @@ Int => Summed {
     )
 }
 
-() => Unit {
+Unit => Program {
     5
         -> Summed
         -> Print

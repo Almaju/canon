@@ -73,15 +73,15 @@ NotFound = Body
 
 NoteOneBody = Body
 
-() => IndexBody {
+Unit => IndexBody {
     Body(List(Note("ship canon v1") -> Rendered, Note("write the docs") -> Rendered) -> Json)
 }
 
-() => NotFound {
+Unit => NotFound {
     Body({"error":"not found"})
 }
 
-() => NoteOneBody {
+Unit => NoteOneBody {
     Body(Note("ship canon v1") -> Rendered)
 }
 
