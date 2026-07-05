@@ -111,5 +111,5 @@ The book is split into sections; use the tabs at the top.
 Canon is an **experimental design exploration**. The compiler exists, the
 examples run, and the design is stable enough to write about, but every
 detail is subject to change. The reference implementation lives in the
-same repository as this book; the design notes behind it are in
-[`DESIGN.md`](https://github.com/Almaju/canon/blob/main/DESIGN.md).
+same repository as this book; the [language specification](./spec/index.md)
+is the authoritative description of the language.

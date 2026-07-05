@@ -65,5 +65,6 @@
 
 - [Standard Library](./reference/stdlib.md)
 - [Using WASI Interfaces](./reference/wasi.md)
+- [The Web Target](./reference/web-target.md)
 - [Deploying Components](./reference/deploying.md)
 - [Coming from Rust](./reference/coming-from-rust.md)

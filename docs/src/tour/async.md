@@ -221,13 +221,11 @@ the Component Model stream-poll loop. There is no `for await … of`.
 
 > Status: the stdlib surface is declared in
 > `packages/canon/std/src/stream.can` (`map`, `filter`, `take`, `concat`,
-> `toList`, `toString`) and the checker accepts it. Codegen for stream-
-> carrying imports is the open piece: `build_extern_component_params`
-> currently returns `None` on `Stream<T>` params/returns so the imports
-> are silently dropped. The full plan is in `STREAMING.md` (slice 1b
-> routes Stream-using programs through `wit_component::ComponentEncoder`
-> instead of the hand-rolled type section). Until that lands, a program
-> using stream combinators fails to link at runtime.
+> `toList`, `toString`) and the checker accepts it, but codegen for
+> stream-carrying imports is not implemented yet:
+> `build_extern_component_params` currently returns `None` on `Stream<T>`
+> params/returns, so the imports are silently dropped and a program using
+> stream combinators fails to link at runtime.
 
 ## Cancellation
 

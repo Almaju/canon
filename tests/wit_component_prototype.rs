@@ -12,8 +12,8 @@
 //! `wit_component::ComponentEncoder`, and assert the result parses
 //! back as a valid component.
 //!
-//! If this passes, the architectural shortcut described in
-//! `WASI-HTTP-HANDLER.md` is sound: the actual codegen work for
+//! If this passes, the architectural shortcut behind the WASI HTTP
+//! handler work is sound: the actual codegen work for
 //! `wasi:http/service` becomes "produce the right core module shape +
 //! embed WIT, let wit-component do the type/lift/lower bytes".
 

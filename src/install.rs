@@ -395,7 +395,7 @@ fn write_install_index(path: &Path, index: &InstallIndex) -> Result<(), InstallE
 /// prefix, and write the generated source under `<bindgen_root>/`.
 ///
 /// The bindgen emits the vendored-package layout directly
-/// (`<ns>/<pkg>@<version>/<iface>.can`, see PACKAGES.md): the
+/// (`<ns>/<pkg>@<version>/<iface>.can`, see docs/src/spec/modules.md): the
 /// directory name carries the pin and the loader derives each
 /// binding's URN from the path — the files carry no directive.
 fn install_wit_entry(

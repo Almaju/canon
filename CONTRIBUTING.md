@@ -93,9 +93,9 @@ the fix is verifiable.
 
 ### Adding a language or compiler feature
 
-Features that touch language semantics require a `DESIGN.md` update first.
-Open an issue to discuss before writing code — language changes are
-intentionally conservative.
+Features that touch language semantics require a spec update first
+(`docs/src/spec/`). Open an issue to discuss before writing code —
+language changes are intentionally conservative.
 
 ### Adding a standard library item
 

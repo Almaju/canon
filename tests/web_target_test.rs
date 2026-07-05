@@ -1,4 +1,4 @@
-//! Web target (`WEB-TARGET.md`): a program defining the Elm-triple
+//! Web target (docs/src/reference/web-target.md): a program defining the Elm-triple
 //! (`init` / `update` / `view`) compiles to a self-contained core
 //! module plus the JS-host bundle. In the browser, `canon-web.js`
 //! drives the ABI; this test drives the *same* ABI from wasmtime

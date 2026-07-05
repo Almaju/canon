@@ -88,7 +88,7 @@ fn print_help() {
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
     println!("  install <ns>:<name>[@ver] Fetch a package from its registry and vendor it");
-    println!("                            under `deps/<ns>/<name>/` (see PACKAGES.md)");
+    println!("                            under `deps/<ns>/<name>/`");
     println!("  publish <ns>:<name>[@ver] Publish the current directory's package to its");
     println!("                            registry. Without a version, patch-bumps the");
     println!("                            newest release (first publish is 0.1.0)");
@@ -703,7 +703,7 @@ fn cmd_install(args: &[String]) {
                 println!();
                 println!("  <ns>:<name>[@ver]   Fetch a package from its registry and vendor the");
                 println!("               generated bindings under `deps/<ns>/<name>@<version>/`");
-                println!("               of the current project (see PACKAGES.md). Without a");
+                println!("               of the current project. Without a");
                 println!("               version, the newest release is installed; a prefix like");
                 println!("               `@0.3` picks the newest matching release. Registries");
                 println!("               resolve through the standard `wasm-pkg` config file");
@@ -1326,7 +1326,7 @@ fn parse_synthesised(source: &str) -> Result<Vec<Item>, CanonError> {
 ///     `handle` export through `wasmtime-wasi-http`.
 ///
 /// Until the codegen learns to emit a `wasi:http/service` world (see
-/// M2 of the wasi:http migration in WASM.md), the `--addr` mode will
+/// the compilation spec, docs/src/spec/compilation.md), the `--addr` mode will
 /// fail at component-instantiation time — the diagnostic surfaces the
 /// expected exports so users know what's missing.
 fn cmd_run(args: &[String]) {
@@ -1397,7 +1397,7 @@ fn cmd_run(args: &[String]) {
     let component_bytes = codegen::generate(&loaded.module);
 
     // Web-app programs (the `init`/`update`/`view` triple, see
-    // `WEB-TARGET.md`) compile to a browser-run core module — nothing
+    // the web target, docs/src/reference/web-target.md) compile to a browser-run core module — nothing
     // for the embedded wasmtime to execute. Serve the three-file
     // bundle over HTTP instead so the browser can load it.
     if canon::ast::find_web_entry(&loaded.module.items).is_some() {

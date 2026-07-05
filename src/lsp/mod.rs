@@ -781,7 +781,7 @@ fn resolve_to_wit_declaration(current_file: &str, word: &str) -> Option<(PathBuf
 /// hint regardless of context.
 /// Determine the WIT interface URN that backs the given source file,
 /// if it's a binding file. The URN is derived from the file's vendored
-/// path (`<ns>/<name>@<version>/<iface>.can` — see PACKAGES.md), for
+/// path (`<ns>/<name>@<version>/<iface>.can` — see docs/src/spec/modules.md), for
 /// both bundled package files and files under a project's `bindgen/`
 /// or `deps/` root.
 fn urn_for_bindgen_file(current_file: &str) -> Option<String> {

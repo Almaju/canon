@@ -43,6 +43,7 @@ There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
 | Hex | `0xFF0000` | `Hex(0xFF0000)` |
 | String | `"abc"` | `String("abc")` |
 | JSON object/array | `{"a":1}`, `[1,2]` | `Json` value ([Expressions](./expressions.md#json-literals)) |
+| HTML element | `<div>{x}</div>` | `Html` value ([Expressions](./expressions.md#html-literals)) |
 
 ## String Escape Sequences
 

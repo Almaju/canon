@@ -83,7 +83,7 @@ const FN_HTTP_GET_METHOD: u32 = 19; // [method]request.get-method (i32,i32) -> (
 const HTTP_BASE_DEFINED: u32 = 20;
 
 // ── Web-mode import indices ──────────────────────────────────────────
-// In web encoder mode (`compile_web`, see `WEB-TARGET.md`) the import
+// In web encoder mode (`compile_web`, see the web target, docs/src/reference/web-target.md) the import
 // space is just the five stdout builtins at 0..4 — the bundled JS host
 // (`canon-web.js`) stubs them onto `console.log`. Defined functions
 // start right after.
@@ -620,7 +620,6 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
 // wrapper and exports it from the component under this interface +
 // function name. The host's `host_builtin_http_server::run_server`
 // looks the export up after instantiation and invokes it per request.
-// See `DYNAMIC-HANDLERS.md` for the full architecture.
 //
 // The interface + function names are duplicated in `runtime.rs` for the
 // host-side lookup. Keep them in sync if you ever rename either.
@@ -1161,7 +1160,7 @@ struct WasmGen<'m> {
     fn_print_float: u32,
     /// Renders an `i64` as its decimal string in a fresh heap
     /// allocation — the value half of `String(Int)` / `Int.String()`
-    /// (conversion-is-construction, DESIGN.md § Conversions). Same
+    /// (conversion-is-construction, the language spec (docs/src/spec/)). Same
     /// digit loop as `build_print_int` but the bytes are copied out of
     /// the shared int buffer into an `$alloc` block so later renders
     /// can't clobber the result. Core signature: `(i64) -> (i32, i32)`.
@@ -1293,7 +1292,7 @@ impl<'m> WasmGen<'m> {
             eprintln!(
                 "error: HTTP handler programs can only import `wasi:http/types` for now: \
                  found extern imports the `wasi:http/service` world can't satisfy: {}. \
-                 (Lifting the remaining WASI surface into HTTP handlers is tracked in V1.md M3.)",
+                 (Lifting the remaining WASI surface into HTTP handlers is not yet implemented.)",
                 names.join(", ")
             );
             std::process::exit(1);
@@ -1324,7 +1323,7 @@ impl<'m> WasmGen<'m> {
         gen
     }
 
-    /// Constructor for web encoder mode (`WEB-TARGET.md`). The browser
+    /// Constructor for web encoder mode (the web target, docs/src/reference/web-target.md). The browser
     /// host implements only the stdout print stubs, so any extern
     /// import is a hard error at this stage.
     fn new_web(ast: &'m OModule) -> Self {
@@ -1342,7 +1341,7 @@ impl<'m> WasmGen<'m> {
             eprintln!(
                 "error: web-app programs can't use extern imports yet: the browser host \
                  implements only the print surface. Found: {}. (Extending the web host's \
-                 import surface is tracked in WEB-TARGET.md.)",
+                 import surface is not yet implemented.)",
                 names.join(", ")
             );
             std::process::exit(1);
@@ -3365,8 +3364,8 @@ impl<'m> WasmGen<'m> {
             // Newtype unwrap (`value.B` where the value's type is `A = B`)
             // is a no-op coercion at the wasm level since the newtype and
             // its underlying type share representation — we just retype
-            // the value on the stack. See DESIGN.md § "Newtypes Are
-            // 1-Component Products".
+            // the value on the stack. See the language spec
+            // (docs/src/spec/) on newtypes as 1-component products.
             //
             // Real product field selection (`user.Birthday`) isn't yet
             // implemented; the checker accepts the syntax (registered in
@@ -3667,8 +3666,8 @@ impl<'m> WasmGen<'m> {
             // `String("x")`) — compiling it IS the construction —
             // and *conversion* when it doesn't (`String(42)` renders
             // decimal, `String(Byte(65))` is the one-byte string
-            // "A"): conversion is construction, DESIGN.md
-            // § Conversions. The zero-arg forms produce the type's
+            // "A"): conversion is construction, see the language spec
+            // (docs/src/spec/). The zero-arg forms produce the type's
             // zero value.
             "Int" | "Float" | "String" => {
                 if let Some(a) = args.first() {
@@ -4270,7 +4269,7 @@ impl<'m> WasmGen<'m> {
             vec![]
         };
 
-        // ── Auto-boxed product payloads (DESIGN.md § Recursive Types) ──
+        // ── Auto-boxed product payloads (the language spec, docs/src/spec/) ──
         //
         // A variant whose typedef is a multi-field product (`Link =
         // Label * Next` inside `Chain = Link + Stop`) stores ONE
@@ -4839,7 +4838,7 @@ impl<'m> WasmGen<'m> {
             }
         }
 
-        // Conversion is construction (DESIGN.md § Conversions):
+        // Conversion is construction (the language spec, docs/src/spec/):
         // `Int.String()` / `Byte.String()` are the method spellings of
         // the `String(Int)` / `String(Byte)` constructors. Placed after
         // the func-table lookups so a user-declared `String` method on
@@ -6503,7 +6502,7 @@ impl<'m> WasmGen<'m> {
                 Ty::List
             }
             // `list.Json()` — conversion-is-construction spelling
-            // (DESIGN.md § Conversions) of "encode this list of
+            // (the language spec, docs/src/spec/) of "encode this list of
             // pre-rendered JSON values as a JSON array".
             ("Json", Ty::List) => {
                 // Stack: [list_ptr, list_len]. Call the helper which
@@ -8294,7 +8293,7 @@ impl<'m> WasmGen<'m> {
         m.finish()
     }
 
-    /// Web encoder mode (`WEB-TARGET.md`): emits a self-contained core
+    /// Web encoder mode (the web target, docs/src/reference/web-target.md): emits a self-contained core
     /// module (own memory, own bump global) exporting the Elm-triple
     /// ABI the bundled JS host (`canon-web.js`) drives:
     ///
@@ -8694,7 +8693,7 @@ pub(super) fn generate_http_core_module(module: &OModule) -> Vec<u8> {
     gen.compile_http()
 }
 
-/// Builds the self-contained web-app core module (`WEB-TARGET.md`).
+/// Builds the self-contained web-app core module (the web target, docs/src/reference/web-target.md).
 /// Unlike the CLI/HTTP worlds this is a plain core module, not a
 /// component — browsers instantiate core wasm directly and the
 /// bundled JS host (`canon-web.js`) is the "component wrapper".
@@ -8908,8 +8907,8 @@ fn generate_core_module(module: &OModule) -> Vec<u8> {
 }
 
 /// Returns whether the program has a free function returning `Response`
-/// (or `Result<Response, _>`), per the entry-point rule in
-/// `WASI-HTTP-HANDLER.md`. When true, codegen routes through
+/// (or `Result<Response, _>`), per the entry-point rule
+/// (docs/src/spec/functions.md). When true, codegen routes through
 /// `component::wrap_http_service` instead of the CLI path.
 fn has_http_entry(module: &OModule) -> bool {
     use crate::ast::{entry_world_of, EntryWorld};
@@ -8945,8 +8944,8 @@ fn program_has_handler(module: &OModule) -> bool {
 /// declaration in the user program.
 /// It is validated with `wasmparser` before being returned.
 pub fn generate(module: &OModule) -> Vec<u8> {
-    // Branch on the entry-point's world (see `WASI-HTTP-HANDLER.md`
-    // §Entry-point selection). CLI entries flow through the existing
+    // Branch on the entry-point's world (see the entry-point rule,
+    // docs/src/spec/functions.md). CLI entries flow through the existing
     // hand-rolled `wasm-encoder` pipeline; HTTP entries route to a
     // separate codegen path that delegates type-section emission to
     // `wit-component` (the resource + variant surface in
@@ -8961,7 +8960,7 @@ pub fn generate(module: &OModule) -> Vec<u8> {
     }
 
     // Web-app entries (the `init`/`update`/`view` triple) emit a raw
-    // core module — the JS host is the wrapper. See `WEB-TARGET.md`.
+    // core module — the JS host is the wrapper. See the web target, docs/src/reference/web-target.md.
     if crate::ast::find_web_entry(&module.items).is_some() {
         let bytes = generate_web_core_module(module);
         validate(&bytes);

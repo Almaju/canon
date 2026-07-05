@@ -128,8 +128,8 @@ impl Parser {
                 // this is an HTTP entry, not a method. Suppress receiver
                 // extraction so `home = (Request) -> Response { … }` stays
                 // a free function with `Request` as its parameter (not
-                // a method on `Request`). See `WASI-HTTP-HANDLER.md`
-                // §Entry-point selection.
+                // a method on `Request`). See the entry-point rule
+                // (docs/src/spec/functions.md).
                 (None, false, params)
             } else if Self::is_pascal_case_str(&name.name) {
                 // PascalCase: defer to post-parse resolve_new_syntax

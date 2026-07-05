@@ -85,7 +85,7 @@ pub fn split_interface_id(id: &str) -> Option<(String, String, String, Option<St
 /// `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15`
 ///   → `wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can`
 ///
-/// This is the vendored-package layout PACKAGES.md specifies: the
+/// This is the vendored-package layout the loader expects: the
 /// directory name carries the package identity and version (the pin),
 /// the file stem names the interface, and the loader derives each
 /// binding's URN back from exactly this shape — no directive in the

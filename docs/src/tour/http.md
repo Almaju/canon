@@ -112,6 +112,5 @@ runtime in any way.
 
 Also available on the request: `Request.method()` returns the HTTP
 verb as a `String`, so REST routing is literal dispatch on the method.
-Not wired up yet (tracked in `WASI-HTTP-HANDLER.md`): reading the
-request *headers* and *body*, and streaming response bodies
-(`STREAMING.md`).
+Not wired up yet: reading the request *headers* and *body*, and
+streaming response bodies.

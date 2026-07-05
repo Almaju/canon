@@ -1,4 +1,4 @@
-//! `canon publish` — PACKAGES.md slice 3.
+//! `canon publish`.
 //!
 //! Drives the real CLI against a `local`-type registry, offline. The
 //! headline test is the full round trip the RFC promises: publish a

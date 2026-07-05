@@ -4,7 +4,7 @@ Canon is a new programming language. The reference compiler emits **WebAssembly 
 
 The guiding rule: wherever ordering is discretionary, the compiler enforces alphabetical order. Components of product types, variants of unions, function declarations, dispatch arms, imports — all alphabetical. Ordering is never a meaningful change.
 
-See [`DESIGN.md`](DESIGN.md) for the language specification.
+See the [language specification](docs/src/spec/) for the full semantics.
 
 ---
 
@@ -119,7 +119,6 @@ canon run hello.can
 | [`examples/`](examples/) | Example `.can` programs |
 | [`tests/`](tests/) | Integration tests |
 | [`editors/`](editors/) | Tree-sitter grammar and Zed extension |
-| [`DESIGN.md`](DESIGN.md) | Language specification |
 
 ---
 
@@ -150,10 +149,10 @@ nothing is ever pushed to `main`:
   bump). This becomes the default install channel.
 
 Both call the reusable `release.yml`, which cross-builds for macOS and Linux
-and publishes the tarballs. See [`RELEASE.md`](RELEASE.md) for details.
+and publishes the tarballs.
 
 ---
 
 ## Status
 
-Experimental, but past the V1 milestone (see [`V1.md`](V1.md)): programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); browser frontends compile from the `init`/`update`/`view` triple (see [`WEB-TARGET.md`](WEB-TARGET.md) and [`examples/todo-fullstack`](examples/todo-fullstack) — one language, both sides of the stack, shared types); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly. The V1.1 headline is resources + streams for the CLI world (filesystem descriptors, component composition).
+Experimental: programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); browser frontends compile from the `init`/`update`/`view` triple (see [the web target](docs/src/reference/web-target.md) and [`examples/todo-fullstack`](examples/todo-fullstack) — one language, both sides of the stack, shared types); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly.

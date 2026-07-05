@@ -2,7 +2,7 @@
 
 The smallest Canon web app — the Elm-architecture counter, compiled
 to WebAssembly and driven by the bundled JS host. See
-[`WEB-TARGET.md`](../../WEB-TARGET.md) for the whole story.
+[The Web Target](../../docs/src/reference/web-target.md) for the whole story.
 
 ```sh
 canon run examples/counter-web          # serves on 127.0.0.1:8080
@@ -15,7 +15,7 @@ examples/counter-web` writes the deployable three-file bundle
 
 The count survives a page reload: the JS host persists the message log
 to `localStorage` and replays it on boot (see the *Persistence* section
-of [`WEB-TARGET.md`](../../WEB-TARGET.md)). For a fuller demonstration —
+of [The Web Target](../../docs/src/reference/web-target.md)). For a fuller demonstration —
 add / toggle / delete with a live in-book preview — see
 [`examples/todolist-web`](../todolist-web).
 
