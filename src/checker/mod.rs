@@ -480,15 +480,11 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
         Expr::MethodCall {
             receiver,
             method,
-            type_args,
             args,
             ..
         } => {
             out.insert(method.name.clone());
             collect_expr_names(receiver, out);
-            for t in type_args {
-                collect_type_names(t, out);
-            }
             for a in args {
                 collect_expr_names(a, out);
             }
@@ -1441,7 +1437,6 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::MethodCall {
             receiver,
             method,
-            type_args,
             args,
             span,
             ..
@@ -1449,10 +1444,6 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
-            }
-            let empty_generic_scope: HashSet<String> = HashSet::new();
-            for ta in type_args {
-                check_type_expr(ta, symbols, &empty_generic_scope, errors);
             }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             // For types that are both a standalone typedef and a variant of a union,

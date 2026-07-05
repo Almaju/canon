@@ -1,11 +1,11 @@
-zebra = () -> Unit {
+zebra = () => Unit {
     "z".print()
 }
 
-apple = () -> Unit {
+apple = () => Unit {
     "a".print()
 }
 
-main = () -> Unit {
+main = () => Unit {
     "ok".print()
 }

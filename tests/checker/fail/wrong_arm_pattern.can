@@ -1,6 +1,6 @@
-main = () -> Unit {
-    Some(7).(
-        * (None) -> Unit { "none".print() }
-        * (Ok<Int>) -> Unit { "wrong".print() }
+main = () => Unit {
+    Some(7) -> (
+        * None => Unit { "none".print() }
+        * Ok<Int> => Unit { "wrong".print() }
     )
 }

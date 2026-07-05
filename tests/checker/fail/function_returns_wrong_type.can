@@ -1,7 +1,7 @@
-message = () -> Int {
+message = () => Int {
     "not an int"
 }
 
-main = () -> Unit {
+main = () => Unit {
     "ok".print()
 }

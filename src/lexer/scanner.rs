@@ -408,19 +408,26 @@ impl<'a> Scanner<'a> {
             b'>' => self.single(TokenKind::Gt, ">"),
             b'+' => self.single(TokenKind::Plus, "+"),
             b',' => self.single(TokenKind::Comma, ","),
-            b':' => {
-                if self.peek_byte(1) == Some(b':') {
-                    self.pos += 2;
-                    self.column += 2;
-                    (TokenKind::ColonColon, "::".to_string())
-                } else {
-                    self.single(TokenKind::Colon, ":")
-                }
-            }
+            b':' => self.single(TokenKind::Colon, ":"),
             b'?' => self.single(TokenKind::Question, "?"),
             b'*' => self.single(TokenKind::Star, "*"),
             b'^' => self.single(TokenKind::Caret, "^"),
-            b'/' => self.single(TokenKind::Slash, "/"),
+            b'/' => {
+                let next = self.peek_byte(1);
+                if next == Some(b'/') || next == Some(b'*') {
+                    return Err(self.err_at(
+                        start_line,
+                        start_col,
+                        "Canon has no comments: delete the comment (the language spec, \
+                         § Lexical Structure)",
+                    ));
+                }
+                return Err(self.err_at(
+                    start_line,
+                    start_col,
+                    "unexpected character `/`",
+                ));
+            }
             b'=' => {
                 if self.peek_byte(1) == Some(b'>') {
                     self.pos += 2;
@@ -439,18 +446,18 @@ impl<'a> Scanner<'a> {
                     self.single(TokenKind::Minus, "-")
                 }
             }
-            b'.' => {
-                if self.peek_byte(1) == Some(b'.') && self.peek_byte(2) == Some(b'.') {
-                    self.pos += 3;
-                    self.column += 3;
-                    (TokenKind::Ellipsis, "...".to_string())
-                } else {
-                    self.single(TokenKind::Dot, ".")
-                }
-            }
+            b'.' => self.single(TokenKind::Dot, "."),
             b'"' => self.scan_string(start_line, start_col)?,
             c if c.is_ascii_digit() => self.scan_number(start_line, start_col)?,
             c if is_ident_start(c) => self.scan_ident(start_pos),
+            b'#' => {
+                return Err(self.err_at(
+                    start_line,
+                    start_col,
+                    "unexpected character `#`: Canon has no comments (the language spec, \
+                     § Lexical Structure)",
+                ));
+            }
             _ => {
                 return Err(self.err_at(
                     start_line,
@@ -478,7 +485,6 @@ impl<'a> Scanner<'a> {
         let lex = self.source[start_pos..self.pos].to_string();
         let kind = match lex.as_str() {
             "mut" => TokenKind::KwMut,
-            "use" => TokenKind::KwUse,
             "Self" => TokenKind::KwSelf,
             "impl" => TokenKind::KwImpl,
             _ => TokenKind::Ident,

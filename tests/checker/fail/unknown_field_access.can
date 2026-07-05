@@ -4,6 +4,6 @@ User = Birthday * Username
 
 Username = String
 
-main = () -> Unit {
+main = () => Unit {
     User(Birthday("1990") * Username("alice")).Mystery.print()
 }

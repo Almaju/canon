@@ -103,7 +103,6 @@ fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
     Expr::MethodCall {
         receiver: Box::new(subject),
         method: name,
-        type_args: Vec::new(),
         args,
         piped: true,
         span,
@@ -219,7 +218,6 @@ fn canon_expr(e: &Expr) -> Expr {
         Expr::MethodCall {
             receiver,
             method,
-            type_args,
             args,
             piped,
             span,
@@ -231,7 +229,6 @@ fn canon_expr(e: &Expr) -> Expr {
                 return Expr::MethodCall {
                     receiver: Box::new(canon_expr(receiver)),
                     method: method.clone(),
-                    type_args: type_args.clone(),
                     args: args.iter().map(canon_expr).collect(),
                     piped: *piped,
                     span: *span,
@@ -598,7 +595,6 @@ enum ChainPart {
     Base(Expr),
     Method {
         method: Ident,
-        type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
     },
     Dispatch {
@@ -618,14 +614,12 @@ fn flatten_into(expr: &Expr, parts: &mut Vec<ChainPart>) {
         Expr::MethodCall {
             receiver,
             method,
-            type_args,
             args,
             ..
         } => {
             flatten_into(receiver, parts);
             parts.push(ChainPart::Method {
                 method: method.clone(),
-                type_args: type_args.clone(),
                 args: args.clone(),
             });
         }
@@ -709,7 +703,6 @@ fn method_pipe_name(name: &str) -> Option<&str> {
 fn emit_method(
     out: &mut String,
     method: &Ident,
-    type_args: &[TypeExpr],
     args: &[Expr],
     broken: bool,
 ) {
@@ -717,7 +710,6 @@ fn emit_method(
         Some(pname) => {
             out.push_str(if broken { "-> " } else { " -> " });
             out.push_str(pname);
-            emit_turbofish(out, type_args);
             if !args.is_empty() {
                 out.push('(');
                 emit_args_inline(out, args);
@@ -727,7 +719,6 @@ fn emit_method(
         None => {
             out.push('.');
             out.push_str(&method.name);
-            emit_turbofish(out, type_args);
             out.push('(');
             emit_args_inline(out, args);
             out.push(')');
@@ -742,11 +733,10 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
             ChainPart::Base(e) => out.push_str(&emit_base_inline(e)),
             ChainPart::Method {
                 method,
-                type_args,
-                args,
+                    args,
                 ..
             } => {
-                emit_method(&mut out, method, type_args, args, false);
+                emit_method(&mut out, method, args, false);
             }
             ChainPart::Dispatch { arms } => {
                 out.push_str(" -> (");
@@ -803,11 +793,10 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
             match part {
                 ChainPart::Method {
                     method,
-                    type_args,
-                    args,
+                            args,
                     ..
                 } => {
-                    emit_method(&mut out, method, type_args, args, false);
+                    emit_method(&mut out, method, args, false);
                 }
                 ChainPart::Try => out.push('?'),
                 _ => {}
@@ -833,13 +822,12 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
             }
             ChainPart::Method {
                 method,
-                type_args,
-                args,
+                    args,
                 ..
             } => {
                 out.push('\n');
                 out.push_str(&cont_pad);
-                emit_method(&mut out, method, type_args, args, true);
+                emit_method(&mut out, method, args, true);
             }
             ChainPart::Try => out.push('?'),
             ChainPart::Dispatch { arms } => {
@@ -969,15 +957,6 @@ fn emit_base_inline(expr: &Expr) -> String {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-fn emit_turbofish(out: &mut String, type_args: &[TypeExpr]) {
-    if !type_args.is_empty() {
-        out.push_str("::<");
-        let targs: Vec<String> = type_args.iter().map(emit_type_expr).collect();
-        out.push_str(&targs.join(", "));
-        out.push('>');
-    }
-}
 
 fn emit_args_inline(out: &mut String, args: &[Expr]) {
     for (i, arg) in args.iter().enumerate() {
@@ -1139,7 +1118,7 @@ mod tests {
     #[test]
     fn test_normalize_spacing() {
         assert_format(
-            "main=(Stdout)->Unit{\n\"hello\".print(Stdout)\n}\n",
+            "main=(Stdout)=>Unit{\n\"hello\".print(Stdout)\n}\n",
             "main = (Stdout) => Unit {\n    \"hello\" -> Print(Stdout)\n}\n",
         );
     }
@@ -1208,7 +1187,7 @@ mod tests {
     fn test_dispatch_arms_sorted() {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
-            "main = () => Unit {\n    True().(\n        * (True) => Unit { \"yes\".print() }\n        * (False) => Unit { \"no\".print() }\n    )\n}\n",
+            "main = () => Unit {\n    True() -> (\n        * True => Unit { \"yes\".print() }\n        * False => Unit { \"no\".print() }\n    )\n}\n",
             "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
         );
     }
@@ -1217,7 +1196,7 @@ mod tests {
     fn test_literal_dispatch_arms_sorted_catchall_last() {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
-            "Route = (String) => String {\n    String.(\n        * (String) => String { \"other\" }\n        * (\"/b\") => String { \"b\" }\n        * (\"/a\") => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * String => String { \"other\" }\n        * \"/b\" => String { \"b\" }\n        * \"/a\" => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
             "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
         );
     }
@@ -1234,20 +1213,20 @@ mod tests {
     #[test]
     fn test_literal_dispatch_int_arms_idempotent() {
         assert_idempotent(
-            "Describe = (Int) => Unit {\n    Int.(\n        * (0) => Unit { \"zero\" -> Print }\n        * (1) => Unit { \"one\" -> Print }\n        * (Int) => Unit { Int -> Print }\n    )\n}\n\nmain = () => Unit {\n    0 -> Describe\n}\n",
+            "Describe = (Int) => Unit {\n    Int -> (\n        * 0 => Unit { \"zero\" -> Print }\n        * 1 => Unit { \"one\" -> Print }\n        * Int => Unit { Int -> Print }\n    )\n}\n\nmain = () => Unit {\n    0 -> Describe\n}\n",
         );
     }
 
     #[test]
     fn test_literal_dispatch_string_escapes_round_trip() {
         assert_idempotent(
-            "Kind = (String) => String {\n    String.(\n        * (\"line\\none\") => String { \"escaped\" }\n        * (String) => String { \"plain\" }\n    )\n}\n\nmain = () => Unit {\n    \"x\"\n        -> Kind\n        -> Print\n}\n",
+            "Kind = (String) => String {\n    String -> (\n        * \"line\\none\" => String { \"escaped\" }\n        * String => String { \"plain\" }\n    )\n}\n\nmain = () => Unit {\n    \"x\"\n        -> Kind\n        -> Print\n}\n",
         );
     }
 
     #[test]
     fn test_dispatch() {
-        let src = "Bool = False + True\n\nmain = (Stdout) => Unit {\n    True.(\n        * (False) => Unit { \"no\".print(Stdout) }\n        * (True) => Unit { \"yes\".print(Stdout) }\n    )\n}\n";
+        let src = "Bool = False + True\n\nmain = (Stdout) => Unit {\n    True -> (\n        * False => Unit { \"no\" -> Print(Stdout) }\n        * True => Unit { \"yes\" -> Print(Stdout) }\n    )\n}\n";
         assert_idempotent(src);
     }
 

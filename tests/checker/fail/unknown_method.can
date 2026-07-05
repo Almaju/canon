@@ -1,4 +1,4 @@
-main = () -> Unit {
+main = () => Unit {
     5
         .bogus()
         .print()

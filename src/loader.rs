@@ -911,7 +911,6 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
         Expr::MethodCall {
             receiver,
             method,
-            type_args,
             args,
             ..
         } => {
@@ -937,9 +936,6 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
                 }
             }
             collect_expr_refs(receiver, skip, out);
-            for t in type_args {
-                collect_ty_refs(t, skip, out);
-            }
             for a in args {
                 collect_expr_refs(a, skip, out);
             }

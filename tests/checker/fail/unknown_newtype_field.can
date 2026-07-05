@@ -1,5 +1,5 @@
 Greeting = String
 
-main = () -> Unit {
+main = () => Unit {
     Greeting("hi").Int.print()
 }

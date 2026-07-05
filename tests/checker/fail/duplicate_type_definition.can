@@ -2,6 +2,6 @@ Foo = String
 
 Foo = Int
 
-main = () -> Unit {
+main = () => Unit {
     "ok".print()
 }

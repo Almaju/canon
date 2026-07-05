@@ -1,10 +1,10 @@
-describe = (Int) -> String {
-    Int.(
-        * ("zero") -> String { "zero" }
-        * (Int) -> String { "many" }
+describe = (Int) => String {
+    Int -> (
+        * "zero" => String { "zero" }
+        * Int => String { "many" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     0.describe().print()
 }

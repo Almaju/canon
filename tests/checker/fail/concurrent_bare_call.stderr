@@ -1,3 +1,7 @@
 error[tests/checker/fail/concurrent_bare_call.can:2:5]: `parallel(…)` is not a call form: combinators are methods on the first future: `a.parallel(b)`
+error[tests/checker/fail/concurrent_bare_call.can:2:14]: no method `slowEcho` on type `String` with 0 argument(s)
+error[tests/checker/fail/concurrent_bare_call.can:2:31]: no method `slowEcho` on type `String` with 0 argument(s)
 error[tests/checker/fail/concurrent_bare_call.can:3:5]: `race(…)` is not a call form: combinators are methods on the first future: `a.race(b)`
+error[tests/checker/fail/concurrent_bare_call.can:3:10]: no method `slowEcho` on type `String` with 0 argument(s)
+error[tests/checker/fail/concurrent_bare_call.can:3:27]: no method `slowEcho` on type `String` with 0 argument(s)
 error[tests/checker/fail/concurrent_bare_call.can:3:5]: no method `print` on type `race` with 0 argument(s)

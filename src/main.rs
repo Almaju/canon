@@ -75,7 +75,7 @@ fn print_help() {
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
-    println!("  test <file.can>            Run `() -> TestResult` functions as tests");
+    println!("  test <file.can>            Run `() => TestResult` functions as tests");
     println!("  fmt [path...] [--check]   Format Canon source files or directories");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
     println!("                              stages: tokens | ast | wat");
@@ -1195,7 +1195,7 @@ fn cmd_test(args: &[String]) {
 
     if tests.is_empty() {
         eprintln!(
-            "error: no tests found in `{}`: a test is a function with signature `() -> TestResult`",
+            "error: no tests found in `{}`: a test is a function with signature `() => TestResult`",
             file_path
         );
         process::exit(1);
@@ -1211,7 +1211,7 @@ fn cmd_test(args: &[String]) {
     // is synthesised as source too and inserted into the *import
     // region* of the module (before `entry_items_start`), where the
     // alphabetical-ordering rule doesn't apply to it.
-    let exit_binding = "exitWithCode = (Int) -> Unit\n";
+    let exit_binding = "exitWithCode = (Int) => Unit\n";
     let mut exit_items = match parse_synthesised(exit_binding) {
         Ok(items) => items,
         Err(err) => {
@@ -1278,18 +1278,18 @@ fn synthesise_test_main(tests: &[String]) -> String {
     // prints `[ ok ] testName` and yields 0. The per-test values are
     // summed with `.add` and the total failure count drives
     // `exit-with-code`: any failure exits 1, all-pass exits 0.
-    let mut src = String::from("main = () -> Unit {\n    ");
+    let mut src = String::from("main = () => Unit {\n    ");
     for (i, name) in tests.iter().enumerate() {
         if i > 0 {
             src.push_str(".add(");
         }
-        src.push_str(&format!("{}().(\n", name));
+        src.push_str(&format!("{}() -> (\n", name));
         src.push_str(&format!(
-            "        * (Fail) -> Int {{ \"[FAIL] {}: \".concat(Fail.String).print() 1 }}\n",
+            "        * Fail => Int {{ \"[FAIL] {}: \".concat(Fail.String).print() 1 }}\n",
             name
         ));
         src.push_str(&format!(
-            "        * (Pass) -> Int {{ \"[ ok ] {}\".print() 0 }}\n",
+            "        * Pass => Int {{ \"[ ok ] {}\".print() 0 }}\n",
             name
         ));
         src.push_str("    )");
@@ -1297,9 +1297,9 @@ fn synthesise_test_main(tests: &[String]) -> String {
             src.push(')');
         }
     }
-    src.push_str(".eq(0).(\n");
-    src.push_str("        * (False) -> Unit { 1.exitWithCode() }\n");
-    src.push_str("        * (True) -> Unit { 0.exitWithCode() }\n");
+    src.push_str(".eq(0) -> (\n");
+    src.push_str("        * False => Unit { 1.exitWithCode() }\n");
+    src.push_str("        * True => Unit { 0.exitWithCode() }\n");
     src.push_str("    )\n");
     src.push_str("}\n");
     src

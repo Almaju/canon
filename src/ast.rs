@@ -173,7 +173,6 @@ pub enum Expr {
     MethodCall {
         receiver: Box<Expr>,
         method: Ident,
-        type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
         /// Written in the pipe form `value -> Name(rest…)` — the third
         /// spelling of the commutative call (`Name(value, rest…)` /
