@@ -21,21 +21,21 @@ cd canon
 
 ```sh
 just build        # debug build
-just release      # release build (optimized)
+just install      # release build, installed to ~/.cargo/bin/canon
 ```
 
 ## Running programs
 
 ```sh
-just example clock                  # run examples/clock/ (a package)
+just example multifile              # run examples/multifile/ (a package)
 just examples                       # run every member of the examples/ workspace
 ```
 
 ## Testing
 
 ```sh
-just test           # run the compiler test suite
-just test-verbose   # same, with stdout
+just test           # run the compiler test suite (cargo test)
+just test-can       # run every tests/canon/*_test.can via `canon test`
 just ci             # fmt check + clippy + test (run this before opening a PR)
 ```
 
@@ -62,26 +62,31 @@ just install-hooks
 | `src/lexer/` | Tokenizer — `scanner.rs`, `token.rs` |
 | `src/parser/` | AST construction |
 | `src/checker/` | Type checker and sort-order validation |
-| `src/codegen/` | Rust code generation |
+| `src/codegen/` | WebAssembly component code generation |
+| `src/bindgen/` | `canon bindgen` — WIT → Canon source emitter |
 | `src/formatter.rs` | Source formatter (`canon fmt`) |
 | `src/lsp/` | Language server |
+| `src/webhost.rs` | Web target's generated JS host and static server |
 | `src/ast.rs` | AST node definitions |
 | `src/error.rs` | Error types and spans |
-| `src/loader.rs` | File/module loading |
-| `std/` | Standard library (`.can` declarations + Rust FFI) |
+| `src/loader.rs` | File/module loading and reference resolution |
+| `packages/canon/std/` | Standard library — one bundled package (Canon wrappers over WIT-derived bindings) |
 | `examples/` | Example programs — always keep these passing |
 | `tests/` | Integration tests |
 | `docs/` | mdBook documentation site |
-| `editors/` | Tree-sitter grammar and Zed extension |
+| `editors/` | Tree-sitter grammar, Zed extension, VS Code extension |
 
 ## Compiler pipeline
 
 ```
-source → lexer → parser → checker → codegen (Rust) → rustc
+source → lexer → parser → checker → codegen (WASM core module → Component Model wrapper)
 ```
 
-The compiler has **no external Rust dependencies** — keep `Cargo.toml`
-dependency-free.
+No external toolchain is invoked: `wasm-encoder` / `wit-component` produce
+the final `.wasm` in-process, and `canon run` executes it on the embedded
+wasmtime runtime. Dependencies are limited to the Bytecode Alliance wasm
+toolchain, the embedded runtime (`wasmtime`, `tokio`), and the hyper HTTP
+stack — don't add dependencies outside that orbit.
 
 ## Kinds of change
 
@@ -99,9 +104,12 @@ language changes are intentionally conservative.
 
 ### Adding a standard library item
 
-Add the `.can` declaration in `std/` and, if it needs Rust FFI backing, the
-corresponding `.rs` file. Update `docs/src/reference/stdlib.md` and add an
-example to `examples/` if the feature warrants one.
+Add the Canon wrapper under `packages/canon/std/src/`. If it needs a new
+host binding, declare the WIT import in the package's `canon.toml`
+(`[imports]`) and regenerate the vendored bindings with `just
+regen-bindings` (= `canon install packages/canon/std`) — never hand-edit
+the `bindgen/` tree. Add an example to `examples/` if the feature warrants
+one.
 
 ### Documentation
 
