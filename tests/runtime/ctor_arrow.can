@@ -17,7 +17,7 @@ Int => Greeting {
         -> Greeting
 }
 
-main = () => Unit {
+Unit => Program {
     Greeting() -> Print
     7
         -> Greeting

@@ -1,12 +1,16 @@
 Content = String
 
-describeParam = (Option) => String {
+Described = (Option) => String {
     Option -> (
         * None => String { "none" }
         * Some<Content> => String { "some" }
     )
 }
 
-main = () => Unit {
-    "ok" -> Print
+Unit => Program {
+    "hi"
+        -> Content
+        -> Some
+        -> Described
+        -> Print
 }

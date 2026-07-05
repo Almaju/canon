@@ -1,15 +1,14 @@
 Greeting = String
 
-shout = (Greeting) -> String {
+Shout = (Greeting) => String {
     "HELLO"
 }
 
-murmur = (Greeting) -> String {
+Murmur = (Greeting) => String {
     "hello"
 }
 
-main = () -> Unit {
-    Greeting("hi")
-        .shout()
-        .print()
+Unit => Program {
+    "hi" -> Greeting -> Murmur -> Print
+    "hi" -> Greeting -> Shout -> Print
 }

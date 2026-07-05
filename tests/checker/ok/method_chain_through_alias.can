@@ -1,6 +1,6 @@
 Greeting = String
 
-main = () => Unit {
+Unit => Program {
     "hello"
         -> Greeting
         -> Joined(" world")

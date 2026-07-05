@@ -1,0 +1,1 @@
+error[tests/checker/fail/decl_arrow_pipe.can:3:17]: `->` is the value-level pipe, not a declaration arrow: declarations use `=>` (write `(A) => B { … }`)

@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     Map()
         -> Inserted("a" * "1")
         -> Length

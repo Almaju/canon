@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     List("alpha" * "beta")
         -> Mapped((String) => String { String -> Joined("!") })
         -> Json

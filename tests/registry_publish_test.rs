@@ -55,10 +55,10 @@ fn run_canon(cwd: &Path, config: &Path, args: &[&str]) -> (String, String, Optio
     )
 }
 
-const SHOUT_CAN: &str = "shout = (String) => String {\n    String -> Joined(\"!\")\n}\n";
+const SHOUT_CAN: &str = "Shouted = (String) => String {\n    String -> Joined(\"!\")\n}\n";
 
 const MAIN_CAN: &str =
-    "main = () => Unit {\n    \"hello\"\n        .shout()\n        -> Print\n}\n";
+    "Unit => Program {\n    \"hello\"\n        -> Shouted\n        -> Print\n}\n";
 
 #[test]
 fn publish_install_run_round_trip() {
@@ -68,7 +68,7 @@ fn publish_install_run_round_trip() {
     // Publisher side: a one-file pure-Canon library.
     let lib = dir.join("lib");
     fs::create_dir_all(&lib).unwrap();
-    fs::write(lib.join("shout.can"), SHOUT_CAN).unwrap();
+    fs::write(lib.join("shouted.can"), SHOUT_CAN).unwrap();
     let (stdout, stderr, code) = run_canon(&lib, &config, &["publish", "acme:greet@1.0.0"]);
     assert_eq!(
         code,
@@ -95,7 +95,7 @@ fn publish_install_run_round_trip() {
     );
     // The pin is the directory name; the vendored file is byte-for-byte
     // the published source.
-    let vendored = fs::read_to_string(app.join("deps/acme/greet@1.0.0/shout.can")).unwrap();
+    let vendored = fs::read_to_string(app.join("deps/acme/greet@1.0.0/shouted.can")).unwrap();
     assert_eq!(
         vendored, SHOUT_CAN,
         "vendored source must be the published source, unstamped"
@@ -117,7 +117,7 @@ fn bare_publish_starts_at_0_1_0_and_patch_bumps() {
     let config = write_registry_config(&dir);
     let lib = dir.join("lib");
     fs::create_dir_all(&lib).unwrap();
-    fs::write(lib.join("shout.can"), SHOUT_CAN).unwrap();
+    fs::write(lib.join("shouted.can"), SHOUT_CAN).unwrap();
 
     let (stdout, _, code) = run_canon(&lib, &config, &["publish", "acme:greet"]);
     assert_eq!(code, Some(0));
@@ -143,7 +143,7 @@ fn published_dependency_list_surfaces_on_install() {
     // name is the machine-recorded dep list.
     let lib = dir.join("lib");
     fs::create_dir_all(lib.join("deps/other/pkg@2.0.0")).unwrap();
-    fs::write(lib.join("shout.can"), SHOUT_CAN).unwrap();
+    fs::write(lib.join("shouted.can"), SHOUT_CAN).unwrap();
     fs::write(
         lib.join("deps/other/pkg@2.0.0/thing.can"),
         "thing = (String) => String {\n    String -> Joined(\"?\")\n}\n",
@@ -163,7 +163,7 @@ fn published_dependency_list_surfaces_on_install() {
     );
     // Only the package's own files are vendored — the dependency is the
     // consumer's own install (until slice 4 automates it).
-    assert!(app.join("deps/acme/combo@1.0.0/shout.can").is_file());
+    assert!(app.join("deps/acme/combo@1.0.0/shouted.can").is_file());
     assert!(!app.join("deps/other").exists());
 }
 
@@ -175,8 +175,8 @@ fn publish_refuses_unformatted_source() {
     fs::create_dir_all(&lib).unwrap();
     // Same program, non-canonical whitespace.
     fs::write(
-        lib.join("shout.can"),
-        "shout = (String) => String { String -> Joined(\"!\") }\n",
+        lib.join("shouted.can"),
+        "Shouted = (String) => String { String -> Joined(\"!\") }\n",
     )
     .unwrap();
 

@@ -1,0 +1,1 @@
+error[tests/checker/fail/union_dispatch_duplicate.can:5:11]: duplicate dispatch arm `True`

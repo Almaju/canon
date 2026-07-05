@@ -1,4 +1,4 @@
-main = () => Result<Unit, MalformedJson> {
+Unit => Result<Program, MalformedJson> {
     "[1, 2, 3]"
         -> Json?
         -> Print

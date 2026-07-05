@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     2.5
         -> Lt(3.5)
         -> Print

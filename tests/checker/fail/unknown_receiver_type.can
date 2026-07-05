@@ -1,7 +1,8 @@
-describe = (Mystery) -> String {
+Described = (Mystery) => String {
     "hello"
 }
 
-main = () -> Unit {
-    "ok".print()
+Unit => Program {
+    "x" -> Described
+    "ok" -> Print
 }

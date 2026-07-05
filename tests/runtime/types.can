@@ -2,10 +2,6 @@ Birthday = String
 
 Bit = One + Zero
 
-Byte = Bit^8
-
-Bytes = Byte^*
-
 Ord = Equal
   + Greater
   + Less
@@ -16,6 +12,12 @@ User = Birthday * Username
 
 Username = String
 
-main = () => Unit {
+Unit => Program {
+    One()
+    Equal()
+    "1990"
+        -> Birthday
+        -> User("canon" -> Username)
+        -> OtherUser
     "type definitions parsed" -> Print
 }

@@ -1,0 +1,5 @@
+Unit => Program {
+    True() -> (
+        * True => Unit { "yes" -> Print }
+    )
+}

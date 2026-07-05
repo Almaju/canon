@@ -1,4 +1,4 @@
-main = () => Result<Unit, Unit> {
+Unit => Result<Program, Unit> {
     42
         -> Ok?
         -> Print

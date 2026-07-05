@@ -8,20 +8,20 @@ Tree = Branch + Leaf
 
 Value = Int
 
-describe = (Tree) => String {
+Described = (Tree) => String {
     Tree -> (
         * Branch => String { "branch" }
         * Leaf => String { "leaf" }
     )
 }
 
-main = () => Unit {
+Unit => Program {
     Leaf()
-        .describe()
+        -> Described
         -> Print
     7
         -> Value
         -> Branch(Leaf() -> Left * Leaf() -> Right)
-        .describe()
+        -> Described
         -> Print
 }

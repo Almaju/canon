@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     7
         -> Sum(35)
         -> Print

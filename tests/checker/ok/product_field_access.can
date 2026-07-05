@@ -4,6 +4,6 @@ User = Birthday * Username
 
 Username = String
 
-main = () => Unit {
+Unit => Program {
     "1990" -> Birthday -> User("alice" -> Username).Username -> Print
 }

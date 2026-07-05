@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     "hello" -> Some -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { "some" -> Print }

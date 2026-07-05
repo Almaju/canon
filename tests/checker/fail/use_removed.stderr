@@ -1,1 +1,0 @@
-error[tests/checker/fail/use_removed.can:1:1]: `use` has been removed: a reference to `Foo` resolves to `foo.can` automatically (project files, then `deps/`, then the standard library) — delete this line

@@ -1,3 +1,7 @@
+echo = (String) => Future<String>
+
+slowEcho = (String) => Future<String>
+
 toLowercase = (String) => String
 
 toUppercase = (String) => String

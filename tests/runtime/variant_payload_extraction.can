@@ -12,7 +12,7 @@ makePass = () => TestResult {
     Pass()
 }
 
-main = () => Unit {
+Unit => Program {
     makeFail() -> (
         * Fail => Unit { Fail -> Print }
         * Pass => Unit { "got pass" -> Print }

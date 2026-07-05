@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     5
         .min(3)
         -> Print

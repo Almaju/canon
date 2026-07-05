@@ -1,3 +1,5 @@
-greeting = () => String {
+Greeting = String
+
+Unit => Greeting {
     "hello"
 }

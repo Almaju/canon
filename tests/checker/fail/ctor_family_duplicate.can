@@ -1,13 +1,13 @@
 Label = String
 
-Label = (Int) -> Label {
+Label = (Int) => Label {
     Label("a")
 }
 
-Label = (Int) -> Label {
+Label = (Int) => Label {
     Label("b")
 }
 
-main = () -> Unit {
+Unit => Program {
     Label(1).print()
 }

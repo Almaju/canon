@@ -1,4 +1,4 @@
-route = (String) => String {
+Routed = (String) => String {
     String -> (
         * "/notes" => String { "index" }
         * "/notes/1" => String { "note one" }
@@ -6,14 +6,14 @@ route = (String) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "/notes"
-        .route()
+        -> Routed
         -> Print
     "/notes/1"
-        .route()
+        -> Routed
         -> Print
     "/oops"
-        .route()
+        -> Routed
         -> Print
 }

@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     <div class="box">hello</div> -> Print
     <p>escaped {{braces}} stay</p> -> Print
     <ul>

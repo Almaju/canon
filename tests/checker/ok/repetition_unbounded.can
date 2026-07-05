@@ -4,6 +4,9 @@ Byte = Bit^8
 
 Bytes = Byte^*
 
-main = () => Unit {
+BytesSlot = Option<Bytes>
+
+Unit => Program {
+    None() -> BytesSlot
     "kleene star type defined" -> Print
 }

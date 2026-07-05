@@ -1,5 +1,0 @@
-use Foo
-
-main = () -> Unit {
-    "x".print()
-}

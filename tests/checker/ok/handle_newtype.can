@@ -1,7 +1,13 @@
 Counter = Handle
 
+CounterSlot = Option<Counter>
+
 Gauge = Handle
 
-main = () => Unit {
+GaugeSlot = Option<Gauge>
+
+Unit => Program {
+    None() -> CounterSlot
+    None() -> GaugeSlot
     "ok" -> Print
 }

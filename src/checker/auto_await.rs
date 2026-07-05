@@ -8,7 +8,7 @@
 //! type mismatch. See the language spec (docs/src/spec/effects-and-async.md)
 //! and the compilation spec (docs/src/spec/compilation.md) for the rationale.
 //!
-//! ## Status (Phase 5, in progress)
+//! ## Status
 //!
 //! Handled today:
 //!   - **Method receiver**: `future.method()` where `future` has static

@@ -47,7 +47,7 @@ update-fixtures:
 # `tests/canon_tests.rs` harness — use that for CI, use this for
 
 # faster local iteration on a single test file.
-test-ow: build
+test-can: build
     #!/usr/bin/env sh
     set -e
     pass=0; fail=0; files=0

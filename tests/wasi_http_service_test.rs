@@ -34,7 +34,7 @@ fn wasi_http_service_smoke() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"home = (Request) => Response {
+        r#"Request => Response {
     "created: "
         -> Joined("ok")
         -> Body
@@ -119,7 +119,7 @@ fn wasi_http_service_response_headers() {
     let src_path = workdir.join("service.can");
     std::fs::write(
         &src_path,
-        r#"home = (Request) => Response {
+        r#"Request => Response {
     "<h1>hi</h1>"
         -> Body
         -> Response(200 -> Status * Headers().set("content-type" * "text/html").set("x-canon" * "1"))

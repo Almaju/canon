@@ -1,0 +1,6 @@
+Unit => Program {
+    True().(
+        * False => Unit { "no" -> Print }
+        * True => Unit { "yes" -> Print }
+    )
+}

@@ -69,16 +69,16 @@ fn print_help() {
     println!();
     println!("Commands:");
     println!("  run [target] [-p name] [--addr <ip:port>] [args...]");
-    println!("                            Compile and run an Canon program.");
+    println!("                            Compile and run a Canon program.");
     println!(
         "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
-    println!("  test <file.can>            Run `() -> TestResult` functions as tests");
+    println!("  test <file.can>            Run `() => TestResult` functions as tests");
     println!("  fmt [path...] [--check]   Format Canon source files or directories");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
-    println!("                              stages: tokens | ast | wat");
+    println!("                              stages: tokens | ast");
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
     println!(
         "                            Generate Canon bindings from a WIT package or WASM component"
@@ -547,10 +547,9 @@ fn cmd_inspect(args: &[String]) {
     match stage {
         "tokens" => inspect_tokens(file_path),
         "ast" => inspect_ast(file_path),
-        "wat" => inspect_wat(file_path),
         other => {
             eprintln!(
-                "error: unknown stage '{}' (expected `tokens`, `ast`, or `wat`)",
+                "error: unknown stage '{}' (expected `tokens` or `ast`)",
                 other
             );
             process::exit(1);
@@ -564,7 +563,6 @@ fn print_inspect_help() {
     println!("  <stage>     One of:");
     println!("                tokens    Lexer output");
     println!("                ast       Parser output (Module debug dump)");
-    println!("                wat       Generated WebAssembly Text");
     println!("  <file.can>   Source file to inspect.");
 }
 
@@ -604,23 +602,6 @@ fn inspect_ast(file_path: &str) {
             process::exit(1);
         }
     }
-}
-
-fn inspect_wat(file_path: &str) {
-    let loaded = load_or_exit(file_path);
-    if !enforce_format(&loaded) {
-        process::exit(1);
-    }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
-    if !errors.is_empty() {
-        for err in &errors {
-            print_error(file_path, err);
-        }
-        eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
-    }
-    let wat = codegen::generate_wat(&loaded.module);
-    println!("{}", wat);
 }
 
 fn cmd_bindgen(args: &[String]) {
@@ -900,7 +881,7 @@ fn cmd_fmt(args: &[String]) {
         let path = Path::new(input);
         if path.is_dir() {
             had_dir_input = true;
-            collect_ow_files(path, &mut files);
+            collect_can_files(path, &mut files);
         } else {
             files.push(path.to_path_buf());
         }
@@ -953,7 +934,7 @@ fn cmd_fmt(args: &[String]) {
 
 /// Recursively collect every `.can` file under `dir`, skipping common
 /// generated/build directories (`target`, `node_modules`, `.git`).
-fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_can_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(err) => {
@@ -978,7 +959,7 @@ fn collect_ow_files(dir: &Path, out: &mut Vec<PathBuf>) {
             ) {
                 continue;
             }
-            collect_ow_files(&path, out);
+            collect_can_files(&path, out);
         } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
             out.push(path);
         }
@@ -1034,18 +1015,7 @@ fn check_spec(spec: &BuildSpec) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
-    // Dead-code lint: non-fatal, printed to stderr. Canon's "always
-    // clean" rule — unreachable declarations are flagged here and
-    // promoted to a failure in CI workflows that grep for warnings.
-    let warnings = checker::lint_dead_code(&loaded.module, loaded.entry_items_start);
-    for w in &warnings {
-        eprintln!("warning[{}]: {}", spec.entry_str(), w);
-    }
-    if warnings.is_empty() {
-        println!("All checks passed.");
-    } else {
-        println!("All checks passed ({} warning(s)).", warnings.len());
-    }
+    println!("All checks passed.");
     true
 }
 
@@ -1195,7 +1165,7 @@ fn cmd_test(args: &[String]) {
 
     if tests.is_empty() {
         eprintln!(
-            "error: no tests found in `{}`: a test is a function with signature `() -> TestResult`",
+            "error: no tests found in `{}`: a test is a function with signature `() => TestResult`",
             file_path
         );
         process::exit(1);
@@ -1211,7 +1181,7 @@ fn cmd_test(args: &[String]) {
     // is synthesised as source too and inserted into the *import
     // region* of the module (before `entry_items_start`), where the
     // alphabetical-ordering rule doesn't apply to it.
-    let exit_binding = "exitWithCode = (Int) -> Unit\n";
+    let exit_binding = "exitWithCode = (Int) => Unit\n";
     let mut exit_items = match parse_synthesised(exit_binding) {
         Ok(items) => items,
         Err(err) => {
@@ -1229,7 +1199,7 @@ fn cmd_test(args: &[String]) {
     }
 
     let synthesised = synthesise_test_main(&tests);
-    let synth_items = match parse_synthesised(&synthesised) {
+    let mut synth_items = match parse_synthesised(&synthesised) {
         Ok(items) => items,
         Err(err) => {
             eprintln!(
@@ -1240,6 +1210,16 @@ fn cmd_test(args: &[String]) {
             process::exit(1);
         }
     };
+    // The harness main is the compiler's own, not user source — mark it
+    // anonymous so the checker's "entries are anonymous" rule sees it
+    // exactly like a user-written `Unit => Program { … }`.
+    for item in &mut synth_items {
+        if let Item::Function(f) = item {
+            if f.name.name == "main" {
+                f.anonymous = true;
+            }
+        }
+    }
     loaded.module.items.extend(synth_items);
 
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
@@ -1278,18 +1258,18 @@ fn synthesise_test_main(tests: &[String]) -> String {
     // prints `[ ok ] testName` and yields 0. The per-test values are
     // summed with `.add` and the total failure count drives
     // `exit-with-code`: any failure exits 1, all-pass exits 0.
-    let mut src = String::from("main = () -> Unit {\n    ");
+    let mut src = String::from("main = () => Unit {\n    ");
     for (i, name) in tests.iter().enumerate() {
         if i > 0 {
             src.push_str(".add(");
         }
-        src.push_str(&format!("{}().(\n", name));
+        src.push_str(&format!("{}() -> (\n", name));
         src.push_str(&format!(
-            "        * (Fail) -> Int {{ \"[FAIL] {}: \".concat(Fail.String).print() 1 }}\n",
+            "        * Fail => Int {{ \"[FAIL] {}: \".concat(Fail.String).print() 1 }}\n",
             name
         ));
         src.push_str(&format!(
-            "        * (Pass) -> Int {{ \"[ ok ] {}\".print() 0 }}\n",
+            "        * Pass => Int {{ \"[ ok ] {}\".print() 0 }}\n",
             name
         ));
         src.push_str("    )");
@@ -1297,9 +1277,9 @@ fn synthesise_test_main(tests: &[String]) -> String {
             src.push(')');
         }
     }
-    src.push_str(".eq(0).(\n");
-    src.push_str("        * (False) -> Unit { 1.exitWithCode() }\n");
-    src.push_str("        * (True) -> Unit { 0.exitWithCode() }\n");
+    src.push_str(".eq(0) -> (\n");
+    src.push_str("        * False => Unit { 1.exitWithCode() }\n");
+    src.push_str("        * True => Unit { 0.exitWithCode() }\n");
     src.push_str("    )\n");
     src.push_str("}\n");
     src
@@ -1457,7 +1437,7 @@ fn load_or_exit(file_path: &str) -> LoadResult {
 /// than exiting. Used by workspace iteration so one member's load failure
 /// doesn't terminate the whole run.
 fn load_or_print(file_path: &str) -> Option<LoadResult> {
-    // Auto-install: if the file lives inside an Canon project whose
+    // Auto-install: if the file lives inside a Canon project whose
     // `[imports]` are out-of-date with what's materialized under
     // `bindgen/`, run `canon install` first so the binding files exist
     // before the loader looks for them. This is what makes `canon run`

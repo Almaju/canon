@@ -12,7 +12,7 @@ Show = (Name) => String {
     "Alice"
 }
 
-main = () => Unit {
+Unit => Program {
     "hi"
         -> Greeting
         -> Show

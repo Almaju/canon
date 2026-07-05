@@ -1,10 +1,10 @@
-label = (Int) => Json {
+Labeled = (Int) => Json {
     {"answer":Int,"doubled":Int -> Product(2)}
 }
 
-main = () => Unit {
+Unit => Program {
     42
-        .label()
+        -> Labeled
         -> Print
     {"ok":True()} -> Print
 }

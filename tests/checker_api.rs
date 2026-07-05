@@ -40,15 +40,15 @@ fn method_ordering_only_within_entry_file() {
     let source = r#"
 HttpRequest = String
 
-path = (HttpRequest) -> String {
+path = (HttpRequest) => String {
     HttpRequest
 }
 
-chatHandler = (HttpRequest) -> String {
+chatHandler = (HttpRequest) => String {
     HttpRequest
 }
 
-main = () -> Unit {
+main = () => Unit {
     "ok".print()
 }
 "#;
@@ -76,7 +76,7 @@ main = () -> Unit {
 #[test]
 fn check_and_check_with_entry_zero_agree() {
     let source = r#"
-main = () -> Unit {
+main = () => Unit {
     "hi".print()
 }
 "#;
@@ -94,15 +94,15 @@ fn dead_code_lint_flags_unreachable_declarations() {
     let source = r#"
 Greeting = String
 
-deadHelper = (Int) -> Int {
+deadHelper = (Int) => Int {
     Int.add(1)
 }
 
-greet = (Greeting) -> Unit {
+greet = (Greeting) => Unit {
     Greeting.print()
 }
 
-main = () -> Unit {
+main = () => Unit {
     Greeting("hi").greet()
 }
 "#;
@@ -115,8 +115,8 @@ main = () -> Unit {
         warnings
     );
     assert!(
-        warnings[0].contains("`deadHelper`"),
-        "warning should name the dead function: {:?}",
+        warnings[0].message().contains("`deadHelper`"),
+        "the error should name the dead function: {:?}",
         warnings
     );
 }
@@ -134,15 +134,15 @@ Less = Unit
 
 Ord = Equal + Greater + Less
 
-describe = (Ord) -> String {
-    Ord.(
+describe = (Ord) => String {
+    Ord -> (
         * Equal => String { "equal" }
         * Greater => String { "greater" }
         * Less => String { "less" }
     )
 }
 
-main = () -> Unit {
+main = () => Unit {
     Equal().describe().print()
 }
 "#;
@@ -156,7 +156,7 @@ main = () -> Unit {
 #[test]
 fn dead_code_lint_skips_libraries() {
     let source = r#"
-helper = (Int) -> Int {
+helper = (Int) => Int {
     Int.add(1)
 }
 "#;

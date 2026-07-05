@@ -1,6 +1,6 @@
 Path = String
 
-classify = (Int) => String {
+Classified = (Int) => String {
     Int -> (
         * 0 => String { "zero" }
         * 1 => String { "one" }
@@ -8,7 +8,7 @@ classify = (Int) => String {
     )
 }
 
-route = (Path) => String {
+Routed = (Path) => String {
     Path -> (
         * "/" => String { "home" }
         * "/notes" => String { "index" }
@@ -16,12 +16,12 @@ route = (Path) => String {
     )
 }
 
-main = () => Unit {
+Unit => Program {
     "/notes"
         -> Path
-        .route()
+        -> Routed
         -> Print
     2
-        .classify()
+        -> Classified
         -> Print
 }

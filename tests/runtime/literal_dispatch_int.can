@@ -1,4 +1,4 @@
-describe = (Int) => Unit {
+Described = (Int) => Unit {
     Int -> (
         * 0 => Unit { "zero" -> Print }
         * 1 => Unit { "one" -> Print }
@@ -6,8 +6,8 @@ describe = (Int) => Unit {
     )
 }
 
-main = () => Unit {
-    0.describe()
-    1.describe()
-    42.describe()
+Unit => Program {
+    0 -> Described
+    1 -> Described
+    42 -> Described
 }

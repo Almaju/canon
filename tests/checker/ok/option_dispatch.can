@@ -1,4 +1,4 @@
-main = () => Unit {
+Unit => Program {
     7 -> Some -> (
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { "some" -> Print }

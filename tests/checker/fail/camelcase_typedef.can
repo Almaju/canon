@@ -1,0 +1,5 @@
+speed = Int
+
+Unit => Program {
+    "hi" -> Print
+}

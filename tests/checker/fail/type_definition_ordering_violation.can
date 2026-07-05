@@ -2,6 +2,8 @@ Zebra = String
 
 Apple = String
 
-main = () -> Unit {
-    "ok".print()
+Unit => Program {
+    "a" -> Apple
+    "z" -> Zebra
+    "ok" -> Print
 }

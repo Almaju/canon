@@ -43,10 +43,10 @@ fn future_is_a_known_generic_type_in_extern_decl() {
     // type-alias). This test asserts that recognising the name no longer
     // produces an "unknown type" error.
     let source = r#"
-futureString = () -> Future<String>
+futureString = () => Future<String>
 
-main = () -> Unit {
-    "hello".print()
+Unit => Unit {
+    futureString().print()
 }
 "#;
     let m = parse_and_transform(source);
@@ -61,10 +61,13 @@ main = () -> Unit {
 #[test]
 fn stream_is_a_known_generic_type_in_extern_decl() {
     let source = r#"
-tick = () -> Stream<Int>
+tick = () => Stream<Int>
 
-main = () -> Unit {
-    "hello".print()
+Ticked = Stream<Int>
+
+Unit => Unit {
+    tick() -> Ticked
+    "done".print()
 }
 "#;
     let m = parse_and_transform(source);
@@ -83,9 +86,9 @@ fn auto_await_wraps_future_receiver_in_method_call() {
     // call, the auto-await transform should wrap the receiver in
     // `Expr::Await`.
     let source = r#"
-wait = (Network) -> Future<String>
+wait = (Network) => Future<String>
 
-main = (Network) -> Unit {
+main = (Network) => Unit {
     wait(Network).print()
 }
 "#;
@@ -117,11 +120,11 @@ fn auto_await_does_not_wrap_sync_receiver() {
     // A method whose receiver is a sync constructor call should NOT be
     // wrapped — only `Future<T>` triggers the rewrite.
     let source = r#"
-Greet = (String) -> String {
+Greet = (String) => String {
     "hi"
 }
 
-main = () -> Unit {
+main = () => Unit {
     "name".Greet().print()
 }
 "#;
@@ -160,9 +163,9 @@ fn auto_await_wraps_future_operand_of_try() {
     // `?` position (mirroring how it already fires at method-receiver
     // positions).
     let source = r#"
-slowRead = (Filesystem) -> Future<Result<String, String>>
+slowRead = (Filesystem) => Future<Result<String, String>>
 
-main = (Filesystem) -> Unit {
+main = (Filesystem) => Unit {
     slowRead(Filesystem)?.print()
 }
 "#;
@@ -202,11 +205,11 @@ fn auto_await_does_not_wrap_sync_try_operand() {
     let source = r#"
 MyError = String
 
-parse = (String) -> Result<Int, MyError> {
+parse = (String) => Result<Int, MyError> {
     Ok(0)
 }
 
-main = () -> Unit {
+main = () => Unit {
     parse("42")?.print()
 }
 "#;
@@ -245,13 +248,13 @@ fn auto_await_wraps_future_argument_at_method_call() {
     // exact. `slowFetch()` returns `Future<String>` (after the loader's
     // wrap rule), the param is `String`, so the arg gets wrapped.
     let source = r#"
-slowFetch = () -> Future<String>
+slowFetch = () => Future<String>
 
-append = (String * String) -> String {
+append = (String * String) => String {
     String
 }
 
-main = () -> Unit {
+main = () => Unit {
     "prefix:".append(slowFetch()).print()
 }
 "#;
@@ -307,13 +310,13 @@ fn auto_await_does_not_wrap_arg_when_param_expects_future() {
     // auto-await: the callee is asking for the unforced future. This is the
     // conservative-match property of `future_inner_matches`.
     let source = r#"
-slowFetch = () -> Future<String>
+slowFetch = () => Future<String>
 
-noAwait = (Future<String>) -> Unit {
+noAwait = (Future<String>) => Unit {
     "side".print()
 }
 
-main = () -> Unit {
+main = () => Unit {
     noAwait(slowFetch())
 }
 "#;
@@ -349,15 +352,15 @@ fn async_analysis_seeds_extern_async_functions() {
     // A function whose return is `Future<T>` is a direct async trigger
     // — its caller must become suspending too.
     let source = r#"
-slowRead = (Filesystem) -> Future<String>
+slowRead = (Filesystem) => Future<String>
 
-main = (Filesystem) -> Unit {
+main = (Filesystem) => Unit {
     slowRead(Filesystem).print()
 }
 "#;
     let m = parse(source);
     let set = async_analysis::analyse(&m);
-    // `slowRead = (Filesystem) -> Future<String>` is normalised by the
+    // `slowRead = (Filesystem) => Future<String>` is normalised by the
     // loader's bindings rewrite so that `Filesystem` becomes the
     // receiver; the function-table key is therefore
     // `(Some("Filesystem"), "slowRead")`. `main` is special-cased by
@@ -378,17 +381,17 @@ main = (Filesystem) -> Unit {
 fn async_analysis_propagates_through_call_graph() {
     // a → b → c, where c is extern async. All three should be suspending.
     let source = r#"
-c = (Filesystem) -> Future<String>
+c = (Filesystem) => Future<String>
 
-b = (Filesystem) -> String {
+b = (Filesystem) => String {
     c(Filesystem)
 }
 
-a = (Filesystem) -> String {
+a = (Filesystem) => String {
     b(Filesystem)
 }
 
-main = (Filesystem) -> Unit {
+main = (Filesystem) => Unit {
     a(Filesystem).print()
 }
 "#;
@@ -416,11 +419,11 @@ main = (Filesystem) -> Unit {
 fn async_analysis_leaves_sync_functions_alone() {
     // No async triggers anywhere → empty async set.
     let source = r#"
-double = (Int) -> Int {
+double = (Int) => Int {
     Int.mul(2)
 }
 
-main = (Stdout) -> Unit {
+main = (Stdout) => Unit {
     "hello".print(Stdout)
 }
 "#;
@@ -437,9 +440,9 @@ main = (Stdout) -> Unit {
 fn async_analysis_with_no_extern_async_returns_empty_for_sync_extern() {
     // A non-`.async` extern (synchronous) should not poison the async set.
     let source = r#"
-syncRead = (Filesystem) -> String
+syncRead = (Filesystem) => String
 
-main = (Filesystem) -> Unit {
+main = (Filesystem) => Unit {
     syncRead(Filesystem).print()
 }
 "#;
@@ -456,11 +459,11 @@ main = (Filesystem) -> Unit {
 fn auto_await_is_idempotent() {
     // Running the transform twice should not double-wrap Future receivers.
     let source = r#"
-Wait = (Network) -> Future<String> {
+Wait = (Network) => Future<String> {
     "hello"
 }
 
-main = (Network) -> Unit {
+main = (Network) => Unit {
     Wait(Network).print()
 }
 "#;

@@ -1,16 +1,16 @@
-double = (String) => Result<Int, MalformedInt> {
+Doubled = (String) => Result<Int, MalformedInt> {
     String
         -> Int?
         -> Product(2)
         -> Ok
 }
 
-main = () => Unit {
-    "21".double() -> (
+Unit => Program {
+    "21" -> Doubled -> (
         * Err<MalformedInt> => Unit { "err" -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
-    "x".double() -> (
+    "x" -> Doubled -> (
         * Err<MalformedInt> => Unit { MalformedInt -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )

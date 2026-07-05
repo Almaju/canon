@@ -2,6 +2,9 @@ Bit = One + Zero
 
 Byte = Bit^8
 
-main = () => Unit {
+ByteSlot = Option<Byte>
+
+Unit => Program {
+    None() -> ByteSlot
     "byte type defined" -> Print
 }

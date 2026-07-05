@@ -14,7 +14,7 @@ Greeting => Loud {
         -> Loud
 }
 
-main = () => Unit {
+Unit => Program {
     7
         -> Greeting
         -> Loud

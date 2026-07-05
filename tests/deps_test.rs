@@ -137,7 +137,7 @@ fn check_errors(project: &str) -> Vec<String> {
 
 #[test]
 fn two_vendored_versions_are_rejected() {
-    // Two versioned siblings both declare `shout` with the same
+    // Two versioned siblings both declare `Shouted` with the same
     // signature. Co-declaring a function name is legal (families), but
     // two implementations on the same receiver with the same first
     // input are a duplicate — the checker names the collision (install
@@ -145,20 +145,20 @@ fn two_vendored_versions_are_rejected() {
     let msgs = check_errors("fail_two_versions");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("duplicate function `shout` on `String`")),
+            .any(|m| m.contains("duplicate function `Shouted` on `String`")),
         "expected a duplicate-function error, got: {msgs:?}"
     );
 }
 
 #[test]
 fn deps_and_local_resolution_is_ambiguous() {
-    // A local file and a vendored dep both implement `shout` on
+    // A local file and a vendored dep both implement `Shouted` on
     // `String`. Both load (function names may co-resolve); the
     // duplicate-definition guard reports the actual conflict.
     let msgs = check_errors("fail_ambiguous");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("duplicate function `shout` on `String`")),
+            .any(|m| m.contains("duplicate function `Shouted` on `String`")),
         "expected a duplicate-function error, got: {msgs:?}"
     );
 }

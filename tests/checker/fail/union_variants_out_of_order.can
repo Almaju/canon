@@ -8,6 +8,7 @@ Fruit = Cherry
   + Banana
   + Apple
 
-main = () -> Unit {
-    "ok".print()
+Unit => Program {
+    "a" -> Apple
+    "ok" -> Print
 }

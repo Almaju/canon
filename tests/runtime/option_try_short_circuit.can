@@ -1,23 +1,23 @@
-first = (Int) => Option<String> {
+First = (Int) => Option<String> {
     Int -> Eq(0) -> (
         * False => Option<String> { "found" -> Some }
         * True => Option<String> { None() }
     )
 }
 
-second = (Int) => Option<String> {
+Second = (Int) => Option<String> {
     Int
         -> First?
         -> Joined(" and used")
         -> Some
 }
 
-main = () => Unit {
-    5.second() -> (
+Unit => Program {
+    5 -> Second -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    0.second() -> (
+    0 -> Second -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )

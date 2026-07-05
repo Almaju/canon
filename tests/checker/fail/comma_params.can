@@ -1,0 +1,13 @@
+Pair = Left * Right
+
+Left = Int
+
+Right = Int
+
+Pair = (Left, Right) => Pair {
+    Pair(Left * Right)
+}
+
+Unit => Program {
+    Pair(1 -> Left * 2 -> Right) -> Left -> String -> Print
+}

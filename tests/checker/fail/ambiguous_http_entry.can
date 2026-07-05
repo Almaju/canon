@@ -1,7 +1,7 @@
-about = (Request) -> Response {
+Request => Response {
     Response(Body("") * Headers() * Status(200))
 }
 
-home = (Request) -> Response {
-    Response(Body("") * Headers() * Status(200))
+Request => Response {
+    Response(Body("ok") * Headers() * Status(200))
 }

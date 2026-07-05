@@ -1,7 +1,7 @@
-main = () -> Unit {
+Unit => Program {
     "first".print()
 }
 
-main = () -> Unit {
+Unit => Program {
     "second".print()
 }

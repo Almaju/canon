@@ -1,9 +1,9 @@
-assistantMessage = (Unit) => String {
+AssistantMessage = String
+
+Unit => AssistantMessage {
     "hello"
 }
 
-main = () => Unit {
-    Unit
-        .assistantMessage()
-        -> Print
+Unit => Program {
+    AssistantMessage() -> Print
 }

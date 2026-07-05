@@ -1,23 +1,23 @@
-classify = (Int) => Result<String, String> {
+Classified = (Int) => Result<String, String> {
     Int -> Eq(0) -> (
         * False => Result<String, String> { "nonzero" -> Ok }
         * True => Result<String, String> { "was zero" -> Err }
     )
 }
 
-describe = (Int) => Result<String, String> {
+Described = (Int) => Result<String, String> {
     Int
-        .classify()?
+        -> Classified?
         -> Joined(" indeed")
         -> Ok
 }
 
-main = () => Unit {
-    3.describe() -> (
+Unit => Program {
+    3 -> Described -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }
     )
-    0.describe() -> (
+    0 -> Described -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }
     )

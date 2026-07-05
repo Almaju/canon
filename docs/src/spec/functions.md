@@ -2,47 +2,63 @@
 
 ## Declaration
 
+Every callable is a **constructor**, named after the type it produces.
+The declaration arrow is `=>`; writing `->` at a declaration site is a
+parse error (`->` is the value-level pipe — see
+[Expressions](./expressions.md)). The anonymous form needs no name of
+its own, because the return type *is* the name:
+
 ```canon
-name = (Components) => ReturnType {
+Components => ReturnType {
     body
 }
 ```
 
-The parenthesised components form a **product**: the function's input
-is a product type, written with the same `*` used everywhere else. There
-are no commas, no parameter names, no defaults:
+The components form a **product**: the input is a product type, written
+with the same `*` used everywhere else. There are no commas, no
+parameter names, no defaults:
 
 ```canon
-greet = (Greeting * Name) => Line {
-    Line(Greeting.String -> Joined(Name.String))
+Greeting * Name => Line {
+    Greeting -> Joined(Name)
 }
 ```
 
+A named form also exists — `Line = (Greeting * Name) => Line { … }` —
+and is how a *result newtype* declares the operation that produces it
+(`Inserted = (Map * String * Value) => Map { … }`). The name must be
+PascalCase: a camelCase declaration is a checker error everywhere
+except [binding files](./compilation.md) and `canon test` functions.
+
 - Components follow the [alphabetical rule](./ordering.md):
-  `(Greeting * Name)` is legal, `(Name * Greeting)` is a compile error.
+  `Greeting * Name => Line` is legal, `Name * Greeting => Line` is a
+  compile error.
 - Components must be distinct types; disambiguate duplicates with a
   newtype (`OtherUser = User`).
 - Inside the body, each component is referenced by **its type name**:
   `Greeting` is the greeting value, `Name` the name value.
-- There is no `Self` and no local variables.
+- `Unit` is the name of "no input": a nullary constructor is
+  `Unit => X`, and call sites write `X()` — the `Unit` is
+  auto-supplied.
+- There are no local variables.
 
 ## Commutative Calling
 
-At the call site, **any component may appear before the dot**; the rest
-are passed in parentheses:
+At the call site, **any component may pipe in on the left of `->`**;
+the rest ride in the parentheses:
 
 ```canon
-Greeting("hi ").greet(Name("ada"))
-Name("ada").greet(Greeting("hi "))
+Greeting("hi ") -> Line(Name("ada"))
+Name("ada") -> Line(Greeting("hi "))
 ```
 
-Both are the same call, a consequence of `*`'s commutativity: the
-receiver position is not privileged, it merely selects which component
-the caller writes on the left. For arities above two, the remaining
+Both are the same call, a consequence of `*`'s commutativity: the piped
+position is not privileged, it merely selects which component the
+caller writes on the left. For arities above two, the remaining
 components are passed as a product value:
 
 ```canon
-router.route(Handler(...) * Path("/api"))
+0 -> Digits(Pos(1) * String)
 ```
 
 ### The Binding Rule
@@ -58,51 +74,30 @@ ambiguity. Arguments (including the receiver) bind to components by:
 3. **Anything else is a compile error.** If two same-typed bare values
    could each fill two alias-related slots, the call is ambiguous and
    the caller must wrap one explicitly. For
-   `compare = (OtherUser * User) => Ord`, `alice.compare(bob)` is
-   rejected: which value is the `OtherUser` decides `Less` versus
-   `Greater`. Write `alice.compare(OtherUser(bob))`.
+   `Ord = (OtherUser * User) => Ord`, `alice -> Ord(bob)` is rejected:
+   which value is the `OtherUser` decides `Less` versus `Greater`.
+   Write `alice -> Ord(OtherUser(bob))`.
 
-**Repeated components bind positionally.** A function over a fixed
-repetition, such as `merge = (User^2) => User`, has positional
-components (`.1`, `.2`, …), so binding is positional too: the receiver
-fills `.1`, remaining arguments fill `.2` and onward in the order
-written. Commutative reordering does not apply, because position *is*
-the identity of a repeated component. Use `T^N` when order is the
-honest semantic (pairs, coordinates); use distinct newtypes when
-components mean different things.
+**Repeated components bind positionally.** A constructor over a fixed
+repetition, such as `User^2 => Merged`, has positional components
+(`.1`, `.2`, …), so binding is positional too: the piped value fills
+`.1`, remaining arguments fill `.2` and onward in the order written.
+Commutative reordering does not apply, because position *is* the
+identity of a repeated component. Use `T^N` when order is the honest
+semantic (pairs, coordinates); use distinct newtypes when components
+mean different things.
 
-## Optional Components
+## Lambdas
 
-No special syntax; optionality is `Option<T>` in the signature, and the
-call site may omit the component:
-
-```canon
-paint = (Option<Color> * String) => Unit { ... }
-
-"hello".paint()
-"hello".paint(Red(0xFF0000))
-```
-
-Omission is legal **only when the component's type implements the
-`Default` trait**; the compiler inserts `T.Default()` for the missing
-component. `Default = <T>() => T` is an ordinary trait, and core ships
-exactly one implementation: `Option<T>`'s, which returns `None()`. So
-omitting an `Option<Color>` means `None()`, but the defaulting is not a
-special case: it is opt-in, declared in source, and a user type that
-wants omission semantics implements `Default` for itself.
-
-## First-Class Functions and Lambdas
-
-A function is referenced as a value by qualifying it with one of its
-component types (`Int.double`) and passed wherever a matching signature
-is expected. Anonymous functions are lambda literals with a **full
-signature** (there is no inference):
+One-off operations are lambda literals with a **full signature** (there
+is no inference), passed wherever a matching function type is expected:
 
 ```canon
-Numbers.map((Int) => Int { Int.mul(Int(3)) })
+Numbers -> Mapped((Int) => Int { Int -> Product(3) })
 ```
 
-Lambda syntax is declaration syntax minus the `name =` prefix.
+Lambda syntax is declaration syntax with the parentheses kept and no
+top-level name: the same `=>` arrow that declares every constructor.
 
 ## Traits
 
@@ -122,25 +117,30 @@ Show = (Greeting) => String {
 }
 ```
 
-Case alone distinguishes the forms: `show` would be a regular function;
-`Show` is a trait implementation. Call sites use ordinary commutative
-syntax: `Greeting("hi").Show()`.
+The bodied declaration and the body-less signature share one name and
+one namespace: a trait is a family of implementations selected by the
+input's type. Call sites use the ordinary pipe:
+`Greeting("hi") -> Show`.
 
 - **Multi-method traits** are products of single-method traits:
   `Presentable = Debug * PrintString`. Implementing the product means
   implementing every factor.
 - **Traits as components**: a trait may appear directly in a parameter
   list; the component binds the implementation, which is invocable:
-  `needsShow = (Show) => Unit { Show().print() }`.
+  `Show => Unit { Show() -> Print }`.
 - **Defaults**: a trait declaration may carry a default body marked
   `{ impl }`; implementing types may override or inherit it.
 - **Constraints**: `<T: Show>` bounds a generic parameter by a trait.
 
 ## The Entry Point
 
-A module becomes a runnable program when **exactly one** free function
-returns a type matching a known WASI world's primary export. Selection
-is by signature, not by name:
+A module becomes a runnable program when **exactly one** anonymous
+arrow returns a type matching a known WASI world's primary export.
+Entries have no name — selection is by signature only, and giving the
+entry a name (a literal `main =` is the classic mistake) is a checker
+error. The CLI entry is `Unit => Program { … }` (fallible:
+`Unit => Result<Program, E> { … }`); the HTTP entry is
+`Request => Response { … }`:
 
 | Return type | World | Export |
 |---|---|---|
@@ -158,7 +158,7 @@ JS host rather than a component.
 
 Rules the compiler enforces:
 
-- Two functions returning a world type: compile error (ambiguous
+- Two arrows returning a world type: compile error (ambiguous
   entry). **Helpers must return ordinary data**, never `Response`.
 - Mixed worlds in one module: compile error; a component exports
   exactly one world.
@@ -174,7 +174,8 @@ The same signature-driven selection powers testing: every
 
 ## Declaration Order
 
-Functions in a file must be declared in alphabetical order; the checker
-enforces this at compile time. The synthesised test `main` and similar
-compiler-generated entries are exempt (they are distinguished by role,
-not name). See [Ordering Rules](./ordering.md).
+Declarations in a file must appear in alphabetical order; the checker
+enforces this at compile time. The entry point and other
+compiler-synthesised arrows are exempt (they are distinguished by
+role, not name). A declaration nothing reaches — **dead code** — is a
+hard error, not a warning. See [Ordering Rules](./ordering.md).

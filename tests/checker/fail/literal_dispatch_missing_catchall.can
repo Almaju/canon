@@ -1,10 +1,10 @@
-route = (String) -> String {
-    String.(
-        * ("/a") -> String { "a" }
-        * ("/b") -> String { "b" }
+Routed = (String) => String {
+    String -> (
+        * "/a" => String { "a" }
+        * "/b" => String { "b" }
     )
 }
 
-main = () -> Unit {
-    "/a".route().print()
+Unit => Program {
+    "/a" -> Routed -> Print
 }

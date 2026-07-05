@@ -1,0 +1,1 @@
+error[tests/checker/fail/union_dispatch_unsorted.can:4:11]: dispatch arms must follow the union's variant order: `False` before `True`

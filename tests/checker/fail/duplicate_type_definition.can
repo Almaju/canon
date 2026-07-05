@@ -2,6 +2,7 @@ Foo = String
 
 Foo = Int
 
-main = () -> Unit {
-    "ok".print()
+Unit => Program {
+    "ok" -> Foo
+    "ok" -> Print
 }

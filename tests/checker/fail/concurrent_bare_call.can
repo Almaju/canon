@@ -1,4 +1,4 @@
-main = () -> Unit {
+Unit => Program {
     parallel("a".slowEcho() * "b".slowEcho())
     race("a".slowEcho() * "b".slowEcho()).print()
 }

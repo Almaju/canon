@@ -1,4 +1,4 @@
-main = () => Result<Unit, MalformedJson> {
+Unit => Result<Program, MalformedJson> {
     "{\"answer\":"
         -> Joined(42 -> ToJson)
         -> Joined(",\"label\":")
