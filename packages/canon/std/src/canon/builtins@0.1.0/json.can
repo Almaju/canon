@@ -1,1 +1,5 @@
-fromFloat = (Float) => Json
+Number = Json
+
+Float => Number {
+    "from-float"
+}

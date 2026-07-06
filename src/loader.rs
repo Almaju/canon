@@ -1,6 +1,6 @@
 use crate::ast::{
     extract_receiver_from_params, resolve_new_syntax, Block, Expr, ExternWasm, FunctionDef,
-    HtmlLitPart, Item, JsonLitPart, MatchArm, Module, Param, TypeExpr,
+    HtmlLitPart, Ident, Item, JsonLitPart, MatchArm, Module, Param, TypeExpr,
 };
 use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
@@ -49,6 +49,83 @@ use std::sync::OnceLock;
 /// exactly as the loader does for a vendored path.
 pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
     let Some(base) = seed_urn else { return };
+
+    // ── New form: string-anchored constructors ───────────────────────
+    // A binding is written as an ordinary anonymous constructor whose
+    // body is a single string literal naming the WIT fragment:
+    //
+    //     Float => Json { "from-float" }
+    //     File => Read { "read" }
+    //     Headers * String * String => Headers { "[method]fields.set" }
+    //     Int => ExitWithCode { "exit-with-code" }
+    //
+    // This is valid, checkable Canon (a constructor family member with a
+    // real body) — the loader lifts it into an extern by reading the WIT
+    // fragment straight from the string, so there is no camelCase-to-kebab
+    // derivation and no packaging vocabulary. The item is already an
+    // `Item::Function` (the parser builds anonymous constructors eagerly);
+    // we set `extern_wasm`, unwrap any `Future<T>` return for async, and
+    // clear the body. `resolve_new_syntax` (run next) then normalises it
+    // into a `Self`-constructor exactly like a hand-written one, so it
+    // registers the same commutative `(Param, Type)` keys and dispatches
+    // through the shared extern-call path.
+    for item in items.iter_mut() {
+        let Item::Function(func) = item else { continue };
+        if !func.anonymous || func.extern_wasm.is_some() {
+            continue;
+        }
+        let Some(fragment) = single_string_body(&func.body) else {
+            continue;
+        };
+        let path = format!("{base}#{fragment}");
+        let is_async = match &func.return_ty {
+            TypeExpr::Named { name, generics, .. } if name == "Future" && generics.len() == 1 => {
+                func.return_ty = generics[0].clone();
+                true
+            }
+            _ => false,
+        };
+        func.extern_wasm = Some(ExternWasm { path, is_async });
+        func.body = Block {
+            exprs: Vec::new(),
+            span: func.body.span,
+        };
+        // Normalise into a `Self`-constructor here rather than leaving it
+        // to `resolve_new_syntax`: that pass only renames a constructor
+        // whose target type is declared in the *same* file, but a binding
+        // routinely constructs a type owned by a sibling wrapper
+        // (`Float => Json` lives in the json binding; `Json` is declared
+        // in the json wrapper). Doing it unconditionally here is what
+        // makes the extern register its commutative `(Param, Type)` key
+        // (see `is_self_ctor` in codegen), so `Float -> Json` at a call
+        // site resolves to the extern instead of a bare newtype wrap.
+        // `Unit`-drop and product-flatten mirror `resolve_new_syntax`.
+        if func.params.len() == 1 {
+            if let TypeExpr::Named { name, generics, .. } = &func.params[0].ty {
+                if name == "Unit" && generics.is_empty() {
+                    func.params.clear();
+                }
+            }
+        }
+        if func.params.len() == 1 {
+            if let TypeExpr::Product { fields, .. } = func.params[0].ty.clone() {
+                func.params = fields
+                    .into_iter()
+                    .map(|ty| Param {
+                        span: ty.span(),
+                        ty,
+                        mutable: false,
+                    })
+                    .collect();
+            }
+        }
+        func.receiver = Some(func.name.clone());
+        func.name = Ident {
+            name: "Self".to_string(),
+            span: func.name.span,
+        };
+        func.anonymous = false;
+    }
 
     // Resource types declared in this file (`X = Handle` newtypes).
     // The rules consult them to spell WIT resource fragments
@@ -160,6 +237,18 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
             span: td.span,
         };
         *item = Item::Function(new_func);
+    }
+}
+
+/// If `block` is exactly one expression and that expression is a plain
+/// (non-interpolated) string literal, return its value — the WIT
+/// fragment a string-anchored binding constructor names. Anything else
+/// (real logic, an interpolation, multiple statements) is not a binding
+/// anchor and is left alone.
+fn single_string_body(block: &Block) -> Option<String> {
+    match block.exprs.as_slice() {
+        [Expr::StringLit { value, .. }] => Some(value.clone()),
+        _ => None,
     }
 }
 

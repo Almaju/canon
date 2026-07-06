@@ -1,1 +1,5 @@
-fetch = (Url) => Result<String, HttpError>
+Fetched = Body
+
+Url => Result<Fetched, HttpError> {
+    "fetch"
+}

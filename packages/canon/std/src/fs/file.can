@@ -1,5 +1,5 @@
 File = String
 
 File = (Path) => Result<File, IoError> {
-    Path.openFile()
+    Path -> Opened
 }
