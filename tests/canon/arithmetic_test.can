@@ -25,6 +25,13 @@ testEqReflexive = () => TestResult {
         -> TestResult("5 should equal itself")
 }
 
+testHexArithmetic = () => TestResult {
+    0xFF
+        -> Sum(1)
+        -> Eq(256)
+        -> TestResult("0xFF + 1 should be 256")
+}
+
 testMaximum = () => TestResult {
     3
         -> Maximum(7)

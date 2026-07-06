@@ -2380,7 +2380,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     ) {
         return true;
     }
-    if matches!(receiver_ty, "Int" | "Float")
+    if matches!(receiver_ty, "Int" | "Float" | "Hex")
         && matches!(
             method,
             "add" | "sub" | "mul" | "div" | "rem" | "ne" | "eq" | "lt" | "gt" | "le" | "ge"
@@ -2704,8 +2704,10 @@ fn method_return_type(receiver_ty: &str, method: &str) -> String {
         | ("Bool", "print") => "Unit".to_string(),
         ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
+        ("Hex", "add" | "sub" | "mul" | "div" | "rem") => "Hex".to_string(),
         ("Int", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         ("Float", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
+        ("Hex", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
         // Conversion is construction: `Int.String()` renders decimal.
         ("Int", "String") => "String".to_string(),
         ("String", "concat" | "substring") => "String".to_string(),
