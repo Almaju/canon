@@ -1,0 +1,6 @@
+Args => Exit {
+    SampleDoc()
+        -> Html
+        -> Print
+    0 -> Exit
+}

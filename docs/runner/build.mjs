@@ -53,7 +53,10 @@ const IMPORT_RE = /(?:^|\n)\s*import\b[^'"]*['"]([^'"]+)['"]/g;
 // page embeds that directory in an <iframe>. Unlike the CLI runner, a
 // web app needs no jco transpile: browsers instantiate the core module
 // directly, and `canon-web.js` is the host. See docs/src/examples/todolist.md.
-const WEB_APPS = [{ name: "todolist", src: "examples/todolist-web" }];
+const WEB_APPS = [
+  { name: "todolist", src: "examples/todolist-web" },
+  { name: "markdown", src: "examples/markdown-web" },
+];
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

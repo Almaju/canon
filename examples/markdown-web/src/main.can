@@ -1,0 +1,39 @@
+Content = Html
+
+Init = Page
+
+Msg = String
+
+Page = String
+
+Update = Page
+
+Page => Content {
+    Page -> (
+        * "guide" => Content { Guide() -> Html }
+        * String => Content { Intro() -> Html }
+    )
+}
+
+Page => Html {
+    <div class="doc">
+        {Styles()}
+        <nav>
+            <button data-msg="Show:intro">Intro</button>
+            <button data-msg="Show:guide">Guide</button>
+        </nav>
+        <hr>
+        {Page -> Content}
+    </div>
+}
+
+Unit => Init {
+    "intro" -> Page
+}
+
+Page * Msg => Update {
+    Msg -> Substring(1 -> From * 5 -> To) -> (
+        * "Show:" => Page { Msg -> Substring(6 -> From * Msg -> Length -> To) -> Page }
+        * String => Page { Page }
+    )
+}

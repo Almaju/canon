@@ -394,6 +394,13 @@ struct LoadCtx {
     /// mutually-referencing files don't chase each other. Reference
     /// discovery consults this set before searching any root.
     defined: HashSet<String>,
+    /// Subset of `defined` limited to *type* declarations. A prelude
+    /// module (`Html`, `Json`, `Int`) is skipped only when its name is a
+    /// user-defined **type** — not merely when something *constructs* it
+    /// (`Model => Html` registers the function name `Html`, but does not
+    /// redefine the prelude type). Keeping the type view separate avoids a
+    /// constructor of `Html` suppressing the `html.can` auto-load.
+    defined_types: HashSet<String>,
     /// Lazily-built recursive file-stem indexes for local project trees,
     /// keyed by the directory the scan was rooted at. See
     /// `local_stem_index`.
@@ -474,6 +481,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         defined: HashSet::new(),
+        defined_types: HashSet::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
@@ -621,7 +629,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
 /// `.Json()` call. Skipped when the file defines `Json` itself or the
 /// module already loaded a `Json` definition.
 fn inject_json_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
-    let already_in_scope = ctx.defined.contains("Json")
+    let already_in_scope = ctx.defined_types.contains("Json")
         || other_items.iter().any(|item| match item {
             Item::TypeDef(td) => td.name.name == "Json",
             Item::Function(f) => f.name.name == "Json" && f.extern_wasm.is_some(),
@@ -658,7 +666,7 @@ fn items_use_json_machinery(items: &[Item]) -> bool {
 /// when the file defines `Html` itself or the module already loaded an
 /// `Html` definition.
 fn inject_html_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
-    let already_in_scope = ctx.defined.contains("Html")
+    let already_in_scope = ctx.defined_types.contains("Html")
         || other_items.iter().any(|item| match item {
             Item::TypeDef(td) => td.name.name == "Html",
             Item::Function(f) => f.name.name == "Html" && f.extern_wasm.is_some(),
@@ -890,6 +898,7 @@ fn register_defined_names(items: &[Item], ctx: &mut LoadCtx) {
         match item {
             Item::TypeDef(td) => {
                 ctx.defined.insert(td.name.name.clone());
+                ctx.defined_types.insert(td.name.name.clone());
             }
             Item::Function(f) => {
                 ctx.defined.insert(f.name.name.clone());
@@ -1367,6 +1376,14 @@ fn build_stem_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
                     }
                 }
                 map.entry(stem.to_string()).or_default().push(path);
+            } else if let Some(stem) = file_name.strip_suffix(".md") {
+                // A `.md` file is a Markdown asset: referencing the
+                // PascalCase name it kebab-cases to (`Notes` → `notes.md`)
+                // loads its contents as a `Markdown` value — the same
+                // name → file rule that governs `.can`, extended to
+                // documents so markdown lives in `.md`, not in string
+                // literals. `load_into` synthesizes the Canon module.
+                map.entry(stem.to_string()).or_default().push(path);
             }
         }
     }
@@ -1494,6 +1511,7 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         defined: HashSet::new(),
+        defined_types: HashSet::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
@@ -1598,14 +1616,54 @@ fn discover_bundled_references(
     Ok(())
 }
 
+/// Synthesize the Canon module for a Markdown asset file. A file
+/// `notes.md` referenced as `Notes` becomes a nullary constructor
+/// carrying the document's text as a `Markdown` value:
+///
+/// ```text
+/// Notes = Markdown
+///
+/// Unit => Notes {
+///     "…file contents, escaped…" -> Markdown
+/// }
+/// ```
+///
+/// So `Notes()` is the document and `Notes() -> Html` renders it — the
+/// markdown lives in the `.md` file, never in a `.can` string literal.
+/// The `= Markdown` alias pulls in `canon/std`'s renderer automatically.
+fn markdown_asset_source(path: &Path, content: &str) -> String {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Doc");
+    let name = crate::bindgen::naming::kebab_to_pascal(stem);
+    let mut lit = String::with_capacity(content.len() + 16);
+    for ch in content.chars() {
+        match ch {
+            '\\' => lit.push_str("\\\\"),
+            '"' => lit.push_str("\\\""),
+            '\n' => lit.push_str("\\n"),
+            '\r' => lit.push_str("\\r"),
+            '\t' => lit.push_str("\\t"),
+            c if (c as u32) < 0x20 => lit.push_str(&format!("\\x{:02x}", c as u32)),
+            c => lit.push(c),
+        }
+    }
+    format!("{name} = Markdown\n\nUnit => {name} {{\n    \"{lit}\" -> Markdown\n}}\n")
+}
+
 fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
     if !ctx.seen.insert(path.to_path_buf()) {
         return Ok(());
     }
-    let source = fs::read_to_string(path).map_err(|err| CanonError::CheckError {
+    let raw = fs::read_to_string(path).map_err(|err| CanonError::CheckError {
         message: format!("could not read `{}`: {}", path.display(), err),
         span: Span::default(),
     })?;
+    // A `.md` file isn't Canon source — it's a Markdown document loaded
+    // as a `Markdown` value. Synthesize the module that binds it.
+    let source = if path.extension().and_then(|e| e.to_str()) == Some("md") {
+        markdown_asset_source(path, &raw)
+    } else {
+        raw
+    };
     ctx.local_sources.push(LoadedSource {
         path: path.to_path_buf(),
         source: source.clone(),

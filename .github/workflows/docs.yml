@@ -85,6 +85,16 @@ jobs:
             --out site/doc/runner \
             --jco jco
 
+      # The docs site as a Canon web app: `docs/src/main.can` is the Elm
+      # triple, and it renders the real `docs/src/*.md` pages through the
+      # standard library's Markdown renderer (resolved by name, no copy).
+      # Staged at /app/ as a live preview alongside the mdBook.
+      - name: Build the Canon docs app
+        run: |
+          target/release/canon build docs
+          mkdir -p site/app
+          cp -r docs/build/. site/app/
+
       - name: Upload artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v5

@@ -613,7 +613,9 @@ fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> 
             "Float" => vec![ValType::F64],
             "Bool" => vec![ValType::I32],
             "Unit" | "Never" => vec![],
-            "String" => vec![ValType::I32, ValType::I32],
+            // Prelude String-aliases (see `resolve_repr_depth`): known
+            // without the stdlib module being loaded.
+            "String" | "Html" | "Json" => vec![ValType::I32, ValType::I32],
             // Capabilities are type-level markers — they don't occupy any
             // runtime slot. Mirrors `WasmGen::resolve_repr` which maps them to
             // `Ty::Unit`. This is what makes `(Random) -> Int` extern decls
@@ -2055,6 +2057,13 @@ impl<'m> WasmGen<'m> {
             "Float" => Ty::F64,
             "Bool" | "True" | "False" => Ty::I32,
             "String" => Ty::Str,
+            // `Html` / `Json` are prelude types — `= String` intrinsically.
+            // Hardcode their repr so an `Html`- or `Json`-returning function
+            // compiles even when nothing pulls the stdlib alias into scope
+            // (e.g. a web `view` whose whole body is one HTML literal).
+            // `NamedStr` matches what the `type_defs` alias path yields when
+            // the module *is* loaded, so dispatch is unchanged either way.
+            "Html" | "Json" => Ty::NamedStr(name.to_string()),
             "Unit" | "Never" => Ty::Unit,
             // Canonical-ABI resource handle — one i32. Newtypes over it
             // (`Request = Handle`, `Response = Handle`) wrap into

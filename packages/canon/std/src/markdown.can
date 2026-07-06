@@ -1,0 +1,668 @@
+BracketClose = Int
+
+DigitRun = Int
+
+FenceBody = Frag
+
+FenceEnd = Int
+
+Frag = String
+
+HashCount = Int
+
+HeadingHtml = Frag
+
+Inline = Frag
+
+IsBlockStart = Bool
+
+IsFence = Bool
+
+IsHeading = Bool
+
+IsItem = Bool
+
+IsOrdered = Bool
+
+IsPara = Bool
+
+IsQuote = Bool
+
+IsSubItem = Bool
+
+LineEnd = Int
+
+ListEnd = Int
+
+ListItems = Frag
+
+Markdown = String
+
+OrderedEnd = Int
+
+OrderedItems = Frag
+
+ParaBody = Frag
+
+ParaEnd = Int
+
+ParenClose = Int
+
+QuoteBody = Frag
+
+QuoteEnd = Int
+
+RenderedBlocks = Frag
+
+RenderedFence = Frag
+
+RenderedHeading = Frag
+
+RenderedList = Frag
+
+RenderedNonList = Frag
+
+RenderedOrdered = Frag
+
+RenderedParagraph = Frag
+
+RenderedQuote = Frag
+
+StarClose = Int
+
+StarOneClose = Int
+
+SubEnd = Int
+
+SubItems = Frag
+
+TickClose = Int
+
+Int * String => BracketClose {
+    Int -> Gt(String -> Length) -> (
+        * False => BracketClose {
+            String -> ByteAt(Int) -> Eq(93) -> (
+                * False => BracketClose { Int -> Sum(1) -> BracketClose(String) }
+                * True => BracketClose { Int }
+            )
+        }
+        * True => BracketClose { Int }
+    )
+}
+
+Int * String => DigitRun {
+    Int -> Gt(String -> Length) -> (
+        * False => DigitRun {
+            String -> ByteAt(Int) -> Ge(48) -> And(String -> ByteAt(Int) -> Le(57)) -> (
+                * False => DigitRun { 0 }
+                * True => DigitRun { Int -> Sum(1) -> DigitRun(String) -> Sum(1) }
+            )
+        }
+        * True => DigitRun { 0 }
+    )
+}
+
+Int * String => FenceBody {
+    Int -> Gt(String -> Length) -> (
+        * False => FenceBody {
+            Int -> IsFence(String) -> (
+                * False => FenceBody {
+                    Int -> LineEnd(String) -> Gt(Int) -> (
+                        * False => FenceBody {
+                            "\n" -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+                        }
+                        * True => FenceBody {
+                            String
+                                -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)
+                                -> Escaped
+                                -> Joined("\n")
+                                -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+                        }
+                    )
+                }
+                * True => FenceBody { "" }
+            )
+        }
+        * True => FenceBody { "" }
+    )
+}
+
+Int * String => FenceEnd {
+    Int -> Gt(String -> Length) -> (
+        * False => FenceEnd {
+            Int -> IsFence(String) -> (
+                * False => FenceEnd { Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) }
+                * True => FenceEnd { Int -> LineEnd(String) -> Sum(1) }
+            )
+        }
+        * True => FenceEnd { Int }
+    )
+}
+
+Int * String => HashCount {
+    Int -> Gt(String -> Length) -> (
+        * False => HashCount {
+            String -> ByteAt(Int) -> Eq(35) -> (
+                * False => HashCount { 0 }
+                * True => HashCount { Int -> Sum(1) -> HashCount(String) -> Sum(1) }
+            )
+        }
+        * True => HashCount { 0 }
+    )
+}
+
+Int * String => HeadingHtml {
+    Int -> Eq(1) -> (
+        * False => HeadingHtml {
+            Int -> Eq(2) -> (
+                * False => HeadingHtml { "<h3>" -> Joined(String) -> Joined("</h3>") }
+                * True => HeadingHtml { "<h2>" -> Joined(String) -> Joined("</h2>") }
+            )
+        }
+        * True => HeadingHtml { "<h1>" -> Joined(String) -> Joined("</h1>") }
+    )
+}
+
+Markdown => Html {
+    1
+        -> RenderedBlocks(Markdown)
+        -> Html
+}
+
+Int * String => Inline {
+    Int -> Gt(String -> Length) -> (
+        * False => Inline {
+            String -> ByteAt(Int) -> Eq(96) -> (
+                * False => Inline {
+                    String -> ByteAt(Int) -> Eq(42) -> (
+                        * False => Inline {
+                            String -> ByteAt(Int) -> Eq(91) -> (
+                                * False => Inline {
+                                    String
+                                        -> Substring(Int -> From * Int -> To)
+                                        -> Escaped
+                                        -> Joined(Int -> Sum(1) -> Inline(String))
+                                }
+                                * True => Inline {
+                                    Int
+                                        -> Sum(1)
+                                        -> BracketClose(String)
+                                        -> Sum(1)
+                                        -> Gt(String -> Length) -> (
+                                        * False => Inline {
+                                            String
+                                                -> ByteAt(Int -> Sum(1) -> BracketClose(String) -> Sum(1))
+                                                -> Eq(40) -> (
+                                                * False => Inline {
+                                                    "[" -> Joined(Int -> Sum(1) -> Inline(String))
+                                                }
+                                                * True => Inline {
+                                                    "<a href=\""
+                                                        -> Joined(String -> Substring(Int -> Sum(1) -> BracketClose(String) -> Sum(2) -> From * Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Difference(1) -> To) -> Escaped)
+                                                        -> Joined("\">")
+                                                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> BracketClose(String) -> Difference(1) -> To)))
+                                                        -> Joined("</a>")
+                                                        -> Joined(Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Sum(1) -> Inline(String))
+                                                }
+                                            )
+                                        }
+                                        * True => Inline {
+                                            "[" -> Joined(Int -> Sum(1) -> Inline(String))
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                        * True => Inline {
+                            Int -> Sum(1) -> Gt(String -> Length) -> (
+                                * False => Inline {
+                                    String -> ByteAt(Int -> Sum(1)) -> Eq(42) -> (
+                                        * False => Inline {
+                                            Int
+                                                -> Sum(1)
+                                                -> StarOneClose(String)
+                                                -> Gt(String -> Length) -> (
+                                                * False => Inline {
+                                                    "<em>"
+                                                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> StarOneClose(String) -> Difference(1) -> To)))
+                                                        -> Joined("</em>")
+                                                        -> Joined(Int -> Sum(1) -> StarOneClose(String) -> Sum(1) -> Inline(String))
+                                                }
+                                                * True => Inline {
+                                                    "*" -> Joined(Int -> Sum(1) -> Inline(String))
+                                                }
+                                            )
+                                        }
+                                        * True => Inline {
+                                            "<strong>"
+                                                -> Joined(1 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> Sum(2) -> StarClose(String) -> Difference(1) -> To)))
+                                                -> Joined("</strong>")
+                                                -> Joined(Int -> Sum(2) -> StarClose(String) -> Sum(2) -> Inline(String))
+                                        }
+                                    )
+                                }
+                                * True => Inline { "*" }
+                            )
+                        }
+                    )
+                }
+                * True => Inline {
+                    "<code>"
+                        -> Joined(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> TickClose(String) -> Difference(1) -> To) -> Escaped)
+                        -> Joined("</code>")
+                        -> Joined(Int -> Sum(1) -> TickClose(String) -> Sum(1) -> Inline(String))
+                }
+            )
+        }
+        * True => Inline { "" }
+    )
+}
+
+Int * String => IsBlockStart {
+    Int
+        -> IsFence(String)
+        -> Or(Int -> IsHeading(String))
+        -> Or(Int -> IsItem(String))
+        -> Or(Int -> IsSubItem(String))
+        -> Or(Int -> IsOrdered(String))
+        -> Or(Int -> IsQuote(String))
+}
+
+Int * String => IsFence {
+    Int -> Sum(2) -> Gt(String -> Length) -> (
+        * False => IsFence {
+            String -> ByteAt(Int) -> Eq(96) -> (
+                * False => IsFence { False() }
+                * True => IsFence {
+                    String -> ByteAt(Int -> Sum(1)) -> Eq(96) -> (
+                        * False => IsFence { False() }
+                        * True => IsFence { String -> ByteAt(Int -> Sum(2)) -> Eq(96) }
+                    )
+                }
+            )
+        }
+        * True => IsFence { False() }
+    )
+}
+
+Int * String => IsHeading {
+    String -> ByteAt(Int) -> Eq(35) -> (
+        * False => IsHeading { False() }
+        * True => IsHeading {
+            Int -> Sum(Int -> HashCount(String)) -> Gt(String -> Length) -> (
+                * False => IsHeading {
+                    String
+                        -> ByteAt(Int -> Sum(Int -> HashCount(String)))
+                        -> Eq(32)
+                }
+                * True => IsHeading { False() }
+            )
+        }
+    )
+}
+
+Int * String => IsItem {
+    Int -> Sum(1) -> Gt(String -> Length) -> (
+        * False => IsItem {
+            String -> ByteAt(Int) -> Eq(45) -> (
+                * False => IsItem { False() }
+                * True => IsItem { String -> ByteAt(Int -> Sum(1)) -> Eq(32) }
+            )
+        }
+        * True => IsItem { False() }
+    )
+}
+
+Int * String => IsOrdered {
+    Int -> Gt(String -> Length) -> (
+        * False => IsOrdered {
+            String -> ByteAt(Int) -> Ge(48) -> And(String -> ByteAt(Int) -> Le(57)) -> (
+                * False => IsOrdered { False() }
+                * True => IsOrdered {
+                    Int -> Sum(Int -> DigitRun(String)) -> Sum(1) -> Gt(String -> Length) -> (
+                        * False => IsOrdered {
+                            String -> ByteAt(Int -> Sum(Int -> DigitRun(String))) -> Eq(46) -> (
+                                * False => IsOrdered { False() }
+                                * True => IsOrdered {
+                                    String
+                                        -> ByteAt(Int -> Sum(Int -> DigitRun(String)) -> Sum(1))
+                                        -> Eq(32)
+                                }
+                            )
+                        }
+                        * True => IsOrdered { False() }
+                    )
+                }
+            )
+        }
+        * True => IsOrdered { False() }
+    )
+}
+
+Int * String => IsPara {
+    Int -> Gt(String -> Length) -> (
+        * False => IsPara {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => IsPara { Int -> IsBlockStart(String) -> Not }
+                * True => IsPara { False() }
+            )
+        }
+        * True => IsPara { False() }
+    )
+}
+
+Int * String => IsQuote {
+    Int -> Sum(1) -> Gt(String -> Length) -> (
+        * False => IsQuote {
+            String -> ByteAt(Int) -> Eq(62) -> (
+                * False => IsQuote { False() }
+                * True => IsQuote { String -> ByteAt(Int -> Sum(1)) -> Eq(32) }
+            )
+        }
+        * True => IsQuote { False() }
+    )
+}
+
+Int * String => IsSubItem {
+    Int -> Sum(3) -> Gt(String -> Length) -> (
+        * False => IsSubItem {
+            String
+                -> ByteAt(Int)
+                -> Eq(32)
+                -> And(String -> ByteAt(Int -> Sum(1)) -> Eq(32))
+                -> And(String -> ByteAt(Int -> Sum(2)) -> Eq(45))
+                -> And(String -> ByteAt(Int -> Sum(3)) -> Eq(32))
+        }
+        * True => IsSubItem { False() }
+    )
+}
+
+Int * String => LineEnd {
+    Int -> Gt(String -> Length) -> (
+        * False => LineEnd {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => LineEnd { Int -> Sum(1) -> LineEnd(String) }
+                * True => LineEnd { Int }
+            )
+        }
+        * True => LineEnd { Int }
+    )
+}
+
+Int * String => ListEnd {
+    Int -> IsItem(String) -> Or(Int -> IsSubItem(String)) -> (
+        * False => ListEnd { Int }
+        * True => ListEnd { Int -> LineEnd(String) -> Sum(1) -> ListEnd(String) }
+    )
+}
+
+Int * String => ListItems {
+    Int -> IsItem(String) -> (
+        * False => ListItems { "" }
+        * True => ListItems {
+            Int -> Sum(2) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+                * False => ListItems {
+                    "<li>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsSubItem(String) -> ( * False => Frag { "" } * True => Frag { "<ul>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> SubItems(String)) -> Joined("</ul>") }))
+                        -> Joined("</li>")
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsSubItem(String) -> ( * False => Frag { Int -> LineEnd(String) -> Sum(1) -> ListItems(String) } * True => Frag { Int -> LineEnd(String) -> Sum(1) -> SubEnd(String) -> ListItems(String) }))
+                }
+                * True => ListItems {
+                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> ListItems(String))
+                }
+            )
+        }
+    )
+}
+
+Int * String => OrderedEnd {
+    Int -> IsOrdered(String) -> (
+        * False => OrderedEnd { Int }
+        * True => OrderedEnd { Int -> LineEnd(String) -> Sum(1) -> OrderedEnd(String) }
+    )
+}
+
+Int * String => OrderedItems {
+    Int -> IsOrdered(String) -> (
+        * False => OrderedItems { "" }
+        * True => OrderedItems {
+            Int
+                -> Sum(Int -> DigitRun(String))
+                -> Sum(2)
+                -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+                * False => OrderedItems {
+                    "<li>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(Int -> DigitRun(String)) -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+                        -> Joined("</li>")
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String))
+                }
+                * True => OrderedItems {
+                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String))
+                }
+            )
+        }
+    )
+}
+
+Int * String => ParaBody {
+    1
+        -> Inline(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsPara(String) -> ( * False => Frag { "" } * True => Frag { " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> ParaBody(String)) }))
+}
+
+Int * String => ParaEnd {
+    Int -> IsPara(String) -> (
+        * False => ParaEnd { Int }
+        * True => ParaEnd { Int -> LineEnd(String) -> Sum(1) -> ParaEnd(String) }
+    )
+}
+
+Int * String => ParenClose {
+    Int -> Gt(String -> Length) -> (
+        * False => ParenClose {
+            String -> ByteAt(Int) -> Eq(41) -> (
+                * False => ParenClose { Int -> Sum(1) -> ParenClose(String) }
+                * True => ParenClose { Int }
+            )
+        }
+        * True => ParenClose { Int }
+    )
+}
+
+Int * String => QuoteBody {
+    Int -> Sum(2) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+        * False => QuoteBody {
+            1
+                -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> ( * False => Frag { "" } * True => Frag { " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String)) }))
+        }
+        * True => QuoteBody {
+            Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> (
+                * False => QuoteBody { "" }
+                * True => QuoteBody {
+                    " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String))
+                }
+            )
+        }
+    )
+}
+
+Int * String => QuoteEnd {
+    Int -> IsQuote(String) -> (
+        * False => QuoteEnd { Int }
+        * True => QuoteEnd { Int -> LineEnd(String) -> Sum(1) -> QuoteEnd(String) }
+    )
+}
+
+Int * String => RenderedBlocks {
+    Int -> Gt(String -> Length) -> (
+        * False => RenderedBlocks {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => RenderedBlocks {
+                    Int -> IsFence(String) -> (
+                        * False => RenderedBlocks {
+                            Int -> IsQuote(String) -> (
+                                * False => RenderedBlocks {
+                                    Int -> IsItem(String) -> (
+                                        * False => RenderedBlocks {
+                                            Int -> IsOrdered(String) -> (
+                                                * False => RenderedBlocks {
+                                                    Int -> RenderedNonList(String)
+                                                }
+                                                * True => RenderedBlocks {
+                                                    Int -> RenderedOrdered(String)
+                                                }
+                                            )
+                                        }
+                                        * True => RenderedBlocks { Int -> RenderedList(String) }
+                                    )
+                                }
+                                * True => RenderedBlocks { Int -> RenderedQuote(String) }
+                            )
+                        }
+                        * True => RenderedBlocks { Int -> RenderedFence(String) }
+                    )
+                }
+                * True => RenderedBlocks { Int -> Sum(1) -> RenderedBlocks(String) }
+            )
+        }
+        * True => RenderedBlocks { "" }
+    )
+}
+
+Int * String => RenderedFence {
+    "<pre><code>"
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+        -> Joined("</code></pre>")
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedHeading {
+    Int -> Sum(Int -> HashCount(String)) -> Sum(1) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+        * False => RenderedHeading {
+            Int
+                -> HashCount(String)
+                -> HeadingHtml(1 -> Inline(String -> Substring(Int -> Sum(Int -> HashCount(String)) -> Sum(1) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+        }
+        * True => RenderedHeading {
+            Int
+                -> HashCount(String)
+                -> HeadingHtml("")
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> RenderedBlocks(String))
+        }
+    )
+}
+
+Int * String => RenderedList {
+    "<ul>"
+        -> Joined(Int -> ListItems(String))
+        -> Joined("</ul>")
+        -> Joined(Int -> ListEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedNonList {
+    String -> ByteAt(Int) -> Eq(35) -> (
+        * False => RenderedNonList { Int -> RenderedParagraph(String) }
+        * True => RenderedNonList {
+            Int -> Sum(Int -> HashCount(String)) -> Gt(String -> Length) -> (
+                * False => RenderedNonList {
+                    String -> ByteAt(Int -> Sum(Int -> HashCount(String))) -> Eq(32) -> (
+                        * False => RenderedNonList { Int -> RenderedParagraph(String) }
+                        * True => RenderedNonList { Int -> RenderedHeading(String) }
+                    )
+                }
+                * True => RenderedNonList { Int -> RenderedParagraph(String) }
+            )
+        }
+    )
+}
+
+Int * String => RenderedOrdered {
+    "<ol>"
+        -> Joined(Int -> OrderedItems(String))
+        -> Joined("</ol>")
+        -> Joined(Int -> OrderedEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedParagraph {
+    "<p>"
+        -> Joined(Int -> ParaBody(String))
+        -> Joined("</p>")
+        -> Joined(Int -> ParaEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedQuote {
+    "<blockquote>"
+        -> Joined(Int -> QuoteBody(String))
+        -> Joined("</blockquote>")
+        -> Joined(Int -> QuoteEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => StarClose {
+    Int -> Sum(1) -> Gt(String -> Length) -> (
+        * False => StarClose {
+            String -> ByteAt(Int) -> Eq(42) -> (
+                * False => StarClose { Int -> Sum(1) -> StarClose(String) }
+                * True => StarClose {
+                    String -> ByteAt(Int -> Sum(1)) -> Eq(42) -> (
+                        * False => StarClose { Int -> Sum(1) -> StarClose(String) }
+                        * True => StarClose { Int }
+                    )
+                }
+            )
+        }
+        * True => StarClose { Int }
+    )
+}
+
+Int * String => StarOneClose {
+    Int -> Gt(String -> Length) -> (
+        * False => StarOneClose {
+            String -> ByteAt(Int) -> Eq(42) -> (
+                * False => StarOneClose { Int -> Sum(1) -> StarOneClose(String) }
+                * True => StarOneClose { Int }
+            )
+        }
+        * True => StarOneClose { Int }
+    )
+}
+
+Int * String => SubEnd {
+    Int -> IsSubItem(String) -> (
+        * False => SubEnd { Int }
+        * True => SubEnd { Int -> LineEnd(String) -> Sum(1) -> SubEnd(String) }
+    )
+}
+
+Int * String => SubItems {
+    Int -> IsSubItem(String) -> (
+        * False => SubItems { "" }
+        * True => SubItems {
+            Int -> Sum(4) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+                * False => SubItems {
+                    "<li>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(4) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+                        -> Joined("</li>")
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> SubItems(String))
+                }
+                * True => SubItems {
+                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> SubItems(String))
+                }
+            )
+        }
+    )
+}
+
+Int * String => TickClose {
+    Int -> Gt(String -> Length) -> (
+        * False => TickClose {
+            String -> ByteAt(Int) -> Eq(96) -> (
+                * False => TickClose { Int -> Sum(1) -> TickClose(String) }
+                * True => TickClose { Int }
+            )
+        }
+        * True => TickClose { Int }
+    )
+}
