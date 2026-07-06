@@ -130,6 +130,15 @@ example name:
     fi
     exec cargo run --quiet -- run "examples/{{ name }}"
 
+# Benchmark codegen::generate() over the example programs.
+#
+# A smoke-grade, Instant::now()-based timer (no criterion dependency)
+# that reports min/median/mean per example. It's an `#[ignore]`d test,
+# so it never gates `cargo test`; this recipe runs it on demand. Tune
+# with CANON_BENCH_ITERS / CANON_BENCH_WARMUP. See tests/bench/.
+bench:
+    cargo test --release --test bench -- --ignored --nocapture
+
 # Regenerate the embedded WASI bindings from the vendored WIT files
 # under wit-vendor/. Run after upgrading the WASI version or after
 # changing the bindgen emitter. Commit the resulting
