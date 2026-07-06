@@ -47,8 +47,8 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `http/Port`, `http/RoutePath`, `http/HttpStatus`, `http/Body` | various | none | HTTP-server helpers |
 | `Json` | `Json = String`, `MalformedJson` | `canon:builtins/json` | `Json` (validate), `ToJson` trait + primitive instances |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
-| `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | `3 -> Exited` terminates with that code |
-| `cli/Args` | `Args = () => List<String>` | `wasi/cli/environment` | the program's argv |
+| `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
+| `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv — the CLI entry's `Args` input, or `Args()` from any code |
 | `cli/Cwd` | `Cwd = () => Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../guide.md#serving-http) |

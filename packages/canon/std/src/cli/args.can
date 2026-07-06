@@ -1,3 +1,5 @@
-Args = () => List<String> {
+Args = List<String>
+
+Unit => Args {
     getArguments()
 }

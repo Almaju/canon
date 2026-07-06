@@ -311,24 +311,27 @@ pub enum EntryWorld {
 ///
 /// Shape registry (matches the table in the language spec (docs/src/spec/)):
 ///
-/// | Return type                                 | World |
-/// |---------------------------------------------|-------|
-/// | `Program`, `Unit`, `ExitCode`               | Cli   |
-/// | `Result<Program, _>` (and `Unit`/`ExitCode`)| Cli   |
-/// | `Response`                                  | Http  |
-/// | `Result<Response, _>`                       | Http  |
+/// | Return type                                        | World |
+/// |----------------------------------------------------|-------|
+/// | `Exit`, `Program`, `Unit`, `ExitCode`              | Cli   |
+/// | `Result<Exit, _>` (and `Program`/`Unit`/`ExitCode`)| Cli   |
+/// | `Response`                                         | Http  |
+/// | `Result<Response, _>`                              | Http  |
 ///
-/// `Program` (`= Unit`, from `canon/std`) is the canonical CLI world
-/// type — the entry is `Unit => Program`, mirroring the HTTP entry's
-/// `Request => Response`. `Unit`/`ExitCode` stay accepted so the legacy
-/// `main` and the `canon test`-synthesized entry still classify.
+/// `Exit` (`= Int`, from `canon/std`) is the canonical CLI world type —
+/// the entry is `Args => Exit`, mirroring the HTTP entry's
+/// `Request => Response`: the command's argument vector flows in, an
+/// exit status flows out. `Program` (`= Unit`) stays accepted for the
+/// arg-less legacy shape (`Unit => Program`), and `Unit`/`ExitCode`
+/// stay accepted so the legacy `main` and the `canon test`-synthesized
+/// entry still classify.
 ///
 /// The unwrapping recurses through `Result` so wrapped and unwrapped
 /// shapes both classify.
 pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
     match ty {
         TypeExpr::Named { name, generics, .. } if generics.is_empty() => match name.as_str() {
-            "Program" | "Unit" | "ExitCode" => Some(EntryWorld::Cli),
+            "Exit" | "Program" | "Unit" | "ExitCode" => Some(EntryWorld::Cli),
             "Response" => Some(EntryWorld::Http),
             _ => None,
         },
@@ -337,6 +340,20 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
         }
         _ => None,
     }
+}
+
+/// Whether an entry's parameter list is the single `Args` input of the
+/// canonical CLI entry `Args => Exit`. `Args` (`= List<String>`, from
+/// `canon/std`) is the command's argument vector; codegen's `build_start`
+/// binds it to the argv read from `wasi:cli/environment#get-arguments`.
+pub fn is_args_entry_param(params: &[Param]) -> bool {
+    matches!(
+        params,
+        [Param {
+            ty: TypeExpr::Named { name, generics, .. },
+            ..
+        }] if name == "Args" && generics.is_empty()
+    )
 }
 
 /// The Elm-architecture entry triple that makes a program a web app
@@ -751,14 +768,19 @@ pub fn resolve_new_syntax(module: &mut Module) {
                         // it a free function so entry selection sees it,
                         // instead of extracting `Request` as a receiver.
                     } else if func.anonymous
-                        && func.params.is_empty()
                         && entry_world_of(&func.return_ty) == Some(EntryWorld::Cli)
+                        && (func.params.is_empty() || is_args_entry_param(&func.params))
                     {
-                        // `() => Unit { … }` — an anonymous CLI entry. The
-                        // entry needs no name; it's selected by its
-                        // world-shaped return like the HTTP handler. Rename
-                        // to the canonical `main` so entry selection, the
-                        // ordering exemption, and codegen's `$start`
+                        // Anonymous CLI entry, selected by its world-shaped
+                        // return like the HTTP handler. Two shapes:
+                        //   `Args => Exit { … }` — the argument vector flows
+                        //     in, an exit status flows out (mirrors
+                        //     `Request => Response`); the `Args` param is
+                        //     kept and codegen's `$start` binds it to argv.
+                        //   `Unit => Program { … }` — the arg-less shape
+                        //     (the `Unit` param was already stripped above).
+                        // Rename to the canonical `main` so entry selection,
+                        // the ordering exemption, and codegen's `$start`
                         // inlining all recognize it with zero other changes.
                         func.name = Ident {
                             name: "main".to_string(),

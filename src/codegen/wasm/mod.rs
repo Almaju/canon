@@ -3090,25 +3090,88 @@ impl<'m> WasmGen<'m> {
     /// to suspend on `waitable-set.wait` — wasmtime won't let a sync
     /// task block, so `run` itself has to be async-lifted.
     fn build_start(&mut self) -> Function {
-        let mut f = Function::new(extra_locals_decl());
-        let scope = LocalScope::empty();
-        let main_body: Option<Block> = self.ast.items.iter().find_map(|item| {
+        // Locate the entry (`main`) and detect the canonical CLI shape
+        // `Args => Exit`, whose single `Args` param is the argument
+        // vector (`Unit => Program` and friends have no param).
+        let main_func: Option<FunctionDef> = self.ast.items.iter().find_map(|item| {
             if let Item::Function(func) = item {
                 if func.name.name == "main" && func.receiver.is_none() {
-                    return Some(func.body.clone());
+                    return Some(func.clone());
                 }
             }
             None
         });
-        if let Some(body) = main_body {
-            let result = self.compile_block_return(&body, &scope, &mut f);
-            self.drop_value(result, &mut f);
+        let has_args = main_func
+            .as_ref()
+            .is_some_and(|func| crate::ast::is_args_entry_param(&func.params));
+
+        // `Args` is `List<String>` — two i32 locals (ptr, len) laid down
+        // before the scratch block. Shifting `param_count` keeps the
+        // scratch-local accessors (`rptr()` = `param_count`, …) aligned
+        // with the two prepended slots.
+        let mut locals = extra_locals_decl();
+        let mut scope = LocalScope::empty();
+        if has_args {
+            locals.insert(0, (2, ValType::I32)); // Args: (ptr, len)
+            scope.param_count = 2;
         }
-        // Deliver `result::ok` (discriminant 0) to the component-level
-        // caller via `task.return`. This must precede `End` and is how
-        // the async-stackful lift signals task completion.
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::Call(self.fn_task_return));
+        let mut f = Function::new(locals);
+
+        if has_args {
+            // Populate the `Args` local by invoking the `Args` nullary
+            // constructor (`Unit => Args { getArguments() }` in
+            // `canon/std`), which reads argv via
+            // `wasi:cli/environment#get-arguments` and leaves the decoded
+            // `List<String>` (ptr, len) on the stack. Compiled before
+            // `Args` is registered in `scope` so the constructor call
+            // can't alias the local it fills.
+            let call = Expr::Constructor {
+                name: crate::ast::Ident {
+                    name: "Args".to_string(),
+                    span: crate::error::Span::default(),
+                },
+                args: Vec::new(),
+                span: crate::error::Span::default(),
+            };
+            let ty = self.compile_expr(&call, &scope, &mut f);
+            debug_assert!(matches!(ty, Ty::List), "Args() must produce a list");
+            f.instruction(&Instruction::LocalSet(1)); // len (top of stack)
+            f.instruction(&Instruction::LocalSet(0)); // ptr
+            scope.vars.insert("Args".to_string(), (0, Ty::List));
+            // `List` is the underlying-type alias, so a body that pipes
+            // the argv through a list builtin (`Args -> At(1)`) resolves.
+            scope.vars.insert("List".to_string(), (0, Ty::List));
+        }
+
+        let result_ty = main_func
+            .as_ref()
+            .map(|func| self.compile_block_return(&func.body, &scope, &mut f));
+        // Deliver the run `result` discriminant to the component-level
+        // caller via `task.return` (0 = ok, 1 = err). This must precede
+        // `End` and is how the async-stackful lift signals completion.
+        match result_ty {
+            // `Args => Exit`: the returned `Exit` (`= Int`) is the exit
+            // status. WASI `run` returns a bare `result`, which can only
+            // encode success/failure — so `Exit(0)` maps to ok (exit 0)
+            // and any nonzero code to err (exit 1). An exact nonzero code
+            // needs the hard `Exited(n)` (`exit-with-code`) escape hatch.
+            Some(Ty::I64) => {
+                f.instruction(&Instruction::I64Const(0));
+                f.instruction(&Instruction::I64Ne); // i32: 1 when nonzero
+                f.instruction(&Instruction::Call(self.fn_task_return));
+            }
+            // `Unit => Program` and other Unit-world entries: nothing to
+            // report — always ok.
+            Some(other) => {
+                self.drop_value(other, &mut f);
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::Call(self.fn_task_return));
+            }
+            None => {
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::Call(self.fn_task_return));
+            }
+        }
         f.instruction(&Instruction::End);
         f
     }

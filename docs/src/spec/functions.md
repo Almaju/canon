@@ -138,14 +138,26 @@ A module becomes a runnable program when **exactly one** anonymous
 arrow returns a type matching a known WASI world's primary export.
 Entries have no name — selection is by signature only, and giving the
 entry a name (a literal `main =` is the classic mistake) is a checker
-error. The CLI entry is `Unit => Program { … }` (fallible:
-`Unit => Result<Program, E> { … }`); the HTTP entry is
+error. The CLI entry is `Args => Exit { … }` — the command's argument
+vector flows in, an exit status flows out, mirroring the HTTP entry's
 `Request => Response { … }`:
 
-| Return type | World | Export |
+| Signature | World | Export |
 |---|---|---|
-| `Program`, `ExitCode`, `Result<Program, _>`, `Result<ExitCode, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
-| `Response`, `Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
+| `Args => Exit` (also `Unit => Program`, `… => Result<Exit, _>`, and the legacy `ExitCode`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
+
+`Args` (`= List<String>`, from `canon/std`) is the program's `argv`: the
+compiler binds it from `wasi:cli/environment#get-arguments` at the lifted
+`run` boundary and hands it to the entry, exactly as the HTTP world hands
+the handler its `Request` — you never fetch it. `Exit` (`= Int`) is the
+exit status. Because `wasi:cli/run` returns a bare `result`, `Exit(0)`
+maps to success (process exit 0) and any nonzero `Exit` to failure
+(exit 1); an exact nonzero code uses the hard `Exited(n)`
+(`wasi:cli/exit#exit-with-code`) escape hatch. A program that reads no
+arguments and reports nothing may use the arg-less shorthand
+`Unit => Program { … }` (`Program = Unit`), whose body needs no explicit
+exit.
 
 A third world — the browser [web target](../reference/web-target.md) — is
 selected by a **triple of anonymous, type-selected constructors**:

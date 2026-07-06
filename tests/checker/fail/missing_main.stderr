@@ -1,1 +1,1 @@
-error[tests/checker/fail/missing_main.can:0:0]: no entry point defined: expected a CLI entry (`Unit => Program`), an HTTP handler (`Request => Response`), or a web-app triple (a `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` constructors).
+error[tests/checker/fail/missing_main.can:0:0]: no entry point defined: expected a CLI entry (`Args => Exit`), an HTTP handler (`Request => Response`), or a web-app triple (a `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` constructors).
