@@ -19,4 +19,8 @@ Unit => Program {
         * Err<MalformedInt> => Unit { MalformedInt -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
+    "-" -> Int -> (
+        * Err<MalformedInt> => Unit { MalformedInt -> Print }
+        * Ok<Int> => Unit { Int -> Print }
+    )
 }
