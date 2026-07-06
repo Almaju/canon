@@ -9,6 +9,17 @@ default-run = "canon"
 name = "canon"
 path = "src/main.rs"
 
+# Faster codegen runs during development; debug info is still intact at
+# opt-level 1, and iteration times drop noticeably on this compiler workload.
+[profile.dev]
+opt-level = 1
+
+# Smaller, faster release binaries for the installer. Thin LTO and a single
+# codegen unit trade build time for a leaner artifact.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
 [dependencies]
 # WASM encoding and Component Model (Bytecode Alliance — pin to same minor
 # version). 0.250 matches the wasmparser that wasmtime 45 bundles internally
