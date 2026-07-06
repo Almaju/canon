@@ -156,7 +156,8 @@ testAddPositive = () => TestResult {
 - Each test ends in a chain that produces a `TestResult` (typically `-> Eq(...) -> TestResult("msg")`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
 - The synthesised `main` is exempt from free-function alphabetical ordering (main is the entry point, distinguished by role).
 - Exit codes are threaded: a failing suite exits 1, a passing one exits 0 (pinned by `tests/exit_code_test.rs::canon_test_exit_codes`). The `tests/canon_tests.rs` harness still parses stdout for `[FAIL]` as a belt-and-braces check.
-- `just test-can` runs the same tests with pretty per-file output (faster local iteration); the canonical CI path is still `cargo test`.
+- `canon test <dir>` runs every `*_test.can` file under a directory in **one process**, sharing the stdlib parse (memoised in `loader::parsed_bundled_items`) and a single wasmtime engine/linker/tokio runtime (`runtime::run_components`) across files — the win is skipping N−1 process/engine spin-ups and N−1 stdlib re-parses. `canon test <file>` keeps the original single-file path. The `tests/canon_tests.rs` harness invokes the directory mode once; a per-file compile failure is isolated (printed, counted, batch continues).
+- `just test-can` runs the same tests via `canon test tests/canon` — per-file headers plus a closing summary (faster local iteration); the canonical CI path is still `cargo test`.
 
 ### Examples are not tests
 

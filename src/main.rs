@@ -75,7 +75,9 @@ fn print_help() {
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
-    println!("  test <file.can>            Run `() => TestResult` functions as tests");
+    println!("  test <file.can | dir>     Run `() => TestResult` functions as tests. A");
+    println!("                            directory runs every `*_test.can` file under it");
+    println!("                            in one process, sharing setup across files.");
     println!("  fmt [path...] [--check]   Format Canon source files or directories");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
     println!("                              stages: tokens | ast");
@@ -1131,10 +1133,97 @@ fn build_spec(spec: &BuildSpec) -> bool {
 /// module before checking, so it travels through the existing checker /
 /// codegen / runtime pipeline unchanged.
 fn cmd_test(args: &[String]) {
-    let file_path = require_file(args);
-    let mut loaded = load_or_exit(file_path);
-    if !enforce_format(&loaded) {
+    let target = require_file(args);
+
+    // A directory argument runs every `*_test.can` file underneath it in
+    // one process, sharing the stdlib parse, the wasmtime engine, and the
+    // tokio runtime across files. A file argument keeps the original
+    // single-file behaviour.
+    if Path::new(target).is_dir() {
+        cmd_test_dir(target);
+        return;
+    }
+
+    let Some((count, component_bytes)) = compile_test_file(target) else {
         process::exit(1);
+    };
+    println!("running {} test(s) from {}", count, target);
+    canon::runtime::run_component(&component_bytes, &[]);
+}
+
+/// Discover every `*_test.can` file under `dir`, compile each to a
+/// component, then run them all on one shared engine + runtime. The
+/// stdlib is parsed once per file (loader-level memoisation) instead of
+/// once per process, and the runtime/engine/linker are built once
+/// instead of once per file — the two costs that dominated the old
+/// process-per-file harness. Exits 1 if any file fails to compile or
+/// reports a failing test.
+fn cmd_test_dir(dir: &str) {
+    let mut files: Vec<PathBuf> = match fs::read_dir(dir) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|s| s.ends_with("_test.can"))
+            })
+            .collect(),
+        Err(err) => {
+            eprintln!("error: could not read `{}`: {}", dir, err);
+            process::exit(1);
+        }
+    };
+    files.sort();
+
+    if files.is_empty() {
+        eprintln!(
+            "error: no `*_test.can` files found under `{}`: a test file ends in `_test.can`",
+            dir
+        );
+        process::exit(1);
+    }
+
+    let mut components: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut compile_failures = 0usize;
+    for file in &files {
+        let path = file.to_string_lossy();
+        match compile_test_file(&path) {
+            Some((count, bytes)) => {
+                components.push((format!("running {} test(s) from {}", count, path), bytes));
+            }
+            None => compile_failures += 1,
+        }
+    }
+
+    let run_failures = if components.is_empty() {
+        0
+    } else {
+        canon::runtime::run_components(&components)
+    };
+
+    let clean = components.len() - run_failures;
+    println!(
+        "\n{} test file(s): {} clean, {} with failures",
+        files.len(),
+        clean,
+        run_failures + compile_failures
+    );
+    if compile_failures > 0 || run_failures > 0 {
+        process::exit(1);
+    }
+}
+
+/// Load, check, and codegen one `*_test.can` file into a runnable
+/// component, returning `(test count, component bytes)` — or `None`
+/// after printing diagnostics. Shared by single-file `canon test <file>`
+/// and the `canon test <dir>` batch runner, which is why load failures
+/// print and return rather than exiting: one bad file in a directory
+/// shouldn't abort the rest.
+fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
+    let mut loaded = load_or_print(file_path)?;
+    if !enforce_format(&loaded) {
+        return None;
     }
 
     // Reject test files that try to define their own `main` — we synthesise it.
@@ -1149,7 +1238,7 @@ fn cmd_test(args: &[String]) {
                 file_path, f.span.line, f.span.column
             );
         }
-        process::exit(1);
+        return None;
     }
 
     let tests: Vec<String> = loaded.module.items[loaded.entry_items_start..]
@@ -1165,7 +1254,7 @@ fn cmd_test(args: &[String]) {
             "error: no tests found in `{}`: a test is a function with signature `() => TestResult`",
             file_path
         );
-        process::exit(1);
+        return None;
     }
 
     // Synthesise a `main` that runs each test, parse it, and splice the
@@ -1186,7 +1275,7 @@ fn cmd_test(args: &[String]) {
                 "internal error: synthesised exit binding failed to parse: {}",
                 err.message()
             );
-            process::exit(1);
+            return None;
         }
     };
     canon::loader::apply_bindings(&mut exit_items, Some("wasi:cli/exit@0.3.0-rc-2026-03-15"));
@@ -1204,7 +1293,7 @@ fn cmd_test(args: &[String]) {
                 err.message()
             );
             eprintln!("---\n{}\n---", synthesised);
-            process::exit(1);
+            return None;
         }
     };
     // The harness main is the compiler's own, not user source — mark it
@@ -1225,12 +1314,10 @@ fn cmd_test(args: &[String]) {
             print_error(file_path, err);
         }
         eprintln!("\n{} error(s) found.", errors.len());
-        process::exit(1);
+        return None;
     }
 
-    println!("running {} test(s) from {}", tests.len(), file_path);
-    let component_bytes = codegen::generate(&loaded.module);
-    canon::runtime::run_component(&component_bytes, &[]);
+    Some((tests.len(), codegen::generate(&loaded.module)))
 }
 
 /// A test is a free, zero-arg function whose return type is the named
