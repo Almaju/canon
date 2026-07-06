@@ -1,0 +1,26 @@
+Init = Page
+
+Msg = String
+
+Page = String
+
+Update = Page
+
+Page => Html {
+    Styles()
+        -> Joined("<div class=\"layout\"><nav class=\"side\"><div class=\"brand\">Canon</div><button data-msg=\"Show:introduction\">Introduction</button><button data-msg=\"Show:installation\">Installation</button><button data-msg=\"Show:hello-world\">Hello, World</button><button data-msg=\"Show:building\">Building &amp; Running</button><button data-msg=\"Show:tour\">A Tour of Canon</button><button data-msg=\"Show:stdlib\">Standard Library</button></nav><main class=\"content\">")
+        -> Joined(Page -> ( * "building" => Html { BuildingAndRunning() -> Html } * "hello-world" => Html { HelloWorld() -> Html } * "installation" => Html { Installation() -> Html } * "stdlib" => Html { Stdlib() -> Html } * "tour" => Html { Guide() -> Html } * String => Html { Introduction() -> Html }))
+        -> Joined("</main></div>")
+        -> Html
+}
+
+Unit => Init {
+    "introduction" -> Page
+}
+
+Page * Msg => Update {
+    Msg -> Substring(1 -> From * 5 -> To) -> (
+        * "Show:" => Page { Msg -> Substring(6 -> From * Msg -> Length -> To) -> Page }
+        * String => Page { Page }
+    )
+}
