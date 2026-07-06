@@ -110,8 +110,8 @@ fn install_vendors_latest_release_and_project_checks() {
         "a path-derivable URN needs no bindings header:\n{content}"
     );
     assert!(
-        content.contains("triple = ("),
-        "the binding declaration must be present:\n{content}"
+        content.contains("Triple = Int") && content.contains("Int => Triple {\n    \"triple\"\n}"),
+        "the string-anchored binding constructor must be present:\n{content}"
     );
 
     // The vendored package is usable: a program `use`s it and the
@@ -120,7 +120,7 @@ fn install_vendors_latest_release_and_project_checks() {
     // the formatter's chain-breaking rules.
     fs::write(
         project.join("main.can"),
-        "Unit => Program {\n    1\n        .triple()\n        -> Print\n}\n",
+        "Unit => Program {\n    1\n        -> Triple\n        -> String\n        -> Print\n}\n",
     )
     .unwrap();
     let (o, e, c) = run_canon(&project, &config, &["fmt", "main.can"]);

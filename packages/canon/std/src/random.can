@@ -1,5 +1,5 @@
 Random = Int
 
 Random = () => Random {
-    getRandomU64() -> Random
+    GetRandomU64() -> Random
 }

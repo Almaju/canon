@@ -98,8 +98,12 @@ version = "0.1.0"
         !content.contains("extern Wasm"),
         "bindgen should not emit per-function `extern Wasm`, got:\n{content}",
     );
-    assert!(content.contains("now = () => Instant"));
-    assert!(content.contains("getResolution = () => Duration"));
+    // Each function is a string-anchored anonymous constructor over a
+    // minted result newtype, its body naming the WIT fragment verbatim.
+    assert!(content.contains("Now = Instant"));
+    assert!(content.contains("Unit => Now {\n    \"now\"\n}"));
+    assert!(content.contains("GetResolution = Duration"));
+    assert!(content.contains("Unit => GetResolution {\n    \"get-resolution\"\n}"));
 
     // The index sidecar should map this file to the correct URN.
     let index_content = fs::read_to_string(&expected_index).expect("read index");
@@ -266,7 +270,7 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "main = () => Unit {\n    spin() -> Print\n}\n").expect("write entry");
+    fs::write(&entry, "main = () => Unit {\n    Spin() -> Print\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("loader should resolve the bindgen import");
 
@@ -303,42 +307,39 @@ version = "0.1.0"
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     let entry = src_dir.join("main.can");
-    fs::write(&entry, "main = () => Unit {\n    spin() -> Print\n}\n").expect("write entry");
+    fs::write(&entry, "main = () => Unit {\n    Spin() -> Print\n}\n").expect("write entry");
 
     let result = loader::load_module(&entry).expect("load");
 
     // The binding file declares `spin` and `wobble`; both should land in
     // `module.items` with their `extern_wasm.path` derived from the
-    // vendored path (`bindgen/example/widget@1.0.0/gadget.can`).
-    let externs: Vec<(String, String)> = result
+    // vendored path (`bindgen/example/widget@1.0.0/gadget.can`). Each is a
+    // string-anchored constructor — the loader lifts it into an extern
+    // whose `extern_wasm.path` names the WIT fragment from the string body
+    // (`spin` constructs the minted `Spin` newtype, receiver-renamed to
+    // `Self`), so we key on the derived URN rather than the function name.
+    let extern_paths: Vec<String> = result
         .module
         .items
         .iter()
         .filter_map(|item| match item {
-            canon::ast::Item::Function(f) => f
-                .extern_wasm
-                .as_ref()
-                .map(|ew| (f.name.name.clone(), ew.path.clone())),
+            canon::ast::Item::Function(f) => f.extern_wasm.as_ref().map(|ew| ew.path.clone()),
             _ => None,
         })
         .collect();
 
-    let spin = externs
-        .iter()
-        .find(|(name, _)| name == "spin")
-        .expect("`spin` should be loaded");
-    assert_eq!(
-        spin.1, "example:widget/gadget@1.0.0#spin",
-        "loader should derive the full URN from the vendored path",
+    assert!(
+        extern_paths
+            .iter()
+            .any(|p| p == "example:widget/gadget@1.0.0#spin"),
+        "loader should derive the full URN from the vendored path; got {extern_paths:?}",
     );
 
-    let wobble = externs
-        .iter()
-        .find(|(name, _)| name == "wobble")
-        .expect("`wobble` should be loaded");
-    assert_eq!(
-        wobble.1, "example:widget/gadget@1.0.0#wobble",
-        "each function's URN is derived from the same vendored path",
+    assert!(
+        extern_paths
+            .iter()
+            .any(|p| p == "example:widget/gadget@1.0.0#wobble"),
+        "each function's URN is derived from the same vendored path; got {extern_paths:?}",
     );
 }
 
