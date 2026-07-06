@@ -144,14 +144,12 @@
   }
 
   function addRunButton(pre, name) {
-    var bar = document.createElement("div");
-    bar.className = "canon-run-bar";
+    var bar = ensureBar(pre);
     var btn = document.createElement("button");
     btn.className = "canon-run-button";
     btn.title = hasJspi ? "Run this program in your browser" : JSPI_MSG;
     btn.innerHTML = '<span class="canon-run-glyph">&#9654;</span> run';
     bar.appendChild(btn);
-    pre.appendChild(bar);
 
     var panel = null;
     btn.addEventListener("click", function () {
@@ -171,6 +169,54 @@
     });
   }
 
+  // ── click-to-copy ─────────────────────────────────────────────────
+  // Every code block gets a copy button. The run button (if any) already
+  // lives in `.canon-run-bar`; we drop the copy button in beside it so
+  // the two never overlap, otherwise we make a bar of our own.
+  // The button bar is shared: copy is added first (synchronously), the run
+  // button (added later, after the manifest fetch) joins the same bar.
+  function ensureBar(pre) {
+    var bar = pre.querySelector(".canon-run-bar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "canon-run-bar";
+      pre.appendChild(bar);
+    }
+    return bar;
+  }
+
+  function addCopyButton(pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var bar = ensureBar(pre);
+    var btn = document.createElement("button");
+    btn.className = "canon-copy-button";
+    btn.type = "button";
+    btn.title = "Copy to clipboard";
+    btn.textContent = "copy";
+    bar.appendChild(btn);
+
+    var reset = null;
+    btn.addEventListener("click", function () {
+      var text = code.textContent;
+      var done = function (ok) {
+        btn.textContent = ok ? "copied" : "failed";
+        btn.classList.toggle("canon-copy-ok", ok);
+        if (reset) clearTimeout(reset);
+        reset = setTimeout(function () {
+          btn.textContent = "copy";
+          btn.classList.remove("canon-copy-ok");
+        }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); },
+          function () { done(false); });
+      } else {
+        done(false);
+      }
+    });
+  }
+
   // ── the hook ──────────────────────────────────────────────────────
   function enhance(root) {
     var pres = (root || document).querySelectorAll("pre[data-info]");
@@ -182,6 +228,10 @@
         code.innerHTML = highlight(code.textContent);
         code.dataset.hl = "1";
         pre.classList.add("canon-code");
+      }
+      if (code && !pre.dataset.copy) {
+        pre.dataset.copy = "1";
+        addCopyButton(pre);
       }
       if (infoRun(info)) wantsRun = true;
     });
