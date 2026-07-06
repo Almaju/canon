@@ -1,1 +1,5 @@
-getRandomU64 = () => Int
+GetRandomU64 = Int
+
+Unit => GetRandomU64 {
+    "get-random-u64"
+}

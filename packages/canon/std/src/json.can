@@ -799,7 +799,7 @@ ToJson = (Bool) => Json {
 }
 
 ToJson = (Float) => Json {
-    Float.fromFloat()
+    Float -> Number
 }
 
 ToJson = (Int) => Json {

@@ -52,16 +52,20 @@ fn monotonic_clock_roundtrip() {
         "bindgen should not emit per-function `extern Wasm` anymore",
     );
     assert_eq!(f.urn, "wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15");
-    assert!(f.content.contains("getResolution = () => Duration"));
-    assert!(f.content.contains("now = () => Instant"));
+    // Each function is a string-anchored anonymous constructor keyed by a
+    // minted result newtype (`now -> instant` mints `Now = Instant`),
+    // whose body names the WIT fragment verbatim.
+    assert!(f.content.contains("Now = Instant"));
+    assert!(f.content.contains("Unit => Now {\n    \"now\"\n}"));
+    assert!(f.content.contains("GetResolution = Duration"));
+    assert!(f
+        .content
+        .contains("Unit => GetResolution {\n    \"get-resolution\"\n}"));
 
-    // Alphabetical ordering: Duration < Instant; getResolution < now.
-    let d = f.content.find("Duration = ").unwrap();
-    let i = f.content.find("Instant = ").unwrap();
-    assert!(d < i, "types should be alphabetical");
-    let g = f.content.find("getResolution").unwrap();
-    let n = f.content.find("\nnow ").unwrap();
-    assert!(g < n, "functions should be alphabetical");
+    // Alphabetical ordering by constructed type: GetResolution < Now.
+    let g = f.content.find("Unit => GetResolution").unwrap();
+    let n = f.content.find("Unit => Now").unwrap();
+    assert!(g < n, "constructors should be alphabetical");
 
     parse_canon(&f.content);
 }
@@ -96,9 +100,10 @@ fn resources_emit_handle_newtypes() {
         f.content
     );
 
-    // Plain free function still emitted.
+    // Plain free function still emitted, as a string-anchored constructor
+    // over its minted result newtype.
     assert!(
-        f.content.contains("tick = () => Int"),
+        f.content.contains("Tick = Int") && f.content.contains("Unit => Tick {\n    \"tick\"\n}"),
         "plain free fn `tick` should still be emitted:\n{}",
         f.content
     );
@@ -184,11 +189,16 @@ fn kitchen_sink_roundtrip() {
         f.content
     );
 
-    // Function signatures.
-    assert!(f.content.contains("centre = (Shape) => Option<Point>"));
+    // Function signatures. A `result` return takes the new string-anchored
+    // constructor form (the `ok` payload is minted, so `?` still sees a
+    // `Result`): `paint -> result<style, string>` mints `Paint = Style`.
+    assert!(f.content.contains("Paint = Style"));
     assert!(f
         .content
-        .contains("paint = (ColorList * Shape) => Result<Style, String>"));
+        .contains("(ColorList * Shape) => Result<Paint, String> {\n    \"paint\"\n}"));
+    // `option` and no-result functions keep the legacy alias form pending
+    // self-constructor-extern decode for those shapes.
+    assert!(f.content.contains("centre = (Shape) => Option<Point>"));
     assert!(f.content.contains("reset = () => Unit"));
 
     parse_canon(&f.content);

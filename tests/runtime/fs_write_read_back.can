@@ -1,8 +1,8 @@
 Unit => Program {
     "written from canon"
         -> Contents
-        .write("/tmp/canon-fs-write-test.txt" -> Path)?
+        -> Written("/tmp/canon-fs-write-test.txt" -> Path)?
         -> File?
-        .read()?
+        -> Read?
         -> Print
 }

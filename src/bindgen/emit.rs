@@ -141,12 +141,14 @@ fn emit_interface(
         }
     }
 
-    // Function declarations, alphabetical by their camelCase name.
+    // Function declarations, alphabetical by the type each constructs.
+    // Keyed by `(constructed-type, wit-fn-name)` so two constructors of
+    // the same type (a constructor family) both survive and stay ordered.
     let fn_ctx = FnEmitCtx {
         iface_name: &iface_name,
         fn_name_uses,
     };
-    let mut fn_decls: BTreeMap<String, String> = BTreeMap::new();
+    let mut fn_decls: BTreeMap<(String, String), String> = BTreeMap::new();
     let mut needs_capability = false;
     for (name, func) in &iface.functions {
         match emit_function(
@@ -157,9 +159,9 @@ fn emit_interface(
             &mut external_use_paths,
             self_iface_id,
         ) {
-            Ok((camel, decl, used_capability)) => {
+            Ok((sort_key, decl, used_capability)) => {
                 needs_capability |= used_capability;
-                fn_decls.insert(camel, decl);
+                fn_decls.insert((sort_key, name.clone()), decl);
             }
             Err(reason) => {
                 skipped.push(format!(
@@ -555,50 +557,223 @@ fn emit_function(
     // must resolve. We sort here so the source is always valid for
     // the common single-of-each-type case.
     params.sort();
-    let params_str = if params.is_empty() {
-        "()".to_string()
-    } else {
-        format!("({})", params.join(" * "))
-    };
 
-    let ret = match &func.result {
-        Some(t) => render_type(resolve, t, external_use_paths, self_iface)?,
-        None => "Unit".to_string(),
+    // Some return shapes keep the legacy `camel = input => Ret` binding
+    // form because the self-constructor extern lowering doesn't decode
+    // them yet: no result (`Unit`), `option`, `list`, and record returns.
+    // The mint would hide the shape the codegen keys on (an `option`'s
+    // discriminant, a `list`'s element read-back, a record's field
+    // layout), so these stay on the camelCase alias the loader still lifts
+    // into an extern. Scalars, `string`, named scalars, and `result` all
+    // take the new string-anchored constructor form. This is the shrinking
+    // remainder of the migration — each shape is unblocked by teaching the
+    // self-ctor extern path to decode it.
+    let legacy_return_shape = match &func.result {
+        None => true,
+        Some(t) => {
+            is_scalar_record(resolve, t)
+                || is_option_return(resolve, t)
+                || is_list_return(resolve, t)
+        }
     };
-
-    // Bindgen output uses the bare function-type-alias form. There's no
-    // per-function marker and no header — the vendored path spells the
-    // interface URN, and the loader derives each declaration's binding
-    // from it (a binding file is recognized by shape).
-    //
-    // Exception: a name that collides across the install set (two
-    // interfaces both exporting `now`) can't be discovered by its bare
-    // leaf name in the flat, `use`-free namespace. It is emitted as a
-    // method on the interface's zero-data capability marker
-    // (`now = (MonotonicClock) => Mark`): reference discovery resolves
-    // on the unique marker type (`MonotonicClock.now()`), the codegen
-    // drops the Unit receiver so the WIT call stays zero-arg, and the
-    // loader's shape rule derives `#now` from the path — the marker is
-    // not a `Handle`, so it's a plain function, not a resource method.
-    let collides = ctx.fn_name_uses.get(&camel).copied().unwrap_or(0) > 1;
-    let mut decl = String::new();
-    let (params_str, used_capability) = if collides {
-        let cap = kebab_to_pascal(ctx.iface_name);
-        // The capability is the receiver, so it must lead the product
-        // (the loader takes the first component as the receiver). Any
-        // remaining params follow in alphabetical order.
-        let inner = if params.is_empty() {
-            cap
-        } else {
-            format!("{cap} * {}", params.join(" * "))
+    if legacy_return_shape {
+        let collides = ctx.fn_name_uses.get(&camel).copied().unwrap_or(0) > 1;
+        let ret = match &func.result {
+            Some(t) => render_type(resolve, t, external_use_paths, self_iface)?,
+            None => "Unit".to_string(),
         };
-        (format!("({inner})"), true)
-    } else {
-        (params_str, false)
-    };
-    let _ = writeln!(decl, "{} = {} => {}", camel, params_str, ret);
+        let input = if collides {
+            let cap = kebab_to_pascal(ctx.iface_name);
+            if params.is_empty() {
+                format!("({cap})")
+            } else {
+                format!("({cap} * {})", params.join(" * "))
+            }
+        } else if params.is_empty() {
+            "()".to_string()
+        } else {
+            format!("({})", params.join(" * "))
+        };
+        let decl = format!("{camel} = {input} => {ret}\n");
+        return Ok((camel, decl, collides));
+    }
 
-    Ok((camel, decl, used_capability))
+    // A name that collides across the install set (two interfaces both
+    // exporting `now`) can't be discovered by its bare leaf name in the
+    // flat, `use`-free namespace, so it takes the interface's zero-data
+    // capability marker as the *first* input (`MonotonicClock => …`);
+    // reference discovery then resolves on the unique constructed type
+    // while the codegen drops the Unit marker so the WIT call keeps its
+    // real arity. The string body carries the WIT fragment verbatim — no
+    // camelCase-to-kebab derivation.
+    let collides = ctx.fn_name_uses.get(&camel).copied().unwrap_or(0) > 1;
+
+    // The binding's return type and its minted result newtype. Every
+    // binding is a types-only anonymous constructor keyed by the type it
+    // constructs, so each mints a distinct newtype rather than reusing a
+    // WIT type name — that keeps a binding's constructed name from ever
+    // colliding with a hand-written wrapper's type (the monotonic
+    // `Instant = Int` wrapper vs the system-clock `instant` record). The
+    // mint is interface-qualified when the WIT leaf name collides, so the
+    // two `now`s become `MonotonicClockNow` / `SystemClockNow`.
+    let mint_name = if collides {
+        format!(
+            "{}{}",
+            kebab_to_pascal(ctx.iface_name),
+            kebab_to_pascal(name)
+        )
+    } else {
+        kebab_to_pascal(name)
+    };
+    let (ctor_return, mint) =
+        binding_return(resolve, func, &mint_name, external_use_paths, self_iface)?;
+    let used_capability = collides;
+    let mut input_components: Vec<String> = Vec::new();
+    if collides {
+        input_components.push(kebab_to_pascal(ctx.iface_name));
+    }
+    input_components.extend(params);
+    let input_str = match input_components.as_slice() {
+        [] => "Unit".to_string(),
+        [one] => one.clone(),
+        many => format!("({})", many.join(" * ")),
+    };
+
+    let mut decl = String::new();
+    if let Some((mint_name, mint_body)) = &mint {
+        let _ = writeln!(decl, "{mint_name} = {mint_body}\n");
+    }
+    let _ = writeln!(decl, "{input_str} => {ctor_return} {{\n    \"{name}\"\n}}");
+
+    // The declaration is keyed for alphabetical emission by the type it
+    // constructs (the loader indexes anonymous constructors by that
+    // name), not by the WIT leaf name.
+    Ok((constructed_key(&ctor_return), decl, used_capability))
+}
+
+/// The name an anonymous-constructor binding is indexed and sorted under:
+/// its constructed type, with `Result`/`Option`/`Future` peeled to the
+/// payload (mirrors `ast::constructed_type_name`).
+fn constructed_key(ctor_return: &str) -> String {
+    let s = ctor_return.trim();
+    for wrapper in ["Result<", "Option<", "Future<"] {
+        if let Some(rest) = s.strip_prefix(wrapper) {
+            let inner = rest.trim_start();
+            let head: String = inner
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            return head;
+        }
+    }
+    s.to_string()
+}
+
+/// Computes a binding constructor's return type and the minted result
+/// newtype it declares. The mint always aliases the WIT result (the
+/// `ok` payload for a `result`, the inner type for an `option`, the whole
+/// type otherwise), so the constructor's constructed name is `mint_name`
+/// — unique, and never a WIT type name that a wrapper might also declare.
+fn binding_return(
+    resolve: &Resolve,
+    func: &Function,
+    mint_name: &str,
+    external_use_paths: &mut BTreeSet<String>,
+    self_iface: InterfaceId,
+) -> Result<(String, Option<(String, String)>), String> {
+    let mint = mint_name.to_string();
+    let Some(t) = &func.result else {
+        // No WIT result — a pure effect. Mint a `Unit` marker so the
+        // constructor still has a distinct constructed type.
+        return Ok((mint.clone(), Some((mint, "Unit".to_string()))));
+    };
+    match structural_kind(resolve, t) {
+        StructuralKind::Result { ok, err } => {
+            let err_str = match err {
+                Some(e) => render_type(resolve, &e, external_use_paths, self_iface)?,
+                None => "Unit".to_string(),
+            };
+            let ok_str = match ok {
+                Some(ok_ty) => render_type(resolve, &ok_ty, external_use_paths, self_iface)?,
+                None => "Unit".to_string(),
+            };
+            Ok((format!("Result<{mint}, {err_str}>"), Some((mint, ok_str))))
+        }
+        StructuralKind::Plain => {
+            let ty_str = render_type(resolve, t, external_use_paths, self_iface)?;
+            Ok((mint.clone(), Some((mint, ty_str))))
+        }
+    }
+}
+
+enum StructuralKind {
+    /// An inline `result<ok, err>` — the mint aliases the `ok` payload and
+    /// the constructor returns `Result<mint, err>`, so a wrapper's `?`
+    /// still sees a `Result`.
+    Result { ok: Option<Type>, err: Option<Type> },
+    /// A bare primitive, a named type, an `option`, or a `list` — the mint
+    /// aliases the whole rendered type and the constructor returns the
+    /// mint directly. Wrapping `option`/`list` in the mint (rather than
+    /// minting the inner) keeps a zero-arg constructor's result type equal
+    /// to its constructed name, which is what call-site inference expects.
+    Plain,
+}
+
+/// Classifies a WIT result type for `binding_return`, walking transparent
+/// aliases through to an inline `result`. A named type (even one whose
+/// underlying kind is `result`) is `Plain` — the mint aliases it wholesale.
+fn structural_kind(resolve: &Resolve, t: &Type) -> StructuralKind {
+    let Type::Id(id) = t else {
+        return StructuralKind::Plain;
+    };
+    let td = &resolve.types[*id];
+    if td.name.is_some() {
+        return StructuralKind::Plain;
+    }
+    match &td.kind {
+        TypeDefKind::Result(r) => StructuralKind::Result {
+            ok: r.ok,
+            err: r.err,
+        },
+        TypeDefKind::Type(inner) => structural_kind(resolve, inner),
+        _ => StructuralKind::Plain,
+    }
+}
+
+/// True when `t` is (or transparently aliases) an inline WIT `option<_>`.
+fn is_option_return(resolve: &Resolve, t: &Type) -> bool {
+    match t {
+        Type::Id(id) => {
+            let td = &resolve.types[*id];
+            if td.name.is_some() {
+                return false;
+            }
+            match &td.kind {
+                TypeDefKind::Option(_) => true,
+                TypeDefKind::Type(inner) => is_option_return(resolve, inner),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// True when `t` is (or transparently aliases) an inline WIT `list<_>`.
+fn is_list_return(resolve: &Resolve, t: &Type) -> bool {
+    match t {
+        Type::Id(id) => {
+            let td = &resolve.types[*id];
+            if td.name.is_some() {
+                return false;
+            }
+            match &td.kind {
+                TypeDefKind::List(_) => true,
+                TypeDefKind::Type(inner) => is_list_return(resolve, inner),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
 }
 
 /// Returns true if the function's result type is (or transparently aliases)

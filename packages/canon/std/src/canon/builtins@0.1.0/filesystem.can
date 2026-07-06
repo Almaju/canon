@@ -1,5 +1,17 @@
-openFile = (Path) => Result<File, IoError>
+Opened = File
 
-read = (File) => Result<String, IoError>
+Read = String
 
-write = (Contents * Path) => Result<Path, IoError>
+Written = Path
+
+Path => Result<Opened, IoError> {
+    "open-file"
+}
+
+File => Result<Read, IoError> {
+    "read"
+}
+
+Contents * Path => Result<Written, IoError> {
+    "write"
+}

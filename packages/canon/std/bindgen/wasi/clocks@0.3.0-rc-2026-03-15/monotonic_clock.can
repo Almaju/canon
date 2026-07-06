@@ -2,6 +2,14 @@ Mark = Int
 
 MonotonicClock = Unit
 
-getResolution = (MonotonicClock) => Duration
+MonotonicClockGetResolution = Duration
 
-now = (MonotonicClock) => Mark
+MonotonicClock => MonotonicClockGetResolution {
+    "get-resolution"
+}
+
+MonotonicClockNow = Mark
+
+MonotonicClock => MonotonicClockNow {
+    "now"
+}

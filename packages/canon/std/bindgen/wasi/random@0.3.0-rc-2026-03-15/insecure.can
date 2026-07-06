@@ -1,1 +1,5 @@
-getInsecureRandomU64 = () => Int
+GetInsecureRandomU64 = Int
+
+Unit => GetInsecureRandomU64 {
+    "get-insecure-random-u64"
+}
