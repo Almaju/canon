@@ -143,16 +143,12 @@ const TY_STDOUT_STREAM_WRITE: u32 = 7; // (i32, i32, i32) → (i32)
 const TY_HANDLE_RETURN: u32 = 8; // () → (i32)
 const TY_USER_START: u32 = 9; // first dynamic user type
 
-// ── Extern Wasm path parsing ─────────────────────────────────────────────────────
-
 // ── Global index constants ──────────────────────────────────────────────────────────
 // The bump pointer is now an *imported* mutable global so it can be shared
 // between the user core module and the component wrapper's `cabi_realloc`
 // helper. Both bump from the same pointer, which keeps Canon-allocated heap
 // data and host-allocated string returns in a single coherent heap.
 const GLOBAL_BUMP_PTR: u32 = 0;
-
-// ── WASM representation of a Canon expression ──────────────────────────────
 
 struct WasmGen<'m> {
     ast: &'m OModule,
