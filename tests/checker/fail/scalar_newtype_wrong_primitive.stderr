@@ -1,0 +1,1 @@
+error[tests/checker/fail/scalar_newtype_wrong_primitive.can:4:5]: `Greeting` expects a `String`, found `Int`
