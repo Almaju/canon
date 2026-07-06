@@ -1,3 +1,5 @@
+Contains = Bool
+
 Key = String
 
 Keys = List<Key>
@@ -13,6 +15,13 @@ Rest = Map
 Value = String
 
 Values = List<Value>
+
+Map * String => Contains {
+    Map -> Value(String) -> (
+        * None => Contains { False() }
+        * Some<Value> => Contains { True() }
+    )
+}
 
 Inserted = (Map * String * Value) => Map {
     Map -> (

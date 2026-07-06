@@ -1,0 +1,23 @@
+testMapContainsAbsent = () => TestResult {
+    Map()
+        -> Inserted("a" * "1")
+        -> Contains("z")
+        -> Not
+        -> TestResult("Contains rejects a key the map lacks")
+}
+
+testMapContainsPresent = () => TestResult {
+    Map()
+        -> Inserted("a" * "1")
+        -> Contains("a")
+        -> TestResult("Contains finds an inserted key")
+}
+
+testMapLength = () => TestResult {
+    Map()
+        -> Inserted("b" * "2")
+        -> Inserted("a" * "1")
+        -> Length
+        -> Eq(2)
+        -> TestResult("Length counts distinct keys")
+}
