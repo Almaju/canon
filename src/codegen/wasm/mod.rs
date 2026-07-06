@@ -1768,6 +1768,18 @@ impl<'m> WasmGen<'m> {
                     }
                 }
             }
+            Expr::FormatLit { parts, .. } => {
+                // Pre-intern Static fragments for the concat-chain
+                // lowering; recurse into interpolation holes.
+                for p in parts {
+                    match p {
+                        crate::ast::FormatLitPart::Static(s) => {
+                            self.strings.intern(s);
+                        }
+                        crate::ast::FormatLitPart::Interp(e) => self.collect_strings_expr(e),
+                    }
+                }
+            }
             Expr::FieldAccess { receiver, .. } => self.collect_strings_expr(receiver),
             Expr::MethodCall { receiver, args, .. } => {
                 self.collect_strings_expr(receiver);
@@ -3595,6 +3607,18 @@ impl<'m> WasmGen<'m> {
                 }
             }
 
+            // ── Backtick format string ────────────────────────
+            //
+            // The plain-`String` mirror of the HTML literal above. The
+            // parser folds an all-static backtick string to a
+            // `StringLit`, so a `FormatLit` always has interpolation
+            // holes and lowers to a `String.concat` chain whose `Interp`
+            // links are `-> String` conversions.
+            Expr::FormatLit { parts, span } => {
+                let chain = literals::format_lit_to_concat_chain(parts, *span);
+                self.compile_expr(&chain, scope, f)
+            }
+
             // ── Await (checker-inserted, Phase 5) ─────────────────────────────
             Expr::Await { inner, .. } => self.compile_expr(inner, scope, f),
         }
@@ -4038,9 +4062,10 @@ impl<'m> WasmGen<'m> {
     /// `None` when the static shape isn't obvious without full type checking.
     fn infer_static_type_name(&self, expr: &Expr) -> Option<String> {
         match expr {
-            Expr::StringLit { .. } | Expr::JsonLit { .. } | Expr::HtmlLit { .. } => {
-                Some("String".to_string())
-            }
+            Expr::StringLit { .. }
+            | Expr::JsonLit { .. }
+            | Expr::HtmlLit { .. }
+            | Expr::FormatLit { .. } => Some("String".to_string()),
             Expr::IntLit { .. } | Expr::HexLit { .. } => Some("Int".to_string()),
             Expr::FloatLit { .. } => Some("Float".to_string()),
             Expr::Constructor { name, .. } => {

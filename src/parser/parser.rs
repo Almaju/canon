@@ -760,6 +760,7 @@ impl Parser {
                 })
             }
             TokenKind::HtmlText | TokenKind::HtmlEnd => self.parse_html_literal(),
+            TokenKind::FmtText | TokenKind::FmtEnd => self.parse_format_literal(),
             _ => Err(CanonError::ParseError {
                 message: format!("expected an expression (got {})", tok.kind),
                 span: tok.span,
@@ -837,6 +838,88 @@ impl Parser {
             parts,
             span: span_join(start, end),
         })
+    }
+
+    /// Parse a backtick format string from the raw-fragment tokens the
+    /// scanner emits: zero or more `FmtText` fragments (each followed by
+    /// an interpolated expression — the scanner already consumed the
+    /// hole's braces) and a final `FmtEnd` fragment.
+    ///
+    /// Pure-literal interpolations fold to Static text (a string splices
+    /// verbatim — no HTML escaping, unlike `parse_html_literal` — and
+    /// ints/floats render as digits), so a fully constant backtick string
+    /// collapses to a single `StringLit`, making `` `hi` `` identical to
+    /// `"hi"` and keeping `canon fmt`'s canonical plain-quote form.
+    /// Anything with runtime content becomes an `Interp` part, which the
+    /// codegen `-> String`-converts and concats into the surrounding text.
+    fn parse_format_literal(&mut self) -> Result<Expr> {
+        let start = self.peek().span;
+        let mut parts: Vec<FormatLitPart> = Vec::new();
+        loop {
+            let tok = self.peek().clone();
+            let is_end = match tok.kind {
+                TokenKind::FmtText => false,
+                TokenKind::FmtEnd => true,
+                _ => {
+                    return Err(CanonError::ParseError {
+                        message: format!(
+                            "expected `}}` to close format-string interpolation (got {})",
+                            tok.kind
+                        ),
+                        span: tok.span,
+                    });
+                }
+            };
+            self.advance();
+            push_fmt_static(&mut parts, &tok.lexeme);
+            if is_end {
+                break;
+            }
+            self.skip_newlines();
+            let expr = self.parse_expr()?;
+            self.skip_newlines();
+            match expr {
+                Expr::StringLit { value, .. } => {
+                    push_fmt_static(&mut parts, &value);
+                }
+                Expr::IntLit { value, .. } => {
+                    push_fmt_static(&mut parts, &value.to_string());
+                }
+                Expr::FloatLit { value, .. } => {
+                    push_fmt_static(&mut parts, &value.to_string());
+                }
+                Expr::FormatLit {
+                    parts: inner_parts, ..
+                } => {
+                    // Splice a nested backtick string's parts directly so
+                    // static chunks merge into the outer accumulator.
+                    for p in inner_parts {
+                        match p {
+                            FormatLitPart::Static(s) => push_fmt_static(&mut parts, &s),
+                            FormatLitPart::Interp(e) => parts.push(FormatLitPart::Interp(e)),
+                        }
+                    }
+                }
+                other => {
+                    parts.push(FormatLitPart::Interp(Box::new(other)));
+                }
+            }
+        }
+        let end = self.previous_span();
+        let span = span_join(start, end);
+        // A backtick string with no interpolation is just a string
+        // constant — fold it so canonical form stays plain-quoted.
+        if !parts.iter().any(|p| matches!(p, FormatLitPart::Interp(_))) {
+            let value = parts
+                .into_iter()
+                .map(|p| match p {
+                    FormatLitPart::Static(s) => s,
+                    FormatLitPart::Interp(_) => unreachable!("checked no Interp above"),
+                })
+                .collect::<String>();
+            return Ok(Expr::StringLit { value, span });
+        }
+        Ok(Expr::FormatLit { parts, span })
     }
 
     fn parse_json_object_body(
@@ -1336,6 +1419,20 @@ fn push_html_static(parts: &mut Vec<HtmlLitPart>, s: &str) {
         last.push_str(s);
     } else {
         parts.push(HtmlLitPart::Static(s.to_string()));
+    }
+}
+
+/// Append a static fragment to a backtick format string, merging into a
+/// preceding `Static` part (the format-string analogue of
+/// `push_html_static`). Empty fragments are dropped.
+fn push_fmt_static(parts: &mut Vec<FormatLitPart>, s: &str) {
+    if s.is_empty() {
+        return;
+    }
+    if let Some(FormatLitPart::Static(last)) = parts.last_mut() {
+        last.push_str(s);
+    } else {
+        parts.push(FormatLitPart::Static(s.to_string()));
     }
 }
 

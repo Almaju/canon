@@ -397,6 +397,10 @@ List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })  # lambda (keeps p
 Model => Html {                                # HTML literal ({…} interpolates;
     <div><span>{Model -> String}</span></div>  # String/Int escape, Html passes through)
 }
+
+`count is {Int}, doubled {Int -> Product(2)}`  # format string (backtick + {expr} holes;
+                                               # holes convert via `-> String`, {{ }} escape
+                                               # braces; plain "..." stays inert)
 ```
 
 - No local variables, no `let`, no `if`/`else`, no comments in the language.

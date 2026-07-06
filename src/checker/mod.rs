@@ -583,6 +583,13 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
                 }
             }
         }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
+                    collect_expr_names(e, out);
+                }
+            }
+        }
         Expr::StringLit { .. }
         | Expr::IntLit { .. }
         | Expr::FloatLit { .. }
@@ -1581,6 +1588,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. } => {}
         Expr::JsonLit { .. } => {}
         Expr::HtmlLit { .. } => {}
+        Expr::FormatLit { .. } => {}
         Expr::Constructor { name, args, span } => {
             let is_variant = symbols.variant_of.contains_key(&name.name);
             // A free function with this exact name (like `Now = () -> Now`
@@ -2346,6 +2354,8 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
         // the type name is intrinsically known to the checker so a
         // fully static literal needs no import (see `collect_symbols`).
         Expr::HtmlLit { .. } => "Html".to_string(),
+        // A backtick format string produces a plain `String`.
+        Expr::FormatLit { .. } => "String".to_string(),
         Expr::Await { inner, .. } => expr_type_name_in_scope(inner, symbols),
     }
 }

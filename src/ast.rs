@@ -133,6 +133,19 @@ pub enum JsonLitPart {
     Interp(Box<Expr>),
 }
 
+/// One piece of a backtick format-string expression — see
+/// `Expr::FormatLit`.
+#[derive(Debug, Clone)]
+pub enum FormatLitPart {
+    /// A raw chunk of the string text (escapes and `{{` / `}}` already
+    /// resolved by the scanner). Inlined verbatim into the output.
+    Static(String),
+    /// An interpolated Canon expression (`{expr}` in the literal). Its
+    /// runtime value is converted to `String` via `-> String` and
+    /// concatenated into the surrounding text.
+    Interp(Box<Expr>),
+}
+
 /// One piece of an HTML literal expression — see `Expr::HtmlLit`.
 #[derive(Debug, Clone)]
 pub enum HtmlLitPart {
@@ -235,6 +248,20 @@ pub enum Expr {
         parts: Vec<HtmlLitPart>,
         span: Span,
     },
+    /// A backtick format string: `` `count: {n}` ``.
+    ///
+    /// The plain-`String` mirror of `HtmlLit`/`JsonLit`. Lexed as raw
+    /// text with `{…}` interpolation holes (`{{` / `}}` escape literal
+    /// braces) and compiled-out at codegen into an alternating list of
+    /// `Static` (raw text fragments) and `Interp` (arbitrary Canon
+    /// expressions whose runtime values are `-> String`-converted and
+    /// concatenated). A backtick string with no holes is folded to a
+    /// plain `StringLit` by the parser, so `FormatLit` always carries at
+    /// least one `Interp` part.
+    FormatLit {
+        parts: Vec<FormatLitPart>,
+        span: Span,
+    },
     /// Inserted by the checker when a `Future<T>` expression is used in a position
     /// that expects `T`. Never produced by the parser.
     Await {
@@ -260,6 +287,7 @@ impl Expr {
             Expr::FieldAccess { span, .. } => *span,
             Expr::JsonLit { span, .. } => *span,
             Expr::HtmlLit { span, .. } => *span,
+            Expr::FormatLit { span, .. } => *span,
             Expr::Await { span, .. } => *span,
         }
     }

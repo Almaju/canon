@@ -65,10 +65,11 @@ The surface area will feel familiar; the discipline will not.
 
 **What you'll like.** Canon is *small* — a handful of concepts, very
 little ceremony, and a readable pipe (`->`) that reads a lot like
-chaining. Its string-literal `Json` and `Html` types with `{hole}`
-interpolation will feel like f-strings that happen to be first-class
-language features. And the standard library gives you sorted, immutable
-`Map` and `Set` out of the box.
+chaining. Backtick format strings (`` `hello, {name}` ``) plus the
+string-literal `Json` and `Html` types with `{hole}` interpolation will
+feel like f-strings that happen to be first-class language features. And
+the standard library gives you sorted, immutable `Map` and `Set` out of
+the box.
 
 **What you'll learn.** How much a type system can do for you when it's
 always on. Instead of tagging dicts with a `"kind"` key and branching on
@@ -103,7 +104,9 @@ so a signature tells you what a function can touch. And `From`/`Into`
 collapse into a single idea — conversion is construction.
 
 **What might trip you up.** No local variables (`let` is gone, not just
-discouraged), no macros or `format!`, and no comments. `async` / `await`
+discouraged), and no macros or comments -- string interpolation is a
+backtick format string (`` `x is {x}` ``), not a `format!` macro.
+`async` / `await`
 disappear from the source entirely — suspension is inferred and
 concurrency is combinator methods (`.parallel`, `.race`). It's Rust's
 type discipline with even less room to improvise.
