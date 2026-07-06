@@ -39,6 +39,13 @@ testMaximum = () => TestResult {
         -> TestResult("max(3, 7) should be 7")
 }
 
+testMaximumWhenFirstIsLarger = () => TestResult {
+    7
+        -> Maximum(3)
+        -> Eq(7)
+        -> TestResult("max(7, 3) should be 7")
+}
+
 testMinimum = () => TestResult {
     3
         -> Minimum(7)
@@ -52,6 +59,13 @@ testMinimumNegative = () => TestResult {
         -> Minimum(2)
         -> Eq(0 -> Difference(5))
         -> TestResult("min(-5, 2) should be -5")
+}
+
+testMinimumWhenFirstIsLarger = () => TestResult {
+    7
+        -> Minimum(3)
+        -> Eq(3)
+        -> TestResult("min(7, 3) should be 3")
 }
 
 testMul = () => TestResult {
