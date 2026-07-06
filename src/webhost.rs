@@ -154,7 +154,13 @@ pub const CANON_WEB_JS: &str = r#""use strict";
     }
     function renderHash() {
       const p = hashPage();
-      if (p) { model = apply(model, "Nav:" + p); render(); }
+      if (p) { model = apply(model, "Nav:" + p); render(); scrollTop(); }
+    }
+    // A page change should start the reader at the top of the new page;
+    // the innerHTML swap alone leaves the window scrolled where it was.
+    function scrollTop() {
+      try { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }
+      catch (_) { try { window.scrollTo(0, 0); } catch (_) {} }
     }
     function go(page) {
       if (location.hash === '#' + page) renderHash();
