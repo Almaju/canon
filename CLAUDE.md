@@ -4,22 +4,31 @@
 
 Canon is a programming language whose reference compiler emits **WebAssembly components** directly (not transpiled to Rust — that was the original prototype). The compiler is itself written in Rust. Canon presents a small surface area — no `let`, no `if`/`else`, no comments, no local variables, no import statement (references resolve to files automatically). Branching is dispatch on a union. Effects are passed as capabilities. The guiding rule: **wherever ordering is discretionary, the compiler enforces alphabetical order**.
 
-See the language spec under `docs/src/spec/` (the mdBook) for the full
+See the language spec under `docs/src/spec/` for the full
 specification — it is the canonical design document.
+
+**The docs site is itself a Canon program.** The documentation is not an
+mdBook: `docs/src/main.can` is an Elm-architecture web app that renders
+the `docs/src/*.md` pages with the standard library's Markdown renderer,
+compiled by `canon build docs` to a WebAssembly module. It dogfoods the
+web target (see `docs/src/reference/web-target.md`). Page content stays
+plain Markdown under `docs/src/`; `main.can` (routing/sidebar) and
+`styles.can` (the stylesheet) are the app shell.
 
 **Root-doc policy:** the repository root holds no design/planning
 markdown. `CLAUDE.md` (this file) is the only doc that lives at the
 root, alongside `README.md` and the standard community-health files
 (`CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`). All language
-and reference documentation lives in the `docs/` mdBook. Do not add new
-`*.md` files at the root; add a book page under `docs/src/` instead.
+and reference documentation lives under `docs/src/`. Do not add new
+`*.md` files at the root; add a page under `docs/src/` (and a route in
+`docs/src/main.can`) instead.
 
 ## Repository layout
 
 | Path | Description |
 |---|---|
 | `.github/` | CI workflows (docs deployment, release pipeline) |
-| `docs/` | Documentation site: mdBook (`book.toml`, `src/`, `theme/`) plus the static landing page (`landing/index.html`, self-contained). The docs workflow deploys the landing at the site root and the book under `/doc/`; `landing/404.html` redirects old root-level book URLs to `/doc/`. |
+| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (the Elm triple) that renders the `src/*.md` pages via the stdlib Markdown renderer; `canon build docs` compiles it to `docs/build/` (a wasm module + `canon-web.js` host + `index.html`). `landing/index.html` is the self-contained marketing page. The docs workflow deploys the landing at the site root and the app under `/doc/`. |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Lexer — tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | Parser — AST construction (`parser.rs`) |

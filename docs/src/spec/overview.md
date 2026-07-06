@@ -26,7 +26,7 @@ Each chapter is self-contained and cross-referenced:
 - [Effects and the Async Model](./effects-and-async.md): values as
   capabilities, suspension inference, and auto-await.
 - [Compilation and the ABI](./compilation.md): the pipeline, the memory
-  model, worlds, the WIT ↔ Canon mapping, and binding files.
+  model, worlds, the WIT <-> Canon mapping, and binding files.
 
 ## Status and Authority
 

@@ -36,11 +36,11 @@ always the type.
 ## Canonical Call Form
 
 A call applies one PascalCase name to an input product. The three
-spellings — `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` — denote the
+spellings -- `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` -- denote the
 *same* call (the receiver / left value fills the first slot of the input
 product). Since the choice between them is discretionary, the compiler
 picks one canonical form and `canon fmt` rewrites the rest to it,
-backstopped by the checker — the same instrument that enforces
+backstopped by the checker -- the same instrument that enforces
 alphabetical ordering.
 
 **The first input always rides the pipe; the rest ride in the parens.**
@@ -53,20 +53,20 @@ List -> List(Item)               # append: the list flows, the item is bound
 ```
 
 `a -> Name(b)` reads as "apply `Name`, which already carries `b`, to
-`a`" — a partial application `Name(b)` fed the flowing value. `B(A)` (the
+`a`" -- a partial application `Name(b)` fed the flowing value. `B(A)` (the
 subject alone in parens) is never canonical: it becomes `A -> B`. Two
 consequences:
 
-- **Zero-input calls stay prefix** — `Now()`, `Map()`, `None()`. A chain
+- **Zero-input calls stay prefix** -- `Now()`, `Map()`, `None()`. A chain
   *starts* with a prefix call or a leaf and *continues* with `->`.
-- **`List(…)` keeps its elements** — a list is an ordered sequence, not a
+- **`List(...)` keeps its elements** -- a list is an ordered sequence, not a
   subject-bearing call, so `List(1 * 2 * 3)` is left as written.
 
 Because the spellings denote the same call, the rewrite is
 semantics-preserving: the compiler treats a piped call to a type
 constructor exactly as the prefix construction `Name(A * rest)`.
-Position-sensitive builtins keep their operand order — the pipe receiver
-is always the first operand, so `0 -> Difference(5)` (= −5) is never
+Position-sensitive builtins keep their operand order -- the pipe receiver
+is always the first operand, so `0 -> Difference(5)` (= -5) is never
 reordered.
 
 ## Function Bodies
@@ -101,9 +101,9 @@ Ord -> (
 ```
 
 The `->` is the same pipe that carries a value into a constructor: the
-scrutinee flows into the dispatch. The parentheses group the arms — they
+scrutinee flows into the dispatch. The parentheses group the arms -- they
 isolate the match, they do not declare arguments. (The legacy spelling
-`Ord.( … )` still parses so old sources migrate cleanly, but `canon fmt`
+`Ord.( ... )` still parses so old sources migrate cleanly, but `canon fmt`
 rewrites it to the pipe form; `.` no longer executes anything.)
 
 Rules:
@@ -117,7 +117,7 @@ Rules:
 Algebraically, dispatch is the isomorphism
 
 ```
-(A + B + C) -> R  ≅  (A -> R) * (B -> R) * (C -> R)
+(A + B + C) -> R  ~=  (A -> R) * (B -> R) * (C -> R)
 ```
 
 made literal: a sum value applied to a product of handlers.
@@ -199,7 +199,7 @@ The enclosing function's return type must be able to carry the
 short-circuited value (a `Result` whose error slot includes `E`, or an
 `Option`). Inline error unions compose at the signature:
 `Result<Unit, HttpError + InvalidUrl>` accepts short-circuits from both
-`Url(…)?` and `-> Fetched?`.
+`Url(...)?` and `-> Fetched?`.
 
 **Error union widening.** Inline error unions widen along
 `?`-propagation: a `Result<T, IoError>` propagates out of a function
@@ -244,9 +244,9 @@ label = (Int) => Json {
 
 HTML literals are first-class expressions producing `Html` values, the
 markup mirror of JSON literals. A literal starts at a `<` immediately
-followed by a lowercase tag name — a position where `<` is never valid
-Canon, since generic arguments are PascalCase types — and spans one root
-element, closing tag included. `{…}` is an interpolation hole holding an
+followed by a lowercase tag name -- a position where `<` is never valid
+Canon, since generic arguments are PascalCase types -- and spans one root
+element, closing tag included. `{...}` is an interpolation hole holding an
 arbitrary Canon expression; everything else (attributes, quotes, nested
 tags, comments, void elements like `<br>`) is raw markup:
 
@@ -280,7 +280,7 @@ String => Row {
 
 - Holes work in attribute values too (`<button data-msg="{Msg}">`).
 - Literal interpolations (`{42}`, `{"a & b"}`) fold to static text at
-  parse time — escaped where escaping applies — so an all-constant
+  parse time -- escaped where escaping applies -- so an all-constant
   literal costs one string constant at runtime, exactly like an
   all-static JSON literal.
 - `{{` and `}}` escape literal braces.
@@ -306,4 +306,4 @@ hole or `.ToHtml()` is called. HTML literals power the
 | `?` | propagate `Result` / `Option` failure |
 | `"..."` | string literal |
 | `{"k":v}` / `[v]` | JSON literal |
-| `<tag>…</tag>` | HTML literal |
+| `<tag>...</tag>` | HTML literal |

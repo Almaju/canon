@@ -97,12 +97,12 @@ Unit => Program {
 The book is split into sections; use the tabs at the top.
 
 - **Getting Started**: install the toolchain, run your first program,
-  and read [A Tour of Canon](./guide.md) — the whole language on one
+  and read [A Tour of Canon](./guide.md) -- the whole language on one
   page, an afternoon's read.
 - **Specification**: the precise rules: lexical structure, the type
   algebra, ordering, the compilation model and ABI. The authoritative
   description of the language.
-- **Examples**: a curated set of real programs from the repository —
+- **Examples**: a curated set of real programs from the repository --
   their source is pulled in live, so it always matches what compiles.
 - **Reference**: the standard library, WASI interfaces, deployment.
 
@@ -111,5 +111,5 @@ The book is split into sections; use the tabs at the top.
 Canon is an **experimental design exploration**. The compiler exists, the
 examples run, and the design is stable enough to write about, but every
 detail is subject to change. The reference implementation lives in the
-same repository as this book; the [language specification](./spec/index.md)
+same repository as this book; the [language specification](./spec/overview.md)
 is the authoritative description of the language.

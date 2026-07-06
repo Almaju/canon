@@ -20,6 +20,11 @@
 //!     GETs the URL and sends prefix + response body. This is the
 //!     host-mediated effect that lets a (pure) web app talk to a
 //!     Canon backend without any guest-side fetch import.
+//!   - a click on an `<a href="…/page.md">` (a relative link ending in
+//!     `.md`, as the Markdown renderer emits for a cross-reference) is
+//!     intercepted and sent as `Nav:<basename>` — so a docs app can
+//!     route its own internal links with no per-link markup. Absolute
+//!     (`http(s)://`) links are left alone.
 //!
 //! ## Persistence
 //!
@@ -130,6 +135,30 @@ pub const CANON_WEB_JS: &str = r#""use strict";
       render();
     }
 
+    // ── Hash routing ────────────────────────────────────────────────
+    // A `Nav:<page>` message navigates through the URL fragment rather
+    // than the persisted log: `location.hash` is the single source of
+    // truth for the current page, so deep links are shareable and the
+    // browser's Back/Forward buttons work. Navigation is not persisted
+    // (the hash already carries it). Apps that never emit `Nav:` never
+    // touch the hash and are unaffected.
+    function hashPage() {
+      return decodeURIComponent(location.hash.replace(/^#/, ""));
+    }
+    function renderHash() {
+      const p = hashPage();
+      if (p) { model = apply(model, "Nav:" + p); render(); }
+    }
+    function go(page) {
+      if (location.hash === '#' + page) renderHash();
+      else location.hash = '#' + page; // → hashchange → renderHash
+    }
+    function dispatch(msg) {
+      if (msg.slice(0, 4) === "Nav:") go(msg.slice(4));
+      else send(msg);
+    }
+    window.addEventListener("hashchange", renderHash);
+
     root.addEventListener("click", (e) => {
       const ft = e.target.closest("[data-fetch]");
       if (ft && root.contains(ft)) {
@@ -143,7 +172,17 @@ pub const CANON_WEB_JS: &str = r#""use strict";
       const t = e.target.closest("[data-msg]");
       if (t && root.contains(t)) {
         e.preventDefault();
-        send(t.dataset.msg);
+        dispatch(t.dataset.msg);
+        return;
+      }
+      const link = e.target.closest("a[href]");
+      if (link && root.contains(link)) {
+        const href = link.getAttribute("href") || "";
+        const m = /(?:^|\/)([A-Za-z0-9][\w-]*)\.md(?:#.*)?$/.exec(href);
+        if (m && !/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+          e.preventDefault();
+          dispatch("Nav:" + m[1]);
+        }
       }
     });
     root.addEventListener("submit", (e) => {
@@ -161,7 +200,10 @@ pub const CANON_WEB_JS: &str = r#""use strict";
       }
     });
 
-    render();
+    // Honour a deep link (`…/#page`) on first paint; otherwise show the
+    // model from `init` (and any replayed log).
+    if (hashPage()) renderHash();
+    else render();
   }
 
   window.canonWebStart = canonWebStart;

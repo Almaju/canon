@@ -1,10 +1,10 @@
 # A Tour of Canon
 
 One page, the whole language. Each section is the short version; the
-[Language Specification](./spec/index.md) is the authoritative long
+[Language Specification](./spec/overview.md) is the authoritative long
 version, and every heading here links to its spec chapter for the
 precise rules. Canon is mid-migration to **[Types-Only
-Canon](./spec/types-only.md)** — the forms shown here are the direction
+Canon](./spec/types-only.md)** -- the forms shown here are the direction
 the language is heading, and what the examples compile with today.
 
 > *There is one way to do everything.* Most languages give you ten ways
@@ -18,16 +18,16 @@ Three commitments explain almost every design decision. See
 
 **One way to do everything.** Wherever ordering is discretionary,
 declarations must be alphabetical: product fields, union variants,
-declarations, dispatch arms. There is no `if`/`else` *and* `match` —
-there is dispatch. No `while` *and* `for` *and* recursion — there are
+declarations, dispatch arms. There is no `if`/`else` *and* `match` --
+there is dispatch. No `while` *and* `for` *and* recursion -- there are
 collection operations and recursion. Reordering is never a meaningful
 change; two programmers writing the same program produce the same bytes.
 
 **Types are the only names.** Canon has no local variables, no `let`, no
-comments, no parameter names — and no function names either. Every named
+comments, no parameter names -- and no function names either. Every named
 callable is a `PascalCase` type, and an operation is identified by *what
 it produces*. A value is referred to by its type; to disambiguate two
-values of the same type, introduce a newtype — the newtype is the
+values of the same type, introduce a newtype -- the newtype is the
 documentation.
 
 **Having a value is having the capability.** No service singletons, no
@@ -41,7 +41,7 @@ a value through an operation), and **`.` reads** (field access only).
 
 ## Types
 
-Every type composes two operators — `+` ("or") and `*` ("and") — over a
+Every type composes two operators -- `+` ("or") and `*` ("and") -- over a
 small core of primitives. Types are `PascalCase`. Full rules:
 [Types](./spec/types.md).
 
@@ -54,14 +54,14 @@ Birthday = String              # newtype: distinct type, shared storage
 Products are read by component type (`user.Birthday`) or, for repeats,
 by 1-based index (`byte.1`). Generics use angle brackets (`List<T>`,
 `Result<T, E>`), constraints use `:` (`<T: Print>`). Recursive types are
-boxed automatically — there is no `Box<T>`. There is **no type
+boxed automatically -- there is no `Box<T>`. There is **no type
 inference**: every type is written.
 
-Values are built by a **constructor** — there is no `new`, no
-`true`/`false` keyword. Literals desugar (`123` → `Int(123)`, `"hi"` →
-`String("hi")`, `{"k":v}` → a `Json` value). Zero-data values take empty
+Values are built by a **constructor** -- there is no `new`, no
+`true`/`false` keyword. Literals desugar (`123` -> `Int(123)`, `"hi"` ->
+`String("hi")`, `{"k":v}` -> a `Json` value). Zero-data values take empty
 parens: `Unit()`, `True()`, `None()`. **Conversion is construction**:
-`String(42)`, `Int("42")` — no `parse`, `toString`, or `from`/`into`
+`String(42)`, `Int("42")` -- no `parse`, `toString`, or `from`/`into`
 family. A constructor is just an arrow to the type it builds, and a
 *validated* one returns `Result`/`Option`:
 
@@ -75,15 +75,15 @@ String => Result<Url, InvalidUrl> {
 
 A fallible constructor forces `?` at the call site
 (`"https://example.com" -> Url? -> Get`), and external callers cannot
-bypass it — the raw inner value is reachable only inside the type's own
+bypass it -- the raw inner value is reachable only inside the type's own
 file.
 
 ## Constructors
 
 A constructor is `(Input) => Output { body }`, and it is **named after
-the type it produces** — so it needs no name of its own. A body is
+the type it produces** -- so it needs no name of its own. A body is
 newline-separated expressions; the last is the value. There are no
-semicolons and no local variables — you thread values with the `->`
+semicolons and no local variables -- you thread values with the `->`
 pipe. Full rules: [Functions and Traits](./spec/functions.md).
 
 ```canon
@@ -108,12 +108,12 @@ arguments can drop to the arg-less shorthand `Unit => Program` (as here).
 The pipe
 is **commutative**: any component of the input product can be the value
 piped in, the rest ride in parens (`alice -> Compare(bob)`). One-off
-operations are lambdas — the same arrow with no top-level type: `List(1
+operations are lambdas -- the same arrow with no top-level type: `List(1
 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })`.
 
 Operations that transform a value keep its type, so they take a **result
-newtype** named for what they produce — `Joined = String`, `Inserted =
-Map` — and newtype substitutability makes chaining free.
+newtype** named for what they produce -- `Joined = String`, `Inserted =
+Map` -- and newtype substitutability makes chaining free.
 
 ## Dispatch
 
@@ -132,7 +132,7 @@ True() -> (
 Payload-carrying variants name the payload type, which is then in scope:
 `* Some<Int> => Unit { Int -> Print }`. Dispatch also works by
 **equality on `String`/`Int` scrutinees**, where arms are literals and a
-mandatory catch-all naming the scrutinee's type is always last — this is
+mandatory catch-all naming the scrutinee's type is always last -- this is
 how routing works, with no route DSL:
 
 ```canon
@@ -151,7 +151,7 @@ do one thing.
 There are no loop keywords. Iteration is operations on collections
 (`Mapped`, `At`, `Length`, `First`, `Joined`) or plain recursion with
 dispatch supplying the base case. `Map` and `Set` in the stdlib are
-built this way — recursive unions walked by recursive constructors.
+built this way -- recursive unions walked by recursive constructors.
 
 ```canon
 Chain => Int {
@@ -177,7 +177,7 @@ Unit => Program {
 
 `Print` is the one operation that needs no threaded value. Every other
 effect appears in the signature because the work needs the value: a
-constructor over `(Database * User)` *is* the access — no
+constructor over `(Database * User)` *is* the access -- no
 `UserRepository`, no `DatabaseManager`. An effect can also produce
 **evidence**: a write yields a `Written` value, and a downstream
 constructor that takes `(Written)` requires proof the write happened.
@@ -186,7 +186,7 @@ constructor that takes `(Written)` requires proof the write happened.
 
 Async is a property of **types, never of syntax**. There is no `async`
 keyword and no `.await`; you write straight-line code and the compiler
-infers everything. Async enters through one door — a binding whose WIT
+infers everything. Async enters through one door -- a binding whose WIT
 function is `async`, giving it a `Future<T>` return. Wherever a
 `Future<T>` is used where `T` is expected, the compiler inserts the
 await, and suspension propagates up the call graph automatically. Full
@@ -208,9 +208,9 @@ loop, with no `for await`.
 ## Modules
 
 The module system is file-based. A file is `kebab-case.can` and **must**
-be named after the type it declares (`http-server.can` ↔ `HttpServer`); a
+be named after the type it declares (`http-server.can` <-> `HttpServer`); a
 module is a folder; the entry point is `main.can`. There is **no import
-statement** — referring to `Foo` loads `foo.can` (or `foo/main.can`)
+statement** -- referring to `Foo` loads `foo.can` (or `foo/main.can`)
 automatically, and the same rule reaches the embedded stdlib. Referencing
 a name that is genuinely ambiguous at the use site is a compile error;
 there is no private visibility. Full rules: [Modules and
@@ -218,8 +218,8 @@ Packages](./spec/modules.md).
 
 ## Shapes and traits
 
-When an operation's meaning spans types — `Length` over `Map`, `Set`,
-`String`, `List` — it is a **shape**: a named signature with no body,
+When an operation's meaning spans types -- `Length` over `Map`, `Set`,
+`String`, `List` -- it is a **shape**: a named signature with no body,
 `PascalCase` because it is a type, implemented per type by a bodied
 declaration of the same name.
 
@@ -231,14 +231,14 @@ Show = () => String
 
 A shape can be a parameter type directly, or a generic constraint
 (`<T: Print>`). This is what traits were; under Types-Only, shapes and
-constructor families are one concept — *a `PascalCase` name is a family
+constructor families are one concept -- *a `PascalCase` name is a family
 of implementations selected by input product*. See [Functions and
 Traits](./spec/functions.md).
 
 ## Errors
 
 Errors are values carried by `Result<T, E>`; the error slot is a regular
-type, so it can be an inline union — more ergonomic than a dedicated
+type, so it can be an inline union -- more ergonomic than a dedicated
 enum per call site:
 
 ```canon
@@ -250,12 +250,12 @@ File * Path => Result<Bytes, IoError + NotFound + PermissionDenied> {
 Postfix `?` propagates failure on both `Result` (short-circuits the
 error) and `Option` (short-circuits `None`), so pipelines read
 top-down. Keep `Option` (absent) and `Result` (failed) distinct. Name
-errors by *what failed* — `InvalidUrl`, `MalformedJson` — not by who
+errors by *what failed* -- `InvalidUrl`, `MalformedJson` -- not by who
 emitted them.
 
 ## Testing
 
-The test framework is a union type, one constructor, and a CLI verb — no
+The test framework is a union type, one constructor, and a CLI verb -- no
 attributes, no macros, no runner config. A test is any constructor
 returning `TestResult`; discovery is by signature, not by name.
 
@@ -275,7 +275,7 @@ falls out for free.
 ## Serving HTTP
 
 A program becomes an HTTP service by declaring **one arrow that returns
-`Response`** — `Request => Response`, no server object, no router, no
+`Response`** -- `Request => Response`, no server object, no router, no
 port in the program. The same entry-point-by-signature rule that makes
 `Args => Exit` a CLI program makes this a service; exactly one arrow
 may return a world type, and helpers return ordinary values.
@@ -296,27 +296,27 @@ Request => Response {
 
 Routing is dispatch, not a DSL. `Response` is the product `Body *
 Headers * Status`. `canon build` emits a standard `wasi:http/service`
-component (imports only `wasi:*`, exports `wasi:http/handler#handle`) —
+component (imports only `wasi:*`, exports `wasi:http/handler#handle`) --
 nothing in the artifact is Canon-specific. The worked example is
 [notes-api](./examples/notes-api.md).
 
 ## Binding files
 
 Canon compiles to a WebAssembly Component, so foreign functions bind to
-**Component Model imports** by path — there is no FFI keyword. A
+**Component Model imports** by path -- there is no FFI keyword. A
 *binding file* is recognized by shape and path: an ordinary `.can` file
 in a versioned package directory
 (`<ns>/<name>@<version>/<iface>.can`) whose declarations are body-less.
 The path spells the interface; the declaration's kebab-case form names
 the WIT function. **Binding files are the one place `camelCase` is
-legal** — camelCase in a Canon program means exactly "this identifier is
+legal** -- camelCase in a Canon program means exactly "this identifier is
 foreign".
 
 ```canon
 getRandomU64 = () => Int
 ```
 
-You rarely write these by hand — `canon bindgen <file.wit>` emits one
+You rarely write these by hand -- `canon bindgen <file.wit>` emits one
 binding file per interface, and idioms (`Url`, `File`, `Now`) are plain
 Canon constructors over the raw bindings. Two namespaces appear:
 standard `wasi:*` interfaces, and `canon:builtins/*` temporary host

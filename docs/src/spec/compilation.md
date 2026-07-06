@@ -1,8 +1,8 @@
 # Compilation and the ABI
 
 This chapter describes what the compiler does with a checked program and
-what the resulting artifact is. The pipeline is **source → lexer →
-parser → checker → codegen**. Codegen emits a WebAssembly core module
+what the resulting artifact is. The pipeline is **source -> lexer ->
+parser -> checker -> codegen**. Codegen emits a WebAssembly core module
 and wraps it into a **Component Model component** in-process:
 `wasm-encoder` and `wit-component` produce the final `.wasm`, no
 external toolchain is invoked, and `canon run` executes the result on an
@@ -64,7 +64,7 @@ All interop happens at the Component Model boundary, declared in
 **binding files**: `.can` files whose declarations are body-less,
 sitting directly in a versioned package directory
 (`wasi/cli@0.3.0-rc-2026-03-15/environment.can`) whose path spells the
-WIT interface — no directive, no header:
+WIT interface -- no directive, no header:
 
 ```canon
 getArguments = () => List<String>
@@ -77,7 +77,7 @@ The loader rewrites each alias into an external function bound to
 path:
 
 Body-less camelCase declarations are only meaningful inside a binding
-file — anywhere else they remain plain function-type aliases. Bound
+file -- anywhere else they remain plain function-type aliases. Bound
 functions are first-class values like any other function.
 
 Bindings are produced mechanically:
@@ -89,20 +89,20 @@ Bindings are produced mechanically:
   Functions whose shape the codegen can't lower yet are **skipped with
   a printed reason**, never emitted broken.
 
-## The WIT ↔ Canon Mapping
+## The WIT <-> Canon Mapping
 
 | WIT | Canon |
 |---|---|
 | `bool` | `Bool` |
-| `u8` … `s64` | `Int` (declared WIT width honoured at the ABI) |
+| `u8` ... `s64` | `Int` (declared WIT width honoured at the ABI) |
 | `f32`, `f64` | `Float` |
 | `char`, `string` | `String` |
 | `list<T>` | `List<T>` |
 | `option<T>` | `Option<T>` |
 | `result<T, E>` | `Result<T, E>` |
 | `result<T>` / bare `result` | `Result<T, Unit>` / `Result<Unit, Unit>` |
-| `tuple<A, B>` | product with positional field names `_0`, `_1`, … |
-| `record { … }` | product (fields alphabetical in source, WIT order at the ABI) |
+| `tuple<A, B>` | product with positional field names `_0`, `_1`, ... |
+| `record { ... }` | product (fields alphabetical in source, WIT order at the ABI) |
 | `variant` / `enum` | union |
 | `flags` | product of `Bool` |
 | `resource` | newtype over `Handle` (opaque) |
@@ -112,7 +112,7 @@ Bindings are produced mechanically:
 
 Identifier case converts mechanically: WIT `kebab-case` becomes
 `camelCase` for functions and `PascalCase` for types
-(`get-resolution` → `getResolution`, `incoming-request` →
+(`get-resolution` -> `getResolution`, `incoming-request` ->
 `IncomingRequest`).
 
 **Resources.** A WIT `resource` is modelled as `Foo = Handle`, where
@@ -135,10 +135,10 @@ has no privileged mechanism:
 - **generated bindings** (under the stdlib's `bindgen/`): raw,
   machine-produced from vendored WASI WIT, regenerated and never
   hand-edited;
-- **curated wrappers** (`canon/std/…`): hand-written Canon presenting
+- **curated wrappers** (`canon/std/...`): hand-written Canon presenting
   one primary type per file with capability discipline.
 
-Idiomatic code imports only `canon/std/…`. A direct import of a raw
+Idiomatic code imports only `canon/std/...`. A direct import of a raw
 binding works (everything is public) but gives up the curated naming
 and discipline. Where a `wasi:*` interface isn't yet expressible through
 the canonical ABI, the binding temporarily points at a

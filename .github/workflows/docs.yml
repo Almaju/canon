@@ -1,28 +1,30 @@
 name: docs
 
+# The documentation site is a Canon program: `docs/src/main.can` is the
+# Elm-architecture web app, and it renders the `docs/src/*.md` pages with
+# the standard library's Markdown renderer, compiled to a WebAssembly
+# module. The landing page (`docs/landing/`) is served at the site root
+# and the app under `/doc/`.
 on:
   push:
     branches: [main]
     paths:
       - "docs/**"
       - ".github/workflows/docs.yml"
-      # The book's runnable examples are compiled by the canon compiler
-      # at docs-build time, so compiler changes must revalidate them.
+      # The app is compiled by the canon compiler and renders the docs
+      # through the stdlib Markdown renderer, so compiler and stdlib
+      # changes rebuild the site.
       - "src/**"
       - "packages/**"
       - "build.rs"
       - "Cargo.toml"
       - "Cargo.lock"
-      # Web-app examples get a live in-book preview built from their
-      # source (docs/runner/build.mjs), so their changes rebuild the book.
-      - "examples/**"
   pull_request:
     paths:
       - "docs/**"
       - ".github/workflows/docs.yml"
       - "src/**"
       - "packages/**"
-      - "examples/**"
   workflow_dispatch:
 
 permissions:
@@ -34,26 +36,12 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-env:
-  MDBOOK_VERSION: "0.4.40"
-  # Pinned: docs/runner/build.py patches jco's output around a known
-  # emission bug (missing FutureReadableEnd/FutureWritableEnd classes).
-  # When bumping, check whether the polyfill in build.py is still needed.
-  JCO_VERSION: "1.24.6"
-
 jobs:
   build:
     name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install mdBook
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -64,36 +52,14 @@ jobs:
       - name: Build the canon compiler
         run: cargo build --release
 
-      - name: Install jco
-        run: npm install -g "@bytecodealliance/jco@${JCO_VERSION}"
+      - name: Build the docs app (Canon → WebAssembly)
+        run: target/release/canon build docs
 
-      - name: Build the book
-        working-directory: docs
-        run: mdbook build
-
-      - name: Assemble site (landing at /, book under /doc/)
+      - name: Assemble site (landing at /, docs app under /doc/)
         run: |
           mkdir -p site/doc
           cp -r docs/landing/. site/
-          cp -r docs/book/. site/doc/
-
-      - name: Build the in-browser runner (runnable examples)
-        run: |
-          node docs/runner/build.mjs \
-            --canon target/release/canon \
-            --src docs/src \
-            --out site/doc/runner \
-            --jco jco
-
-      # The docs site as a Canon web app: `docs/src/main.can` is the Elm
-      # triple, and it renders the real `docs/src/*.md` pages through the
-      # standard library's Markdown renderer (resolved by name, no copy).
-      # Staged at /app/ as a live preview alongside the mdBook.
-      - name: Build the Canon docs app
-        run: |
-          target/release/canon build docs
-          mkdir -p site/app
-          cp -r docs/build/. site/app/
+          cp -r docs/build/. site/doc/
 
       - name: Upload artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

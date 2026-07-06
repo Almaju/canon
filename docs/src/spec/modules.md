@@ -16,7 +16,7 @@
 
 There is **no import statement**. A reference *is* the import:
 mentioning `User` in a file that doesn't define it loads `user.can`.
-Wherever choice is discretionary, Canon removes the concept — and an
+Wherever choice is discretionary, Canon removes the concept -- and an
 import line is pure ceremony once files are named after what they
 declare.
 
@@ -25,20 +25,20 @@ loader searches:
 
 | Location | Rule |
 |---|---|
-| the file's own directory tree | name → file convention: `z.can` or `z/main.can` (kebab-case of `Z`), recursively, skipping `deps/` and `bindgen/` |
-| the project's `bindgen/` tree | by declared name — binding files declare functions whose names don't kebab back to their file (`getRandomU64` lives in `random.can`) |
+| the file's own directory tree | name -> file convention: `z.can` or `z/main.can` (kebab-case of `Z`), recursively, skipping `deps/` and `bindgen/` |
+| the project's `bindgen/` tree | by declared name -- binding files declare functions whose names don't kebab back to their file (`getRandomU64` lives in `random.can`) |
 | the project's `deps/` tree | vendored packages, by declared name |
 | the bundled packages (`canon/std`) | by declared name; the stdlib's hand-written wrappers shadow its internal bindgen substrate |
 
 **Ambiguity is a hard error, not a precedence.** A name that resolves
-in more than one location fails the build naming every candidate —
+in more than one location fails the build naming every candidate --
 there is no shadowing, so names are globally unique across a project,
 its dependency closure, and the standard library. A name that resolves
 nowhere is left for the checker, which reports the undefined name with
 full type context.
 
 A resolved reference brings the type **with its constructor and
-methods** (no wildcards, no aliasing — there is nothing to write).
+methods** (no wildcards, no aliasing -- there is nothing to write).
 This is why the naming convention has teeth: files are
 `kebab-case.can` of the PascalCase type they declare, so "which file
 defines `HttpServer`?" has exactly one mechanical answer, and the

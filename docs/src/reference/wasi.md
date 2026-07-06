@@ -8,9 +8,9 @@ involved; you normally only touch the top one.
 
 1. **The `canon/std` wrappers**: curated wrappers with Canon idioms
    (`Random()`, `Args()`, `1 -> Exited`). This is the layer
-   programs reach — referencing a name like `Random` resolves to it
+   programs reach -- referencing a name like `Random` resolves to it
    automatically. See the [Standard Library](./stdlib.md).
-2. **The `wasi/…` bindings**: machine-generated, one file per WIT
+2. **The `wasi/...` bindings**: machine-generated, one file per WIT
    interface, produced by `canon install` from vendored WIT. The
    stdlib wrappers consume these; user packages can too.
 3. **The WIT itself**: the contract any component-model host
@@ -40,7 +40,7 @@ Then materialize the bindings:
 canon install          # writes bindgen/wasi/<pkg>@<version>/<interface>.can
 ```
 
-Each generated file is pure source — plain function-type aliases, no
+Each generated file is pure source -- plain function-type aliases, no
 header. The versioned directory name carries the interface's package
 and version, and the loader derives each declaration's binding from
 the path (a binding file is recognized by shape):
@@ -59,7 +59,7 @@ one-shot, without a manifest.
 | WIT | Canon |
 |---|---|
 | `bool` | `Bool` |
-| integers (`u8`…`s64`) | `Int` (the compiler honours the exact WIT width at the ABI) |
+| integers (`u8`...`s64`) | `Int` (the compiler honours the exact WIT width at the ABI) |
 | `f32`/`f64` | `Float` |
 | `string` | `String` |
 | `list<T>` | `List<T>` |
