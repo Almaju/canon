@@ -10,7 +10,7 @@ Tree = Branch + Leaf
 
 Value = Int
 
-testDispatchOnLeaf = () => TestResult {
+DispatchSelectsLeafArm = () => TestResult {
     Leaf() -> (
         * Branch => TestResult { Fail() }
         * Leaf => TestResult { Pass() }

@@ -1,49 +1,45 @@
-testMapContainsAbsent = () => TestResult {
+MapContainsFindsKey = () => TestResult {
+    Map()
+        -> Inserted("a" * "1")
+        -> Contains("a")
+        -> TestResult
+}
+
+MapContainsRejectsAbsent = () => TestResult {
     Map()
         -> Inserted("a" * "1")
         -> Contains("z")
         -> Not
-        -> TestResult("Contains rejects a key the map lacks")
+        -> TestResult
 }
 
-testMapContainsPresent = () => TestResult {
-    Map()
-        -> Inserted("a" * "1")
-        -> Contains("a")
-        -> TestResult("Contains finds an inserted key")
-}
-
-testMapKeysSorted = () => TestResult {
+MapKeysSorted = () => TestResult {
     Map()
         -> Inserted("b" * "2")
         -> Inserted("a" * "1")
         -> Keys
         -> Json
         -> Eq("[a,b]")
-        -> TestResult("Keys yields keys in sorted order")
+        -> TestResult
 }
 
-testMapLength = () => TestResult {
+MapLengthCountsKeys = () => TestResult {
     Map()
         -> Inserted("b" * "2")
         -> Inserted("a" * "1")
         -> Length
         -> Eq(2)
-        -> TestResult("Length counts distinct keys")
+        -> TestResult
 }
 
-testMapOverwrite = () => TestResult {
+MapReinsertOverwrites = () => TestResult {
     Map() -> Inserted("a" * "1") -> Inserted("a" * "2") -> Value("a") -> (
-        * None => TestResult { False() -> TestResult("key a should be present") }
-        * Some<Value> => TestResult {
-            Value
-                -> Eq("2")
-                -> TestResult("re-inserting a key overwrites its value")
-        }
+        * None => TestResult { "key a should be present" -> Fail }
+        * Some<Value> => TestResult { Value -> Eq("2") -> TestResult }
     )
 }
 
-testMapRemoved = () => TestResult {
+MapRemovedDropsKey = () => TestResult {
     Map()
         -> Inserted("a" * "1")
         -> Inserted("b" * "2")
@@ -51,33 +47,29 @@ testMapRemoved = () => TestResult {
         -> Keys
         -> Json
         -> Eq("[b]")
-        -> TestResult("Removed drops the given key")
+        -> TestResult
 }
 
-testMapValueAbsent = () => TestResult {
+MapValueAbsent = () => TestResult {
     Map() -> Inserted("a" * "1") -> Value("z") -> (
-        * None => TestResult { True() -> TestResult("missing key yields None") }
-        * Some<Value> => TestResult { False() -> TestResult("key z should be absent") }
+        * None => TestResult { Pass() }
+        * Some<Value> => TestResult { "key z should be absent" -> Fail }
     )
 }
 
-testMapValuePresent = () => TestResult {
+MapValuePresent = () => TestResult {
     Map() -> Inserted("a" * "1") -> Value("a") -> (
-        * None => TestResult { False() -> TestResult("key a should be present") }
-        * Some<Value> => TestResult {
-            Value
-                -> Eq("1")
-                -> TestResult("Value reads the inserted value")
-        }
+        * None => TestResult { "key a should be present" -> Fail }
+        * Some<Value> => TestResult { Value -> Eq("1") -> TestResult }
     )
 }
 
-testMapValuesSorted = () => TestResult {
+MapValuesOrderedByKey = () => TestResult {
     Map()
         -> Inserted("b" * "2")
         -> Inserted("a" * "1")
         -> Values
         -> Json
         -> Eq("[1,2]")
-        -> TestResult("Values yields values ordered by key")
+        -> TestResult
 }

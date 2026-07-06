@@ -21,18 +21,18 @@ fn canon_test_exit_codes() {
     let failing = workdir.join("failing_test.can");
     std::fs::write(
         &failing,
-        r#"testBroken = () => TestResult {
-    1
-        -> Sum(2)
-        -> Eq(7)
-        -> TestResult("math is broken")
+        r#"BrokenMath = () => TestResult {
+    1 -> Sum(2) -> Eq(7) -> (
+        * False => TestResult { "math is broken" -> Fail }
+        * True => TestResult { Pass() }
+    )
 }
 
-testFine = () => TestResult {
+WorkingMath = () => TestResult {
     1
         -> Sum(2)
         -> Eq(3)
-        -> TestResult("math works")
+        -> TestResult
 }
 "#,
     )
@@ -44,20 +44,20 @@ testFine = () => TestResult {
         .expect("canon test spawns");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("[FAIL] testBroken: math is broken"),
+        stdout.contains("[FAIL] BrokenMath: math is broken"),
         "single-line failure banner, got:\n{stdout}"
     );
-    assert!(stdout.contains("[ ok ] testFine"), "got:\n{stdout}");
+    assert!(stdout.contains("[ ok ] WorkingMath"), "got:\n{stdout}");
     assert_eq!(out.status.code(), Some(1), "failing suite exits 1");
 
     let passing = workdir.join("passing_test.can");
     std::fs::write(
         &passing,
-        r#"testFine = () => TestResult {
+        r#"WorkingMath = () => TestResult {
     1
         -> Sum(2)
         -> Eq(3)
-        -> TestResult("math works")
+        -> TestResult
 }
 "#,
     )

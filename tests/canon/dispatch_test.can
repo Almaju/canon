@@ -4,14 +4,14 @@ Light = Unit
 
 Mode = Dark + Light
 
-testDispatchOnDark = () => TestResult {
+DispatchSelectsDarkArm = () => TestResult {
     Dark() -> (
         * Dark => TestResult { Pass() }
         * Light => TestResult { Fail() }
     )
 }
 
-testDispatchOnLight = () => TestResult {
+DispatchSelectsLightArm = () => TestResult {
     Light() -> (
         * Dark => TestResult { Fail() }
         * Light => TestResult { Pass() }

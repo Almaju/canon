@@ -1,9 +1,11 @@
-testStringConcat = () => TestResult {
-    "hello" -> Joined(" world")
-    Pass()
+JoinedConcatenates = () => TestResult {
+    "hello"
+        -> Joined(" world")
+        -> Eq("hello world")
+        -> TestResult
 }
 
-testStringPrint = () => TestResult {
+PrintEmitsString = () => TestResult {
     "hello" -> Print
     Pass()
 }

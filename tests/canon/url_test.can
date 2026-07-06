@@ -1,37 +1,27 @@
-testUrlEmptyHost = () => TestResult {
-    "http://" -> Url -> (
-        * Err<InvalidUrl> => TestResult {
-            True() -> TestResult("a scheme with no host is rejected")
-        }
-        * Ok<Url> => TestResult { False() -> TestResult("\"http://\" should not validate") }
-    )
-}
-
-testUrlHttp = () => TestResult {
+UrlAcceptsHttp = () => TestResult {
     "http://example.com" -> Url -> (
-        * Err<InvalidUrl> => TestResult { False() -> TestResult("http URL should validate") }
-        * Ok<Url> => TestResult {
-            Url
-                -> Eq("http://example.com")
-                -> TestResult("Url accepts an http:// URL")
-        }
+        * Err<InvalidUrl> => TestResult { "http URL should validate" -> Fail }
+        * Ok<Url> => TestResult { Url -> Eq("http://example.com") -> TestResult }
     )
 }
 
-testUrlHttps = () => TestResult {
+UrlAcceptsHttps = () => TestResult {
     "https://a.test/x" -> Url -> (
-        * Err<InvalidUrl> => TestResult { False() -> TestResult("https URL should validate") }
-        * Ok<Url> => TestResult {
-            Url
-                -> Eq("https://a.test/x")
-                -> TestResult("Url accepts an https:// URL with a path")
-        }
+        * Err<InvalidUrl> => TestResult { "https URL should validate" -> Fail }
+        * Ok<Url> => TestResult { Url -> Eq("https://a.test/x") -> TestResult }
     )
 }
 
-testUrlWrongScheme = () => TestResult {
+UrlRejectsEmptyHost = () => TestResult {
+    "http://" -> Url -> (
+        * Err<InvalidUrl> => TestResult { Pass() }
+        * Ok<Url> => TestResult { "\"http://\" should not validate" -> Fail }
+    )
+}
+
+UrlRejectsWrongScheme = () => TestResult {
     "ftp://nope" -> Url -> (
-        * Err<InvalidUrl> => TestResult { True() -> TestResult("a non-http scheme is rejected") }
-        * Ok<Url> => TestResult { False() -> TestResult("\"ftp://nope\" should not validate") }
+        * Err<InvalidUrl> => TestResult { Pass() }
+        * Ok<Url> => TestResult { "\"ftp://nope\" should not validate" -> Fail }
     )
 }

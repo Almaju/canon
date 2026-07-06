@@ -129,7 +129,7 @@ Each layer answers a different question. Pick the layer that matches
 - **Checker fixture (ok)**: drop a new `.can` file into `tests/checker/ok/`. The harness picks it up automatically.
 - **Checker fixture (fail)**: drop a new `.can` file into `tests/checker/fail/`, then run `just update-fixtures` to generate the sibling `.stderr` from the actual checker output. Review the golden file and commit both.
 - **Runtime fixture**: drop a new `.can` file into `tests/runtime/`, then `just update-fixtures` to generate the sibling `.stdout` from the actual program output. Review and commit both.
-- **Canon test**: add a function with signature `() => TestResult` to any `tests/canon/*_test.can` file (or create a new one). Discovery is by type signature — the `test*` name prefix is convention, not a requirement. (These are the one place camelCase names remain legal outside binding files: each test needs a distinct non-type name.)
+- **Canon test**: add a PascalCase constructor with signature `() => TestResult` to any `tests/canon/*_test.can` file (or create a new one). Discovery is by type signature; the name is a type name like every other Canon name — named for the behaviour it asserts (`SumAddsOperands = () => TestResult { … }`), reported as `[ ok ] SumAddsOperands`. camelCase test names are a checker error (no exemption — the only camelCase left is in binding files).
 - **Compiler API test**: only when the test needs to call the checker with synthetic arguments. Keep these rare.
 
 ### Updating goldens
@@ -143,17 +143,17 @@ actual current output. The `git diff` is the review surface for
 ### Canon-language test framework
 
 ```
-testAddPositive = () => TestResult {
-    1 -> Sum(2) -> Eq(3) -> TestResult("1+2=3")
+SumAddsOperands = () => TestResult {
+    1 -> Sum(2) -> Eq(3) -> TestResult
 }
 ```
 
 (No import needed: the `TestResult` reference auto-loads the stdlib's `test-result.can`.)
 
-- `TestResult = Fail + Pass`, with `Fail = String` carrying the assertion's failure message.
-- The `TestResult` constructor `(Bool * String) => TestResult` turns a `Bool` and a message into a `TestResult`. When the bool is `True`, returns `Pass()`; when `False`, returns `Fail(message)`. (Formerly `assert` — renamed in the types-only port; conversion is construction.)
-- The synthesised `main` dispatches each test on its result and prints a `[ ok ] testName` line on `Pass` or a single `[FAIL] testName: message` line on `Fail`. Each dispatch yields 0/1; the failure count drives `wasi:cli/exit#exit-with-code` (any failure → exit 1), so `canon test` is honest to shells and CI.
-- Each test ends in a chain that produces a `TestResult` (typically `-> Eq(...) -> TestResult("msg")`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
+- `TestResult = Fail + Pass`, with `Fail = String` carrying an optional failure message.
+- The `TestResult` constructor `Bool => TestResult` turns a `Bool` into a `TestResult`: `True` → `Pass()`, `False` → `Fail("")`. A bare `-> TestResult` terminates a boolean-chain test — the test's own name is the failure label, so no message string is needed. (Formerly `assert`, then `(Bool * String) => TestResult`; the message arg was dropped once tests became PascalCase-named.) When a failure diagnostic genuinely helps, construct `Fail("why")` directly in a dispatch arm (see `int_test.can`, `url_test.can`).
+- The synthesised `main` dispatches each test on its result and prints a `[ ok ] TestName` line on `Pass` or a single `[FAIL] TestName: message` line on `Fail`. Each dispatch yields 0/1; the failure count drives `wasi:cli/exit#exit-with-code` (any failure → exit 1), so `canon test` is honest to shells and CI.
+- Each test ends in a chain that produces a `TestResult` (typically `-> Eq(...) -> TestResult`, or a dispatch whose arms yield `Pass()` / `Fail("…")`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
 - The synthesised `main` is exempt from free-function alphabetical ordering (main is the entry point, distinguished by role).
 - Exit codes are threaded: a failing suite exits 1, a passing one exits 0 (pinned by `tests/exit_code_test.rs::canon_test_exit_codes`). The `tests/canon_tests.rs` harness still parses stdout for `[FAIL]` as a belt-and-braces check.
 - `canon test <dir>` runs every `*_test.can` file under a directory in **one process**, sharing the stdlib parse (memoised in `loader::parsed_bundled_items`) and a single wasmtime engine/linker/tokio runtime (`runtime::run_components`) across files — the win is skipping N−1 process/engine spin-ups and N−1 stdlib re-parses. `canon test <file>` keeps the original single-file path. The `tests/canon_tests.rs` harness invokes the directory mode once; a per-file compile failure is isolated (printed, counted, batch continues).
@@ -243,7 +243,8 @@ Non-obvious invariants the code won't spell out for you:
 
 "The only names are type names": camelCase bodied definitions and
 camelCase type aliases are **checker errors** outside binding files (the
-FFI boundary) and `canon test` functions. See the spec
+FFI boundary) — with no exception for `canon test` functions, which are
+PascalCase constructors like everything else. See the spec
 (`docs/src/spec/`). The invariants:
 
 - **Constructor families.** A type may declare several self-named
@@ -315,8 +316,9 @@ FFI boundary) and `canon test` functions. See the spec
   `i32.and`/`or`/`eqz` arms are deleted). The stdlib wrapper layer is
   fully ported (JSON/int parsers, HTML element vocabulary, `TestResult`,
   Map/Set); camelCase survives only in binding files
-  (`builtins@0.1.0/`, `wasi/`) — the FFI boundary — and `canon test`
-  function names, enforced by the checker.
+  (`builtins@0.1.0/`, `wasi/`) — the FFI boundary — enforced by the
+  checker (`canon test` functions are PascalCase constructors, no
+  exception).
 - **Newtype substitutability in returns.** A body producing `Html`
   satisfies `-> Button` where `Button = Html` (the return check walks
   both alias chains). This is what lets tag-newtype constructors return

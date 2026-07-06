@@ -8,7 +8,7 @@ Greeted = (Greeting * Name) => Greeted {
     Greeting
 }
 
-testCallableBothWays = () => TestResult {
+ProductCallableBothWays = () => TestResult {
     "hello"
         -> Greeting
         -> Greeted("world" -> Name)
@@ -18,14 +18,14 @@ testCallableBothWays = () => TestResult {
     Pass()
 }
 
-testCanonicalDirection = () => TestResult {
+ProductCanonicalDirection = () => TestResult {
     "hello"
         -> Greeting
         -> Greeted("world" -> Name)
     Pass()
 }
 
-testNonCanonicalDirection = () => TestResult {
+ProductNonCanonicalDirection = () => TestResult {
     "world"
         -> Name
         -> Greeted("hello" -> Greeting)
