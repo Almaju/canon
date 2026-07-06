@@ -1,6 +1,6 @@
 Instant = Int
 
-Instant = () => Instant {
+Unit => Instant {
     MonotonicClock
         -> MonotonicClockNow
         -> Instant
