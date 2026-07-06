@@ -1,0 +1,1 @@
+error[tests/checker/fail/deeply_nested_type_parens.can:2:261]: expression or type nested too deeply (limit: 256 levels)

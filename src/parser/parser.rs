@@ -3,6 +3,14 @@ use crate::ast::*;
 use crate::error::{CanonError, Result, Span};
 use crate::lexer::{Token, TokenKind};
 
+/// Recursive-descent expressions and types both bottom out through
+/// `parse_expr` / `parse_type_expr`, so a pathologically nested input
+/// (`((((…))))` in type position, or a `-> Ctor` chain thousands deep)
+/// would otherwise grow the call stack — or the `Expr`/`TypeExpr` tree a
+/// later pass walks recursively — without bound and abort the process.
+/// `nest_depth` turns that into a clean parse error instead.
+const MAX_NEST_DEPTH: u32 = 256;
+
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
@@ -12,6 +20,8 @@ pub struct Parser {
     /// (`synchronize`), and keeps going, so one file can report many
     /// syntax errors at once.
     errors: Vec<CanonError>,
+    /// Current expression/type nesting depth; see `MAX_NEST_DEPTH`.
+    nest_depth: u32,
 }
 
 impl Parser {
@@ -20,7 +30,29 @@ impl Parser {
             tokens,
             pos: 0,
             errors: Vec::new(),
+            nest_depth: 0,
         }
+    }
+
+    /// Bumps the nesting depth and errors cleanly once it passes
+    /// `MAX_NEST_DEPTH`, instead of letting the recursion (or a later
+    /// recursive pass over the resulting tree) overflow the stack.
+    /// Callers restore `self.nest_depth` to the value returned here once
+    /// they're done, so depth is scoped to the call, not cumulative
+    /// across sibling expressions.
+    fn enter_nest(&mut self) -> Result<u32> {
+        let saved = self.nest_depth;
+        self.nest_depth += 1;
+        if self.nest_depth > MAX_NEST_DEPTH {
+            self.nest_depth = saved;
+            return Err(CanonError::ParseError {
+                message: format!(
+                    "expression or type nested too deeply (limit: {MAX_NEST_DEPTH} levels)"
+                ),
+                span: self.current_span(),
+            });
+        }
+        Ok(saved)
     }
 
     /// Parse the whole module, recovering from syntax errors to surface
@@ -365,7 +397,10 @@ impl Parser {
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr> {
-        self.parse_type_union()
+        let saved = self.enter_nest()?;
+        let result = self.parse_type_union();
+        self.nest_depth = saved;
+        result
     }
 
     fn parse_type_union(&mut self) -> Result<TypeExpr> {
@@ -553,14 +588,33 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr> {
+        let saved = self.enter_nest()?;
+        let result = self.parse_expr_impl();
+        self.nest_depth = saved;
+        result
+    }
+
+    fn parse_expr_impl(&mut self) -> Result<Expr> {
         let mut expr = self.parse_primary()?;
         loop {
             let next = self.peek_past_newlines();
-            if matches!(
+            let continues_chain = matches!(
                 next,
                 TokenKind::Dot | TokenKind::Question | TokenKind::Arrow
-            ) {
+            );
+            if continues_chain {
                 self.skip_newlines();
+                // A `.`/`?`/`->` chain doesn't recurse back through
+                // `parse_expr` — it grows `expr` in this same loop — so
+                // a long chain (`1 -> Sum(1) -> Sum(1) -> …`) wouldn't
+                // trip `enter_nest`'s call-depth check even though it
+                // builds an `Expr` tree just as deep, and a later pass
+                // walking that tree recursively (the formatter, checker,
+                // or codegen) would overflow the stack instead. Bump the
+                // same counter per link so a too-long chain is rejected
+                // here too; the `parse_expr` wrapper restores it on
+                // return.
+                self.enter_nest()?;
             }
             if self.check(TokenKind::Dot) {
                 self.advance();

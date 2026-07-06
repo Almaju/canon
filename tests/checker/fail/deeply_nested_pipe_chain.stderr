@@ -1,0 +1,1 @@
+error[tests/checker/fail/deeply_nested_pipe_chain.can:2:2554]: expression or type nested too deeply (limit: 256 levels)
