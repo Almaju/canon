@@ -120,10 +120,10 @@ string -> Substring(Start(1), End(4))          # execute
 
 Commutativity is preserved: `(A * B) => C` is reachable from either side (`a -> C(b)` or `b -> C(a)`), because the pipe fills one component of the input product and the rest follow. A function stays linked to every type in its input, never bound to a single receiver.
 
-**Two open decisions** gate implementation:
+**Two decisions gated implementation; both have landed:**
 
-1. *Multi-input spelling.* Either the **parens tail** `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest; but `C(b)` resembles a call) or the **pure product** `a * b -> C` (mirrors the declaration exactly, no parens-with-args; but mixed chains need grouping -- `(a -> B) * c -> D` -- and real code gets noisier). Leaning parens-tail for ergonomics.
-2. *Declaration arrow.* `=>` (recommended -- minimal, "maps to"), `<-` (arrows oppose, but reads backwards), or `~>` (maximally distinct, less conventional).
+1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon fmt` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
+2. *Declaration arrow* -- `=>` (minimal, "maps to"). `->` at a declaration site is now a parse error (`expect_decl_arrow` in `src/parser/parser.rs`): declarations use `=>`, execution uses `->`.
 
 Auto-discovery is the headline feature, not a side effect: `->` completion queries "functions whose input product mentions this type," `.` completion queries the value's fields. Building both in the LSP is its own slice, since it is the reason for the split.
 
@@ -224,6 +224,6 @@ Queued to move out of the compiler as their blockers clear:
 3. **Cross-file constructor families** -- [~] partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
 4. **Minimal primitives** -- [~] in progress. A compiler builtin is justified only by wasm numerics, linear-memory layout, canonical-ABI machinery, or a host boundary (see [Minimal Primitives](#minimal-primitives)); everything else moves to stdlib Canon. `Bool`'s `And`/`Or`/`Not` landed (pure dispatch). Remaining: the derived comparisons, `String(Int)` rendering, `print`.
 5. **Stdlib port** -- [x] landed, `json.can` included. The recursive-descent parser is ~30 anonymous arrows over result newtypes and the style held; **checkpoint verdict: full removal** (the fallback rule is retired).
-6. **Enforcement** -- [soon] next. camelCase outside binding files: warning, then error; pick which of the three call spellings (`B(a)` / `a.B()` / `a -> B`) `canon fmt` canonicalizes; entry-point worlds become shape implementations. A larger syntax decision is open here (pipe-only execution + a distinct `=>` declaration arrow); see the discussion in the PR before flipping enforcement.
+6. **Enforcement** -- [x] landed. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); `canon fmt` canonicalizes every call spelling (`B(a)` / `a.B()` / `a -> B`) to the parens-tail `a -> B(c)` form; entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized). The larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser.
 7. **Spec rewrite** -- this page's content folds into the Functions / Traits / Ordering spec pages; the pre-migration descriptions there are replaced.
 
