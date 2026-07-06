@@ -98,14 +98,19 @@ The renderer is a practical subset, not a full CommonMark implementation:
 | `*italic*` | `<em>…</em>` (inner text formatted) |
 | `` `code` `` | `<code>…</code>` (contents escaped) |
 | `[text](url)` | `<a href="url">…</a>` (url escaped, text formatted) |
+| `\| a \| b \|` + `\|---\|---\|` | `<table>` with a `<thead>` header row and `<tbody>` body rows (cells formatted inline) |
 | blank lines | block separators |
 
 Text is HTML-escaped as it is walked (`"` `&` `<` `>`), so `a < b & c`
 renders as `a &lt; b &amp; c`. A `#` with no following space, and a lone
 unmatched `*`, are treated as literal text.
 
+Pipe tables (a header row, a `|---|---|` delimiter, then body rows) render
+to `<table>`; cell text runs through the inline pass, so `**bold**`,
+`` `code` ``, and links work inside cells.
+
 Not yet handled: lists nested more than one level, `_underscore_`
-emphasis, setext headings, tables, and images — each an additive
+emphasis, setext headings, and images — each an additive
 extension in the same byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8) text in string
 literals is subject to the compiler's existing lexer handling of
 multi-byte characters; ASCII markdown is unaffected.
