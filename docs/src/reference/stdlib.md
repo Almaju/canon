@@ -72,14 +72,22 @@ Unit => Program {
 ```canon
 Instant = Int
 
-Instant = () => Instant
+Unit => Instant
 ```
 
 Backed by the generated `wasi/clocks/monotonic_clock` binding, which
 imports `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15`. A second
 generated interface, `wasi/clocks/system_clock`, exposes wall-clock
-time (`Instant` with a `seconds` + `nanoseconds` shape) for callers
-that need it directly; most users want `canon/std/time/Now`.
+time as a `record instant` (a `seconds` + `nanoseconds` shape) for
+callers that need it directly; most users want `canon/std/time/Now`.
+
+> **Known limitation.** The monotonic `Instant` (`= Int`) and the
+> wall-clock modules (`Now` / `Unix`, which pull in `system_clock`)
+> both surface a type named `Instant` — the second from WASI's
+> `record instant`. Because the two bodies differ, a single program
+> that references *both* the monotonic `Instant()` and `Now()` / `Unix()`
+> currently fails to load with a duplicate-`Instant` error. Use one
+> clock family per program until per-referrer type resolution lands.
 
 ## `Random`
 
