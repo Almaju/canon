@@ -166,38 +166,16 @@ Most example-shaped tests (small deterministic programs that exercise one langua
 
 ### Known codegen gaps
 
-The checker accepts more than the codegen implements. These features
-parse and typecheck (some are pinned by `tests/checker/ok/`) but don't
-run yet — each is a self-contained PR:
-
-- **Binding declarations returning `list<T>` for non-string `T`** — the
-  byte-packed canonical-ABI element layout needs per-width read-back;
-  `List<String>` returns already work.
-- **Sub-u64 ints (`u8`/`u16`/`u32`/`s8`/`s16`/`s32`) inside a compound
-  WIT shape** (`option`/`list`/`variant`/record param). Top-level and
-  record-of-scalars *returns* are handled.
-- **WIT `result` with no payloads** in binding declarations (the bare
-  `result;` form lowers to a discriminant-only shape the codegen renders
-  as `u32`).
-- **Non-string `option<T>` extern returns** (no indirect-return decode).
-- **WIT `resource` / `own<T>` / `borrow<T>` in binding
-  signatures** — bindgen emits the resource *types* as `Foo = Handle`
-  newtypes but skips every method / constructor / static and any
-  function whose signature transitively mentions a handle.
-- **`At(i)` / `First` on `List<String>`, nested `Mapped`** —
-  `Ty::List` erases the element type at codegen; threading it is the
-  enabling refactor.
-- **HTTP handler request headers + body** — the handler body compiles
-  fully (dynamic status, dispatch, string bodies), and `method()` /
-  `path()` land, but reading request *headers* and *body* is not wired
-  up. HTTP programs also can't use non-`wasi:http` extern imports (the
-  `wasi:http/service` world can't satisfy `canon:builtins/*` bridges).
-- **`Stream<T>` lowering + streaming response bodies** — the stdlib
-  combinator surface and checker support exist, but codegen drops
-  imports whose signatures mention `Stream<T>`, so such programs fail to
-  link. The enabling move is routing Stream-using programs through
-  `wit_component::ComponentEncoder` instead of the hand-rolled
-  `wasm-encoder` type section.
+The checker accepts more than the codegen implements: a handful of
+features parse and typecheck (some pinned by `tests/checker/ok/`) but
+fail at `canon build`. The canonical list lives in
+`docs/src/reference/codegen-gaps.md`, mirrored by the single-source-of-truth
+`CODEGEN_GAPS` table in `src/checker/mod.rs`. When a program *reaches* one
+of the statically-detectable gaps (binding `list<T>`/`option<T>` returns for
+non-string `T`, `Stream<T>` in a signature), the checker emits a non-fatal
+**warning** pointing at that page — a heads-up before the build fails. Add a
+new gap in both places (a `tests/codegen_gaps.rs` test pins them together);
+don't re-inline the list here.
 
 ### Gotchas
 

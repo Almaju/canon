@@ -1,0 +1,78 @@
+testButton = () => TestResult {
+    "inc"
+        -> Msg
+        -> Button("click")
+        -> Eq("<button data-msg=\"inc\">click</button>")
+        -> TestResult("Button wires the Msg into a data-msg attribute")
+}
+
+testDiv = () => TestResult {
+    "hi"
+        -> Div
+        -> Eq("<div>hi</div>")
+        -> TestResult("Div wraps content in a div element")
+}
+
+testEl = () => TestResult {
+    "hi"
+        -> El("p" -> Tag)
+        -> Eq("<p>hi</p>")
+        -> TestResult("El wraps content in the named tag")
+}
+
+testElAttr = () => TestResult {
+    "class=\"x\""
+        -> Attr
+        -> ElAttr("hi" * "p" -> Tag)
+        -> Eq("<p class=\"x\">hi</p>")
+        -> TestResult("ElAttr adds an attribute to the opening tag")
+}
+
+testEscaped = () => TestResult {
+    "a<b>&\"c"
+        -> Escaped
+        -> Eq("a&lt;b&gt;&amp;&quot;c")
+        -> TestResult("Escaped replaces the four HTML metacharacters")
+}
+
+testH1 = () => TestResult {
+    "Title"
+        -> H1
+        -> Eq("<h1>Title</h1>")
+        -> TestResult("H1 wraps content in a heading element")
+}
+
+testLi = () => TestResult {
+    "item"
+        -> Li
+        -> Eq("<li>item</li>")
+        -> TestResult("Li wraps content in a list item")
+}
+
+testSpan = () => TestResult {
+    "hi"
+        -> Span
+        -> Eq("<span>hi</span>")
+        -> TestResult("Span wraps content in a span element")
+}
+
+testToHtmlEscapesString = () => TestResult {
+    "<b>"
+        -> ToHtml
+        -> Eq("&lt;b&gt;")
+        -> TestResult("ToHtml escapes a raw String")
+}
+
+testToHtmlInt = () => TestResult {
+    7
+        -> ToHtml
+        -> Eq("7")
+        -> TestResult("ToHtml renders an Int as its digits")
+}
+
+testUl = () => TestResult {
+    "items"
+        -> Ul
+        -> Eq("<ul>items</ul>")
+        -> TestResult("Ul wraps content in an unordered list")
+}
