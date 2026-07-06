@@ -128,22 +128,20 @@ impl LspServer {
 /// word (identifier) at that position.
 pub(super) fn word_at_position(source: &str, line: u32, character: u32) -> Option<String> {
     let target_line = source.lines().nth(line as usize)?;
-    let col = character as usize;
+    let mut col = character as usize;
 
     if col >= target_line.len() {
-        // Try the character just before if we're at the end
+        // Cursor is at or past the end of the line — try the character
+        // just before it instead.
         if col == 0 {
             return None;
         }
-        // Fall through — we'll check the byte at col below
+        col -= 1;
     }
 
     // Find the word boundaries around `col`
     let bytes = target_line.as_bytes();
-    if col >= bytes.len() {
-        return None;
-    }
-    if !is_ident_char(bytes[col]) {
+    if col >= bytes.len() || !is_ident_char(bytes[col]) {
         return None;
     }
 
@@ -570,4 +568,43 @@ pub(super) fn extract_param_text(json: &str) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn word_at_position_finds_word_in_middle() {
+        assert_eq!(
+            word_at_position("Foo -> Bar", 0, 1),
+            Some("Foo".to_string())
+        );
+    }
+
+    #[test]
+    fn word_at_position_finds_word_at_line_end() {
+        // The cursor sits right after the last character of the word —
+        // the position an editor reports right after the user finishes
+        // typing an identifier, or after clicking at the end of a line.
+        // `character` here is one past the last valid index, matching
+        // the doc comment's stated intent ("try the character just
+        // before if we're at the end").
+        assert_eq!(word_at_position("Foo", 0, 3), Some("Foo".to_string()));
+    }
+
+    #[test]
+    fn word_at_position_returns_none_on_whitespace() {
+        assert_eq!(word_at_position("Foo Bar", 0, 3), None);
+    }
+
+    #[test]
+    fn word_at_position_returns_none_past_end_of_empty_line() {
+        assert_eq!(word_at_position("", 0, 5), None);
+    }
+
+    #[test]
+    fn word_at_position_returns_none_for_missing_line() {
+        assert_eq!(word_at_position("Foo", 5, 0), None);
+    }
 }
