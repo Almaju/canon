@@ -663,7 +663,18 @@ impl<'a> Scanner<'a> {
                 self.column += 1;
                 let hi = self.consume_hex_digit(esc_line, esc_col)?;
                 let lo = self.consume_hex_digit(esc_line, esc_col)?;
-                Ok(char::from((hi << 4) | lo))
+                let byte = (hi << 4) | lo;
+                if byte > 0x7F {
+                    return Err(self.err_at(
+                        esc_line,
+                        esc_col,
+                        &format!(
+                            "\\x{:02X} is not ASCII — \\x only escapes bytes 00-7F; use \\u{:04X} for a Unicode scalar",
+                            byte, byte
+                        ),
+                    ));
+                }
+                Ok(char::from(byte))
             }
             b'u' => {
                 self.pos += 1;
