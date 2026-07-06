@@ -50,6 +50,25 @@ MapRemovedDropsKey = () => TestResult {
         -> TestResult
 }
 
+MapRemovedOnEmptyIsNoOp = () => TestResult {
+    Map()
+        -> Removed("a")
+        -> Length
+        -> Eq(0)
+        -> TestResult
+}
+
+MapRemovedRecursesPastNonMatchingKey = () => TestResult {
+    Map()
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
+        -> Removed("b")
+        -> Keys
+        -> Json
+        -> Eq("[a]")
+        -> TestResult
+}
+
 MapValueAbsent = () => TestResult {
     Map() -> Inserted("a" * "1") -> Value("z") -> (
         * None => TestResult { Pass() }
