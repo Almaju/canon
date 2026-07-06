@@ -57,7 +57,9 @@ test-can: build
 # Examples live in examples/ for documentation; they are not the test
 # suite (`cargo test` is). This task is a smoke check that examples
 # still compile and run end-to-end — useful when changing the compiler
-# or stdlib, but not gated by CI.
+# or stdlib. CI runs it (ci.yml) so a broken example fails the gate;
+# a runtime error exits non-zero, while checker skips and long-running
+# timeouts are expected and pass.
 #
 # `examples/` is a workspace whose members are individual packages under
 # `examples/<name>/`. Each member is built and run with a 5-second timeout
@@ -106,6 +108,13 @@ examples: build
     done
     echo ""
     echo "${pass} passed, ${fail} failed, ${skip} skipped"
+    # A runtime error is a real regression — fail so CI (and the caller)
+    # notice. Checker skips and long-running timeouts are expected and
+    # do not fail the smoke check.
+    if [ "$fail" -gt 0 ]; then
+        echo "✗ ${fail} example(s) failed"
+        exit 1
+    fi
 
 # Run a single example by name (e.g. `just example clock`)
 example name:
