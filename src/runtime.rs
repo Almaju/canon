@@ -125,43 +125,121 @@ pub fn run_component(bytes: &[u8], args: &[&str]) {
     // The async component-model + tokio combo is required to run a `wasi:cli`
     // command on wasmtime 45 — `Command::instantiate_async` only exists in the
     // async API.
-    let runtime = tokio::runtime::Builder::new_multi_thread()
+    let runtime = build_tokio_runtime();
+
+    let code = runtime.block_on(async move {
+        let (engine, linker) = match build_engine_and_linker() {
+            Ok(pair) => pair,
+            Err(err) => {
+                eprintln!("error: {err:?}");
+                return 1;
+            }
+        };
+        match run_cli_component(&engine, &linker, bytes, args).await {
+            Ok(code) => code,
+            Err(err) => {
+                eprintln!("error: {err:?}");
+                1
+            }
+        }
+    });
+    // Exit code 0 falls through so callers finish normally; any non-zero
+    // status terminates the process, mirroring the guest's request.
+    if code != 0 {
+        std::process::exit(code);
+    }
+}
+
+/// Run many CLI components on a single shared engine + linker + tokio
+/// runtime, in order. Each component gets a fresh `Store` (its own WASI
+/// context) but reuses the compiled host `Linker` and the `Engine`'s
+/// code cache, so N components pay the fixed runtime/engine/linker setup
+/// once instead of N times. This is what backs `canon test <dir>`:
+/// running every `*_test.can` file in one process rather than spawning a
+/// subprocess per file.
+///
+/// Each element is `(header, bytes)` — `header` is printed (and flushed)
+/// before the component runs so its guest output appears underneath.
+/// Returns the number of components that finished with a non-zero exit
+/// code (a guest `exit-with-code(n)`, a `wasi:cli/run` error result, or
+/// a trap).
+pub fn run_components(components: &[(String, Vec<u8>)]) -> usize {
+    use std::io::Write;
+
+    let runtime = build_tokio_runtime();
+    runtime.block_on(async move {
+        let (engine, linker) = match build_engine_and_linker() {
+            Ok(pair) => pair,
+            Err(err) => {
+                eprintln!("error: {err:?}");
+                return components.len();
+            }
+        };
+
+        let mut failures = 0;
+        for (header, bytes) in components {
+            println!("{header}");
+            // The guest inherits fd 1 directly (`inherit_stdio`), so flush
+            // the host-side header first to keep output ordered.
+            let _ = std::io::stdout().flush();
+            let code = match run_cli_component(&engine, &linker, bytes, &[]).await {
+                Ok(code) => code,
+                Err(err) => {
+                    eprintln!("error: {err:?}");
+                    1
+                }
+            };
+            if code != 0 {
+                failures += 1;
+            }
+        }
+        failures
+    })
+}
+
+/// The multi-thread tokio runtime both run paths need — async-stackful
+/// component instantiation is only available on the async API.
+fn build_tokio_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap_or_else(|e| {
             eprintln!("error: could not start tokio runtime: {e}");
             std::process::exit(1);
-        });
-
-    runtime.block_on(async move {
-        if let Err(err) = run_component_async(bytes, args).await {
-            // A guest `wasi:cli/exit#exit(-with-code)` call surfaces as
-            // an `I32Exit` trap — that's a normal termination request,
-            // not an error. Propagate the code.
-            if let Some(exit) = err.downcast_ref::<wasmtime_wasi::I32Exit>() {
-                std::process::exit(exit.0);
-            }
-            eprintln!("error: {err:?}");
-            std::process::exit(1);
-        }
-    });
+        })
 }
 
-async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()> {
+/// Build the shared `Engine` and its populated `Linker` together. Held
+/// once per process and reused across every component in a batch.
+fn build_engine_and_linker() -> wasmtime::Result<(Engine, Linker<State>)> {
     let engine = build_engine()?;
     let linker = build_linker(&engine)?;
-    let mut store = Store::new(&engine, build_state(args));
-    let component = Component::new(&engine, bytes)
+    Ok((engine, linker))
+}
+
+/// Instantiate `bytes` on the shared engine/linker and drive
+/// `wasi:cli/run.run`, returning a process-style exit code: `0` on a
+/// clean run, `n` when the guest requested `exit-with-code(n)`, and `1`
+/// when `run` returned its error result. Instantiation and non-exit
+/// traps propagate as `Err`.
+///
+/// Instantiating via the linker directly and driving `run` ourselves
+/// mirrors what the bindgen-generated `Command` does internally (it
+/// keeps its inner `Instance` private).
+async fn run_cli_component(
+    engine: &Engine,
+    linker: &Linker<State>,
+    bytes: &[u8],
+    args: &[&str],
+) -> wasmtime::Result<i32> {
+    let mut store = Store::new(engine, build_state(args));
+    let component = Component::new(engine, bytes)
         .map_err(|e| wasmtime::Error::msg(format!("invalid wasm component: {e:?}")))?;
 
-    // Instantiate via the linker directly and drive `wasi:cli/run.run`
-    // ourselves — the bindgen-generated `Command` keeps its inner
-    // `Instance` private.
     let instance = linker.instantiate_async(&mut store, &component).await?;
 
     // Look up `wasi:cli/run.run` and call it as an async-stackful
-    // function returning `result<_, _>`. Mirrors what `Command::wasi_cli_run().call_run`
-    // does internally for the typed-bindings path.
+    // function returning `result<_, _>`.
     let run_iface_idx = instance
         .get_export_index(&mut store, None, WASI_CLI_RUN)
         .ok_or_else(|| wasmtime::Error::msg(format!("missing {WASI_CLI_RUN} export")))?;
@@ -171,13 +249,22 @@ async fn run_component_async(bytes: &[u8], args: &[&str]) -> wasmtime::Result<()
     let run_func: wasmtime::component::TypedFunc<(), (Result<(), ()>,)> =
         instance.get_typed_func(&mut store, run_fn_idx)?;
 
-    let (result,) = store
+    // A guest `wasi:cli/exit#exit(-with-code)` call surfaces as an
+    // `I32Exit` trap during the call — that's a normal termination
+    // request, not an error, so map it to its code instead of
+    // propagating. `and_then` collapses the run-concurrent Result and the
+    // inner call Result into one layer so either can carry the trap.
+    let outcome = store
         .run_concurrent(async move |store| run_func.call_concurrent(store, ()).await)
-        .await??;
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(()) => std::process::exit(1),
+        .await
+        .and_then(|inner| inner);
+    match outcome {
+        Ok((Ok(()),)) => Ok(0),
+        Ok((Err(()),)) => Ok(1),
+        Err(err) => match err.downcast::<wasmtime_wasi::I32Exit>() {
+            Ok(exit) => Ok(exit.0),
+            Err(err) => Err(err),
+        },
     }
 }
 
