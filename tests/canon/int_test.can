@@ -1,0 +1,24 @@
+testIntParseMalformed = () => TestResult {
+    "abc" -> Int -> (
+        * Err<MalformedInt> => TestResult { True() -> TestResult("\"abc\" is not an Int") }
+        * Ok<Int> => TestResult { False() -> TestResult("\"abc\" should not parse") }
+    )
+}
+
+testIntParseNegative = () => TestResult {
+    "-7" -> Int -> (
+        * Err<MalformedInt> => TestResult { False() -> TestResult("\"-7\" should parse") }
+        * Ok<Int> => TestResult {
+            Int
+                -> Eq(0 -> Difference(7))
+                -> TestResult("\"-7\" parses to -7")
+        }
+    )
+}
+
+testIntParsePositive = () => TestResult {
+    "42" -> Int -> (
+        * Err<MalformedInt> => TestResult { False() -> TestResult("\"42\" should parse") }
+        * Ok<Int> => TestResult { Int -> Eq(42) -> TestResult("\"42\" parses to 42") }
+    )
+}

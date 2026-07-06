@@ -4,8 +4,6 @@ IsIntDigit = Bool
 
 Negated = Int
 
-Negative = Int
-
 OtherInt = Int
 
 Int * Pos * String => Result<Digits, MalformedInt> {
@@ -30,7 +28,7 @@ String => Result<Int, MalformedInt> {
         * False => Result<Int, MalformedInt> {
             String -> ByteAt(1) -> Eq(45) -> (
                 * False => Result<Int, MalformedInt> { 0 -> Digits(1 -> Pos * String) }
-                * True => Result<Int, MalformedInt> { String -> Negative }
+                * True => Result<Int, MalformedInt> { String -> Negated }
             )
         }
         * True => Result<Int, MalformedInt> { "empty string is not an Int" -> MalformedInt -> Err }
@@ -67,10 +65,10 @@ Result => Result<Negated, MalformedInt> {
     )
 }
 
-String => Result<Negative, MalformedInt> {
+String => Result<Negated, MalformedInt> {
     String -> Length -> Eq(1) -> (
-        * False => Result<Negative, MalformedInt> { 0 -> Digits(2 -> Pos * String) -> Negated }
-        * True => Result<Negative, MalformedInt> {
+        * False => Result<Negated, MalformedInt> { 0 -> Digits(2 -> Pos * String) -> Negated }
+        * True => Result<Negated, MalformedInt> {
             "lone minus is not an Int"
                 -> MalformedInt
                 -> Err
