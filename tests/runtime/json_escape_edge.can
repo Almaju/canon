@@ -1,0 +1,8 @@
+Unit => Program {
+    "ctrl:\u0001\u001F\ttab"
+        -> ToJson
+        -> Print
+    "back\\slash"
+        -> ToJson
+        -> Print
+}

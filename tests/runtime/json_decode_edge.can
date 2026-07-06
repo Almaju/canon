@@ -1,0 +1,45 @@
+Sought = String
+
+DecodedShown = (String) => Unit {
+    String -> Json -> (
+        * Err<MalformedJson> => Unit { MalformedJson -> Print }
+        * Ok<Json> => Unit {
+            Json -> Decoded -> (
+                * Err<MalformedJson> => Unit { MalformedJson -> Print }
+                * Ok<Decoded> => Unit { Decoded -> Print }
+            )
+        }
+    )
+}
+
+FieldShown = (Sought * String) => Unit {
+    String -> Json -> (
+        * Err<MalformedJson> => Unit { MalformedJson -> Print }
+        * Ok<Json> => Unit {
+            Json -> Field(Sought) -> (
+                * Err<MalformedJson> => Unit { MalformedJson -> Print }
+                * Ok<Json> => Unit { Json -> Print }
+            )
+        }
+    )
+}
+
+Unit => Program {
+    "b"
+        -> Sought
+        -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,2]}")
+    "c"
+        -> Sought
+        -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,{\"d\":4}]}")
+    "missing"
+        -> Sought
+        -> FieldShown("{\"a\":1,\"b\":\"two\"}")
+    "a"
+        -> Sought
+        -> FieldShown("[1,2]")
+    "\"line\\nbreak\\ttab.\"" -> DecodedShown
+    "\"esc \\\" quote and \\\\ slash\"" -> DecodedShown
+    "\"caf\\u00e9 \\u2713 ok\"" -> DecodedShown
+    "\"bad\\qesc\"" -> DecodedShown
+    "42" -> DecodedShown
+}

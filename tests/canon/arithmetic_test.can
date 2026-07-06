@@ -25,6 +25,28 @@ testEqReflexive = () => TestResult {
         -> TestResult("5 should equal itself")
 }
 
+testMaximum = () => TestResult {
+    3
+        -> Maximum(7)
+        -> Eq(7)
+        -> TestResult("max(3, 7) should be 7")
+}
+
+testMinimum = () => TestResult {
+    3
+        -> Minimum(7)
+        -> Eq(3)
+        -> TestResult("min(3, 7) should be 3")
+}
+
+testMinimumNegative = () => TestResult {
+    0
+        -> Difference(5)
+        -> Minimum(2)
+        -> Eq(0 -> Difference(5))
+        -> TestResult("min(-5, 2) should be -5")
+}
+
 testMul = () => TestResult {
     3
         -> Product(4)

@@ -31,7 +31,7 @@ the vendored WIT under `wit-vendor/wasi/`.
 |---|---|---|---|
 | `time/Instant` | `Instant = Int` | `wasi/clocks/monotonic_clock` | `Instant()` reads the monotonic clock (nanoseconds) |
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
-| `time/Now` | `Now = String` | `canon:builtins/clock` | RFC 3339 wall-clock time |
+| `time/Now` | `Now = String` | pure Canon over `time/Unix` | RFC 3339 wall-clock time |
 | `fs/Path` | `Path = String` | none | filesystem path newtype |
 | `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `read`, `write` |
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `write` receiver) |
@@ -41,11 +41,12 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
 | `Byte` | `Byte = Int` | none | picks the byte→character reading of `String(…)`: `String(Byte(65))` is `"A"` |
-| `http/Url` | `Url`, `Fetched`, `InvalidUrl` | `canon:builtins/url` + `canon:builtins/http` | `Url`, `Fetched` (blocking GET) |
+| `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
+| `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
 | `http/HttpServer` | `HttpServer = String` | `canon:builtins/http-server` | HTTP/1.1 server, see [HTTP Server](#http-server) |
 | `http/Port`, `http/RoutePath`, `http/HttpStatus`, `http/Body` | various | none | HTTP-server helpers |
-| `Json` | `Json = String`, `MalformedJson` | `canon:builtins/json` | `Json` (validate), `ToJson` trait + primitive instances |
+| `Json` | `Json = String`, `MalformedJson` | pure Canon (`fromFloat` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv — the CLI entry's `Args` input, or `Args()` from any code |
@@ -120,9 +121,9 @@ Now = String
 Now = () => Now
 ```
 
-Currently backed by `canon:builtins/clock` (the host formats the
-time); will move to `wasi:clocks/wall-clock` once that interface's
-canonical-ABI shape lands.
+Pure Canon: `Now()` reads `Unix()` (the WASI system clock) and
+formats it with a civil-from-days calendar conversion written in
+Canon itself — the host provides only the clock reading.
 
 ## `File`, `Path`, `Contents`, `IoError`
 
@@ -322,6 +323,7 @@ Url = String
 ```
 
 `Url(s)` is a validated constructor: malformed inputs are rejected.
+The validation (scheme prefix, non-empty host) is pure Canon.
 `url -> Fetched` performs a blocking HTTP GET and returns the response
 body. TLS (`https://`) and async lowering arrive with the
 `wasi:http/outgoing-handler` migration.
@@ -426,10 +428,21 @@ commas.
 
 `ToJson` is a trait with instances for the primitive types (`Bool`,
 `Float`, `Int`, `String`), each emitting the appropriately-escaped
-JSON spelling of the value. These primitive converters stay as host
-imports (`canon:builtins/json#from-*`) because they need character
-escaping and shortest-round-trip number formatting that aren't yet
-expressible in pure Canon.
+JSON spelling of the value. All of them are pure Canon — the string
+instance walks the bytes and escapes quotes, backslashes, and control
+characters (`\u00XX`) itself. The one remaining host import is
+`canon:builtins/json#from-float`: shortest-round-trip `f64` formatting
+is genuinely numeric machinery.
+
+Reading a parsed tree back is pure Canon too:
+
+- `json -> Field("key")` returns the raw JSON text of that field's
+  value in an object (`Result<Json, MalformedJson>`), ready to be
+  re-parsed or passed on.
+- `json -> Decoded` decodes a JSON string literal into its contents
+  (`Result<Decoded, MalformedJson>`, `Decoded = String`), handling the
+  standard escapes and `\uXXXX` (BMP code points; unpaired surrogates
+  become U+FFFD).
 
 **Literal syntax.** JSON object and array literals are first-class
 expressions, and the module is part of the prelude: nothing to import.

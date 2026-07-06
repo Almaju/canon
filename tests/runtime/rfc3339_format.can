@@ -1,0 +1,14 @@
+Shown = (Int) => Unit {
+    Int
+        -> Unix
+        -> Now
+        -> Print
+}
+
+Unit => Program {
+    0 -> Shown
+    951826154 -> Shown
+    1078099199 -> Shown
+    1751756400 -> Shown
+    4102444799 -> Shown
+}

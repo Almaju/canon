@@ -8,11 +8,12 @@
 //!
 //! Output is reached natively through `wasi:cli/stdout` (the codegen
 //! emits the canonical-ABI stream sequence around `write-via-stream`);
-//! no `canon:host/console` bridge is registered. A handful of
-//! `canon:builtins/*` bridges remain for cases without a WASI
-//! equivalent (math, strings, clock RFC-3339, URL parse) — each is
-//! documented in its own submodule and will be replaced with native
-//! WASI as the canonical-ABI lowerings for those interfaces land.
+//! no `canon:host/console` bridge is registered. The few remaining
+//! `canon:builtins/*` bridges are genuine host boundaries (HTTP,
+//! filesystem, float formatting) or extern/async-ABI test fixtures —
+//! string processing that used to live here (URL validation, JSON
+//! escaping / field extraction / decoding, RFC-3339 formatting, case
+//! mapping) is pure Canon in `canon/std` now.
 
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
@@ -237,12 +238,10 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
     host_builtins::add_to_linker(&mut linker)?;
-    host_builtin_clock::add_to_linker(&mut linker)?;
     host_builtin_string::add_to_linker(&mut linker)?;
     host_builtin_filesystem::add_to_linker(&mut linker)?;
     host_builtin_http::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
-    host_builtin_url::add_to_linker(&mut linker)?;
 
     Ok(linker)
 }
@@ -476,9 +475,9 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
 /// `canon:builtins/math` — a tiny standard library of pure math functions
 /// that compiled programs can call via `extern Wasm("canon:builtins/math…")`.
 ///
-/// Keeps a few common operations (min/max) out of the language proper while
-/// the codegen learns to inline them. Once Canon's stdlib grows real
-/// implementations of these, this module can be removed.
+/// `min` survives only as the extern-binding test fixture (the `deps/`
+/// resolution tests and `tests/runtime/extern.can` import it) — real
+/// integer `Minimum` / `Maximum` are pure Canon in `canon/std/int.can`.
 mod host_builtins {
     use super::State;
     use wasmtime::component::{HasSelf, Linker};
@@ -488,8 +487,6 @@ mod host_builtins {
             package canon:builtins@0.1.0;
             interface math {
                 min: func(a: s64, b: s64) -> s64;
-                max: func(a: s64, b: s64) -> s64;
-                abs: func(value: s64) -> s64;
             }
             world host-shim {
                 import math;
@@ -502,12 +499,6 @@ mod host_builtins {
         fn min(&mut self, a: i64, b: i64) -> i64 {
             a.min(b)
         }
-        fn max(&mut self, a: i64, b: i64) -> i64 {
-            a.max(b)
-        }
-        fn abs(&mut self, value: i64) -> i64 {
-            value.wrapping_abs()
-        }
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
@@ -515,83 +506,10 @@ mod host_builtins {
     }
 }
 
-/// `canon:builtins/clock` — a string-returning host bridge that demonstrates
-/// the canonical-ABI indirect-return path. `now-rfc3339()` reads the host's
-/// `SystemTime`, formats it manually as `YYYY-MM-DDTHH:MM:SSZ`, and returns
-/// the resulting `String` to the guest. The component wrapper attaches the
-/// `Realloc` canonical option to this function's lower so wasmtime can
-/// allocate the result buffer inside the guest's linear memory.
-mod host_builtin_clock {
-    use super::State;
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface clock {
-                now-rfc3339: func() -> string;
-                now-unix-seconds: func() -> s64;
-            }
-            world host-shim {
-                import clock;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::clock::Host for State {
-        fn now_rfc3339(&mut self) -> String {
-            let secs = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            format_rfc3339_utc(secs)
-        }
-
-        fn now_unix_seconds(&mut self) -> i64 {
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0)
-        }
-    }
-
-    /// Format a UNIX timestamp (seconds since 1970-01-01T00:00:00Z) as a
-    /// minimal RFC 3339 string. No timezone offset, no fractional seconds —
-    /// just enough to validate the host→guest string path end-to-end.
-    fn format_rfc3339_utc(unix_secs: i64) -> String {
-        // Civil-from-days algorithm (Howard Hinnant). Returns (y, m, d).
-        let days = unix_secs.div_euclid(86_400);
-        let secs_of_day = unix_secs.rem_euclid(86_400);
-        let z = days + 719_468;
-        let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-        let doe = (z - era * 146_097) as u64;
-        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-        let y = yoe as i64 + era * 400;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-        let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-        let year = if m <= 2 { y + 1 } else { y };
-
-        let h = (secs_of_day / 3600) as u32;
-        let mm = ((secs_of_day / 60) % 60) as u32;
-        let s = (secs_of_day % 60) as u32;
-
-        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, m, d, h, mm, s)
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::clock::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-}
-
-/// `canon:builtins/string` — simple string transforms. Exercises the
-/// `string → string` canonical-ABI path: the guest passes a UTF-8 buffer in
-/// its linear memory, the host reads it via the `Memory` option, computes
-/// the result, allocates a new buffer in guest memory via `cabi_realloc`,
-/// and writes `(ptr, len)` to the guest-provided return area.
+/// `canon:builtins/string` — async host echoes. String *transforms*
+/// (case mapping, escaping) are pure Canon in `canon/std` now; the two
+/// functions left here exist only to exercise the guest-side async
+/// canonical-ABI call sequence from tests.
 mod host_builtin_string {
     use super::State;
     use wasmtime::component::{HasSelf, Linker};
@@ -600,8 +518,6 @@ mod host_builtin_string {
         inline: "
             package canon:builtins@0.1.0;
             interface strings {
-                to-lowercase: func(input: string) -> string;
-                to-uppercase: func(input: string) -> string;
                 echo: async func(input: string) -> string;
                 slow-echo: async func(input: string) -> string;
             }
@@ -612,15 +528,7 @@ mod host_builtin_string {
         require_store_data_send: true,
     });
 
-    impl canon::builtins::strings::Host for State {
-        fn to_lowercase(&mut self, input: String) -> String {
-            input.to_lowercase()
-        }
-
-        fn to_uppercase(&mut self, input: String) -> String {
-            input.to_uppercase()
-        }
-    }
+    impl canon::builtins::strings::Host for State {}
 
     // Async functions go on the `HostWithStore` trait, with an
     // `Accessor<T, Self>` first arg instead of `&mut self`. These two
@@ -791,20 +699,12 @@ mod host_builtin_http {
     }
 }
 
-/// `canon:builtins/json` — JSON validation + primitive builders.
-///
-/// The stdlib type `Json = String` (in `canon/std/json.can`) is just the
-/// JSON-encoded text. `parse` validates that a string is well-formed JSON
-/// and returns the same string back as the `Json` handle on success.
-/// The `from-*` builders emit the JSON text for a single primitive value,
-/// handling string escaping and the special-case spellings (`null`,
-/// `true`, `false`). Object / array construction lives entirely in Canon
-/// — the stdlib wrapper builds those via `String.concat` from the
-/// primitive builders.
-///
-/// Hand-rolled (no `serde_json` dep) to keep the compiler's runtime
-/// dependency surface minimal and to match the existing
-/// `canon:builtins/url` validator style.
+/// `canon:builtins/json` — the one JSON builder Canon can't express:
+/// float formatting. Everything else (validation, escaping, field
+/// extraction, string decoding, int/bool rendering) is pure Canon in
+/// `canon/std/json.can` now. Shortest-round-trip decimal rendering of an
+/// f64 is genuinely numeric machinery (Grisu/Ryū territory), so it stays
+/// a host bridge.
 mod host_builtin_json {
     use super::State;
     use wasmtime::component::{HasSelf, Linker};
@@ -813,53 +713,9 @@ mod host_builtin_json {
         inline: "
             package canon:builtins@0.1.0;
             interface json {
-                /// Validate that `input` is well-formed JSON. On success,
-                /// returns the same string back (so it can be threaded
-                /// through as a `Json` value). On failure, returns a
-                /// diagnostic message naming the byte offset of the error.
-                parse: func(input: string) -> result<string, string>;
-
-                /// Render a string as a JSON string literal: escape
-                /// `\\`, `\"`, control characters, and wrap in double
-                /// quotes.
-                from-string: func(value: string) -> string;
-
-                /// Render a 64-bit signed integer as a JSON number.
-                from-int: func(value: s64) -> string;
-
                 /// Render a 64-bit float as a JSON number. NaN and ±Inf
                 /// (which JSON cannot represent) are emitted as `null`.
                 from-float: func(value: f64) -> string;
-
-                /// Render a bool as `true` or `false`. The parameter
-                /// is `s32` rather than `bool` because Canon's codegen
-                /// lowers `Bool` as a flat i32 (0 = False, non-zero =
-                /// True) and the canonical-ABI shape for `bool` doesn't
-                /// line up with that. Same workaround as
-                /// `canon:builtins/cli#exit-with-code`.
-                from-bool: func(value: s32) -> string;
-
-                /// Return the literal `null`.
-                from-null: func() -> string;
-
-                /// Extract a field's value from a JSON object. `input`
-                /// is the JSON text of an object, `name` the field's
-                /// unquoted key. On success, returns the field's value
-                /// as JSON text (still a `Json` handle, ready to be
-                /// re-parsed). On failure (input isn't an object, or
-                /// the field is missing), returns a diagnostic message.
-                ///
-                /// This is the primitive read-side counterpart to the
-                /// `from-*` builders — it lets pure-Canon code walk a
-                /// parsed JSON tree without owning a per-type parser.
-                field: func(input: string, name: string) -> result<string, string>;
-
-                /// Decode a JSON string value into its unquoted contents.
-                /// `input` must be JSON text whose top-level value is a
-                /// string literal; anything else returns a diagnostic
-                /// message. Inverse of `from-string`: escape sequences
-                /// like backslash-n become real newlines.
-                as-string: func(input: string) -> result<string, string>;
             }
             world host-shim {
                 import json;
@@ -869,21 +725,6 @@ mod host_builtin_json {
     });
 
     impl canon::builtins::json::Host for State {
-        fn parse(&mut self, input: String) -> Result<String, String> {
-            match validate_json(&input) {
-                Ok(()) => Ok(input),
-                Err(msg) => Err(msg),
-            }
-        }
-
-        fn from_string(&mut self, value: String) -> String {
-            json_escape_string(&value)
-        }
-
-        fn from_int(&mut self, value: i64) -> String {
-            value.to_string()
-        }
-
         fn from_float(&mut self, value: f64) -> String {
             if value.is_nan() || value.is_infinite() {
                 // JSON has no spelling for these — null is the
@@ -895,469 +736,9 @@ mod host_builtin_json {
                 value.to_string()
             }
         }
-
-        fn from_bool(&mut self, value: i32) -> String {
-            if value != 0 { "true" } else { "false" }.to_string()
-        }
-
-        fn from_null(&mut self) -> String {
-            "null".to_string()
-        }
-
-        fn field(&mut self, input: String, name: String) -> Result<String, String> {
-            extract_field(&input, &name)
-        }
-
-        fn as_string(&mut self, input: String) -> Result<String, String> {
-            decode_string(&input)
-        }
-    }
-
-    /// Walk a JSON object and return the raw JSON text of `name`'s value,
-    /// preserving its enclosing syntax (strings stay quoted, objects stay
-    /// braced, etc.) so the caller can re-parse or pass it on as a `Json`
-    /// value.
-    ///
-    /// Errors when the input isn't a JSON object, the field isn't found,
-    /// or the input is malformed in a way that makes navigation
-    /// unambiguous. The error message names the byte offset for parity
-    /// with `parse`.
-    fn extract_field(input: &str, name: &str) -> Result<String, String> {
-        let bytes = input.as_bytes();
-        let mut p = Parser { src: bytes, pos: 0 };
-        p.skip_ws();
-        if p.peek() != Some(b'{') {
-            return Err(format!(
-                "expected object at byte {}, got {:?}",
-                p.pos,
-                p.peek().map(|c| c as char)
-            ));
-        }
-        p.pos += 1; // consume '{'
-        p.skip_ws();
-        if p.peek() == Some(b'}') {
-            return Err(format!("field `{}` not found", name));
-        }
-        loop {
-            p.skip_ws();
-            if p.peek() != Some(b'"') {
-                return Err(format!("expected string key at byte {}", p.pos));
-            }
-            let key_start = p.pos;
-            p.string()?;
-            let key_end = p.pos;
-            // The key in the source is the inner unescaped slice between
-            // the quotes. We compare against `name` literally — no
-            // unescaping. For ASCII keys (the common case) this is
-            // correct; for keys containing escapes the caller can decode
-            // their own key before calling.
-            let key_slice = &input[key_start + 1..key_end - 1];
-            p.skip_ws();
-            if p.bump() != Some(b':') {
-                return Err(format!(
-                    "expected ':' after key at byte {}",
-                    p.pos.saturating_sub(1)
-                ));
-            }
-            p.skip_ws();
-            let value_start = p.pos;
-            p.value()?;
-            let value_end = p.pos;
-            if key_slice == name {
-                return Ok(input[value_start..value_end].to_string());
-            }
-            p.skip_ws();
-            match p.bump() {
-                Some(b',') => continue,
-                Some(b'}') => return Err(format!("field `{}` not found", name)),
-                _ => {
-                    return Err(format!(
-                        "expected ',' or '}}' at byte {}",
-                        p.pos.saturating_sub(1)
-                    ));
-                }
-            }
-        }
-    }
-
-    /// Decode a JSON string literal (e.g. `"hello\\nworld"`) into its raw
-    /// contents (e.g. `hello\nworld`). Mirrors the inverse of
-    /// `from_string`. Errors when the input isn't a JSON string value or
-    /// contains a malformed escape.
-    fn decode_string(input: &str) -> Result<String, String> {
-        let bytes = input.as_bytes();
-        let mut p = Parser { src: bytes, pos: 0 };
-        p.skip_ws();
-        if p.peek() != Some(b'"') {
-            return Err(format!(
-                "expected string at byte {}, got {:?}",
-                p.pos,
-                p.peek().map(|c| c as char)
-            ));
-        }
-        let start = p.pos;
-        p.string()?; // validates the string syntax and advances past closing `"`
-        let end = p.pos;
-        // Strip the surrounding quotes and decode escapes.
-        let inner = &input[start + 1..end - 1];
-        unescape_json_string(inner)
-    }
-
-    /// Decode the body of a JSON string literal (no surrounding quotes).
-    /// Caller has already validated the escape syntax via `Parser::string`,
-    /// so we can assume well-formedness and focus on the byte mapping.
-    fn unescape_json_string(s: &str) -> Result<String, String> {
-        let bytes = s.as_bytes();
-        let mut out = String::with_capacity(s.len());
-        let mut i = 0;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if c != b'\\' {
-                out.push(c as char);
-                i += 1;
-                continue;
-            }
-            i += 1;
-            if i >= bytes.len() {
-                return Err("truncated escape".to_string());
-            }
-            match bytes[i] {
-                b'"' => out.push('"'),
-                b'\\' => out.push('\\'),
-                b'/' => out.push('/'),
-                b'b' => out.push('\x08'),
-                b'f' => out.push('\x0c'),
-                b'n' => out.push('\n'),
-                b'r' => out.push('\r'),
-                b't' => out.push('\t'),
-                b'u' => {
-                    if i + 4 >= bytes.len() {
-                        return Err("truncated \\u escape".to_string());
-                    }
-                    let hex = std::str::from_utf8(&bytes[i + 1..i + 5])
-                        .map_err(|_| "bad \\u escape".to_string())?;
-                    let code =
-                        u32::from_str_radix(hex, 16).map_err(|_| "bad \\u escape".to_string())?;
-                    // Push as a single char when in the BMP; surrogate
-                    // pairs aren't combined here — a \uD800..\uDFFF code
-                    // unit is emitted as the Unicode replacement
-                    // character to keep the result valid UTF-8. Strings
-                    // built via `from_string` never produce surrogate
-                    // escapes, so this only bites on hand-written JSON.
-                    out.push(char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER));
-                    i += 5;
-                    continue;
-                }
-                other => return Err(format!("bad escape \\{}", other as char)),
-            }
-            i += 1;
-        }
-        Ok(out)
-    }
-
-    /// Escape a Rust `&str` as a JSON string literal (including the
-    /// surrounding double quotes). Mirrors the `serde_json::to_string`
-    /// behaviour for plain strings.
-    fn json_escape_string(s: &str) -> String {
-        let mut out = String::with_capacity(s.len() + 2);
-        out.push('"');
-        for c in s.chars() {
-            match c {
-                '"' => out.push_str("\\\""),
-                '\\' => out.push_str("\\\\"),
-                '\n' => out.push_str("\\n"),
-                '\r' => out.push_str("\\r"),
-                '\t' => out.push_str("\\t"),
-                '\x08' => out.push_str("\\b"),
-                '\x0c' => out.push_str("\\f"),
-                c if (c as u32) < 0x20 => {
-                    out.push_str(&format!("\\u{:04x}", c as u32));
-                }
-                c => out.push(c),
-            }
-        }
-        out.push('"');
-        out
-    }
-
-    /// Hand-rolled recursive-descent JSON validator. Walks the input
-    /// once without building a tree and returns `Ok(())` iff the entire
-    /// input is a single well-formed JSON value (possibly surrounded by
-    /// whitespace). The error string names the byte offset for fast
-    /// diagnosis.
-    fn validate_json(s: &str) -> Result<(), String> {
-        let mut p = Parser {
-            src: s.as_bytes(),
-            pos: 0,
-        };
-        p.skip_ws();
-        p.value()?;
-        p.skip_ws();
-        if p.pos != p.src.len() {
-            return Err(format!("unexpected trailing characters at byte {}", p.pos));
-        }
-        Ok(())
-    }
-
-    struct Parser<'a> {
-        src: &'a [u8],
-        pos: usize,
-    }
-
-    impl<'a> Parser<'a> {
-        fn skip_ws(&mut self) {
-            while let Some(c) = self.peek() {
-                if matches!(c, b' ' | b'\t' | b'\n' | b'\r') {
-                    self.pos += 1;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        fn peek(&self) -> Option<u8> {
-            self.src.get(self.pos).copied()
-        }
-
-        fn bump(&mut self) -> Option<u8> {
-            let c = self.peek()?;
-            self.pos += 1;
-            Some(c)
-        }
-
-        fn value(&mut self) -> Result<(), String> {
-            self.skip_ws();
-            let c = self
-                .peek()
-                .ok_or_else(|| format!("unexpected end of input at byte {}", self.pos))?;
-            match c {
-                b'{' => self.object(),
-                b'[' => self.array(),
-                b'"' => self.string(),
-                b't' | b'f' => self.boolean(),
-                b'n' => self.null(),
-                b'-' | b'0'..=b'9' => self.number(),
-                other => Err(format!(
-                    "unexpected character {:?} at byte {}",
-                    other as char, self.pos
-                )),
-            }
-        }
-
-        fn object(&mut self) -> Result<(), String> {
-            self.pos += 1; // consume '{'
-            self.skip_ws();
-            if self.peek() == Some(b'}') {
-                self.pos += 1;
-                return Ok(());
-            }
-            loop {
-                self.skip_ws();
-                if self.peek() != Some(b'"') {
-                    return Err(format!("expected string key at byte {}", self.pos));
-                }
-                self.string()?;
-                self.skip_ws();
-                if self.bump() != Some(b':') {
-                    return Err(format!(
-                        "expected ':' after key at byte {}",
-                        self.pos.saturating_sub(1)
-                    ));
-                }
-                self.value()?;
-                self.skip_ws();
-                match self.bump() {
-                    Some(b',') => continue,
-                    Some(b'}') => return Ok(()),
-                    _ => {
-                        return Err(format!(
-                            "expected ',' or '}}' at byte {}",
-                            self.pos.saturating_sub(1)
-                        ));
-                    }
-                }
-            }
-        }
-
-        fn array(&mut self) -> Result<(), String> {
-            self.pos += 1; // consume '['
-            self.skip_ws();
-            if self.peek() == Some(b']') {
-                self.pos += 1;
-                return Ok(());
-            }
-            loop {
-                self.value()?;
-                self.skip_ws();
-                match self.bump() {
-                    Some(b',') => continue,
-                    Some(b']') => return Ok(()),
-                    _ => {
-                        return Err(format!(
-                            "expected ',' or ']' at byte {}",
-                            self.pos.saturating_sub(1)
-                        ));
-                    }
-                }
-            }
-        }
-
-        fn string(&mut self) -> Result<(), String> {
-            self.pos += 1; // consume opening '"'
-            loop {
-                let start = self.pos;
-                let c = self
-                    .bump()
-                    .ok_or_else(|| format!("unterminated string starting at byte {}", start))?;
-                match c {
-                    b'"' => return Ok(()),
-                    b'\\' => {
-                        let esc = self
-                            .bump()
-                            .ok_or_else(|| format!("unterminated escape at byte {}", self.pos))?;
-                        match esc {
-                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {}
-                            b'u' => {
-                                for _ in 0..4 {
-                                    let h = self.bump().ok_or_else(|| {
-                                        format!("truncated \\u escape at byte {}", self.pos)
-                                    })?;
-                                    if !h.is_ascii_hexdigit() {
-                                        return Err(format!(
-                                            "bad hex digit in \\u escape at byte {}",
-                                            self.pos.saturating_sub(1)
-                                        ));
-                                    }
-                                }
-                            }
-                            other => {
-                                return Err(format!(
-                                    "bad escape \\{:?} at byte {}",
-                                    other as char,
-                                    self.pos.saturating_sub(1)
-                                ));
-                            }
-                        }
-                    }
-                    0x00..=0x1F => {
-                        return Err(format!(
-                            "unescaped control character at byte {}",
-                            self.pos.saturating_sub(1)
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        fn number(&mut self) -> Result<(), String> {
-            if self.peek() == Some(b'-') {
-                self.pos += 1;
-            }
-            match self.peek() {
-                Some(b'0') => self.pos += 1,
-                Some(b'1'..=b'9') => {
-                    self.pos += 1;
-                    while matches!(self.peek(), Some(b'0'..=b'9')) {
-                        self.pos += 1;
-                    }
-                }
-                _ => return Err(format!("expected digit at byte {}", self.pos)),
-            }
-            if self.peek() == Some(b'.') {
-                self.pos += 1;
-                if !matches!(self.peek(), Some(b'0'..=b'9')) {
-                    return Err(format!("expected digit after '.' at byte {}", self.pos));
-                }
-                while matches!(self.peek(), Some(b'0'..=b'9')) {
-                    self.pos += 1;
-                }
-            }
-            if matches!(self.peek(), Some(b'e' | b'E')) {
-                self.pos += 1;
-                if matches!(self.peek(), Some(b'+' | b'-')) {
-                    self.pos += 1;
-                }
-                if !matches!(self.peek(), Some(b'0'..=b'9')) {
-                    return Err(format!("expected digit in exponent at byte {}", self.pos));
-                }
-                while matches!(self.peek(), Some(b'0'..=b'9')) {
-                    self.pos += 1;
-                }
-            }
-            Ok(())
-        }
-
-        fn boolean(&mut self) -> Result<(), String> {
-            let rest = &self.src[self.pos..];
-            if rest.starts_with(b"true") {
-                self.pos += 4;
-                Ok(())
-            } else if rest.starts_with(b"false") {
-                self.pos += 5;
-                Ok(())
-            } else {
-                Err(format!("expected 'true' or 'false' at byte {}", self.pos))
-            }
-        }
-
-        fn null(&mut self) -> Result<(), String> {
-            let rest = &self.src[self.pos..];
-            if rest.starts_with(b"null") {
-                self.pos += 4;
-                Ok(())
-            } else {
-                Err(format!("expected 'null' at byte {}", self.pos))
-            }
-        }
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
         canon::builtins::json::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-}
-
-/// `canon:builtins/url` — URL parsing. Validates the shape of a `Url`
-/// string (must start with `http://` or `https://` and have a non-empty
-/// host). Returns the same string back as the `Url` handle on success or a
-/// diagnostic message on failure.
-mod host_builtin_url {
-    use super::State;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface url {
-                parse: func(input: string) -> result<string, string>;
-            }
-            world host-shim {
-                import url;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::url::Host for State {
-        fn parse(&mut self, input: String) -> Result<String, String> {
-            let scheme_ok = input.starts_with("http://") || input.starts_with("https://");
-            if !scheme_ok {
-                return Err(format!(
-                    "invalid URL: expected http:// or https:// prefix, got {input:?}"
-                ));
-            }
-            let rest = input
-                .trim_start_matches("http://")
-                .trim_start_matches("https://");
-            let host = rest.split('/').next().unwrap_or("");
-            if host.is_empty() {
-                return Err(format!("invalid URL: empty host in {input:?}"));
-            }
-            Ok(input)
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::url::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }

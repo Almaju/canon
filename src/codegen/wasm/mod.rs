@@ -3029,19 +3029,21 @@ impl<'m> WasmGen<'m> {
 
     /// $alloc(size: i32) → i32  — simple bump allocator.
     /// `$alloc(size: i32) -> i32` — bump-allocates `size` bytes from the
-    /// shared `bump_ptr` global, rounding the returned pointer up to a
-    /// 4-byte alignment. The 4-byte alignment is enough for everything the
-    /// codegen currently allocates (i32 fields, return areas, union tags).
-    /// The host-side `cabi_realloc` uses the same heap and honours the
+    /// shared `bump_ptr` global, rounding the returned pointer up to an
+    /// 8-byte alignment. 8 is the strictest alignment the canonical ABI
+    /// asks of us: extern-call return areas can carry u64/s64 fields
+    /// (e.g. `wasi:clocks` records), and wasmtime validates the guest's
+    /// ret-area pointer against the record's natural alignment. The
+    /// host-side `cabi_realloc` uses the same heap and honours the
     /// caller's requested alignment explicitly.
     fn build_alloc(&self) -> Function {
         // locals: 1 = aligned_ptr, 2 = new bump (allocation end)
         let mut f = Function::new([(2, ValType::I32)]);
-        // aligned_ptr = (bump_ptr + 3) & ~3
+        // aligned_ptr = (bump_ptr + 7) & ~7
         f.instruction(&Instruction::GlobalGet(GLOBAL_BUMP_PTR));
-        f.instruction(&Instruction::I32Const(3));
+        f.instruction(&Instruction::I32Const(7));
         f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Const(-4));
+        f.instruction(&Instruction::I32Const(-8));
         f.instruction(&Instruction::I32And);
         f.instruction(&Instruction::LocalTee(1));
         // bump_ptr = aligned_ptr + size
