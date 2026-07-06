@@ -85,7 +85,7 @@ The renderer is a practical subset, not a full CommonMark implementation:
 |---|---|
 | `# H`, `## H`, `### H` (space required) | `<h1>`/`<h2>`/`<h3>`; deeper levels clamp to `<h3>` |
 | consecutive text lines | one `<p>…</p>` (soft-wrapped lines join with a space) |
-| `- item` lines | `<ul><li>…</li></ul>` |
+| `- item` lines | `<ul><li>…</li></ul>` (one level of `  - ` nesting) |
 | `1. item` lines | `<ol><li>…</li></ol>` |
 | `> quote` lines | `<blockquote>…</blockquote>` (consecutive lines joined) |
 | ` ``` ` fenced block | `<pre><code>…</code></pre>` (raw, escaped, no inline pass) |
@@ -99,9 +99,9 @@ Text is HTML-escaped as it is walked (`"` `&` `<` `>`), so `a < b & c`
 renders as `a &lt; b &amp; c`. A `#` with no following space, and a lone
 unmatched `*`, are treated as literal text.
 
-Not yet handled: nested lists, `_underscore_` emphasis, setext headings,
-tables, and images — each an additive extension in the same byte-walking
-style. The renderer is byte-oriented, so non-ASCII (UTF-8) text in string
+Not yet handled: lists nested more than one level, `_underscore_`
+emphasis, setext headings, tables, and images — each an additive
+extension in the same byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8) text in string
 literals is subject to the compiler's existing lexer handling of
 multi-byte characters; ASCII markdown is unaffected.
 
