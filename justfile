@@ -130,6 +130,22 @@ example name:
     fi
     exec cargo run --quiet -- run "examples/{{ name }}"
 
+# Build and preview the documentation site locally.
+#
+# The docs are a Canon web app: `docs/src/main.can` is the Elm-triple
+# app shell that renders the `docs/src/*.md` content pages via the
+# stdlib Markdown renderer. `canon build docs` compiles it to a browser
+# bundle under `docs/build/`; `canon run docs` then serves that bundle
+# on 127.0.0.1:8080 with the compiler's built-in static server. Edit a
+# `.md` page (or `main.can` / `styles.can`), re-run, and refresh.
+# See docs/src/contributing.md.
+docs: build
+    #!/usr/bin/env sh
+    set -e
+    cargo run --quiet -- build docs
+    echo "Serving docs on http://127.0.0.1:8080 (Ctrl-C to stop)"
+    cargo run --quiet -- run docs --addr 127.0.0.1:8080
+
 # Regenerate the embedded WASI bindings from the vendored WIT files
 # under wit-vendor/. Run after upgrading the WASI version or after
 # changing the bindgen emitter. Commit the resulting
