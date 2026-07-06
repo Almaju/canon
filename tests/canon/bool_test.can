@@ -1,0 +1,38 @@
+testAndFalse = () => TestResult {
+    True()
+        -> And(False())
+        -> Not
+        -> TestResult("True and False is False")
+}
+
+testAndTrue = () => TestResult {
+    True()
+        -> And(True())
+        -> TestResult("True and True is True")
+}
+
+testNotFalse = () => TestResult {
+    False()
+        -> Not
+        -> TestResult("not False is True")
+}
+
+testNotTrue = () => TestResult {
+    True()
+        -> Not
+        -> Not
+        -> TestResult("not not True is True")
+}
+
+testOrFalse = () => TestResult {
+    False()
+        -> Or(False())
+        -> Not
+        -> TestResult("False or False is False")
+}
+
+testOrTrue = () => TestResult {
+    False()
+        -> Or(True())
+        -> TestResult("False or True is True")
+}

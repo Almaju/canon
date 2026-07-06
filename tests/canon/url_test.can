@@ -1,0 +1,37 @@
+testUrlEmptyHost = () => TestResult {
+    "http://" -> Url -> (
+        * Err<InvalidUrl> => TestResult {
+            True() -> TestResult("a scheme with no host is rejected")
+        }
+        * Ok<Url> => TestResult { False() -> TestResult("\"http://\" should not validate") }
+    )
+}
+
+testUrlHttp = () => TestResult {
+    "http://example.com" -> Url -> (
+        * Err<InvalidUrl> => TestResult { False() -> TestResult("http URL should validate") }
+        * Ok<Url> => TestResult {
+            Url
+                -> Eq("http://example.com")
+                -> TestResult("Url accepts an http:// URL")
+        }
+    )
+}
+
+testUrlHttps = () => TestResult {
+    "https://a.test/x" -> Url -> (
+        * Err<InvalidUrl> => TestResult { False() -> TestResult("https URL should validate") }
+        * Ok<Url> => TestResult {
+            Url
+                -> Eq("https://a.test/x")
+                -> TestResult("Url accepts an https:// URL with a path")
+        }
+    )
+}
+
+testUrlWrongScheme = () => TestResult {
+    "ftp://nope" -> Url -> (
+        * Err<InvalidUrl> => TestResult { True() -> TestResult("a non-http scheme is rejected") }
+        * Ok<Url> => TestResult { False() -> TestResult("\"ftp://nope\" should not validate") }
+    )
+}

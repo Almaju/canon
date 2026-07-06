@@ -1,0 +1,23 @@
+testMarkdownEscapesInline = () => TestResult {
+    "a < b"
+        -> Markdown
+        -> Html
+        -> Eq("<p>a &lt; b</p>")
+        -> TestResult("Markdown escapes HTML metacharacters in inline text")
+}
+
+testMarkdownHeading = () => TestResult {
+    "# Hello"
+        -> Markdown
+        -> Html
+        -> Eq("<h1>Hello</h1>")
+        -> TestResult("Markdown renders a leading # as an h1")
+}
+
+testMarkdownParagraph = () => TestResult {
+    "plain text"
+        -> Markdown
+        -> Html
+        -> Eq("<p>plain text</p>")
+        -> TestResult("Markdown wraps a bare line in a paragraph")
+}
