@@ -1,6 +1,6 @@
 # Markdown
 
-Canon's standard library can render Markdown to HTML entirely in Canon —
+Canon's standard library can render Markdown to HTML entirely in Canon --
 no external parser, no build plugin. The renderer is an ordinary Canon
 program that walks a `String` byte-by-byte and emits `Html`, compiled
 through the same pipeline as everything else. It lives in
@@ -38,7 +38,7 @@ Args => Exit {
 ## Importing markdown files
 
 Writing markdown inside `.can` string literals is awkward. Canon has no
-`import` keyword — a reference resolves to a file by name — and that rule
+`import` keyword -- a reference resolves to a file by name -- and that rule
 extends from `.can` to `.md`: **referencing the PascalCase name a
 markdown file kebab-cases to loads the document as a `Markdown` value**,
 baked in at compile time.
@@ -60,7 +60,7 @@ and `canon fmt` leaves `.md` files untouched.
 
 ## In the browser
 
-The renderer is pure string work — no host imports — so it runs in the
+The renderer is pure string work -- no host imports -- so it runs in the
 [web target](./web-target.md) too. A web app's `view` can render an
 imported document client-side, so the page *is* a Canon program compiled
 to WebAssembly:
@@ -68,7 +68,7 @@ to WebAssembly:
 ```canon
 Page => Html {
     <div class="doc">
-        <nav>…</nav>
+        <nav>...</nav>
         <hr>
         {Page -> Content}
     </div>
@@ -89,23 +89,28 @@ The renderer is a practical subset, not a full CommonMark implementation:
 | Markdown | HTML |
 |---|---|
 | `# H`, `## H`, `### H` (space required) | `<h1>`/`<h2>`/`<h3>`; deeper levels clamp to `<h3>` |
-| consecutive text lines | one `<p>…</p>` (soft-wrapped lines join with a space) |
-| `- item` lines | `<ul><li>…</li></ul>` (one level of `  - ` nesting) |
-| `1. item` lines | `<ol><li>…</li></ol>` |
-| `> quote` lines | `<blockquote>…</blockquote>` (consecutive lines joined) |
-| ` ``` ` fenced block | `<pre><code>…</code></pre>` (raw, escaped, no inline pass) |
-| `**bold**` | `<strong>…</strong>` (inner text formatted) |
-| `*italic*` | `<em>…</em>` (inner text formatted) |
-| `` `code` `` | `<code>…</code>` (contents escaped) |
-| `[text](url)` | `<a href="url">…</a>` (url escaped, text formatted) |
+| consecutive text lines | one `<p>...</p>` (soft-wrapped lines join with a space) |
+| `- item` lines | `<ul><li>...</li></ul>` (one level of `  - ` nesting) |
+| `1. item` lines | `<ol><li>...</li></ol>` |
+| `> quote` lines | `<blockquote>...</blockquote>` (consecutive lines joined) |
+| ` ``` ` fenced block | `<pre><code>...</code></pre>` (raw, escaped, no inline pass) |
+| `**bold**` | `<strong>...</strong>` (inner text formatted) |
+| `*italic*` | `<em>...</em>` (inner text formatted) |
+| `` `code` `` | `<code>...</code>` (contents escaped) |
+| `[text](url)` | `<a href="url">...</a>` (url escaped, text formatted) |
+| `\| a \| b \|` + `\|---\|---\|` | `<table>` with a `<thead>` header row and `<tbody>` body rows (cells formatted inline) |
 | blank lines | block separators |
 
 Text is HTML-escaped as it is walked (`"` `&` `<` `>`), so `a < b & c`
 renders as `a &lt; b &amp; c`. A `#` with no following space, and a lone
 unmatched `*`, are treated as literal text.
 
+Pipe tables (a header row, a `|---|---|` delimiter, then body rows) render
+to `<table>`; cell text runs through the inline pass, so `**bold**`,
+`` `code` ``, and links work inside cells.
+
 Not yet handled: lists nested more than one level, `_underscore_`
-emphasis, setext headings, tables, and images — each an additive
+emphasis, setext headings, and images -- each an additive
 extension in the same byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8) text in string
 literals is subject to the compiler's existing lexer handling of
 multi-byte characters; ASCII markdown is unaffected.
@@ -116,7 +121,7 @@ A language that compiles to WebAssembly and runs in the browser should be
 able to present its own documentation as a Canon app, not a separate
 toolchain. The Markdown renderer plus `.md` import make that direct:
 content is authored as ordinary markdown files, imported by name, and
-rendered to HTML by the standard library — on the server for a CLI
+rendered to HTML by the standard library -- on the server for a CLI
 generator, or client-side inside the [web target](./web-target.md), where
 Canon acts as the frontend framework. The same renderer serves both,
 exercising strings, dispatch, escaping, and file resolution end to end.
@@ -140,11 +145,11 @@ picks a slot at the value level:
   so `update` silently returned the wrong value and the page never
   switched. Giving the message its own newtype (`Msg = String`,
   `Page * Msg => Update`) disambiguates the two same-underlying-type
-  parameters — the "components are distinct types" rule biting at the
+  parameters -- the "components are distinct types" rule biting at the
   value level.
 
-Both are compiler bugs, not language limits — fixing them lets these
+Both are compiler bugs, not language limits -- fixing them lets these
 programs read the natural way. (An earlier note here also flagged
 constructors returning an `Html`-aliased newtype as miscompiling; that
-turned out to be a stale-build artifact during bring-up, not a real bug —
-`String => Div { … }` with `Div = Html` compiles fine.)
+turned out to be a stale-build artifact during bring-up, not a real bug --
+`String => Div { ... }` with `Div = Html` compiles fine.)

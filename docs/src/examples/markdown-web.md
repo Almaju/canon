@@ -3,20 +3,13 @@
 [`examples/markdown-web`](https://github.com/Almaju/canon/tree/main/examples/markdown-web):
 a small documentation site whose pages are **Markdown files rendered to
 HTML by Canon**, compiled to WebAssembly and running entirely in your
-browser. No React, no bundler, no npm, and no Markdown library — the
+browser. No React, no bundler, no npm, and no Markdown library -- the
 renderer, the view, and the stylesheet are all Canon.
 
-<iframe
-  src="../runner/web/markdown/index.html"
-  title="Canon markdown docs — live preview"
-  style="width:100%;height:460px;border:1px solid var(--sidebar-active,#ccc);border-radius:8px;background:#fff;"
-  loading="lazy"></iframe>
-
-*The preview above is the real compiled program. Click the nav buttons to
-switch pages — each page is its own `.md` file, parsed and rendered on the
-fly.*
-
-Run it yourself from a checkout:
+You are looking at one right now: this documentation site is exactly this
+program, grown up -- every page is a `.md` file, parsed and rendered to
+HTML on the fly by Canon, with no JavaScript framework. Run the smaller
+original from a checkout:
 
 ```sh
 canon run examples/markdown-web        # serves on http://127.0.0.1:8080
@@ -24,9 +17,9 @@ canon run examples/markdown-web        # serves on http://127.0.0.1:8080
 
 ## Markdown files, imported by name
 
-Canon has no `import` keyword — a reference resolves to a file by name —
+Canon has no `import` keyword -- a reference resolves to a file by name --
 and that rule extends from `.can` to `.md` (see
-[Markdown](../reference/markdown.md)). Referencing `Intro` loads
+[Markdown](../reference/markdown-renderer.md)). Referencing `Intro` loads
 `intro.md` as a `Markdown` value baked in at compile time, so the content
 lives in real markdown files, not string literals:
 
@@ -51,8 +44,8 @@ Page => Html {
 }
 ```
 
-`Intro() -> Html` runs the standard library's Markdown renderer — headings,
-paragraphs, **bold**, `code`, lists, fenced code blocks, and links — the
+`Intro() -> Html` runs the standard library's Markdown renderer -- headings,
+paragraphs, **bold**, `code`, lists, fenced code blocks, and links -- the
 same `Markdown -> Html` pipe you would use from the command line, only
 here it runs client-side.
 

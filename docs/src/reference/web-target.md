@@ -2,7 +2,7 @@
 
 Canon programs can be browser frontends. A program that defines the
 **Elm-architecture triple** compiles to a self-contained wasm core module
-plus a tiny generated JS host — no bundler, no npm, no framework. Combined
+plus a tiny generated JS host -- no bundler, no npm, no framework. Combined
 with the `wasi:http/service` world for the backend, a fullstack app is two
 Canon programs sharing one types package (see `examples/todo-fullstack`).
 
@@ -14,16 +14,16 @@ approximates, Canon states natively:
 Init = Model                     # marker: the initial model
 Update = Model                   # marker: the model after one message
 
-Model => Html { … }              # view — a pure render
-Unit => Init { … }               # init — the whole app state, initially
-Model * Msg => Update { … }      # update — a pure fold over messages
+Model => Html { ... }              # view -- a pure render
+Unit => Init { ... }               # init -- the whole app state, initially
+Model * Msg => Update { ... }      # update -- a pure fold over messages
 ```
 
-All three are anonymous, type-selected constructors — no names. `Model`
+All three are anonymous, type-selected constructors -- no names. `Model`
 is any user type, `Msg` the message type (`String` today). `Init` and
 `Update` are **model-alias marker newtypes** (`Init = Model`,
 `Update = Model`); they exist because `init` and `update` both produce
-the model and would otherwise collide on one constructor key — the
+the model and would otherwise collide on one constructor key -- the
 markers give each a distinct type. `Html` resolves to
 `canon/std/web/Html` automatically.
 
@@ -32,8 +32,8 @@ receiver is a user type (a primitive receiver marks a stdlib `ToHtml`
 conversion instead); from its model, `init` is the unique nullary
 constructor whose result aliases the model and `update` the unique
 two-input constructor whose first input is the model. When the triple is
-present — and no CLI or HTTP entry competes, which the checker rejects as
-mixed worlds — the program is a web app.
+present -- and no CLI or HTTP entry competes, which the checker rejects as
+mixed worlds -- the program is a web app.
 
 ## What gets emitted
 
@@ -41,14 +41,14 @@ mixed worlds — the program is a web app.
 (default `127.0.0.1:8080`):
 
 ```
-<stem>.wasm      # the compiled app — a plain core module, not a component
+<stem>.wasm      # the compiled app -- a plain core module, not a component
 canon-web.js     # the JS host, embedded in the compiler binary
 index.html       # boots the app into <div id="app">
 ```
 
 Browsers instantiate core wasm directly, so the web output is **not** a
 component; `canon-web.js` plays the role the component wrapper plays for the
-CLI and HTTP worlds. The model stays in guest memory between calls — the
+CLI and HTTP worlds. The model stays in guest memory between calls -- the
 host only holds an opaque `i64`. Messages go in as strings, HTML comes out
 as a string; no serialization crosses the boundary. `-> Print` maps to
 `console.log`.
@@ -66,7 +66,7 @@ declarative attributes:
 
 Payload-carrying messages are plain string composition
 (`"Toggle:" -> Joined(Id -> String)`) decoded by the reducer with
-`Substring`/`ByteAt` — the same pure-Canon parsing the JSON validator uses.
+`Substring`/`ByteAt` -- the same pure-Canon parsing the JSON validator uses.
 `canon/std/web` provides `Button` (renders `data-msg`), `ElAttr` (arbitrary
 attributes), and `Escaped` (HTML-escapes user content).
 
@@ -84,7 +84,7 @@ replays it through `update` to rebuild the identical model.
 `canonWebStart(wasmUrl, root, persistKey)` enables this when `persistKey` is
 a non-empty string. It reads the saved log on boot (stdout muted during
 replay), appends every subsequent message, and discards the log if a saved
-message ever fails to fold — a stale or corrupt log can't brick the app. The
+message ever fails to fold -- a stale or corrupt log can't brick the app. The
 generated `index.html` keys persistence by the app's stem, so `canon run` /
 `canon build` apps persist by default. `examples/todolist-web` is the worked
 example.

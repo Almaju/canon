@@ -24,17 +24,53 @@ HTTP/1.1 404 Not Found
 The whole program is one file, `src/main.can`:
 
 ```canon
-{{#include ../../../examples/notes-api/src/main.can}}
+IndexBody = Body
+
+NotFound = Body
+
+NoteOne = Body
+
+NoteTwo = Body
+
+Unit => IndexBody {
+    [{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}] -> Body
+}
+
+Unit => NotFound {
+    {"error":"not found"} -> Body
+}
+
+Unit => NoteOne {
+    {"id":1,"title":"ship canon v1"} -> Body
+}
+
+Unit => NoteTwo {
+    {"id":2,"title":"write the docs"} -> Body
+}
+
+Request => Response {
+    Request.path() -> (
+        * None => Response { 400 -> Status -> Response(Headers() * NotFound()) }
+        * Some<String> => Response {
+            String -> (
+                * "/notes" => Response { 200 -> Status -> Response(Headers() * IndexBody()) }
+                * "/notes/1" => Response { 200 -> Status -> Response(Headers() * NoteOne()) }
+                * "/notes/2" => Response { 200 -> Status -> Response(Headers() * NoteTwo()) }
+                * String => Response { 404 -> Status -> Response(Headers() * NotFound()) }
+            )
+        }
+    )
+}
 ```
 
 ## What It Demonstrates
 
 - **The entry-point rule.** The one arrow returning `Response` is the
-  service — an anonymous `Request => Response`, selected by signature.
+  service -- an anonymous `Request => Response`, selected by signature.
   No `main`, no port in the program; the host decides how to serve it.
 - **Constructors return values, not worlds.** Only the entry may return
   `Response`, so each note body is a constructor for its own `Body`
-  newtype (`IndexBody`, `NoteOne`, …), built with `Unit => IndexBody`.
+  newtype (`IndexBody`, `NoteOne`, ...), built with `Unit => IndexBody`.
   This is the layering the rule enforces.
 - **JSON literals.** The bodies are JSON object/array literals,
   ordinary expressions that evaluate to the encoded text, so a static

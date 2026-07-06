@@ -52,3 +52,20 @@ export const stderr = {
     return drain(reader, true);
   },
 };
+
+// A `Unit => Program` snippet only prints, but an `Args => Exit` one also
+// pulls in wasi:cli environment (for `Args`) and exit (for `Exit`). In the
+// browser there are no arguments and no process to exit, so these are the
+// smallest honest stubs: an empty argv, no initial cwd, and a non-zero
+// exit surfaced as a trap (a zero exit is the normal, silent path).
+export const environment = {
+  getArguments() { return []; },
+  getEnvironment() { return []; },
+  getInitialCwd() { return undefined; },
+};
+
+export const exit = {
+  exitWithCode(code) {
+    if (code !== 0) throw new Error("program exited with code " + code);
+  },
+};

@@ -4,7 +4,7 @@
 
 Every callable is a **constructor**, named after the type it produces.
 The declaration arrow is `=>`; writing `->` at a declaration site is a
-parse error (`->` is the value-level pipe — see
+parse error (`->` is the value-level pipe -- see
 [Expressions](./expressions.md)). The anonymous form needs no name of
 its own, because the return type *is* the name:
 
@@ -24,9 +24,9 @@ Greeting * Name => Line {
 }
 ```
 
-A named form also exists — `Line = (Greeting * Name) => Line { … }` —
+A named form also exists -- `Line = (Greeting * Name) => Line { ... }` --
 and is how a *result newtype* declares the operation that produces it
-(`Inserted = (Map * String * Value) => Map { … }`). The name must be
+(`Inserted = (Map * String * Value) => Map { ... }`). The name must be
 PascalCase: a camelCase declaration is a checker error everywhere
 except [binding files](./compilation.md) and `canon test` functions.
 
@@ -38,7 +38,7 @@ except [binding files](./compilation.md) and `canon test` functions.
 - Inside the body, each component is referenced by **its type name**:
   `Greeting` is the greeting value, `Name` the name value.
 - `Unit` is the name of "no input": a nullary constructor is
-  `Unit => X`, and call sites write `X()` — the `Unit` is
+  `Unit => X`, and call sites write `X()` -- the `Unit` is
   auto-supplied.
 - There are no local variables.
 
@@ -80,7 +80,7 @@ ambiguity. Arguments (including the receiver) bind to components by:
 
 **Repeated components bind positionally.** A constructor over a fixed
 repetition, such as `User^2 => Merged`, has positional components
-(`.1`, `.2`, …), so binding is positional too: the piped value fills
+(`.1`, `.2`, ...), so binding is positional too: the piped value fills
 `.1`, remaining arguments fill `.2` and onward in the order written.
 Commutative reordering does not apply, because position *is* the
 identity of a repeated component. Use `T^N` when order is the honest
@@ -136,35 +136,35 @@ input's type. Call sites use the ordinary pipe:
 
 A module becomes a runnable program when **exactly one** anonymous
 arrow returns a type matching a known WASI world's primary export.
-Entries have no name — selection is by signature only, and giving the
+Entries have no name -- selection is by signature only, and giving the
 entry a name (a literal `main =` is the classic mistake) is a checker
-error. The CLI entry is `Args => Exit { … }` — the command's argument
+error. The CLI entry is `Args => Exit { ... }` -- the command's argument
 vector flows in, an exit status flows out, mirroring the HTTP entry's
-`Request => Response { … }`:
+`Request => Response { ... }`:
 
 | Signature | World | Export |
 |---|---|---|
-| `Args => Exit` (also `Unit => Program`, `… => Result<Exit, _>`, and the legacy `ExitCode`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Args => Exit` (also `Unit => Program`, `... => Result<Exit, _>`, and the legacy `ExitCode`) | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
 `Args` (`= List<String>`, from `canon/std`) is the program's `argv`: the
 compiler binds it from `wasi:cli/environment#get-arguments` at the lifted
 `run` boundary and hands it to the entry, exactly as the HTTP world hands
-the handler its `Request` — you never fetch it. `Exit` (`= Int`) is the
+the handler its `Request` -- you never fetch it. `Exit` (`= Int`) is the
 exit status. Because `wasi:cli/run` returns a bare `result`, `Exit(0)`
 maps to success (process exit 0) and any nonzero `Exit` to failure
 (exit 1); an exact nonzero code uses the hard `Exited(n)`
 (`wasi:cli/exit#exit-with-code`) escape hatch. A program that reads no
 arguments and reports nothing may use the arg-less shorthand
-`Unit => Program { … }` (`Program = Unit`), whose body needs no explicit
+`Unit => Program { ... }` (`Program = Unit`), whose body needs no explicit
 exit.
 
-A third world — the browser [web target](../reference/web-target.md) — is
+A third world -- the browser [web target](../reference/web-target.md) -- is
 selected by a **triple of anonymous, type-selected constructors**:
 `Model => Html` (the view), `Unit => Init` (init), and
 `Model * Msg => Update` (update), where `Init` / `Update` are model-alias
-markers. Detection anchors on the view — the sole `Model => Html` with a
-user-type receiver — then finds the model's nullary and two-input
+markers. Detection anchors on the view -- the sole `Model => Html` with a
+user-type receiver -- then finds the model's nullary and two-input
 constructors. The triple compiles to a core wasm module plus a generated
 JS host rather than a component.
 
@@ -189,5 +189,5 @@ The same signature-driven selection powers testing: every
 Declarations in a file must appear in alphabetical order; the checker
 enforces this at compile time. The entry point and other
 compiler-synthesised arrows are exempt (they are distinguished by
-role, not name). A declaration nothing reaches — **dead code** — is a
+role, not name). A declaration nothing reaches -- **dead code** -- is a
 hard error, not a warning. See [Ordering Rules](./ordering.md).

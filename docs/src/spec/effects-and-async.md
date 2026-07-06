@@ -39,7 +39,7 @@ A function is **suspending** if any of the following holds:
 3. It transitively calls a suspending function.
 
 The compiler computes this set bottom-up over the call graph and lifts
-affected functions as `async func(…)` in the emitted component world.
+affected functions as `async func(...)` in the emitted component world.
 The entry point is lifted **async-stackful**, so suspension anywhere
 beneath it yields to the host instead of trapping.
 

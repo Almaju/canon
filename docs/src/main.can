@@ -10,28 +10,74 @@ Update = Page
 
 Page => Content {
     Page -> (
-        * "building" => Content { BuildingAndRunning() -> Html }
+        * "building-and-running" => Content { BuildingAndRunning() -> Html }
+        * "coming-from-rust" => Content { ComingFromRust() -> Html }
+        * "compilation" => Content { Compilation() -> Html }
+        * "deploying" => Content { Deploying() -> Html }
+        * "effects-and-async" => Content { EffectsAndAsync() -> Html }
+        * "expressions" => Content { Expressions() -> Html }
+        * "fullstack" => Content { Fullstack() -> Html }
+        * "functions" => Content { Functions() -> Html }
+        * "guide" => Content { Guide() -> Html }
         * "hello-world" => Content { HelloWorld() -> Html }
         * "installation" => Content { Installation() -> Html }
+        * "lexical-structure" => Content { LexicalStructure() -> Html }
+        * "markdown-renderer" => Content { MarkdownRenderer() -> Html }
+        * "markdown-web" => Content { MarkdownWeb() -> Html }
+        * "modules" => Content { Modules() -> Html }
+        * "multifile" => Content { Multifile() -> Html }
+        * "notes-api" => Content { NotesApi() -> Html }
+        * "ordering" => Content { Ordering() -> Html }
+        * "overview" => Content { Overview() -> Html }
+        * "showcase" => Content { Showcase() -> Html }
         * "stdlib" => Content { Stdlib() -> Html }
-        * "tour" => Content { Guide() -> Html }
+        * "todolist" => Content { Todolist() -> Html }
+        * "types" => Content { Types() -> Html }
+        * "types-only" => Content { TypesOnly() -> Html }
+        * "wasi" => Content { Wasi() -> Html }
+        * "web-target" => Content { WebTarget() -> Html }
         * String => Content { Introduction() -> Html }
     )
 }
 
 Page => Html {
-    <div class="layout">
+    <div class="app">
         {Styles()}
-        <nav class="side">
-            <div class="brand">Canon</div>
-            <button data-msg="Show:introduction">Introduction</button>
-            <button data-msg="Show:installation">Installation</button>
-            <button data-msg="Show:hello-world">Hello, World</button>
-            <button data-msg="Show:building">Building &amp; Running</button>
-            <button data-msg="Show:tour">A Tour of Canon</button>
-            <button data-msg="Show:stdlib">Standard Library</button>
-        </nav>
-        <main class="content">{Page -> Content}</main>
+        <aside class="side">
+            <a class="brand" data-msg="Nav:introduction"><b>&#10033;</b> canon</a>
+            <div class="sec">Start</div>
+            <button data-msg="Nav:introduction">Introduction</button>
+            <button data-msg="Nav:installation">Installation</button>
+            <button data-msg="Nav:hello-world">Hello, World</button>
+            <button data-msg="Nav:building-and-running">Building &amp; Running</button>
+            <button data-msg="Nav:guide">A Tour of Canon</button>
+            <div class="sec">Specification</div>
+            <button data-msg="Nav:overview">Overview</button>
+            <button data-msg="Nav:lexical-structure">Lexical Structure</button>
+            <button data-msg="Nav:types">Types</button>
+            <button data-msg="Nav:expressions">Expressions &amp; Dispatch</button>
+            <button data-msg="Nav:functions">Functions &amp; Traits</button>
+            <button data-msg="Nav:ordering">Ordering Rules</button>
+            <button data-msg="Nav:modules">Modules &amp; Packages</button>
+            <button data-msg="Nav:effects-and-async">Effects &amp; Async</button>
+            <button data-msg="Nav:compilation">Compilation &amp; ABI</button>
+            <button data-msg="Nav:types-only">Types-Only Canon</button>
+            <div class="sec">Examples</div>
+            <button data-msg="Nav:showcase">Overview</button>
+            <button data-msg="Nav:multifile">Multi-File Project</button>
+            <button data-msg="Nav:notes-api">notes-api: JSON Service</button>
+            <button data-msg="Nav:todolist">Todo List in the Browser</button>
+            <button data-msg="Nav:markdown-web">Docs Site in the Browser</button>
+            <button data-msg="Nav:fullstack">Fullstack</button>
+            <div class="sec">Reference</div>
+            <button data-msg="Nav:stdlib">Standard Library</button>
+            <button data-msg="Nav:markdown-renderer">Markdown</button>
+            <button data-msg="Nav:wasi">WASI Interfaces</button>
+            <button data-msg="Nav:web-target">The Web Target</button>
+            <button data-msg="Nav:deploying">Deploying</button>
+            <button data-msg="Nav:coming-from-rust">Coming from Rust</button>
+        </aside>
+        <main class="main"><article class="doc">{Page -> Content}</article></main>
     </div>
 }
 
@@ -40,8 +86,8 @@ Unit => Init {
 }
 
 Page * Msg => Update {
-    Msg -> Substring(1 -> From * 5 -> To) -> (
-        * "Show:" => Page { Msg -> Substring(6 -> From * Msg -> Length -> To) -> Page }
+    Msg -> Substring(1 -> From * 4 -> To) -> (
+        * "Nav:" => Page { Msg -> Substring(5 -> From * Msg -> Length -> To) -> Page }
         * String => Page { Page }
     )
 }

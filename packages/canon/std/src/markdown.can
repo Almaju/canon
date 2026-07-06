@@ -1,3 +1,7 @@
+BodyCells = Frag
+
+BodyRows = Frag
+
 BracketClose = Int
 
 DigitRun = Int
@@ -6,9 +10,13 @@ FenceBody = Frag
 
 FenceEnd = Int
 
+FenceInfo = Frag
+
 Frag = String
 
 HashCount = Int
+
+HeadCells = Frag
 
 HeadingHtml = Frag
 
@@ -28,7 +36,11 @@ IsPara = Bool
 
 IsQuote = Bool
 
+IsSepLine = Bool
+
 IsSubItem = Bool
+
+IsTable = Bool
 
 LineEnd = Int
 
@@ -37,6 +49,8 @@ ListEnd = Int
 ListItems = Frag
 
 Markdown = String
+
+NextPipe = Int
 
 OrderedEnd = Int
 
@@ -66,17 +80,39 @@ RenderedOrdered = Frag
 
 RenderedParagraph = Frag
 
-RenderedQuote = Frag
+Int * String => BodyCells {
+    Int -> Gt(String -> Length) -> (
+        * False => BodyCells {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => BodyCells {
+                    "<td>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> From * Int -> NextPipe(String) -> Difference(1) -> To)))
+                        -> Joined("</td>")
+                        -> Joined(Int -> NextPipe(String) -> Sum(1) -> BodyCells(String))
+                }
+                * True => BodyCells { "" }
+            )
+        }
+        * True => BodyCells { "" }
+    )
+}
 
-StarClose = Int
-
-StarOneClose = Int
-
-SubEnd = Int
-
-SubItems = Frag
-
-TickClose = Int
+Int * String => BodyRows {
+    Int -> Gt(String -> Length) -> (
+        * False => BodyRows {
+            String -> ByteAt(Int) -> Eq(124) -> (
+                * False => BodyRows { "" }
+                * True => BodyRows {
+                    "<tr>"
+                        -> Joined(Int -> Sum(1) -> BodyCells(String))
+                        -> Joined("</tr>")
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> BodyRows(String))
+                }
+            )
+        }
+        * True => BodyRows { "" }
+    )
+}
 
 Int * String => BracketClose {
     Int -> Gt(String -> Length) -> (
@@ -139,6 +175,17 @@ Int * String => FenceEnd {
     )
 }
 
+Int * String => FenceInfo {
+    Int -> Sum(3) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+        * False => FenceInfo {
+            String
+                -> Substring(Int -> Sum(3) -> From * Int -> LineEnd(String) -> Difference(1) -> To)
+                -> Escaped
+        }
+        * True => FenceInfo { "" }
+    )
+}
+
 Int * String => HashCount {
     Int -> Gt(String -> Length) -> (
         * False => HashCount {
@@ -148,6 +195,23 @@ Int * String => HashCount {
             )
         }
         * True => HashCount { 0 }
+    )
+}
+
+Int * String => HeadCells {
+    Int -> Gt(String -> Length) -> (
+        * False => HeadCells {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => HeadCells {
+                    "<th>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> From * Int -> NextPipe(String) -> Difference(1) -> To)))
+                        -> Joined("</th>")
+                        -> Joined(Int -> NextPipe(String) -> Sum(1) -> HeadCells(String))
+                }
+                * True => HeadCells { "" }
+            )
+        }
+        * True => HeadCells { "" }
     )
 }
 
@@ -266,6 +330,7 @@ Int * String => IsBlockStart {
         -> Or(Int -> IsSubItem(String))
         -> Or(Int -> IsOrdered(String))
         -> Or(Int -> IsQuote(String))
+        -> Or(Int -> IsTable(String))
 }
 
 Int * String => IsFence {
@@ -363,6 +428,28 @@ Int * String => IsQuote {
     )
 }
 
+Int * String => IsSepLine {
+    Int -> Gt(String -> Length) -> (
+        * False => IsSepLine {
+            String -> ByteAt(Int) -> Eq(10) -> (
+                * False => IsSepLine {
+                    String
+                        -> ByteAt(Int)
+                        -> Eq(45)
+                        -> Or(String -> ByteAt(Int) -> Eq(58))
+                        -> Or(String -> ByteAt(Int) -> Eq(124))
+                        -> Or(String -> ByteAt(Int) -> Eq(32)) -> (
+                        * False => IsSepLine { False() }
+                        * True => IsSepLine { Int -> Sum(1) -> IsSepLine(String) }
+                    )
+                }
+                * True => IsSepLine { True() }
+            )
+        }
+        * True => IsSepLine { True() }
+    )
+}
+
 Int * String => IsSubItem {
     Int -> Sum(3) -> Gt(String -> Length) -> (
         * False => IsSubItem {
@@ -374,6 +461,23 @@ Int * String => IsSubItem {
                 -> And(String -> ByteAt(Int -> Sum(3)) -> Eq(32))
         }
         * True => IsSubItem { False() }
+    )
+}
+
+Int * String => IsTable {
+    String -> ByteAt(Int) -> Eq(124) -> (
+        * False => IsTable { False() }
+        * True => IsTable {
+            Int -> LineEnd(String) -> Sum(1) -> Gt(String -> Length) -> (
+                * False => IsTable {
+                    String
+                        -> ByteAt(Int -> LineEnd(String) -> Sum(1))
+                        -> Eq(124)
+                        -> And(Int -> LineEnd(String) -> Sum(1) -> IsSepLine(String))
+                }
+                * True => IsTable { False() }
+            )
+        }
     )
 }
 
@@ -413,6 +517,23 @@ Int * String => ListItems {
                 }
             )
         }
+    )
+}
+
+Int * String => NextPipe {
+    Int -> Gt(String -> Length) -> (
+        * False => NextPipe {
+            String -> ByteAt(Int) -> Eq(124) -> (
+                * False => NextPipe {
+                    String -> ByteAt(Int) -> Eq(10) -> (
+                        * False => NextPipe { Int -> Sum(1) -> NextPipe(String) }
+                        * True => NextPipe { Int }
+                    )
+                }
+                * True => NextPipe { Int }
+            )
+        }
+        * True => NextPipe { Int }
     )
 }
 
@@ -508,7 +629,14 @@ Int * String => RenderedBlocks {
                                         * False => RenderedBlocks {
                                             Int -> IsOrdered(String) -> (
                                                 * False => RenderedBlocks {
-                                                    Int -> RenderedNonList(String)
+                                                    Int -> IsTable(String) -> (
+                                                        * False => RenderedBlocks {
+                                                            Int -> RenderedNonList(String)
+                                                        }
+                                                        * True => RenderedBlocks {
+                                                            Int -> RenderedTable(String)
+                                                        }
+                                                    )
                                                 }
                                                 * True => RenderedBlocks {
                                                     Int -> RenderedOrdered(String)
@@ -532,7 +660,9 @@ Int * String => RenderedBlocks {
 }
 
 Int * String => RenderedFence {
-    "<pre><code>"
+    "<pre data-info=\""
+        -> Joined(Int -> FenceInfo(String))
+        -> Joined("\"><code>")
         -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
         -> Joined("</code></pre>")
         -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) -> RenderedBlocks(String))
@@ -593,11 +723,36 @@ Int * String => RenderedParagraph {
         -> Joined(Int -> ParaEnd(String) -> RenderedBlocks(String))
 }
 
+RenderedQuote = Frag
+
+RenderedTable = Frag
+
+StarClose = Int
+
+StarOneClose = Int
+
+SubEnd = Int
+
+SubItems = Frag
+
+TableEnd = Int
+
+TickClose = Int
+
 Int * String => RenderedQuote {
     "<blockquote>"
         -> Joined(Int -> QuoteBody(String))
         -> Joined("</blockquote>")
         -> Joined(Int -> QuoteEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedTable {
+    "<table><thead><tr>"
+        -> Joined(Int -> Sum(1) -> HeadCells(String))
+        -> Joined("</tr></thead><tbody>")
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> LineEnd(String) -> Sum(1) -> BodyRows(String))
+        -> Joined("</tbody></table>")
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> LineEnd(String) -> Sum(1) -> TableEnd(String) -> RenderedBlocks(String))
 }
 
 Int * String => StarClose {
@@ -652,6 +807,18 @@ Int * String => SubItems {
                 }
             )
         }
+    )
+}
+
+Int * String => TableEnd {
+    Int -> Gt(String -> Length) -> (
+        * False => TableEnd {
+            String -> ByteAt(Int) -> Eq(124) -> (
+                * False => TableEnd { Int }
+                * True => TableEnd { Int -> LineEnd(String) -> Sum(1) -> TableEnd(String) }
+            )
+        }
+        * True => TableEnd { Int }
     )
 }
 

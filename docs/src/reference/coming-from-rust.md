@@ -15,22 +15,22 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `impl User { fn greet(&self) => String { ... } }` | `greet = (User) => String { ... }` |
 | `fn main() { ... }`                        | `Args => Exit { ... }` (or arg-less `Unit => Program { ... }`) |
 | `std::env::args()` / `-> ExitCode`         | the entry's `Args` (`= List<String>`) and `Exit` (`= Int`) |
-| `trait Show { fn show(&self) -> String; }` | `Show = () => String`                   |
+| `trait Show { fn show(&self) -> String; }` | `Show = Unit => String`                 |
 | `impl Show for User { ... }`               | `Show = (User) => String { ... }`      |
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |
 | `Option<T>`                                | `Option<T>`                             |
 | `?` operator                               | `?` operator (same semantics)           |
-| `match x { ... }`                          | `x.( ... )`                             |
+| `match x { ... }`                          | `x -> ( ... )`                          |
 | `let x = ...;`                             | No equivalent; declare a newtype        |
-| `if cond { a } else { b }`                 | `cond.( * (False) => R { b } * (True) => R { a } )` |
+| `if cond { a } else { b }`                 | `cond -> ( * False => R { b } * True => R { a } )` |
 | `pub fn`                                   | Everything is public                    |
 | `mod foo;`                                 | No `mod`; `foo.can` declares `Foo`       |
-| `use crate::foo::Foo;`                     | Nothing — referencing `Foo` loads `foo.can` |
-| `use serde_json::Value;` (third-party)     | Nothing — stdlib and `deps/` names resolve by reference; `extern Wasm` for raw imports |
-| `fn(...) -> T` (function type)             | `(params) -> T` (also a trait declaration) |
+| `use crate::foo::Foo;`                     | Nothing -- referencing `Foo` loads `foo.can` |
+| `use serde_json::Value;` (third-party)     | Nothing -- stdlib and `deps/` names resolve by reference; `extern Wasm` for raw imports |
+| `fn(...) -> T` (function type)             | `(Params) => T` (also a trait declaration) |
 | `&T` / `&mut T` / `Box<T>` / `Rc<T>`       | Inferred by the compiler                |
 | `async fn`, `.await`                       | Inferred; no source-level keyword       |
-| `String::from(x)` / `x.into()` / `x.to_string()` | `String(x)` / `x.String()` — conversion is construction |
+| `String::from(x)` / `x.into()` / `x.to_string()` | `String(x)` / `x.String()` -- conversion is construction |
 | `s.parse::<i64>()?`                        | `Int(s)?` / `s.Int()?` (stdlib, loads automatically) |
 | `HashMap::new()` + `.insert(k, v)`         | `Map().Inserted(k, v)` (stdlib; sorted, functional) |
 | `BTreeSet::new()` + `.insert(x)`           | `Set().Inserted(x)` (stdlib) |
@@ -85,7 +85,7 @@ build path; the output `.wasm` is a portable WebAssembly Component.
 
 - Look at the [`examples/`](https://github.com/Almaju/canon/tree/main/examples)
   directory in the repo.
-- Read the [language specification](../spec/index.md), the authoritative
+- Read the [language specification](../spec/overview.md), the authoritative
   reference, and [Compilation and the ABI](../spec/compilation.md) for
   how programs lower to WebAssembly.
 - `canon inspect wat path/to/file.can` prints the WAT the compiler produces.

@@ -1,0 +1,7 @@
+Args => Exit {
+    "# Grid\n\n| Lang | Trait |\n|------|-------|\n| Canon | `pure` |\n| Rust | **borrow** |\n\nAfter the table."
+        -> Markdown
+        -> Html
+        -> Print
+    0 -> Exit
+}

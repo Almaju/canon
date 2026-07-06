@@ -280,6 +280,37 @@
 
   .hero-window { max-width: 620px; margin: 56px auto 0; }
 
+  /* live embed of the Canon-compiled docs app */
+  .embed {
+    margin-top: 40px;
+    max-width: 960px;
+  }
+  .embed .window-bar .name { display: flex; align-items: center; gap: 8px; }
+  .embed .live {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--muted);
+  }
+  .embed .live .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent-dim);
+  }
+  .embed iframe {
+    display: block;
+    width: 100%;
+    height: 520px;
+    border: 0;
+    background: #0d1117;
+  }
+  .embed .open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 18px;
+    font-size: 14px;
+    color: var(--accent);
+  }
+  .embed .open:hover { color: var(--text); }
+
   /* canon syntax */
   .t { color: var(--c-type); }
   .o { color: var(--c-op); }
@@ -503,9 +534,8 @@
     <a class="wordmark" href="./"><span class="glyph">*</span>canon</a>
     <div class="nav-links">
       <a href="doc/">Docs</a>
-      <a class="wide" href="doc/tour/philosophy.html">Tour</a>
-      <a href="doc/playground.html">Playground</a>
-      <a class="wide" href="doc/spec/index.html">Spec</a>
+      <a class="wide" href="doc/#guide">Tour</a>
+      <a class="wide" href="doc/#overview">Spec</a>
       <a href="https://github.com/Almaju/canon">GitHub</a>
     </div>
   </div>
@@ -543,11 +573,11 @@
       </div>
       <pre><code><span class="t">Bool</span> <span class="o">=</span> <span class="t">False</span> <span class="o">+</span> <span class="t">True</span>
 
-main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</span> <span class="t">Unit</span> <span class="p">{</span>
-    <span class="t">List</span><span class="p">(</span><span class="n">1</span><span class="p">,</span> <span class="n">2</span><span class="p">,</span> <span class="n">3</span><span class="p">)</span>
-        <span class="p">.</span>map<span class="p">((</span><span class="t">Int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Int</span> <span class="p">{</span> <span class="t">Int</span><span class="p">.</span>mul<span class="p">(</span><span class="n">2</span><span class="p">)</span> <span class="p">})</span>
-        <span class="p">.</span>length<span class="p">()</span>
-        <span class="p">.</span>print<span class="p">()</span>
+<span class="t">Unit</span> <span class="o">=&gt;</span> <span class="t">Program</span> <span class="p">{</span>
+    <span class="t">List</span><span class="p">(</span><span class="n">1</span> <span class="o">*</span> <span class="n">2</span> <span class="o">*</span> <span class="n">3</span><span class="p">)</span>
+        <span class="o">-&gt;</span> <span class="t">Mapped</span><span class="p">((</span><span class="t">Int</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="t">Int</span> <span class="p">{</span> <span class="t">Int</span> <span class="o">-&gt;</span> <span class="t">Product</span><span class="p">(</span><span class="n">2</span><span class="p">)</span> <span class="p">})</span>
+        <span class="o">-&gt;</span> <span class="t">Length</span>
+        <span class="o">-&gt;</span> <span class="t">Print</span>
 <span class="p">}</span></code></pre>
     </div>
   </div>
@@ -611,7 +641,7 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
     <span class="kicker">The web</span>
     <h2>A server is a function.</h2>
     <p class="lede">
-      Canon picks the entry point by its type. Define <code>(Request) -&gt; Response</code>
+      Canon picks the entry point by its type. Define <code>Request =&gt; Response</code>
       and the compiler emits a standard <code>wasi:http/service</code> component.
       Routing is dispatch on the path.
     </p>
@@ -632,19 +662,44 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
           <span class="b"></span><span class="b"></span><span class="b"></span>
           <span class="name">notes.can</span>
         </div>
-        <pre><code>serve <span class="o">=</span> <span class="p">(</span><span class="t">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span>
-    <span class="t">Request</span><span class="p">.</span>path<span class="p">().(</span>
-        <span class="o">*</span> <span class="p">(</span><span class="t">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span> notFound<span class="p">()</span> <span class="p">}</span>
-        <span class="o">*</span> <span class="p">(</span><span class="t">Some&lt;String&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span>
-            <span class="t">String</span><span class="p">.(</span>
-                <span class="o">*</span> <span class="p">(</span><span class="s">"/notes"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span> index<span class="p">()</span> <span class="p">}</span>
-                <span class="o">*</span> <span class="p">(</span><span class="t">String</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="t">Response</span> <span class="p">{</span> notFound<span class="p">()</span> <span class="p">}</span>
+        <pre><code><span class="t">Request</span> <span class="o">=&gt;</span> <span class="t">Response</span> <span class="p">{</span>
+    <span class="t">Request</span><span class="p">.</span>path<span class="p">()</span> <span class="o">-&gt;</span> <span class="p">(</span>
+        <span class="o">*</span> <span class="t">None</span> <span class="o">=&gt;</span> <span class="t">Response</span> <span class="p">{</span> <span class="t">NotFound</span><span class="p">()</span> <span class="p">}</span>
+        <span class="o">*</span> <span class="t">Some&lt;String&gt;</span> <span class="o">=&gt;</span> <span class="t">Response</span> <span class="p">{</span>
+            <span class="t">String</span> <span class="o">-&gt;</span> <span class="p">(</span>
+                <span class="o">*</span> <span class="s">"/notes"</span> <span class="o">=&gt;</span> <span class="t">Response</span> <span class="p">{</span> <span class="t">Index</span><span class="p">()</span> <span class="p">}</span>
+                <span class="o">*</span> <span class="t">String</span> <span class="o">=&gt;</span> <span class="t">Response</span> <span class="p">{</span> <span class="t">NotFound</span><span class="p">()</span> <span class="p">}</span>
             <span class="p">)</span>
         <span class="p">}</span>
     <span class="p">)</span>
 <span class="p">}</span></code></pre>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="app-demo">
+  <div class="wrap section-inner">
+    <span class="kicker">Show, don't tell</span>
+    <h2>These docs are a Canon program.</h2>
+    <p class="lede">
+      The panel below isn't a screenshot. It's the Canon documentation,
+      compiled to a WebAssembly module and running in your browser — the
+      Elm-architecture triple (<code>Model =&gt; Html</code> to view,
+      <code>Unit =&gt; Init</code>, <code>Model * Msg =&gt; Update</code>),
+      rendering Markdown to HTML with no JavaScript framework. Click a
+      page in its sidebar.
+    </p>
+
+    <div class="window embed">
+      <div class="window-bar">
+        <span class="b"></span><span class="b"></span><span class="b"></span>
+        <span class="name"><span class="live"><span class="dot"></span>canon-docs.wasm</span></span>
+      </div>
+      <iframe src="doc/" title="The Canon docs, compiled to WebAssembly" loading="lazy"></iframe>
+    </div>
+
+    <a class="open" href="doc/">Open it full-screen&thinsp;&nearr;</a>
   </div>
 </section>
 
@@ -662,8 +717,8 @@ main <span class="o">=</span> <span class="p">()</span> <span class="o">-&gt;</s
     <span class="kicker">Get started</span>
     <h2>Learn the whole language in an afternoon.</h2>
     <div class="cta-row">
-      <a class="btn btn-primary" href="doc/getting-started/installation.html">Get started</a>
-      <a class="btn btn-ghost" href="doc/tour/philosophy.html">Take the tour</a>
+      <a class="btn btn-primary" href="doc/#installation">Get started</a>
+      <a class="btn btn-ghost" href="doc/#guide">Take the tour</a>
     </div>
   </div>
 </section>
