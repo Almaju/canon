@@ -1,0 +1,1 @@
+error[tests/checker/fail/string_hex_escape_non_ascii.can:2:6]: \xFF is not ASCII — \x only escapes bytes 00-7F; use \u00FF for a Unicode scalar

@@ -61,11 +61,13 @@ what replaces each.
 | `\r` | carriage return |
 | `\t` | horizontal tab |
 | `\0` | null byte |
-| `\xNN` | byte by hex value (2 digits) |
+| `\xNN` | ASCII byte by hex value (2 digits, `00`-`7F`; use `\u` for non-ASCII) |
 | `\uNNNN` | Unicode scalar (4 hex digits) |
 | `\UNNNNNNNN` | Unicode scalar (8 hex digits) |
 
-An unrecognised escape (e.g. `\q`) is a **compile-time lexer error**.
+An unrecognised escape (e.g. `\q`) is a **compile-time lexer error**, as
+is a `\xNN` escape outside `00`-`7F` (a `String` is always valid UTF-8,
+so a lone non-ASCII byte can't be spelled as a single escape).
 There are no raw string literals.
 
 A `String` is `Byte^*` interpreted as UTF-8. Indexing (`ByteAt`) yields
