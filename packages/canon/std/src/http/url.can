@@ -1,5 +1,63 @@
+SchemeEnd = Int
+
 Url = String
 
+HostChecked = (SchemeEnd * String) => Result<Url, InvalidUrl> {
+    SchemeEnd -> Eq(0) -> (
+        * False => Result<Url, InvalidUrl> {
+            String -> Length -> Gt(SchemeEnd) -> (
+                * False => Result<Url, InvalidUrl> {
+                    "invalid URL: empty host in "
+                        -> Joined(String)
+                        -> InvalidUrl
+                        -> Err
+                }
+                * True => Result<Url, InvalidUrl> {
+                    String -> ByteAt(SchemeEnd -> Sum(1)) -> Eq(47) -> (
+                        * False => Result<Url, InvalidUrl> { String -> Ok }
+                        * True => Result<Url, InvalidUrl> {
+                            "invalid URL: empty host in "
+                                -> Joined(String)
+                                -> InvalidUrl
+                                -> Err
+                        }
+                    )
+                }
+            )
+        }
+        * True => Result<Url, InvalidUrl> {
+            "invalid URL: expected http:// or https:// prefix, got "
+                -> Joined(String)
+                -> InvalidUrl
+                -> Err
+        }
+    )
+}
+
+String => SchemeEnd {
+    String -> Length -> Ge(7) -> (
+        * False => SchemeEnd { 0 }
+        * True => SchemeEnd {
+            String -> Substring(1 -> From * 7 -> To) -> Eq("http://") -> (
+                * False => SchemeEnd {
+                    String -> Length -> Ge(8) -> (
+                        * False => SchemeEnd { 0 }
+                        * True => SchemeEnd {
+                            String -> Substring(1 -> From * 8 -> To) -> Eq("https://") -> (
+                                * False => SchemeEnd { 0 }
+                                * True => SchemeEnd { 8 }
+                            )
+                        }
+                    )
+                }
+                * True => SchemeEnd { 7 }
+            )
+        }
+    )
+}
+
 Url = (String) => Result<Url, InvalidUrl> {
-    String.parse()
+    String
+        -> SchemeEnd
+        -> HostChecked(String)
 }

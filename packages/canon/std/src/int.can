@@ -6,7 +6,7 @@ Negated = Int
 
 Negative = Int
 
-Pos = Int
+OtherInt = Int
 
 Int * Pos * String => Result<Digits, MalformedInt> {
     Pos -> Gt(String -> Length) -> (
@@ -43,6 +43,22 @@ Int => IsIntDigit {
         * True => IsIntDigit { Int -> Le(57) }
     )
 }
+
+Maximum = (Int * OtherInt) => Int {
+    Int -> Lt(OtherInt) -> (
+        * False => Int { Int }
+        * True => Int { OtherInt }
+    )
+}
+
+Minimum = (Int * OtherInt) => Int {
+    Int -> Lt(OtherInt) -> (
+        * False => Int { OtherInt }
+        * True => Int { Int }
+    )
+}
+
+Pos = Int
 
 Result => Result<Negated, MalformedInt> {
     Result -> (

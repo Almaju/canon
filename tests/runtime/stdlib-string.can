@@ -1,8 +1,14 @@
 Unit => Program {
     "Hello, World"
-        .toUppercase()
+        -> Uppercased
         -> Print
     "GoodBye"
-        .toLowercase()
+        -> Lowercased
+        -> Print
+    "MiXeD 123 !?"
+        -> Uppercased
+        -> Print
+    "MiXeD 123 !?"
+        -> Lowercased
         -> Print
 }

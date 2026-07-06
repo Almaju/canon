@@ -4,8 +4,10 @@ Model = String
 
 ChatCompletionRequest = (Json) => Result<ChatCompletionRequest, MalformedJson> {
     Json
-        .field("model")?
-        .asString()
+        -> Field("model")?
+        -> Decoded?
+        -> Model
+        -> Ok
 }
 
 Unit => Result<Program, MalformedJson> {

@@ -1,3 +1,17 @@
+testNowLength = () => TestResult {
+    Now()
+        -> Length
+        -> Eq(20)
+        -> TestResult("RFC3339 timestamp is 20 chars")
+}
+
+testNowSeparator = () => TestResult {
+    Now()
+        -> ByteAt(11)
+        -> Eq(84)
+        -> TestResult("T separates date and time")
+}
+
 testUnixAfter2001 = () => TestResult {
     Unix()
         -> Ge(1000000000)

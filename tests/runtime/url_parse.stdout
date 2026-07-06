@@ -1,0 +1,6 @@
+http://example.com/path
+https://example.com
+invalid URL: expected http:// or https:// prefix, got ftp://example.com
+invalid URL: empty host in http://
+invalid URL: empty host in http:///path
+https://x

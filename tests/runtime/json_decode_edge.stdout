@@ -1,0 +1,10 @@
+"two"
+[1,{"d":4}]
+field `missing` not found
+expected object
+line
+break	tab.
+esc " quote and \ slash
+café ✓ ok
+bad escape
+expected string
