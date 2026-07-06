@@ -67,14 +67,16 @@ to WebAssembly:
 
 ```canon
 Page => Html {
-    "<nav>…</nav><hr>"
-        -> Joined(Page -> (
-            * "guide" => Html { Guide() -> Html }
-            * String => Html { Intro() -> Html }
-        ))
-        -> Div
+    <div class="doc">
+        <nav>…</nav>
+        <hr>
+        {Page -> Content}
+    </div>
 }
 ```
+
+The view is written as an HTML literal; `{Page -> Content}` interpolates
+the rendered document (Html passes through the hole unescaped).
 
 See `examples/markdown-web` for the full triple: nav messages switch the
 page held in the model, and each page is its own imported `.md` file,

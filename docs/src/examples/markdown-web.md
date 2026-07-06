@@ -31,15 +31,23 @@ and that rule extends from `.can` to `.md` (see
 lives in real markdown files, not string literals:
 
 ```canon
+Page => Content {
+    Page -> (
+        * "guide" => Content { Guide() -> Html }
+        * String => Content { Intro() -> Html }
+    )
+}
+
 Page => Html {
-    Styles()
-        -> Joined("<div class=\"doc\"><nav>…</nav><hr>")
-        -> Joined(Page -> (
-            * "guide" => Html { Guide() -> Html }
-            * String => Html { Intro() -> Html }
-        ))
-        -> Joined("</div>")
-        -> Html
+    <div class="doc">
+        {Styles()}
+        <nav>
+            <button data-msg="Show:intro">Intro</button>
+            <button data-msg="Show:guide">Guide</button>
+        </nav>
+        <hr>
+        {Page -> Content}
+    </div>
 }
 ```
 
