@@ -1,9 +1,25 @@
+testMarkdownBlockquote = () => TestResult {
+    "> quoted text"
+        -> Markdown
+        -> Html
+        -> Eq("<blockquote>quoted text</blockquote>")
+        -> TestResult("Markdown renders a leading > line as a blockquote")
+}
+
 testMarkdownEscapesInline = () => TestResult {
     "a < b"
         -> Markdown
         -> Html
         -> Eq("<p>a &lt; b</p>")
         -> TestResult("Markdown escapes HTML metacharacters in inline text")
+}
+
+testMarkdownFencedCode = () => TestResult {
+    "```\ncode line\n```"
+        -> Markdown
+        -> Html
+        -> Eq("<pre data-info=\"\"><code>code line\n</code></pre>")
+        -> TestResult("Markdown renders a fenced block as pre/code")
 }
 
 testMarkdownHeading = () => TestResult {
@@ -14,10 +30,42 @@ testMarkdownHeading = () => TestResult {
         -> TestResult("Markdown renders a leading # as an h1")
 }
 
+testMarkdownItalic = () => TestResult {
+    "an *italic* word"
+        -> Markdown
+        -> Html
+        -> Eq("<p>an <em>italic</em> word</p>")
+        -> TestResult("Markdown renders single-star text as em")
+}
+
+testMarkdownLink = () => TestResult {
+    "see [Canon](https://example.com) here"
+        -> Markdown
+        -> Html
+        -> Eq("<p>see <a href=\"https://example.com\">Canon</a> here</p>")
+        -> TestResult("Markdown renders [text](url) as an anchor")
+}
+
+testMarkdownOrderedList = () => TestResult {
+    "1. first\n2. second"
+        -> Markdown
+        -> Html
+        -> Eq("<ol><li>first</li><li>second</li></ol>")
+        -> TestResult("Markdown renders numbered lines as an ordered list")
+}
+
 testMarkdownParagraph = () => TestResult {
     "plain text"
         -> Markdown
         -> Html
         -> Eq("<p>plain text</p>")
         -> TestResult("Markdown wraps a bare line in a paragraph")
+}
+
+testMarkdownUnorderedListNested = () => TestResult {
+    "- item one\n  - sub item\n- item two"
+        -> Markdown
+        -> Html
+        -> Eq("<ul><li>item one<ul><li>sub item</li></ul></li><li>item two</li></ul>")
+        -> TestResult("Markdown renders a nested sub-item inside its parent list item")
 }
