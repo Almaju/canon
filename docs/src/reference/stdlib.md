@@ -72,14 +72,22 @@ Unit => Program {
 ```canon
 Instant = Int
 
-Instant = () => Instant
+Unit => Instant
 ```
 
 Backed by the generated `wasi/clocks/monotonic_clock` binding, which
 imports `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15`. A second
 generated interface, `wasi/clocks/system_clock`, exposes wall-clock
-time (`Instant` with a `seconds` + `nanoseconds` shape) for callers
-that need it directly; most users want `canon/std/time/Now`.
+time as a `record instant` (a `seconds` + `nanoseconds` shape) for
+callers that need it directly; most users want `canon/std/time/Now`.
+
+> **Known limitation.** The monotonic `Instant` (`= Int`) and the
+> wall-clock modules (`Now` / `Unix`, which pull in `system_clock`)
+> both surface a type named `Instant` -- the second from WASI's
+> `record instant`. Because the two bodies differ, a single program
+> that references *both* the monotonic `Instant()` and `Now()` / `Unix()`
+> currently fails to load with a duplicate-`Instant` error. Use one
+> clock family per program until per-referrer type resolution lands.
 
 ## `Random`
 
@@ -169,25 +177,26 @@ from nothing but dispatch, recursion, and `String` comparison. Keys
 are functional: `Inserted` / `Removed` return a new collection. Every
 operation is a constructor named after what it produces
 ([Types-Only Canon](../spec/types-only.md)): `Inserted`, `Removed`,
-`Value` (the value at a key), `Keys`, `Values`, `Length`.
+`Value` (the value at a key), `Contains` (whether a key is present),
+`Keys`, `Values`, `Length`.
 
 ```canon
 Unit => Program {
     Map()
-        -> Inserted("b", "2")
-        -> Inserted("a", "1")
+        -> Inserted("b" * "2")
+        -> Inserted("a" * "1")
         -> Keys
         -> Json
         -> Print
-    Map() -> Inserted("k", "v") -> Value("k").(
-        * (None) => Unit { "absent" -> Print }
-        * (Some<String>) => Unit { String -> Print }
+    Map() -> Inserted("k" * "v") -> Value("k") -> (
+        * None => Unit { "absent" -> Print }
+        * Some<Value> => Unit { Value -> Print }
     )
 }
 ```
 
 Iteration order is **alphabetical by key** -- `Inserted` is a sorted
-insert, so `Keys()` / `Values()` come back ordered no matter the
+insert, so `Keys` / `Values` come back ordered no matter the
 insertion order. (Of course it is: wherever ordering is discretionary,
 Canon picks alphabetical.)
 
@@ -196,22 +205,24 @@ Map = Empty + Node
 
 Value = String
 
-(Map) => Map
+Inserted = (Map * String * Value) => Map
 
-(Map * String) => Option<Value>
+Removed = (Map * String) => Map
 
-(Map * String * Value) => Map
+Unit => Map
 
-(Map) => Keys
+Map * String => Contains
 
-(Map) => Length
+Map * String => Option<Value>
 
-(Map * String) => Map
+Map => Keys
 
-(Map) => Values
+Map => Length
+
+Map => Values
 ```
 
-`Set` is the set-shaped counterpart. `set.List()` -- conversion is
+`Set` is the set-shaped counterpart. `Set -> List` -- conversion is
 construction -- returns the members, alphabetically, as a
 `List<String>`:
 
@@ -237,19 +248,19 @@ Unit => Program {
 ```
 
 ```canon
-List = (Set) => List<Item>
-
 Set = Absent + Entry
 
-Set = () => Set
+Unit => Set
 
-contains = (Set * String) => Bool
+Inserted = (Set * String) => Set
 
-insert = (Set * String) => Set
+Removed = (Set * String) => Set
 
-length = (Set) => Int
+Set * String => Contains
 
-remove = (Set * String) => Set
+Set => Length
+
+Set => List<Item>
 ```
 
 Both modules double as reference code for **recursive union types**:
@@ -404,7 +415,7 @@ The assertion *is* the `TestResult` constructor
 ([Types-Only Canon](../spec/types-only.md)): a `Bool` and a message
 construct a `Pass` or a `Fail`.
 
-`canon test <file>` discovers every `() -> TestResult` function in the
+`canon test <file>` discovers every `() => TestResult` function in the
 entry file and runs them, printing `[ ok ] testName` or
 `[FAIL] testName: message` per test.
 
