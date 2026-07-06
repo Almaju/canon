@@ -3,6 +3,7 @@ use crate::error::CanonError;
 use std::collections::{HashMap, HashSet};
 
 pub mod auto_await;
+pub mod dep_infer;
 
 const BUILTIN_TYPES: &[&str] = &[
     "Bool",
