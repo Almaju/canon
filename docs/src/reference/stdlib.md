@@ -44,8 +44,6 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
-| `http/HttpServer` | `HttpServer = String` | `canon:builtins/http-server` | HTTP/1.1 server, see [HTTP Server](#http-server) |
-| `http/Port`, `http/RoutePath`, `http/HttpStatus`, `http/Body` | various | none | HTTP-server helpers |
 | `Json` | `Json = String`, `MalformedJson` | pure Canon (`fromFloat` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
@@ -338,54 +336,6 @@ The validation (scheme prefix, non-empty host) is pure Canon.
 `url -> Fetched` performs a blocking HTTP GET and returns the response
 body. TLS (`https://`) and async lowering arrive with the
 `wasi:http/outgoing-handler` migration.
-
-## HTTP Server
-
-Construct `HttpServer(Port(...))`, chain `.Route(...)` to register routes,
-and `-> Served` to start listening on the bound port. The HTTP method
-is **data** -- a `Method` value (`Get()`, `Post()`, ...), never a
-function name -- so one `Route` constructor covers every verb
-([Types-Only Canon](../spec/types-only.md)).
-
-```canon
-Unit => Result<Program, IoError> {
-    "Starting server on port 3000..." -> Print
-    HttpServer(Port(3000))
-        -> Route(HttpStatus(200), Get(), RoutePath("/"), "Hello from Canon!")
-        -> Route(HttpStatus(200), Get(), RoutePath("/health"), "ok")
-        -> Route(HttpStatus(200), Post(), RoutePath("/echo"), "received")
-        -> Served
-}
-```
-
-```canon
-HttpServer = String
-
-Route = HttpServer
-
-Served = Unit
-
-(Port) => HttpServer
-
-(HttpServer * HttpStatus * Method * RoutePath * String) => Route
-
-(HttpServer) => Result<Served, IoError>
-```
-
-### Status
-
-The server is real but minimal: a tokio TCP listener binds the given
-port, parses HTTP/1.1 request lines, matches `(method, path)` against
-the registered routes, and replies with the registered `status` + body
-string, or `404 Not Found` on no match. Headers are read and ignored;
-responses go out as `text/plain; charset=utf-8` with an explicit
-`Content-Length` and `Connection: close`.
-
-Route handlers can only produce static bodies, because `extern Wasm`
-imports don't yet support host-to-guest callbacks. `.Route(...)`
-therefore takes a fixed body string rather than a lambda. Dynamic
-handlers (reading the `Request`, threading state, streaming bodies)
-arrive with the `wasi:http/incoming-handler` migration.
 
 ## `TestResult`
 
