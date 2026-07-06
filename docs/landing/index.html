@@ -280,6 +280,37 @@
 
   .hero-window { max-width: 620px; margin: 56px auto 0; }
 
+  /* live embed of the Canon-compiled docs app */
+  .embed {
+    margin-top: 40px;
+    max-width: 960px;
+  }
+  .embed .window-bar .name { display: flex; align-items: center; gap: 8px; }
+  .embed .live {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--muted);
+  }
+  .embed .live .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent-dim);
+  }
+  .embed iframe {
+    display: block;
+    width: 100%;
+    height: 520px;
+    border: 0;
+    background: #0d1117;
+  }
+  .embed .open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 18px;
+    font-size: 14px;
+    color: var(--accent);
+  }
+  .embed .open:hover { color: var(--text); }
+
   /* canon syntax */
   .t { color: var(--c-type); }
   .o { color: var(--c-op); }
@@ -505,6 +536,7 @@
       <a href="doc/">Docs</a>
       <a class="wide" href="doc/guide.html">Tour</a>
       <a href="doc/playground.html">Playground</a>
+      <a href="app/">Live&nbsp;app</a>
       <a class="wide" href="doc/spec/index.html">Spec</a>
       <a href="https://github.com/Almaju/canon">GitHub</a>
     </div>
@@ -645,6 +677,31 @@
 <span class="p">}</span></code></pre>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="app-demo">
+  <div class="wrap section-inner">
+    <span class="kicker">Show, don't tell</span>
+    <h2>These docs are a Canon program.</h2>
+    <p class="lede">
+      The panel below isn't a screenshot. It's the Canon documentation,
+      compiled to a WebAssembly module and running in your browser — the
+      Elm-architecture triple (<code>Model =&gt; Html</code> to view,
+      <code>Unit =&gt; Init</code>, <code>Model * Msg =&gt; Update</code>),
+      rendering Markdown to HTML with no JavaScript framework. Click a
+      page in its sidebar.
+    </p>
+
+    <div class="window embed">
+      <div class="window-bar">
+        <span class="b"></span><span class="b"></span><span class="b"></span>
+        <span class="name"><span class="live"><span class="dot"></span>canon-docs.wasm</span></span>
+      </div>
+      <iframe src="app/" title="The Canon docs, compiled to WebAssembly" loading="lazy"></iframe>
+    </div>
+
+    <a class="open" href="app/">Open it full-screen&thinsp;&nearr;</a>
   </div>
 </section>
 

@@ -8,6 +8,11 @@ server.
 
 <div id="canon-playground"></div>
 
+> **This whole documentation site is also a Canon program.** The pages you
+> are reading are rendered by a Canon web app — the Elm-architecture triple
+> compiled to WebAssembly, rendering Markdown to HTML with no JS framework.
+> [Open the live app →](../app/)
+
 ## How this works
 
 - At docs-build time, every code block in the book tagged as runnable is
