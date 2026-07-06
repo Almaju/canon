@@ -14,6 +14,7 @@ Page => Content {
         * "codegen-gaps" => Content { CodegenGaps() -> Html }
         * "coming-from" => Content { ComingFrom() -> Html }
         * "compilation" => Content { Compilation() -> Html }
+        * "contributing" => Content { Contributing() -> Html }
         * "deploying" => Content { Deploying() -> Html }
         * "effects-and-async" => Content { EffectsAndAsync() -> Html }
         * "expressions" => Content { Expressions() -> Html }
@@ -78,6 +79,8 @@ Page => Html {
             <button data-msg="Nav:codegen-gaps">Known Codegen Gaps</button>
             <button data-msg="Nav:deploying">Deploying</button>
             <button data-msg="Nav:coming-from">Coming from Another Language</button>
+            <div class="sec">Project</div>
+            <button data-msg="Nav:contributing">Contributing</button>
         </aside>
         <main class="main"><article class="doc">{Page -> Content}</article></main>
     </div>
