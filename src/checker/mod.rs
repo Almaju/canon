@@ -58,7 +58,7 @@ const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 /// `compile_parallel` / `compile_race` paths. They appear in source as if
 /// they were ordinary calls (`parallel(a, b)`, `race(a, b)`) but the
 /// checker accepts them without resolving the bindings declaration in
-/// `packages/canon/std/src/concurrent.can` — the declaration's PascalCase
+/// `packages/canon/std/src/canon/builtins@0.1.0/concurrent.can` — the declaration's PascalCase
 /// first parameter (`Future<T>`) would otherwise force the checker to
 /// look them up as methods on `Future`, which the `Constructor(…)` call
 /// shape doesn't support. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
