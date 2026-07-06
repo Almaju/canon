@@ -28,6 +28,7 @@
 - [A Multi-File Project](./examples/multifile.md)
 - [notes-api: A JSON Service](./examples/notes-api.md)
 - [A Todo List in the Browser](./examples/todolist.md)
+- [A Docs Site in the Browser](./examples/markdown-web.md)
 - [Fullstack: One Language, Both Sides](./examples/fullstack.md)
 
 # Playground
