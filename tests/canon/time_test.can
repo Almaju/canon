@@ -12,6 +12,20 @@ testNowSeparator = () => TestResult {
         -> TestResult("T separates date and time")
 }
 
+testPaddedOverWidth = () => TestResult {
+    123
+        -> Padded(2)
+        -> Eq("123")
+        -> TestResult("Padded leaves a value wider than the width unchanged")
+}
+
+testPaddedZeroFills = () => TestResult {
+    5
+        -> Padded(4)
+        -> Eq("0005")
+        -> TestResult("Padded left-fills with zeros to the given width")
+}
+
 testUnixAfter2001 = () => TestResult {
     Unix()
         -> Ge(1000000000)

@@ -3956,9 +3956,9 @@ impl<'m> WasmGen<'m> {
                 Some("Bool".to_string())
             }
             "Length" | "ByteAt" => Some("Int".to_string()),
-            "Joined" | "Substring" | "Slice" => Some("String".to_string()),
-            // List transforms preserve list-ness (`map`/`filter`/`append`).
-            "Mapped" | "Filtered" | "Appended" => Some("List".to_string()),
+            "Joined" | "Substring" => Some("String".to_string()),
+            // List transforms preserve list-ness (`map`/`append`).
+            "Mapped" | "Appended" => Some("List".to_string()),
             "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Minimum" | "Maximum"
             | "Negated" => self.infer_ctor_arg_type_name(receiver),
             _ => None,
@@ -6677,9 +6677,7 @@ impl<'m> WasmGen<'m> {
             // is independent of the receiver's lifetime (heap is
             // bump-allocated, so neither outlives the other; copying
             // makes mutation safe if it ever lands).
-            ("substring" | "slice", _)
-                if recv_ty.is_str_like() && substring_bounds(args).is_some() =>
-            {
+            ("substring", _) if recv_ty.is_str_like() && substring_bounds(args).is_some() => {
                 // The bounds arrive either as a `From * To` product (the
                 // canonical, positionless form — alphabetical order puts
                 // `From` first) or, during migration, as two positional

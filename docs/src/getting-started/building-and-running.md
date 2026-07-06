@@ -130,7 +130,7 @@ canon fmt hello.can --check     # exit 1 if not already formatted
 canon test mymod_test.can
 ```
 
-Discovers every `() -> TestResult` function in the file and prints a
+Discovers every `() => TestResult` function in the file and prints a
 `[ ok ]` / `[FAIL]` line per test. The process exits `1` when any test
 fails, so `canon test` slots straight into CI. See
 [Testing](../guide.md#testing) for the conventions.

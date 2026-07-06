@@ -14,11 +14,11 @@ Mp = Int
 
 Now = String
 
-Padded2 = String
-
-Padded4 = String
+Padded = String
 
 TimePart = String
+
+Width = Int
 
 Year = Int
 
@@ -86,11 +86,11 @@ Month * Doy * Era * Mp * Yoe => DatePart {
 
 Year * Month * Day => DatePart {
     Year
-        -> Padded4
+        -> Padded(4)
         -> Joined("-")
-        -> Joined(Month -> Padded2)
+        -> Joined(Month -> Padded(2))
         -> Joined("-")
-        -> Joined(Day -> Padded2)
+        -> Joined(Day -> Padded(2))
 }
 
 Unit => Now {
@@ -107,36 +107,19 @@ Unix => Now {
         -> Joined("Z")
 }
 
-Int => Padded2 {
-    Int -> Lt(10) -> (
-        * False => Padded2 { Int -> String }
-        * True => Padded2 { "0" -> Joined(Int -> String) }
-    )
-}
-
-Int => Padded4 {
-    Int -> Lt(1000) -> (
-        * False => Padded4 { Int -> String }
-        * True => Padded4 {
-            Int -> Lt(100) -> (
-                * False => Padded4 { "0" -> Joined(Int -> String) }
-                * True => Padded4 {
-                    Int -> Lt(10) -> (
-                        * False => Padded4 { "00" -> Joined(Int -> String) }
-                        * True => Padded4 { "000" -> Joined(Int -> String) }
-                    )
-                }
-            )
-        }
+Int * Width => Padded {
+    Int -> String -> Length -> Ge(Width) -> (
+        * False => Padded { "0" -> Joined(Int -> Padded(Width -> Difference(1))) }
+        * True => Padded { Int -> String }
     )
 }
 
 Int => TimePart {
     Int
         -> Quotient(3600)
-        -> Padded2
+        -> Padded(2)
         -> Joined(":")
-        -> Joined(Int -> Quotient(60) -> Remainder(60) -> Padded2)
+        -> Joined(Int -> Quotient(60) -> Remainder(60) -> Padded(2))
         -> Joined(":")
-        -> Joined(Int -> Remainder(60) -> Padded2)
+        -> Joined(Int -> Remainder(60) -> Padded(2))
 }
