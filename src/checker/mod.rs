@@ -3,6 +3,7 @@ use crate::error::CanonError;
 use std::collections::{HashMap, HashSet};
 
 pub mod auto_await;
+pub mod dep_infer;
 
 const BUILTIN_TYPES: &[&str] = &[
     "Bool",
@@ -586,6 +587,302 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
         | Expr::IntLit { .. }
         | Expr::FloatLit { .. }
         | Expr::HexLit { .. } => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Known codegen gaps
+//
+// The checker deliberately accepts more than the code generator implements:
+// a handful of features parse and type-check but fail later, at codegen. That
+// is a silent trap for users — a program passes `canon check`, then blows up
+// at `canon build`. To close the gap in *feedback* (not the gap in codegen),
+// the checker emits a non-fatal **warning** when a program reaches, from its
+// entry, a declaration that relies on one of these features. The warning
+// points at `docs/src/reference/codegen-gaps.md`, the tracking page.
+//
+// `CODEGEN_GAPS` below is the single source of truth for the list; the doc
+// page mirrors it in prose and `tests/codegen_gaps.rs` pins that every gap
+// here is documented there.
+// ---------------------------------------------------------------------------
+
+/// One feature the checker accepts but the code generator does not implement
+/// yet. See the module-level comment above and the doc page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodegenGap {
+    /// Short description, phrased to read both inside the warning sentence
+    /// and as the heading for this gap in `codegen-gaps.md`. The doc-mirror
+    /// test matches on this string verbatim, so the two stay in lockstep.
+    pub title: &'static str,
+}
+
+/// Binding declarations returning `list<T>` for non-string `T`. `List<String>`
+/// returns already work; other element types need per-width read-back.
+pub const GAP_LIST_NON_STRING_RETURN: CodegenGap = CodegenGap {
+    title: "binding declarations returning `list<T>` for non-string `T`",
+};
+
+/// Sub-`u64` integers (`u8`/`u16`/`u32`/`s8`/`s16`/`s32`) inside a compound
+/// WIT shape. Not statically detectable from Canon source (Canon has only
+/// `Int`), so documented but not warned about.
+pub const GAP_SUB_U64_COMPOUND: CodegenGap = CodegenGap {
+    title: "sub-`u64` integers inside a compound WIT shape",
+};
+
+/// WIT `result` with no payloads in binding declarations. Not statically
+/// detectable from Canon source, so documented but not warned about.
+pub const GAP_RESULT_NO_PAYLOAD: CodegenGap = CodegenGap {
+    title: "WIT `result` with no payloads in binding declarations",
+};
+
+/// Non-string `option<T>` extern returns (no indirect-return decode).
+pub const GAP_OPTION_NON_STRING_RETURN: CodegenGap = CodegenGap {
+    title: "non-string `option<T>` extern returns",
+};
+
+/// WIT `resource` / `own<T>` / `borrow<T>` in binding signatures. Bindgen
+/// skips the offending functions, so they rarely survive as declarations;
+/// documented but not warned about to avoid flagging the hand-written
+/// wrappers that supersede them.
+pub const GAP_RESOURCES: CodegenGap = CodegenGap {
+    title: "WIT `resource` / `own<T>` / `borrow<T>` in binding signatures",
+};
+
+/// `At(i)` / `First` on `List<String>` and nested `Mapped` — codegen erases
+/// the element type. A runtime-value concern, documented but not warned about.
+pub const GAP_LIST_STRING_INDEXING: CodegenGap = CodegenGap {
+    title: "`At(i)` / `First` on `List<String>` and nested `Mapped`",
+};
+
+/// HTTP handler request headers and body. The handler body compiles, but
+/// reading request headers/body is not wired up. Documented but not warned
+/// about (not statically distinguishable from a working handler).
+pub const GAP_HTTP_REQUEST_HEADERS_BODY: CodegenGap = CodegenGap {
+    title: "HTTP handler request headers and body",
+};
+
+/// `Stream<T>` lowering and streaming response bodies. Codegen drops imports
+/// whose signatures mention `Stream<T>`, so such programs fail to link.
+pub const GAP_STREAM: CodegenGap = CodegenGap {
+    title: "`Stream<T>` lowering and streaming response bodies",
+};
+
+/// Every known codegen gap, in the same order as the doc page. Single source
+/// of truth for the list.
+pub const CODEGEN_GAPS: &[CodegenGap] = &[
+    GAP_LIST_NON_STRING_RETURN,
+    GAP_SUB_U64_COMPOUND,
+    GAP_RESULT_NO_PAYLOAD,
+    GAP_OPTION_NON_STRING_RETURN,
+    GAP_RESOURCES,
+    GAP_LIST_STRING_INDEXING,
+    GAP_HTTP_REQUEST_HEADERS_BODY,
+    GAP_STREAM,
+];
+
+/// A non-fatal codegen-gap diagnostic. The program type-checks; this warns
+/// that code generation will reject it. Kept separate from the fatal
+/// `CanonError` stream so callers never treat it as a build failure.
+#[derive(Debug, Clone)]
+pub struct GapWarning {
+    pub message: String,
+    pub span: crate::error::Span,
+}
+
+/// Scan a fully-loaded module for *reachable* use of features the code
+/// generator doesn't implement yet, returning one warning per offending
+/// declaration. Intended to run after `check` succeeds (only clean programs
+/// reach codegen).
+///
+/// Reachability is computed from the entry file: the loader is file-granular,
+/// so referencing one binding pulls in every sibling binding in the same
+/// file. Warning on all of them would be noise; we warn only on declarations
+/// actually reachable from the entry, which are exactly the ones a build will
+/// try to compile.
+pub fn codegen_gap_warnings(module: &Module, entry_items_start: usize) -> Vec<GapWarning> {
+    let reachable = reachable_decl_names(module, entry_items_start);
+
+    let mut warnings = Vec::new();
+    let mut seen: HashSet<(usize, usize, &'static str)> = HashSet::new();
+    for item in &module.items {
+        let Item::Function(func) = item else { continue };
+        if !reachable.contains(&decl_key(func)) {
+            continue;
+        }
+        for gap in detect_fn_gaps(func) {
+            let span = func.name.span;
+            if seen.insert((span.start, span.end, gap.title)) {
+                warnings.push(GapWarning {
+                    message: gap_warning_message(&gap),
+                    span,
+                });
+            }
+        }
+    }
+    warnings
+}
+
+fn gap_warning_message(gap: &CodegenGap) -> String {
+    format!(
+        "this program reaches a feature the code generator hasn't implemented yet — {} — \
+         so it type-checks but `canon build` will fail during code generation. \
+         Tracked in docs/src/reference/codegen-gaps.md.",
+        gap.title
+    )
+}
+
+/// The codegen gaps a single declaration triggers. Only the gaps that are
+/// statically detectable from Canon source are matched here; the rest live in
+/// `CODEGEN_GAPS` (and the doc page) for tracking but never warn.
+fn detect_fn_gaps(func: &FunctionDef) -> Vec<CodegenGap> {
+    let mut gaps = Vec::new();
+
+    // `Stream<T>` anywhere in the signature: codegen drops imports whose
+    // signatures mention it, and can't lower a `Stream` return. Applies to
+    // any function, not just externs — a plain helper returning `Stream<T>`
+    // fails to link the same way.
+    if sig_mentions(func, "Stream") {
+        gaps.push(GAP_STREAM);
+    }
+
+    // The remaining detectable gaps are properties of *binding* declarations.
+    if func.extern_wasm.is_some() {
+        let ret = unwrap_binding_return(&func.return_ty);
+        if let Some(elem) = generic_arg(ret, "List") {
+            if elem.simple_name() != Some("String") {
+                gaps.push(GAP_LIST_NON_STRING_RETURN);
+            }
+        }
+        if let Some(elem) = generic_arg(ret, "Option") {
+            if elem.simple_name() != Some("String") {
+                gaps.push(GAP_OPTION_NON_STRING_RETURN);
+            }
+        }
+    }
+
+    gaps
+}
+
+/// Peel the wrappers `apply_bindings` may leave on an extern's return so the
+/// list/option element check sees the underlying shape: `Future<T>` (async
+/// unwrap) and `Result<T, _>` (the success arm carries the decoded value).
+fn unwrap_binding_return(ty: &TypeExpr) -> &TypeExpr {
+    let mut cur = ty;
+    loop {
+        match generic_arg(cur, "Future").or_else(|| generic_arg(cur, "Result")) {
+            Some(inner) => cur = inner,
+            None => return cur,
+        }
+    }
+}
+
+/// The sole generic argument of `Ctor<Arg>`, if `ty` is exactly that.
+fn generic_arg<'a>(ty: &'a TypeExpr, ctor: &str) -> Option<&'a TypeExpr> {
+    match ty {
+        TypeExpr::Named { name, generics, .. } if name == ctor && generics.len() == 1 => {
+            Some(&generics[0])
+        }
+        _ => None,
+    }
+}
+
+/// Whether any type in the function's signature (parameters or return)
+/// mentions `ty_name`.
+fn sig_mentions(func: &FunctionDef, ty_name: &str) -> bool {
+    let mut names = HashSet::new();
+    for p in &func.params {
+        collect_type_names(&p.ty, &mut names);
+    }
+    collect_type_names(&func.return_ty, &mut names);
+    names.contains(ty_name)
+}
+
+/// The name a function declaration is reached *by*: its own name, except a
+/// self-constructor (rewritten to `Self`) is reached through its receiver
+/// type name — mirrors the keying in `lint_dead_code`.
+fn decl_key(func: &FunctionDef) -> String {
+    if func.name.name == "Self" {
+        func.receiver
+            .as_ref()
+            .map(|r| r.name.clone())
+            .unwrap_or_else(|| func.name.name.clone())
+    } else {
+        func.name.name.clone()
+    }
+}
+
+/// The referenced-name closure over the *whole* module (imports included),
+/// seeded from the entry file. Every entry-file declaration is reachable
+/// (unreachable ones are a dead-code error, so a clean program has none);
+/// walking their references descends into exactly the imported bindings the
+/// program actually uses.
+fn reachable_decl_names(module: &Module, entry_items_start: usize) -> HashSet<String> {
+    let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
+    for item in &module.items {
+        let (name, out) = item_refs(item);
+        refs.entry(name).or_default().extend(out);
+        // A union is alive through its variants: record the reverse edge
+        // variant → union so dispatching on `Dark()` keeps `Mode` and its
+        // siblings reachable (mirrors `lint_dead_code`).
+        if let Item::TypeDef(td) = item {
+            if let TypeExpr::Union { variants, .. } = &td.body {
+                for v in variants {
+                    if let TypeExpr::Named { name: vname, .. } = v {
+                        refs.entry(vname.clone())
+                            .or_default()
+                            .insert(td.name.name.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut queue: Vec<String> = Vec::new();
+    for item in &module.items[entry_items_start..] {
+        let (name, out) = item_refs(item);
+        queue.push(name);
+        queue.extend(out);
+    }
+
+    let mut reached: HashSet<String> = HashSet::new();
+    while let Some(n) = queue.pop() {
+        if !reached.insert(n.clone()) {
+            continue;
+        }
+        if let Some(out) = refs.get(&n) {
+            for o in out {
+                if !reached.contains(o) {
+                    queue.push(o.clone());
+                }
+            }
+        }
+    }
+    reached
+}
+
+/// The reachability key of an item and the set of names it references.
+/// Shared shape with `lint_dead_code`'s inline collection.
+fn item_refs(item: &Item) -> (String, HashSet<String>) {
+    match item {
+        Item::Function(func) => {
+            let mut out = HashSet::new();
+            if let Some(r) = &func.receiver {
+                out.insert(r.name.clone());
+            }
+            for p in &func.params {
+                collect_type_names(&p.ty, &mut out);
+            }
+            collect_type_names(&func.return_ty, &mut out);
+            for e in &func.body.exprs {
+                collect_expr_names(e, &mut out);
+            }
+            (decl_key(func), out)
+        }
+        Item::TypeDef(td) => {
+            let mut out = HashSet::new();
+            collect_type_names(&td.body, &mut out);
+            (td.name.name.clone(), out)
+        }
     }
 }
 
