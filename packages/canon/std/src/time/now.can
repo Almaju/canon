@@ -24,67 +24,67 @@ Year = Int
 
 Yoe = Int
 
-CivilDate = (Mp * Doy * Era * Yoe) => DatePart {
-    Mp -> Lt(10) -> (
-        * False => DatePart { Mp -> Difference(9) -> Month -> CivilYmd(Doy * Era * Mp * Yoe) }
-        * True => DatePart { Mp -> Sum(3) -> Month -> CivilYmd(Doy * Era * Mp * Yoe) }
-    )
+Int => DatePart {
+    Int
+        -> Remainder(146097)
+        -> Doe
+        -> DatePart(Int -> Quotient(146097) -> Era)
 }
 
-CivilDoy = (Yoe * Doe * Era) => DatePart {
-    Doe
-        -> Difference(Yoe -> Product(365))
-        -> Difference(Yoe -> Quotient(4))
-        -> Sum(Yoe -> Quotient(100))
-        -> Doy
-        -> CivilMp(Era * Yoe)
-}
-
-CivilMp = (Doy * Era * Yoe) => DatePart {
-    Doy
-        -> Product(5)
-        -> Sum(2)
-        -> Quotient(153)
-        -> Mp
-        -> CivilDate(Doy * Era * Yoe)
-}
-
-CivilYear = (Doe * Era) => DatePart {
+Doe * Era => DatePart {
     Doe
         -> Difference(Doe -> Quotient(1460))
         -> Sum(Doe -> Quotient(36524))
         -> Difference(Doe -> Quotient(146096))
         -> Quotient(365)
         -> Yoe
-        -> CivilDoy(Doe * Era)
+        -> DatePart(Doe * Era)
 }
 
-CivilYmd = (Month * Doy * Era * Mp * Yoe) => DatePart {
+Yoe * Doe * Era => DatePart {
+    Doe
+        -> Difference(Yoe -> Product(365))
+        -> Difference(Yoe -> Quotient(4))
+        -> Sum(Yoe -> Quotient(100))
+        -> Doy
+        -> DatePart(Era * Yoe)
+}
+
+Doy * Era * Yoe => DatePart {
+    Doy
+        -> Product(5)
+        -> Sum(2)
+        -> Quotient(153)
+        -> Mp
+        -> DatePart(Doy * Era * Yoe)
+}
+
+Mp * Doy * Era * Yoe => DatePart {
+    Mp -> Lt(10) -> (
+        * False => DatePart { Mp -> Difference(9) -> Month -> DatePart(Doy * Era * Mp * Yoe) }
+        * True => DatePart { Mp -> Sum(3) -> Month -> DatePart(Doy * Era * Mp * Yoe) }
+    )
+}
+
+Month * Doy * Era * Mp * Yoe => DatePart {
     Month -> Le(2) -> (
         * False => DatePart {
             Yoe
                 -> Sum(Era -> Product(400))
                 -> Year
-                -> FormattedDate(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
+                -> DatePart(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
         }
         * True => DatePart {
             Yoe
                 -> Sum(Era -> Product(400))
                 -> Sum(1)
                 -> Year
-                -> FormattedDate(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
+                -> DatePart(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
         }
     )
 }
 
-Int => DatePart {
-    Int
-        -> Remainder(146097)
-        -> Doe
-        -> CivilYear(Int -> Quotient(146097) -> Era)
-}
-
-FormattedDate = (Year * Month * Day) => DatePart {
+Year * Month * Day => DatePart {
     Year
         -> Padded4
         -> Joined("-")
@@ -93,8 +93,18 @@ FormattedDate = (Year * Month * Day) => DatePart {
         -> Joined(Day -> Padded2)
 }
 
-Now = () => Now {
-    Unix() -> Rfc3339
+Unit => Now {
+    Unix() -> Now
+}
+
+Unix => Now {
+    Unix
+        -> Quotient(86400)
+        -> Sum(719468)
+        -> DatePart
+        -> Joined("T")
+        -> Joined(Unix -> Remainder(86400) -> TimePart)
+        -> Joined("Z")
 }
 
 Int => Padded2 {
@@ -119,16 +129,6 @@ Int => Padded4 {
             )
         }
     )
-}
-
-Rfc3339 = (Unix) => Now {
-    Unix
-        -> Quotient(86400)
-        -> Sum(719468)
-        -> DatePart
-        -> Joined("T")
-        -> Joined(Unix -> Remainder(86400) -> TimePart)
-        -> Joined("Z")
 }
 
 Int => TimePart {
