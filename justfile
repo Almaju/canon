@@ -43,27 +43,14 @@ update-fixtures:
     CANON_UPDATE_FIXTURES=1 cargo test --tests
 
 # Lightweight convenience runner for Canon-language tests with pretty
-# per-file output. The same tests run under `cargo test` via the
-# `tests/canon_tests.rs` harness — use that for CI, use this for
-
-# faster local iteration on a single test file.
+# per-file output. `canon test <dir>` batch mode compiles every
+# `*_test.can` file and runs them in one process — sharing the stdlib
+# parse and the wasmtime engine across files — and prints a per-file
+# header plus a closing summary. The same tests run under `cargo test`
+# via the `tests/canon_tests.rs` harness (use that for CI); pass a single
+# file (`cargo run -- test tests/canon/foo_test.can`) to iterate on one.
 test-can: build
-    #!/usr/bin/env sh
-    set -e
-    pass=0; fail=0; files=0
-    for f in tests/canon/*_test.can; do
-        [ -f "$f" ] || continue
-        files=$((files + 1))
-        printf "\n=== %s ===\n" "$f"
-        if cargo run --quiet -- test "$f"; then
-            pass=$((pass + 1))
-        else
-            fail=$((fail + 1))
-        fi
-    done
-    echo ""
-    echo "${files} test file(s): ${pass} clean, ${fail} with failures"
-    [ "$fail" -eq 0 ]
+    cargo run --quiet -- test tests/canon
 
 # Run every example program under examples/ and report pass / fail / skip.
 #
