@@ -115,14 +115,10 @@ exercising strings, dispatch, escaping, and file resolution end to end.
 
 ## Current limits
 
-Extending the renderer, and building a web app around it, surfaced three
-compiler rough edges worth knowing about:
+Extending the renderer, and building a web app around it, surfaced two
+compiler rough edges worth knowing about, both about how a value's type
+picks a slot at the value level:
 
-- **A user constructor that returns a type aliasing `Html`
-  (`Frag = Html; String => Frag { … }`) miscompiles** in the CLI world —
-  the identical shape in `canon/std` (`Div = Html`) works. The renderer
-  works around it by typing its internal helpers as `String` newtypes and
-  wrapping to `Html` only at the public boundary (`… -> Html`).
 - **Piping into a product constructor binds by type, but codegen mislays
   the stack when the piped receiver matches a *later* field than the
   paren argument.** `content -> HeadingHtml(level)` (a `String` piped into
@@ -139,5 +135,8 @@ compiler rough edges worth knowing about:
   parameters — the "components are distinct types" rule biting at the
   value level.
 
-All three are compiler bugs, not language limits — fixing them lets these
-programs read the natural way.
+Both are compiler bugs, not language limits — fixing them lets these
+programs read the natural way. (An earlier note here also flagged
+constructors returning an `Html`-aliased newtype as miscompiling; that
+turned out to be a stale-build artifact during bring-up, not a real bug —
+`String => Div { … }` with `Div = Html` compiles fine.)
