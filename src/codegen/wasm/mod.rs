@@ -389,6 +389,29 @@ fn is_self_ctor(func: &FunctionDef) -> bool {
     func.name.name == "Self" && func.receiver.is_some()
 }
 
+/// Ordered component type names of a function's parameters, flattening a
+/// single product param into its components (a multi-input constructor
+/// `A * B => Shown` parses as one `Product` param). Used to bind a call's
+/// inputs to parameters by type. Non-`Named` shapes (generics, function
+/// types) contribute nothing — they aren't sourced by the by-type binder.
+fn param_component_type_names(func: &FunctionDef) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for param in &func.params {
+        match &param.ty {
+            TypeExpr::Named { name, .. } => out.push(name.clone()),
+            TypeExpr::Product { fields, .. } => {
+                for field in fields {
+                    if let TypeExpr::Named { name, .. } = field {
+                        out.push(name.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// Computes the WASM parameter types for a function. The receiver counts as
 /// a runtime parameter *except* for `Self`-renamed constructors, where it's
 /// purely a type-level marker.
@@ -921,6 +944,13 @@ struct FuncInfo {
     /// is read out of the ret-area after the call. See
     /// `emit_async_call` for the full sequence.
     is_async: bool,
+    /// Ordered component type names of a user constructor's parameters
+    /// (empty for externs and receiver-extracted trait methods). A
+    /// constructor `A * B => Shown` records `["A", "B"]`. Call sites use
+    /// this to bind a piped call's inputs (`b -> Shown(a)`) to parameters
+    /// by type rather than by the order written — the same positionless
+    /// rule that `build_product_value` applies to product fields.
+    param_type_names: Vec<String>,
 }
 
 // ── String table ──────────────────────────────────────────────────────────────
@@ -1869,6 +1899,9 @@ impl<'m> WasmGen<'m> {
                 narrow_result_signed: ext.narrow_result_signed,
                 indirect_return: ext.indirect_return.clone(),
                 is_async: ext.is_async,
+                // Externs bind positionally (FFI); leave empty so the
+                // commutative call path never engages them.
+                param_type_names: Vec::new(),
             };
             self.func_table.insert(key, info.clone());
 
@@ -1957,6 +1990,7 @@ impl<'m> WasmGen<'m> {
                     narrow_result_signed: None,
                     indirect_return: None,
                     is_async: false,
+                    param_type_names: param_component_type_names(func),
                 };
                 if is_self_ctor(func) {
                     // Constructor families: several `Self`-renamed bodies
@@ -1998,26 +2032,7 @@ impl<'m> WasmGen<'m> {
                         .as_ref()
                         .map(|r| r.name.clone())
                         .unwrap_or_default();
-                    let mut components: Vec<String> = Vec::new();
-                    for param in &func.params {
-                        match &param.ty {
-                            TypeExpr::Named {
-                                name: param_name, ..
-                            } => components.push(param_name.clone()),
-                            TypeExpr::Product { fields, .. } => {
-                                for field in fields {
-                                    if let TypeExpr::Named {
-                                        name: field_name, ..
-                                    } = field
-                                    {
-                                        components.push(field_name.clone());
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    for param_name in components {
+                    for param_name in param_component_type_names(func) {
                         let commutative_key = (Some(param_name), recv_name.clone());
                         self.func_table
                             .entry(commutative_key)
@@ -4768,6 +4783,58 @@ impl<'m> WasmGen<'m> {
         0
     }
 
+    /// Bind a list of value expressions to typed slots positionlessly, the
+    /// rule shared by product construction and commutative constructor calls.
+    /// Returns, for each of the first `min(slot_tys, exprs)` slots, the index
+    /// of the value that fills it: an exact newtype match (`Value` value →
+    /// `Value` slot) wins over a shared-base match (a bare `String` → the
+    /// `Key` slot), and any leftovers fall back to declaration order.
+    fn bind_values_by_type(&self, exprs: &[Expr], slot_tys: &[String]) -> Vec<usize> {
+        let n = slot_tys.len().min(exprs.len());
+        let value_chains: Vec<Option<Vec<String>>> = exprs
+            .iter()
+            .map(|e| {
+                self.infer_ctor_arg_type_name(e)
+                    .map(|nm| self.widening_chain(&nm))
+            })
+            .collect();
+        let mut used = vec![false; exprs.len()];
+        let mut slot_val: Vec<Option<usize>> = vec![None; n];
+        // Pass 1 (exact) then pass 2 (shared-base): a slot claims the first
+        // unused value that scores at the current threshold.
+        for threshold in [2u8, 1u8] {
+            for (si, slot_ty) in slot_tys.iter().take(n).enumerate() {
+                if slot_val[si].is_some() {
+                    continue;
+                }
+                if let Some(vi) = (0..exprs.len()).find(|&vi| {
+                    !used[vi]
+                        && value_chains[vi]
+                            .as_ref()
+                            .is_some_and(|vc| self.field_match_score(vc, slot_ty) == threshold)
+                }) {
+                    slot_val[si] = Some(vi);
+                    used[vi] = true;
+                }
+            }
+        }
+        // Pass 3 (positional): unresolved slots take remaining values in
+        // order — the pre-typed-construction behaviour, kept as a floor.
+        for (si, slot) in slot_val.iter_mut().enumerate() {
+            if slot.is_some() {
+                continue;
+            }
+            match (0..exprs.len()).find(|&vi| !used[vi]) {
+                Some(vi) => {
+                    *slot = Some(vi);
+                    used[vi] = true;
+                }
+                None => *slot = Some(si),
+            }
+        }
+        slot_val.into_iter().map(|s| s.unwrap()).collect()
+    }
+
     fn build_product_value(
         &mut self,
         product_name: &str,
@@ -4794,44 +4861,12 @@ impl<'m> WasmGen<'m> {
         // `Value(x)` and it lands in the `Value` slot regardless of
         // where it was written.
         let n_fields = layout.len().min(field_exprs.len());
-        let value_chains: Vec<Option<Vec<String>>> = field_exprs
+        let field_tys: Vec<String> = layout
             .iter()
-            .map(|e| {
-                self.infer_ctor_arg_type_name(e)
-                    .map(|nm| self.widening_chain(&nm))
-            })
+            .take(n_fields)
+            .map(|(name, _, _)| name.clone())
             .collect();
-        let mut used = vec![false; field_exprs.len()];
-        let mut slot_val: Vec<Option<usize>> = vec![None; n_fields];
-        // Pass 1 (exact) then pass 2 (shared-base): a slot claims the
-        // first unused value that scores at the current threshold.
-        for threshold in [2u8, 1u8] {
-            for (si, (field_name, _, _)) in layout.iter().take(n_fields).enumerate() {
-                if slot_val[si].is_some() {
-                    continue;
-                }
-                if let Some(vi) = (0..field_exprs.len()).find(|&vi| {
-                    !used[vi]
-                        && value_chains[vi]
-                            .as_ref()
-                            .is_some_and(|vc| self.field_match_score(vc, field_name) == threshold)
-                }) {
-                    slot_val[si] = Some(vi);
-                    used[vi] = true;
-                }
-            }
-        }
-        // Pass 3 (positional): unresolved values fill remaining slots in
-        // order — the pre-typed-construction behaviour, kept as a floor.
-        for slot in slot_val.iter_mut().take(n_fields) {
-            if slot.is_some() {
-                continue;
-            }
-            if let Some(vi) = (0..field_exprs.len()).find(|&vi| !used[vi]) {
-                *slot = Some(vi);
-                used[vi] = true;
-            }
-        }
+        let slot_val = self.bind_values_by_type(field_exprs, &field_tys);
 
         // ── Allocate ──────────────────────────────────────────────────
         f.instruction(&Instruction::I32Const(total_size as i32));
@@ -4856,7 +4891,7 @@ impl<'m> WasmGen<'m> {
         // pre-pushed above.
         for (i, (_field_name, field_repr, field_offset)) in layout.iter().take(n_fields).enumerate()
         {
-            let vi = slot_val[i].unwrap_or(i);
+            let vi = slot_val[i];
             let _val_ty = self.compile_expr(&field_exprs[vi], scope, f);
             self.store_payload_at_offset(*field_offset, field_repr, scope, f);
         }
@@ -5052,6 +5087,61 @@ impl<'m> WasmGen<'m> {
 
     // ── Method call dispatch ────────────────────────────────────────────────────
 
+    /// If `receiver -> method(args)` is a piped call to a bodied
+    /// multi-component constructor reached through a non-leading component,
+    /// resolve the callee and return its inputs reordered into parameter
+    /// order (so `emit_func_table_call` can push them with nothing
+    /// pre-compiled). Returns `None` for every other call shape, leaving the
+    /// positional method path untouched.
+    fn commutative_ctor_call(
+        &self,
+        receiver: &Expr,
+        method: &str,
+        args: &[Expr],
+    ) -> Option<(FuncInfo, Vec<Expr>)> {
+        // Resolve the callee from the receiver's *static* type — no
+        // compilation — walking the same alias/variant candidates the method
+        // path uses.
+        let recv_ty = self.infer_ctor_arg_type_name(receiver)?;
+        let mut cands: Vec<String> = Vec::new();
+        for link in self.collect_alias_chain(&recv_ty) {
+            if !cands.contains(&link) {
+                cands.push(link);
+            }
+        }
+        if let Some(parent) = self.variant_parent.get(&recv_ty) {
+            for link in self.collect_alias_chain(parent) {
+                if !cands.contains(&link) {
+                    cands.push(link);
+                }
+            }
+        }
+        let info = cands
+            .iter()
+            .find_map(|c| self.func_table.get(&(Some(c.clone()), method.to_string())))?;
+        // A trait method's receiver is extracted and never appears in its
+        // params; a constructor's receiver *is* one of its components. Only
+        // the latter — with two or more components — needs reordering.
+        if info.param_type_names.len() < 2
+            || !cands.iter().any(|c| info.param_type_names.contains(c))
+        {
+            return None;
+        }
+        // Gather the receiver plus the flattened trailing args; the arity must
+        // match exactly, else defer to the normal path (and its diagnostics).
+        let mut inputs: Vec<Expr> = vec![receiver.clone()];
+        match args {
+            [Expr::ProductValue { fields, .. }] => inputs.extend(fields.iter().cloned()),
+            _ => inputs.extend(args.iter().cloned()),
+        }
+        if inputs.len() != info.param_type_names.len() {
+            return None;
+        }
+        let order = self.bind_values_by_type(&inputs, &info.param_type_names);
+        let ordered = order.into_iter().map(|vi| inputs[vi].clone()).collect();
+        Some((info.clone(), ordered))
+    }
+
     fn compile_method_call(
         &mut self,
         receiver: &Expr,
@@ -5125,6 +5215,22 @@ impl<'m> WasmGen<'m> {
                 }]
             };
             return self.compile_constructor(method, &ctor_args, scope, f);
+        }
+
+        // Commutative binding for a bodied multi-component constructor invoked
+        // via the pipe: `b -> Shown(a)` calls `A * B => Shown` through its `B`
+        // component, but the function's wasm signature is `(A, B)`. Emitting
+        // positionally would bind the receiver to `A` and the trailing arg to
+        // `B` — swapping the values (or, across mixed scalar widths, producing
+        // invalid wasm). Reorder all inputs to parameter order by type, the
+        // same rule `build_product_value` uses for product fields, and emit
+        // directly. Fires only for a >= 2-component constructor whose
+        // parameters include the receiver's own type; trait methods (receiver
+        // extracted, absent from the params) and single-input constructors
+        // keep the positional method path below. Pure (body-less) constructors
+        // were already routed through `compile_constructor` above.
+        if let Some((info, ordered)) = self.commutative_ctor_call(receiver, method, args) {
+            return self.emit_func_table_call(&info, &ordered, scope, f);
         }
 
         // A single product argument stands for its flattened components:

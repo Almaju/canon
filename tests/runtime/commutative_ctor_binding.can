@@ -1,0 +1,29 @@
+Conn = Unit
+
+Db = String
+
+Host = String
+
+Port = Int
+
+Db * Host * Port => Conn {
+    "db="
+        -> Joined(Db.String)
+        -> Joined(" host=")
+        -> Joined(Host.String)
+        -> Joined(" port=")
+        -> Joined(Port.Int -> String)
+        -> Print
+}
+
+Unit => Program {
+    "d1"
+        -> Db
+        -> Conn("h1" -> Host * 1 -> Port)
+    2
+        -> Port
+        -> Conn("d2" -> Db * "h2" -> Host)
+    "h3"
+        -> Host
+        -> Conn("d3" -> Db * 3 -> Port)
+}
