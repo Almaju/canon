@@ -216,7 +216,8 @@ fn transform_expr(expr: &mut Expr, scope: &[String], ctx: &Ctx<'_>) {
         | Expr::FloatLit { .. }
         | Expr::HexLit { .. }
         | Expr::JsonLit { .. }
-        | Expr::HtmlLit { .. } => {}
+        | Expr::HtmlLit { .. }
+        | Expr::FormatLit { .. } => {}
     }
 
     // Fill omitted dependencies on the two call shapes that reach a

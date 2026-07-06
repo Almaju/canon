@@ -290,6 +290,43 @@ the loader pulls in `canon/std/web/Html` the moment a literal carries a
 hole or `.ToHtml()` is called. HTML literals power the
 [web target](../reference/web-target.md)'s `view`.
 
+## Format Strings
+
+A **format string** is a backtick-delimited string literal with `{...}`
+interpolation holes -- the plain-`String` mirror of the JSON and HTML
+literals above. Ordinary double-quoted strings stay inert (`{` is just a
+brace), so backticks are the opt-in: reach for them exactly when you
+want a hole.
+
+```canon
+String => Greeting {
+    `hello, {String}!`
+}
+
+Int => Report {
+    `count is {Int}, doubled {Int -> Product(2)}`
+}
+```
+
+- A hole holds an arbitrary Canon expression whose value is converted
+  through `String` construction and concatenated into the surrounding
+  text: an `Int` renders as its decimal digits, a `String` passes
+  through unchanged. This replaces hand-written `-> Joined(...)` chains
+  (`` `<{x}>` `` instead of `"<" -> Joined(x) -> Joined(">")`).
+- `{{` and `}}` escape literal braces; ``\` `` escapes a backtick, and
+  the usual `\n` / `\t` / `\\` / `\u….` escapes work as in a
+  double-quoted string. A format string may span multiple source lines.
+- Literal holes (`{42}`, `{"a"}`) fold to static text at parse time, so
+  a fully constant backtick string costs one string constant at runtime,
+  exactly like an all-static JSON or HTML literal. A backtick string
+  with no holes is just a string constant: `canon fmt` rewrites it to
+  the plain-quoted form (`` `hi` `` → `"hi"`).
+
+Unlike `Json` and `Html`, a format string needs no prelude -- `String`
+construction (including the built-in int-to-string) is intrinsic -- so
+interpolation works in every world, including `wasi:http/service`
+handlers.
+
 ## Operator and Sigil Glossary
 
 | Symbol | Meaning |
@@ -305,5 +342,6 @@ hole or `.ToHtml()` is called. HTML literals power the
 | `-> ( )` | dispatch: pipe the scrutinee into an arm group |
 | `?` | propagate `Result` / `Option` failure |
 | `"..."` | string literal |
+| `` `...{expr}...` `` | format string (interpolating) |
 | `{"k":v}` / `[v]` | JSON literal |
 | `<tag>...</tag>` | HTML literal |

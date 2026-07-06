@@ -6,28 +6,59 @@ use crate::lexer::{Token, TokenKind};
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// Parse errors collected during error recovery. A single bad token
+    /// no longer aborts the whole parse: `parse_recover` records the
+    /// error, resynchronizes at the next item / block / arm boundary
+    /// (`synchronize`), and keeps going, so one file can report many
+    /// syntax errors at once.
+    errors: Vec<CanonError>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            errors: Vec::new(),
+        }
     }
 
-    pub fn parse(&mut self) -> Result<Module> {
+    /// Parse the whole module, recovering from syntax errors to surface
+    /// as many as possible in one pass. Returns the (possibly partial)
+    /// module together with every parse error encountered; an empty
+    /// error list means the parse is complete and faithful. This is the
+    /// entry point multi-error consumers (the LSP, `canon check`) reach
+    /// for; `parse` is the single-error wrapper over it.
+    pub fn parse_recover(&mut self) -> (Module, Vec<CanonError>) {
         let start = self.current_span();
         let mut items = Vec::new();
 
         self.skip_newlines();
         while !self.is_at_end() {
-            items.push(self.parse_item()?);
+            match self.parse_item() {
+                Ok(item) => items.push(item),
+                Err(err) => {
+                    self.errors.push(err);
+                    self.recover_to_item();
+                }
+            }
             self.skip_newlines();
         }
 
         let end = self.previous_span();
-        Ok(Module {
+        let module = Module {
             items,
             span: span_join(start, end),
-        })
+        };
+        (module, std::mem::take(&mut self.errors))
+    }
+
+    pub fn parse(&mut self) -> Result<Module> {
+        let (module, errors) = self.parse_recover();
+        match errors.into_iter().next() {
+            Some(err) => Err(err),
+            None => Ok(module),
+        }
     }
 
     fn parse_item(&mut self) -> Result<Item> {
@@ -760,6 +791,7 @@ impl Parser {
                 })
             }
             TokenKind::HtmlText | TokenKind::HtmlEnd => self.parse_html_literal(),
+            TokenKind::FmtText | TokenKind::FmtEnd => self.parse_format_literal(),
             _ => Err(CanonError::ParseError {
                 message: format!("expected an expression (got {})", tok.kind),
                 span: tok.span,
@@ -837,6 +869,88 @@ impl Parser {
             parts,
             span: span_join(start, end),
         })
+    }
+
+    /// Parse a backtick format string from the raw-fragment tokens the
+    /// scanner emits: zero or more `FmtText` fragments (each followed by
+    /// an interpolated expression — the scanner already consumed the
+    /// hole's braces) and a final `FmtEnd` fragment.
+    ///
+    /// Pure-literal interpolations fold to Static text (a string splices
+    /// verbatim — no HTML escaping, unlike `parse_html_literal` — and
+    /// ints/floats render as digits), so a fully constant backtick string
+    /// collapses to a single `StringLit`, making `` `hi` `` identical to
+    /// `"hi"` and keeping `canon fmt`'s canonical plain-quote form.
+    /// Anything with runtime content becomes an `Interp` part, which the
+    /// codegen `-> String`-converts and concats into the surrounding text.
+    fn parse_format_literal(&mut self) -> Result<Expr> {
+        let start = self.peek().span;
+        let mut parts: Vec<FormatLitPart> = Vec::new();
+        loop {
+            let tok = self.peek().clone();
+            let is_end = match tok.kind {
+                TokenKind::FmtText => false,
+                TokenKind::FmtEnd => true,
+                _ => {
+                    return Err(CanonError::ParseError {
+                        message: format!(
+                            "expected `}}` to close format-string interpolation (got {})",
+                            tok.kind
+                        ),
+                        span: tok.span,
+                    });
+                }
+            };
+            self.advance();
+            push_fmt_static(&mut parts, &tok.lexeme);
+            if is_end {
+                break;
+            }
+            self.skip_newlines();
+            let expr = self.parse_expr()?;
+            self.skip_newlines();
+            match expr {
+                Expr::StringLit { value, .. } => {
+                    push_fmt_static(&mut parts, &value);
+                }
+                Expr::IntLit { value, .. } => {
+                    push_fmt_static(&mut parts, &value.to_string());
+                }
+                Expr::FloatLit { value, .. } => {
+                    push_fmt_static(&mut parts, &value.to_string());
+                }
+                Expr::FormatLit {
+                    parts: inner_parts, ..
+                } => {
+                    // Splice a nested backtick string's parts directly so
+                    // static chunks merge into the outer accumulator.
+                    for p in inner_parts {
+                        match p {
+                            FormatLitPart::Static(s) => push_fmt_static(&mut parts, &s),
+                            FormatLitPart::Interp(e) => parts.push(FormatLitPart::Interp(e)),
+                        }
+                    }
+                }
+                other => {
+                    parts.push(FormatLitPart::Interp(Box::new(other)));
+                }
+            }
+        }
+        let end = self.previous_span();
+        let span = span_join(start, end);
+        // A backtick string with no interpolation is just a string
+        // constant — fold it so canonical form stays plain-quoted.
+        if !parts.iter().any(|p| matches!(p, FormatLitPart::Interp(_))) {
+            let value = parts
+                .into_iter()
+                .map(|p| match p {
+                    FormatLitPart::Static(s) => s,
+                    FormatLitPart::Interp(_) => unreachable!("checked no Interp above"),
+                })
+                .collect::<String>();
+            return Ok(Expr::StringLit { value, span });
+        }
+        Ok(Expr::FormatLit { parts, span })
     }
 
     fn parse_json_object_body(
@@ -1059,7 +1173,21 @@ impl Parser {
             if self.check(TokenKind::RParen) || self.is_at_end() {
                 break;
             }
-            arms.push(self.parse_match_arm()?);
+            match self.parse_match_arm() {
+                Ok(arm) => arms.push(arm),
+                Err(err) => {
+                    // Recover to the next arm: `synchronize` stops at the
+                    // following `*` (arm start), the arm's own `}`, or the
+                    // next top-level item. A stray `}` isn't an arm
+                    // boundary, so step over it and let the loop find the
+                    // next `*` / `)`.
+                    self.errors.push(err);
+                    self.synchronize();
+                    if self.check(TokenKind::RBrace) {
+                        self.advance();
+                    }
+                }
+            }
             self.skip_newlines();
         }
         let rparen = self.expect(TokenKind::RParen, "expected `)` to close dispatch")?;
@@ -1132,6 +1260,57 @@ impl Parser {
             body,
             span: span_join(start, end),
         })
+    }
+
+    /// After a syntax error, skip tokens until the parser reaches a
+    /// plausible resynchronization anchor — a closing `}` (end of a
+    /// block body), a `*` (start of a dispatch arm), or an
+    /// `Ident`/`(`/`<` in column 1 (start of a new top-level item) — or
+    /// end of input. The anchor is left unconsumed; each recovery loop's
+    /// own boundary test decides how to resume from it. The offending
+    /// token is always skipped first, so callers can't stall.
+    fn synchronize(&mut self) {
+        if !self.is_at_end() {
+            self.advance();
+        }
+        while !self.is_at_end() {
+            match self.peek().kind {
+                TokenKind::RBrace | TokenKind::Star => return,
+                TokenKind::Ident | TokenKind::LParen | TokenKind::Lt
+                    if self.peek().span.column == 1 =>
+                {
+                    return;
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+    }
+
+    /// Top-level recovery: discard the rest of a broken definition and
+    /// resume at the start of the next top-level item (an
+    /// `Ident`/`(`/`<` in column 1) or end of input. Inner anchors
+    /// (`}` / `*`) can't begin an item, so step over them and keep
+    /// looking — this prevents a nested brace or arm marker from
+    /// spawning a spurious second error at the top level.
+    fn recover_to_item(&mut self) {
+        loop {
+            self.synchronize();
+            if self.is_at_end() {
+                return;
+            }
+            let tok = self.peek();
+            if tok.span.column == 1
+                && matches!(
+                    tok.kind,
+                    TokenKind::Ident | TokenKind::LParen | TokenKind::Lt
+                )
+            {
+                return;
+            }
+            self.advance();
+        }
     }
 
     fn skip_newlines(&mut self) {
@@ -1336,6 +1515,20 @@ fn push_html_static(parts: &mut Vec<HtmlLitPart>, s: &str) {
         last.push_str(s);
     } else {
         parts.push(HtmlLitPart::Static(s.to_string()));
+    }
+}
+
+/// Append a static fragment to a backtick format string, merging into a
+/// preceding `Static` part (the format-string analogue of
+/// `push_html_static`). Empty fragments are dropped.
+fn push_fmt_static(parts: &mut Vec<FormatLitPart>, s: &str) {
+    if s.is_empty() {
+        return;
+    }
+    if let Some(FormatLitPart::Static(last)) = parts.last_mut() {
+        last.push_str(s);
+    } else {
+        parts.push(FormatLitPart::Static(s.to_string()));
     }
 }
 

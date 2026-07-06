@@ -1,6 +1,6 @@
 use crate::ast::{
-    extract_receiver_from_params, resolve_new_syntax, Block, Expr, ExternWasm, FunctionDef,
-    HtmlLitPart, Ident, Item, JsonLitPart, MatchArm, Module, Param, TypeExpr,
+    extract_receiver_from_params, resolve_new_syntax, Block, Expr, ExternWasm, FormatLitPart,
+    FunctionDef, HtmlLitPart, Ident, Item, JsonLitPart, MatchArm, Module, Param, TypeExpr,
 };
 use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
@@ -616,6 +616,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
         Expr::FieldAccess { receiver, .. } => expr_uses_int_parse(receiver),
         Expr::JsonLit { .. }
         | Expr::HtmlLit { .. }
+        | Expr::FormatLit { .. }
         | Expr::Ident(_)
         | Expr::StringLit { .. }
         | Expr::IntLit { .. }
@@ -708,6 +709,11 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
             JsonLitPart::Static(_) => false,
             JsonLitPart::Interp(e) => expr_uses_html_machinery(e),
         }),
+        // A format string needs no HTML machinery itself, but a hole may.
+        Expr::FormatLit { parts, .. } => parts.iter().any(|p| match p {
+            FormatLitPart::Static(_) => false,
+            FormatLitPart::Interp(e) => expr_uses_html_machinery(e),
+        }),
         Expr::Constructor { args, .. } => args.iter().any(expr_uses_html_machinery),
         Expr::MethodCall {
             receiver,
@@ -754,6 +760,11 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
         Expr::HtmlLit { parts, .. } => parts.iter().any(|p| match p {
             HtmlLitPart::Static(_) => false,
             HtmlLitPart::Interp(e) => expr_uses_json_machinery(e),
+        }),
+        // A format string needs no JSON machinery itself, but a hole may.
+        Expr::FormatLit { parts, .. } => parts.iter().any(|p| match p {
+            FormatLitPart::Static(_) => false,
+            FormatLitPart::Interp(e) => expr_uses_json_machinery(e),
         }),
         Expr::Constructor { name, args, .. } => {
             name.name == "Json" || args.iter().any(expr_uses_json_machinery)
@@ -1089,6 +1100,13 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
         Expr::HtmlLit { parts, .. } => {
             for p in parts {
                 if let HtmlLitPart::Interp(e) = p {
+                    collect_expr_refs(e, skip, out);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
                     collect_expr_refs(e, skip, out);
                 }
             }

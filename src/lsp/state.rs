@@ -83,10 +83,14 @@ fn check_source(source: &str, file_path: &str) -> Vec<CanonError> {
         Err(e) => return vec![e],
     };
     let mut parser = Parser::new(tokens);
-    let mut current = match parser.parse() {
-        Ok(m) => m,
-        Err(e) => return vec![e],
-    };
+    // Recover from syntax errors so the editor sees every parse error in
+    // the buffer, not just the first. When the parse is broken we report
+    // those errors and stop — running the checker on a partial AST would
+    // bury the real syntax errors under spurious type errors.
+    let (mut current, parse_errors) = parser.parse_recover();
+    if !parse_errors.is_empty() {
+        return parse_errors;
+    }
     resolve_new_syntax(&mut current);
 
     // 2. Load the import closure of everything the buffer references,

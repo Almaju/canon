@@ -187,7 +187,8 @@ fn expr_has_async_trigger(expr: &Expr) -> bool {
         | Expr::FloatLit { .. }
         | Expr::HexLit { .. }
         | Expr::JsonLit { .. }
-        | Expr::HtmlLit { .. } => false,
+        | Expr::HtmlLit { .. }
+        | Expr::FormatLit { .. } => false,
     }
 }
 
@@ -279,7 +280,8 @@ fn collect_calls_expr(expr: &Expr, out: &mut Vec<FuncKey>) {
         | Expr::FloatLit { .. }
         | Expr::HexLit { .. }
         | Expr::JsonLit { .. }
-        | Expr::HtmlLit { .. } => {}
+        | Expr::HtmlLit { .. }
+        | Expr::FormatLit { .. } => {}
     }
 }
 

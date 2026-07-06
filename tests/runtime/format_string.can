@@ -1,0 +1,20 @@
+Greeting = String
+
+Line = String
+
+String => Greeting {
+    `hello, {String}!`
+}
+
+Int => Line {
+    `n={Int} n+1={Int -> Sum(1)} {{braces}} tick=\` end`
+}
+
+Unit => Program {
+    "world"
+        -> Greeting
+        -> Print
+    41
+        -> Line
+        -> Print
+}

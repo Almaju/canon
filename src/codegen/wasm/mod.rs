@@ -481,6 +481,18 @@ impl<'m> WasmGen<'m> {
                     }
                 }
             }
+            Expr::FormatLit { parts, .. } => {
+                // Pre-intern Static fragments for the concat-chain
+                // lowering; recurse into interpolation holes.
+                for p in parts {
+                    match p {
+                        crate::ast::FormatLitPart::Static(s) => {
+                            self.strings.intern(s);
+                        }
+                        crate::ast::FormatLitPart::Interp(e) => self.collect_strings_expr(e),
+                    }
+                }
+            }
             Expr::FieldAccess { receiver, .. } => self.collect_strings_expr(receiver),
             Expr::MethodCall { receiver, args, .. } => {
                 self.collect_strings_expr(receiver);

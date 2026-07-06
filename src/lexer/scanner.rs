@@ -10,7 +10,25 @@ use crate::lexer::token::{Token, TokenKind};
 /// literal.
 enum LexMode {
     Html(HtmlState),
+    Fmt(FmtState),
     Interp { brace_depth: u32 },
+}
+
+/// Where a backtick format-string scan started, for "unterminated
+/// backtick string" errors. Format strings are the plain-string mirror
+/// of HTML literals: raw text with `{…}` interpolation holes and
+/// `{{` / `}}` brace escapes.
+struct FmtState {
+    start_line: u32,
+    start_col: u32,
+}
+
+/// What ended a format-string chunk scan.
+enum FmtChunk {
+    /// Hit a `{` — an interpolation hole opens (the `{` is consumed).
+    Interp,
+    /// The closing backtick — the literal is complete (it was consumed).
+    Done,
 }
 
 /// Where an HTML-mode scan left off. Persisted across interpolation
@@ -101,16 +119,42 @@ impl<'a> Scanner<'a> {
                 }
                 continue;
             }
+            if let Some(LexMode::Fmt(state)) = modes.last() {
+                // Inside a backtick format string: scan a raw chunk up to
+                // the next interpolation hole or the closing backtick.
+                let start = (state.start_line, state.start_col);
+                let (tok, outcome) = self.scan_fmt_chunk(start.0, start.1)?;
+                tokens.push(tok);
+                match outcome {
+                    FmtChunk::Interp => modes.push(LexMode::Interp { brace_depth: 0 }),
+                    FmtChunk::Done => {
+                        modes.pop();
+                    }
+                }
+                continue;
+            }
             self.skip_inline_whitespace();
             if self.pos >= self.bytes.len() {
                 if !modes.is_empty() {
                     return Err(self.err_at(
                         self.line,
                         self.column,
-                        "unterminated HTML interpolation: expected `}`",
+                        "unterminated interpolation: expected `}`",
                     ));
                 }
                 break;
+            }
+            // A backtick opens a format string — the plain-string mirror
+            // of an HTML literal, with `{…}` interpolation holes.
+            if self.bytes[self.pos] == b'`' {
+                let start_line = self.line;
+                let start_col = self.column;
+                self.bump_raw(); // consume the opening backtick
+                modes.push(LexMode::Fmt(FmtState {
+                    start_line,
+                    start_col,
+                }));
+                continue;
             }
             // An HTML literal starts at `<` immediately followed by a
             // lowercase tag name — a position where `<` is never valid
@@ -557,96 +601,176 @@ impl<'a> Scanner<'a> {
                 b'\\' => {
                     let esc_line = self.line;
                     let esc_col = self.column;
-                    self.pos += 1;
+                    self.pos += 1; // consume the `\`
                     self.column += 1;
-                    if self.pos >= self.bytes.len() {
-                        return Err(self.err_at(
-                            start_line,
-                            start_col,
-                            "unterminated string literal",
-                        ));
-                    }
-                    match self.bytes[self.pos] {
-                        b'\\' => {
-                            content.push('\\');
-                            self.pos += 1;
-                            self.column += 1;
-                        }
-                        b'"' => {
-                            content.push('"');
-                            self.pos += 1;
-                            self.column += 1;
-                        }
-                        b'n' => {
-                            content.push('\n');
-                            self.pos += 1;
-                            self.column += 1;
-                        }
-                        b'r' => {
-                            content.push('\r');
-                            self.pos += 1;
-                            self.column += 1;
-                        }
-                        b't' => {
-                            content.push('\t');
-                            self.pos += 1;
-                            self.column += 1;
-                        }
-                        b'0' => {
-                            content.push('\0');
-                            self.pos += 1;
-                            self.column += 1;
-                        }
-                        b'x' => {
-                            self.pos += 1;
-                            self.column += 1;
-                            let hi = self.consume_hex_digit(esc_line, esc_col)?;
-                            let lo = self.consume_hex_digit(esc_line, esc_col)?;
-                            content.push(char::from((hi << 4) | lo));
-                        }
-                        b'u' => {
-                            self.pos += 1;
-                            self.column += 1;
-                            let code = self.consume_hex_digits(4, esc_line, esc_col)?;
-                            let ch = char::from_u32(code).ok_or_else(|| {
-                                self.err_at(
-                                    esc_line,
-                                    esc_col,
-                                    &format!("invalid Unicode scalar value U+{:04X}", code),
-                                )
-                            })?;
-                            content.push(ch);
-                        }
-                        b'U' => {
-                            self.pos += 1;
-                            self.column += 1;
-                            let code = self.consume_hex_digits(8, esc_line, esc_col)?;
-                            let ch = char::from_u32(code).ok_or_else(|| {
-                                self.err_at(
-                                    esc_line,
-                                    esc_col,
-                                    &format!("invalid Unicode scalar value U+{:08X}", code),
-                                )
-                            })?;
-                            content.push(ch);
-                        }
-                        other => {
-                            return Err(self.err_at(
-                                esc_line,
-                                esc_col,
-                                &format!("unknown escape sequence '\\{}'", other as char),
-                            ));
-                        }
-                    }
+                    let ch = self.consume_escape(start_line, start_col, esc_line, esc_col, b'"')?;
+                    content.push(ch);
                 }
-                b => {
-                    content.push(b as char);
-                    self.pos += 1;
-                    self.column += 1;
+                _ => {
+                    // Decode the whole UTF-8 scalar so multi-byte text
+                    // survives intact, advancing byte-by-byte to keep
+                    // line/column bookkeeping.
+                    let ch = self.source[self.pos..]
+                        .chars()
+                        .next()
+                        .expect("pos is on a char boundary");
+                    for _ in 0..ch.len_utf8() {
+                        self.pos += 1;
+                        self.column += 1;
+                    }
+                    content.push(ch);
                 }
             }
         }
         Ok((TokenKind::StringLit, content))
+    }
+
+    /// Resolve a backslash escape, with the `\` already consumed and
+    /// `self.pos` on the designator byte. Shared by `scan_string` (double
+    /// quotes) and `scan_fmt_chunk` (backtick format strings); `delim` is
+    /// the string's own quote character, which is a legal escape so a
+    /// backtick string can carry a literal backtick (``\` ``) and a
+    /// double-quoted string a literal `"`.
+    fn consume_escape(
+        &mut self,
+        start_line: u32,
+        start_col: u32,
+        esc_line: u32,
+        esc_col: u32,
+        delim: u8,
+    ) -> Result<char> {
+        if self.pos >= self.bytes.len() {
+            return Err(self.err_at(start_line, start_col, "unterminated string literal"));
+        }
+        let b = self.bytes[self.pos];
+        let simple = match b {
+            b'\\' => Some('\\'),
+            b'n' => Some('\n'),
+            b'r' => Some('\r'),
+            b't' => Some('\t'),
+            b'0' => Some('\0'),
+            _ if b == delim => Some(delim as char),
+            _ => None,
+        };
+        if let Some(ch) = simple {
+            self.pos += 1;
+            self.column += 1;
+            return Ok(ch);
+        }
+        match b {
+            b'x' => {
+                self.pos += 1;
+                self.column += 1;
+                let hi = self.consume_hex_digit(esc_line, esc_col)?;
+                let lo = self.consume_hex_digit(esc_line, esc_col)?;
+                Ok(char::from((hi << 4) | lo))
+            }
+            b'u' => {
+                self.pos += 1;
+                self.column += 1;
+                let code = self.consume_hex_digits(4, esc_line, esc_col)?;
+                char::from_u32(code).ok_or_else(|| {
+                    self.err_at(
+                        esc_line,
+                        esc_col,
+                        &format!("invalid Unicode scalar value U+{:04X}", code),
+                    )
+                })
+            }
+            b'U' => {
+                self.pos += 1;
+                self.column += 1;
+                let code = self.consume_hex_digits(8, esc_line, esc_col)?;
+                char::from_u32(code).ok_or_else(|| {
+                    self.err_at(
+                        esc_line,
+                        esc_col,
+                        &format!("invalid Unicode scalar value U+{:08X}", code),
+                    )
+                })
+            }
+            other => Err(self.err_at(
+                esc_line,
+                esc_col,
+                &format!("unknown escape sequence '\\{}'", other as char),
+            )),
+        }
+    }
+
+    /// Scan one fragment of a backtick format string, starting just after
+    /// the opening backtick or an interpolation hole. Ends at a `{`
+    /// (interpolation opens; `{{` / `}}` escape literal braces) or the
+    /// closing backtick. Backslash escapes are resolved exactly as in a
+    /// double-quoted string (plus ``\` `` for a literal backtick), and
+    /// newlines are allowed verbatim so a format string can span lines.
+    fn scan_fmt_chunk(&mut self, lit_line: u32, lit_col: u32) -> Result<(Token, FmtChunk)> {
+        let start_pos = self.pos;
+        let start_line = self.line;
+        let start_col = self.column;
+        let mut content = String::new();
+        loop {
+            if self.pos >= self.bytes.len() {
+                return Err(self.err_at(lit_line, lit_col, "unterminated backtick string"));
+            }
+            let b = self.bytes[self.pos];
+            match b {
+                b'`' => {
+                    self.bump_raw(); // consume the closing backtick
+                    let span = Span::new(start_pos, self.pos, start_line, start_col);
+                    return Ok((
+                        Token {
+                            kind: TokenKind::FmtEnd,
+                            lexeme: content,
+                            span,
+                        },
+                        FmtChunk::Done,
+                    ));
+                }
+                b'{' => {
+                    if self.peek_byte(1) == Some(b'{') {
+                        content.push('{');
+                        self.bump_raw();
+                        self.bump_raw();
+                        continue;
+                    }
+                    self.bump_raw(); // consume the `{`
+                    let span = Span::new(start_pos, self.pos, start_line, start_col);
+                    return Ok((
+                        Token {
+                            kind: TokenKind::FmtText,
+                            lexeme: content,
+                            span,
+                        },
+                        FmtChunk::Interp,
+                    ));
+                }
+                b'}' if self.peek_byte(1) == Some(b'}') => {
+                    content.push('}');
+                    self.bump_raw();
+                    self.bump_raw();
+                }
+                b'\\' => {
+                    let esc_line = self.line;
+                    let esc_col = self.column;
+                    self.bump_raw(); // consume the `\`
+                    let ch = self.consume_escape(lit_line, lit_col, esc_line, esc_col, b'`')?;
+                    content.push(ch);
+                }
+                _ => {
+                    // Raw character (newlines included). Decode the whole
+                    // UTF-8 scalar so multi-byte text survives intact,
+                    // advancing byte-by-byte to keep line bookkeeping.
+                    let ch = self.source[self.pos..]
+                        .chars()
+                        .next()
+                        .expect("pos is on a char boundary");
+                    for _ in 0..ch.len_utf8() {
+                        self.bump_raw();
+                    }
+                    content.push(ch);
+                }
+            }
+        }
     }
 
     fn consume_hex_digit(&mut self, err_line: u32, err_col: u32) -> Result<u8> {

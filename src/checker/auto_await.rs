@@ -202,7 +202,8 @@ fn transform_expr(expr: &mut Expr, ctx: &Ctx<'_>) {
         | Expr::FloatLit { .. }
         | Expr::HexLit { .. }
         | Expr::JsonLit { .. }
-        | Expr::HtmlLit { .. } => {}
+        | Expr::HtmlLit { .. }
+        | Expr::FormatLit { .. } => {}
     }
 
     // After the recursive walk, look for the function-argument auto-await
