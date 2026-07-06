@@ -103,8 +103,8 @@ Ord -> (
 The `->` is the same pipe that carries a value into a constructor: the
 scrutinee flows into the dispatch. The parentheses group the arms -- they
 isolate the match, they do not declare arguments. (The legacy spelling
-`Ord.( ... )` still parses so old sources migrate cleanly, but `canon fmt`
-rewrites it to the pipe form; `.` no longer executes anything.)
+`Ord.( ... )` has been retired -- it is now a parse error; `.` no longer
+executes anything.)
 
 Rules:
 
