@@ -1,1 +1,1 @@
-error[tests/checker/fail/mixed_worlds_main_and_handler.can:1:1]: mixed worlds: this module defines a CLI entry (`Unit => Program`) and also `Response` returning `Response` (HTTP entry). A component exports exactly one world. Remove one.
+error[tests/checker/fail/mixed_worlds_main_and_handler.can:1:1]: mixed worlds: this module defines a CLI entry (`Args => Exit`) and also `Response` returning `Response` (HTTP entry). A component exports exactly one world. Remove one.

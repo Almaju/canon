@@ -13,7 +13,8 @@ sheet below is a syntax-level mapping, not a runtime mapping.
 | `enum Bool { False, True }`                | `Bool = False + True`                  |
 | `type Name = String;` (or `struct Name(String);`) | `Name = String`                  |
 | `impl User { fn greet(&self) => String { ... } }` | `greet = (User) => String { ... }` |
-| `fn main() { ... }`                        | `Unit => Program { ... }`             |
+| `fn main() { ... }`                        | `Args => Exit { ... }` (or arg-less `Unit => Program { ... }`) |
+| `std::env::args()` / `-> ExitCode`         | the entry's `Args` (`= List<String>`) and `Exit` (`= Int`) |
 | `trait Show { fn show(&self) -> String; }` | `Show = () => String`                   |
 | `impl Show for User { ... }`               | `Show = (User) => String { ... }`      |
 | `Result<T, E>`                             | `Result<T, E>` (same name; inline union for `E`) |

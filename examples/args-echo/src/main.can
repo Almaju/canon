@@ -1,0 +1,9 @@
+Args => Exit {
+    Args
+        -> Length
+        -> Print
+    Args
+        -> Json
+        -> Print
+    0 -> Exit
+}

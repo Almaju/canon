@@ -101,8 +101,11 @@ Unit => Program {
 ```
 
 `Unit` is the name of "no input", so a nullary constructor is `Unit =>
-X`. The CLI entry is `Unit => Program`, selected by its return type
-exactly as an HTTP handler is selected by returning `Response`. The pipe
+X`. The CLI entry is `Args => Exit`, selected by its signature exactly as
+an HTTP handler is `Request => Response`: the argument vector (`Args`)
+flows in and an exit status (`Exit`) flows out. A program that reads no
+arguments can drop to the arg-less shorthand `Unit => Program` (as here).
+The pipe
 is **commutative**: any component of the input product can be the value
 piped in, the rest ride in parens (`alice -> Compare(bob)`). One-off
 operations are lambdas — the same arrow with no top-level type: `List(1
@@ -273,8 +276,8 @@ falls out for free.
 
 A program becomes an HTTP service by declaring **one arrow that returns
 `Response`** — `Request => Response`, no server object, no router, no
-port in the program. The same entry-point-by-return-type rule that makes
-`Unit => Program` a CLI program makes this a service; exactly one arrow
+port in the program. The same entry-point-by-signature rule that makes
+`Args => Exit` a CLI program makes this a service; exactly one arrow
 may return a world type, and helpers return ordinary values.
 
 ```canon

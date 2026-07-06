@@ -1,1 +1,1 @@
-error[tests/checker/fail/duplicate_main.can:5:1]: duplicate entry point: only one `Unit => Program { … }` may be defined
+error[tests/checker/fail/duplicate_main.can:5:1]: duplicate entry point: only one CLI entry (`Args => Exit { … }`) may be defined
