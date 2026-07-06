@@ -6,7 +6,6 @@ use crate::bindgen;
 use crate::error::{CanonError, Result, Span};
 
 use crate::lexer::Scanner;
-use crate::manifest::{self, Manifest};
 use crate::parser::Parser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -268,8 +267,6 @@ pub struct BundledPackage {
     /// Canonical name, e.g. `"canon/std"`. Matches the package's
     /// declared `name` in its `canon.toml`.
     pub name: &'static str,
-    /// The full `canon.toml` source, parsed lazily on first use.
-    pub manifest_src: &'static str,
     /// Every `.can` file under the package root, sorted alphabetically by
     /// package-relative path.
     pub files: &'static [BundledFile],
@@ -347,12 +344,6 @@ pub fn resolve_bundled_use(
 
     let file = bundled_file(pkg, &rel)?;
     Some((pkg, file))
-}
-
-/// Parse a bundled package's manifest. Called lazily because the loader
-/// only needs the dep graph, not every package's metadata up front.
-pub fn parse_bundled_manifest(pkg: &BundledPackage) -> std::result::Result<Manifest, String> {
-    manifest::parse(pkg.manifest_src).map_err(|e| format!("{}: {}", pkg.name, e))
 }
 
 // ---------------------------------------------------------------------------

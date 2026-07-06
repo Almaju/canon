@@ -9,8 +9,8 @@
 //!
 //! The output is a generated Rust file (`bundled_packages.rs`) included by
 //! `src/loader.rs`. It contains a single `&[BundledPackage]` slice; each
-//! entry lists the package's manifest source plus every `.can` file under its
-//! roots, with `include_str!` references so the contents live in the binary.
+//! entry lists every `.can` file under the package's roots, with
+//! `include_str!` references so the contents live in the binary.
 //!
 //! Walking the filesystem at build time means: drop a file into
 //! `packages/canon/std/` (or add a new package directory) and the next
@@ -44,10 +44,6 @@ fn main() {
     for pkg in &packages {
         code.push_str("    BundledPackage {\n");
         code.push_str(&format!("        name: {:?},\n", pkg.name));
-        code.push_str(&format!(
-            "        manifest_src: include_str!({:?}),\n",
-            pkg.manifest_path.to_string_lossy()
-        ));
         code.push_str("        files: &[\n");
         for file in &pkg.files {
             code.push_str("            BundledFile {\n");
