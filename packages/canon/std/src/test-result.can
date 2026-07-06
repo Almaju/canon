@@ -4,9 +4,9 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-Bool * String => TestResult {
+Bool => TestResult {
     Bool -> (
-        * False => TestResult { String -> Fail }
+        * False => TestResult { "" -> Fail }
         * True => TestResult { Pass() }
     )
 }

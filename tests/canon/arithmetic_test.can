@@ -1,83 +1,83 @@
-testAddIdentity = () => TestResult {
-    5
-        -> Sum(0)
-        -> Eq(5)
-        -> TestResult("5 + 0 should be 5")
+DifferenceSubtracts = () => TestResult {
+    10
+        -> Difference(3)
+        -> Eq(7)
+        -> TestResult
 }
 
-testAddPositive = () => TestResult {
-    1
-        -> Sum(2)
-        -> Eq(3)
-        -> TestResult("1 + 2 should be 3")
-}
-
-testDiv = () => TestResult {
-    20
-        -> Quotient(4)
-        -> Eq(5)
-        -> TestResult("20 / 4 should be 5")
-}
-
-testEqReflexive = () => TestResult {
+EqIsReflexive = () => TestResult {
     5
         -> Eq(5)
-        -> TestResult("5 should equal itself")
+        -> TestResult
 }
 
-testHexArithmetic = () => TestResult {
+HexLiteralArithmetic = () => TestResult {
     0xFF
         -> Sum(1)
         -> Eq(256)
-        -> TestResult("0xFF + 1 should be 256")
+        -> TestResult
 }
 
-testMaximum = () => TestResult {
+MaximumPicksLarger = () => TestResult {
     3
         -> Maximum(7)
         -> Eq(7)
-        -> TestResult("max(3, 7) should be 7")
+        -> TestResult
 }
 
-testMaximumWhenFirstIsLarger = () => TestResult {
+MaximumWhenFirstIsLarger = () => TestResult {
     7
         -> Maximum(3)
         -> Eq(7)
-        -> TestResult("max(7, 3) should be 7")
+        -> TestResult
 }
 
-testMinimum = () => TestResult {
-    3
-        -> Minimum(7)
-        -> Eq(3)
-        -> TestResult("min(3, 7) should be 3")
-}
-
-testMinimumNegative = () => TestResult {
+MinimumHandlesNegatives = () => TestResult {
     0
         -> Difference(5)
         -> Minimum(2)
         -> Eq(0 -> Difference(5))
-        -> TestResult("min(-5, 2) should be -5")
+        -> TestResult
 }
 
-testMinimumWhenFirstIsLarger = () => TestResult {
+MinimumPicksSmaller = () => TestResult {
+    3
+        -> Minimum(7)
+        -> Eq(3)
+        -> TestResult
+}
+
+MinimumWhenFirstIsLarger = () => TestResult {
     7
         -> Minimum(3)
         -> Eq(3)
-        -> TestResult("min(7, 3) should be 3")
+        -> TestResult
 }
 
-testMul = () => TestResult {
+ProductMultiplies = () => TestResult {
     3
         -> Product(4)
         -> Eq(12)
-        -> TestResult("3 * 4 should be 12")
+        -> TestResult
 }
 
-testSub = () => TestResult {
-    10
-        -> Difference(3)
-        -> Eq(7)
-        -> TestResult("10 - 3 should be 7")
+QuotientDivides = () => TestResult {
+    20
+        -> Quotient(4)
+        -> Eq(5)
+        -> TestResult
+}
+
+SumAddsOperands = () => TestResult {
+    1
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult
+}
+
+SumWithZeroIsIdentity = () => TestResult {
+    5
+        -> Sum(0)
+        -> Eq(5)
+        -> TestResult
 }

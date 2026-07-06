@@ -1,29 +1,29 @@
-testSetContainsAbsent = () => TestResult {
+SetContainsFindsInserted = () => TestResult {
+    Set()
+        -> Inserted("x")
+        -> Contains("x")
+        -> TestResult
+}
+
+SetContainsRejectsAbsent = () => TestResult {
     Set()
         -> Inserted("x")
         -> Contains("y")
         -> Not
-        -> TestResult("Contains rejects a value the set lacks")
+        -> TestResult
 }
 
-testSetContainsPresent = () => TestResult {
-    Set()
-        -> Inserted("x")
-        -> Contains("x")
-        -> TestResult("Contains finds an inserted value")
-}
-
-testSetDedupes = () => TestResult {
+SetDedupesInserts = () => TestResult {
     Set()
         -> Inserted("b")
         -> Inserted("a")
         -> Inserted("b")
         -> Length
         -> Eq(2)
-        -> TestResult("Inserting a duplicate value does not grow the set")
+        -> TestResult
 }
 
-testSetListSorted = () => TestResult {
+SetListSorted = () => TestResult {
     Set()
         -> Inserted("b")
         -> Inserted("c")
@@ -31,10 +31,19 @@ testSetListSorted = () => TestResult {
         -> List
         -> Json
         -> Eq("[a,b,c]")
-        -> TestResult("List yields values in sorted order")
+        -> TestResult
 }
 
-testSetRemoved = () => TestResult {
+SetRemovedAbsentIsNoOp = () => TestResult {
+    Set()
+        -> Inserted("a")
+        -> Removed("missing")
+        -> Length
+        -> Eq(1)
+        -> TestResult
+}
+
+SetRemovedDropsValue = () => TestResult {
     Set()
         -> Inserted("a")
         -> Inserted("b")
@@ -42,14 +51,5 @@ testSetRemoved = () => TestResult {
         -> List
         -> Json
         -> Eq("[b]")
-        -> TestResult("Removed drops the given value")
-}
-
-testSetRemovedAbsent = () => TestResult {
-    Set()
-        -> Inserted("a")
-        -> Removed("missing")
-        -> Length
-        -> Eq(1)
-        -> TestResult("Removing an absent value is a no-op")
+        -> TestResult
 }

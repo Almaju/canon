@@ -1,103 +1,103 @@
-testMarkdownBlockquote = () => TestResult {
-    "> quoted text"
-        -> Markdown
-        -> Html
-        -> Eq("<blockquote>quoted text</blockquote>")
-        -> TestResult("Markdown renders a leading > line as a blockquote")
-}
-
-testMarkdownBold = () => TestResult {
-    "a **bold** word"
-        -> Markdown
-        -> Html
-        -> Eq("<p>a <strong>bold</strong> word</p>")
-        -> TestResult("Markdown renders double-star text as strong")
-}
-
-testMarkdownEscapesInline = () => TestResult {
+MarkdownEscapesInline = () => TestResult {
     "a < b"
         -> Markdown
         -> Html
         -> Eq("<p>a &lt; b</p>")
-        -> TestResult("Markdown escapes HTML metacharacters in inline text")
+        -> TestResult
 }
 
-testMarkdownFencedCode = () => TestResult {
+MarkdownRendersBlockquote = () => TestResult {
+    "> quoted text"
+        -> Markdown
+        -> Html
+        -> Eq("<blockquote>quoted text</blockquote>")
+        -> TestResult
+}
+
+MarkdownRendersBold = () => TestResult {
+    "a **bold** word"
+        -> Markdown
+        -> Html
+        -> Eq("<p>a <strong>bold</strong> word</p>")
+        -> TestResult
+}
+
+MarkdownRendersFencedCode = () => TestResult {
     "```\ncode line\n```"
         -> Markdown
         -> Html
         -> Eq("<pre data-info=\"\"><code>code line\n</code></pre>")
-        -> TestResult("Markdown renders a fenced block as pre/code")
+        -> TestResult
 }
 
-testMarkdownHeading = () => TestResult {
-    "# Hello"
-        -> Markdown
-        -> Html
-        -> Eq("<h1>Hello</h1>")
-        -> TestResult("Markdown renders a leading # as an h1")
-}
-
-testMarkdownHeadingH2 = () => TestResult {
+MarkdownRendersH2 = () => TestResult {
     "## Hello"
         -> Markdown
         -> Html
         -> Eq("<h2>Hello</h2>")
-        -> TestResult("Markdown renders a leading ## as an h2")
+        -> TestResult
 }
 
-testMarkdownHeadingH3 = () => TestResult {
+MarkdownRendersH3 = () => TestResult {
     "### Hello"
         -> Markdown
         -> Html
         -> Eq("<h3>Hello</h3>")
-        -> TestResult("Markdown renders a leading ### as an h3")
+        -> TestResult
 }
 
-testMarkdownInlineCode = () => TestResult {
+MarkdownRendersHeading = () => TestResult {
+    "# Hello"
+        -> Markdown
+        -> Html
+        -> Eq("<h1>Hello</h1>")
+        -> TestResult
+}
+
+MarkdownRendersInlineCode = () => TestResult {
     "an `inline` code"
         -> Markdown
         -> Html
         -> Eq("<p>an <code>inline</code> code</p>")
-        -> TestResult("Markdown renders backtick text as code")
+        -> TestResult
 }
 
-testMarkdownItalic = () => TestResult {
+MarkdownRendersItalic = () => TestResult {
     "an *italic* word"
         -> Markdown
         -> Html
         -> Eq("<p>an <em>italic</em> word</p>")
-        -> TestResult("Markdown renders single-star text as em")
+        -> TestResult
 }
 
-testMarkdownLink = () => TestResult {
+MarkdownRendersLink = () => TestResult {
     "see [Canon](https://example.com) here"
         -> Markdown
         -> Html
         -> Eq("<p>see <a href=\"https://example.com\">Canon</a> here</p>")
-        -> TestResult("Markdown renders [text](url) as an anchor")
+        -> TestResult
 }
 
-testMarkdownOrderedList = () => TestResult {
-    "1. first\n2. second"
-        -> Markdown
-        -> Html
-        -> Eq("<ol><li>first</li><li>second</li></ol>")
-        -> TestResult("Markdown renders numbered lines as an ordered list")
-}
-
-testMarkdownParagraph = () => TestResult {
-    "plain text"
-        -> Markdown
-        -> Html
-        -> Eq("<p>plain text</p>")
-        -> TestResult("Markdown wraps a bare line in a paragraph")
-}
-
-testMarkdownUnorderedListNested = () => TestResult {
+MarkdownRendersNestedList = () => TestResult {
     "- item one\n  - sub item\n- item two"
         -> Markdown
         -> Html
         -> Eq("<ul><li>item one<ul><li>sub item</li></ul></li><li>item two</li></ul>")
-        -> TestResult("Markdown renders a nested sub-item inside its parent list item")
+        -> TestResult
+}
+
+MarkdownRendersOrderedList = () => TestResult {
+    "1. first\n2. second"
+        -> Markdown
+        -> Html
+        -> Eq("<ol><li>first</li><li>second</li></ol>")
+        -> TestResult
+}
+
+MarkdownWrapsParagraph = () => TestResult {
+    "plain text"
+        -> Markdown
+        -> Html
+        -> Eq("<p>plain text</p>")
+        -> TestResult
 }

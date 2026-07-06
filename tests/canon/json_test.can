@@ -1,73 +1,73 @@
-testJsonDecodeEscapes = () => TestResult {
+DecodeUnescapesQuote = () => TestResult {
     "\"esc \\\" quote\""
         -> Json?
         -> Decoded?
         -> Eq("esc \" quote")
-        -> TestResult("Decoded unescapes an embedded quote")
+        -> TestResult
 }
 
-testJsonDecodePlain = () => TestResult {
+DecodeUnwrapsString = () => TestResult {
     "\"gpt-4\""
         -> Json?
         -> Decoded?
         -> Eq("gpt-4")
-        -> TestResult("Decoded unwraps a quoted JSON string")
+        -> TestResult
 }
 
-testJsonFieldExtract = () => TestResult {
+FieldExtractsMember = () => TestResult {
     "{\"model\":\"gpt-4\",\"stream\":true}"
         -> Json?
         -> Field("model")?
         -> Decoded?
         -> Eq("gpt-4")
-        -> TestResult("Field extracts and Decoded reads a string member")
+        -> TestResult
 }
 
-testJsonInvalidRejected = () => TestResult {
+InvalidJsonRejected = () => TestResult {
     "{oops" -> Json -> (
-        * Err<MalformedJson> => TestResult { True() -> TestResult("malformed JSON is rejected") }
-        * Ok<Json> => TestResult { False() -> TestResult("\"{oops\" should not validate") }
+        * Err<MalformedJson> => TestResult { Pass() }
+        * Ok<Json> => TestResult { "\"{oops\" should not validate" -> Fail }
     )
 }
 
-testToJsonBoolFalse = () => TestResult {
+ToJsonFalse = () => TestResult {
     False()
         -> ToJson
         -> Eq("false")
-        -> TestResult("ToJson renders False as false")
+        -> TestResult
 }
 
-testToJsonBoolTrue = () => TestResult {
-    True()
-        -> ToJson
-        -> Eq("true")
-        -> TestResult("ToJson renders True as true")
-}
-
-testToJsonFloat = () => TestResult {
+ToJsonFloat = () => TestResult {
     1.5
         -> ToJson
         -> Eq("1.5")
-        -> TestResult("ToJson renders a Float as a JSON number")
+        -> TestResult
 }
 
-testToJsonInt = () => TestResult {
+ToJsonInt = () => TestResult {
     42
         -> ToJson
         -> Eq("42")
-        -> TestResult("ToJson renders an Int as its decimal digits")
+        -> TestResult
 }
 
-testToJsonStringEscapes = () => TestResult {
+ToJsonStringEscapes = () => TestResult {
     "a\"b\\c"
         -> ToJson
         -> Eq("\"a\\\"b\\\\c\"")
-        -> TestResult("ToJson quotes a String and escapes quote and backslash")
+        -> TestResult
 }
 
-testToJsonStringPlain = () => TestResult {
+ToJsonStringPlain = () => TestResult {
     "hi"
         -> ToJson
         -> Eq("\"hi\"")
-        -> TestResult("ToJson wraps a plain String in quotes")
+        -> TestResult
+}
+
+ToJsonTrue = () => TestResult {
+    True()
+        -> ToJson
+        -> Eq("true")
+        -> TestResult
 }

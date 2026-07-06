@@ -1117,13 +1117,13 @@ fn build_spec(spec: &BuildSpec) -> bool {
 /// `canon test <file.can>` — discover and run all `() -> TestResult`
 /// functions defined in the entry file.
 ///
-/// Test files look like normal Canon modules:
+/// Test files look like normal Canon modules. A test is a PascalCase
+/// constructor named for the behaviour it asserts, ending in a bare
+/// `-> TestResult` (a `Bool` becomes `Pass` / `Fail`):
 ///
 /// ```text
-/// use std/TestResult
-///
-/// testAdd = () -> TestResult {
-///     Int(1).add(Int(2)).eq(Int(3)).TestResult("1 + 2 != 3")
+/// SumAddsOperands = () => TestResult {
+///     1 -> Sum(2) -> Eq(3) -> TestResult
 /// }
 /// ```
 ///

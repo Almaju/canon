@@ -4,20 +4,20 @@ Pass = Unit
 
 TestResult = Fail + Pass
 
-makeFail = () => TestResult {
+MakeFail = () => TestResult {
     "the message" -> Fail
 }
 
-makePass = () => TestResult {
+MakePass = () => TestResult {
     Pass()
 }
 
 Unit => Program {
-    makeFail() -> (
+    MakeFail() -> (
         * Fail => Unit { Fail -> Print }
         * Pass => Unit { "got pass" -> Print }
     )
-    makePass() -> (
+    MakePass() -> (
         * Fail => Unit { Fail -> Print }
         * Pass => Unit { "got pass" -> Print }
     )

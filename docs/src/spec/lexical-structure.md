@@ -12,15 +12,16 @@ Two identifier classes, distinguished by their first character:
 | Class | Form | Used for |
 |---|---|---|
 | **PascalCase** | `[A-Z][A-Za-z0-9_]*` | types, shapes, constructors, variants -- every name in a Canon program |
-| **camelCase** | `[a-z][A-Za-z0-9_]*` | foreign imports in [binding files](./compilation.md); `canon test` functions |
+| **camelCase** | `[a-z][A-Za-z0-9_]*` | foreign imports in [binding files](./compilation.md) |
 
 The case split is load-bearing: in Canon, **the only names are type
 names**, and type names are PascalCase. A camelCase declaration is a
-**checker error** everywhere except two places: binding files (the FFI
-boundary -- camelCase means exactly "this identifier is foreign") and
-test functions (`testAddPositive = () => TestResult`, run by
-`canon test`). There is no third class: no SCREAMING_CASE constants, no
-leading underscores with special meaning.
+**checker error** everywhere except one place: binding files (the FFI
+boundary -- camelCase means exactly "this identifier is foreign").
+`canon test` functions are no exception -- a test is a PascalCase
+constructor named for what it asserts
+(`SumAddsOperands = () => TestResult`). There is no third class: no
+SCREAMING_CASE constants, no leading underscores with special meaning.
 
 ## Keywords
 

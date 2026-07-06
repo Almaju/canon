@@ -1,57 +1,57 @@
-testNowFromLeapDay = () => TestResult {
-    951782400
-        -> Unix
-        -> Now
-        -> Eq("2000-02-29T00:00:00Z")
-        -> TestResult("Unix timestamp decodes a leap-year Feb 29")
-}
-
-testNowFromUnixEpoch = () => TestResult {
+NowDecodesEpoch = () => TestResult {
     0
         -> Unix
         -> Now
         -> Eq("1970-01-01T00:00:00Z")
-        -> TestResult("Unix timestamp 0 decodes to the epoch")
+        -> TestResult
 }
 
-testNowFromUnixWithTimeOfDay = () => TestResult {
+NowDecodesLeapDay = () => TestResult {
+    951782400
+        -> Unix
+        -> Now
+        -> Eq("2000-02-29T00:00:00Z")
+        -> TestResult
+}
+
+NowDecodesTimeOfDay = () => TestResult {
     1704070861
         -> Unix
         -> Now
         -> Eq("2024-01-01T01:01:01Z")
-        -> TestResult("Unix timestamp decodes date and time-of-day together")
+        -> TestResult
 }
 
-testNowLength = () => TestResult {
+NowIsRfc3339Length = () => TestResult {
     Now()
         -> Length
         -> Eq(20)
-        -> TestResult("RFC3339 timestamp is 20 chars")
+        -> TestResult
 }
 
-testNowSeparator = () => TestResult {
+NowSeparatesDateAndTime = () => TestResult {
     Now()
         -> ByteAt(11)
         -> Eq(84)
-        -> TestResult("T separates date and time")
+        -> TestResult
 }
 
-testPaddedOverWidth = () => TestResult {
+PaddedLeavesWiderValue = () => TestResult {
     123
         -> Padded(2)
         -> Eq("123")
-        -> TestResult("Padded leaves a value wider than the width unchanged")
+        -> TestResult
 }
 
-testPaddedZeroFills = () => TestResult {
+PaddedZeroFills = () => TestResult {
     5
         -> Padded(4)
         -> Eq("0005")
-        -> TestResult("Padded left-fills with zeros to the given width")
+        -> TestResult
 }
 
-testUnixAfter2001 = () => TestResult {
+UnixReadsAfter2001 = () => TestResult {
     Unix()
         -> Ge(1000000000)
-        -> TestResult("wall clock reads after 2001-09-09")
+        -> TestResult
 }

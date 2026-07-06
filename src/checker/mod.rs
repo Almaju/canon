@@ -1336,21 +1336,28 @@ fn check_function(
         }
     } else if func.extern_wasm.is_none() && starts_lowercase(&func.name.name) {
         // Types-only: the only names are type names (PascalCase).
-        // camelCase survives in exactly two places — binding files (the
-        // FFI boundary, `extern_wasm` above) and `canon test` functions
-        // (zero-arg, `TestResult`-returning), which need distinct
-        // non-type names because they would otherwise collide as
-        // constructor-family keys.
-        if !is_test_function_shape(func) {
-            errors.push(CanonError::CheckError {
-                message: format!(
-                    "camelCase names are not allowed: the only names are type names — \
-                     replace `{}` with a PascalCase constructor (`Input => Type {{ … }}`)",
-                    func.name.name
-                ),
-                span: func.name.span,
-            });
-        }
+        // camelCase survives in exactly one place — binding files (the
+        // FFI boundary, `extern_wasm` above). `canon test` functions are
+        // no exception: a test is a PascalCase constructor named for the
+        // behaviour it asserts (`Behaviour = () => TestResult { … }`),
+        // distinct by name and reported by that name.
+        let hint = if is_test_function_shape(func) {
+            "a test is a PascalCase constructor named for what it asserts \
+             (`SumIsThree = () => TestResult { … }`)"
+                .to_string()
+        } else {
+            format!(
+                "replace `{}` with a PascalCase constructor (`Input => Type {{ … }}`)",
+                func.name.name
+            )
+        };
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "camelCase names are not allowed: the only names are type names — {}",
+                hint
+            ),
+            span: func.name.span,
+        });
     }
 
     let generic_scope: HashSet<String> = func

@@ -12,7 +12,7 @@ Show = (Name) => String {
     "Alice"
 }
 
-testShowExists = () => TestResult {
+ShowResolvesByInputType = () => TestResult {
     "hi"
         -> Greeting
         -> Show
