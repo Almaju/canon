@@ -12,6 +12,7 @@ Page => Content {
     Page -> (
         * "building-and-running" => Content { BuildingAndRunning() -> Html }
         * "coming-from-rust" => Content { ComingFromRust() -> Html }
+        * "coming-from-typescript" => Content { ComingFromTypescript() -> Html }
         * "compilation" => Content { Compilation() -> Html }
         * "deploying" => Content { Deploying() -> Html }
         * "effects-and-async" => Content { EffectsAndAsync() -> Html }
@@ -76,6 +77,7 @@ Page => Html {
             <button data-msg="Nav:web-target">The Web Target</button>
             <button data-msg="Nav:deploying">Deploying</button>
             <button data-msg="Nav:coming-from-rust">Coming from Rust</button>
+            <button data-msg="Nav:coming-from-typescript">Coming from TypeScript</button>
         </aside>
         <main class="main"><article class="doc">{Page -> Content}</article></main>
     </div>
