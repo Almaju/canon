@@ -1,0 +1,28 @@
+AmbiguousCaller = Unit
+
+Db = String
+
+Deep = Unit
+
+Flag = Unit
+
+Wrapper = Db + Flag
+
+Db => AmbiguousCaller {
+    Db -> Wrapper -> (
+        * Db => Deep { Deep() }
+        * Flag => Deep { Deep() }
+    )
+}
+
+Db => Deep {
+    "row for "
+        -> Joined(Db.String)
+        -> Print
+}
+
+Unit => Program {
+    "users-db"
+        -> Db
+        -> AmbiguousCaller
+}

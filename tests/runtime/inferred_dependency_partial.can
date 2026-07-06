@@ -1,0 +1,27 @@
+Caller = Unit
+
+Db = String
+
+Extra = String
+
+Query = Unit
+
+Extra => Caller {
+    "users-db"
+        -> Db
+        -> Query
+}
+
+Db * Extra => Query {
+    "query on "
+        -> Joined(Db.String)
+        -> Joined(" with ")
+        -> Joined(Extra.String)
+        -> Print
+}
+
+Unit => Program {
+    "extra-value"
+        -> Extra
+        -> Caller
+}
