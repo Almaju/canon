@@ -5,6 +5,13 @@ testAndFalse = () => TestResult {
         -> TestResult("True and False is False")
 }
 
+testAndFalseShortCircuits = () => TestResult {
+    False()
+        -> And(True())
+        -> Not
+        -> TestResult("False and True is False")
+}
+
 testAndTrue = () => TestResult {
     True()
         -> And(True())
@@ -35,4 +42,10 @@ testOrTrue = () => TestResult {
     False()
         -> Or(True())
         -> TestResult("False or True is True")
+}
+
+testOrTrueShortCircuits = () => TestResult {
+    True()
+        -> Or(False())
+        -> TestResult("True or False is True")
 }
