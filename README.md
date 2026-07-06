@@ -8,6 +8,26 @@ See the [language specification](docs/src/spec/) for the full semantics.
 
 ---
 
+## On Authorship and AI
+
+Canon's design is human work. The language — its philosophy, its type
+algebra, the "wherever ordering is discretionary, enforce it" rule, the
+types-only doctrine, capabilities-as-values, the whole small opinionated
+surface — comes from one person's head. Those ideas are not
+AI-generated.
+
+AI was used, under supervision, as an implementation aid for the
+*compiler*: a tool for turning already-decided designs into Rust, the
+way one might use any other power tool. Every design decision was made,
+reviewed, and owned by a human. The core is handmade; the AI helped pour
+the concrete, not draw the blueprint.
+
+I mention this deliberately. A language dismissed as "AI slop" would be
+judged on its provenance rather than its ideas — and the ideas here are
+genuinely mine. Judge them on their merits.
+
+---
+
 ## What It Looks Like
 
 The only names are type names. Types compose with `+` (union) and `*`

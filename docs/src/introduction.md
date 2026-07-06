@@ -113,3 +113,13 @@ examples run, and the design is stable enough to write about, but every
 detail is subject to change. The reference implementation lives in the
 same repository as this book; the [language specification](./spec/overview.md)
 is the authoritative description of the language.
+
+## On Authorship and AI
+
+The language is human work. Its philosophy, type algebra, ordering
+discipline, types-only doctrine, and capabilities-as-values model are the
+author's own ideas — not AI-generated. AI was used, under supervision, as
+an implementation aid for the *compiler*: a tool for turning
+already-decided designs into Rust. Every design decision was made,
+reviewed, and owned by a human. The core is handmade; the AI helped build
+it, not conceive it.
