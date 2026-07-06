@@ -38,7 +38,7 @@ and reference documentation lives under `docs/src/`. Do not add new
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading |
 | `src/bindgen/` | `canon bindgen` — WIT → Canon source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
-| `src/main.rs` | CLI entry point (`run`, `build`, `check`, `test`, `fmt`, `inspect`, `bindgen`, `lsp`, `upgrade`) |
+| `src/main.rs` | CLI entry point (`run`, `build`, `check`, `test`, `fmt`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
 | `src/webhost.rs` | Web target's browser side — the generated JS host (`canon-web.js`), `index.html` shell, bundle writer, static server for `canon run` (see `docs/src/reference/web-target.md`) |
 | `src/lib.rs` | Public crate modules |
 | `src/manifest.rs` | `canon.toml` parser (TOML subset, hand-written) |
