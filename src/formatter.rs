@@ -186,6 +186,17 @@ fn canon_expr(e: &Expr) -> Expr {
             span: *span,
         },
 
+        Expr::FormatLit { parts, span } => Expr::FormatLit {
+            parts: parts
+                .iter()
+                .map(|p| match p {
+                    FormatLitPart::Static(s) => FormatLitPart::Static(s.clone()),
+                    FormatLitPart::Interp(e) => FormatLitPart::Interp(Box::new(canon_expr(e))),
+                })
+                .collect(),
+            span: *span,
+        },
+
         // ── Prefix constructor: `B(inputs…)` ────────────────────────────
         Expr::Constructor { name, args, span } => {
             // `List(…)` is an ordered sequence literal, not a
@@ -928,6 +939,25 @@ fn emit_base_inline(expr: &Expr) -> String {
             }
             out
         }
+        Expr::FormatLit { parts, .. } => {
+            // Reconstruct the source-level backtick string. Static parts
+            // hold the resolved text (the scanner applied escapes and
+            // `{{` / `}}`), so re-escape the delimiter, backslash, and
+            // braces; interpolated expressions get their `{…}` hole back.
+            let mut out = String::from("`");
+            for p in parts {
+                match p {
+                    FormatLitPart::Static(s) => out.push_str(&escape_fmt_static(s)),
+                    FormatLitPart::Interp(e) => {
+                        out.push('{');
+                        out.push_str(&emit_inline(e));
+                        out.push('}');
+                    }
+                }
+            }
+            out.push('`');
+            out
+        }
         // MethodCall, Match, Try are handled by chain flattening and should
         // never appear as a Base.  Return empty as a safeguard.
         _ => String::new(),
@@ -1043,6 +1073,28 @@ fn arm_sort_key(arm: &MatchArm) -> (u8, i64, String) {
 /// stores the decoded value (with `\n`, `\t`, `\\`, `\"` already
 /// translated to their raw bytes); the formatter has to put those
 /// escapes back so the emitted source is parseable Canon again.
+/// Escape a backtick format string's static text for re-emission: the
+/// backtick delimiter and backslash take C-style escapes, `{` / `}`
+/// double so they aren't read as interpolation, and control characters
+/// use the lexer's escapes so the round-trip stays lossless.
+fn escape_fmt_static(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '`' => out.push_str("\\`"),
+            '{' => out.push_str("{{"),
+            '}' => out.push_str("}}"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

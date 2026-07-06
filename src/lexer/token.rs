@@ -14,6 +14,12 @@ pub enum TokenKind {
     /// The final raw fragment of an HTML literal (the literal's root
     /// element closed with this fragment).
     HtmlEnd,
+    /// A raw fragment of a backtick format string that is followed by a
+    /// `{…}` interpolation (the scanner has already consumed the `{`).
+    FmtText,
+    /// The final raw fragment of a backtick format string (the closing
+    /// backtick followed this fragment).
+    FmtEnd,
 
     Eq,
     FatArrow,
@@ -53,6 +59,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::StringLit => "string literal",
             TokenKind::HtmlText => "HTML literal fragment",
             TokenKind::HtmlEnd => "HTML literal",
+            TokenKind::FmtText => "format string fragment",
+            TokenKind::FmtEnd => "format string",
             TokenKind::Eq => "`=`",
             TokenKind::FatArrow => "`=>`",
             TokenKind::Arrow => "`->`",

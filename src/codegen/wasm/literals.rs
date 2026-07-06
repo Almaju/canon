@@ -5,7 +5,7 @@
 //! method calls (Interp parts). The resulting `Expr` is a normal expression
 //! the codegen can compile via its existing machinery — no literal-specific
 //! instructions to lower below this point.
-use crate::ast::{Expr, HtmlLitPart, Ident, JsonLitPart};
+use crate::ast::{Expr, FormatLitPart, HtmlLitPart, Ident, JsonLitPart};
 
 /// Lower a `JsonLit { parts }` into the equivalent left-associative
 /// `String.concat` chain over `StringLit` (Static parts) and `.ToJson()`
@@ -90,6 +90,59 @@ pub(super) fn html_lit_to_concat_chain(parts: &[HtmlLitPart], span: crate::error
     // Parser invariant: parts is never empty (the literal's opening
     // tag is always a Static).
     let mut acc = iter.next().expect("HtmlLit parts must be non-empty");
+    for next in iter {
+        acc = Expr::MethodCall {
+            receiver: Box::new(acc),
+            method: Ident {
+                name: "concat".to_string(),
+                span,
+            },
+            args: vec![next],
+            piped: false,
+            span,
+        };
+    }
+    acc
+}
+
+/// Lower a `FormatLit { parts }` into the equivalent left-associative
+/// `String.concat` chain over `StringLit` (Static parts) and `-> String`
+/// conversions (Interp parts) — the plain-string analogue of
+/// `html_lit_to_concat_chain`. Each hole converts through `String`
+/// construction: an `Int` renders as its decimal digits (the built-in
+/// int-to-string), a `String` passes through unchanged.
+///
+/// Example: `` `<{x}>` `` (parts = [Static(`<`), Interp(x), Static(`>`)])
+///
+///   → `"<".concat(x -> String).concat(">")`
+pub(super) fn format_lit_to_concat_chain(
+    parts: &[FormatLitPart],
+    span: crate::error::Span,
+) -> Expr {
+    let part_exprs: Vec<Expr> = parts
+        .iter()
+        .map(|p| match p {
+            FormatLitPart::Static(s) => Expr::StringLit {
+                value: s.clone(),
+                span,
+            },
+            FormatLitPart::Interp(e) => Expr::MethodCall {
+                receiver: e.clone(),
+                method: Ident {
+                    name: "String".to_string(),
+                    span,
+                },
+                args: vec![],
+                piped: true,
+                span,
+            },
+        })
+        .collect();
+
+    let mut iter = part_exprs.into_iter();
+    // Parser invariant: a `FormatLit` always carries at least one part
+    // (an all-static backtick string is folded to a `StringLit`).
+    let mut acc = iter.next().expect("FormatLit parts must be non-empty");
     for next in iter {
         acc = Expr::MethodCall {
             receiver: Box::new(acc),
