@@ -1,0 +1,7 @@
+Greeting = String
+
+Unit => Program {
+    1
+        -> Greeting
+        -> Print
+}

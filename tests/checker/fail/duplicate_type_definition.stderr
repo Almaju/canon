@@ -1,1 +1,2 @@
 error[tests/checker/fail/duplicate_type_definition.can:3:1]: duplicate type definition `Foo`
+error[tests/checker/fail/duplicate_type_definition.can:6:5]: `Foo` expects a `Int`, found `String`

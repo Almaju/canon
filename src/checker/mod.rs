@@ -1990,16 +1990,16 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     method.name.as_str(),
                     "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
                 );
-            let known = is_concurrent_combinator
-                || is_piped_construction
-                || method_known_via_aliases(
-                    &recv_ty_specific,
-                    &method.name,
-                    effective_arity,
-                    symbols,
-                )
-                || (recv_ty_specific != recv_ty
-                    && method_known_via_aliases(&recv_ty, &method.name, effective_arity, symbols));
+            let has_alias_method =
+                method_known_via_aliases(&recv_ty_specific, &method.name, effective_arity, symbols)
+                    || (recv_ty_specific != recv_ty
+                        && method_known_via_aliases(
+                            &recv_ty,
+                            &method.name,
+                            effective_arity,
+                            symbols,
+                        ));
+            let known = is_concurrent_combinator || is_piped_construction || has_alias_method;
             if !known {
                 errors.push(CanonError::CheckError {
                     message: format!(
@@ -2008,6 +2008,33 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     ),
                     span: *span,
                 });
+            } else if is_piped_construction && !has_alias_method {
+                // A scalar newtype (`Greeting = String`) or a bare
+                // primitive pipe (`x -> Int`) erases to its underlying
+                // primitive at the value level: codegen leaves the
+                // receiver's own compiled representation on the stack
+                // unchanged (see `compile_method_call`'s scalar-erasure
+                // fallback). If the receiver's static type resolves to a
+                // *different* primitive and no declared conversion method
+                // covers the pair (that's what `has_alias_method` already
+                // checked), the emitted wasm has the wrong stack shape —
+                // an `i64` where the callee expects a string's `i32`
+                // pointer/length pair, for instance — and wasmtime rejects
+                // it as invalid. Catch the mismatch here instead.
+                if let (Some(target_scalar), Some(recv_scalar)) = (
+                    scalar_primitive_root(symbols, &method.name),
+                    scalar_primitive_root(symbols, &recv_ty),
+                ) {
+                    if target_scalar != recv_scalar {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{}` expects a `{}`, found `{}`",
+                                method.name, target_scalar, recv_scalar
+                            ),
+                            span: *span,
+                        });
+                    }
+                }
             }
         }
         Expr::Match {
@@ -2261,6 +2288,17 @@ fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
             (bare, ok_ty)
         }
         _ => ("<complex>".to_string(), None),
+    }
+}
+
+/// The scalar primitive a type name erases to at the value level, walking
+/// its one-level alias chain (`Greeting = String` → `"String"`). `None`
+/// when the chain doesn't bottom out at one of the four scalar primitives
+/// (products, unions, and generic containers all return `None`).
+fn scalar_primitive_root<'a>(symbols: &'a SymbolTable, name: &'a str) -> Option<&'a str> {
+    match symbols.resolve_alias(name) {
+        s @ ("Int" | "Float" | "Bool" | "String") => Some(s),
+        _ => None,
     }
 }
 
