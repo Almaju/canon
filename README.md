@@ -118,7 +118,6 @@ canon build hello.can            # compile to a WASM component (.wasm)
 canon check hello.can            # check sort order and types
 canon test hello_test.can        # run `() => TestResult` functions
 canon fmt hello.can              # format source (use --check to verify only)
-canon inspect wat hello.can      # print generated WAT
 canon inspect ast hello.can      # print the parsed AST
 canon inspect tokens hello.can   # print lexer tokens
 canon bindgen file.wit          # generate Canon bindings from WIT

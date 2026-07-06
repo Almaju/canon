@@ -150,9 +150,8 @@ doesn't change when the bridge is later swapped for the real interface.
 ```sh
 canon inspect tokens hello.can   # lexer output
 canon inspect ast hello.can      # parser output
-canon inspect wat hello.can      # generated core-module WebAssembly Text
 ```
 
-`inspect wat` is the fastest way to see how a Canon construct lowers
-(dispatch, heap allocation, string handling, async plumbing) without
-the component wrapper in the way.
+`inspect ast` is the fastest way to see how the parser understood a
+Canon construct (dispatch, heap allocation, string handling, async
+plumbing) before it reaches the checker or code generator.

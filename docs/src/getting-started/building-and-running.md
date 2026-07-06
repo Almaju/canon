@@ -98,13 +98,10 @@ request to the guest's `handle` export. See
 ```sh
 canon inspect tokens hello.can   # lexer output
 canon inspect ast    hello.can   # parser output (AST debug dump)
-canon inspect wat    hello.can   # generated WebAssembly Text
 ```
 
-One verb, three stages. `wat` shows how Canon constructs (print
-statements, dispatch, heap allocation, async lowering) map to wasm,
-without the component wrapping layer. `tokens` and `ast` show how the
-lexer and parser see your code.
+One verb, two stages. `tokens` and `ast` show how the lexer and parser
+see your code.
 
 ## Check Sort Order and Types
 
