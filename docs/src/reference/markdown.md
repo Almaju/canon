@@ -115,8 +115,8 @@ exercising strings, dispatch, escaping, and file resolution end to end.
 
 ## Current limits
 
-Extending the renderer surfaced two codegen rough edges worth knowing
-about, both around user-defined types that alias `Html`:
+Extending the renderer, and building a web app around it, surfaced three
+compiler rough edges worth knowing about:
 
 - **A user constructor that returns a type aliasing `Html`
   (`Frag = Html; String => Frag { … }`) miscompiles** in the CLI world —
@@ -129,6 +129,15 @@ about, both around user-defined types that alias `Html`:
   an `Int * String` constructor) miscompiles; `level -> HeadingHtml(content)`
   is equivalent by the positionless-construction rule and compiles. The
   renderer uses the second form.
+- **A `Model * String` update whose model is also `String`-underlying
+  binds a bare `String` reference ambiguously.** In `examples/markdown-web`,
+  `Page = String` and the update took a `String` message; inside the body
+  `String -> Length` could resolve to the *model* rather than the message,
+  so `update` silently returned the wrong value and the page never
+  switched. Giving the message its own newtype (`Msg = String`,
+  `Page * Msg => Update`) disambiguates the two same-underlying-type
+  parameters — the "components are distinct types" rule biting at the
+  value level.
 
-Both are compiler bugs, not language limits — fixing them lets the
-renderer's types read more naturally.
+All three are compiler bugs, not language limits — fixing them lets these
+programs read the natural way.

@@ -1,5 +1,7 @@
 Init = Page
 
+Msg = String
+
 Page = String
 
 Update = Page
@@ -16,9 +18,9 @@ Unit => Init {
     "intro" -> Page
 }
 
-Page * String => Update {
-    String -> Substring(1 -> From * 5 -> To) -> (
-        * "Show:" => Page { String -> Substring(6 -> From * String -> Length -> To) -> Page }
+Page * Msg => Update {
+    Msg -> Substring(1 -> From * 5 -> To) -> (
+        * "Show:" => Page { Msg -> Substring(6 -> From * Msg -> Length -> To) -> Page }
         * String => Page { Page }
     )
 }
