@@ -13,6 +13,16 @@ testMapContainsPresent = () => TestResult {
         -> TestResult("Contains finds an inserted key")
 }
 
+testMapKeysSorted = () => TestResult {
+    Map()
+        -> Inserted("b" * "2")
+        -> Inserted("a" * "1")
+        -> Keys
+        -> Json
+        -> Eq("[a,b]")
+        -> TestResult("Keys yields keys in sorted order")
+}
+
 testMapLength = () => TestResult {
     Map()
         -> Inserted("b" * "2")
@@ -20,4 +30,54 @@ testMapLength = () => TestResult {
         -> Length
         -> Eq(2)
         -> TestResult("Length counts distinct keys")
+}
+
+testMapOverwrite = () => TestResult {
+    Map() -> Inserted("a" * "1") -> Inserted("a" * "2") -> Value("a") -> (
+        * None => TestResult { False() -> TestResult("key a should be present") }
+        * Some<Value> => TestResult {
+            Value
+                -> Eq("2")
+                -> TestResult("re-inserting a key overwrites its value")
+        }
+    )
+}
+
+testMapRemoved = () => TestResult {
+    Map()
+        -> Inserted("a" * "1")
+        -> Inserted("b" * "2")
+        -> Removed("a")
+        -> Keys
+        -> Json
+        -> Eq("[b]")
+        -> TestResult("Removed drops the given key")
+}
+
+testMapValueAbsent = () => TestResult {
+    Map() -> Inserted("a" * "1") -> Value("z") -> (
+        * None => TestResult { True() -> TestResult("missing key yields None") }
+        * Some<Value> => TestResult { False() -> TestResult("key z should be absent") }
+    )
+}
+
+testMapValuePresent = () => TestResult {
+    Map() -> Inserted("a" * "1") -> Value("a") -> (
+        * None => TestResult { False() -> TestResult("key a should be present") }
+        * Some<Value> => TestResult {
+            Value
+                -> Eq("1")
+                -> TestResult("Value reads the inserted value")
+        }
+    )
+}
+
+testMapValuesSorted = () => TestResult {
+    Map()
+        -> Inserted("b" * "2")
+        -> Inserted("a" * "1")
+        -> Values
+        -> Json
+        -> Eq("[1,2]")
+        -> TestResult("Values yields values ordered by key")
 }

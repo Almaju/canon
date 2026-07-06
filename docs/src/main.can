@@ -11,6 +11,7 @@ Update = Page
 Page => Content {
     Page -> (
         * "building-and-running" => Content { BuildingAndRunning() -> Html }
+        * "codegen-gaps" => Content { CodegenGaps() -> Html }
         * "coming-from" => Content { ComingFrom() -> Html }
         * "compilation" => Content { Compilation() -> Html }
         * "contributing" => Content { Contributing() -> Html }
@@ -75,6 +76,7 @@ Page => Html {
             <button data-msg="Nav:markdown-renderer">Markdown</button>
             <button data-msg="Nav:wasi">WASI Interfaces</button>
             <button data-msg="Nav:web-target">The Web Target</button>
+            <button data-msg="Nav:codegen-gaps">Known Codegen Gaps</button>
             <button data-msg="Nav:deploying">Deploying</button>
             <button data-msg="Nav:coming-from">Coming from Another Language</button>
             <div class="sec">Project</div>

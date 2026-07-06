@@ -1,0 +1,41 @@
+name: bench
+
+# Codegen benchmark — a separate, non-gating job.
+#
+# The benchmark (tests/bench/) is an `#[ignore]`d test, so the gating
+# `ci` workflow never runs it. This workflow runs it on demand
+# (workflow_dispatch) and prints the min/median/mean report to the job
+# log. It does not fail on slow numbers — it's a smoke check for
+# spotting a codegen regression, not a threshold gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iters:
+        description: "Timed samples per example (CANON_BENCH_ITERS)"
+        required: false
+        default: "50"
+      warmup:
+        description: "Untimed warmup runs (CANON_BENCH_WARMUP)"
+        required: false
+        default: "5"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    name: bench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: bench
+        env:
+          CANON_BENCH_ITERS: ${{ inputs.iters }}
+          CANON_BENCH_WARMUP: ${{ inputs.warmup }}
+        run: cargo test --release --test bench -- --ignored --nocapture

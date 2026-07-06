@@ -11,7 +11,7 @@ use crate::parser::Parser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 /// Walk `items` and rewrite function-type aliases into real
 /// `Item::Function`s with `extern_wasm` populated, when the file is a
@@ -505,6 +505,11 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         items: ctx.items,
         span,
     };
+    // Dependency inference: supply omitted constructor arguments from the
+    // enclosing scope by type, so capabilities thread down the call tree
+    // without being repeated. Runs before auto-await and the checker so both
+    // see the fully-applied calls. See `docs/src/spec/effects-and-async.md`.
+    crate::checker::dep_infer::transform(&mut module);
     // Auto-await: insert implicit `Expr::Await` nodes wherever a `Future<T>`
     // value is used in a position that expects `T`. Runs before the checker
     // so type comparisons see the post-rewrite tree.
@@ -1826,6 +1831,35 @@ fn load_bundled_source(
     current: &'static BundledFile,
     ctx: &mut LoadCtx,
 ) -> Result<()> {
+    let other_items = parsed_bundled_items(current)?;
+    register_defined_names(&other_items, ctx);
+    discover_bundled_references(&other_items, current, ctx)?;
+    ctx.items.extend(other_items);
+    Ok(())
+}
+
+/// Lex + parse + bind + resolve a bundled file, memoised per file.
+///
+/// Bundled sources are `'static`, and the processing here depends only
+/// on `(current.path, current.source)` — `apply_bindings` seeds its URN
+/// from the path, `resolve_new_syntax` is a pure rewrite, and neither
+/// touches load context. So the finished item list is cached and cloned
+/// on reuse: each stdlib file is lexed/parsed once per process rather
+/// than once per referrer. Under `canon test <dir>` this collapses the
+/// stdlib parse from once-per-test-file to once total. `Item` is cheap
+/// to clone (it's a plain AST), and the cache key pairs the path with
+/// the source pointer so a path collision can never return the wrong
+/// bytes.
+fn parsed_bundled_items(current: &'static BundledFile) -> Result<Vec<Item>> {
+    // Key: (path, source pointer) — see the doc comment above.
+    type Cache = HashMap<(&'static str, usize), Vec<Item>>;
+    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(Cache::new()));
+    let key = (current.path, current.source.as_ptr() as usize);
+    if let Some(items) = cache.lock().unwrap().get(&key) {
+        return Ok(items.clone());
+    }
+
     let mut scanner = Scanner::new(current.source);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
@@ -1837,11 +1871,9 @@ fn load_bundled_source(
     apply_bindings(&mut module.items, seed_urn.as_deref());
     resolve_new_syntax(&mut module);
 
-    let other_items = module.items;
-    register_defined_names(&other_items, ctx);
-    discover_bundled_references(&other_items, current, ctx)?;
-    ctx.items.extend(other_items);
-    Ok(())
+    let items = module.items;
+    cache.lock().unwrap().insert(key, items.clone());
+    Ok(items)
 }
 
 // ---------------------------------------------------------------------------

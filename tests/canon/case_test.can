@@ -1,0 +1,27 @@
+testLowercasedLetters = () => TestResult {
+    "GoodBye"
+        -> Lowercased
+        -> Eq("goodbye")
+        -> TestResult("Lowercased folds A-Z to a-z")
+}
+
+testLowercasedPreservesNonLetters = () => TestResult {
+    "MiXeD 123 !?"
+        -> Lowercased
+        -> Eq("mixed 123 !?")
+        -> TestResult("Lowercased leaves digits and punctuation untouched")
+}
+
+testUppercasedLetters = () => TestResult {
+    "Hello, World"
+        -> Uppercased
+        -> Eq("HELLO, WORLD")
+        -> TestResult("Uppercased folds a-z to A-Z")
+}
+
+testUppercasedPreservesNonLetters = () => TestResult {
+    "MiXeD 123 !?"
+        -> Uppercased
+        -> Eq("MIXED 123 !?")
+        -> TestResult("Uppercased leaves digits and punctuation untouched")
+}

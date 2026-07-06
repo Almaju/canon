@@ -1,0 +1,27 @@
+Db = String
+
+Deep = Unit
+
+Mid = Unit
+
+Shallow = Unit
+
+Db => Deep {
+    "row for "
+        -> Joined(Db.String)
+        -> Print
+}
+
+Db => Mid {
+    Deep()
+}
+
+Db => Shallow {
+    Mid()
+}
+
+Unit => Program {
+    "users-db"
+        -> Db
+        -> Shallow
+}

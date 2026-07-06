@@ -156,7 +156,8 @@ testAddPositive = () => TestResult {
 - Each test ends in a chain that produces a `TestResult` (typically `-> Eq(...) -> TestResult("msg")`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
 - The synthesised `main` is exempt from free-function alphabetical ordering (main is the entry point, distinguished by role).
 - Exit codes are threaded: a failing suite exits 1, a passing one exits 0 (pinned by `tests/exit_code_test.rs::canon_test_exit_codes`). The `tests/canon_tests.rs` harness still parses stdout for `[FAIL]` as a belt-and-braces check.
-- `just test-can` runs the same tests with pretty per-file output (faster local iteration); the canonical CI path is still `cargo test`.
+- `canon test <dir>` runs every `*_test.can` file under a directory in **one process**, sharing the stdlib parse (memoised in `loader::parsed_bundled_items`) and a single wasmtime engine/linker/tokio runtime (`runtime::run_components`) across files — the win is skipping N−1 process/engine spin-ups and N−1 stdlib re-parses. `canon test <file>` keeps the original single-file path. The `tests/canon_tests.rs` harness invokes the directory mode once; a per-file compile failure is isolated (printed, counted, batch continues).
+- `just test-can` runs the same tests via `canon test tests/canon` — per-file headers plus a closing summary (faster local iteration); the canonical CI path is still `cargo test`.
 
 ### Examples are not tests
 
@@ -166,38 +167,16 @@ Most example-shaped tests (small deterministic programs that exercise one langua
 
 ### Known codegen gaps
 
-The checker accepts more than the codegen implements. These features
-parse and typecheck (some are pinned by `tests/checker/ok/`) but don't
-run yet — each is a self-contained PR:
-
-- **Binding declarations returning `list<T>` for non-string `T`** — the
-  byte-packed canonical-ABI element layout needs per-width read-back;
-  `List<String>` returns already work.
-- **Sub-u64 ints (`u8`/`u16`/`u32`/`s8`/`s16`/`s32`) inside a compound
-  WIT shape** (`option`/`list`/`variant`/record param). Top-level and
-  record-of-scalars *returns* are handled.
-- **WIT `result` with no payloads** in binding declarations (the bare
-  `result;` form lowers to a discriminant-only shape the codegen renders
-  as `u32`).
-- **Non-string `option<T>` extern returns** (no indirect-return decode).
-- **WIT `resource` / `own<T>` / `borrow<T>` in binding
-  signatures** — bindgen emits the resource *types* as `Foo = Handle`
-  newtypes but skips every method / constructor / static and any
-  function whose signature transitively mentions a handle.
-- **`At(i)` / `First` on `List<String>`, nested `Mapped`** —
-  `Ty::List` erases the element type at codegen; threading it is the
-  enabling refactor.
-- **HTTP handler request headers + body** — the handler body compiles
-  fully (dynamic status, dispatch, string bodies), and `method()` /
-  `path()` land, but reading request *headers* and *body* is not wired
-  up. HTTP programs also can't use non-`wasi:http` extern imports (the
-  `wasi:http/service` world can't satisfy `canon:builtins/*` bridges).
-- **`Stream<T>` lowering + streaming response bodies** — the stdlib
-  combinator surface and checker support exist, but codegen drops
-  imports whose signatures mention `Stream<T>`, so such programs fail to
-  link. The enabling move is routing Stream-using programs through
-  `wit_component::ComponentEncoder` instead of the hand-rolled
-  `wasm-encoder` type section.
+The checker accepts more than the codegen implements: a handful of
+features parse and typecheck (some pinned by `tests/checker/ok/`) but
+fail at `canon build`. The canonical list lives in
+`docs/src/reference/codegen-gaps.md`, mirrored by the single-source-of-truth
+`CODEGEN_GAPS` table in `src/checker/mod.rs`. When a program *reaches* one
+of the statically-detectable gaps (binding `list<T>`/`option<T>` returns for
+non-string `T`, `Stream<T>` in a signature), the checker emits a non-fatal
+**warning** pointing at that page — a heads-up before the build fails. Add a
+new gap in both places (a `tests/codegen_gaps.rs` test pins them together);
+don't re-inline the list here.
 
 ### Gotchas
 
