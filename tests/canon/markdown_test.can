@@ -6,6 +6,14 @@ testMarkdownBlockquote = () => TestResult {
         -> TestResult("Markdown renders a leading > line as a blockquote")
 }
 
+testMarkdownBold = () => TestResult {
+    "a **bold** word"
+        -> Markdown
+        -> Html
+        -> Eq("<p>a <strong>bold</strong> word</p>")
+        -> TestResult("Markdown renders double-star text as strong")
+}
+
 testMarkdownEscapesInline = () => TestResult {
     "a < b"
         -> Markdown
@@ -28,6 +36,30 @@ testMarkdownHeading = () => TestResult {
         -> Html
         -> Eq("<h1>Hello</h1>")
         -> TestResult("Markdown renders a leading # as an h1")
+}
+
+testMarkdownHeadingH2 = () => TestResult {
+    "## Hello"
+        -> Markdown
+        -> Html
+        -> Eq("<h2>Hello</h2>")
+        -> TestResult("Markdown renders a leading ## as an h2")
+}
+
+testMarkdownHeadingH3 = () => TestResult {
+    "### Hello"
+        -> Markdown
+        -> Html
+        -> Eq("<h3>Hello</h3>")
+        -> TestResult("Markdown renders a leading ### as an h3")
+}
+
+testMarkdownInlineCode = () => TestResult {
+    "an `inline` code"
+        -> Markdown
+        -> Html
+        -> Eq("<p>an <code>inline</code> code</p>")
+        -> TestResult("Markdown renders backtick text as code")
 }
 
 testMarkdownItalic = () => TestResult {
