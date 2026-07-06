@@ -305,6 +305,13 @@ struct LoadCtx {
     /// mutually-referencing files don't chase each other. Reference
     /// discovery consults this set before searching any root.
     defined: HashSet<String>,
+    /// Subset of `defined` limited to *type* declarations. A prelude
+    /// module (`Html`, `Json`, `Int`) is skipped only when its name is a
+    /// user-defined **type** — not merely when something *constructs* it
+    /// (`Model => Html` registers the function name `Html`, but does not
+    /// redefine the prelude type). Keeping the type view separate avoids a
+    /// constructor of `Html` suppressing the `html.can` auto-load.
+    defined_types: HashSet<String>,
     /// Lazily-built recursive file-stem indexes for local project trees,
     /// keyed by the directory the scan was rooted at. See
     /// `local_stem_index`.
@@ -385,6 +392,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         defined: HashSet::new(),
+        defined_types: HashSet::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
@@ -532,7 +540,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
 /// `.Json()` call. Skipped when the file defines `Json` itself or the
 /// module already loaded a `Json` definition.
 fn inject_json_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
-    let already_in_scope = ctx.defined.contains("Json")
+    let already_in_scope = ctx.defined_types.contains("Json")
         || other_items.iter().any(|item| match item {
             Item::TypeDef(td) => td.name.name == "Json",
             Item::Function(f) => f.name.name == "Json" && f.extern_wasm.is_some(),
@@ -569,7 +577,7 @@ fn items_use_json_machinery(items: &[Item]) -> bool {
 /// when the file defines `Html` itself or the module already loaded an
 /// `Html` definition.
 fn inject_html_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
-    let already_in_scope = ctx.defined.contains("Html")
+    let already_in_scope = ctx.defined_types.contains("Html")
         || other_items.iter().any(|item| match item {
             Item::TypeDef(td) => td.name.name == "Html",
             Item::Function(f) => f.name.name == "Html" && f.extern_wasm.is_some(),
@@ -801,6 +809,7 @@ fn register_defined_names(items: &[Item], ctx: &mut LoadCtx) {
         match item {
             Item::TypeDef(td) => {
                 ctx.defined.insert(td.name.name.clone());
+                ctx.defined_types.insert(td.name.name.clone());
             }
             Item::Function(f) => {
                 ctx.defined.insert(f.name.name.clone());
@@ -1413,6 +1422,7 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         defined: HashSet::new(),
+        defined_types: HashSet::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
