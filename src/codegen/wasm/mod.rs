@@ -34,6 +34,7 @@ use crate::ast::{
 };
 
 mod component;
+mod literals;
 
 // ── Memory constants ──────────────────────────────────────────────────────────
 const MEM_INT_BUF_END: u32 = 32; // '\n' lives at this byte
@@ -3559,7 +3560,7 @@ impl<'m> WasmGen<'m> {
                     f.instruction(&Instruction::I32Const(len as i32));
                     Ty::Str
                 } else {
-                    let chain = json_lit_to_concat_chain(parts, *span);
+                    let chain = literals::json_lit_to_concat_chain(parts, *span);
                     self.compile_expr(&chain, scope, f)
                 }
             }
@@ -3589,7 +3590,7 @@ impl<'m> WasmGen<'m> {
                     f.instruction(&Instruction::I32Const(len as i32));
                     Ty::Str
                 } else {
-                    let chain = html_lit_to_concat_chain(parts, *span);
+                    let chain = literals::html_lit_to_concat_chain(parts, *span);
                     self.compile_expr(&chain, scope, f)
                 }
             }
@@ -9025,115 +9026,6 @@ pub(super) fn generate_http_core_module(module: &OModule) -> Vec<u8> {
 pub fn generate_web_core_module(module: &OModule) -> Vec<u8> {
     let mut gen = WasmGen::new_web(module);
     gen.compile_web()
-}
-
-// ── Arm-type helpers ──────────────────────────────────────────────────────────
-
-/// Size in bytes of the ret-area an async-lowered call writes its result
-/// into. The layout matches what the canonical ABI's async lower
-/// expects: a single packed value at offset 0, aligned to its natural
-/// boundary. Returns a multiple of 4 so the bump allocator's 4-byte
-/// alignment is sufficient.
-/// Lower a `JsonLit { parts }` into the equivalent left-associative
-/// `String.concat` chain over `StringLit` (Static parts) and `.ToJson()`
-/// method calls (Interp parts). The result is a normal `Expr` the
-/// codegen can compile via its existing machinery — no JsonLit-specific
-/// instructions to lower below this point.
-///
-/// Example: `{"k": foo}` (parts = [Static(`{"k":`), Interp(foo), Static(`}`)])
-///
-///   → `"{\"k\":".concat(foo.ToJson()).concat("}")`
-fn json_lit_to_concat_chain(parts: &[crate::ast::JsonLitPart], span: crate::error::Span) -> Expr {
-    use crate::ast::{Ident, JsonLitPart};
-    let part_exprs: Vec<Expr> = parts
-        .iter()
-        .map(|p| match p {
-            JsonLitPart::Static(s) => Expr::StringLit {
-                value: s.clone(),
-                span,
-            },
-            JsonLitPart::Interp(e) => Expr::MethodCall {
-                receiver: e.clone(),
-                method: Ident {
-                    name: "ToJson".to_string(),
-                    span,
-                },
-                args: vec![],
-                piped: false,
-                span,
-            },
-        })
-        .collect();
-
-    let mut iter = part_exprs.into_iter();
-    // Parser invariant: parts is never empty (always starts with the
-    // opening `{` or `[` as a Static).
-    let mut acc = iter.next().expect("JsonLit parts must be non-empty");
-    for next in iter {
-        acc = Expr::MethodCall {
-            receiver: Box::new(acc),
-            method: Ident {
-                name: "concat".to_string(),
-                span,
-            },
-            args: vec![next],
-            piped: false,
-            span,
-        };
-    }
-    acc
-}
-
-/// Lower an `HtmlLit { parts }` into the equivalent left-associative
-/// `String.concat` chain over `StringLit` (Static parts) and
-/// `.ToHtml()` method calls (Interp parts) — the exact HTML analogue of
-/// `json_lit_to_concat_chain` above. `ToHtml` dispatches on the
-/// interpolated value's type: `String` and `Int` escape through the
-/// stdlib's `text()`, `Html` passes through unchanged.
-///
-/// Example: `<li>{name}</li>` (parts = [Static(`<li>`), Interp(name),
-/// Static(`</li>`)])
-///
-///   → `"<li>".concat(name.ToHtml()).concat("</li>")`
-fn html_lit_to_concat_chain(parts: &[crate::ast::HtmlLitPart], span: crate::error::Span) -> Expr {
-    use crate::ast::{HtmlLitPart, Ident};
-    let part_exprs: Vec<Expr> = parts
-        .iter()
-        .map(|p| match p {
-            HtmlLitPart::Static(s) => Expr::StringLit {
-                value: s.clone(),
-                span,
-            },
-            HtmlLitPart::Interp(e) => Expr::MethodCall {
-                receiver: e.clone(),
-                method: Ident {
-                    name: "ToHtml".to_string(),
-                    span,
-                },
-                args: vec![],
-                piped: false,
-                span,
-            },
-        })
-        .collect();
-
-    let mut iter = part_exprs.into_iter();
-    // Parser invariant: parts is never empty (the literal's opening
-    // tag is always a Static).
-    let mut acc = iter.next().expect("HtmlLit parts must be non-empty");
-    for next in iter {
-        acc = Expr::MethodCall {
-            receiver: Box::new(acc),
-            method: Ident {
-                name: "concat".to_string(),
-                span,
-            },
-            args: vec![next],
-            piped: false,
-            span,
-        };
-    }
-    acc
 }
 
 fn ret_area_size_for(ty: &Ty) -> u32 {
