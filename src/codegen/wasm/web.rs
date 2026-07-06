@@ -435,7 +435,11 @@ impl<'m> WasmGen<'m> {
     }
 
     /// `update(model: i64, msg_ptr: i32, msg_len: i32) -> i64`.
-    pub(super) fn build_web_update_wrapper(&self, update_idx: u32, shape: WebModelShape) -> Function {
+    pub(super) fn build_web_update_wrapper(
+        &self,
+        update_idx: u32,
+        shape: WebModelShape,
+    ) -> Function {
         let mut f = Function::new([(3, ValType::I32)]); // locals 3..5 after params
         self.emit_web_model_unwrap(&mut f, shape, 0, 3);
         f.instruction(&Instruction::LocalGet(1));

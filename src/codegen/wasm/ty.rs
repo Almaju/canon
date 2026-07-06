@@ -65,7 +65,10 @@ pub(super) fn prim_size_align(p: wasm_encoder::PrimitiveValType) -> (u32, u32) {
     }
 }
 
-pub(super) fn scalar_val_type_to_primitive(vt: ValType, signed: bool) -> wasm_encoder::PrimitiveValType {
+pub(super) fn scalar_val_type_to_primitive(
+    vt: ValType,
+    signed: bool,
+) -> wasm_encoder::PrimitiveValType {
     use wasm_encoder::PrimitiveValType;
     match vt {
         ValType::I32 if signed => PrimitiveValType::S32,
@@ -81,7 +84,10 @@ pub(super) fn scalar_val_type_to_primitive(vt: ValType, signed: bool) -> wasm_en
 /// Coarse mapping from a Canon type expression to its WASM stack types.
 /// Mirrors the `Ty::val_types` logic for the cases that show up in extern
 /// declarations (scalars, strings, Unit, products of those).
-pub(super) fn type_expr_val_types(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> Vec<ValType> {
+pub(super) fn type_expr_val_types(
+    ty: &TypeExpr,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> Vec<ValType> {
     match ty {
         TypeExpr::Named { name, .. } => resolve_name_val_types(name, type_defs),
         TypeExpr::Product { fields, .. } => {
@@ -99,7 +105,10 @@ pub(super) fn type_expr_val_types(ty: &TypeExpr, type_defs: &HashMap<String, Typ
 
 /// Resolves a named type to its WASM stack types, walking through any
 /// user-defined aliases. Bounded depth keeps us safe against cycles.
-pub(super) fn resolve_name_val_types(name: &str, type_defs: &HashMap<String, TypeExpr>) -> Vec<ValType> {
+pub(super) fn resolve_name_val_types(
+    name: &str,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> Vec<ValType> {
     fn go(name: &str, type_defs: &HashMap<String, TypeExpr>, depth: u32) -> Vec<ValType> {
         if depth > 20 {
             return vec![ValType::I32];

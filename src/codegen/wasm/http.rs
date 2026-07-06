@@ -101,7 +101,12 @@ impl<'m> WasmGen<'m> {
         }
     }
 
-    pub(super) fn build_http_response(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn build_http_response(
+        &mut self,
+        args: &[Expr],
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         let mem = MemArg {
             offset: 0,
             align: 2,

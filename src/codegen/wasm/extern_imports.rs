@@ -224,7 +224,10 @@ pub(super) fn is_self_ctor(func: &FunctionDef) -> bool {
 /// Computes the WASM parameter types for a function. The receiver counts as
 /// a runtime parameter *except* for `Self`-renamed constructors, where it's
 /// purely a type-level marker.
-pub(super) fn func_wasm_params_for(func: &FunctionDef, type_defs: &HashMap<String, TypeExpr>) -> Vec<ValType> {
+pub(super) fn func_wasm_params_for(
+    func: &FunctionDef,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> Vec<ValType> {
     let mut out = Vec::new();
     if let Some(recv) = &func.receiver {
         if !is_self_ctor(func) {
@@ -485,4 +488,3 @@ pub(super) struct ExternImport {
     /// compiled function).
     pub(super) func_idx: u32,
 }
-

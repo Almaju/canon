@@ -1420,7 +1420,12 @@ impl<'m> WasmGen<'m> {
     // ── Expression compilation ─────────────────────────────────────────────────
 
     /// Compile a block, leaving the last expression's value on the stack.
-    pub(super) fn compile_block_return(&mut self, block: &Block, scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn compile_block_return(
+        &mut self,
+        block: &Block,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         let n = block.exprs.len();
         for expr in &block.exprs[..n.saturating_sub(1)] {
             let ty = self.compile_expr(expr, scope, f);
@@ -2169,7 +2174,12 @@ impl<'m> WasmGen<'m> {
         Ty::NamedPtr("Option".to_string())
     }
 
-    pub(super) fn build_option_some(&mut self, payload_ty: Ty, scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn build_option_some(
+        &mut self,
+        payload_ty: Ty,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         // payload is on stack; save in tmp
         self.save_to_scratch(payload_ty.clone(), scope, f);
         // alloc 12 bytes
@@ -2192,7 +2202,12 @@ impl<'m> WasmGen<'m> {
         Ty::NamedPtr("Option".to_string())
     }
 
-    pub(super) fn build_result_ok(&mut self, payload_ty: Ty, scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn build_result_ok(
+        &mut self,
+        payload_ty: Ty,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         self.save_to_scratch(payload_ty.clone(), scope, f);
         f.instruction(&Instruction::I32Const(12));
         f.instruction(&Instruction::Call(self.fn_alloc));
@@ -2211,7 +2226,12 @@ impl<'m> WasmGen<'m> {
         Ty::NamedPtr("Result".to_string())
     }
 
-    pub(super) fn build_result_err(&mut self, payload_ty: Ty, scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn build_result_err(
+        &mut self,
+        payload_ty: Ty,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         self.save_to_scratch(payload_ty.clone(), scope, f);
         f.instruction(&Instruction::I32Const(12));
         f.instruction(&Instruction::Call(self.fn_alloc));
@@ -2757,7 +2777,12 @@ impl<'m> WasmGen<'m> {
     /// describe lists of any of the above types; downstream methods
     /// dispatch on a `Ty::List` receiver and read back according to the
     /// expected element shape (see `compile_builtin_method`).
-    pub(super) fn build_list_literal(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn build_list_literal(
+        &mut self,
+        args: &[Expr],
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         // `List(a * b * c)` — the elements arrive as one product now that
         // comma argument lists are gone; flatten it to the element list.
         // A single non-product element (`List("x")`) stays one element.
@@ -3411,7 +3436,12 @@ impl<'m> WasmGen<'m> {
     ///    ret-area.
     /// 4. **Decode result** from the ret-area according to
     ///    `info.result_ty`.
-    pub(super) fn emit_async_call(&mut self, info: &FuncInfo, scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn emit_async_call(
+        &mut self,
+        info: &FuncInfo,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         let has_result = !matches!(info.result_ty, Ty::Unit);
         if has_result {
             // Allocate ret-area, save its ptr, and push it as the last arg.
@@ -3672,7 +3702,12 @@ impl<'m> WasmGen<'m> {
     /// Both args must call async externs returning the same payload type.
     /// The result type is `Ty::List`. Today only `Ty::Str` / `Ty::NamedStr`
     /// element shapes are decoded; other shapes trap.
-    pub(super) fn compile_parallel(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn compile_parallel(
+        &mut self,
+        args: &[Expr],
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         if args.len() != 2 {
             // Surface error: parallel expects exactly two args. The
             // checker doesn't yet validate arity for synthetic combinators.
@@ -3845,7 +3880,12 @@ impl<'m> WasmGen<'m> {
     ///
     /// Today only `Ty::Str` / `Ty::NamedStr` element shapes are decoded;
     /// other shapes trap.
-    pub(super) fn compile_race(&mut self, args: &[Expr], scope: &LocalScope, f: &mut Function) -> Ty {
+    pub(super) fn compile_race(
+        &mut self,
+        args: &[Expr],
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
         if args.len() != 2 {
             f.instruction(&Instruction::Unreachable);
             return Ty::Str;
@@ -5794,7 +5834,13 @@ impl<'m> WasmGen<'m> {
         }
     }
 
-    pub(super) fn store_value_at_offset(&self, offset: u32, repr: &Ty, scope: &LocalScope, f: &mut Function) {
+    pub(super) fn store_value_at_offset(
+        &self,
+        offset: u32,
+        repr: &Ty,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) {
         self.store_payload_at_offset(offset, repr, scope, f);
     }
 

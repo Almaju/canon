@@ -761,7 +761,6 @@ impl<'m> WasmGen<'m> {
         self.user_type_map.insert(key, idx);
         idx
     }
-
 }
 
 // ── Validation ─────────────────────────────────────────────────────────────────
