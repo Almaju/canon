@@ -2741,6 +2741,8 @@ impl<'m> WasmGen<'m> {
     }
 
     fn build_print_bool(&self) -> Function {
+        // invariant: `collect_all_strings` unconditionally interns the
+        // "False"/"True" literals before any function body is built.
         let (fp, fl) = self.strings.get("False").expect("False interned");
         let (tp, tl) = self.strings.get("True").expect("True interned");
         let mut f = Function::new([]);
@@ -6229,6 +6231,8 @@ impl<'m> WasmGen<'m> {
                 vec![ValType::I32, ValType::I32, ValType::I32],
             ))
             .copied()
+            // invariant: `compile()` reserves this (i32,i32,i32)->(i32,i32,i32)
+            // loop type in `user_type_map` before any list-map is compiled.
             .expect("list-map loop type reserved in compile()");
         let mem64 = MemArg {
             offset: 0,
@@ -8178,6 +8182,8 @@ impl<'m> WasmGen<'m> {
             let type_idx = *self
                 .user_type_map
                 .get(&(ext.params.clone(), ext.results.clone()))
+                // invariant: `assign_func_indices` registers every extern
+                // import's (params, results) signature in `user_type_map`.
                 .expect("extern import type was added during assign_func_indices");
             imports.import(
                 &ext.core_namespace,
@@ -8401,6 +8407,8 @@ impl<'m> WasmGen<'m> {
                 }
                 _ => None,
             })
+            // invariant: the checker only selects the HTTP encoder mode when a
+            // `Request => Response` entry is present, so one exists here.
             .expect("checker guarantees an HTTP entry exists");
         let user_fn_idx = self
             .func_table
@@ -8659,6 +8667,8 @@ impl<'m> WasmGen<'m> {
         self.build_variant_info();
         self.collect_all_strings();
         self.assign_func_indices();
+        // invariant: the checker only selects the web encoder mode when the
+        // Elm triple (`Model => Html` view + `init`/`update`) is present.
         let web = crate::ast::find_web_entry(&self.ast.items)
             .expect("checker guarantees a web entry exists");
         let model = web.model;
@@ -8692,16 +8702,20 @@ impl<'m> WasmGen<'m> {
             .func_table
             .get(&web.init)
             .cloned()
+            // invariant: `find_web_entry` returns func-table keys registered by
+            // `assign_func_indices`, so the triple's entries are always present.
             .expect("web entry `init` missing from func table");
         let update_info = self
             .func_table
             .get(&web.update)
             .cloned()
+            // invariant: see `init` above — `find_web_entry` keys are registered.
             .expect("web entry `update` missing from func table");
         let view_info = self
             .func_table
             .get(&web.view)
             .cloned()
+            // invariant: see `init` above — `find_web_entry` keys are registered.
             .expect("web entry `view` missing from func table");
         let sig_of = |type_idx: u32| -> &(Vec<ValType>, Vec<ValType>) {
             &self.user_type_sigs[(type_idx - TY_USER_START) as usize]

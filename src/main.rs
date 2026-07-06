@@ -634,11 +634,10 @@ fn cmd_bindgen(args: &[String]) {
                 process::exit(1);
             }
             other => {
-                if input.is_some() {
+                if let Some(existing) = input.as_deref() {
                     eprintln!(
                         "error: multiple input paths given ('{}' and '{}')",
-                        input.as_deref().unwrap(),
-                        other
+                        existing, other
                     );
                     process::exit(1);
                 }
@@ -705,11 +704,10 @@ fn cmd_install(args: &[String]) {
                 process::exit(1);
             }
             other => {
-                if target.is_some() {
+                if let Some(existing) = target.as_deref() {
                     eprintln!(
                         "error: multiple targets given ('{}' and '{}')",
-                        target.as_deref().unwrap(),
-                        other
+                        existing, other
                     );
                     process::exit(1);
                 }
@@ -801,11 +799,10 @@ fn cmd_publish(args: &[String]) {
                 process::exit(1);
             }
             other => {
-                if spec_arg.is_some() {
+                if let Some(existing) = spec_arg.as_deref() {
                     eprintln!(
                         "error: multiple specs given ('{}' and '{}')",
-                        spec_arg.as_deref().unwrap(),
-                        other
+                        existing, other
                     );
                     process::exit(1);
                 }
