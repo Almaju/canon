@@ -3,26 +3,35 @@ name: canon-tests
 on:
   push:
     branches: [main]
-    paths:
-      - "packages/canon/std/**"
-      - "tests/canon/**"
-      - "src/**"
-      - "justfile"
-      - ".github/workflows/canon-tests.yml"
   pull_request:
-    paths:
-      - "packages/canon/std/**"
-      - "tests/canon/**"
-      - "src/**"
-      - "justfile"
-      - ".github/workflows/canon-tests.yml"
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - "packages/canon/std/**"
+              - "tests/canon/**"
+              - "src/**"
+              - "justfile"
+              - ".github/workflows/canon-tests.yml"
+
   canon-tests:
     name: canon-tests
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
