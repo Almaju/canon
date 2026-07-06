@@ -407,7 +407,7 @@ The assertion *is* the `TestResult` constructor
 ([Types-Only Canon](../spec/types-only.md)): a `Bool` and a message
 construct a `Pass` or a `Fail`.
 
-`canon test <file>` discovers every `() -> TestResult` function in the
+`canon test <file>` discovers every `() => TestResult` function in the
 entry file and runs them, printing `[ ok ] testName` or
 `[FAIL] testName: message` per test.
 
