@@ -13,8 +13,9 @@ cursor, recursion in place of loops.
 `Markdown` is a `String` newtype. Piping it to `Html` runs the renderer:
 
 ```canon
-Unit => Program {
+Args => Exit {
     "# Canon Docs\nRendered by Canon itself.\n\n## Why\nThe docs compile through the same pipeline as programs." -> Markdown -> Html -> Print
+    0 -> Exit
 }
 ```
 
@@ -28,8 +29,9 @@ Because `File` reads a document as a `String` (see [Using WASI
 Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
-Unit => Program {
-    "notes.md" -> Path -> File? -> Read? -> Markdown -> Html -> Print
+Args => Exit {
+    "notes.md" -> Path -> File? .read()? -> Markdown -> Html -> Print
+    0 -> Exit
 }
 ```
 
@@ -44,8 +46,9 @@ baked in at compile time.
 Given `intro.md` beside your source, `Intro` names it:
 
 ```canon
-Unit => Program {
+Args => Exit {
     Intro() -> Html -> Print
+    0 -> Exit
 }
 ```
 
