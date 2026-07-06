@@ -1,5 +1,7 @@
 BracketClose = Int
 
+DigitRun = Int
+
 FenceBody = Frag
 
 FenceEnd = Int
@@ -12,11 +14,19 @@ HeadingHtml = Frag
 
 Inline = Frag
 
+IsBlockStart = Bool
+
 IsFence = Bool
+
+IsHeading = Bool
 
 IsItem = Bool
 
+IsOrdered = Bool
+
 IsPara = Bool
+
+IsQuote = Bool
 
 LineEnd = Int
 
@@ -26,11 +36,19 @@ ListItems = Frag
 
 Markdown = String
 
+OrderedEnd = Int
+
+OrderedItems = Frag
+
 ParaBody = Frag
 
 ParaEnd = Int
 
 ParenClose = Int
+
+QuoteBody = Frag
+
+QuoteEnd = Int
 
 RenderedBlocks = Frag
 
@@ -42,9 +60,15 @@ RenderedList = Frag
 
 RenderedNonList = Frag
 
+RenderedOrdered = Frag
+
 RenderedParagraph = Frag
 
+RenderedQuote = Frag
+
 StarClose = Int
+
+StarOneClose = Int
 
 TickClose = Int
 
@@ -57,6 +81,18 @@ Int * String => BracketClose {
             )
         }
         * True => BracketClose { Int }
+    )
+}
+
+Int * String => DigitRun {
+    Int -> Gt(String -> Length) -> (
+        * False => DigitRun {
+            String -> ByteAt(Int) -> Ge(48) -> And(String -> ByteAt(Int) -> Le(57)) -> (
+                * False => DigitRun { 0 }
+                * True => DigitRun { Int -> Sum(1) -> DigitRun(String) -> Sum(1) }
+            )
+        }
+        * True => DigitRun { 0 }
     )
 }
 
@@ -176,7 +212,20 @@ Int * String => Inline {
                                 * False => Inline {
                                     String -> ByteAt(Int -> Sum(1)) -> Eq(42) -> (
                                         * False => Inline {
-                                            "*" -> Joined(Int -> Sum(1) -> Inline(String))
+                                            Int
+                                                -> Sum(1)
+                                                -> StarOneClose(String)
+                                                -> Gt(String -> Length) -> (
+                                                * False => Inline {
+                                                    "<em>"
+                                                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> StarOneClose(String) -> Difference(1) -> To)))
+                                                        -> Joined("</em>")
+                                                        -> Joined(Int -> Sum(1) -> StarOneClose(String) -> Sum(1) -> Inline(String))
+                                                }
+                                                * True => Inline {
+                                                    "*" -> Joined(Int -> Sum(1) -> Inline(String))
+                                                }
+                                            )
                                         }
                                         * True => Inline {
                                             "<strong>"
@@ -203,6 +252,15 @@ Int * String => Inline {
     )
 }
 
+Int * String => IsBlockStart {
+    Int
+        -> IsFence(String)
+        -> Or(Int -> IsHeading(String))
+        -> Or(Int -> IsItem(String))
+        -> Or(Int -> IsOrdered(String))
+        -> Or(Int -> IsQuote(String))
+}
+
 Int * String => IsFence {
     Int -> Sum(2) -> Gt(String -> Length) -> (
         * False => IsFence {
@@ -220,6 +278,22 @@ Int * String => IsFence {
     )
 }
 
+Int * String => IsHeading {
+    String -> ByteAt(Int) -> Eq(35) -> (
+        * False => IsHeading { False() }
+        * True => IsHeading {
+            Int -> Sum(Int -> HashCount(String)) -> Gt(String -> Length) -> (
+                * False => IsHeading {
+                    String
+                        -> ByteAt(Int -> Sum(Int -> HashCount(String)))
+                        -> Eq(32)
+                }
+                * True => IsHeading { False() }
+            )
+        }
+    )
+}
+
 Int * String => IsItem {
     Int -> Sum(1) -> Gt(String -> Length) -> (
         * False => IsItem {
@@ -232,44 +306,53 @@ Int * String => IsItem {
     )
 }
 
+Int * String => IsOrdered {
+    Int -> Gt(String -> Length) -> (
+        * False => IsOrdered {
+            String -> ByteAt(Int) -> Ge(48) -> And(String -> ByteAt(Int) -> Le(57)) -> (
+                * False => IsOrdered { False() }
+                * True => IsOrdered {
+                    Int -> Sum(Int -> DigitRun(String)) -> Sum(1) -> Gt(String -> Length) -> (
+                        * False => IsOrdered {
+                            String -> ByteAt(Int -> Sum(Int -> DigitRun(String))) -> Eq(46) -> (
+                                * False => IsOrdered { False() }
+                                * True => IsOrdered {
+                                    String
+                                        -> ByteAt(Int -> Sum(Int -> DigitRun(String)) -> Sum(1))
+                                        -> Eq(32)
+                                }
+                            )
+                        }
+                        * True => IsOrdered { False() }
+                    )
+                }
+            )
+        }
+        * True => IsOrdered { False() }
+    )
+}
+
 Int * String => IsPara {
     Int -> Gt(String -> Length) -> (
         * False => IsPara {
             String -> ByteAt(Int) -> Eq(10) -> (
-                * False => IsPara {
-                    Int -> IsItem(String) -> (
-                        * False => IsPara {
-                            Int -> IsFence(String) -> (
-                                * False => IsPara {
-                                    String -> ByteAt(Int) -> Eq(35) -> (
-                                        * False => IsPara { True() }
-                                        * True => IsPara {
-                                            Int
-                                                -> Sum(Int -> HashCount(String))
-                                                -> Gt(String -> Length) -> (
-                                                * False => IsPara {
-                                                    String
-                                                        -> ByteAt(Int -> Sum(Int -> HashCount(String)))
-                                                        -> Eq(32) -> (
-                                                        * False => IsPara { True() }
-                                                        * True => IsPara { False() }
-                                                    )
-                                                }
-                                                * True => IsPara { True() }
-                                            )
-                                        }
-                                    )
-                                }
-                                * True => IsPara { False() }
-                            )
-                        }
-                        * True => IsPara { False() }
-                    )
-                }
+                * False => IsPara { Int -> IsBlockStart(String) -> Not }
                 * True => IsPara { False() }
             )
         }
         * True => IsPara { False() }
+    )
+}
+
+Int * String => IsQuote {
+    Int -> Sum(1) -> Gt(String -> Length) -> (
+        * False => IsQuote {
+            String -> ByteAt(Int) -> Eq(62) -> (
+                * False => IsQuote { False() }
+                * True => IsQuote { String -> ByteAt(Int -> Sum(1)) -> Eq(32) }
+            )
+        }
+        * True => IsQuote { False() }
     )
 }
 
@@ -311,6 +394,35 @@ Int * String => ListItems {
     )
 }
 
+Int * String => OrderedEnd {
+    Int -> IsOrdered(String) -> (
+        * False => OrderedEnd { Int }
+        * True => OrderedEnd { Int -> LineEnd(String) -> Sum(1) -> OrderedEnd(String) }
+    )
+}
+
+Int * String => OrderedItems {
+    Int -> IsOrdered(String) -> (
+        * False => OrderedItems { "" }
+        * True => OrderedItems {
+            Int
+                -> Sum(Int -> DigitRun(String))
+                -> Sum(2)
+                -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+                * False => OrderedItems {
+                    "<li>"
+                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(Int -> DigitRun(String)) -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
+                        -> Joined("</li>")
+                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String))
+                }
+                * True => OrderedItems {
+                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String))
+                }
+            )
+        }
+    )
+}
+
 Int * String => ParaBody {
     1
         -> Inline(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To))
@@ -336,6 +448,31 @@ Int * String => ParenClose {
     )
 }
 
+Int * String => QuoteBody {
+    Int -> Sum(2) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+        * False => QuoteBody {
+            1
+                -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> ( * False => Frag { "" } * True => Frag { " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String)) }))
+        }
+        * True => QuoteBody {
+            Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> (
+                * False => QuoteBody { "" }
+                * True => QuoteBody {
+                    " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String))
+                }
+            )
+        }
+    )
+}
+
+Int * String => QuoteEnd {
+    Int -> IsQuote(String) -> (
+        * False => QuoteEnd { Int }
+        * True => QuoteEnd { Int -> LineEnd(String) -> Sum(1) -> QuoteEnd(String) }
+    )
+}
+
 Int * String => RenderedBlocks {
     Int -> Gt(String -> Length) -> (
         * False => RenderedBlocks {
@@ -343,9 +480,23 @@ Int * String => RenderedBlocks {
                 * False => RenderedBlocks {
                     Int -> IsFence(String) -> (
                         * False => RenderedBlocks {
-                            Int -> IsItem(String) -> (
-                                * False => RenderedBlocks { Int -> RenderedNonList(String) }
-                                * True => RenderedBlocks { Int -> RenderedList(String) }
+                            Int -> IsQuote(String) -> (
+                                * False => RenderedBlocks {
+                                    Int -> IsItem(String) -> (
+                                        * False => RenderedBlocks {
+                                            Int -> IsOrdered(String) -> (
+                                                * False => RenderedBlocks {
+                                                    Int -> RenderedNonList(String)
+                                                }
+                                                * True => RenderedBlocks {
+                                                    Int -> RenderedOrdered(String)
+                                                }
+                                            )
+                                        }
+                                        * True => RenderedBlocks { Int -> RenderedList(String) }
+                                    )
+                                }
+                                * True => RenderedBlocks { Int -> RenderedQuote(String) }
                             )
                         }
                         * True => RenderedBlocks { Int -> RenderedFence(String) }
@@ -406,11 +557,25 @@ Int * String => RenderedNonList {
     )
 }
 
+Int * String => RenderedOrdered {
+    "<ol>"
+        -> Joined(Int -> OrderedItems(String))
+        -> Joined("</ol>")
+        -> Joined(Int -> OrderedEnd(String) -> RenderedBlocks(String))
+}
+
 Int * String => RenderedParagraph {
     "<p>"
         -> Joined(Int -> ParaBody(String))
         -> Joined("</p>")
         -> Joined(Int -> ParaEnd(String) -> RenderedBlocks(String))
+}
+
+Int * String => RenderedQuote {
+    "<blockquote>"
+        -> Joined(Int -> QuoteBody(String))
+        -> Joined("</blockquote>")
+        -> Joined(Int -> QuoteEnd(String) -> RenderedBlocks(String))
 }
 
 Int * String => StarClose {
@@ -427,6 +592,18 @@ Int * String => StarClose {
             )
         }
         * True => StarClose { Int }
+    )
+}
+
+Int * String => StarOneClose {
+    Int -> Gt(String -> Length) -> (
+        * False => StarOneClose {
+            String -> ByteAt(Int) -> Eq(42) -> (
+                * False => StarOneClose { Int -> Sum(1) -> StarOneClose(String) }
+                * True => StarOneClose { Int }
+            )
+        }
+        * True => StarOneClose { Int }
     )
 }
 

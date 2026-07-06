@@ -86,21 +86,24 @@ The renderer is a practical subset, not a full CommonMark implementation:
 | `# H`, `## H`, `### H` (space required) | `<h1>`/`<h2>`/`<h3>`; deeper levels clamp to `<h3>` |
 | consecutive text lines | one `<p>…</p>` (soft-wrapped lines join with a space) |
 | `- item` lines | `<ul><li>…</li></ul>` |
+| `1. item` lines | `<ol><li>…</li></ol>` |
+| `> quote` lines | `<blockquote>…</blockquote>` (consecutive lines joined) |
 | ` ``` ` fenced block | `<pre><code>…</code></pre>` (raw, escaped, no inline pass) |
 | `**bold**` | `<strong>…</strong>` (inner text formatted) |
+| `*italic*` | `<em>…</em>` (inner text formatted) |
 | `` `code` `` | `<code>…</code>` (contents escaped) |
 | `[text](url)` | `<a href="url">…</a>` (url escaped, text formatted) |
 | blank lines | block separators |
 
 Text is HTML-escaped as it is walked (`"` `&` `<` `>`), so `a < b & c`
 renders as `a &lt; b &amp; c`. A `#` with no following space, and a lone
-`*`, are treated as literal text.
+unmatched `*`, are treated as literal text.
 
-Not yet handled: italics (`*x*`), ordered lists, nested lists,
-and blockquotes — each an additive extension in the same
-byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8)
-text in string literals is subject to the compiler's existing lexer
-handling of multi-byte characters; ASCII markdown is unaffected.
+Not yet handled: nested lists, `_underscore_` emphasis, setext headings,
+tables, and images — each an additive extension in the same byte-walking
+style. The renderer is byte-oriented, so non-ASCII (UTF-8) text in string
+literals is subject to the compiler's existing lexer handling of
+multi-byte characters; ASCII markdown is unaffected.
 
 ## Why this exists
 
