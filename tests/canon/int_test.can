@@ -1,3 +1,10 @@
+testIntParseLoneMinus = () => TestResult {
+    "-" -> Int -> (
+        * Err<MalformedInt> => TestResult { True() -> TestResult("\"-\" is not an Int") }
+        * Ok<Int> => TestResult { False() -> TestResult("\"-\" should not parse") }
+    )
+}
+
 testIntParseMalformed = () => TestResult {
     "abc" -> Int -> (
         * Err<MalformedInt> => TestResult { True() -> TestResult("\"abc\" is not an Int") }

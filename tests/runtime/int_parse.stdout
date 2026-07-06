@@ -3,3 +3,4 @@
 123
 invalid integer
 empty string is not an Int
+lone minus is not an Int
