@@ -1,3 +1,27 @@
+testNowFromLeapDay = () => TestResult {
+    951782400
+        -> Unix
+        -> Now
+        -> Eq("2000-02-29T00:00:00Z")
+        -> TestResult("Unix timestamp decodes a leap-year Feb 29")
+}
+
+testNowFromUnixEpoch = () => TestResult {
+    0
+        -> Unix
+        -> Now
+        -> Eq("1970-01-01T00:00:00Z")
+        -> TestResult("Unix timestamp 0 decodes to the epoch")
+}
+
+testNowFromUnixWithTimeOfDay = () => TestResult {
+    1704070861
+        -> Unix
+        -> Now
+        -> Eq("2024-01-01T01:01:01Z")
+        -> TestResult("Unix timestamp decodes date and time-of-day together")
+}
+
 testNowLength = () => TestResult {
     Now()
         -> Length
