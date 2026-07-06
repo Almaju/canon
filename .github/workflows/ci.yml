@@ -21,11 +21,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: extractions/setup-just@v3
+
       - name: fmt
         run: cargo fmt --check
 
       - name: clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --locked -- -D warnings
 
       - name: test
-        run: cargo test
+        run: cargo test --locked
+
+      # Smoke-check every example program end-to-end. `just examples`
+      # exits non-zero on a runtime error, so a change that breaks an
+      # example (or the stdlib an example depends on) fails the gate
+      # here rather than landing on main. Checker skips and long-running
+      # servers are expected and do not fail.
+      - name: examples
+        run: just examples
