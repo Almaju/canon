@@ -124,6 +124,13 @@ pub const CANON_WEB_JS: &str = r#""use strict";
     function render() {
       const [ptr, len] = exports.view(model);
       root.innerHTML = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
+      // Optional post-render hook: a page can define `canonAfterRender`
+      // to enhance the freshly-swapped DOM (e.g. syntax-highlight code or
+      // wire up run buttons). Errors are contained so a broken enhancer
+      // never blanks the app.
+      if (typeof globalThis.canonAfterRender === "function") {
+        try { globalThis.canonAfterRender(root); } catch (e) { console.error("canonAfterRender:", e); }
+      }
     }
 
     function send(msg) {

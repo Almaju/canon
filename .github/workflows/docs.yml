@@ -36,6 +36,12 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # Pinned: docs/runner/build.mjs patches jco's output around a known
+  # emission bug (missing FutureReadableEnd/FutureWritableEnd classes).
+  # When bumping, check whether the polyfill in build.mjs is still needed.
+  JCO_VERSION: "1.24.6"
+
 jobs:
   build:
     name: build
@@ -52,8 +58,26 @@ jobs:
       - name: Build the canon compiler
         run: cargo build --release
 
+      - name: Install jco
+        run: npm install -g "@bytecodealliance/jco@${JCO_VERSION}"
+
       - name: Build the docs app (Canon → WebAssembly)
         run: target/release/canon build docs
+
+      - name: Build the click-to-run bundles (```canon,run=… snippets)
+        run: |
+          node docs/runner/build.mjs \
+            --canon target/release/canon \
+            --src docs/src \
+            --out docs/build/runner \
+            --jco jco
+
+      - name: Wire in the progressive enhancement (highlight + run)
+        run: |
+          cp docs/assets/docs-enhance.js docs/build/docs-enhance.js
+          sed -i \
+            's#<script src="canon-web.js"></script>#<script src="canon-web.js"></script>\n<script src="docs-enhance.js"></script>#' \
+            docs/build/index.html
 
       - name: Assemble site (landing at /, docs app under /doc/)
         run: |

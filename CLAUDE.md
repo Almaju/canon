@@ -28,7 +28,7 @@ and reference documentation lives under `docs/src/`. Do not add new
 | Path | Description |
 |---|---|
 | `.github/` | CI workflows (docs deployment, release pipeline) |
-| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (the Elm triple) that renders the `src/*.md` pages via the stdlib Markdown renderer; `canon build docs` compiles it to `docs/build/` (a wasm module + `canon-web.js` host + `index.html`). `landing/index.html` is the self-contained marketing page. The docs workflow deploys the landing at the site root and the app under `/doc/`. |
+| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (the Elm triple) that renders the `src/*.md` pages via the stdlib Markdown renderer; `canon build docs` compiles it to `docs/build/` (a wasm module + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` is a classic script the deploy injects for progressive enhancement — Canon syntax highlighting and click-to-run buttons. `runner/build.mjs` compiles each ` ```canon,run=… ` snippet to a jco bundle at build time (the renderer emits the fence info-string as `data-info`, which the enhancer reads for both language and run name). `landing/index.html` is the self-contained marketing page. The docs workflow deploys the landing at the site root and the app under `/doc/`. |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Lexer — tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | Parser — AST construction (`parser.rs`) |

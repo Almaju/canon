@@ -10,6 +10,8 @@ FenceBody = Frag
 
 FenceEnd = Int
 
+FenceInfo = Frag
+
 Frag = String
 
 HashCount = Int
@@ -170,6 +172,17 @@ Int * String => FenceEnd {
             )
         }
         * True => FenceEnd { Int }
+    )
+}
+
+Int * String => FenceInfo {
+    Int -> Sum(3) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
+        * False => FenceInfo {
+            String
+                -> Substring(Int -> Sum(3) -> From * Int -> LineEnd(String) -> Difference(1) -> To)
+                -> Escaped
+        }
+        * True => FenceInfo { "" }
     )
 }
 
@@ -647,7 +660,9 @@ Int * String => RenderedBlocks {
 }
 
 Int * String => RenderedFence {
-    "<pre><code>"
+    "<pre data-info=\""
+        -> Joined(Int -> FenceInfo(String))
+        -> Joined("\"><code>")
         -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
         -> Joined("</code></pre>")
         -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) -> RenderedBlocks(String))
