@@ -1,0 +1,8 @@
+Unit => Program {
+    Random()
+        -> Remainder(6)
+        -> Sum(6)
+        -> Remainder(6)
+        -> Sum(1)
+        -> Print
+}
