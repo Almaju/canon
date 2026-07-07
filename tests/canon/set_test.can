@@ -72,3 +72,14 @@ SetRemovedDropsValue = () => TestResult {
         -> Eq("[b]")
         -> TestResult
 }
+
+SetRemovedRecursesPastNonMatchingItem = () => TestResult {
+    Set()
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Removed("b")
+        -> List
+        -> Json
+        -> Eq("[a]")
+        -> TestResult
+}
