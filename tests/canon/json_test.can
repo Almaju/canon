@@ -6,6 +6,14 @@ DecodeUnescapesQuote = () => TestResult {
         -> TestResult
 }
 
+DecodeUnescapesUppercaseHexUnicode = () => TestResult {
+    "\"\\u00FF\""
+        -> Json?
+        -> Decoded?
+        -> Eq("ÿ")
+        -> TestResult
+}
+
 DecodeUnwrapsString = () => TestResult {
     "\"gpt-4\""
         -> Json?
