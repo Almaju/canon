@@ -10,4 +10,8 @@ Unit => Program {
         * None => Unit { "empty" -> Print }
         * Some<Int> => Unit { "non-empty" -> Print }
     )
+    List() -> First -> (
+        * None => Unit { "empty" -> Print }
+        * Some<Int> => Unit { "non-empty" -> Print }
+    )
 }

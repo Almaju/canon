@@ -777,7 +777,23 @@ Int * String => StarOneClose {
         * False => StarOneClose {
             String -> ByteAt(Int) -> Eq(42) -> (
                 * False => StarOneClose { Int -> Sum(1) -> StarOneClose(String) }
-                * True => StarOneClose { Int }
+                * True => StarOneClose {
+                    Int -> Sum(1) -> Gt(String -> Length) -> (
+                        * False => StarOneClose {
+                            String -> ByteAt(Int -> Sum(1)) -> Eq(42) -> (
+                                * False => StarOneClose { Int }
+                                * True => StarOneClose {
+                                    Int
+                                        -> Sum(2)
+                                        -> StarClose(String)
+                                        -> Sum(2)
+                                        -> StarOneClose(String)
+                                }
+                            )
+                        }
+                        * True => StarOneClose { Int }
+                    )
+                }
             )
         }
         * True => StarOneClose { Int }
