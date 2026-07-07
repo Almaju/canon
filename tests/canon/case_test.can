@@ -19,6 +19,13 @@ UppercasedFoldsLetters = () => TestResult {
         -> TestResult
 }
 
+UppercasedKeepsBytesAboveLowercaseRange = () => TestResult {
+    "abc{|}~"
+        -> Uppercased
+        -> Eq("ABC{|}~")
+        -> TestResult
+}
+
 UppercasedKeepsNonLetters = () => TestResult {
     "MiXeD 123 !?"
         -> Uppercased
