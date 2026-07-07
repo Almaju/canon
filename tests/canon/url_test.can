@@ -26,6 +26,13 @@ UrlRejectsEmptyHostBeforeSlash = () => TestResult {
     )
 }
 
+UrlRejectsShortString = () => TestResult {
+    "http" -> Url -> (
+        * Err<InvalidUrl> => TestResult { Pass() }
+        * Ok<Url> => TestResult { "\"http\" should not validate" -> Fail }
+    )
+}
+
 UrlRejectsWrongScheme = () => TestResult {
     "ftp://nope" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
