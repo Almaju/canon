@@ -19,6 +19,13 @@ UrlRejectsEmptyHost = () => TestResult {
     )
 }
 
+UrlRejectsEmptyHostBeforeSlash = () => TestResult {
+    "http:///path" -> Url -> (
+        * Err<InvalidUrl> => TestResult { Pass() }
+        * Ok<Url> => TestResult { "\"http:///path\" should not validate" -> Fail }
+    )
+}
+
 UrlRejectsShortString = () => TestResult {
     "http" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }

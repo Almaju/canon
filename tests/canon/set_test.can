@@ -1,3 +1,12 @@
+SetContainsFindsAfterRecursingPastEntries = () => TestResult {
+    Set()
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Inserted("c")
+        -> Contains("c")
+        -> TestResult
+}
+
 SetContainsFindsInserted = () => TestResult {
     Set()
         -> Inserted("x")
@@ -9,6 +18,16 @@ SetContainsRejectsAbsent = () => TestResult {
     Set()
         -> Inserted("x")
         -> Contains("y")
+        -> Not
+        -> TestResult
+}
+
+SetContainsRejectsAfterRecursingThroughEntries = () => TestResult {
+    Set()
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Inserted("c")
+        -> Contains("d")
         -> Not
         -> TestResult
 }
@@ -51,5 +70,16 @@ SetRemovedDropsValue = () => TestResult {
         -> List
         -> Json
         -> Eq("[b]")
+        -> TestResult
+}
+
+SetRemovedRecursesPastNonMatchingItem = () => TestResult {
+    Set()
+        -> Inserted("a")
+        -> Inserted("b")
+        -> Removed("b")
+        -> List
+        -> Json
+        -> Eq("[a]")
         -> TestResult
 }
