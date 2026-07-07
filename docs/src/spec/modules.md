@@ -75,9 +75,12 @@ version = "0.1.0"
   directory of them, or a `.wasm` component. `canon install`
   materializes these into `bindgen/` as binding files
   ([Compilation and the ABI](./compilation.md#binding-files)).
-- Both tables are alphabetical by key. The manifest parser accepts a
-  fixed TOML subset (top-level strings plus the two tables); full TOML
-  is a non-goal.
+- Both tables are stored by key in alphabetical order — the parser
+  normalizes them into a map, so keys need not be written in
+  alphabetical order in the source ([Ordering Rules](./ordering.md)
+  covers the distinction from the checker-enforced rules elsewhere).
+  The manifest parser accepts a fixed TOML subset (top-level strings
+  plus the two tables); full TOML is a non-goal.
 
 When a dependency's component must be fetched rather than host-provided,
 its own manifest carries `from = "<url>"` and a mandatory `sha256`.

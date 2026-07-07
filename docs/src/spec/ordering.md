@@ -18,7 +18,7 @@ writing the same program produce the same bytes.
 | Error unions in `Result<T, A + B>` | alphabetical |
 | Dispatch arms | the union's variant order (itself alphabetical) |
 | Literal dispatch arms | alphabetical for strings, ascending for ints; catch-all last |
-| `canon.toml` tables (`[deps]`, `[imports]`) | alphabetical keys |
+| `canon.toml` tables (`[deps]`, `[imports]`) | alphabetical keys (normalized, not checker-enforced — see Exemptions) |
 
 ## The Exact Comparison
 
@@ -44,6 +44,12 @@ message (``` `x` should come before `y` ```) will tell you.
   must follow the scrutinee union's variant order. Since variant order
   is alphabetical, these coincide; the arm rule is still "match the
   union", not "sort your arms".
+- **`canon.toml` tables** (`[deps]`, `[imports]`) are *normalized*, not
+  *enforced*: the parser (`src/manifest.rs`) stores each table in a map
+  keyed by name, so it always iterates alphabetically regardless of the
+  order keys were written in. Unlike every other row above, writing
+  keys out of order is not a checker error — there is no rejecting
+  check, and `canon fmt` does not touch `canon.toml` at all.
 
 ## Auto-Fixing
 
