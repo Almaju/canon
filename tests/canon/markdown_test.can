@@ -94,6 +94,14 @@ MarkdownRendersOrderedList = () => TestResult {
         -> TestResult
 }
 
+MarkdownRendersTable = () => TestResult {
+    "| a | b |\n| --- | --- |\n| 1 | 2 |"
+        -> Markdown
+        -> Html
+        -> Eq("<table><thead><tr><th> a </th><th> b </th></tr></thead><tbody><tr><td> 1 </td><td> 2 </td></tr></tbody></table>")
+        -> TestResult
+}
+
 MarkdownWrapsParagraph = () => TestResult {
     "plain text"
         -> Markdown
