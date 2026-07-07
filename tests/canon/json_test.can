@@ -1,8 +1,38 @@
+DecodeRejectsBadEscape = () => TestResult {
+    "\"\\q\"" -> Json? -> Decoded -> (
+        * Err<MalformedJson> => TestResult { Pass() }
+        * Ok<Decoded> => TestResult { "unknown escape should be rejected" -> Fail }
+    )
+}
+
+DecodeRejectsMalformedUnicodeEscape = () => TestResult {
+    "\"\\u00zz\"" -> Json? -> Decoded -> (
+        * Err<MalformedJson> => TestResult { Pass() }
+        * Ok<Decoded> => TestResult { "non-hex \\u escape should be rejected" -> Fail }
+    )
+}
+
+DecodeUnescapesAllControlEscapes = () => TestResult {
+    "\"\\\\ \\/ \\b \\f \\n \\r \\t\""
+        -> Json?
+        -> Decoded?
+        -> Eq("\\ / \u0008 \u000C \n \r \t")
+        -> TestResult
+}
+
 DecodeUnescapesQuote = () => TestResult {
     "\"esc \\\" quote\""
         -> Json?
         -> Decoded?
         -> Eq("esc \" quote")
+        -> TestResult
+}
+
+DecodeUnescapesUnicodeEscape = () => TestResult {
+    "\"\\u0041\\u00e9\\u20ac\""
+        -> Json?
+        -> Decoded?
+        -> Eq("Aé€")
         -> TestResult
 }
 
