@@ -1081,6 +1081,17 @@ impl Parser {
     /// literal *with* an interpolated expression, without committing
     /// eagerly to the literal-shaped path on bare `IntLit`s.
     fn parse_json_value(&mut self, _open_span: Span, builder: &mut JsonPartBuilder) -> Result<()> {
+        let saved = self.enter_nest()?;
+        let result = self.parse_json_value_impl(_open_span, builder);
+        self.nest_depth = saved;
+        result
+    }
+
+    fn parse_json_value_impl(
+        &mut self,
+        _open_span: Span,
+        builder: &mut JsonPartBuilder,
+    ) -> Result<()> {
         let tok = self.peek().clone();
         match tok.kind {
             TokenKind::LBrace => {
