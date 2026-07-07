@@ -62,9 +62,12 @@ just build              # cargo build (debug)
 just install            # cargo install --path . --force (release → ~/.cargo/bin)
 just test               # cargo test (Rust unit/integration tests for the compiler)
 just test-can           # run every tests/canon/*_test.can file via `canon test`
-just update-fixtures    # regenerate golden .stderr files under tests/fixtures/checker/fail/
+just update-fixtures    # regenerate golden .stderr/.stdout files under tests/checker/fail/ and tests/runtime/
 just examples           # compile + run all examples, report pass/fail/skip
 just example <name>     # run a single example by name
+just bench              # benchmark codegen::generate() over the example programs
+just docs               # build docs and serve it locally on 127.0.0.1:8080
+just regen-bindings     # regenerate packages/canon/std/bindgen/ from wit-vendor/
 just fmt                # cargo fmt
 just clippy             # cargo clippy -- -W warnings
 just ci                 # fmt + clippy + test (mirrors CI)

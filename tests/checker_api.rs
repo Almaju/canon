@@ -3,7 +3,7 @@
 //! involve calling internal entry points with synthetic arguments.
 //!
 //! Positive and negative tests of plain source code belong in
-//! `tests/fixtures/checker/{ok,fail}/` and are exercised by
+//! `tests/checker/{ok,fail}/` and are exercised by
 //! `tests/checker_fixtures.rs`. Reach for this file only when the
 //! test needs to feed the checker something the loader wouldn't
 //! produce on its own.
