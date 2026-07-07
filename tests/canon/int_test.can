@@ -25,3 +25,10 @@ IntParseRejectsLoneMinus = () => TestResult {
         * Ok<Int> => TestResult { "\"-\" should not parse" -> Fail }
     )
 }
+
+IntParseRejectsNegativeGarbage = () => TestResult {
+    "-x" -> Int -> (
+        * Err<MalformedInt> => TestResult { Pass() }
+        * Ok<Int> => TestResult { "\"-x\" should not parse" -> Fail }
+    )
+}
