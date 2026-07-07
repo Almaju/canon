@@ -1,0 +1,11 @@
+Key = String
+
+Node = Key * String * Value
+
+Value = String
+
+Unit => Program {
+    "v" -> Value -> Node("bare" * "k" -> Key).Key -> Print
+    "v" -> Value -> Node("bare" * "k" -> Key).String -> Print
+    "v" -> Value -> Node("bare" * "k" -> Key).Value -> Print
+}

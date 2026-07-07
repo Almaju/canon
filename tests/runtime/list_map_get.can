@@ -11,6 +11,10 @@ Unit => Program {
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { Int -> Print }
     )
+    List(1 * 2 * 3) -> At(0) -> (
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
+    )
     List(10 * 20)
         -> Mapped((Int) => Int { Int -> Sum(5) })
         -> Length

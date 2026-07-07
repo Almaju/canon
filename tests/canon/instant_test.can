@@ -1,0 +1,5 @@
+InstantIsNonNegative = () => TestResult {
+    Instant()
+        -> Ge(0)
+        -> TestResult
+}

@@ -63,6 +63,14 @@ ToHtmlEscapesString = () => TestResult {
         -> TestResult
 }
 
+ToHtmlPassesThroughHtml = () => TestResult {
+    "hi"
+        -> Div
+        -> ToHtml
+        -> Eq("<div>hi</div>")
+        -> TestResult
+}
+
 ToHtmlRendersInt = () => TestResult {
     7
         -> ToHtml
