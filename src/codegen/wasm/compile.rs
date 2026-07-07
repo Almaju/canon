@@ -2592,15 +2592,30 @@ impl<'m> WasmGen<'m> {
         out
     }
 
-    /// How well a value (given its widening chain) fits a field of type
-    /// `field_ty`: `2` when the field's exact newtype appears on the
-    /// value's chain (`Value` value → `Value` field), `1` when they
-    /// merely share a base type (`String` value → `Key` field, both
-    /// erase to `String`), `0` when unrelated.
-    pub(super) fn field_match_score(&self, value_chain: &[String], field_ty: &str) -> u8 {
-        if value_chain.iter().any(|n| n == field_ty) {
+    /// How well a value of type `value_name` fits a field of type
+    /// `field_ty`: `2` when the field is the value's own type, or the
+    /// value is a union member and the field is (an ancestor of) that
+    /// union (`True` value → `Bool` field); `1` when they merely widen
+    /// to a shared base type (`String` value → `Key` field, or `Value`
+    /// value → `String` field, both erasing to `String`); `0` when
+    /// unrelated. Newtypes are distinct types even along an alias chain
+    /// (`A = B` doesn't make an `A` value an exact `B`), so only a
+    /// value's own name or its union ancestry counts as exact — the
+    /// erasure walked by `widening_chain` is shared-base only.
+    pub(super) fn field_match_score(&self, value_name: &str, field_ty: &str) -> u8 {
+        if value_name == field_ty {
             return 2;
         }
+        if let Some(parent) = self.variant_parent.get(value_name) {
+            if self
+                .collect_alias_chain(parent)
+                .iter()
+                .any(|n| n == field_ty)
+            {
+                return 2;
+            }
+        }
+        let value_chain = self.widening_chain(value_name);
         let field_chain = self.widening_chain(field_ty);
         if value_chain.iter().any(|n| field_chain.contains(n)) {
             return 1;
@@ -2634,12 +2649,9 @@ impl<'m> WasmGen<'m> {
         // `Value(x)` and it lands in the `Value` slot regardless of
         // where it was written.
         let n_fields = layout.len().min(field_exprs.len());
-        let value_chains: Vec<Option<Vec<String>>> = field_exprs
+        let value_names: Vec<Option<String>> = field_exprs
             .iter()
-            .map(|e| {
-                self.infer_ctor_arg_type_name(e)
-                    .map(|nm| self.widening_chain(&nm))
-            })
+            .map(|e| self.infer_ctor_arg_type_name(e))
             .collect();
         let mut used = vec![false; field_exprs.len()];
         let mut slot_val: Vec<Option<usize>> = vec![None; n_fields];
@@ -2652,9 +2664,9 @@ impl<'m> WasmGen<'m> {
                 }
                 if let Some(vi) = (0..field_exprs.len()).find(|&vi| {
                     !used[vi]
-                        && value_chains[vi]
+                        && value_names[vi]
                             .as_ref()
-                            .is_some_and(|vc| self.field_match_score(vc, field_name) == threshold)
+                            .is_some_and(|nm| self.field_match_score(nm, field_name) == threshold)
                 }) {
                     slot_val[si] = Some(vi);
                     used[vi] = true;
