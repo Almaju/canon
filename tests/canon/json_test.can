@@ -23,6 +23,20 @@ FieldExtractsMember = () => TestResult {
         -> TestResult
 }
 
+FieldRejectsMissingKeyEmptyObject = () => TestResult {
+    "{}" -> Json? -> Field("missing") -> (
+        * Err<MalformedJson> => TestResult { Pass() }
+        * Ok<Json> => TestResult { "\"missing\" should not resolve in {}" -> Fail }
+    )
+}
+
+FieldRejectsMissingKeyNoMatch = () => TestResult {
+    "{\"model\":\"gpt-4\"}" -> Json? -> Field("missing") -> (
+        * Err<MalformedJson> => TestResult { Pass() }
+        * Ok<Json> => TestResult { "\"missing\" should not resolve" -> Fail }
+    )
+}
+
 InvalidJsonRejected = () => TestResult {
     "{oops" -> Json -> (
         * Err<MalformedJson> => TestResult { Pass() }
