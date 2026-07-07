@@ -14,6 +14,14 @@ NowDecodesLeapDay = () => TestResult {
         -> TestResult
 }
 
+NowDecodesMidYearDate = () => TestResult {
+    1720096496
+        -> Unix
+        -> Now
+        -> Eq("2024-07-04T12:34:56Z")
+        -> TestResult
+}
+
 NowDecodesTimeOfDay = () => TestResult {
     1704070861
         -> Unix
