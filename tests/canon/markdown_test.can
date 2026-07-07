@@ -78,6 +78,14 @@ MarkdownRendersLink = () => TestResult {
         -> TestResult
 }
 
+MarkdownRendersNestedBoldInItalic = () => TestResult {
+    "*a **b** c*"
+        -> Markdown
+        -> Html
+        -> Eq("<p><em>a <strong>b</strong> c</em></p>")
+        -> TestResult
+}
+
 MarkdownRendersNestedList = () => TestResult {
     "- item one\n  - sub item\n- item two"
         -> Markdown
