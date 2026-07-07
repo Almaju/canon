@@ -82,6 +82,36 @@ InvalidJsonRejected = () => TestResult {
     )
 }
 
+JsonAcceptsArray = () => TestResult {
+    "[1,2,3]" -> Json -> (
+        * Err<MalformedJson> => TestResult { "\"[1,2,3]\" should validate as JSON" -> Fail }
+        * Ok<Json> => TestResult { Pass() }
+    )
+}
+
+JsonAcceptsNull = () => TestResult {
+    "null" -> Json -> (
+        * Err<MalformedJson> => TestResult { "\"null\" should validate as JSON" -> Fail }
+        * Ok<Json> => TestResult { Pass() }
+    )
+}
+
+JsonAcceptsNumber = () => TestResult {
+    "-1.5e10" -> Json -> (
+        * Err<MalformedJson> => TestResult { "\"-1.5e10\" should validate as JSON" -> Fail }
+        * Ok<Json> => TestResult { Pass() }
+    )
+}
+
+JsonRejectsMalformedNumber = () => TestResult {
+    "1." -> Json -> (
+        * Err<MalformedJson> => TestResult { Pass() }
+        * Ok<Json> => TestResult {
+            "\"1.\" should not validate (missing fractional digits)" -> Fail
+        }
+    )
+}
+
 ToJsonFalse = () => TestResult {
     False()
         -> ToJson
