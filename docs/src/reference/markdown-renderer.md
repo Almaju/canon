@@ -30,7 +30,7 @@ Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
 Args => Exit {
-    "notes.md" -> Path -> File? .read()? -> Markdown -> Html -> Print
+    "notes.md" -> Path -> File? -> Read? -> Markdown -> Html -> Print
     0 -> Exit
 }
 ```

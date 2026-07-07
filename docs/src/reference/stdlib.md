@@ -33,8 +33,8 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
 | `time/Now` | `Now = String` | pure Canon over `time/Unix` | RFC 3339 wall-clock time |
 | `fs/Path` | `Path = String` | none | filesystem path newtype |
-| `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `read`, `write` |
-| `fs/Contents` | `Contents = String` | none | file-contents newtype (the `write` receiver) |
+| `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `Read`, `Written` |
+| `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values); see [Map and Set](#map-and-set) |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set.List()` = members, alphabetically |
@@ -44,7 +44,7 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
-| `Json` | `Json = String`, `MalformedJson` | pure Canon (`fromFloat` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
+| `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
 | `web/Html` | `Html = String`, `ToHtml` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
@@ -135,14 +135,17 @@ Canon itself -- the host provides only the clock reading.
 
 ## `File`, `Path`, `Contents`, `IoError`
 
-Synchronous file I/O -- read and write.
+Synchronous file I/O -- read and write, both evidence-newtype
+constructors ([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
 Unit => Program {
-    Contents("hello from canon")
-        .write(Path("/tmp/greeting.txt"))?
+    "hello from canon"
+        -> Contents
+        -> Written("/tmp/greeting.txt" -> Path)?
+        -> Path
         -> File?
-        .read()?
+        -> Read?
         -> Print
 }
 ```
@@ -156,18 +159,22 @@ File = (Path) => Result<File, IoError>
 
 Path = String
 
-read = (File) => Result<String, IoError>
+Read = String
 
-write = (Contents * Path) => Result<Path, IoError>
+File => Result<Read, IoError>
+
+Written = Path
+
+Contents * Path => Result<Written, IoError>
 ```
 
-`Path("...").File()` opens the file, returning a `File` handle or an
-`IoError`; `.read()` reads the entire contents as a `String`.
-`Contents("...").write(path)` creates or truncates the file and returns
-the path back on success, so a write chains straight into a re-open --
-the example above round-trips. Backed by `canon:builtins/filesystem`;
-will move to the async `wasi:filesystem/types` interface once Phase 5
-lands.
+`path -> File` opens the file, returning a `File` handle or an
+`IoError`; `file -> Read?` reads the entire contents as a `String`.
+`contents -> Written(path)?` creates or truncates the file and returns
+the path back on success (`Written = Path`), so a write chains straight
+into a re-open -- the example above round-trips. Backed by
+`canon:builtins/filesystem`; will move to the async
+`wasi:filesystem/types` interface once Phase 5 lands.
 
 ## Map and Set
 
@@ -380,11 +387,11 @@ as well-formed JSON and returns it back as a `Json` value, or a
 `MalformedJson` error.
 
 The validator is written in pure Canon: a recursive-descent parser
-over `String.byteAt(i)` / `.length()` / `.substring(a, b)` /
-`.eq(other)`, threading position through a custom `ParseStep =
+over `String -> ByteAt(i)` / `-> Length` / `-> Substring(a, b)` /
+`-> Eq(other)`, threading position through a custom `ParseStep =
 ParseFail + ParsePos` union. Indexing is 1-based everywhere in Canon
-(`byteAt(1)` is the first byte, `list.get(1)` the first element) and
-`substring(a, b)` is inclusive on both ends: one origin, matching
+(`ByteAt(1)` is the first byte, `list -> At(1)` the first element) and
+`Substring(a, b)` is inclusive on both ends: one origin, matching
 positional product access `.1`. The validator handles the full JSON
 grammar: keywords (`true`/`false`/`null`), numbers (including
 negative, decimal, exponent), strings (with escapes), arrays, objects,
@@ -416,7 +423,7 @@ interpolation, the `Json(...)` validator, or `.ToJson()`. A fully
 static literal is a plain constant and needs nothing at all.
 
 ```canon
-label = (Int) => Json {
+Labeled = (Int) => Json {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
@@ -429,7 +436,7 @@ Unit => Result<Program, MalformedJson> {
         -> ToJson
         -> Print
     42
-        .label()
+        -> Labeled
         -> Print
     {"a":1,"b":[true,false,null]} -> Print
     {"escaped":"a \"b\" c"} -> Print
