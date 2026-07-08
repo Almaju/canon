@@ -12,6 +12,13 @@ UrlAcceptsHttps = () => TestResult {
     )
 }
 
+UrlRejectsDoubleSlashHost = () => TestResult {
+    "http:///path" -> Url -> (
+        * Err<InvalidUrl> => TestResult { Pass() }
+        * Ok<Url> => TestResult { "\"http:///path\" should not validate" -> Fail }
+    )
+}
+
 UrlRejectsEmptyHost = () => TestResult {
     "http://" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
