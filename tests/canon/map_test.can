@@ -13,6 +13,17 @@ MapContainsRejectsAbsent = () => TestResult {
         -> TestResult
 }
 
+MapInsertedRecursesPastMultipleNodes = () => TestResult {
+    Map()
+        -> Inserted("a" * "1")
+        -> Inserted("c" * "3")
+        -> Inserted("b" * "2")
+        -> Keys
+        -> Json
+        -> Eq("[a,b,c]")
+        -> TestResult
+}
+
 MapKeysSorted = () => TestResult {
     Map()
         -> Inserted("b" * "2")
