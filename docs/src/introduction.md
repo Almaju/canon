@@ -9,13 +9,16 @@ A complete HTTP service:
 
 ```canon
 Request => Response {
-    Response(Body("hello from canon") * Headers() * Status(200))
+    "hello from canon"
+        -> Body
+        -> Response(200 -> Status * Headers())
 }
 ```
 
 ```sh
 $ canon run service.can
-HTTP handler detected: serving on http://127.0.0.1:8080
+HTTP handler detected: serving on http://127.0.0.1:8080 (override with `canon run … --addr <ip:port>`)
+canon run --addr 127.0.0.1:8080: listening on http://127.0.0.1:8080
 
 $ curl localhost:8080
 hello from canon
@@ -40,8 +43,8 @@ comments, no parameter names. A function's inputs are a product of types,
 referenced in the body by their type names:
 
 ```canon
-compare = (OtherUser * User) => Ord {
-    User.Birthday.compare(OtherUser.Birthday)
+Ord = (OtherUser * User) => Ord {
+    User.Birthday -> Compared(OtherUser.Birthday)
 }
 ```
 
@@ -55,9 +58,10 @@ from a `String`. The type chain *is* the access control:
 
 ```canon
 Unit => Program {
-    Path("./data.json")
+    "./data.json"
+        -> Path
         -> File?
-        .read()?
+        -> Read?
         -> Print
 }
 ```
