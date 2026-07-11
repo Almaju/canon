@@ -54,25 +54,25 @@ any nonzero `Exit` reports failure. (Nothing to report and no arguments
 to read? The arg-less shorthand `Unit => Program { ... }` still works and
 needs no explicit exit.)
 
-`"hello".print()` is a method call. `print` takes a single `String`
+`"hello" -> Print` is a pipe call. `Print` takes a single `String`
 component and writes it to stdout:
 
 ```canon
-print = (String) => Unit
+(String) => Unit
 ```
 
 There is no `Stdout` capability to thread through. The compiler lowers
-`.print` against the standard `wasi:cli/stdout` interface, so the
+`Print` against the standard `wasi:cli/stdout` interface, so the
 resulting `.wasm` runs on any Component Model host.
 
 For redirectable output (a file, a log sink, a test buffer), construct
 an explicit destination value such as a `File` or a `Fileout` and pass
-it as an additional component. Plain `.print()` is sugar for "I want
+it as an additional component. Plain `-> Print` is sugar for "I want
 stdout".
 
 ## Try Breaking Things
 
-- **Add a second `.print()` line.** Each call writes its argument followed
+- **Add a second `-> Print` line.** Each call writes its argument followed
   by a newline.
 - **Add a comment** (`// hi`). The lexer rejects it; comments are not
   allowed.
