@@ -1,0 +1,12 @@
+Birthday = Int
+
+User = Birthday * Username
+
+Username = String
+
+Unit => Program {
+    1
+        -> User
+        -> Username
+        -> Print
+}

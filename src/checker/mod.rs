@@ -1942,6 +1942,13 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 }
             }
             if let Some(field_types) = symbols.product_fields.get(&name.name).cloned() {
+                check_product_construction_arity(
+                    &name.name,
+                    &field_types,
+                    effective_call_arity(args),
+                    *span,
+                    errors,
+                );
                 let arg_refs: Vec<&Expr> = args.iter().collect();
                 check_product_construction_types(
                     &name.name,
@@ -2026,7 +2033,24 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     ),
                     span: *span,
                 });
-            } else if is_piped_construction && !has_alias_method {
+            } else if is_piped_construction {
+                // The canonical call form pipes the first arg (`A -> B(rest)`
+                // for `B(A * rest)`), so a multi-field product's construction
+                // reaches the checker as a `MethodCall`, not an
+                // `Expr::Constructor` — the receiver fills the first field
+                // slot and `args` (itself flattened the same way a direct
+                // constructor's args are) fills the rest.
+                if let Some(field_types) = symbols.product_fields.get(&method.name) {
+                    check_product_construction_arity(
+                        &method.name,
+                        field_types,
+                        1 + effective_call_arity(args),
+                        *span,
+                        errors,
+                    );
+                }
+            }
+            if is_piped_construction && !has_alias_method {
                 // A scalar newtype (`Greeting = String`) or a bare
                 // primitive pipe (`x -> Int`) erases to its underlying
                 // primitive at the value level: codegen leaves the
@@ -2276,6 +2300,36 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             check_expr(inner, scope, symbols, errors);
         }
     }
+}
+
+/// Validates that a multi-field product construction supplies exactly one
+/// argument per field. Codegen's `build_product_value` (`src/codegen/wasm/compile.rs`)
+/// binds each supplied value to a field by type and falls back to binding
+/// any unmatched values *positionally* — a floor meant for values codegen
+/// can't infer a type for at all. With too few arguments a field is left
+/// unbound; with too many, the excess value either gets bound over a field
+/// codegen already filled (silently discarding the correct one) or is
+/// dropped. Either way the emitted wasm's stack shape no longer matches the
+/// product's component layout, and wasmtime rejects it as invalid — so
+/// reject the mismatched arity here, at the checker, with a clean error.
+fn check_product_construction_arity(
+    type_name: &str,
+    field_types: &[String],
+    arg_count: usize,
+    span: Span,
+    errors: &mut Vec<CanonError>,
+) {
+    if field_types.len() < 2 || arg_count == field_types.len() {
+        return;
+    }
+    errors.push(CanonError::CheckError {
+        message: format!(
+            "cannot construct `{type_name}`: expected {} argument(s) (`{}`), found {arg_count}",
+            field_types.len(),
+            field_types.join(" * ")
+        ),
+        span,
+    });
 }
 
 /// When the lone arg is a value-level product, flatten it: `m(A * B)` has
