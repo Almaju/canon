@@ -106,11 +106,11 @@ semiring reading: sums, products, exponents.
 
 `List<T>` is not a separate concept. Core defines **`List<T> = T^*`**;
 the nominal name and the algebraic form are the same type. `Bytes =
-Byte^*` therefore has every `List` method (`map`, `first`, `get`, ...)
+Byte^*` therefore has every `List` method (`Mapped`, `First`, `At`, ...)
 with nothing to declare, and `List(...)` is the value-level constructor
-for the star. Indexing is **1-based** everywhere (`list.get(1)` is the
-first element, `byteAt(1)` the first byte): one origin, matching
-positional product access `.1`.
+for the star. Indexing is **1-based** everywhere (`list -> At(1)` is the
+first element, `string -> ByteAt(1)` the first byte): one origin,
+matching positional product access `.1`.
 
 ## Generics
 
@@ -118,13 +118,13 @@ Types may be parameterized with angle brackets: `List<T>`,
 `Option<T>`, `Result<T, E>`. Constraints name a trait after `:`:
 
 ```canon
-showAll = <T: Show>(List<T>) => Unit {
+ShowAll = <T: Show>(List<T>) => Unit {
     ...
 }
 ```
 
-Where a type parameter cannot be inferred from context, the call site
-pins it with turbofish: `parse::<List<Int>>(...)`. See
+Type parameters are inferred from the call site's argument types (`List(1
+* 2) -> ShowAll` infers `T = Int`). See
 [Functions and Traits](./functions.md).
 
 ## Recursive Types
