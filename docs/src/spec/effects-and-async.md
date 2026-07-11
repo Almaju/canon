@@ -13,19 +13,22 @@ can only be constructed from a `Path`; a `Path` from a `String`. Holding
 the value *is* the permission:
 
 ```canon
-Path("./data.json").File()?.read()?.print()
+Path("./data.json")
+    -> File?
+    -> Read?
+    -> Print
 ```
 
 When a function performs an effect, the value carrying that effect
 appears in its signature:
 
 ```canon
-save = (Database * User) => Result<Unit, DbError>
+Saved = (Database * User) => Result<Unit, DbError>
 ```
 
 There is no other way to reach the effect. No globals, no singletons,
 no ambient authority. The one exception is deliberate:
-`print = (String) => Unit` writes to stdout with no token, lowered
+`Print = (String) => Unit` writes to stdout with no token, lowered
 against `wasi:cli/stdout`.
 
 ## Dependencies Thread Implicitly
@@ -98,12 +101,11 @@ declared parameter type is `T`), the checker inserts the await:
 Unit => Program {
     Url("https://example.com")?
         -> Fetched?
-        .body()?
         -> Print
 }
 ```
 
-`get()` and `body()` return futures; the user writes a flat chain. The
+`Url` and `Fetched` return futures; the user writes a flat chain. The
 two keywords other languages build their async story on do not exist in
 the grammar. `Future<T>` and `Stream<T>` appear in **binding signatures
 only**; ordinary code consumes the unwrapped `T`.
@@ -125,23 +127,23 @@ Canon call:
 ```canon
 "a"
     .slowEcho()
-    .parallel("b".slowEcho())
-    .Json()
-    .print()
+    -> Parallel("b".slowEcho())
+    -> Json
+    -> Print
 "a"
     .slowEcho()
-    .race("b".slowEcho())
-    .print()
+    -> Race("b".slowEcho())
+    -> Print
 ```
 
 ```
-parallel = <T>(Future<T> * Future<T>) => Future<List<T>>
-race     = <T>(Future<T> * Future<T>) => Future<T>
+Parallel = <T>(Future<T> * Future<T>) => Future<List<T>>
+Race     = <T>(Future<T> * Future<T>) => Future<T>
 ```
 
-`a.parallel(b)` awaits both and returns results in receiver-then-argument
-order; `a.race(b)` returns the first and cancels the loser. There is no
-bare call form: `parallel(a, b)` is a compile error. The auto-await
+`a -> Parallel(b)` awaits both and returns results in receiver-then-argument
+order; `a -> Race(b)` returns the first and cancels the loser. There is no
+bare call form: `Parallel(a * b)` is a compile error. The auto-await
 rule fires when the composed future is consumed, still with no keyword.
 
 **Cancellation** has no primitive. It is a consequence of composition:
