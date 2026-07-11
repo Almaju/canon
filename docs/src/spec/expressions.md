@@ -13,7 +13,7 @@ So `A + B * C^3` parses as `A + (B * (C^3))`.
 
 Expression-level, tightest first:
 
-1. `.`: call / field access / dispatch
+1. `.`: call / field access
 2. `()`: application
 3. `?`: postfix propagation
 4. `*`: value-level product (only inside a constructor argument)
@@ -78,11 +78,11 @@ local variables, the way a value threads through several operations is a
 method chain:
 
 ```canon
-readConfig = (File * Path) => Result<Config, IoError + ParseError> {
+ReadConfig = (File * Path) => Result<Config, IoError + ParseError> {
     File
-        .read(Path)?
-        .parse()?
-        .validate()
+        -> Read(Path)?
+        -> Parse?
+        -> Validate
 }
 ```
 
@@ -132,7 +132,7 @@ name determined by the pattern:
 
   ```canon
   result -> (
-      * Err<IoError> => String { IoError.message() }
+      * Err<IoError> => String { IoError -> Message }
       * Ok<String> => String { String }
   )
   ```
@@ -160,7 +160,7 @@ scrutinees: arms are literals, and the final arm is a **mandatory
 catch-all** naming the scrutinee's type:
 
 ```canon
-route = (String) => String {
+Route = (String) => String {
     String -> (
         * "/notes" => String { "index" }
         * "/notes/1" => String { "note one" }
@@ -222,7 +222,7 @@ the moment a program uses its machinery (interpolation, the validating
 `Json(...)` constructor, or `.ToJson()`):
 
 ```canon
-label = (Int) => Json {
+Label = (Int) => Json {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 ```

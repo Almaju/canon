@@ -61,7 +61,7 @@ pub fn emit_all(resolve: &Resolve) -> Vec<EmittedFile> {
     // discovery resolves on the unique marker type — see
     // `emit_function`.
     let mut fn_name_uses: BTreeMap<String, u32> = BTreeMap::new();
-    for (_, (_, iface)) in ifaces.iter() {
+    for (_, iface) in ifaces.values() {
         for name in iface.functions.keys() {
             *fn_name_uses.entry(kebab_to_camel(name)).or_default() += 1;
         }
