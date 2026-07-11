@@ -12,6 +12,13 @@ IntParseParsesPositive = () => TestResult {
     )
 }
 
+IntParseRejectsEmptyString = () => TestResult {
+    "" -> Int -> (
+        * Err<MalformedInt> => TestResult { Pass() }
+        * Ok<Int> => TestResult { "\"\" should not parse" -> Fail }
+    )
+}
+
 IntParseRejectsLetters = () => TestResult {
     "abc" -> Int -> (
         * Err<MalformedInt> => TestResult { Pass() }
