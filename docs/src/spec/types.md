@@ -189,12 +189,10 @@ signature already carries; `canon check --fix` rewrites it to the arrow.)
 constructing a `T`, because it is one:
 
 ```canon
-String(42)            # "42" -- decimal rendering
-42.String()           # the same declaration, method spelling
-Int("42")             # Result<Int, MalformedInt> -- parsing can fail
-"42".Int()?           # method spelling, ?-propagated
-String(Byte(65))      # "A" -- a Byte renders as its character
-List("1", "2").Json() # [1,2] -- a list of JSON values as a JSON array
+String(42)              # "42" -- decimal rendering
+Int("42")?              # Result<Int, MalformedInt> -- parsing can fail
+String(Byte(65))        # "A" -- a Byte renders as its character
+List("1" * "2") -> Json # [1,2] -- a list of JSON values as a JSON array
 ```
 
 - Infallible conversions return the target type; the function's name
@@ -202,8 +200,8 @@ List("1", "2").Json() # [1,2] -- a list of JSON values as a JSON array
 - Fallible conversions are [validated
   constructors](#validated-constructors) returning `Result<T, E>` --
   `Int(String)` forces `?` or dispatch exactly like `Url(String)`.
-- `T(value)` and `value.T()` are the same declaration (the commutative
-  method-call rule), so what Rust splits into `From` and `Into` is one
+- `T(value)` and `value -> T` are the same declaration (the commutative
+  call rule), so what Rust splits into `From` and `Into` is one
   function here.
 - Ambiguity is resolved by newtypes: `String(42)` renders decimal
   digits, `String(Byte(42))` is the one-byte string `"*"` -- wrapping

@@ -302,15 +302,6 @@ in `canon/std/Int`, written in pure Canon (digit recursion over
 `byteAt`):
 
 ```canon
-double = (String) => Result<Int, MalformedInt> {
-    String
-        -> Int?
-        -> Product(2)
-        -> Ok
-}
-```
-
-```canon
 Int = (String) => Result<Int, MalformedInt>
 
 MalformedInt = String
@@ -399,11 +390,11 @@ as well-formed JSON and returns it back as a `Json` value, or a
 `MalformedJson` error.
 
 The validator is written in pure Canon: a recursive-descent parser
-over `String -> ByteAt(i)` / `-> Length` / `-> Substring(a, b)` /
+over `String -> ByteAt(i)` / `-> Length` / `-> Substring(a * b)` /
 `-> Eq(other)`, threading position through a custom `ParseStep =
 ParseFail + ParsePos` union. Indexing is 1-based everywhere in Canon
 (`ByteAt(1)` is the first byte, `list -> At(1)` the first element) and
-`Substring(a, b)` is inclusive on both ends: one origin, matching
+`Substring(a * b)` is inclusive on both ends: one origin, matching
 positional product access `.1`. The validator handles the full JSON
 grammar: keywords (`true`/`false`/`null`), numbers (including
 negative, decimal, exponent), strings (with escapes), arrays, objects,

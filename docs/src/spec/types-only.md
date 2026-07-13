@@ -73,10 +73,10 @@ list -> Json                           # pipes reach methods/shapes too, by rece
 
 ```
 Map()
-    .Inserted("a", "1")
+    -> Inserted("a" * "1")
     -> Keys
     -> Json
-    .print()
+    -> Print
 ```
 
 The three-spellings surplus is resolved: `canon check --fix` canonicalizes every call, and the rule is *values flow through pipes; literals are born in the parens* -- a computed first input pipes (`a -> Name(b)`), a lone scalar literal stays inside the construction (`Greeting("hi")`), builtins keep the pipe until they migrate to stdlib newtypes, and operand order is never reordered. See [Expressions § Canonical Call Form](./expressions.md#canonical-call-form) for the full case list.

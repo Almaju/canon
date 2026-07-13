@@ -39,8 +39,6 @@ pub enum CanonError {
         path: String,
         span: Span,
     },
-    /// An error produced during code generation.
-    CodegenError { message: String, span: Span },
 }
 
 impl CanonError {
@@ -51,7 +49,6 @@ impl CanonError {
             CanonError::ParseError { span, .. } => span,
             CanonError::CheckError { span, .. } => span,
             CanonError::FormatError { span, .. } => span,
-            CanonError::CodegenError { span, .. } => span,
         }
     }
 
@@ -62,7 +59,6 @@ impl CanonError {
             CanonError::ParseError { message, .. } => message,
             CanonError::CheckError { message, .. } => message,
             CanonError::FormatError { message, .. } => message,
-            CanonError::CodegenError { message, .. } => message,
         }
     }
 
@@ -73,7 +69,6 @@ impl CanonError {
             CanonError::ParseError { .. } => "parse error",
             CanonError::CheckError { .. } => "check error",
             CanonError::FormatError { .. } => "format error",
-            CanonError::CodegenError { .. } => "codegen error",
         }
     }
 }

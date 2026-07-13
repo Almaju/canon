@@ -87,14 +87,3 @@ fn checker_fail_fixtures() {
         );
     }
 }
-
-/// Local indent helper — duplicates the one in `common::mod` to keep
-/// each integration-test binary self-contained (cargo treats every
-/// `tests/*.rs` as a separate crate, and `common::indent` is private
-/// to that module).
-fn indent(s: &str, prefix: &str) -> String {
-    s.lines()
-        .map(|line| format!("{}{}", prefix, line))
-        .collect::<Vec<_>>()
-        .join("\n")
-}

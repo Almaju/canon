@@ -153,7 +153,7 @@ impl Parser {
                     span: first_ident.span,
                 });
             }
-            return self.parse_function_after_eq(None, first_ident, start_span);
+            return self.parse_function_after_eq(first_ident, start_span);
         }
 
         let body = self.parse_type_expr()?;
@@ -254,12 +254,7 @@ impl Parser {
         }))
     }
 
-    fn parse_function_after_eq(
-        &mut self,
-        receiver: Option<Ident>,
-        name: Ident,
-        start_span: Span,
-    ) -> Result<Item> {
+    fn parse_function_after_eq(&mut self, name: Ident, start_span: Span) -> Result<Item> {
         let generic_params = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
         } else {
@@ -282,31 +277,29 @@ impl Parser {
             let body = self.parse_block()?;
             let end_span = self.previous_span();
 
-            // New syntax: extract receiver from first param component
-            let (final_receiver, recv_mut, final_params) = if receiver.is_some() {
-                // Old dot syntax — keep as-is
-                (receiver, false, params)
-            } else if name.name == "main" || params.is_empty() {
-                // main or no-param function: no receiver
-                (None, false, params)
-            } else if matches!(
-                crate::ast::entry_world_of(&return_ty),
-                Some(crate::ast::EntryWorld::Http)
-            ) {
-                // World-shape return (`Response` / `Result<Response, _>`):
-                // this is an HTTP entry, not a method. Suppress receiver
-                // extraction so `home = (Request) -> Response { … }` stays
-                // a free function with `Request` as its parameter (not
-                // a method on `Request`). See the entry-point rule
-                // (docs/src/spec/functions.md).
-                (None, false, params)
-            } else if Self::is_pascal_case_str(&name.name) {
-                // PascalCase: defer to post-parse resolve_new_syntax
-                (None, false, params)
-            } else {
-                // camelCase with params: extract first component as receiver
-                extract_receiver_from_params(params)
-            };
+            // Extract receiver from first param component
+            let (final_receiver, recv_mut, final_params) =
+                if name.name == "main" || params.is_empty() {
+                    // main or no-param function: no receiver
+                    (None, false, params)
+                } else if matches!(
+                    crate::ast::entry_world_of(&return_ty),
+                    Some(crate::ast::EntryWorld::Http)
+                ) {
+                    // World-shape return (`Response` / `Result<Response, _>`):
+                    // this is an HTTP entry, not a method. Suppress receiver
+                    // extraction so `home = (Request) -> Response { … }` stays
+                    // a free function with `Request` as its parameter (not
+                    // a method on `Request`). See the entry-point rule
+                    // (docs/src/spec/functions.md).
+                    (None, false, params)
+                } else if Self::is_pascal_case_str(&name.name) {
+                    // PascalCase: defer to post-parse resolve_new_syntax
+                    (None, false, params)
+                } else {
+                    // camelCase with params: extract first component as receiver
+                    extract_receiver_from_params(params)
+                };
 
             return Ok(Item::Function(FunctionDef {
                 receiver: final_receiver,
@@ -320,13 +313,6 @@ impl Parser {
                 anonymous: false,
                 span: span_join(start_span, end_span),
             }));
-        }
-
-        if receiver.is_some() {
-            return Err(CanonError::ParseError {
-                message: "method definition requires a body `{ ... }`".to_string(),
-                span: self.peek().span,
-            });
         }
 
         let end_span = self.previous_span();
