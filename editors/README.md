@@ -9,7 +9,7 @@ separate LSP binary to install. You get:
 - Parse errors
 - Sort-order violations (unsorted fields, functions, imports, …)
 - Type-check errors
-- Hover, go-to-definition, and formatting via `canon fmt`
+- Hover, go-to-definition, and formatting via the language server
 
 For the one-time steps that put these on the marketplaces, see
 [PUBLISHING.md](PUBLISHING.md).

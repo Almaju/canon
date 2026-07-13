@@ -56,7 +56,7 @@ This is not a second function syntax -- it is the language's **only** function f
 
 Coherence: at most one arrow per (input product, constructed type) pair -- the same family-disjointness rule, with nothing left to name a conflict after.
 
-The named form (`Url = (String) => ...`) still parses and means the same thing, but it is no longer a second spelling: `canon fmt` rewrites it to the anonymous arrow whenever the name is exactly the constructed type, and the format gate (`canon check`/`run` refuse non-canonical files) makes the arrow the one form that survives. Named declarations remain for shape implementations only, and the checker enforces it: a bodied declaration's name must resolve to a declared shape or to the type it constructs -- an arbitrary verb in PascalCase is an error.
+The named form (`Url = (String) => ...`) still parses and means the same thing, but it is no longer a second spelling: `canon check --fix` rewrites it to the anonymous arrow whenever the name is exactly the constructed type, and the format gate (`canon check`/`run` refuse non-canonical files) makes the arrow the one form that survives. Named declarations remain for shape implementations only, and the checker enforces it: a bodied declaration's name must resolve to a declared shape or to the type it constructs -- an arbitrary verb in PascalCase is an error.
 
 ### The Value-Level Pipe -- `value -> B` *(implemented)*
 
@@ -69,7 +69,7 @@ map -> Value("k")                      # remaining components ride in parens
 list -> Json                           # pipes reach methods/shapes too, by receiver type
 ```
 
-`-> B?` needs no special rule: the pipe produces the `Result<B, E>` and the ordinary postfix `?` propagates it. The grammar is unambiguous because Canon has no parenthesized grouping expression -- a `(` at expression *start* is always a lambda (which consumes its own arrow), so a postfix `->` can only be a pipe. The right-hand side must be a PascalCase name; `canon fmt` breaks long pipe chains onto continuation lines exactly like `.` chains:
+`-> B?` needs no special rule: the pipe produces the `Result<B, E>` and the ordinary postfix `?` propagates it. The grammar is unambiguous because Canon has no parenthesized grouping expression -- a `(` at expression *start* is always a lambda (which consumes its own arrow), so a postfix `->` can only be a pipe. The right-hand side must be a PascalCase name; `canon check --fix` breaks long pipe chains onto continuation lines exactly like `.` chains:
 
 ```
 Map()
@@ -79,11 +79,11 @@ Map()
     .print()
 ```
 
-The three-spellings surplus is resolved: `canon fmt` canonicalizes every call, and the rule is *values flow through pipes; literals are born in the parens* -- a computed first input pipes (`a -> Name(b)`), a lone scalar literal stays inside the construction (`Greeting("hi")`), builtins keep the pipe until they migrate to stdlib newtypes, and operand order is never reordered. See [Expressions § Canonical Call Form](./expressions.md#canonical-call-form) for the full case list.
+The three-spellings surplus is resolved: `canon check --fix` canonicalizes every call, and the rule is *values flow through pipes; literals are born in the parens* -- a computed first input pipes (`a -> Name(b)`), a lone scalar literal stays inside the construction (`Greeting("hi")`), builtins keep the pipe until they migrate to stdlib newtypes, and operand order is never reordered. See [Expressions § Canonical Call Form](./expressions.md#canonical-call-form) for the full case list.
 
 ### The One-Operator Endgame -- `->` executes, `.` reads, `=>` declares *(landing)*
 
-> **Status: the declaration/execution split has landed and is enforced.** `=>` declares (constructors, shapes, lambdas, dispatch arms); `->` executes (the value-level pipe). `->` in a declaration position is a **parse error** with a targeted message (`expect_decl_arrow`). `.`-method-calls and `B(a)` prefix-calls with a computed subject are rewritten to the pipe by `canon fmt` (prefix construction survives exactly where the rule below puts it: literal subjects, zero-input calls, `List(…)`). Still ahead: the LSP discovery providers.
+> **Status: the declaration/execution split has landed and is enforced.** `=>` declares (constructors, shapes, lambdas, dispatch arms); `->` executes (the value-level pipe). `->` in a declaration position is a **parse error** with a targeted message (`expect_decl_arrow`). `.`-method-calls and `B(a)` prefix-calls with a computed subject are rewritten to the pipe by `canon check --fix` (prefix construction survives exactly where the rule below puts it: literal subjects, zero-input calls, `List(…)`). Still ahead: the LSP discovery providers.
 
 The migration collapses to a single execution operator. Three symbols, three non-overlapping jobs:
 
@@ -122,7 +122,7 @@ Commutativity is preserved: `(A * B) => C` is reachable from either side (`a -> 
 
 **Two decisions gated implementation; both have landed:**
 
-1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon fmt` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
+1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon check --fix` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
 2. *Declaration arrow* -- `=>` (minimal, "maps to"). `->` at a declaration site is now a parse error (`expect_decl_arrow` in `src/parser/parser.rs`): declarations use `=>`, execution uses `->`.
 
 Auto-discovery is the headline feature, not a side effect: `->` completion queries "functions whose input product mentions this type," `.` completion queries the value's fields. Building both in the LSP is its own slice, since it is the reason for the split.
@@ -233,6 +233,6 @@ Queued to move out of the compiler as their blockers clear:
 3. **Cross-file constructor families** -- [~] partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
 4. **Minimal primitives** -- [~] in progress. A compiler builtin is justified only by wasm numerics, linear-memory layout, canonical-ABI machinery, or a host boundary (see [Minimal Primitives](#minimal-primitives)); everything else moves to stdlib Canon. `Bool`'s `And`/`Or`/`Not` landed (pure dispatch). Remaining: the derived comparisons, `String(Int)` rendering, `print`.
 5. **Stdlib port** -- [x] landed, `json.can` included. The recursive-descent parser is ~30 anonymous arrows over result newtypes and the style held; **checkpoint verdict: full removal** (the fallback rule is retired).
-6. **Enforcement** -- [x] landed, then closed tight. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized); the larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser. The second wave closed the remaining holes: a bodied declaration's name must be a declared shape or the type it constructs (the receiver-extraction path no longer admits arbitrary verbs); endomorphism arrows on the bare type are rejected (result newtypes are the rule, not the doctrine); the named constructor form is rewritten to the anonymous arrow by `canon fmt`; the canonical call form is *values flow, literals are born in the parens*; implicit dependency threading is removed (the pipe is the one spelling of passing a value); a static string the `Json`/`Html` literal expresses must be the literal; and declaring a body-less shape is an error (operations take result newtypes; `ToJson`/`ToHtml`, the interpolation hooks, are the standing exceptions).
+6. **Enforcement** -- [x] landed, then closed tight. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized); the larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser. The second wave closed the remaining holes: a bodied declaration's name must be a declared shape or the type it constructs (the receiver-extraction path no longer admits arbitrary verbs); endomorphism arrows on the bare type are rejected (result newtypes are the rule, not the doctrine); the named constructor form is rewritten to the anonymous arrow by `canon check --fix`; the canonical call form is *values flow, literals are born in the parens*; implicit dependency threading is removed (the pipe is the one spelling of passing a value); and a static string the `Json`/`Html` literal expresses must be the literal.
 7. **Spec rewrite** -- this page's content folds into the Functions / Traits / Ordering spec pages; the pre-migration descriptions there are replaced.
 

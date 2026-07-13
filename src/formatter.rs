@@ -5,7 +5,7 @@
 //! spacing, indentation, and line breaking.
 
 use crate::ast::*;
-use crate::error::{Result, Span};
+use crate::error::{CanonError, Result, Span};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
 
@@ -21,6 +21,66 @@ pub fn format(source: &str) -> Result<String> {
     Ok(emit_module(&module))
 }
 
+/// Formatting is a compiler phase: a divergence from canonical form is
+/// a `FormatError`, the same standing as a lex, parse, or check error.
+/// The canonical form is *defined* by this module's emitter, so the
+/// phase is the emitter run against the written source — there is no
+/// second rulebook to drift from it. Returns the error pointing at the
+/// first place `source` diverges from its canonical form, or `None`
+/// when the source is already canonical. A source that fails to parse
+/// also returns `None`: the pipeline owns the better-located parse
+/// diagnostic. `path` names the offending file in multi-file loads.
+pub fn format_error(source: &str, path: &str) -> Option<CanonError> {
+    let canonical = format(source).ok()?;
+    if canonical == source {
+        return None;
+    }
+    Some(CanonError::FormatError {
+        message: "not canonically formatted: run `canon check --fix`".to_string(),
+        path: path.to_string(),
+        span: divergence_span(source, &canonical),
+    })
+}
+
+/// Span of the first divergence between `source` and its `canonical`
+/// form: the first differing line, from the first differing character
+/// to the end of that line. When one text is a prefix of the other the
+/// span sits at `source`'s end (canonical has more lines) or on the
+/// first surplus source line.
+fn divergence_span(source: &str, canonical: &str) -> Span {
+    let mut offset = 0usize;
+    let mut line_no = 1u32;
+    let mut src_lines = source.split_inclusive('\n');
+    let mut canon_lines = canonical.split_inclusive('\n');
+    loop {
+        match (src_lines.next(), canon_lines.next()) {
+            (Some(s), Some(c)) if s == c => {
+                offset += s.len();
+                line_no += 1;
+            }
+            (Some(s), Some(c)) => {
+                let mut column = 1u32;
+                let mut byte = 0usize;
+                for ((i, sc), cc) in s.char_indices().zip(c.chars()) {
+                    if sc != cc {
+                        byte = i;
+                        break;
+                    }
+                    column += 1;
+                    byte = i + sc.len_utf8();
+                }
+                let line_end = offset + s.strip_suffix('\n').unwrap_or(s).len();
+                return Span::new(offset + byte, line_end.max(offset + byte), line_no, column);
+            }
+            (Some(s), None) => {
+                let line_end = offset + s.strip_suffix('\n').unwrap_or(s).len();
+                return Span::new(offset, line_end, line_no, 1);
+            }
+            (None, _) => return Span::new(offset, offset, line_no, 1),
+        }
+    }
+}
+
 // ── Canonical call form ───────────────────────────────────────────────────────
 //
 // One way to spell a call: the first input always rides the pipe, the
@@ -30,7 +90,7 @@ pub fn format(source: &str) -> Result<String> {
 // to `A`". Zero-input calls stay prefix (`Now()`, `Map()`), and
 // `List(…)` keeps its elements (an ordered sequence, not a
 // subject-bearing call). The parser accepts every spelling; this pass is
-// what makes `canon fmt` pick the canonical one. The compiler treats a
+// what makes `canon check --fix` pick the canonical one. The compiler treats a
 // piped call to a type constructor as construction (`A -> B(rest)` ≡
 // `B(A * rest)`), so the rewrite is semantics-preserving.
 
@@ -55,7 +115,7 @@ fn canonicalize_module(m: &Module) -> Module {
 /// A named bodied declaration whose name is exactly the type its return
 /// constructs (`Url = (String) => Result<Url, InvalidUrl> { … }`) spells
 /// the name twice — the signature already carries it. The anonymous
-/// arrow is the one declaration form for constructors, so `canon fmt`
+/// arrow is the one declaration form for constructors, so `canon check --fix`
 /// drops the redundant name (`String => Result<Url, InvalidUrl> { … }`).
 /// Named declarations remain for exactly one thing: shape
 /// implementations, where the name differs from the constructed type.
@@ -156,7 +216,7 @@ fn is_scalar_literal(e: &Expr) -> bool {
 
 /// `String("s")`, `Int(3)`, `Float(1.5)`, `Hex(0xFF)` wrap a literal in
 /// the constructor that literal already desugars to — the wrap is pure
-/// ceremony, so `canon fmt` unwraps it to the bare literal. Cross-kind
+/// ceremony, so `canon check --fix` unwraps it to the bare literal. Cross-kind
 /// construction (`String(42)` decimal rendering, `Int("42")` parsing)
 /// is a real conversion and stays.
 fn primitive_literal_wrap(name: &str, input: &Expr) -> bool {
@@ -1076,7 +1136,7 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
 
 /// Emit the fields of a product-type constructor, sorted alphabetically
 /// by their rendered form. Construction is positionless (values bind to
-/// fields by type), so a canonical order keeps `canon fmt` output
+/// fields by type), so a canonical order keeps `canon check --fix` output
 /// stable regardless of the order the author wrote the fields.
 fn emit_product_fields_sorted(out: &mut String, fields: &[Expr]) {
     let mut parts: Vec<String> = fields.iter().map(emit_inline).collect();
@@ -1153,7 +1213,7 @@ fn contains_dispatch(expr: &Expr) -> bool {
 /// dispatch's arms into variant (alphabetical) order. Arm order never
 /// carries meaning (union arms are matched by variant name, literal
 /// arms by equality), so sorting is safe here and makes the ordering
-/// rule auto-fixable via `canon fmt` instead of a hand-edit.
+/// rule auto-fixable via `canon check --fix` instead of a hand-edit.
 fn sort_arms(arms: &[MatchArm]) -> Vec<MatchArm> {
     let mut sorted: Vec<MatchArm> = arms.to_vec();
     sorted.sort_by_key(arm_sort_key);

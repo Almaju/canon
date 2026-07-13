@@ -95,7 +95,7 @@ prose belongs outside the source file.
 - An expression may span multiple lines when the continuation is
   syntactically unambiguous (e.g. a pipeline whose next line begins
   with `->`).
-- Layout is **canonical**: `canon fmt` defines the one accepted
+- Layout is **canonical**: `canon check --fix` defines the one accepted
   formatting, and `canon check` / `canon run` refuse files that deviate
   from it. Formatting is part of the language surface, not a style
   choice. The formatter also sorts everything the

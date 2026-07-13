@@ -29,6 +29,16 @@ pub enum CanonError {
     ParseError { message: String, span: Span },
     /// An error produced during type/sort checking.
     CheckError { message: String, span: Span },
+    /// A divergence from canonical form — formatting is a compiler
+    /// phase, so this is an ordinary compile error. Carries the path of
+    /// the offending file: unlike the other kinds, format errors are
+    /// raised per source file of a multi-file load, not against the
+    /// entry, and the span points into that file.
+    FormatError {
+        message: String,
+        path: String,
+        span: Span,
+    },
     /// An error produced during code generation.
     CodegenError { message: String, span: Span },
 }
@@ -40,6 +50,7 @@ impl CanonError {
             CanonError::LexError { span, .. } => span,
             CanonError::ParseError { span, .. } => span,
             CanonError::CheckError { span, .. } => span,
+            CanonError::FormatError { span, .. } => span,
             CanonError::CodegenError { span, .. } => span,
         }
     }
@@ -50,6 +61,7 @@ impl CanonError {
             CanonError::LexError { message, .. } => message,
             CanonError::ParseError { message, .. } => message,
             CanonError::CheckError { message, .. } => message,
+            CanonError::FormatError { message, .. } => message,
             CanonError::CodegenError { message, .. } => message,
         }
     }
@@ -60,6 +72,7 @@ impl CanonError {
             CanonError::LexError { .. } => "lex error",
             CanonError::ParseError { .. } => "parse error",
             CanonError::CheckError { .. } => "check error",
+            CanonError::FormatError { .. } => "format error",
             CanonError::CodegenError { .. } => "codegen error",
         }
     }

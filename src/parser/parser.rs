@@ -934,7 +934,7 @@ impl Parser {
     /// verbatim — no HTML escaping, unlike `parse_html_literal` — and
     /// ints/floats render as digits), so a fully constant backtick string
     /// collapses to a single `StringLit`, making `` `hi` `` identical to
-    /// `"hi"` and keeping `canon fmt`'s canonical plain-quote form.
+    /// `"hi"` and keeping `canon check --fix`'s canonical plain-quote form.
     /// Anything with runtime content becomes an `Interp` part, which the
     /// codegen `-> String`-converts and concats into the surrounding text.
     fn parse_format_literal(&mut self) -> Result<Expr> {
