@@ -1,1 +1,3 @@
+error[tests/checker/fail/free_function_ordering_violation.can:1:1]: a bodied declaration is named after the type it constructs: `Zebra` returns `String`
+error[tests/checker/fail/free_function_ordering_violation.can:5:1]: a bodied declaration is named after the type it constructs: `Apple` returns `String`
 error[tests/checker/fail/free_function_ordering_violation.can:5:1]: function declarations must be in alphabetical order: `Apple` should come before `Zebra`

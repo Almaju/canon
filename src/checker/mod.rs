@@ -1337,45 +1337,44 @@ fn check_function(
     } else if func.extern_wasm.is_none() && starts_lowercase(&func.name.name) {
         // Types-only: the only names are type names (PascalCase).
         // camelCase survives in exactly one place — binding files (the
-        // FFI boundary, `extern_wasm` above). `canon test` functions are
-        // no exception: a test is a result newtype of `TestResult`
-        // (`Behaviour = TestResult`) with a nullary constructor, distinct
-        // by type name and reported by that name.
-        let hint = if is_legacy_test_shape(func) {
-            "a test is a result newtype of `TestResult` — declare `SumIsThree = TestResult` \
-             and its constructor `Unit => SumIsThree { … }`"
-                .to_string()
-        } else {
-            format!(
-                "replace `{}` with a PascalCase constructor (`Input => Type {{ … }}`)",
+        // FFI boundary, `extern_wasm` above).
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "camelCase names are not allowed: the only names are type names — \
+                 replace `{}` with a PascalCase constructor (`Input => Type {{ … }}`)",
                 func.name.name
-            )
-        };
-        errors.push(CanonError::CheckError {
-            message: format!(
-                "camelCase names are not allowed: the only names are type names — {}",
-                hint
             ),
             span: func.name.span,
         });
-    } else if func.extern_wasm.is_none()
-        && is_legacy_test_shape(func)
-        && func.name.name != "TestResult"
-    {
-        // The last named-bodied-function exemption is gone: a bodied
-        // declaration is named after its return type (or a shape), and
-        // tests are no exception. Behaviour gets its identity the way
-        // every other behaviour does — a result newtype — and the arrow
-        // stays anonymous.
-        errors.push(CanonError::CheckError {
-            message: format!(
-                "a named `() => TestResult` function is not a test: a test is a result \
-                 newtype of `TestResult` — declare `{name} = TestResult` and its constructor \
-                 `Unit => {name} {{ … }}`",
-                name = func.name.name
-            ),
-            span: func.name.span,
-        });
+    } else if func.extern_wasm.is_none() && func.receiver.is_none() && !func.anonymous {
+        // The unified declaration rule (the language spec, § Types-Only
+        // Canon): a bodied declaration is named after the type it
+        // constructs — the name is checkable from the signature alone.
+        // Receiver-carrying declarations (constructors normalised to
+        // `Self`, shape implementations named for their shape) and
+        // anonymous arrows satisfy it by construction; what reaches here
+        // is a free named function, where the rule bites: the name must
+        // be the constructed return type (modulo `Result`/`Option`/
+        // `Future` peeling and newtype chains).
+        if let Some(constructed) = constructed_type_name(&func.return_ty) {
+            let is_generic_param = func
+                .generic_params
+                .iter()
+                .any(|g| g.name.name == constructed);
+            if !is_generic_param
+                && func.name.name != constructed
+                && symbols.resolve_alias(&func.name.name) != symbols.resolve_alias(&constructed)
+            {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "a bodied declaration is named after the type it constructs: \
+                         `{}` returns `{}`",
+                        func.name.name, constructed
+                    ),
+                    span: func.name.span,
+                });
+            }
+        }
     }
 
     let generic_scope: HashSet<String> = func
@@ -1515,18 +1514,21 @@ fn check_union_dispatch_shape(
     }
 }
 
-/// The retired pre-newtype test shape: a free, zero-arg function
-/// returning the named type `TestResult` (no generics). Recognised only
-/// to reject it with a pointer at the current form (`X = TestResult` +
-/// `Unit => X { … }`, discovered by `is_test_newtype` /
-/// `is_test_constructor` in `main.rs`).
-fn is_legacy_test_shape(func: &FunctionDef) -> bool {
-    func.receiver.is_none()
-        && func.params.is_empty()
-        && matches!(
-            &func.return_ty,
-            TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
-        )
+/// The type a declaration constructs: its return type with
+/// `Result`/`Option`/`Future` peeled (the language spec, § Anonymous
+/// Constructors). `None` when the return isn't a named type (a product,
+/// a function type) — the naming rule doesn't apply there.
+fn constructed_type_name(ty: &TypeExpr) -> Option<String> {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            if matches!(name.as_str(), "Result" | "Option" | "Future") && !generics.is_empty() {
+                constructed_type_name(&generics[0])
+            } else {
+                Some(name.clone())
+            }
+        }
+        _ => None,
+    }
 }
 
 fn check_type_expr(
@@ -2726,6 +2728,16 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
                         .unwrap_or_else(|| name.name.clone())
                 })
             } else if let Some(sig) = symbols.free_funcs.get(&name.name) {
+                sig.return_ty.clone()
+            } else if let Some(sig) = symbols
+                .methods
+                .get(&(name.name.clone(), "Self".to_string()))
+                .filter(|sig| sig.arity == 0)
+            {
+                // A zero-arg construction takes the nullary constructor's
+                // declared return type — an accessor-style constructor may
+                // construct into a wrapper (`Unit => Option<Cwd>`), and the
+                // dispatch/`?` on `Cwd()` must see `Option<Cwd>`, not `Cwd`.
                 sig.return_ty.clone()
             } else {
                 name.name.clone()

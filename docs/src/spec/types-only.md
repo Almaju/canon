@@ -34,7 +34,7 @@ Every declaration is `PascalName = rhs`, and the RHS shape decides the meaning:
 | signature + body, name = return type | **constructor** -- an implementation of the type | validated constructor |
 | signature + body, name = a declared shape | **shape implementation** | trait implementation |
 
-A bodied declaration must be named after its return type or after a declared shape. Anything else is a compile error -- that error is the entire enforcement mechanism, checkable from signatures alone. (If the return type is a bare type parameter, as in `fold`, declare a shape.)
+A bodied declaration must be named after its return type or after a declared shape. Anything else is a compile error -- that error is the entire enforcement mechanism, checkable from signatures alone. (If the return type is a bare type parameter, as in `fold`, declare a shape.) *Implemented for free (receiver-less) declarations:* the checker rejects a bodied free declaration whose name is not the type it constructs (modulo `Result`/`Option`/`Future` peeling and newtype chains) -- `a bodied declaration is named after the type it constructs`.
 
 ### Anonymous Constructors -- `(A) => B { ... }` *(implemented)*
 

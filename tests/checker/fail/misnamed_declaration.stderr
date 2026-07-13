@@ -1,0 +1,1 @@
+error[tests/checker/fail/misnamed_declaration.can:1:1]: a bodied declaration is named after the type it constructs: `SumIsThree` returns `TestResult`
