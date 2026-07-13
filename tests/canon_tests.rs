@@ -53,10 +53,3 @@ fn canon_test_files() {
         );
     }
 }
-
-fn indent(s: &str, prefix: &str) -> String {
-    s.lines()
-        .map(|line| format!("{}{}", prefix, line))
-        .collect::<Vec<_>>()
-        .join("\n")
-}

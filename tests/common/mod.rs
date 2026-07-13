@@ -210,7 +210,7 @@ fn normalize(s: &str) -> String {
         .to_string()
 }
 
-fn indent(s: &str, prefix: &str) -> String {
+pub fn indent(s: &str, prefix: &str) -> String {
     s.lines()
         .map(|line| format!("{}{}", prefix, line))
         .collect::<Vec<_>>()

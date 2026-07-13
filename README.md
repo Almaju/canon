@@ -145,7 +145,7 @@ canon run hello.can
 |------|-------------|
 | [`src/`](src/) | The `canon` compiler (lexer, parser, checker, codegen) |
 | [`packages/canon/std/`](packages/canon/std/) | Standard library (Canon wrappers over generated WASI bindings) |
-| [`docs/`](docs/) | Documentation site (mdBook) |
+| [`docs/`](docs/) | Documentation site (a Canon web app; see `docs/src/`) |
 | [`examples/`](examples/) | Example `.can` programs |
 | [`tests/`](tests/) | Integration tests |
 | [`editors/`](editors/) | Tree-sitter grammar, Zed extension, VS Code extension |

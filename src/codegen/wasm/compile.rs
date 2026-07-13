@@ -3164,9 +3164,8 @@ impl<'m> WasmGen<'m> {
             }
         }
 
-        // `.print()` is a universal method that delegates to the type-aware
-        // `emit_print` helper. It accepts 0 args (`x.print()`) — a single
-        // arg form for the legacy `Stdout` convention can be added later.
+        // `.print()` is a universal zero-arg method that delegates to the
+        // type-aware `emit_print` helper.
         if method == "print" && args.is_empty() {
             self.emit_print(recv_ty, scope, f);
             return Ty::Unit;

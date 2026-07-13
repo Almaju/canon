@@ -81,12 +81,12 @@ Unit => Program {
 }
 ```
 
-- Functions are `name = (Components) => Return { body }`; the last
+- Constructors are `(Components) => Return { body }`; the last
   expression is the return value.
 - `Bool` is an ordinary union, `False + True`; dispatch applies the
   value to one handler arm per variant.
-- Any component can be the dot-receiver at the call site
-  (`a.compare(b)` and `b.compare(a)` are the same call).
+- Any component can be piped in at the call site
+  (`a -> Compare(b)` and `b -> Compare(a)` are the same call).
 - `T()` constructs a value; `value.Field` (no parens) reads a field.
 - `?` propagates `Result` errors and `Option` absence.
 - Async exists at the ABI, never in the source: no `async`, no
