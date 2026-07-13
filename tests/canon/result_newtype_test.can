@@ -1,0 +1,21 @@
+Greeting = String
+
+Name = String
+
+Shown = String
+
+Greeting => Shown {
+    "HELLO!"
+}
+
+Name => Shown {
+    "Alice"
+}
+
+ShownResolvesByInputType = TestResult
+
+Unit => ShownResolvesByInputType {
+    Greeting("hi") -> Shown
+    Name("Alice") -> Shown
+    Pass()
+}

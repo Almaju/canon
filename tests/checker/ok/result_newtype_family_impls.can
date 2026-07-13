@@ -2,21 +2,21 @@ Greeting = String
 
 Name = String
 
-Show = () => String
+Shown = String
 
-Show = (Greeting) => String {
+Greeting => Shown {
     "HELLO!"
 }
 
-Show = (Name) => String {
+Name => Shown {
     "Alice"
 }
 
 Unit => Program {
     Greeting("hi")
-        -> Show
+        -> Shown
         -> Print
     Name("Alice")
-        -> Show
+        -> Shown
         -> Print
 }

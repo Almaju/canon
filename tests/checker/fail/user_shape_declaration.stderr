@@ -1,0 +1,1 @@
+error[tests/checker/fail/user_shape_declaration.can:3:1]: `Show` declares a shape, and operations take result newtypes: replace it with `Show = <ReturnType>` and anonymous arrows (`(Receiver) => Show`) — shapes return when generic constraints land

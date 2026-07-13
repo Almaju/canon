@@ -303,7 +303,13 @@ invariants:
   be a declared shape or a newtype of its return (no arbitrary verbs in
   PascalCase). An arrow whose constructed type appears in its own input
   product is also an error — endomorphisms take result newtypes
-  (`Inserted = Map`), by check, not convention.
+  (`Inserted = Map`), by check, not convention. **User-declared shapes
+  are rejected** (`check_type_def`): a body-less function-type alias is
+  an error directing to a result newtype, because nothing a shape can
+  do today (constraints, bare-parameter returns, defaults) is
+  implemented — `ToJson`/`ToHtml` (`INTERPOLATION_SHAPES`) are the two
+  standing exceptions, the compiler's literal-interpolation hooks,
+  which programs implement but never re-declare.
   A **single named input drops its parentheses** — `A => B { … }` is
   exactly `(A) => B { … }` (`Parser::parse_paren_free_ctor`; the
   formatter emits the paren-free form). Products (`(A * B) => C`) and

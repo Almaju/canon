@@ -224,23 +224,29 @@ a name that is genuinely ambiguous at the use site is a compile error;
 there is no private visibility. Full rules: [Modules and
 Packages](./spec/modules.md).
 
-## Shapes and traits
+## Shared vocabulary
 
 When an operation's meaning spans types -- `Length` over `Map`, `Set`,
-`String`, `List` -- it is a **shape**: a named signature with no body,
-`PascalCase` because it is a type, implemented per type by a bodied
-declaration of the same name.
+`String`, `List` -- it is a **result newtype** with a family of
+constructors, one per receiver. Structurally identical newtype
+declarations merge across files, so every container declares the same
+`Length = Int` and contributes its own arrow:
 
 ```canon
-Length = (String) => Int
+Length = Int
 
-Show = () => String
+Map => Length {
+    ...
+}
 ```
 
-A shape can be a parameter type directly, or a generic constraint
-(`<T: Print>`). This is what traits were; under Types-Only, shapes and
-constructor families are one concept -- *a `PascalCase` name is a family
-of implementations selected by input product*. See [Functions and
+Under Types-Only, shapes (traits) and constructor families are one
+concept -- *a `PascalCase` name is a family of implementations selected
+by input product* -- and the family is the one spelling: declaring a
+body-less shape is a checker error today. Shapes return when the things
+only they can do (generic constraints like `<T: Show>`, bare-parameter
+returns like `Fold`) land; the compiler's own `ToJson` / `ToHtml`
+interpolation hooks are the two exceptions. See [Functions and
 Traits](./spec/functions.md).
 
 ## Errors
