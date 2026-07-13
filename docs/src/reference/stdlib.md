@@ -50,7 +50,7 @@ the vendored WIT under `wit-vendor/wasi/`.
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
-| `cli/Cwd` | `Cwd = () => Option<String>` | `wasi/cli/environment` | initial working directory, when the host provides one |
+| `cli/Cwd` | `Cwd = String`, `Unit => Option<Cwd>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../guide.md#serving-http) |
 
@@ -352,7 +352,9 @@ The Canon-language testing primitive. See
 [Testing](../guide.md#testing) for the full convention.
 
 ```canon
-SumAddsOperands = () => TestResult {
+SumAddsOperands = TestResult
+
+Unit => SumAddsOperands {
     1
         -> Sum(2)
         -> Eq(3)
@@ -375,10 +377,11 @@ The assertion *is* the `TestResult` constructor
 `Pass` (on `True`) or an empty `Fail` (on `False`). When a failure
 diagnostic helps, construct `Fail("why")` directly in a dispatch arm.
 
-Each test is a PascalCase constructor named for the behaviour it
-asserts. `canon test <file>` discovers every `() => TestResult`
-function in the entry file and runs them, printing `[ ok ] TestName`
-or `[FAIL] TestName: message` per test.
+Each test is a result newtype of `TestResult`, named for the behaviour
+it asserts, with a nullary constructor as its body. `canon test <file>`
+discovers every `X = TestResult` newtype with a `Unit => X` constructor
+in the entry file and runs them, printing `[ ok ] TestName` or
+`[FAIL] TestName: message` per test.
 
 ## `Json`, `MalformedJson`
 

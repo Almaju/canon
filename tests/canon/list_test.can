@@ -1,11 +1,15 @@
-ListConstructionCountsElements = () => TestResult {
+ListConstructionCountsElements = TestResult
+
+Unit => ListConstructionCountsElements {
     List(1 * 2 * 3)
         -> Length
         -> Eq(3)
         -> TestResult
 }
 
-MappedPreservesLength = () => TestResult {
+MappedPreservesLength = TestResult
+
+Unit => MappedPreservesLength {
     List(1 * 2 * 3)
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length

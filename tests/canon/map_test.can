@@ -1,11 +1,15 @@
-MapContainsFindsKey = () => TestResult {
+MapContainsFindsKey = TestResult
+
+Unit => MapContainsFindsKey {
     Map()
         -> Inserted("a" * "1")
         -> Contains("a")
         -> TestResult
 }
 
-MapContainsRejectsAbsent = () => TestResult {
+MapContainsRejectsAbsent = TestResult
+
+Unit => MapContainsRejectsAbsent {
     Map()
         -> Inserted("a" * "1")
         -> Contains("z")
@@ -13,7 +17,9 @@ MapContainsRejectsAbsent = () => TestResult {
         -> TestResult
 }
 
-MapInsertedRecursesPastMultipleNonMatchingKeys = () => TestResult {
+MapInsertedRecursesPastMultipleNonMatchingKeys = TestResult
+
+Unit => MapInsertedRecursesPastMultipleNonMatchingKeys {
     Map()
         -> Inserted("a" * "1")
         -> Inserted("b" * "2")
@@ -25,7 +31,9 @@ MapInsertedRecursesPastMultipleNonMatchingKeys = () => TestResult {
         -> TestResult
 }
 
-MapKeysSorted = () => TestResult {
+MapKeysSorted = TestResult
+
+Unit => MapKeysSorted {
     Map()
         -> Inserted("b" * "2")
         -> Inserted("a" * "1")
@@ -35,7 +43,9 @@ MapKeysSorted = () => TestResult {
         -> TestResult
 }
 
-MapLengthCountsKeys = () => TestResult {
+MapLengthCountsKeys = TestResult
+
+Unit => MapLengthCountsKeys {
     Map()
         -> Inserted("b" * "2")
         -> Inserted("a" * "1")
@@ -44,14 +54,18 @@ MapLengthCountsKeys = () => TestResult {
         -> TestResult
 }
 
-MapReinsertOverwrites = () => TestResult {
+MapReinsertOverwrites = TestResult
+
+Unit => MapReinsertOverwrites {
     Map() -> Inserted("a" * "1") -> Inserted("a" * "2") -> Value("a") -> (
         * None => TestResult { "key a should be present" -> Fail }
         * Some<Value> => TestResult { Value -> Eq("2") -> TestResult }
     )
 }
 
-MapRemovedDropsKey = () => TestResult {
+MapRemovedDropsKey = TestResult
+
+Unit => MapRemovedDropsKey {
     Map()
         -> Inserted("a" * "1")
         -> Inserted("b" * "2")
@@ -62,7 +76,9 @@ MapRemovedDropsKey = () => TestResult {
         -> TestResult
 }
 
-MapRemovedOnEmptyIsNoOp = () => TestResult {
+MapRemovedOnEmptyIsNoOp = TestResult
+
+Unit => MapRemovedOnEmptyIsNoOp {
     Map()
         -> Removed("a")
         -> Length
@@ -70,7 +86,9 @@ MapRemovedOnEmptyIsNoOp = () => TestResult {
         -> TestResult
 }
 
-MapRemovedRecursesPastNonMatchingKey = () => TestResult {
+MapRemovedRecursesPastNonMatchingKey = TestResult
+
+Unit => MapRemovedRecursesPastNonMatchingKey {
     Map()
         -> Inserted("a" * "1")
         -> Inserted("b" * "2")
@@ -81,21 +99,27 @@ MapRemovedRecursesPastNonMatchingKey = () => TestResult {
         -> TestResult
 }
 
-MapValueAbsent = () => TestResult {
+MapValueAbsent = TestResult
+
+Unit => MapValueAbsent {
     Map() -> Inserted("a" * "1") -> Value("z") -> (
         * None => TestResult { Pass() }
         * Some<Value> => TestResult { "key z should be absent" -> Fail }
     )
 }
 
-MapValuePresent = () => TestResult {
+MapValuePresent = TestResult
+
+Unit => MapValuePresent {
     Map() -> Inserted("a" * "1") -> Value("a") -> (
         * None => TestResult { "key a should be present" -> Fail }
         * Some<Value> => TestResult { Value -> Eq("1") -> TestResult }
     )
 }
 
-MapValuesOrderedByKey = () => TestResult {
+MapValuesOrderedByKey = TestResult
+
+Unit => MapValuesOrderedByKey {
     Map()
         -> Inserted("b" * "2")
         -> Inserted("a" * "1")

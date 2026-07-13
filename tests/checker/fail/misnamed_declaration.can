@@ -1,0 +1,13 @@
+SumIsThree = () => TestResult {
+    1
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult
+}
+
+Unit => Program {
+    SumIsThree() -> (
+        * Fail => Unit { "fail" -> Print }
+        * Pass => Unit { "pass" -> Print }
+    )
+}

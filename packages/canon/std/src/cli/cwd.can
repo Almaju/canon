@@ -1,3 +1,5 @@
-Cwd = () => Option<String> {
+Cwd = String
+
+Unit => Option<Cwd> {
     getInitialCwd()
 }

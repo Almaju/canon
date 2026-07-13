@@ -1,38 +1,50 @@
-DifferenceSubtracts = () => TestResult {
+DifferenceSubtracts = TestResult
+
+Unit => DifferenceSubtracts {
     10
         -> Difference(3)
         -> Eq(7)
         -> TestResult
 }
 
-EqIsReflexive = () => TestResult {
+EqIsReflexive = TestResult
+
+Unit => EqIsReflexive {
     5
         -> Eq(5)
         -> TestResult
 }
 
-HexLiteralArithmetic = () => TestResult {
+HexLiteralArithmetic = TestResult
+
+Unit => HexLiteralArithmetic {
     0xFF
         -> Sum(1)
         -> Eq(256)
         -> TestResult
 }
 
-MaximumPicksLarger = () => TestResult {
+MaximumPicksLarger = TestResult
+
+Unit => MaximumPicksLarger {
     3
         -> Maximum(7)
         -> Eq(7)
         -> TestResult
 }
 
-MaximumWhenFirstIsLarger = () => TestResult {
+MaximumWhenFirstIsLarger = TestResult
+
+Unit => MaximumWhenFirstIsLarger {
     7
         -> Maximum(3)
         -> Eq(7)
         -> TestResult
 }
 
-MinimumHandlesNegatives = () => TestResult {
+MinimumHandlesNegatives = TestResult
+
+Unit => MinimumHandlesNegatives {
     0
         -> Difference(5)
         -> Minimum(2)
@@ -40,42 +52,54 @@ MinimumHandlesNegatives = () => TestResult {
         -> TestResult
 }
 
-MinimumPicksSmaller = () => TestResult {
+MinimumPicksSmaller = TestResult
+
+Unit => MinimumPicksSmaller {
     3
         -> Minimum(7)
         -> Eq(3)
         -> TestResult
 }
 
-MinimumWhenFirstIsLarger = () => TestResult {
+MinimumWhenFirstIsLarger = TestResult
+
+Unit => MinimumWhenFirstIsLarger {
     7
         -> Minimum(3)
         -> Eq(3)
         -> TestResult
 }
 
-ProductMultiplies = () => TestResult {
+ProductMultiplies = TestResult
+
+Unit => ProductMultiplies {
     3
         -> Product(4)
         -> Eq(12)
         -> TestResult
 }
 
-QuotientDivides = () => TestResult {
+QuotientDivides = TestResult
+
+Unit => QuotientDivides {
     20
         -> Quotient(4)
         -> Eq(5)
         -> TestResult
 }
 
-SumAddsOperands = () => TestResult {
+SumAddsOperands = TestResult
+
+Unit => SumAddsOperands {
     1
         -> Sum(2)
         -> Eq(3)
         -> TestResult
 }
 
-SumWithZeroIsIdentity = () => TestResult {
+SumWithZeroIsIdentity = TestResult
+
+Unit => SumWithZeroIsIdentity {
     5
         -> Sum(0)
         -> Eq(5)

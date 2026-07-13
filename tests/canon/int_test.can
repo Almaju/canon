@@ -1,39 +1,51 @@
-IntParseParsesNegative = () => TestResult {
+IntParseParsesNegative = TestResult
+
+Unit => IntParseParsesNegative {
     "-7" -> Int -> (
         * Err<MalformedInt> => TestResult { "\"-7\" should parse" -> Fail }
         * Ok<Int> => TestResult { Int -> Eq(0 -> Difference(7)) -> TestResult }
     )
 }
 
-IntParseParsesPositive = () => TestResult {
+IntParseParsesPositive = TestResult
+
+Unit => IntParseParsesPositive {
     "42" -> Int -> (
         * Err<MalformedInt> => TestResult { "\"42\" should parse" -> Fail }
         * Ok<Int> => TestResult { Int -> Eq(42) -> TestResult }
     )
 }
 
-IntParseRejectsEmptyString = () => TestResult {
+IntParseRejectsEmptyString = TestResult
+
+Unit => IntParseRejectsEmptyString {
     "" -> Int -> (
         * Err<MalformedInt> => TestResult { Pass() }
         * Ok<Int> => TestResult { "\"\" should not parse" -> Fail }
     )
 }
 
-IntParseRejectsLetters = () => TestResult {
+IntParseRejectsLetters = TestResult
+
+Unit => IntParseRejectsLetters {
     "abc" -> Int -> (
         * Err<MalformedInt> => TestResult { Pass() }
         * Ok<Int> => TestResult { "\"abc\" should not parse" -> Fail }
     )
 }
 
-IntParseRejectsLoneMinus = () => TestResult {
+IntParseRejectsLoneMinus = TestResult
+
+Unit => IntParseRejectsLoneMinus {
     "-" -> Int -> (
         * Err<MalformedInt> => TestResult { Pass() }
         * Ok<Int> => TestResult { "\"-\" should not parse" -> Fail }
     )
 }
 
-IntParseRejectsNegativeGarbage = () => TestResult {
+IntParseRejectsNegativeGarbage = TestResult
+
+Unit => IntParseRejectsNegativeGarbage {
     "-x" -> Int -> (
         * Err<MalformedInt> => TestResult { Pass() }
         * Ok<Int> => TestResult { "\"-x\" should not parse" -> Fail }

@@ -1,17 +1,21 @@
 Dark = Unit
 
+DispatchSelectsDarkArm = TestResult
+
+DispatchSelectsLightArm = TestResult
+
 Light = Unit
 
-Mode = Dark + Light
-
-DispatchSelectsDarkArm = () => TestResult {
+Unit => DispatchSelectsDarkArm {
     Dark() -> (
         * Dark => TestResult { Pass() }
         * Light => TestResult { Fail() }
     )
 }
 
-DispatchSelectsLightArm = () => TestResult {
+Mode = Dark + Light
+
+Unit => DispatchSelectsLightArm {
     Light() -> (
         * Dark => TestResult { Fail() }
         * Light => TestResult { Pass() }

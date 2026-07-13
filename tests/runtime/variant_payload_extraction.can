@@ -1,14 +1,18 @@
 Fail = String
 
+MakeFail = TestResult
+
+MakePass = TestResult
+
 Pass = Unit
 
 TestResult = Fail + Pass
 
-MakeFail = () => TestResult {
+Unit => MakeFail {
     "the message" -> Fail
 }
 
-MakePass = () => TestResult {
+Unit => MakePass {
     Pass()
 }
 

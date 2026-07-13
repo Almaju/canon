@@ -2,6 +2,14 @@ Count = Int
 
 Empty = Unit
 
+MadeCount = Shape
+
+MadeEmpty = Shape
+
+MadeName = Shape
+
+MadeRatio = Shape
+
 Name = String
 
 Ratio = Float
@@ -11,19 +19,19 @@ Shape = Count
   + Name
   + Ratio
 
-MadeCount = () => Shape {
+Unit => MadeCount {
     42 -> Count
 }
 
-MadeEmpty = () => Shape {
+Unit => MadeEmpty {
     Empty()
 }
 
-MadeName = () => Shape {
+Unit => MadeName {
     "alex" -> Name
 }
 
-MadeRatio = () => Shape {
+Unit => MadeRatio {
     2.5 -> Ratio
 }
 

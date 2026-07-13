@@ -1,4 +1,6 @@
-MarkdownEscapesInline = () => TestResult {
+MarkdownEscapesInline = TestResult
+
+Unit => MarkdownEscapesInline {
     "a < b"
         -> Markdown
         -> Html
@@ -6,7 +8,9 @@ MarkdownEscapesInline = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersBlockquote = () => TestResult {
+MarkdownRendersBlockquote = TestResult
+
+Unit => MarkdownRendersBlockquote {
     "> quoted text"
         -> Markdown
         -> Html
@@ -14,7 +18,9 @@ MarkdownRendersBlockquote = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersBold = () => TestResult {
+MarkdownRendersBold = TestResult
+
+Unit => MarkdownRendersBold {
     "a **bold** word"
         -> Markdown
         -> Html
@@ -22,7 +28,9 @@ MarkdownRendersBold = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersFencedCode = () => TestResult {
+MarkdownRendersFencedCode = TestResult
+
+Unit => MarkdownRendersFencedCode {
     "```\ncode line\n```"
         -> Markdown
         -> Html
@@ -30,7 +38,9 @@ MarkdownRendersFencedCode = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersH2 = () => TestResult {
+MarkdownRendersH2 = TestResult
+
+Unit => MarkdownRendersH2 {
     "## Hello"
         -> Markdown
         -> Html
@@ -38,7 +48,9 @@ MarkdownRendersH2 = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersH3 = () => TestResult {
+MarkdownRendersH3 = TestResult
+
+Unit => MarkdownRendersH3 {
     "### Hello"
         -> Markdown
         -> Html
@@ -46,7 +58,9 @@ MarkdownRendersH3 = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersHeading = () => TestResult {
+MarkdownRendersHeading = TestResult
+
+Unit => MarkdownRendersHeading {
     "# Hello"
         -> Markdown
         -> Html
@@ -54,7 +68,9 @@ MarkdownRendersHeading = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersInlineCode = () => TestResult {
+MarkdownRendersInlineCode = TestResult
+
+Unit => MarkdownRendersInlineCode {
     "an `inline` code"
         -> Markdown
         -> Html
@@ -62,7 +78,9 @@ MarkdownRendersInlineCode = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersItalic = () => TestResult {
+MarkdownRendersItalic = TestResult
+
+Unit => MarkdownRendersItalic {
     "an *italic* word"
         -> Markdown
         -> Html
@@ -70,7 +88,9 @@ MarkdownRendersItalic = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersLink = () => TestResult {
+MarkdownRendersLink = TestResult
+
+Unit => MarkdownRendersLink {
     "see [Canon](https://example.com) here"
         -> Markdown
         -> Html
@@ -78,7 +98,9 @@ MarkdownRendersLink = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersNestedBoldInItalic = () => TestResult {
+MarkdownRendersNestedBoldInItalic = TestResult
+
+Unit => MarkdownRendersNestedBoldInItalic {
     "*a **b** c*"
         -> Markdown
         -> Html
@@ -86,7 +108,9 @@ MarkdownRendersNestedBoldInItalic = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersNestedList = () => TestResult {
+MarkdownRendersNestedList = TestResult
+
+Unit => MarkdownRendersNestedList {
     "- item one\n  - sub item\n- item two"
         -> Markdown
         -> Html
@@ -94,7 +118,9 @@ MarkdownRendersNestedList = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersOrderedList = () => TestResult {
+MarkdownRendersOrderedList = TestResult
+
+Unit => MarkdownRendersOrderedList {
     "1. first\n2. second"
         -> Markdown
         -> Html
@@ -102,7 +128,9 @@ MarkdownRendersOrderedList = () => TestResult {
         -> TestResult
 }
 
-MarkdownRendersTable = () => TestResult {
+MarkdownRendersTable = TestResult
+
+Unit => MarkdownRendersTable {
     "| a | b |\n| --- | --- |\n| 1 | 2 |"
         -> Markdown
         -> Html
@@ -110,7 +138,9 @@ MarkdownRendersTable = () => TestResult {
         -> TestResult
 }
 
-MarkdownWrapsParagraph = () => TestResult {
+MarkdownWrapsParagraph = TestResult
+
+Unit => MarkdownWrapsParagraph {
     "plain text"
         -> Markdown
         -> Html

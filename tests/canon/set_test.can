@@ -1,4 +1,6 @@
-SetContainsFindsAfterRecursingPastEntries = () => TestResult {
+SetContainsFindsAfterRecursingPastEntries = TestResult
+
+Unit => SetContainsFindsAfterRecursingPastEntries {
     Set()
         -> Inserted("a")
         -> Inserted("b")
@@ -7,14 +9,18 @@ SetContainsFindsAfterRecursingPastEntries = () => TestResult {
         -> TestResult
 }
 
-SetContainsFindsInserted = () => TestResult {
+SetContainsFindsInserted = TestResult
+
+Unit => SetContainsFindsInserted {
     Set()
         -> Inserted("x")
         -> Contains("x")
         -> TestResult
 }
 
-SetContainsRejectsAbsent = () => TestResult {
+SetContainsRejectsAbsent = TestResult
+
+Unit => SetContainsRejectsAbsent {
     Set()
         -> Inserted("x")
         -> Contains("y")
@@ -22,7 +28,9 @@ SetContainsRejectsAbsent = () => TestResult {
         -> TestResult
 }
 
-SetContainsRejectsAfterRecursingThroughEntries = () => TestResult {
+SetContainsRejectsAfterRecursingThroughEntries = TestResult
+
+Unit => SetContainsRejectsAfterRecursingThroughEntries {
     Set()
         -> Inserted("a")
         -> Inserted("b")
@@ -32,7 +40,9 @@ SetContainsRejectsAfterRecursingThroughEntries = () => TestResult {
         -> TestResult
 }
 
-SetDedupesInserts = () => TestResult {
+SetDedupesInserts = TestResult
+
+Unit => SetDedupesInserts {
     Set()
         -> Inserted("b")
         -> Inserted("a")
@@ -42,7 +52,9 @@ SetDedupesInserts = () => TestResult {
         -> TestResult
 }
 
-SetListSorted = () => TestResult {
+SetListSorted = TestResult
+
+Unit => SetListSorted {
     Set()
         -> Inserted("b")
         -> Inserted("c")
@@ -53,7 +65,9 @@ SetListSorted = () => TestResult {
         -> TestResult
 }
 
-SetRemovedAbsentIsNoOp = () => TestResult {
+SetRemovedAbsentIsNoOp = TestResult
+
+Unit => SetRemovedAbsentIsNoOp {
     Set()
         -> Inserted("a")
         -> Removed("missing")
@@ -62,7 +76,9 @@ SetRemovedAbsentIsNoOp = () => TestResult {
         -> TestResult
 }
 
-SetRemovedDropsValue = () => TestResult {
+SetRemovedDropsValue = TestResult
+
+Unit => SetRemovedDropsValue {
     Set()
         -> Inserted("a")
         -> Inserted("b")
@@ -73,7 +89,9 @@ SetRemovedDropsValue = () => TestResult {
         -> TestResult
 }
 
-SetRemovedRecursesPastNonMatchingItem = () => TestResult {
+SetRemovedRecursesPastNonMatchingItem = TestResult
+
+Unit => SetRemovedRecursesPastNonMatchingItem {
     Set()
         -> Inserted("a")
         -> Inserted("b")

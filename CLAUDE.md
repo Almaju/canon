@@ -105,7 +105,7 @@ tests/
     <name>.can                 # must run to completion (exit 0)
     <name>.stdout             # golden: exact captured stdout
   canon/
-    <name>_test.can            # functions with signature `() => TestResult`
+    <name>_test.can            # `X = TestResult` newtypes + `Unit => X` constructors
   common/mod.rs               # shared helpers (fixture loader, golden compare,
                               # subprocess invocation)
   checker_fixtures.rs         # harness for tests/checker/
@@ -132,7 +132,7 @@ Each layer answers a different question. Pick the layer that matches
 - **Checker fixture (ok)**: drop a new `.can` file into `tests/checker/ok/`. The harness picks it up automatically.
 - **Checker fixture (fail)**: drop a new `.can` file into `tests/checker/fail/`, then run `just update-fixtures` to generate the sibling `.stderr` from the actual checker output. Review the golden file and commit both.
 - **Runtime fixture**: drop a new `.can` file into `tests/runtime/`, then `just update-fixtures` to generate the sibling `.stdout` from the actual program output. Review and commit both.
-- **Canon test**: add a PascalCase constructor with signature `() => TestResult` to any `tests/canon/*_test.can` file (or create a new one). Discovery is by type signature; the name is a type name like every other Canon name — named for the behaviour it asserts (`SumAddsOperands = () => TestResult { … }`), reported as `[ ok ] SumAddsOperands`. camelCase test names are a checker error (no exemption — the only camelCase left is in binding files).
+- **Canon test**: add a result newtype of `TestResult` plus its nullary constructor to any `tests/canon/*_test.can` file (or create a new one): `SumAddsOperands = TestResult` and `Unit => SumAddsOperands { … }`. Discovery is by shape (the newtype + `Unit => X` pair); the name is a *type* name like every other Canon name — named for the behaviour it asserts, reported as `[ ok ] SumAddsOperands`. There is no test-specific checker rule: a free bodied declaration not named after the type it constructs is rejected by the general unified-declaration rule, so the arrow stays anonymous and behaviour gets its identity as a result newtype, like `Inserted = Map`.
 - **Compiler API test**: only when the test needs to call the checker with synthetic arguments. Keep these rare.
 
 ### Updating goldens
@@ -146,7 +146,9 @@ actual current output. The `git diff` is the review surface for
 ### Canon-language test framework
 
 ```
-SumAddsOperands = () => TestResult {
+SumAddsOperands = TestResult
+
+Unit => SumAddsOperands {
     1 -> Sum(2) -> Eq(3) -> TestResult
 }
 ```
@@ -154,7 +156,7 @@ SumAddsOperands = () => TestResult {
 (No import needed: the `TestResult` reference auto-loads the stdlib's `test-result.can`.)
 
 - `TestResult = Fail + Pass`, with `Fail = String` carrying an optional failure message.
-- The `TestResult` constructor `Bool => TestResult` turns a `Bool` into a `TestResult`: `True` → `Pass()`, `False` → `Fail("")`. A bare `-> TestResult` terminates a boolean-chain test — the test's own name is the failure label, so no message string is needed. (Formerly `assert`, then `(Bool * String) => TestResult`; the message arg was dropped once tests became PascalCase-named.) When a failure diagnostic genuinely helps, construct `Fail("why")` directly in a dispatch arm (see `int_test.can`, `url_test.can`).
+- The `TestResult` constructor `Bool => TestResult` turns a `Bool` into a `TestResult`: `True` → `Pass()`, `False` → `Fail("")`. A bare `-> TestResult` terminates a boolean-chain test — the test's own name is the failure label, so no message string is needed. (Formerly `assert`, then `(Bool * String) => TestResult`; the message arg was dropped once tests became named types.) When a failure diagnostic genuinely helps, construct `Fail("why")` directly in a dispatch arm (see `int_test.can`, `url_test.can`).
 - The synthesised `main` dispatches each test on its result and prints a `[ ok ] TestName` line on `Pass` or a single `[FAIL] TestName: message` line on `Fail`. Each dispatch yields 0/1; the failure count drives `wasi:cli/exit#exit-with-code` (any failure → exit 1), so `canon test` is honest to shells and CI.
 - Each test ends in a chain that produces a `TestResult` (typically `-> Eq(...) -> TestResult`, or a dispatch whose arms yield `Pass()` / `Fail("…")`). Multi-assertion tests via `?`-propagation are a follow-up that lands when `?` itself learns short-circuit semantics (currently a payload-extractor only).
 - The synthesised `main` is exempt from free-function alphabetical ordering (main is the entry point, distinguished by role).
@@ -246,9 +248,10 @@ Non-obvious invariants the code won't spell out for you:
 
 "The only names are type names": camelCase bodied definitions and
 camelCase type aliases are **checker errors** outside binding files (the
-FFI boundary) — with no exception for `canon test` functions, which are
-PascalCase constructors like everything else. See the spec
-(`docs/src/spec/`). The invariants:
+FFI boundary) — with no exception for tests, which are result newtypes
+of `TestResult` with anonymous nullary constructors like every other
+behaviour-carrying name. See the spec (`docs/src/spec/`). The
+invariants:
 
 - **Constructor families.** A type may declare several self-named
   constructors, selected by the first argument's type
@@ -320,7 +323,7 @@ PascalCase constructors like everything else. See the spec
   fully ported (JSON/int parsers, HTML element vocabulary, `TestResult`,
   Map/Set); camelCase survives only in binding files
   (`builtins@0.1.0/`, `wasi/`) — the FFI boundary — enforced by the
-  checker (`canon test` functions are PascalCase constructors, no
+  checker (tests are result newtypes with anonymous constructors, no
   exception).
 - **Newtype substitutability in returns.** A body producing `Html`
   satisfies `-> Button` where `Button = Html` (the return check walks
