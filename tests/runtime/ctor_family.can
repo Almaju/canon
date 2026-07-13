@@ -1,17 +1,17 @@
 Greeting = String
 
-Greeting = () => Greeting {
+Unit => Greeting {
     "hello" -> Greeting
 }
 
-Greeting = (Bool) => Greeting {
+Bool => Greeting {
     Bool -> (
         * False => Greeting { "bool:no" -> Greeting }
         * True => Greeting { "bool:yes" -> Greeting }
     )
 }
 
-Greeting = (Int) => Greeting {
+Int => Greeting {
     "int:"
         -> Joined(Int -> String)
         -> Greeting

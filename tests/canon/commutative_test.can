@@ -4,7 +4,7 @@ Greeting = String
 
 Name = String
 
-Greeted = (Greeting * Name) => Greeted {
+Greeting * Name => Greeted {
     Greeting
 }
 

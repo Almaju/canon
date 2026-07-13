@@ -58,7 +58,7 @@ String => SchemeEnd {
     )
 }
 
-Url = (String) => Result<Url, InvalidUrl> {
+String => Result<Url, InvalidUrl> {
     String
         -> SchemeEnd
         -> HostChecked(String)

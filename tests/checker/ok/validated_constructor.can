@@ -2,7 +2,7 @@ InvalidUrl = String
 
 Url = String
 
-Url = (String) => Result<Url, InvalidUrl> {
+String => Result<Url, InvalidUrl> {
     String
         -> Url
         -> Ok

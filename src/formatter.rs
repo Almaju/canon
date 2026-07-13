@@ -42,6 +42,7 @@ fn canonicalize_module(m: &Module) -> Module {
             .map(|it| match it {
                 Item::Function(f) => Item::Function(FunctionDef {
                     body: canon_block(&f.body),
+                    anonymous: f.anonymous || is_redundantly_named(f),
                     ..f.clone()
                 }),
                 other => other.clone(),
@@ -49,6 +50,20 @@ fn canonicalize_module(m: &Module) -> Module {
             .collect(),
         span: m.span,
     }
+}
+
+/// A named bodied declaration whose name is exactly the type its return
+/// constructs (`Url = (String) => Result<Url, InvalidUrl> { … }`) spells
+/// the name twice — the signature already carries it. The anonymous
+/// arrow is the one declaration form for constructors, so `canon fmt`
+/// drops the redundant name (`String => Result<Url, InvalidUrl> { … }`).
+/// Named declarations remain for exactly one thing: shape
+/// implementations, where the name differs from the constructed type.
+fn is_redundantly_named(f: &FunctionDef) -> bool {
+    !f.anonymous
+        && f.receiver.is_none()
+        && f.generic_params.is_empty()
+        && crate::ast::constructed_type_name(&f.return_ty).as_deref() == Some(f.name.name.as_str())
 }
 
 fn canon_block(b: &Block) -> Block {
