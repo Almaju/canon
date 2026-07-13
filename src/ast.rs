@@ -708,6 +708,16 @@ pub fn builtin_pipe_name(name: &str) -> &str {
         .unwrap_or(name)
 }
 
+/// Whether `name` is the PascalCase pipe spelling of a compiler builtin
+/// (`Sum`, `Print`, `Joined`, …). Builtins are receiver-oriented machine
+/// operations, not constructions — they have no prefix call form, so
+/// `canon fmt`'s literal-collapse (`"hi" -> Greeting` → `Greeting("hi")`)
+/// must not touch them. The list shrinks as builtins migrate to stdlib
+/// result newtypes (the minimal-primitives doctrine).
+pub fn is_builtin_pipe_vocabulary(name: &str) -> bool {
+    BUILTIN_ALIASES.iter().any(|(pascal, _)| *pascal == name)
+}
+
 /// The type an arrow *constructs*: its return type with the standard
 /// containers peeled — `Result<Url, InvalidUrl>` constructs `Url`,
 /// `Option<Value>` constructs `Value`, `Future<T>` constructs `T`.

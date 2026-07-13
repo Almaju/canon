@@ -5,5 +5,5 @@ Pair = First * Second
 Second = String
 
 Unit => Program {
-    "hello" -> First -> Pair("world" -> Second).First -> Print
+    "hello" -> First -> Pair(Second("world")).First -> Print
 }

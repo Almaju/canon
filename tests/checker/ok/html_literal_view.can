@@ -14,8 +14,7 @@ Model => View {
 }
 
 Unit => Program {
-    "groceries"
-        -> Model
+    Model("groceries")
         -> View
         -> Print
 }

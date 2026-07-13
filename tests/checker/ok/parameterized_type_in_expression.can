@@ -10,8 +10,7 @@ Option => Described {
 }
 
 Unit => Program {
-    "hi"
-        -> Content
+    Content("hi")
         -> Some
         -> Described
         -> Print

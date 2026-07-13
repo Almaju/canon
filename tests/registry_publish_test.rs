@@ -59,7 +59,7 @@ const SHOUT_CAN: &str =
     "Shouted = String\n\nString => Shouted {\n    String -> Joined(\"!\")\n}\n";
 
 const MAIN_CAN: &str =
-    "Unit => Program {\n    \"hello\"\n        -> Shouted\n        -> Print\n}\n";
+    "Unit => Program {\n    Shouted(\"hello\") -> Print\n}\n";
 
 #[test]
 fn publish_install_run_round_trip() {

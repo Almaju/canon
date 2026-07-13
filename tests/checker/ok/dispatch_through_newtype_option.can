@@ -12,8 +12,7 @@ MessageContent => Described {
 }
 
 Unit => Program {
-    "hi"
-        -> Some
+    Some("hi")
         -> MessageContent
         -> Described
         -> Print

@@ -1,5 +1,3 @@
 Unit => Program {
-    "hello autodiscovery"
-        -> Greeting
-        -> Print
+    Greeting("hello autodiscovery") -> Print
 }

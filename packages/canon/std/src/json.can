@@ -145,7 +145,7 @@ ParseStep * String => CheckedTrailing {
         * ParseFail => CheckedTrailing { ParseFail }
         * ParsePos => CheckedTrailing {
             ParsePos.Int -> AfterWs(String) -> Eq(String -> Length -> Sum(1)) -> (
-                * False => CheckedTrailing { "trailing characters" -> ParseFail }
+                * False => CheckedTrailing { ParseFail("trailing characters") }
                 * True => CheckedTrailing { ParsePos.Int -> ParsePos }
             )
         }
@@ -166,11 +166,7 @@ Int * Json * String => Result<ClosedOrKey, MalformedJson> {
                 }
             )
         }
-        * True => Result<ClosedOrKey, MalformedJson> {
-            "unterminated object"
-                -> MalformedJson
-                -> Err
-        }
+        * True => Result<ClosedOrKey, MalformedJson> { MalformedJson("unterminated object") -> Err }
     )
 }
 
@@ -179,9 +175,7 @@ Int * KeyEq * Json * String => Result<ColonChecked, MalformedJson> {
         * False => Result<ColonChecked, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(58) -> (
                 * False => Result<ColonChecked, MalformedJson> {
-                    "expected colon after key"
-                        -> MalformedJson
-                        -> Err
+                    MalformedJson("expected colon after key") -> Err
                 }
                 * True => Result<ColonChecked, MalformedJson> {
                     Int
@@ -192,9 +186,7 @@ Int * KeyEq * Json * String => Result<ColonChecked, MalformedJson> {
             )
         }
         * True => Result<ColonChecked, MalformedJson> {
-            "expected colon after key"
-                -> MalformedJson
-                -> Err
+            MalformedJson("expected colon after key") -> Err
         }
     )
 }
@@ -206,7 +198,7 @@ Int * String => ConsumedArrayTail {
                 * False => ConsumedArrayTail {
                     String -> ByteAt(Int) -> Eq(93) -> (
                         * False => ConsumedArrayTail {
-                            "expected comma or closing bracket in array" -> ParseFail
+                            ParseFail("expected comma or closing bracket in array")
                         }
                         * True => ConsumedArrayTail { Int -> Sum(1) -> ParsePos }
                     )
@@ -220,7 +212,7 @@ Int * String => ConsumedArrayTail {
                 }
             )
         }
-        * True => ConsumedArrayTail { "unterminated array" -> ParseFail }
+        * True => ConsumedArrayTail { ParseFail("unterminated array") }
     )
 }
 
@@ -228,7 +220,7 @@ Int * String => ConsumedColonValue {
     Int -> Gt(String -> Length) -> (
         * False => ConsumedColonValue {
             String -> ByteAt(Int) -> Eq(58) -> (
-                * False => ConsumedColonValue { "expected colon after key" -> ParseFail }
+                * False => ConsumedColonValue { ParseFail("expected colon after key") }
                 * True => ConsumedColonValue {
                     Int
                         -> Sum(1)
@@ -237,7 +229,7 @@ Int * String => ConsumedColonValue {
                 }
             )
         }
-        * True => ConsumedColonValue { "expected colon after key" -> ParseFail }
+        * True => ConsumedColonValue { ParseFail("expected colon after key") }
     )
 }
 
@@ -248,7 +240,7 @@ Int * String => ConsumedObjectTail {
                 * False => ConsumedObjectTail {
                     String -> ByteAt(Int) -> Eq(125) -> (
                         * False => ConsumedObjectTail {
-                            "expected comma or closing brace in object" -> ParseFail
+                            ParseFail("expected comma or closing brace in object")
                         }
                         * True => ConsumedObjectTail { Int -> Sum(1) -> ParsePos }
                     )
@@ -262,7 +254,7 @@ Int * String => ConsumedObjectTail {
                 }
             )
         }
-        * True => ConsumedObjectTail { "unterminated object" -> ParseFail }
+        * True => ConsumedObjectTail { ParseFail("unterminated object") }
     )
 }
 
@@ -311,7 +303,7 @@ Int * String => DispatchedValue {
                 * True => DispatchedValue { Int -> ParsedObject(String) }
             )
         }
-        * True => DispatchedValue { "unexpected end of input" -> ParseFail }
+        * True => DispatchedValue { ParseFail("unexpected end of input") }
     )
 }
 
@@ -499,9 +491,7 @@ Int * Json * String => Result<OpenedObject, MalformedJson> {
         * False => Result<OpenedObject, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(123) -> (
                 * False => Result<OpenedObject, MalformedJson> {
-                    "expected object"
-                        -> MalformedJson
-                        -> Err
+                    MalformedJson("expected object") -> Err
                 }
                 * True => Result<OpenedObject, MalformedJson> {
                     Int
@@ -511,7 +501,7 @@ Int * Json * String => Result<OpenedObject, MalformedJson> {
                 }
             )
         }
-        * True => Result<OpenedObject, MalformedJson> { "expected object" -> MalformedJson -> Err }
+        * True => Result<OpenedObject, MalformedJson> { MalformedJson("expected object") -> Err }
     )
 }
 
@@ -534,7 +524,7 @@ Int * String => ParsedArrayItems {
                 * True => ParsedArrayItems { Int -> Sum(1) -> ParsePos }
             )
         }
-        * True => ParsedArrayItems { "unterminated array" -> ParseFail }
+        * True => ParsedArrayItems { ParseFail("unterminated array") }
     )
 }
 
@@ -570,10 +560,10 @@ ParseStep * String => ParsedExpAfter {
 
 Int * String => ParsedFalse {
     Int -> Sum(4) -> Le(String -> Length) -> (
-        * False => ParsedFalse { "expected false" -> ParseFail }
+        * False => ParsedFalse { ParseFail("expected false") }
         * True => ParsedFalse {
             String -> Substring(Int -> From * Int -> Sum(4) -> To) -> Eq("false") -> (
-                * False => ParsedFalse { "expected false" -> ParseFail }
+                * False => ParsedFalse { ParseFail("expected false") }
                 * True => ParsedFalse { Int -> Sum(5) -> ParsePos }
             )
         }
@@ -604,7 +594,7 @@ Int * String => ParsedIntPart {
             String -> ByteAt(Int) -> Eq(48) -> (
                 * False => ParsedIntPart {
                     String -> ByteAt(Int) -> IsDigit -> (
-                        * False => ParsedIntPart { "expected digit" -> ParseFail }
+                        * False => ParsedIntPart { ParseFail("expected digit") }
                         * True => ParsedIntPart {
                             Int
                                 -> Sum(1)
@@ -616,16 +606,16 @@ Int * String => ParsedIntPart {
                 * True => ParsedIntPart { Int -> Sum(1) -> ParsedFracExp(String) }
             )
         }
-        * True => ParsedIntPart { "expected digit" -> ParseFail }
+        * True => ParsedIntPart { ParseFail("expected digit") }
     )
 }
 
 Int * String => ParsedNull {
     Int -> Sum(3) -> Le(String -> Length) -> (
-        * False => ParsedNull { "expected null" -> ParseFail }
+        * False => ParsedNull { ParseFail("expected null") }
         * True => ParsedNull {
             String -> Substring(Int -> From * Int -> Sum(3) -> To) -> Eq("null") -> (
-                * False => ParsedNull { "expected null" -> ParseFail }
+                * False => ParsedNull { ParseFail("expected null") }
                 * True => ParsedNull { Int -> Sum(4) -> ParsePos }
             )
         }
@@ -669,7 +659,7 @@ Int * String => ParsedObjectItems {
                 * True => ParsedObjectItems { Int -> Sum(1) -> ParsePos }
             )
         }
-        * True => ParsedObjectItems { "unterminated object" -> ParseFail }
+        * True => ParsedObjectItems { ParseFail("unterminated object") }
     )
 }
 
@@ -706,11 +696,11 @@ Int * String => ParsedString {
     Int -> Gt(String -> Length) -> (
         * False => ParsedString {
             String -> ByteAt(Int) -> Eq(34) -> (
-                * False => ParsedString { "expected quote to start string" -> ParseFail }
+                * False => ParsedString { ParseFail("expected quote to start string") }
                 * True => ParsedString { Int -> Sum(1) -> ParsedStringBody(String) }
             )
         }
-        * True => ParsedString { "expected quote to start string" -> ParseFail }
+        * True => ParsedString { ParseFail("expected quote to start string") }
     )
 }
 
@@ -728,7 +718,7 @@ Int * String => ParsedStringBody {
                                         -> ParsedStringBody(String)
                                 }
                                 * True => ParsedStringBody {
-                                    "unescaped control character" -> ParseFail
+                                    ParseFail("unescaped control character")
                                 }
                             )
                         }
@@ -738,16 +728,16 @@ Int * String => ParsedStringBody {
                 * True => ParsedStringBody { Int -> Sum(1) -> ParsePos }
             )
         }
-        * True => ParsedStringBody { "unterminated string" -> ParseFail }
+        * True => ParsedStringBody { ParseFail("unterminated string") }
     )
 }
 
 Int * String => ParsedTrue {
     Int -> Sum(3) -> Le(String -> Length) -> (
-        * False => ParsedTrue { "expected true" -> ParseFail }
+        * False => ParsedTrue { ParseFail("expected true") }
         * True => ParsedTrue {
             String -> Substring(Int -> From * Int -> Sum(3) -> To) -> Eq("true") -> (
-                * False => ParsedTrue { "expected true" -> ParseFail }
+                * False => ParsedTrue { ParseFail("expected true") }
                 * True => ParsedTrue { Int -> Sum(4) -> ParsePos }
             )
         }
@@ -772,9 +762,7 @@ Int * Json => Result<QuoteChecked, MalformedJson> {
         * False => Result<QuoteChecked, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(34) -> (
                 * False => Result<QuoteChecked, MalformedJson> {
-                    "expected string"
-                        -> MalformedJson
-                        -> Err
+                    MalformedJson("expected string") -> Err
                 }
                 * True => Result<QuoteChecked, MalformedJson> {
                     Int
@@ -783,7 +771,7 @@ Int * Json => Result<QuoteChecked, MalformedJson> {
                 }
             )
         }
-        * True => Result<QuoteChecked, MalformedJson> { "expected string" -> MalformedJson -> Err }
+        * True => Result<QuoteChecked, MalformedJson> { MalformedJson("expected string") -> Err }
     )
 }
 
@@ -791,11 +779,11 @@ Int * String => RequiredDigits {
     Int -> Gt(String -> Length) -> (
         * False => RequiredDigits {
             String -> ByteAt(Int) -> IsDigit -> (
-                * False => RequiredDigits { "expected digit" -> ParseFail }
+                * False => RequiredDigits { ParseFail("expected digit") }
                 * True => RequiredDigits { Int -> Sum(1) -> AfterDigits(String) -> ParsePos }
             )
         }
-        * True => RequiredDigits { "expected digit" -> ParseFail }
+        * True => RequiredDigits { ParseFail("expected digit") }
     )
 }
 
@@ -806,9 +794,7 @@ Int * Json * String => Result<TailChecked, MalformedJson> {
                 * False => Result<TailChecked, MalformedJson> {
                     Json -> ByteAt(Int) -> Eq(125) -> (
                         * False => Result<TailChecked, MalformedJson> {
-                            "expected comma or closing brace in object"
-                                -> MalformedJson
-                                -> Err
+                            MalformedJson("expected comma or closing brace in object") -> Err
                         }
                         * True => Result<TailChecked, MalformedJson> {
                             "field `"
@@ -828,9 +814,7 @@ Int * Json * String => Result<TailChecked, MalformedJson> {
             )
         }
         * True => Result<TailChecked, MalformedJson> {
-            "expected comma or closing brace in object"
-                -> MalformedJson
-                -> Err
+            MalformedJson("expected comma or closing brace in object") -> Err
         }
     )
 }
@@ -861,9 +845,7 @@ Int * Json => Result<UnescapedEscape, MalformedJson> {
         * False => Result<UnescapedEscape, MalformedJson> {
             Json -> ByteAt(Int) -> EscapeChar -> (
                 * EscapeOther => Result<UnescapedEscape, MalformedJson> {
-                    "bad escape"
-                        -> MalformedJson
-                        -> Err
+                    MalformedJson("bad escape") -> Err
                 }
                 * EscapePlain => Result<UnescapedEscape, MalformedJson> {
                     Int
@@ -879,9 +861,7 @@ Int * Json => Result<UnescapedEscape, MalformedJson> {
             )
         }
         * True => Result<UnescapedEscape, MalformedJson> {
-            "truncated escape"
-                -> MalformedJson
-                -> Err
+            MalformedJson("truncated escape") -> Err
         }
     )
 }
@@ -905,13 +885,11 @@ Int * Json => Result<UnescapedTail, MalformedJson> {
                         }
                     )
                 }
-                * True => Result<UnescapedTail, MalformedJson> { "" -> Ok }
+                * True => Result<UnescapedTail, MalformedJson> { Ok("") }
             )
         }
         * True => Result<UnescapedTail, MalformedJson> {
-            "unterminated string"
-                -> MalformedJson
-                -> Err
+            MalformedJson("unterminated string") -> Err
         }
     )
 }
@@ -921,30 +899,22 @@ Int * Json => Result<UnescapedUnicode, MalformedJson> {
         * False => Result<UnescapedUnicode, MalformedJson> {
             Json -> ByteAt(Int) -> IsHex -> (
                 * False => Result<UnescapedUnicode, MalformedJson> {
-                    "bad \\u escape"
-                        -> MalformedJson
-                        -> Err
+                    MalformedJson("bad \\u escape") -> Err
                 }
                 * True => Result<UnescapedUnicode, MalformedJson> {
                     Json -> ByteAt(Int -> Sum(1)) -> IsHex -> (
                         * False => Result<UnescapedUnicode, MalformedJson> {
-                            "bad \\u escape"
-                                -> MalformedJson
-                                -> Err
+                            MalformedJson("bad \\u escape") -> Err
                         }
                         * True => Result<UnescapedUnicode, MalformedJson> {
                             Json -> ByteAt(Int -> Sum(2)) -> IsHex -> (
                                 * False => Result<UnescapedUnicode, MalformedJson> {
-                                    "bad \\u escape"
-                                        -> MalformedJson
-                                        -> Err
+                                    MalformedJson("bad \\u escape") -> Err
                                 }
                                 * True => Result<UnescapedUnicode, MalformedJson> {
                                     Json -> ByteAt(Int -> Sum(3)) -> IsHex -> (
                                         * False => Result<UnescapedUnicode, MalformedJson> {
-                                            "bad \\u escape"
-                                                -> MalformedJson
-                                                -> Err
+                                            MalformedJson("bad \\u escape") -> Err
                                         }
                                         * True => Result<UnescapedUnicode, MalformedJson> {
                                             Int
@@ -961,9 +931,7 @@ Int * Json => Result<UnescapedUnicode, MalformedJson> {
             )
         }
         * True => Result<UnescapedUnicode, MalformedJson> {
-            "truncated \\u escape"
-                -> MalformedJson
-                -> Err
+            MalformedJson("truncated \\u escape") -> Err
         }
     )
 }
@@ -978,7 +946,7 @@ Int => Utf8 {
                         * True => Utf8 {
                             Int -> Le(57343) -> (
                                 * False => Utf8 { Int -> Utf8Three }
-                                * True => Utf8 { 65533 -> Utf8Three }
+                                * True => Utf8 { Utf8Three(65533) }
                             )
                         }
                     )

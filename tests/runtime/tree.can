@@ -21,8 +21,7 @@ Unit => Program {
     Leaf()
         -> Described
         -> Print
-    7
-        -> Value
+    Value(7)
         -> Branch(Leaf() -> Left * Leaf() -> Right)
         -> Described
         -> Print

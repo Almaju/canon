@@ -15,11 +15,7 @@ Show = (Name) => String {
 ShowResolvesByInputType = TestResult
 
 Unit => ShowResolvesByInputType {
-    "hi"
-        -> Greeting
-        -> Show
-    "Alice"
-        -> Name
-        -> Show
+    Greeting("hi") -> Show
+    Name("Alice") -> Show
     Pass()
 }

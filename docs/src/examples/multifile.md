@@ -29,8 +29,7 @@ Greeter => Shout {
 
 ```canon
 Unit => Program {
-    "hi"
-        -> Greeter
+    Greeter("hi")
         -> Shout
         -> Print
 }

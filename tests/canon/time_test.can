@@ -1,8 +1,7 @@
 NowDecodesEpoch = TestResult
 
 Unit => NowDecodesEpoch {
-    0
-        -> Unix
+    Unix(0)
         -> Now
         -> Eq("1970-01-01T00:00:00Z")
         -> TestResult
@@ -11,8 +10,7 @@ Unit => NowDecodesEpoch {
 NowDecodesLeapDay = TestResult
 
 Unit => NowDecodesLeapDay {
-    951782400
-        -> Unix
+    Unix(951782400)
         -> Now
         -> Eq("2000-02-29T00:00:00Z")
         -> TestResult
@@ -21,8 +19,7 @@ Unit => NowDecodesLeapDay {
 NowDecodesMidYearDate = TestResult
 
 Unit => NowDecodesMidYearDate {
-    1720096496
-        -> Unix
+    Unix(1720096496)
         -> Now
         -> Eq("2024-07-04T12:34:56Z")
         -> TestResult
@@ -31,8 +28,7 @@ Unit => NowDecodesMidYearDate {
 NowDecodesTimeOfDay = TestResult
 
 Unit => NowDecodesTimeOfDay {
-    1704070861
-        -> Unix
+    Unix(1704070861)
         -> Now
         -> Eq("2024-01-01T01:01:01Z")
         -> TestResult

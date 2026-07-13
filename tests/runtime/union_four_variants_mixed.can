@@ -22,7 +22,7 @@ Shape = Count
 Shown = Unit
 
 Unit => MadeCount {
-    42 -> Count
+    Count(42)
 }
 
 Unit => MadeEmpty {
@@ -30,11 +30,11 @@ Unit => MadeEmpty {
 }
 
 Unit => MadeName {
-    "alex" -> Name
+    Name("alex")
 }
 
 Unit => MadeRatio {
-    2.5 -> Ratio
+    Ratio(2.5)
 }
 
 Shape => Shown {

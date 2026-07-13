@@ -1,6 +1,4 @@
 Unit => Result<Program, MalformedJson> {
-    "[1, 2, 3]"
-        -> Json?
-        -> Print
+    Json("[1, 2, 3]")? -> Print
     Unit() -> Ok
 }

@@ -11,8 +11,7 @@ Json => Result<ChatCompletionRequest, MalformedJson> {
 }
 
 Unit => Result<Program, MalformedJson> {
-    "{\"model\":\"gpt-4\"}"
-        -> Json?
+    Json("{\"model\":\"gpt-4\"}")?
         -> ChatCompletionRequest?
         -> Print
     Unit() -> Ok

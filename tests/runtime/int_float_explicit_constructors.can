@@ -1,12 +1,7 @@
 Unit => Program {
-    1
-        -> Int
-        -> Print
+    1 -> Print
     5
-        -> Int
-        -> Sum(2 -> Int)
+        -> Sum(2)
         -> Print
-    2.5
-        -> Float
-        -> Print
+    2.5 -> Print
 }

@@ -5,9 +5,7 @@ String => Greeting {
 }
 
 Unit => Program {
-    "world"
-        -> Greeting
-        -> Print
+    Greeting("world") -> Print
     {"escaped":"a \"b\" c"} -> Print
     {"control":"tab:\there"} -> Print
 }

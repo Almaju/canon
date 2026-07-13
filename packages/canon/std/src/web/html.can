@@ -66,33 +66,33 @@ String => Escaped {
             String -> ByteAt(1) -> (
                 * 34 => Escaped {
                     "&quot;"
-                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> Escaped)
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
                         -> Html
                 }
                 * 38 => Escaped {
                     "&amp;"
-                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> Escaped)
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
                         -> Html
                 }
                 * 60 => Escaped {
                     "&lt;"
-                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> Escaped)
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
                         -> Html
                 }
                 * 62 => Escaped {
                     "&gt;"
-                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> Escaped)
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
                         -> Html
                 }
                 * Int => Escaped {
                     String
-                        -> Substring(1 -> From * 1 -> To)
-                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> Escaped)
+                        -> Substring(From(1) * To(1))
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
                         -> Html
                 }
             )
         }
-        * True => Escaped { "" -> Html }
+        * True => Escaped { Html("") }
     )
 }
 

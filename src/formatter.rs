@@ -124,6 +124,51 @@ fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
     }
 }
 
+/// Build the canonical prefix call `Name(a * b * …)` with operand order
+/// preserved.
+fn prefix_call(name: Ident, inputs: Vec<Expr>, span: Span) -> Expr {
+    let args = match inputs.len() {
+        0 | 1 => inputs,
+        _ => vec![Expr::ProductValue {
+            fields: inputs,
+            span,
+        }],
+    };
+    Expr::Constructor { name, args, span }
+}
+
+/// Scalar literals are born inside the call parens — they never pipe.
+/// The pipe carries a value that already exists (a parameter, a prior
+/// result); a literal springs into existence at the call site, so it
+/// rides in the parens: `Greeting("hi")`, `Sum(1 * 2)`,
+/// `Print("hello")`. Structured values (`List(…)`, JSON/HTML literals)
+/// and every computed expression flow with `->`.
+fn is_scalar_literal(e: &Expr) -> bool {
+    matches!(
+        e,
+        Expr::StringLit { .. }
+            | Expr::IntLit { .. }
+            | Expr::FloatLit { .. }
+            | Expr::HexLit { .. }
+            | Expr::FormatLit { .. }
+    )
+}
+
+/// `String("s")`, `Int(3)`, `Float(1.5)`, `Hex(0xFF)` wrap a literal in
+/// the constructor that literal already desugars to — the wrap is pure
+/// ceremony, so `canon fmt` unwraps it to the bare literal. Cross-kind
+/// construction (`String(42)` decimal rendering, `Int("42")` parsing)
+/// is a real conversion and stays.
+fn primitive_literal_wrap(name: &str, input: &Expr) -> bool {
+    matches!(
+        (name, input),
+        ("String", Expr::StringLit { .. })
+            | ("Int", Expr::IntLit { .. })
+            | ("Float", Expr::FloatLit { .. })
+            | ("Hex", Expr::HexLit { .. })
+    )
+}
+
 fn canon_expr(e: &Expr) -> Expr {
     match e {
         Expr::Ident(_)
@@ -232,9 +277,32 @@ fn canon_expr(e: &Expr) -> Expr {
                     span: *span,
                 };
             }
-            // A prefix constructor binds its inputs by type (distinct
-            // field types — the product rule), so the order is free:
-            // sort for determinism, pipe the first, parens hold the rest.
+            if inputs.len() == 1 && primitive_literal_wrap(&name.name, &inputs[0]) {
+                return inputs.pop().unwrap();
+            }
+            if inputs.len() == 1
+                && is_scalar_literal(&inputs[0])
+                && !crate::ast::is_builtin_pipe_vocabulary(&name.name)
+            {
+                // Single literal input: the literal is born in the
+                // parens, so the call stays prefix (`Greeting("hi")`).
+                // Builtins (`Sum`, `Print`, …) are receiver-oriented
+                // machine operations with no prefix form; they keep the
+                // pipe until they migrate to stdlib newtypes. Multi-input
+                // calls keep the pipe too: the piped call binds its
+                // components commutatively, while a prefix argument list
+                // is positional.
+                return prefix_call(name.clone(), inputs, *span);
+            }
+            if inputs.iter().any(is_scalar_literal) {
+                // Literal inputs present: order carries operand
+                // positions — pipe the first, keep the rest as written.
+                let subject = inputs.remove(0);
+                return make_pipe(subject, name.clone(), inputs, *span);
+            }
+            // All-computed inputs bind by type (distinct field types —
+            // the product rule), so the order is free: sort for
+            // determinism, pipe the first, parens hold the rest.
             inputs.sort_by_key(emit_inline);
             let subject = inputs.remove(0);
             make_pipe(subject, name.clone(), inputs, *span)
@@ -263,6 +331,22 @@ fn canon_expr(e: &Expr) -> Expr {
             let (subject, mut rest) = split_receiver(canon_expr(receiver));
             for input in flatten_inputs(args) {
                 rest.push(canon_expr(&input));
+            }
+            if is_scalar_literal(&subject)
+                && rest.is_empty()
+                && !crate::ast::is_builtin_pipe_vocabulary(&method.name)
+            {
+                // A lone literal never pipes into a construction —
+                // collapse to the prefix call: `"hi" -> Greeting`
+                // becomes `Greeting("hi")`. Builtins (`Sum`, `Print`, …)
+                // are receiver-oriented machine operations with no
+                // prefix form, and multi-input calls bind their
+                // components commutatively through the pipe — both keep
+                // the arrow.
+                if primitive_literal_wrap(&method.name, &subject) {
+                    return subject;
+                }
+                return prefix_call(method.clone(), vec![subject], *span);
             }
             make_pipe(subject, method.clone(), rest, *span)
         }
@@ -1242,7 +1326,7 @@ mod tests {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
             "Route = (String) => String {\n    String -> (\n        * String => String { \"other\" }\n        * \"/b\" => String { \"b\" }\n        * \"/a\" => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
-            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    Route(\"/a\") -> Print\n}\n",
         );
     }
 
@@ -1314,13 +1398,15 @@ mod tests {
 
     #[test]
     fn test_product_values_canonicalized() {
-        // A product-type constructor is positionless, so its inputs sort
-        // deterministically; the canonical call form then pipes the first
-        // and keeps the rest in the parens as a partial application
-        // (`Node("c" * "a" * "b")` → `"a" -> Node("b" * "c")`).
+        // Literal operands keep their written order — untagged
+        // same-typed components bind by declaration order, so
+        // reordering would change which field gets which value. The
+        // canonical call form pipes the first written input and keeps
+        // the rest in the parens (`Node("c" * "a" * "b")` →
+        // `"c" -> Node("a" * "b")`).
         assert_format(
             "main = () => Unit {\n    Node(\"c\" * \"a\" * \"b\").print()\n}\n",
-            "main = () => Unit {\n    \"a\"\n        -> Node(\"b\" * \"c\")\n        -> Print\n}\n",
+            "main = () => Unit {\n    \"c\"\n        -> Node(\"a\" * \"b\")\n        -> Print\n}\n",
         );
     }
 

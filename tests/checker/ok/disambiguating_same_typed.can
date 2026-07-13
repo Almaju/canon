@@ -13,9 +13,8 @@ OtherUser * User => Equality {
 }
 
 Unit => Program {
-    "1990"
-        -> Birthday
-        -> User("alice" -> Username)
-        -> Equality("1991" -> Birthday -> User("bob" -> Username) -> OtherUser)
+    Birthday("1990")
+        -> User(Username("alice"))
+        -> Equality(Birthday("1991") -> User(Username("bob")) -> OtherUser)
     "compared" -> Print
 }

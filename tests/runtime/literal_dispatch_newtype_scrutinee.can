@@ -3,7 +3,7 @@ Prefix = String
 Routed = Int
 
 Int * String => Routed {
-    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
+    String -> Substring(From(1) * To(4)) -> Prefix -> (
         * "Add:" => Routed { Int -> Sum(String -> Length) }
         * Prefix => Routed { Int }
     )

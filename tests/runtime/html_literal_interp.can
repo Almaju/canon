@@ -11,10 +11,9 @@ Msg => Tagged {
 }
 
 Unit => Program {
-    <ul>{"a & b" -> Row}{"x<y" -> Row}</ul> -> Print
+    <ul>{Row("a & b")}{Row("x<y")}</ul> -> Print
     <span>{1 -> Sum(41)}</span> -> Print
-    "inc"
-        -> Msg
+    Msg("inc")
         -> Tagged
         -> Print
     <p>5 &lt; 6 &amp; 7</p> -> Print

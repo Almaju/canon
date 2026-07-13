@@ -12,8 +12,8 @@ Reason = String
 
 Bool => Result<Lookup, Missing> {
     Bool -> (
-        * False => Result<Lookup, Missing> { "user.name" -> Missing -> Err }
-        * True => Result<Lookup, Missing> { "ada" -> Reason -> Ok }
+        * False => Result<Lookup, Missing> { Missing("user.name") -> Err }
+        * True => Result<Lookup, Missing> { Reason("ada") -> Ok }
     )
 }
 
@@ -32,9 +32,8 @@ Missing => Printed {
 }
 
 Unit => Program {
-    500
-        -> Code
-        -> HttpError("boom" -> Reason)
+    Code(500)
+        -> HttpError(Reason("boom"))
         -> Printed
     True() -> Lookup -> (
         * Err<Missing> => Unit { Missing -> Printed }

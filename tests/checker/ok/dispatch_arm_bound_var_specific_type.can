@@ -22,8 +22,7 @@ JsonObject => Extracted {
 }
 
 Unit => Program {
-    "payload"
-        -> JsonEntry
+    JsonEntry("payload")
         -> JsonObject
         -> Described
     "ok" -> Print

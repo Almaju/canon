@@ -8,10 +8,10 @@ String => Reported {
 }
 
 Unit => Program {
-    "http://example.com/path" -> Reported
-    "https://example.com" -> Reported
-    "ftp://example.com" -> Reported
-    "http://" -> Reported
-    "http:///path" -> Reported
-    "https://x" -> Reported
+    Reported("http://example.com/path")
+    Reported("https://example.com")
+    Reported("ftp://example.com")
+    Reported("http://")
+    Reported("http:///path")
+    Reported("https://x")
 }

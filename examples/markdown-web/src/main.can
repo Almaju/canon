@@ -28,12 +28,12 @@ Page => Html {
 }
 
 Unit => Init {
-    "intro" -> Page
+    Page("intro")
 }
 
 Page * Msg => Update {
-    Msg -> Substring(1 -> From * 5 -> To) -> (
-        * "Show:" => Page { Msg -> Substring(6 -> From * Msg -> Length -> To) -> Page }
+    Msg -> Substring(From(1) * To(5)) -> (
+        * "Show:" => Page { Msg -> Substring(From(6) * Msg -> Length -> To) -> Page }
         * String => Page { Page }
     )
 }

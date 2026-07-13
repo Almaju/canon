@@ -9,7 +9,7 @@ Pass = Unit
 TestResult = Fail + Pass
 
 Unit => MakeFail {
-    "the message" -> Fail
+    Fail("the message")
 }
 
 Unit => MakePass {

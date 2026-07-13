@@ -17,8 +17,7 @@ Attr * String * Tag => Wrapped {
 }
 
 Unit => Program {
-    "class=\"x\""
-        -> Attr
-        -> Wrapped("inner" * "div" -> Tag)
+    Attr("class=\"x\"")
+        -> Wrapped("inner" * Tag("div"))
         -> Print
 }

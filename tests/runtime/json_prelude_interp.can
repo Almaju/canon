@@ -5,8 +5,6 @@ Int => Labeled {
 }
 
 Unit => Program {
-    42
-        -> Labeled
-        -> Print
+    Labeled(42) -> Print
     {"ok":True()} -> Print
 }

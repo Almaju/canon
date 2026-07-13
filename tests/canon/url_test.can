@@ -1,8 +1,8 @@
 UrlAcceptsHttp = TestResult
 
 Unit => UrlAcceptsHttp {
-    "http://example.com" -> Url -> (
-        * Err<InvalidUrl> => TestResult { "http URL should validate" -> Fail }
+    Url("http://example.com") -> (
+        * Err<InvalidUrl> => TestResult { Fail("http URL should validate") }
         * Ok<Url> => TestResult { Url -> Eq("http://example.com") -> TestResult }
     )
 }
@@ -10,8 +10,8 @@ Unit => UrlAcceptsHttp {
 UrlAcceptsHttps = TestResult
 
 Unit => UrlAcceptsHttps {
-    "https://a.test/x" -> Url -> (
-        * Err<InvalidUrl> => TestResult { "https URL should validate" -> Fail }
+    Url("https://a.test/x") -> (
+        * Err<InvalidUrl> => TestResult { Fail("https URL should validate") }
         * Ok<Url> => TestResult { Url -> Eq("https://a.test/x") -> TestResult }
     )
 }
@@ -19,44 +19,44 @@ Unit => UrlAcceptsHttps {
 UrlRejectsDoubleSlashHost = TestResult
 
 Unit => UrlRejectsDoubleSlashHost {
-    "http:///path" -> Url -> (
+    Url("http:///path") -> (
         * Err<InvalidUrl> => TestResult { Pass() }
-        * Ok<Url> => TestResult { "\"http:///path\" should not validate" -> Fail }
+        * Ok<Url> => TestResult { Fail("\"http:///path\" should not validate") }
     )
 }
 
 UrlRejectsEmptyHost = TestResult
 
 Unit => UrlRejectsEmptyHost {
-    "http://" -> Url -> (
+    Url("http://") -> (
         * Err<InvalidUrl> => TestResult { Pass() }
-        * Ok<Url> => TestResult { "\"http://\" should not validate" -> Fail }
+        * Ok<Url> => TestResult { Fail("\"http://\" should not validate") }
     )
 }
 
 UrlRejectsEmptyHostBeforeSlash = TestResult
 
 Unit => UrlRejectsEmptyHostBeforeSlash {
-    "http:///path" -> Url -> (
+    Url("http:///path") -> (
         * Err<InvalidUrl> => TestResult { Pass() }
-        * Ok<Url> => TestResult { "\"http:///path\" should not validate" -> Fail }
+        * Ok<Url> => TestResult { Fail("\"http:///path\" should not validate") }
     )
 }
 
 UrlRejectsShortString = TestResult
 
 Unit => UrlRejectsShortString {
-    "http" -> Url -> (
+    Url("http") -> (
         * Err<InvalidUrl> => TestResult { Pass() }
-        * Ok<Url> => TestResult { "\"http\" should not validate" -> Fail }
+        * Ok<Url> => TestResult { Fail("\"http\" should not validate") }
     )
 }
 
 UrlRejectsWrongScheme = TestResult
 
 Unit => UrlRejectsWrongScheme {
-    "ftp://nope" -> Url -> (
+    Url("ftp://nope") -> (
         * Err<InvalidUrl> => TestResult { Pass() }
-        * Ok<Url> => TestResult { "\"ftp://nope\" should not validate" -> Fail }
+        * Ok<Url> => TestResult { Fail("\"ftp://nope\" should not validate") }
     )
 }

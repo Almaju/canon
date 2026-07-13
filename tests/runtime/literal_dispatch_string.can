@@ -9,13 +9,7 @@ String => Routed {
 }
 
 Unit => Program {
-    "/notes"
-        -> Routed
-        -> Print
-    "/notes/1"
-        -> Routed
-        -> Print
-    "/oops"
-        -> Routed
-        -> Print
+    Routed("/notes") -> Print
+    Routed("/notes/1") -> Print
+    Routed("/oops") -> Print
 }

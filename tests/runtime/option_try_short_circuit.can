@@ -4,7 +4,7 @@ Second = String
 
 Int => Option<First> {
     Int -> Eq(0) -> (
-        * False => Option<First> { "found" -> Some }
+        * False => Option<First> { Some("found") }
         * True => Option<First> { None() }
     )
 }
@@ -17,11 +17,11 @@ Int => Option<Second> {
 }
 
 Unit => Program {
-    5 -> Second -> (
+    Second(5) -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    0 -> Second -> (
+    Second(0) -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )

@@ -29,21 +29,13 @@ Sought * String => FieldShown {
 }
 
 Unit => Program {
-    "b"
-        -> Sought
-        -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,2]}")
-    "c"
-        -> Sought
-        -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,{\"d\":4}]}")
-    "missing"
-        -> Sought
-        -> FieldShown("{\"a\":1,\"b\":\"two\"}")
-    "a"
-        -> Sought
-        -> FieldShown("[1,2]")
-    "\"line\\nbreak\\ttab.\"" -> DecodedShown
-    "\"esc \\\" quote and \\\\ slash\"" -> DecodedShown
-    "\"caf\\u00e9 \\u2713 ok\"" -> DecodedShown
-    "\"bad\\qesc\"" -> DecodedShown
-    "42" -> DecodedShown
+    Sought("b") -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,2]}")
+    Sought("c") -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,{\"d\":4}]}")
+    Sought("missing") -> FieldShown("{\"a\":1,\"b\":\"two\"}")
+    Sought("a") -> FieldShown("[1,2]")
+    DecodedShown("\"line\\nbreak\\ttab.\"")
+    DecodedShown("\"esc \\\" quote and \\\\ slash\"")
+    DecodedShown("\"caf\\u00e9 \\u2713 ok\"")
+    DecodedShown("\"bad\\qesc\"")
+    DecodedShown("42")
 }

@@ -40,12 +40,12 @@ String => SchemeEnd {
     String -> Length -> Ge(7) -> (
         * False => SchemeEnd { 0 }
         * True => SchemeEnd {
-            String -> Substring(1 -> From * 7 -> To) -> Eq("http://") -> (
+            String -> Substring(From(1) * To(7)) -> Eq("http://") -> (
                 * False => SchemeEnd {
                     String -> Length -> Ge(8) -> (
                         * False => SchemeEnd { 0 }
                         * True => SchemeEnd {
-                            String -> Substring(1 -> From * 8 -> To) -> Eq("https://") -> (
+                            String -> Substring(From(1) * To(8)) -> Eq("https://") -> (
                                 * False => SchemeEnd { 0 }
                                 * True => SchemeEnd { 8 }
                             )

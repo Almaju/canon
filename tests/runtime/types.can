@@ -15,9 +15,8 @@ Username = String
 Unit => Program {
     One()
     Equal()
-    "1990"
-        -> Birthday
-        -> User("canon" -> Username)
+    Birthday("1990")
+        -> User(Username("canon"))
         -> OtherUser
     "type definitions parsed" -> Print
 }

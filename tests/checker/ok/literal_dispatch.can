@@ -21,11 +21,8 @@ Path => Routed {
 }
 
 Unit => Program {
-    "/notes"
-        -> Path
+    Path("/notes")
         -> Routed
         -> Print
-    2
-        -> Classified
-        -> Print
+    Classified(2) -> Print
 }

@@ -9,11 +9,7 @@ Greeting * Name => Greeted {
 }
 
 Unit => Program {
-    "hello"
-        -> Greeting
-        -> Greeted("world" -> Name)
-    "world"
-        -> Name
-        -> Greeted("hello" -> Greeting)
+    Greeting("hello") -> Greeted(Name("world"))
+    Name("world") -> Greeted(Greeting("hello"))
     "ok" -> Print
 }

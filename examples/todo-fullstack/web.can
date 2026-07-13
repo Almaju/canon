@@ -9,9 +9,8 @@ Prefix = String
 Update = Todos
 
 Unit => AddForm {
-    "data-msg-form=\"Add:\""
-        -> Attr
-        -> ElAttr("placeholder=\"What needs doing?\"" -> Attr -> ElAttr("" * "input" -> Tag) * "form" -> Tag)
+    Attr("data-msg-form=\"Add:\"")
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("" * Tag("input")) * Tag("form"))
 }
 
 Todos => Html {
@@ -23,35 +22,33 @@ Todos => Html {
 }
 
 Unit => Init {
-    "check the canon backend"
-        -> Title
-        -> AddedTodo("build the canon frontend" -> Title -> AddedTodo("" -> Todos))
+    Title("check the canon backend")
+        -> AddedTodo(Title("build the canon frontend") -> AddedTodo(Todos("")))
 }
 
 Unit => LoadButton {
-    "data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\""
-        -> Attr
-        -> ElAttr("Load todos from the server" * "button" -> Tag)
+    Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
+        -> ElAttr("Load todos from the server" * Tag("button"))
 }
 
 Todos * String => Update {
-    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
+    String -> Substring(From(1) * To(4)) -> Prefix -> (
         * "Add:" => Todos {
             String
-                -> Substring(5 -> From * String -> Length -> To)
+                -> Substring(From(5) * String -> Length -> To)
                 -> Title
                 -> AddedTodo(Todos)
         }
         * "Dele" => Todos {
             String
-                -> Substring(8 -> From * String -> Length -> To)
+                -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> RemovedAt(Todos)
         }
-        * "Load" => Todos { String -> Substring(6 -> From * String -> Length -> To) -> Todos }
+        * "Load" => Todos { String -> Substring(From(6) * String -> Length -> To) -> Todos }
         * "Togg" => Todos {
             String
-                -> Substring(8 -> From * String -> Length -> To)
+                -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> ToggledAt(Todos)
         }

@@ -1,5 +1,5 @@
 Unit => Result<Program, Unit> {
-    42 -> Ok -> (
+    Ok(42) -> (
         * Err<Unit> => Unit { "err" -> Print }
         * Ok<Int> => Unit { "ok" -> Print }
     )
