@@ -6200,7 +6200,7 @@ impl<'m> WasmGen<'m> {
         // ── Data section ──────────────────────────────────────────────────────
         let mut data = DataSection::new();
         // '\n' at offset MEM_INT_BUF_END
-        data.active(0, &ConstExpr::i32_const(MEM_INT_BUF_END as i32), [b'\n']);
+        data.active(0, &ConstExpr::i32_const(MEM_INT_BUF_END as i32), *b"\n");
         if !self.strings.data.is_empty() {
             data.active(
                 0,
