@@ -7,6 +7,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # CI never runs a debugger, so full debuginfo is pure cost. Dropping it
+  # roughly halves object-file sizes and the peak memory the linker needs,
+  # which is what tips `ld` over into a bus error when linking the
+  # wasmtime + cranelift-heavy compiler on a standard runner. Also speeds
+  # up builds and shrinks the cached artifacts.
+  CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
   ci:
