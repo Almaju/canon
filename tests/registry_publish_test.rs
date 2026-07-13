@@ -55,11 +55,9 @@ fn run_canon(cwd: &Path, config: &Path, args: &[&str]) -> (String, String, Optio
     )
 }
 
-const SHOUT_CAN: &str =
-    "Shouted = String\n\nString => Shouted {\n    String -> Joined(\"!\")\n}\n";
+const SHOUT_CAN: &str = "Shouted = String\n\nString => Shouted {\n    String -> Joined(\"!\")\n}\n";
 
-const MAIN_CAN: &str =
-    "Unit => Program {\n    Shouted(\"hello\") -> Print\n}\n";
+const MAIN_CAN: &str = "Unit => Program {\n    Shouted(\"hello\") -> Print\n}\n";
 
 #[test]
 fn publish_install_run_round_trip() {

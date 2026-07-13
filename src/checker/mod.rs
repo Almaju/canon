@@ -1486,8 +1486,8 @@ fn check_function(
                 })
                 .unwrap_or(false);
             if !constructs_name {
-                let constructed = constructed_type_name(&func.return_ty)
-                    .unwrap_or_else(|| "…".to_string());
+                let constructed =
+                    constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
                 errors.push(CanonError::CheckError {
                     message: format!(
                         "`{name}` is neither a declared shape nor the type this declaration \
