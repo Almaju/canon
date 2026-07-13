@@ -1,4 +1,6 @@
-ButtonWiresMsg = () => TestResult {
+ButtonWiresMsg = TestResult
+
+Unit => ButtonWiresMsg {
     "inc"
         -> Msg
         -> Button("click")
@@ -6,14 +8,18 @@ ButtonWiresMsg = () => TestResult {
         -> TestResult
 }
 
-DivWrapsContent = () => TestResult {
+DivWrapsContent = TestResult
+
+Unit => DivWrapsContent {
     "hi"
         -> Div
         -> Eq("<div>hi</div>")
         -> TestResult
 }
 
-ElAttrAddsAttribute = () => TestResult {
+ElAttrAddsAttribute = TestResult
+
+Unit => ElAttrAddsAttribute {
     "class=\"x\""
         -> Attr
         -> ElAttr("hi" * "p" -> Tag)
@@ -21,49 +27,63 @@ ElAttrAddsAttribute = () => TestResult {
         -> TestResult
 }
 
-ElWrapsInTag = () => TestResult {
+ElWrapsInTag = TestResult
+
+Unit => ElWrapsInTag {
     "hi"
         -> El("p" -> Tag)
         -> Eq("<p>hi</p>")
         -> TestResult
 }
 
-EscapedReplacesMetachars = () => TestResult {
+EscapedReplacesMetachars = TestResult
+
+Unit => EscapedReplacesMetachars {
     "a<b>&\"c"
         -> Escaped
         -> Eq("a&lt;b&gt;&amp;&quot;c")
         -> TestResult
 }
 
-H1WrapsHeading = () => TestResult {
+H1WrapsHeading = TestResult
+
+Unit => H1WrapsHeading {
     "Title"
         -> H1
         -> Eq("<h1>Title</h1>")
         -> TestResult
 }
 
-LiWrapsItem = () => TestResult {
+LiWrapsItem = TestResult
+
+Unit => LiWrapsItem {
     "item"
         -> Li
         -> Eq("<li>item</li>")
         -> TestResult
 }
 
-SpanWrapsContent = () => TestResult {
+SpanWrapsContent = TestResult
+
+Unit => SpanWrapsContent {
     "hi"
         -> Span
         -> Eq("<span>hi</span>")
         -> TestResult
 }
 
-ToHtmlEscapesString = () => TestResult {
+ToHtmlEscapesString = TestResult
+
+Unit => ToHtmlEscapesString {
     "<b>"
         -> ToHtml
         -> Eq("&lt;b&gt;")
         -> TestResult
 }
 
-ToHtmlPassesThroughHtml = () => TestResult {
+ToHtmlPassesThroughHtml = TestResult
+
+Unit => ToHtmlPassesThroughHtml {
     "hi"
         -> Div
         -> ToHtml
@@ -71,14 +91,18 @@ ToHtmlPassesThroughHtml = () => TestResult {
         -> TestResult
 }
 
-ToHtmlRendersInt = () => TestResult {
+ToHtmlRendersInt = TestResult
+
+Unit => ToHtmlRendersInt {
     7
         -> ToHtml
         -> Eq("7")
         -> TestResult
 }
 
-UlWrapsList = () => TestResult {
+UlWrapsList = TestResult
+
+Unit => UlWrapsList {
     "items"
         -> Ul
         -> Eq("<ul>items</ul>")

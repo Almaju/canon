@@ -1338,12 +1338,12 @@ fn check_function(
         // Types-only: the only names are type names (PascalCase).
         // camelCase survives in exactly one place — binding files (the
         // FFI boundary, `extern_wasm` above). `canon test` functions are
-        // no exception: a test is a PascalCase constructor named for the
-        // behaviour it asserts (`Behaviour = () => TestResult { … }`),
-        // distinct by name and reported by that name.
-        let hint = if is_test_function_shape(func) {
-            "a test is a PascalCase constructor named for what it asserts \
-             (`SumIsThree = () => TestResult { … }`)"
+        // no exception: a test is a result newtype of `TestResult`
+        // (`Behaviour = TestResult`) with a nullary constructor, distinct
+        // by type name and reported by that name.
+        let hint = if is_legacy_test_shape(func) {
+            "a test is a result newtype of `TestResult` — declare `SumIsThree = TestResult` \
+             and its constructor `Unit => SumIsThree { … }`"
                 .to_string()
         } else {
             format!(
@@ -1355,6 +1355,24 @@ fn check_function(
             message: format!(
                 "camelCase names are not allowed: the only names are type names — {}",
                 hint
+            ),
+            span: func.name.span,
+        });
+    } else if func.extern_wasm.is_none()
+        && is_legacy_test_shape(func)
+        && func.name.name != "TestResult"
+    {
+        // The last named-bodied-function exemption is gone: a bodied
+        // declaration is named after its return type (or a shape), and
+        // tests are no exception. Behaviour gets its identity the way
+        // every other behaviour does — a result newtype — and the arrow
+        // stays anonymous.
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "a named `() => TestResult` function is not a test: a test is a result \
+                 newtype of `TestResult` — declare `{name} = TestResult` and its constructor \
+                 `Unit => {name} {{ … }}`",
+                name = func.name.name
             ),
             span: func.name.span,
         });
@@ -1497,10 +1515,12 @@ fn check_union_dispatch_shape(
     }
 }
 
-/// The `canon test` discovery shape: a free, zero-arg function returning
-/// the named type `TestResult` (no generics). Mirrored by
-/// `is_test_function` in `main.rs`.
-fn is_test_function_shape(func: &FunctionDef) -> bool {
+/// The retired pre-newtype test shape: a free, zero-arg function
+/// returning the named type `TestResult` (no generics). Recognised only
+/// to reject it with a pointer at the current form (`X = TestResult` +
+/// `Unit => X { … }`, discovered by `is_test_newtype` /
+/// `is_test_constructor` in `main.rs`).
+fn is_legacy_test_shape(func: &FunctionDef) -> bool {
     func.receiver.is_none()
         && func.params.is_empty()
         && matches!(

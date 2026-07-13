@@ -28,7 +28,7 @@ A named form also exists -- `Line = (Greeting * Name) => Line { ... }` --
 and is how a *result newtype* declares the operation that produces it
 (`Inserted = (Map * String * Value) => Map { ... }`). The name must be
 PascalCase: a camelCase declaration is a checker error everywhere
-except [binding files](./compilation.md) and `canon test` functions.
+except [binding files](./compilation.md).
 
 - Components follow the [alphabetical rule](./ordering.md):
   `Greeting * Name => Line` is legal, `Name * Greeting => Line` is a
@@ -180,9 +180,10 @@ Rules the compiler enforces:
   boundary, so suspending calls anywhere beneath it can yield without
   trapping ([Effects and the Async Model](./effects-and-async.md)).
 
-The same signature-driven selection powers testing: every
-`() => TestResult` function in a file is a test under `canon test`
-([Testing](../guide.md#testing)).
+The same shape-driven selection powers testing: every result newtype
+`X = TestResult` with a nullary `Unit => X` constructor in a file is a
+test under `canon test` ([Testing](../guide.md#testing)) -- the name is
+a type name, and the arrow stays anonymous.
 
 ## Declaration Order
 

@@ -1,4 +1,4 @@
-use canon::ast::{resolve_new_syntax, FunctionDef, Item, TypeExpr};
+use canon::ast::{resolve_new_syntax, FunctionDef, Item, TypeDef, TypeExpr};
 use canon::checker;
 use canon::codegen;
 use canon::error::CanonError;
@@ -7,6 +7,7 @@ use canon::lexer::Scanner;
 use canon::loader::{self, LoadResult, LoadedSource};
 use canon::manifest;
 use canon::parser::Parser;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,7 +76,7 @@ fn print_help() {
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name]  Check sort order and types");
-    println!("  test <file.can | dir>     Run `() => TestResult` functions as tests. A");
+    println!("  test <file.can | dir>     Run tests (`X = TestResult` + `Unit => X`). A");
     println!("                            directory runs every `*_test.can` file under it");
     println!("                            in one process, sharing setup across files.");
     println!("  fmt [path...] [--check]   Format Canon source files or directories");
@@ -1114,26 +1115,29 @@ fn build_spec(spec: &BuildSpec) -> bool {
     true
 }
 
-/// `canon test <file.can>` — discover and run all `() -> TestResult`
-/// functions defined in the entry file.
+/// `canon test <file.can>` — discover and run every test declared in the
+/// entry file.
 ///
-/// Test files look like normal Canon modules. A test is a PascalCase
-/// constructor named for the behaviour it asserts, ending in a bare
-/// `-> TestResult` (a `Bool` becomes `Pass` / `Fail`):
+/// Test files look like normal Canon modules. A test is a **result
+/// newtype of `TestResult`** together with its nullary constructor — the
+/// name is a type name (checked, sorted, resolvable) and the arrow stays
+/// anonymous, like every other constructor in the language:
 ///
 /// ```text
-/// SumAddsOperands = () => TestResult {
+/// SumAddsOperands = TestResult
+///
+/// Unit => SumAddsOperands {
 ///     1 -> Sum(2) -> Eq(3) -> TestResult
 /// }
 /// ```
 ///
 /// We load the module via the regular loader (referencing `TestResult`
-/// pulls in `Fail`, `Pass`, and the `TestResult` constructor), collect every entry-file function
-/// with a zero-arg `() -> TestResult` signature, then synthesise a `main`
-/// that dispatches each test result to a pass/fail line. The synthesised
-/// `main` is parsed from a generated source string and appended to the
-/// module before checking, so it travels through the existing checker /
-/// codegen / runtime pipeline unchanged.
+/// pulls in `Fail`, `Pass`, and the `TestResult` constructor), collect
+/// every entry-file newtype `X = TestResult` that has a nullary `Unit => X`
+/// constructor, then synthesise a `main` that dispatches each test result
+/// to a pass/fail line. The synthesised `main` is parsed from a generated
+/// source string and appended to the module before checking, so it travels
+/// through the existing checker / codegen / runtime pipeline unchanged.
 fn cmd_test(args: &[String]) {
     let target = require_file(args);
 
@@ -1243,17 +1247,31 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
         return None;
     }
 
+    let test_types: HashSet<String> = loaded.module.items[loaded.entry_items_start..]
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(t) if is_test_newtype(t) => Some(t.name.name.clone()),
+            _ => None,
+        })
+        .collect();
     let tests: Vec<String> = loaded.module.items[loaded.entry_items_start..]
         .iter()
         .filter_map(|item| match item {
-            Item::Function(f) if is_test_function(f) => Some(f.name.name.clone()),
+            Item::Function(f) if is_test_constructor(f, &test_types) => Some(
+                f.receiver
+                    .as_ref()
+                    .expect("Self ctor has receiver")
+                    .name
+                    .clone(),
+            ),
             _ => None,
         })
         .collect();
 
     if tests.is_empty() {
         eprintln!(
-            "error: no tests found in `{}`: a test is a function with signature `() => TestResult`",
+            "error: no tests found in `{}`: a test is a result newtype of `TestResult` \
+             (`SumIsThree = TestResult`) with a nullary constructor (`Unit => SumIsThree {{ … }}`)",
             file_path
         );
         return None;
@@ -1323,17 +1341,28 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     Some((tests.len(), codegen::generate(&loaded.module)))
 }
 
-/// A test is a free, zero-arg function whose return type is the named
-/// type `TestResult` (no generics). We deliberately don't require a name
-/// prefix — the type itself is the marker.
-fn is_test_function(f: &FunctionDef) -> bool {
-    if f.receiver.is_some() || !f.params.is_empty() || f.name.name == "main" {
-        return false;
-    }
-    matches!(
-        &f.return_ty,
-        TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
-    )
+/// A test's identity is a result newtype of `TestResult` — a plain,
+/// non-generic alias `X = TestResult`. The name is a type name, so it is
+/// checked and sorted like every other name in the language.
+fn is_test_newtype(t: &TypeDef) -> bool {
+    t.generic_params.is_empty()
+        && matches!(
+            &t.body,
+            TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
+        )
+}
+
+/// …and a test's body is the newtype's nullary constructor
+/// (`Unit => X { … }`). After `resolve_new_syntax` a constructor carries
+/// its constructed type as its *receiver* and the name `Self` (the lone
+/// `Unit` input is already stripped to zero params), so discovery is:
+/// a zero-param `Self` constructor whose receiver is a test newtype.
+fn is_test_constructor(f: &FunctionDef, test_types: &HashSet<String>) -> bool {
+    f.name.name == "Self"
+        && f.params.is_empty()
+        && f.receiver
+            .as_ref()
+            .is_some_and(|r| test_types.contains(&r.name))
 }
 
 fn synthesise_test_main(tests: &[String]) -> String {

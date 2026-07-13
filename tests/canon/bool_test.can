@@ -1,50 +1,66 @@
-AndOfFalseIsFalse = () => TestResult {
+AndOfFalseIsFalse = TestResult
+
+Unit => AndOfFalseIsFalse {
     True()
         -> And(False())
         -> Not
         -> TestResult
 }
 
-AndOfTruesIsTrue = () => TestResult {
+AndOfTruesIsTrue = TestResult
+
+Unit => AndOfTruesIsTrue {
     True()
         -> And(True())
         -> TestResult
 }
 
-AndShortCircuitsOnFalse = () => TestResult {
+AndShortCircuitsOnFalse = TestResult
+
+Unit => AndShortCircuitsOnFalse {
     False()
         -> And(True())
         -> Not
         -> TestResult
 }
 
-NotOfFalseIsTrue = () => TestResult {
+NotOfFalseIsTrue = TestResult
+
+Unit => NotOfFalseIsTrue {
     False()
         -> Not
         -> TestResult
 }
 
-NotOfTrueIsFalse = () => TestResult {
+NotOfTrueIsFalse = TestResult
+
+Unit => NotOfTrueIsFalse {
     True()
         -> Not
         -> Not
         -> TestResult
 }
 
-OrOfFalsesIsFalse = () => TestResult {
+OrOfFalsesIsFalse = TestResult
+
+Unit => OrOfFalsesIsFalse {
     False()
         -> Or(False())
         -> Not
         -> TestResult
 }
 
-OrShortCircuitsOnTrue = () => TestResult {
+OrShortCircuitsOnTrue = TestResult
+
+Unit => OrShortCircuitsOnTrue {
     True()
         -> Or(False())
         -> TestResult
 }
 
-OrWithTrueIsTrue = () => TestResult {
+OrWithTrueIsTrue = TestResult
+
+Unit => OrWithTrueIsTrue {
     False()
         -> Or(True())
         -> TestResult

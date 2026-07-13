@@ -352,7 +352,9 @@ The Canon-language testing primitive. See
 [Testing](../guide.md#testing) for the full convention.
 
 ```canon
-SumAddsOperands = () => TestResult {
+SumAddsOperands = TestResult
+
+Unit => SumAddsOperands {
     1
         -> Sum(2)
         -> Eq(3)
@@ -375,10 +377,11 @@ The assertion *is* the `TestResult` constructor
 `Pass` (on `True`) or an empty `Fail` (on `False`). When a failure
 diagnostic helps, construct `Fail("why")` directly in a dispatch arm.
 
-Each test is a PascalCase constructor named for the behaviour it
-asserts. `canon test <file>` discovers every `() => TestResult`
-function in the entry file and runs them, printing `[ ok ] TestName`
-or `[FAIL] TestName: message` per test.
+Each test is a result newtype of `TestResult`, named for the behaviour
+it asserts, with a nullary constructor as its body. `canon test <file>`
+discovers every `X = TestResult` newtype with a `Unit => X` constructor
+in the entry file and runs them, printing `[ ok ] TestName` or
+`[FAIL] TestName: message` per test.
 
 ## `Json`, `MalformedJson`
 

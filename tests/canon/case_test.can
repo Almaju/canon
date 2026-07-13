@@ -1,39 +1,51 @@
-LowercasedFoldsLetters = () => TestResult {
+LowercasedFoldsLetters = TestResult
+
+Unit => LowercasedFoldsLetters {
     "GoodBye"
         -> Lowercased
         -> Eq("goodbye")
         -> TestResult
 }
 
-LowercasedKeepsBytesAboveUppercaseRange = () => TestResult {
+LowercasedKeepsBytesAboveUppercaseRange = TestResult
+
+Unit => LowercasedKeepsBytesAboveUppercaseRange {
     "[\\]^_`"
         -> Lowercased
         -> Eq("[\\]^_`")
         -> TestResult
 }
 
-LowercasedKeepsNonLetters = () => TestResult {
+LowercasedKeepsNonLetters = TestResult
+
+Unit => LowercasedKeepsNonLetters {
     "MiXeD 123 !?"
         -> Lowercased
         -> Eq("mixed 123 !?")
         -> TestResult
 }
 
-UppercasedFoldsLetters = () => TestResult {
+UppercasedFoldsLetters = TestResult
+
+Unit => UppercasedFoldsLetters {
     "Hello, World"
         -> Uppercased
         -> Eq("HELLO, WORLD")
         -> TestResult
 }
 
-UppercasedKeepsBytesAboveLowercaseRange = () => TestResult {
+UppercasedKeepsBytesAboveLowercaseRange = TestResult
+
+Unit => UppercasedKeepsBytesAboveLowercaseRange {
     "abc{|}~"
         -> Uppercased
         -> Eq("ABC{|}~")
         -> TestResult
 }
 
-UppercasedKeepsNonLetters = () => TestResult {
+UppercasedKeepsNonLetters = TestResult
+
+Unit => UppercasedKeepsNonLetters {
     "MiXeD 123 !?"
         -> Uppercased
         -> Eq("MIXED 123 !?")

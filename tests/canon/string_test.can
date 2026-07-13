@@ -1,11 +1,15 @@
-JoinedConcatenates = () => TestResult {
+JoinedConcatenates = TestResult
+
+Unit => JoinedConcatenates {
     "hello"
         -> Joined(" world")
         -> Eq("hello world")
         -> TestResult
 }
 
-PrintEmitsString = () => TestResult {
+PrintEmitsString = TestResult
+
+Unit => PrintEmitsString {
     "hello" -> Print
     Pass()
 }

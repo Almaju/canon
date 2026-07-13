@@ -12,7 +12,9 @@ Show = (Name) => String {
     "Alice"
 }
 
-ShowResolvesByInputType = () => TestResult {
+ShowResolvesByInputType = TestResult
+
+Unit => ShowResolvesByInputType {
     "hi"
         -> Greeting
         -> Show

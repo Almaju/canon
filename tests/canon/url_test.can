@@ -1,46 +1,60 @@
-UrlAcceptsHttp = () => TestResult {
+UrlAcceptsHttp = TestResult
+
+Unit => UrlAcceptsHttp {
     "http://example.com" -> Url -> (
         * Err<InvalidUrl> => TestResult { "http URL should validate" -> Fail }
         * Ok<Url> => TestResult { Url -> Eq("http://example.com") -> TestResult }
     )
 }
 
-UrlAcceptsHttps = () => TestResult {
+UrlAcceptsHttps = TestResult
+
+Unit => UrlAcceptsHttps {
     "https://a.test/x" -> Url -> (
         * Err<InvalidUrl> => TestResult { "https URL should validate" -> Fail }
         * Ok<Url> => TestResult { Url -> Eq("https://a.test/x") -> TestResult }
     )
 }
 
-UrlRejectsDoubleSlashHost = () => TestResult {
+UrlRejectsDoubleSlashHost = TestResult
+
+Unit => UrlRejectsDoubleSlashHost {
     "http:///path" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
         * Ok<Url> => TestResult { "\"http:///path\" should not validate" -> Fail }
     )
 }
 
-UrlRejectsEmptyHost = () => TestResult {
+UrlRejectsEmptyHost = TestResult
+
+Unit => UrlRejectsEmptyHost {
     "http://" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
         * Ok<Url> => TestResult { "\"http://\" should not validate" -> Fail }
     )
 }
 
-UrlRejectsEmptyHostBeforeSlash = () => TestResult {
+UrlRejectsEmptyHostBeforeSlash = TestResult
+
+Unit => UrlRejectsEmptyHostBeforeSlash {
     "http:///path" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
         * Ok<Url> => TestResult { "\"http:///path\" should not validate" -> Fail }
     )
 }
 
-UrlRejectsShortString = () => TestResult {
+UrlRejectsShortString = TestResult
+
+Unit => UrlRejectsShortString {
     "http" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
         * Ok<Url> => TestResult { "\"http\" should not validate" -> Fail }
     )
 }
 
-UrlRejectsWrongScheme = () => TestResult {
+UrlRejectsWrongScheme = TestResult
+
+Unit => UrlRejectsWrongScheme {
     "ftp://nope" -> Url -> (
         * Err<InvalidUrl> => TestResult { Pass() }
         * Ok<Url> => TestResult { "\"ftp://nope\" should not validate" -> Fail }

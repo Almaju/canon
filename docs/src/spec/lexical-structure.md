@@ -18,10 +18,11 @@ The case split is load-bearing: in Canon, **the only names are type
 names**, and type names are PascalCase. A camelCase declaration is a
 **checker error** everywhere except one place: binding files (the FFI
 boundary -- camelCase means exactly "this identifier is foreign").
-`canon test` functions are no exception -- a test is a PascalCase
-constructor named for what it asserts
-(`SumAddsOperands = () => TestResult`). There is no third class: no
-SCREAMING_CASE constants, no leading underscores with special meaning.
+`canon test` declarations are no exception -- a test is a result
+newtype of `TestResult` named for what it asserts
+(`SumAddsOperands = TestResult` plus its `Unit => SumAddsOperands`
+constructor). There is no third class: no SCREAMING_CASE constants, no
+leading underscores with special meaning.
 
 ## Keywords
 

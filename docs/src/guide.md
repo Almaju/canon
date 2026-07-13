@@ -256,12 +256,16 @@ emitted them.
 ## Testing
 
 The test framework is a union type, one constructor, and a CLI verb -- no
-attributes, no macros, no runner config. A test is a constructor
-returning `TestResult`, named -- like every name in Canon -- for what
-it is: the behaviour it asserts. Discovery is by signature.
+attributes, no macros, no runner config. A test is a **result newtype of
+`TestResult`** together with its nullary constructor: the identity is a
+type name -- like every name in Canon -- for what it is: the behaviour
+it asserts. The arrow itself stays anonymous, like every other
+constructor. Discovery is by shape.
 
 ```canon
-SumAddsOperands = () => TestResult {
+SumAddsOperands = TestResult
+
+Unit => SumAddsOperands {
     1 -> Sum(2) -> Eq(3) -> TestResult
 }
 ```
@@ -269,7 +273,7 @@ SumAddsOperands = () => TestResult {
 A `Bool` piped into `TestResult` is the assertion: `Pass` on `True`, an
 empty `Fail` on `False` -- the test's name is the failure label, so no
 message is needed. When a diagnostic helps, construct `Fail("why")`
-directly in a dispatch arm. `canon test` runs every such declaration;
+directly in a dispatch arm. `canon test` runs every such newtype;
 the exit code is honest (`0` all-pass, `1` on any failure), so it drops
 straight into CI. Put logic in constructors that take and return
 values, keep the entry thin, and the testable surface falls out for

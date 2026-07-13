@@ -21,19 +21,23 @@ fn canon_test_exit_codes() {
     let failing = workdir.join("failing_test.can");
     std::fs::write(
         &failing,
-        r#"BrokenMath = () => TestResult {
+        r#"BrokenMath = TestResult
+
+Unit => BrokenMath {
     1 -> Sum(2) -> Eq(7) -> (
         * False => TestResult { "math is broken" -> Fail }
         * True => TestResult { Pass() }
     )
 }
 
-WorkingMath = () => TestResult {
+Unit => WorkingMath {
     1
         -> Sum(2)
         -> Eq(3)
         -> TestResult
 }
+
+WorkingMath = TestResult
 "#,
     )
     .unwrap();
@@ -53,12 +57,14 @@ WorkingMath = () => TestResult {
     let passing = workdir.join("passing_test.can");
     std::fs::write(
         &passing,
-        r#"WorkingMath = () => TestResult {
+        r#"Unit => WorkingMath {
     1
         -> Sum(2)
         -> Eq(3)
         -> TestResult
 }
+
+WorkingMath = TestResult
 "#,
     )
     .unwrap();

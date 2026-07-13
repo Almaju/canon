@@ -1,0 +1,1 @@
+error[tests/checker/fail/legacy_test_function.can:1:1]: a named `() => TestResult` function is not a test: a test is a result newtype of `TestResult` — declare `SumIsThree = TestResult` and its constructor `Unit => SumIsThree { … }`
