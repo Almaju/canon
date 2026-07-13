@@ -1,0 +1,1 @@
+error[tests/checker/fail/endomorphism_bare_type.can:3:1]: an arrow that returns its own input type needs a name the types can't supply: mint a result newtype (`X = Basket`) and construct that (`… => X`) instead of `Basket` itself

@@ -1268,6 +1268,37 @@ fn check_self_constructor_signature(
             span: func.return_ty.span(),
         });
     }
+
+    check_endomorphism_input(func, receiver_name, errors);
+}
+
+/// An arrow may not construct a type that is also one of its inputs. An
+/// endomorphism (`Map * String => Map`) is the one operation whose types
+/// cannot identify it — insert, remove, and update all share that
+/// signature — so the operation takes a **result newtype** (`Inserted =
+/// Map`, `Removed = Map`): the name relocates into a type the compiler
+/// checks, sorts, and resolves. Exact-name comparison only: an input
+/// that is a *newtype* of the constructed type (`Rest = Map` flowing
+/// into a `Map` constructor) is a different type and carries its own
+/// information. Binding files are exempt — WIT shapes its signatures.
+fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut Vec<CanonError>) {
+    if func.extern_wasm.is_some() {
+        return;
+    }
+    for param in &func.params {
+        if let TypeExpr::Named { name, generics, .. } = &param.ty {
+            if name == constructed && generics.is_empty() {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "an arrow that returns its own input type needs a name the types can't \
+                         supply: mint a result newtype (`X = {constructed}`) and construct that \
+                         (`… => X`) instead of `{constructed}` itself",
+                    ),
+                    span: param.span,
+                });
+            }
+        }
+    }
 }
 
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
@@ -1442,6 +1473,12 @@ fn check_function(
         if func.name.name == "Self" {
             check_self_constructor_signature(func, &recv.name, errors);
         }
+    } else if func.name.name != "main" {
+        // A receiver-less constructor (the constructed type's TypeDef
+        // lives in another loaded file, so `resolve_new_syntax` left it
+        // free) gets the same endomorphism check as a `Self` constructor:
+        // the constructed identity is the function's own name.
+        check_endomorphism_input(func, &func.name.name, errors);
     }
 
     if func.extern_wasm.is_some() {
