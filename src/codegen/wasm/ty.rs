@@ -34,6 +34,57 @@ pub(super) fn named_type_name(ty: &TypeExpr) -> Option<String> {
     }
 }
 
+/// Chases user alias chains from a type expression to the first
+/// *structural* type it names — one that is not itself a bare `Name`
+/// alias. A minted binding return (`GetInitialCwd = Option<String>`)
+/// resolves to the `Option<String>` it aliases; a directly-written type
+/// resolves to itself. Generic applications (`Option<T>`, `List<T>`)
+/// and non-`Named` expressions stop the chase. Bounded against cycles.
+pub(super) fn resolve_alias_structural<'a>(
+    ty: &'a TypeExpr,
+    type_defs: &'a HashMap<String, TypeExpr>,
+) -> &'a TypeExpr {
+    let mut current = ty;
+    for _ in 0..20 {
+        let TypeExpr::Named { name, generics, .. } = current else {
+            break;
+        };
+        if !generics.is_empty() {
+            break;
+        }
+        let Some(body) = type_defs.get(name) else {
+            break;
+        };
+        current = body;
+    }
+    current
+}
+
+/// Chases user alias chains from a type name to the last *name* in the
+/// chain — the one whose definition is not another bare alias. A minted
+/// record return (`SystemClockNow = Instant`) resolves to `Instant`,
+/// the Canon product the bindgen declared for the WIT record, so field
+/// naming and layout key on the product itself.
+pub(super) fn resolve_alias_terminal_name(
+    name: &str,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> String {
+    let mut current = name.to_string();
+    for _ in 0..20 {
+        match type_defs.get(&current) {
+            Some(TypeExpr::Named {
+                name: inner,
+                generics,
+                ..
+            }) if generics.is_empty() => {
+                current = inner.clone();
+            }
+            _ => break,
+        }
+    }
+    current
+}
+
 /// Builds a quick `name -> body` map of all type aliases declared in the
 /// module. Used by the helpers below to resolve user-named aliases of scalar
 /// types (e.g. `OtherInt = Int`).

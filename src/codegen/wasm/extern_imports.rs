@@ -109,7 +109,12 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         if component_ns.starts_with("wasi:") {
             if let (Some((wit_name, wit_fields)), Some(product)) = (
                 component::vendored_extern_record_return(&ext.path),
-                named_type_name(&func.return_ty),
+                // A string-anchored binding returns its mint
+                // (`SystemClockNow = Instant`); the record's field
+                // names and layout key on the product the mint
+                // aliases, so resolve the chain to the product itself.
+                named_type_name(&func.return_ty)
+                    .map(|n| resolve_alias_terminal_name(&n, &type_defs)),
             ) {
                 let mut off = 0u32;
                 let mut max_align = 1u32;
@@ -262,6 +267,10 @@ pub(super) fn classify_return(
     flat_results: &[ValType],
     type_defs: &HashMap<String, TypeExpr>,
 ) -> Option<IndirectReturnShape> {
+    // A string-anchored binding mints a result newtype per function
+    // (`GetInitialCwd = Option<String>`), so the structural shape sits
+    // behind an alias — resolve it before pattern-matching.
+    let return_ty = resolve_alias_structural(return_ty, type_defs);
     if let TypeExpr::Named { name, generics, .. } = return_ty {
         if name == "Result"
             && generics.len() == 2

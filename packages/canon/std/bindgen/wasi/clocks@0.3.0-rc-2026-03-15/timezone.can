@@ -1,7 +1,11 @@
+IanaId = Option<String>
+
+Unit => IanaId {
+    "iana-id"
+}
+
 ToDebugString = String
 
 Unit => ToDebugString {
     "to-debug-string"
 }
-
-ianaId = () => Option<String>

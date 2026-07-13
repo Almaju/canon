@@ -12,4 +12,8 @@ SystemClock => SystemClockGetResolution {
     "get-resolution"
 }
 
-now = (SystemClock) => Instant
+SystemClockNow = Instant
+
+SystemClock => SystemClockNow {
+    "now"
+}

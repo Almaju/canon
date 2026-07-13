@@ -79,6 +79,11 @@ pub(super) fn newtype_unwrap_ty(recv_ty: &Ty, field: &str) -> Option<Ty> {
         (Ty::I64, "Int") => Some(Ty::I64),
         (Ty::F64, "Float") => Some(Ty::F64),
         (Ty::I32, "Bool") => Some(Ty::I32),
+        // Idempotent unwrap through a product alias: `X.Instant` where
+        // `X = Instant` and the compiled value is already the `Instant`
+        // struct pointer (a string-anchored binding's record decode
+        // pushes the product it aliases). Static-type retype only.
+        (Ty::NamedPtr(product), _) if product == field => Some(Ty::NamedPtr(product.clone())),
         _ => None,
     }
 }
