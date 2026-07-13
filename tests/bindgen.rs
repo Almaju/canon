@@ -196,10 +196,13 @@ fn kitchen_sink_roundtrip() {
     assert!(f
         .content
         .contains("(ColorList * Shape) => Result<Paint, String> {\n    \"paint\"\n}"));
-    // `option` and no-result functions keep the legacy alias form pending
-    // self-constructor-extern decode for those shapes.
-    assert!(f.content.contains("centre = (Shape) => Option<Point>"));
-    assert!(f.content.contains("reset = () => Unit"));
+    // `option` and no-result functions take the string-anchored form
+    // like every other shape: the mint aliases the whole rendered type
+    // (`Centre = Option<Point>`) or `Unit` for a pure effect.
+    assert!(f.content.contains("Centre = Option<Point>"));
+    assert!(f.content.contains("Shape => Centre {\n    \"centre\"\n}"));
+    assert!(f.content.contains("Reset = Unit"));
+    assert!(f.content.contains("Unit => Reset {\n    \"reset\"\n}"));
 
     parse_canon(&f.content);
 }

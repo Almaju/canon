@@ -3,5 +3,5 @@ Exit = Int
 Exited = Unit
 
 Int => Exited {
-    Int.exitWithCode()
+    Int -> ExitWithCode
 }

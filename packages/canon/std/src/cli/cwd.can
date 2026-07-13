@@ -1,5 +1,5 @@
 Cwd = String
 
 Unit => Option<Cwd> {
-    getInitialCwd()
+    GetInitialCwd()
 }

@@ -1,3 +1,11 @@
-getArguments = () => List<String>
+GetArguments = List<String>
 
-getInitialCwd = () => Option<String>
+Unit => GetArguments {
+    "get-arguments"
+}
+
+GetInitialCwd = Option<String>
+
+Unit => GetInitialCwd {
+    "get-initial-cwd"
+}
