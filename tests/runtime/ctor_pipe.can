@@ -15,12 +15,10 @@ Greeting => Loud {
 }
 
 Unit => Program {
-    7
-        -> Greeting
+    Greeting(7)
         -> Loud
         -> Print
-    "41"
-        -> Int?
+    Int("41")?
         -> Sum(1)
         -> Print
     Map()

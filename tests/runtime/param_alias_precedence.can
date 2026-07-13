@@ -2,7 +2,9 @@ Attr = String
 
 Tag = String
 
-Wrapped = (Attr * String * Tag) => String {
+Wrapped = String
+
+Attr * String * Tag => Wrapped {
     "<"
         -> Joined(Tag)
         -> Joined(" ")
@@ -15,8 +17,7 @@ Wrapped = (Attr * String * Tag) => String {
 }
 
 Unit => Program {
-    "class=\"x\""
-        -> Attr
-        -> Wrapped("inner" * "div" -> Tag)
+    Attr("class=\"x\"")
+        -> Wrapped("inner" * Tag("div"))
         -> Print
 }

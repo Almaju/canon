@@ -1,9 +1,11 @@
 Prefix = String
 
-Routed = (Int * String) => Int {
-    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
-        * "Add:" => Int { Int -> Sum(String -> Length) }
-        * Prefix => Int { Int }
+Routed = Int
+
+Int * String => Routed {
+    String -> Substring(From(1) * To(4)) -> Prefix -> (
+        * "Add:" => Routed { Int -> Sum(String -> Length) }
+        * Prefix => Routed { Int }
     )
 }
 

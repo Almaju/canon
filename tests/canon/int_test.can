@@ -1,8 +1,8 @@
 IntParseParsesNegative = TestResult
 
 Unit => IntParseParsesNegative {
-    "-7" -> Int -> (
-        * Err<MalformedInt> => TestResult { "\"-7\" should parse" -> Fail }
+    Int("-7") -> (
+        * Err<MalformedInt> => TestResult { Fail("\"-7\" should parse") }
         * Ok<Int> => TestResult { Int -> Eq(0 -> Difference(7)) -> TestResult }
     )
 }
@@ -10,8 +10,8 @@ Unit => IntParseParsesNegative {
 IntParseParsesPositive = TestResult
 
 Unit => IntParseParsesPositive {
-    "42" -> Int -> (
-        * Err<MalformedInt> => TestResult { "\"42\" should parse" -> Fail }
+    Int("42") -> (
+        * Err<MalformedInt> => TestResult { Fail("\"42\" should parse") }
         * Ok<Int> => TestResult { Int -> Eq(42) -> TestResult }
     )
 }
@@ -19,35 +19,35 @@ Unit => IntParseParsesPositive {
 IntParseRejectsEmptyString = TestResult
 
 Unit => IntParseRejectsEmptyString {
-    "" -> Int -> (
+    Int("") -> (
         * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { "\"\" should not parse" -> Fail }
+        * Ok<Int> => TestResult { Fail("\"\" should not parse") }
     )
 }
 
 IntParseRejectsLetters = TestResult
 
 Unit => IntParseRejectsLetters {
-    "abc" -> Int -> (
+    Int("abc") -> (
         * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { "\"abc\" should not parse" -> Fail }
+        * Ok<Int> => TestResult { Fail("\"abc\" should not parse") }
     )
 }
 
 IntParseRejectsLoneMinus = TestResult
 
 Unit => IntParseRejectsLoneMinus {
-    "-" -> Int -> (
+    Int("-") -> (
         * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { "\"-\" should not parse" -> Fail }
+        * Ok<Int> => TestResult { Fail("\"-\" should not parse") }
     )
 }
 
 IntParseRejectsNegativeGarbage = TestResult
 
 Unit => IntParseRejectsNegativeGarbage {
-    "-x" -> Int -> (
+    Int("-x") -> (
         * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { "\"-x\" should not parse" -> Fail }
+        * Ok<Int> => TestResult { Fail("\"-x\" should not parse") }
     )
 }

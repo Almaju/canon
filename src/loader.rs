@@ -496,11 +496,6 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         items: ctx.items,
         span,
     };
-    // Dependency inference: supply omitted constructor arguments from the
-    // enclosing scope by type, so capabilities thread down the call tree
-    // without being repeated. Runs before auto-await and the checker so both
-    // see the fully-applied calls. See `docs/src/spec/effects-and-async.md`.
-    crate::checker::dep_infer::transform(&mut module);
     // Auto-await: insert implicit `Expr::Await` nodes wherever a `Future<T>`
     // value is used in a position that expects `T`. Runs before the checker
     // so type comparisons see the post-rewrite tree.
@@ -831,7 +826,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Bool",
     "Deserialize",
     "Err",
-    "ExitCode",
     "False",
     "Float",
     "Future",

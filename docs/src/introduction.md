@@ -9,9 +9,7 @@ A complete HTTP service:
 
 ```canon
 Request => Response {
-    "hello from canon"
-        -> Body
-        -> Response(200 -> Status * Headers())
+    Body("hello from canon") -> Response(Status(200) * Headers())
 }
 ```
 
@@ -43,7 +41,7 @@ comments, no parameter names. A function's inputs are a product of types,
 referenced in the body by their type names:
 
 ```canon
-Ord = (OtherUser * User) => Ord {
+OtherUser * User => Ord {
     User.Birthday -> Compared(OtherUser.Birthday)
 }
 ```
@@ -58,8 +56,7 @@ from a `String`. The type chain *is* the access control:
 
 ```canon
 Unit => Program {
-    "./data.json"
-        -> Path
+    Path("./data.json")
         -> File?
         -> Read?
         -> Print

@@ -1,7 +1,6 @@
 Args => Exit {
-    "# Grid\n\n| Lang | Trait |\n|------|-------|\n| Canon | `pure` |\n| Rust | **borrow** |\n\nAfter the table."
-        -> Markdown
+    Markdown("# Grid\n\n| Lang | Trait |\n|------|-------|\n| Canon | `pure` |\n| Rust | **borrow** |\n\nAfter the table.")
         -> Html
         -> Print
-    0 -> Exit
+    Exit(0)
 }

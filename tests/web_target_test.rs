@@ -25,16 +25,15 @@ Model = Int
 Update = Model
 
 Model => Html {
-    "Canon Counter"
-        -> H1
-        -> Joined("Decrement" -> Msg -> Button("-"))
+    H1("Canon Counter")
+        -> Joined(Msg("Decrement") -> Button("-"))
         -> Joined(Model -> String -> Span)
-        -> Joined("Increment" -> Msg -> Button("+"))
+        -> Joined(Msg("Increment") -> Button("+"))
         -> Div
 }
 
 Unit => Init {
-    0 -> Model
+    Model(0)
 }
 
 Model * String => Update {

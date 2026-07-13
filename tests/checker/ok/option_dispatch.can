@@ -1,5 +1,5 @@
 Unit => Program {
-    7 -> Some -> (
+    Some(7) -> (
         * None => Unit { "none" -> Print }
         * Some<Int> => Unit { "some" -> Print }
     )

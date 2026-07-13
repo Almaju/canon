@@ -56,7 +56,7 @@ This is not a second function syntax -- it is the language's **only** function f
 
 Coherence: at most one arrow per (input product, constructed type) pair -- the same family-disjointness rule, with nothing left to name a conflict after.
 
-During migration the named form (`Url = (String) => ...`) remains legal and means the same thing; it is deprecated and will be removed with slice 6. `canon fmt` preserves whichever form is written until then.
+The named form (`Url = (String) => ...`) still parses and means the same thing, but it is no longer a second spelling: `canon fmt` rewrites it to the anonymous arrow whenever the name is exactly the constructed type, and the format gate (`canon check`/`run` refuse non-canonical files) makes the arrow the one form that survives. Named declarations remain for shape implementations only, and the checker enforces it: a bodied declaration's name must resolve to a declared shape or to the type it constructs -- an arbitrary verb in PascalCase is an error.
 
 ### The Value-Level Pipe -- `value -> B` *(implemented)*
 
@@ -79,11 +79,11 @@ Map()
     .print()
 ```
 
-Three spellings of one call is a migration-period surplus; which become canonical (and whether `fmt` rewrites the others) is decided at slice 6 together with the named-constructor deprecation.
+The three-spellings surplus is resolved: `canon fmt` canonicalizes every call, and the rule is *values flow through pipes; literals are born in the parens* -- a computed first input pipes (`a -> Name(b)`), a lone scalar literal stays inside the construction (`Greeting("hi")`), builtins keep the pipe until they migrate to stdlib newtypes, and operand order is never reordered. See [Expressions § Canonical Call Form](./expressions.md#canonical-call-form) for the full case list.
 
 ### The One-Operator Endgame -- `->` executes, `.` reads, `=>` declares *(landing)*
 
-> **Status: the declaration/execution split has landed.** `=>` declares (constructors, shapes, lambdas, dispatch arms); `->` executes (the value-level pipe). `canon fmt` writes `=>` for every declaration, and the whole tree is migrated; `->` in a declaration position is still *accepted* so mixed sources parse during the remaining work. Still ahead: retiring the `.`-method-call and `B(a)` prefix-call forms in favour of `->`, and the LSP discovery providers.
+> **Status: the declaration/execution split has landed and is enforced.** `=>` declares (constructors, shapes, lambdas, dispatch arms); `->` executes (the value-level pipe). `->` in a declaration position is a **parse error** with a targeted message (`expect_decl_arrow`). `.`-method-calls and `B(a)` prefix-calls with a computed subject are rewritten to the pipe by `canon fmt` (prefix construction survives exactly where the rule below puts it: literal subjects, zero-input calls, `List(…)`). Still ahead: the LSP discovery providers.
 
 The migration collapses to a single execution operator. Three symbols, three non-overlapping jobs:
 
@@ -135,7 +135,7 @@ Details still to pin: first-class function references (today `Int.Double` for pa
 
 - **Conversions and creations** are already constructors (S [Conversions](#conversions)): `fromBool` -> `Json(Bool)`, `openFile` -> `File(Path)`, `create` -> `HttpServer(Port)`.
 - **Accessors** construct the accessed thing: `get = (Map * String) => Option<Value>` becomes a `Value` constructor -- `map.Value("k")?` reads "the Value in this Map at this key, which might not exist." `keys` -> `Keys = List<Key>` + `Keys = (Map) => Keys`.
-- **Endomorphisms** -- operations whose output type equals an input type, the one place a type genuinely underdetermines the function -- take **result newtypes**: `Inserted = Map`, `Removed = Map`, `Joined = String`. Newtype substitutability makes chaining free: `Map().Inserted("a" * "1").Removed("a")` composes because `Inserted` flows anywhere `Map` is expected. The verb's information relocates into a name that is now checked, sorted, globally resolvable, and usable in downstream signatures.
+- **Endomorphisms** -- operations whose output type equals an input type, the one place a type genuinely underdetermines the function -- take **result newtypes**: `Inserted = Map`, `Removed = Map`, `Joined = String`. This is a *checked rule*, not a convention: an arrow that constructs a type appearing in its own input product is a checker error directing to the newtype. Newtype substitutability makes chaining free: `Map() -> Inserted("a" * "1") -> Removed("a")` composes because `Inserted` flows anywhere `Map` is expected. The verb's information relocates into a name that is now checked, sorted, globally resolvable, and usable in downstream signatures.
 - **Effects produce evidence**: `write` becomes `Written = Path` + `Written = (Contents * Path) => Result<Written, IoError>`. A downstream function that accepts `(Written)` instead of `(Path)` *requires proof the write happened* -- capability-style sequencing with no new machinery, and the pattern composes with [capability entry points](#capability-entry-points-planned) (the capability joins the constructor's input product). Pure sinks (`-> Unit`) are shape implementations (`Print = () => Unit` -- `"hi".Print()`) until capabilities land, after which printing returns the capability (`Stdout.Print("a").Print("b")`) and sinks disappear.
 - **Shared vocabulary** -- operations whose meaning spans types -- are shapes with per-type implementations, exactly what traits were built for: `Length` (`Map`, `Set`, `String`, `List`), the comparison surface `Eq`/`Lt`/`Le`/`Gt`/`Ge`, ordering via the `Ord` constructor (`a -> Ord(b) -> ( * Less => ... )` -- `compare` was already constructor-shaped). Arithmetic takes the noun vocabulary: `Sum`, `Product`, `Difference`, `Quotient`, `Remainder`, `Minimum`, `Maximum` -- `2.Sum(3)`, `price.Product(quantity)`, non-commutative cases disambiguated by `OtherInt` under the ordinary binding rule.
 - **Higher-order operations** take generic result newtypes: `Mapped<U> = List<U>` + `Mapped = <T, U>(((T) => U) * List<T>) => Mapped<U>`; `Filtered<T> = List<T>`. First-class references generalize: `Int.Doubled` replaces `Int.double`. `Fold` stays a shape (its result is a bare parameter).
@@ -156,18 +156,25 @@ Distinct same-shaped operations stay distinct the same way same-typed parameters
 
 ### Worked Example
 
-`map.can` ported (excerpt -- see `packages/canon/std/src/map.can` once slice 5 lands):
+`map.can` as shipped (excerpt -- the full file is `packages/canon/std/src/map.can`):
 
 ```
 Inserted = Map
 
-Inserted = (Map * String * Value) => Inserted {
-    Map.(
-        * (Empty) => Inserted { Node(String, Empty(), Value) }
-        * (Node) => Inserted {
-            String.Lt(Node.Key).(
-                * (False) => Inserted { ... Node.Rest.Inserted(String * Value) ... }
-                * (True) => Inserted { Node(String, Map, Value) }
+Map * String * Value => Inserted {
+    Map -> (
+        * Empty => Inserted { Empty() -> Node(String * Value) }
+        * Node => Inserted {
+            String -> Lt(Node.Key) -> (
+                * False => Inserted {
+                    String -> Eq(Node.Key) -> (
+                        * False => Inserted {
+                            Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value)
+                        }
+                        * True => Inserted { Node.Rest -> Node(String * Value) }
+                    )
+                }
+                * True => Inserted { Map -> Node(String * Value) }
             )
         }
     )
@@ -175,20 +182,22 @@ Inserted = (Map * String * Value) => Inserted {
 
 Value = String
 
-Value = (Map * String) => Option<Value> {
-    Map.(
-        * (Empty) => Option<Value> { None() }
-        * (Node) => Option<Value> {
-            Node.Key.Eq(String).(
-                * (False) => Option<Value> { Node.Rest.Value(String) }
-                * (True) => Option<Value> { Some(Node.Value) }
+Map * String => Option<Value> {
+    Map -> (
+        * Empty => Option<Value> { None() }
+        * Node => Option<Value> {
+            Node.Key -> Eq(String) -> (
+                * False => Option<Value> { Node.Rest -> Value(String) }
+                * True => Option<Value> { Node.Value -> Some }
             )
         }
     )
 }
 ```
 
-Call site: `Map().Inserted("a" * "1").Inserted("b" * "2").Value("a")?`. Note `Value` carries two constructors -- the total newtype wrap `Value(String)` and the fallible lookup `Value(Map * String)` -- a family with disjoint inputs, which is the feature working, not a collision. The recursive call stores `Inserted` into the `Rest = Map` field through ordinary newtype substitutability.
+Call site: `Map() -> Inserted("a" * "1") -> Inserted("b" * "2") -> Value("a")?`. Note `Value` carries two constructors -- the total newtype wrap `Value(String)` and the fallible lookup `Value(Map * String)` -- a family with disjoint inputs, which is the feature working, not a collision. The recursive call stores `Inserted` into the `Rest = Map` field through ordinary newtype substitutability.
+
+One honest limitation: `set.can`'s operations are `Added = Set` and `Dropped = Set`, not a second `Inserted`/`Removed`. `Inserted = Map` and `Inserted = Set` are *differing* type bodies under one name, which today is a hard clash whenever both files load (and `Length`'s structural merge loads both). Resolution rule 1 below -- ambiguity as a reference-site error, not a declaration-site one -- is what will let the shared vocabulary return; until it lands, cross-container endomorphism names must be distinct.
 
 ### Costs, Named Honestly
 
@@ -224,6 +233,6 @@ Queued to move out of the compiler as their blockers clear:
 3. **Cross-file constructor families** -- [~] partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
 4. **Minimal primitives** -- [~] in progress. A compiler builtin is justified only by wasm numerics, linear-memory layout, canonical-ABI machinery, or a host boundary (see [Minimal Primitives](#minimal-primitives)); everything else moves to stdlib Canon. `Bool`'s `And`/`Or`/`Not` landed (pure dispatch). Remaining: the derived comparisons, `String(Int)` rendering, `print`.
 5. **Stdlib port** -- [x] landed, `json.can` included. The recursive-descent parser is ~30 anonymous arrows over result newtypes and the style held; **checkpoint verdict: full removal** (the fallback rule is retired).
-6. **Enforcement** -- [x] landed. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); `canon fmt` canonicalizes every call spelling (`B(a)` / `a.B()` / `a -> B`) to the parens-tail `a -> B(c)` form; entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized). The larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser.
+6. **Enforcement** -- [x] landed, then closed tight. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized); the larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser. The second wave closed the remaining holes: a bodied declaration's name must be a declared shape or the type it constructs (the receiver-extraction path no longer admits arbitrary verbs); endomorphism arrows on the bare type are rejected (result newtypes are the rule, not the doctrine); the named constructor form is rewritten to the anonymous arrow by `canon fmt`; the canonical call form is *values flow, literals are born in the parens*; implicit dependency threading is removed (the pipe is the one spelling of passing a value); and a static string the `Json`/`Html` literal expresses must be the literal.
 7. **Spec rewrite** -- this page's content folds into the Functions / Traits / Ordering spec pages; the pre-migration descriptions there are replaced.
 

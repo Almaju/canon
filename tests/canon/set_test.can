@@ -1,20 +1,20 @@
+SetContainsFindsAdded = TestResult
+
+Unit => SetContainsFindsAdded {
+    Set()
+        -> Added("x")
+        -> Contains("x")
+        -> TestResult
+}
+
 SetContainsFindsAfterRecursingPastEntries = TestResult
 
 Unit => SetContainsFindsAfterRecursingPastEntries {
     Set()
-        -> Inserted("a")
-        -> Inserted("b")
-        -> Inserted("c")
+        -> Added("a")
+        -> Added("b")
+        -> Added("c")
         -> Contains("c")
-        -> TestResult
-}
-
-SetContainsFindsInserted = TestResult
-
-Unit => SetContainsFindsInserted {
-    Set()
-        -> Inserted("x")
-        -> Contains("x")
         -> TestResult
 }
 
@@ -22,7 +22,7 @@ SetContainsRejectsAbsent = TestResult
 
 Unit => SetContainsRejectsAbsent {
     Set()
-        -> Inserted("x")
+        -> Added("x")
         -> Contains("y")
         -> Not
         -> TestResult
@@ -32,9 +32,9 @@ SetContainsRejectsAfterRecursingThroughEntries = TestResult
 
 Unit => SetContainsRejectsAfterRecursingThroughEntries {
     Set()
-        -> Inserted("a")
-        -> Inserted("b")
-        -> Inserted("c")
+        -> Added("a")
+        -> Added("b")
+        -> Added("c")
         -> Contains("d")
         -> Not
         -> TestResult
@@ -44,11 +44,48 @@ SetDedupesInserts = TestResult
 
 Unit => SetDedupesInserts {
     Set()
-        -> Inserted("b")
-        -> Inserted("a")
-        -> Inserted("b")
+        -> Added("b")
+        -> Added("a")
+        -> Added("b")
         -> Length
         -> Eq(2)
+        -> TestResult
+}
+
+SetDroppedAbsentIsNoOp = TestResult
+
+Unit => SetDroppedAbsentIsNoOp {
+    Set()
+        -> Added("a")
+        -> Dropped("missing")
+        -> Length
+        -> Eq(1)
+        -> TestResult
+}
+
+SetDroppedDropsValue = TestResult
+
+Unit => SetDroppedDropsValue {
+    Set()
+        -> Added("a")
+        -> Added("b")
+        -> Dropped("a")
+        -> List
+        -> Json
+        -> Eq("[b]")
+        -> TestResult
+}
+
+SetDroppedRecursesPastNonMatchingItem = TestResult
+
+Unit => SetDroppedRecursesPastNonMatchingItem {
+    Set()
+        -> Added("a")
+        -> Added("b")
+        -> Dropped("b")
+        -> List
+        -> Json
+        -> Eq("[a]")
         -> TestResult
 }
 
@@ -56,48 +93,11 @@ SetListSorted = TestResult
 
 Unit => SetListSorted {
     Set()
-        -> Inserted("b")
-        -> Inserted("c")
-        -> Inserted("a")
+        -> Added("b")
+        -> Added("c")
+        -> Added("a")
         -> List
         -> Json
         -> Eq("[a,b,c]")
-        -> TestResult
-}
-
-SetRemovedAbsentIsNoOp = TestResult
-
-Unit => SetRemovedAbsentIsNoOp {
-    Set()
-        -> Inserted("a")
-        -> Removed("missing")
-        -> Length
-        -> Eq(1)
-        -> TestResult
-}
-
-SetRemovedDropsValue = TestResult
-
-Unit => SetRemovedDropsValue {
-    Set()
-        -> Inserted("a")
-        -> Inserted("b")
-        -> Removed("a")
-        -> List
-        -> Json
-        -> Eq("[b]")
-        -> TestResult
-}
-
-SetRemovedRecursesPastNonMatchingItem = TestResult
-
-Unit => SetRemovedRecursesPastNonMatchingItem {
-    Set()
-        -> Inserted("a")
-        -> Inserted("b")
-        -> Removed("b")
-        -> List
-        -> Json
-        -> Eq("[a]")
         -> TestResult
 }

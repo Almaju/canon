@@ -1,0 +1,9 @@
+Banner = Html
+
+Unit => Banner {
+    Html("<button>+</button>")
+}
+
+Unit => Program {
+    Banner() -> String -> Print
+}

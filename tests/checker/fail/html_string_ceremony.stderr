@@ -1,0 +1,1 @@
+error[tests/checker/fail/html_string_ceremony.can:4:10]: `Html("…")` wraps a document the Html literal already expresses: write the literal directly (`<tag>…</tag>`) — the validating constructor is for strings built at runtime

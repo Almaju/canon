@@ -64,8 +64,7 @@ bindings, dependencies, and the bundled standard library.
 
 ```canon
 Unit => Program {
-    "./data.json"
-        -> Path
+    Path("./data.json")
         -> File?
         -> Read?
         -> Print
@@ -83,7 +82,7 @@ across a function. A function's inputs are a product of types, referenced
 in the body by their type names:
 
 ```canon
-Ord = (OtherUser * User) => Ord {
+OtherUser * User => Ord {
     User.Birthday -> Compared(OtherUser.Birthday)
 }
 ```

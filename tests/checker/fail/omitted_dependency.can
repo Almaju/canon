@@ -4,8 +4,6 @@ Deep = Unit
 
 Mid = Unit
 
-Shallow = Unit
-
 Db => Deep {
     "row for "
         -> Joined(Db.String)
@@ -16,12 +14,8 @@ Db => Mid {
     Deep()
 }
 
-Db => Shallow {
-    Mid()
-}
-
 Unit => Program {
     "users-db"
         -> Db
-        -> Shallow
+        -> Mid
 }

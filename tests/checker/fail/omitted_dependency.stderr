@@ -1,0 +1,1 @@
+error[tests/checker/fail/omitted_dependency.can:14:5]: constructor `Deep()` is not allowed: empty constructors are disallowed

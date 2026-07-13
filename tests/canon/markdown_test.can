@@ -1,8 +1,7 @@
 MarkdownEscapesInline = TestResult
 
 Unit => MarkdownEscapesInline {
-    "a < b"
-        -> Markdown
+    Markdown("a < b")
         -> Html
         -> Eq("<p>a &lt; b</p>")
         -> TestResult
@@ -11,8 +10,7 @@ Unit => MarkdownEscapesInline {
 MarkdownRendersBlockquote = TestResult
 
 Unit => MarkdownRendersBlockquote {
-    "> quoted text"
-        -> Markdown
+    Markdown("> quoted text")
         -> Html
         -> Eq("<blockquote>quoted text</blockquote>")
         -> TestResult
@@ -21,8 +19,7 @@ Unit => MarkdownRendersBlockquote {
 MarkdownRendersBold = TestResult
 
 Unit => MarkdownRendersBold {
-    "a **bold** word"
-        -> Markdown
+    Markdown("a **bold** word")
         -> Html
         -> Eq("<p>a <strong>bold</strong> word</p>")
         -> TestResult
@@ -31,8 +28,7 @@ Unit => MarkdownRendersBold {
 MarkdownRendersFencedCode = TestResult
 
 Unit => MarkdownRendersFencedCode {
-    "```\ncode line\n```"
-        -> Markdown
+    Markdown("```\ncode line\n```")
         -> Html
         -> Eq("<pre data-info=\"\"><code>code line\n</code></pre>")
         -> TestResult
@@ -41,8 +37,7 @@ Unit => MarkdownRendersFencedCode {
 MarkdownRendersH2 = TestResult
 
 Unit => MarkdownRendersH2 {
-    "## Hello"
-        -> Markdown
+    Markdown("## Hello")
         -> Html
         -> Eq("<h2>Hello</h2>")
         -> TestResult
@@ -51,8 +46,7 @@ Unit => MarkdownRendersH2 {
 MarkdownRendersH3 = TestResult
 
 Unit => MarkdownRendersH3 {
-    "### Hello"
-        -> Markdown
+    Markdown("### Hello")
         -> Html
         -> Eq("<h3>Hello</h3>")
         -> TestResult
@@ -61,8 +55,7 @@ Unit => MarkdownRendersH3 {
 MarkdownRendersHeading = TestResult
 
 Unit => MarkdownRendersHeading {
-    "# Hello"
-        -> Markdown
+    Markdown("# Hello")
         -> Html
         -> Eq("<h1>Hello</h1>")
         -> TestResult
@@ -71,8 +64,7 @@ Unit => MarkdownRendersHeading {
 MarkdownRendersInlineCode = TestResult
 
 Unit => MarkdownRendersInlineCode {
-    "an `inline` code"
-        -> Markdown
+    Markdown("an `inline` code")
         -> Html
         -> Eq("<p>an <code>inline</code> code</p>")
         -> TestResult
@@ -81,8 +73,7 @@ Unit => MarkdownRendersInlineCode {
 MarkdownRendersItalic = TestResult
 
 Unit => MarkdownRendersItalic {
-    "an *italic* word"
-        -> Markdown
+    Markdown("an *italic* word")
         -> Html
         -> Eq("<p>an <em>italic</em> word</p>")
         -> TestResult
@@ -91,8 +82,7 @@ Unit => MarkdownRendersItalic {
 MarkdownRendersLink = TestResult
 
 Unit => MarkdownRendersLink {
-    "see [Canon](https://example.com) here"
-        -> Markdown
+    Markdown("see [Canon](https://example.com) here")
         -> Html
         -> Eq("<p>see <a href=\"https://example.com\">Canon</a> here</p>")
         -> TestResult
@@ -101,8 +91,7 @@ Unit => MarkdownRendersLink {
 MarkdownRendersNestedBoldInItalic = TestResult
 
 Unit => MarkdownRendersNestedBoldInItalic {
-    "*a **b** c*"
-        -> Markdown
+    Markdown("*a **b** c*")
         -> Html
         -> Eq("<p><em>a <strong>b</strong> c</em></p>")
         -> TestResult
@@ -111,8 +100,7 @@ Unit => MarkdownRendersNestedBoldInItalic {
 MarkdownRendersNestedList = TestResult
 
 Unit => MarkdownRendersNestedList {
-    "- item one\n  - sub item\n- item two"
-        -> Markdown
+    Markdown("- item one\n  - sub item\n- item two")
         -> Html
         -> Eq("<ul><li>item one<ul><li>sub item</li></ul></li><li>item two</li></ul>")
         -> TestResult
@@ -121,8 +109,7 @@ Unit => MarkdownRendersNestedList {
 MarkdownRendersOrderedList = TestResult
 
 Unit => MarkdownRendersOrderedList {
-    "1. first\n2. second"
-        -> Markdown
+    Markdown("1. first\n2. second")
         -> Html
         -> Eq("<ol><li>first</li><li>second</li></ol>")
         -> TestResult
@@ -131,8 +118,7 @@ Unit => MarkdownRendersOrderedList {
 MarkdownRendersTable = TestResult
 
 Unit => MarkdownRendersTable {
-    "| a | b |\n| --- | --- |\n| 1 | 2 |"
-        -> Markdown
+    Markdown("| a | b |\n| --- | --- |\n| 1 | 2 |")
         -> Html
         -> Eq("<table><thead><tr><th> a </th><th> b </th></tr></thead><tbody><tr><td> 1 </td><td> 2 </td></tr></tbody></table>")
         -> TestResult
@@ -141,8 +127,7 @@ Unit => MarkdownRendersTable {
 MarkdownWrapsParagraph = TestResult
 
 Unit => MarkdownWrapsParagraph {
-    "plain text"
-        -> Markdown
+    Markdown("plain text")
         -> Html
         -> Eq("<p>plain text</p>")
         -> TestResult

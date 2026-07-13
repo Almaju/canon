@@ -1,13 +1,15 @@
 Closed = Unit
 
+Described = String
+
 Mode = Closed + Opened
 
 Opened = Unit
 
-Described = (Mode) => String {
+Mode => Described {
     Mode -> (
-        * Closed => String { "closed" }
-        * Opened => String { "opened" }
+        * Closed => Described { "closed" }
+        * Opened => Described { "opened" }
     )
 }
 

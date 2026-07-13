@@ -1,17 +1,18 @@
 Content = String
 
+Dispatched = Unit
+
 MessageContent = Option<Content>
 
-Dispatched = (MessageContent) => Unit {
+MessageContent => Dispatched {
     MessageContent -> (
-        * None => Unit { "absent" -> Print }
-        * Some<Content> => Unit { "present" -> Print }
+        * None => Dispatched { "absent" -> Print }
+        * Some<Content> => Dispatched { "present" -> Print }
     )
 }
 
 Unit => Program {
-    "hi"
-        -> Some
+    Some("hi")
         -> MessageContent
         -> Dispatched
     None()

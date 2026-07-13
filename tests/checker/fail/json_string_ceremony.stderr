@@ -1,0 +1,1 @@
+error[tests/checker/fail/json_string_ceremony.can:2:10]: `Json("…")` wraps a document the Json literal already expresses: write the literal directly (`{"k":v}` / `[v]`) — the validating constructor is for strings built at runtime

@@ -24,13 +24,13 @@ Unit => NoteTwo {
 
 Request => Response {
     Request.path() -> (
-        * None => Response { 400 -> Status -> Response(Headers() * NotFound()) }
+        * None => Response { Status(400) -> Response(Headers() * NotFound()) }
         * Some<String> => Response {
             String -> (
-                * "/notes" => Response { 200 -> Status -> Response(Headers() * IndexBody()) }
-                * "/notes/1" => Response { 200 -> Status -> Response(Headers() * NoteOne()) }
-                * "/notes/2" => Response { 200 -> Status -> Response(Headers() * NoteTwo()) }
-                * String => Response { 404 -> Status -> Response(Headers() * NotFound()) }
+                * "/notes" => Response { Status(200) -> Response(Headers() * IndexBody()) }
+                * "/notes/1" => Response { Status(200) -> Response(Headers() * NoteOne()) }
+                * "/notes/2" => Response { Status(200) -> Response(Headers() * NoteTwo()) }
+                * String => Response { Status(404) -> Response(Headers() * NotFound()) }
             )
         }
     )

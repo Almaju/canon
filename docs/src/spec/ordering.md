@@ -13,12 +13,19 @@ writing the same program produce the same bytes.
 | Variants of a union type | alphabetical |
 | Function components `(A * B)` | alphabetical |
 | Type definitions within a file | alphabetical |
-| Function declarations within a file | alphabetical |
+| Function declarations within a file | alphabetical by surface name — one sequence covering constructors (their type name), shape implementations (the shape's name), and free functions |
 | Trait composition (`Show = Debug * PrintString`) | alphabetical |
 | Error unions in `Result<T, A + B>` | alphabetical |
 | Dispatch arms | the union's variant order (itself alphabetical) |
 | Literal dispatch arms | alphabetical for strings, ascending for ints; catch-all last |
 | `canon.toml` tables (`[deps]`, `[imports]`) | alphabetical keys (normalized, not checker-enforced — see Exemptions) |
+
+One deliberate non-rule: **call operands are never reordered**. The
+piped value is the first operand and literal arguments keep their
+written order — operand position is meaning (untagged same-typed
+components bind by declaration order, `0 -> Difference(5)` is not
+`5 -> Difference(0)`), and where position carries meaning, order is not
+discretionary, so the alphabetical rule does not apply.
 
 ## The Exact Comparison
 
@@ -49,7 +56,11 @@ message (``` `x` should come before `y` ```) will tell you.
   keyed by name, so it always iterates alphabetically regardless of the
   order keys were written in. Unlike every other row above, writing
   keys out of order is not a checker error — there is no rejecting
-  check, and `canon fmt` does not touch `canon.toml` at all.
+  check, and `canon fmt` does not touch `canon.toml` at all. This gap
+  stays open deliberately: the manifest is slated for removal from the
+  language (the no-`.toml` direction the toolchain's central `uses`
+  registry already follows), so no enforcement is being added to a file
+  that is on its way out.
 
 ## Auto-Fixing
 

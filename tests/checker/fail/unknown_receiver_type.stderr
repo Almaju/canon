@@ -1,2 +1,1 @@
-error[tests/checker/fail/unknown_receiver_type.can:1:14]: unknown receiver type `Mystery`
-error[tests/checker/fail/unknown_receiver_type.can:6:5]: no method `Described` on type `String` with 0 argument(s)
+error[tests/checker/fail/unknown_receiver_type.can:3:1]: unknown type `Mystery`

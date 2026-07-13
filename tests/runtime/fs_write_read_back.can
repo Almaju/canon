@@ -1,7 +1,6 @@
 Unit => Program {
-    "written from canon"
-        -> Contents
-        -> Written("/tmp/canon-fs-write-test.txt" -> Path)?
+    Contents("written from canon")
+        -> Written(Path("/tmp/canon-fs-write-test.txt"))?
         -> File?
         -> Read?
         -> Print

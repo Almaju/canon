@@ -31,16 +31,14 @@ no ambient authority. The one exception is deliberate:
 `Print = (String) => Unit` writes to stdout with no token, lowered
 against `wasi:cli/stdout`.
 
-## Dependencies Thread Implicitly
+## Dependencies Thread Explicitly
 
-A value carrying an effect must appear in the signature of every function
-that touches it — but it need not be *repeated* at every call. When a
-constructor call omits an argument the callee requires, and the enclosing
-function holds exactly one value of that type, the compiler supplies it:
+A value carrying an effect appears in the signature of every function
+that touches it, **and at every call site that passes it on**:
 
 ```canon
 SqliteConnection => Main {
-    Query()
+    SqliteConnection -> Query
 }
 
 SqliteConnection => Query {
@@ -48,33 +46,17 @@ SqliteConnection => Query {
 }
 ```
 
-`Query()` is rewritten to `SqliteConnection -> Query` before the checker
-runs — identical to writing it out by hand. The dependency flows down the
-call tree without being named at each hop.
-
-This is implicit *threading*, never implicit *authority*. `Query` still
-declares `SqliteConnection => Query`; the capability stays in the type,
-and a function that does not name a dependency cannot reach it — a `Main`
-without a `SqliteConnection` parameter cannot call `Query()` at all, and
-the checker reports the same missing-argument error it always did. The
-signature remains the whole truth of what a function requires; only the
-plumbing is inferred. It is the discretionary-choice rule applied to
-arguments: when exactly one value can fill a slot, naming it is ceremony,
-so the compiler removes it.
-
-Resolution is unambiguous or it does not fire. Matching is by declared
-type name against the enclosing parameters (and receiver):
-
-- **Exactly one** in-scope value of the needed type → supplied.
-- **Zero** → nothing is conjured; the usual missing-argument error stands.
-- **Two or more** of that type in scope → ambiguous; the caller passes it
-  explicitly.
-
-A value already passed fills its slot, and the remaining slots are filled
-from scope, so a call may mix explicit and inferred arguments. Matching is
-by exact declared type — alias/newtype widening is not (yet) inferred, and
-the caller's own signature is never widened: inference threads what a
-function already declares, it never adds a requirement behind your back.
+The signature declares the requirement; the pipe shows the flow. There
+is no inferred filling of an omitted argument from the enclosing scope —
+an earlier design supplied a missing dependency automatically whenever
+exactly one in-scope value matched, but that made the call site's
+spelling optional (`Query()` and `SqliteConnection -> Query` were the
+same program), and the rule "wherever a choice is discretionary, the
+compiler removes it" cuts against optional spellings hardest of all.
+Since the inference could never be canonicalised by `canon fmt` (the
+formatter is purely syntactic and cannot see scope), the pipe is the one
+spelling: a call names every value it consumes, and an omitted argument
+is a plain missing-argument error.
 
 ## Suspension Is Inferred
 

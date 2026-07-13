@@ -1,5 +1,6 @@
 Unit => Result<Program, MalformedJson> {
-    "{\"model\":\"gpt-4\",\"stream\":true}"
+    "{\"model\":\"gpt-4\","
+        -> Joined("\"stream\":true}")
         -> Json?
         -> Field("model")?
         -> Decoded?

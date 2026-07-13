@@ -16,9 +16,9 @@ First, a taste. Here's the whole shape of the language in one snippet —
 a union, two products, and a function that branches by dispatch:
 
 ```canon
-Shape = Circle + Square
-
 Circle = Radius
+
+Shape = Circle + Square
 
 Square = Side
 

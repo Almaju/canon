@@ -1,0 +1,12 @@
+Basket = String
+
+Basket * String => Basket {
+    Basket -> Joined(String)
+}
+
+Unit => Program {
+    "a"
+        -> Basket
+        -> Basket("b")
+        -> Print
+}

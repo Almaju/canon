@@ -1,6 +1,4 @@
 Unit => Result<Program, Unit> {
-    42
-        -> Ok?
-        -> Print
+    Ok(42)? -> Print
     Unit() -> Ok
 }

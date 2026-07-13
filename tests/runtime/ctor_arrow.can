@@ -1,13 +1,13 @@
 Greeting = String
 
 Unit => Greeting {
-    "hello" -> Greeting
+    Greeting("hello")
 }
 
 Bool => Greeting {
     Bool -> (
-        * False => Greeting { "bool:no" -> Greeting }
-        * True => Greeting { "bool:yes" -> Greeting }
+        * False => Greeting { Greeting("bool:no") }
+        * True => Greeting { Greeting("bool:yes") }
     )
 }
 
@@ -19,13 +19,9 @@ Int => Greeting {
 
 Unit => Program {
     Greeting() -> Print
-    7
-        -> Greeting
-        -> Print
+    Greeting(7) -> Print
     True()
         -> Greeting
         -> Print
-    7
-        -> Greeting
-        -> Print
+    Greeting(7) -> Print
 }

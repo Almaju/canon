@@ -1,8 +1,7 @@
 ButtonWiresMsg = TestResult
 
 Unit => ButtonWiresMsg {
-    "inc"
-        -> Msg
+    Msg("inc")
         -> Button("click")
         -> Eq("<button data-msg=\"inc\">click</button>")
         -> TestResult
@@ -11,8 +10,7 @@ Unit => ButtonWiresMsg {
 DivWrapsContent = TestResult
 
 Unit => DivWrapsContent {
-    "hi"
-        -> Div
+    Div("hi")
         -> Eq("<div>hi</div>")
         -> TestResult
 }
@@ -20,9 +18,8 @@ Unit => DivWrapsContent {
 ElAttrAddsAttribute = TestResult
 
 Unit => ElAttrAddsAttribute {
-    "class=\"x\""
-        -> Attr
-        -> ElAttr("hi" * "p" -> Tag)
+    Attr("class=\"x\"")
+        -> ElAttr("hi" * Tag("p"))
         -> Eq("<p class=\"x\">hi</p>")
         -> TestResult
 }
@@ -31,7 +28,7 @@ ElWrapsInTag = TestResult
 
 Unit => ElWrapsInTag {
     "hi"
-        -> El("p" -> Tag)
+        -> El(Tag("p"))
         -> Eq("<p>hi</p>")
         -> TestResult
 }
@@ -39,8 +36,7 @@ Unit => ElWrapsInTag {
 EscapedReplacesMetachars = TestResult
 
 Unit => EscapedReplacesMetachars {
-    "a<b>&\"c"
-        -> Escaped
+    Escaped("a<b>&\"c")
         -> Eq("a&lt;b&gt;&amp;&quot;c")
         -> TestResult
 }
@@ -48,8 +44,7 @@ Unit => EscapedReplacesMetachars {
 H1WrapsHeading = TestResult
 
 Unit => H1WrapsHeading {
-    "Title"
-        -> H1
+    H1("Title")
         -> Eq("<h1>Title</h1>")
         -> TestResult
 }
@@ -57,8 +52,7 @@ Unit => H1WrapsHeading {
 LiWrapsItem = TestResult
 
 Unit => LiWrapsItem {
-    "item"
-        -> Li
+    Li("item")
         -> Eq("<li>item</li>")
         -> TestResult
 }
@@ -66,8 +60,7 @@ Unit => LiWrapsItem {
 SpanWrapsContent = TestResult
 
 Unit => SpanWrapsContent {
-    "hi"
-        -> Span
+    Span("hi")
         -> Eq("<span>hi</span>")
         -> TestResult
 }
@@ -75,8 +68,7 @@ Unit => SpanWrapsContent {
 ToHtmlEscapesString = TestResult
 
 Unit => ToHtmlEscapesString {
-    "<b>"
-        -> ToHtml
+    ToHtml("<b>")
         -> Eq("&lt;b&gt;")
         -> TestResult
 }
@@ -84,8 +76,7 @@ Unit => ToHtmlEscapesString {
 ToHtmlPassesThroughHtml = TestResult
 
 Unit => ToHtmlPassesThroughHtml {
-    "hi"
-        -> Div
+    Div("hi")
         -> ToHtml
         -> Eq("<div>hi</div>")
         -> TestResult
@@ -94,8 +85,7 @@ Unit => ToHtmlPassesThroughHtml {
 ToHtmlRendersInt = TestResult
 
 Unit => ToHtmlRendersInt {
-    7
-        -> ToHtml
+    ToHtml(7)
         -> Eq("7")
         -> TestResult
 }
@@ -103,8 +93,7 @@ Unit => ToHtmlRendersInt {
 UlWrapsList = TestResult
 
 Unit => UlWrapsList {
-    "items"
-        -> Ul
+    Ul("items")
         -> Eq("<ul>items</ul>")
         -> TestResult
 }

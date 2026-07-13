@@ -8,12 +8,12 @@ Line => Flipped {
     Line -> ByteAt(1) -> Eq(48) -> (
         * False => Flipped {
             "0"
-                -> Joined(Line -> Substring(2 -> From * Line -> Length -> To))
+                -> Joined(Line -> Substring(From(2) * Line -> Length -> To))
                 -> Line
         }
         * True => Flipped {
             "1"
-                -> Joined(Line -> Substring(2 -> From * Line -> Length -> To))
+                -> Joined(Line -> Substring(From(2) * Line -> Length -> To))
                 -> Line
         }
     )
@@ -23,7 +23,7 @@ Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49) -> (
         * False => RenderedItem {
             Line
-                -> Substring(3 -> From * Line -> Length -> To)
+                -> Substring(From(3) * Line -> Length -> To)
                 -> Escaped
                 -> Joined(" ")
                 -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("done"))
@@ -33,7 +33,7 @@ Int * Line => RenderedItem {
         }
         * True => RenderedItem {
             "<s>"
-                -> Joined(Line -> Substring(3 -> From * Line -> Length -> To) -> Escaped)
+                -> Joined(Line -> Substring(From(3) * Line -> Length -> To) -> Escaped)
                 -> Joined("</s> ")
                 -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("undo"))
                 -> Joined(" ")
