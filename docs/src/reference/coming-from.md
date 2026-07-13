@@ -119,7 +119,7 @@ both further than you may be ready for.
 **What you'll like.** It's a small language you can hold in your head,
 it compiles fast to a single portable artifact (a `.wasm` Component,
 much like a static binary), everything is public with no export
-ceremony, and `canon fmt` ends formatting debates the way `gofmt` did —
+ceremony, and `canon check --fix` ends formatting debates the way `gofmt` did —
 except the canonical form is baked into the *language*, so there's
 nothing to disagree about in the first place.
 

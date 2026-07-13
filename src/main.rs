@@ -37,7 +37,6 @@ fn main() {
         "build" => cmd_build(&rest),
         "check" => cmd_check(&rest),
         "test" => cmd_test(&rest),
-        "fmt" => cmd_fmt(&rest),
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
@@ -75,11 +74,13 @@ fn print_help() {
         "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
-    println!("  check [target] [-p name]  Check sort order and types");
+    println!("  check [target] [-p name] [--fix]");
+    println!("                            Check canonical form, sort order, and types.");
+    println!("                            With `--fix`, rewrites what is mechanically");
+    println!("                            fixable (formatting, ordering) in place first.");
     println!("  test <file.can | dir>     Run tests (`X = TestResult` + `Unit => X`). A");
     println!("                            directory runs every `*_test.can` file under it");
     println!("                            in one process, sharing setup across files.");
-    println!("  fmt [path...]             Rewrite Canon source files into canonical form");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
     println!("                              stages: tokens | ast");
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
@@ -840,134 +841,26 @@ fn cmd_publish(args: &[String]) {
     }
 }
 
-fn cmd_fmt(args: &[String]) {
-    let mut inputs: Vec<String> = Vec::new();
-
-    for arg in args {
-        match arg.as_str() {
-            "--help" | "-h" => {
-                println!("Usage: canon fmt [path...]");
-                println!();
-                println!("  path         A `.can` file or a directory. Directories are walked");
-                println!("               recursively. With no arguments, formats every `.can`");
-                println!("               file under the current directory.");
-                println!();
-                println!("  There is no verify-only mode: formatting is part of the language,");
-                println!("  so `canon check` reports an unformatted file as a compile error.");
-                println!("  `canon fmt` is the mechanical fixer.");
-                return;
-            }
-            other if other.starts_with('-') => {
-                eprintln!("error: unknown fmt flag '{}'", other);
-                process::exit(1);
-            }
-            _ => inputs.push(arg.clone()),
-        }
-    }
-
-    // No args — default to the current directory so `canon fmt` can be
-    // run from a project root with no further ceremony.
-    if inputs.is_empty() {
-        inputs.push(".".to_string());
-    }
-
-    // Expand directories into their `.can` files. File arguments pass
-    // through unchanged. When the user explicitly passed only file
-    // paths, a parse error aborts; when any input was a directory we
-    // soldier on past individual parse failures (one bad file in 100
-    // shouldn't block formatting the other 99).
-    let mut files: Vec<PathBuf> = Vec::new();
-    let mut had_dir_input = false;
-    for input in &inputs {
-        let path = Path::new(input);
-        if path.is_dir() {
-            had_dir_input = true;
-            collect_can_files(path, &mut files);
-        } else {
-            files.push(path.to_path_buf());
-        }
-    }
-    files.sort();
-    files.dedup();
-
-    if files.is_empty() {
-        eprintln!("error: no `.can` files found");
-        process::exit(1);
-    }
-
-    let mut any_parse_error = false;
-
-    for file_path in &files {
-        let display = file_path.display().to_string();
-        let source = read_source(&display);
-        match formatter::format(&source) {
-            Ok(formatted) => {
-                if source == formatted {
-                    continue;
-                }
-                if let Err(err) = fs::write(file_path, &formatted) {
-                    eprintln!("error: could not write '{}': {}", display, err);
-                    process::exit(1);
-                }
-                println!("formatted: {}", display);
-            }
-            Err(err) => {
-                print_error(&display, &err);
-                if had_dir_input {
-                    any_parse_error = true;
-                    continue;
-                }
-                process::exit(1);
-            }
-        }
-    }
-
-    if any_parse_error {
-        process::exit(1);
-    }
-}
-
-/// Recursively collect every `.can` file under `dir`, skipping common
-/// generated/build directories (`target`, `node_modules`, `.git`).
-fn collect_can_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(err) => {
-            eprintln!("error: could not read '{}': {}", dir.display(), err);
-            process::exit(1);
-        }
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if path.is_dir() {
-            // Skip a few well-known directories that have no business
-            // being formatted: build artefacts, deps, VCS metadata, and
-            // `bindgen/` output (derived by `canon install`, regenerated
-            // wholesale — like `target/`, formatting it only creates
-            // churn against the generator). An explicit
-            // `canon fmt path/to/bindgen/file.can` still works.
-            if matches!(
-                name.as_ref(),
-                "target" | "node_modules" | ".git" | "bindgen"
-            ) {
-                continue;
-            }
-            collect_can_files(&path, out);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
-            out.push(path);
-        }
-    }
-}
-
 fn cmd_check(args: &[String]) {
-    let parsed = parse_target_args(args, false);
+    let mut fix = false;
+    let filtered: Vec<String> = args
+        .iter()
+        .filter(|a| {
+            if a.as_str() == "--fix" {
+                fix = true;
+                false
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect();
+    let parsed = parse_target_args(&filtered, false);
     let target = resolve_target(parsed.target_path.as_deref());
     let target = apply_package_filter(target, parsed.package.as_deref());
     match target {
         Target::Build(spec) => {
-            if !check_spec(&spec) {
+            if !check_spec(&spec, fix) {
                 process::exit(1);
             }
         }
@@ -980,7 +873,7 @@ fn cmd_check(args: &[String]) {
             let mut failures = 0usize;
             for spec in &members {
                 println!("\n-- {} --", spec.label);
-                if !check_spec(spec) {
+                if !check_spec(spec, fix) {
                     failures += 1;
                 }
             }
@@ -995,11 +888,24 @@ fn cmd_check(args: &[String]) {
 
 /// Run the checker on one buildable target. Returns `true` on success,
 /// `false` if any errors were printed.
-fn check_spec(spec: &BuildSpec) -> bool {
-    let Some(loaded) = load_or_print(spec.entry_str()) else {
+///
+/// With `fix`, every mechanically fixable error is repaired in place
+/// before checking: the loaded sources are rewritten to canonical form
+/// (which also resolves sort-order violations — the formatter sorts),
+/// and the target is re-loaded so the checker sees what's now on disk.
+/// Whatever the fixer can't repair is then reported as usual.
+fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
+    let Some(mut loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
-    if !enforce_format(&loaded) {
+    if fix {
+        if apply_fixes(&loaded) {
+            let Some(reloaded) = load_or_print(spec.entry_str()) else {
+                return false;
+            };
+            loaded = reloaded;
+        }
+    } else if !enforce_format(&loaded) {
         return false;
     }
     let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
@@ -1600,7 +1506,7 @@ fn auto_install(file_path: &str) -> bool {
 /// loaded for this build. Canon's guiding rule is "one way" — a
 /// formatting divergence *is* a compiler error, reported with the span
 /// of the first differing line exactly like a sort-order or type
-/// error; `canon fmt` is the mechanical fixer. Bundled packages are
+/// error; `canon check --fix` is the mechanical fixer. Bundled packages are
 /// skipped (they ship with the compiler).
 ///
 /// Returns `true` when every file is canonical, `false` after printing
@@ -1625,6 +1531,35 @@ fn enforce_format(loaded: &LoadResult) -> bool {
     }
     eprintln!("{} error(s) found.", errors);
     false
+}
+
+/// `canon check --fix`: rewrite every user-authored source that has
+/// drifted from canonical form back into it — the write-side mirror of
+/// `enforce_format`, repairing exactly the errors that function
+/// reports (formatting, including sort-order violations). Returns
+/// whether anything was written, so the caller knows to re-load.
+/// Same skips as `enforce_format`: `.md` assets, bundled packages, and
+/// files that don't parse (the checker owns that diagnostic).
+fn apply_fixes(loaded: &LoadResult) -> bool {
+    let mut wrote = false;
+    for src in &loaded.local_sources {
+        if src.path.extension().and_then(|e| e.to_str()) == Some("md") {
+            continue;
+        }
+        let Ok(canonical) = formatter::format(&src.source) else {
+            continue;
+        };
+        if canonical == src.source {
+            continue;
+        }
+        if let Err(err) = fs::write(&src.path, &canonical) {
+            eprintln!("error: could not write '{}': {}", src.path.display(), err);
+            process::exit(1);
+        }
+        println!("fixed: {}", src.path.display());
+        wrote = true;
+    }
+    wrote
 }
 
 const INSTALL_URL: &str = "https://raw.githubusercontent.com/almaju/canon/main/install.sh";

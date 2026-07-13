@@ -36,7 +36,7 @@ pub fn format_error(source: &str) -> Option<CanonError> {
         return None;
     }
     Some(CanonError::CheckError {
-        message: "not canonically formatted: run `canon fmt`".to_string(),
+        message: "not canonically formatted: run `canon check --fix`".to_string(),
         span: divergence_span(source, &canonical),
     })
 }
@@ -89,7 +89,7 @@ fn divergence_span(source: &str, canonical: &str) -> Span {
 // to `A`". Zero-input calls stay prefix (`Now()`, `Map()`), and
 // `List(…)` keeps its elements (an ordered sequence, not a
 // subject-bearing call). The parser accepts every spelling; this pass is
-// what makes `canon fmt` pick the canonical one. The compiler treats a
+// what makes `canon check --fix` pick the canonical one. The compiler treats a
 // piped call to a type constructor as construction (`A -> B(rest)` ≡
 // `B(A * rest)`), so the rewrite is semantics-preserving.
 
@@ -1036,7 +1036,7 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
 
 /// Emit the fields of a product-type constructor, sorted alphabetically
 /// by their rendered form. Construction is positionless (values bind to
-/// fields by type), so a canonical order keeps `canon fmt` output
+/// fields by type), so a canonical order keeps `canon check --fix` output
 /// stable regardless of the order the author wrote the fields.
 fn emit_product_fields_sorted(out: &mut String, fields: &[Expr]) {
     let mut parts: Vec<String> = fields.iter().map(emit_inline).collect();
@@ -1113,7 +1113,7 @@ fn contains_dispatch(expr: &Expr) -> bool {
 /// dispatch's arms into variant (alphabetical) order. Arm order never
 /// carries meaning (union arms are matched by variant name, literal
 /// arms by equality), so sorting is safe here and makes the ordering
-/// rule auto-fixable via `canon fmt` instead of a hand-edit.
+/// rule auto-fixable via `canon check --fix` instead of a hand-edit.
 fn sort_arms(arms: &[MatchArm]) -> Vec<MatchArm> {
     let mut sorted: Vec<MatchArm> = arms.to_vec();
     sorted.sort_by_key(arm_sort_key);

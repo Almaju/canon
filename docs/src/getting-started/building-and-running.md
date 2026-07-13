@@ -118,14 +118,16 @@ pre-commit gate.
 ## Format
 
 ```sh
-canon fmt hello.can             # rewrite into canonical form
+canon check --fix hello.can     # fix what's mechanical, then check
 ```
 
 Formatting is not a separate concern in Canon: a file that isn't in
 canonical form is a **compile error** — `canon check`, `build`, `run`,
 and `test` all refuse it, pointing at the first line that diverges.
-`canon fmt` is the mechanical fixer. There is no verify-only mode,
-because verifying is `canon check`'s job.
+There is no separate formatter command, because a formatting error is
+just a compiler error with a mechanical fix: `--fix` rewrites the
+loaded sources into canonical form (spacing, call shape, and every
+sort-order rule) and then reports whatever it couldn't fix.
 
 ## Run Tests
 

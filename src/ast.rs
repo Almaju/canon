@@ -695,7 +695,7 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Race", "race"),
 ];
 
-/// The PascalCase pipe spelling `canon fmt` emits for a builtin method
+/// The PascalCase pipe spelling `canon check --fix` emits for a builtin method
 /// — the inverse direction of `builtin_method_alias`, from the same
 /// table. A name with no mapping (already-PascalCase user/stdlib
 /// methods, and the `String`/`Json` conversion methods) is emitted

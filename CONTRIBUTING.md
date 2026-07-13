@@ -64,7 +64,7 @@ just install-hooks
 | `src/checker/` | Type checker and sort-order validation |
 | `src/codegen/` | WebAssembly component code generation |
 | `src/bindgen/` | `canon bindgen` — WIT → Canon source emitter |
-| `src/formatter.rs` | Source formatter (`canon fmt`) |
+| `src/formatter.rs` | Source formatter (`canon check --fix`, format diagnostics) |
 | `src/lsp/` | Language server |
 | `src/webhost.rs` | Web target's generated JS host and static server |
 | `src/ast.rs` | AST node definitions |

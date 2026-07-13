@@ -36,7 +36,7 @@
 //!
 //! For a call to a single-constructor type `Name` with parameter types
 //! `P₁ … Pₙ` — the prefix form `Name(provided…)` or its piped canonical form
-//! `x -> Name(provided…)`, into which `canon fmt` rewrites any call carrying
+//! `x -> Name(provided…)`, into which `canon check --fix` rewrites any call carrying
 //! an explicit argument (the receiver is then one of the provided values, a
 //! piped call to a type constructor being construction in Canon):
 //!
@@ -222,7 +222,7 @@ fn transform_expr(expr: &mut Expr, scope: &[String], ctx: &Ctx<'_>) {
 
     // Fill omitted dependencies on the two call shapes that reach a
     // single-constructor type: the prefix form `Foo(…)` and its piped
-    // canonical form `x -> Foo(…)` (which `canon fmt` produces for any call
+    // canonical form `x -> Foo(…)` (which `canon check --fix` produces for any call
     // carrying an explicit argument). A piped call to a type constructor *is*
     // construction in Canon, so the receiver is a component and binds
     // commutatively alongside the rest — we gate on the callee having exactly

@@ -38,7 +38,7 @@ and reference documentation lives under `docs/src/`. Do not add new
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading |
 | `src/bindgen/` | `canon bindgen` — WIT → Canon source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
-| `src/main.rs` | CLI entry point (`run`, `build`, `check`, `test`, `fmt`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
+| `src/main.rs` | CLI entry point (`run`, `build`, `check` (`--fix` autofixes), `test`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
 | `src/webhost.rs` | Web target's browser side — the generated JS host (`canon-web.js`), `index.html` shell, bundle writer, static server for `canon run` (see `docs/src/reference/web-target.md`) |
 | `src/lib.rs` | Public crate modules |
 | `src/manifest.rs` | `canon.toml` parser (TOML subset, hand-written) |
@@ -69,6 +69,7 @@ just bench              # benchmark codegen::generate() over the example program
 just docs               # build docs and serve it locally on 127.0.0.1:8080
 just regen-bindings     # regenerate packages/canon/std/bindgen/ from wit-vendor/
 just fmt                # cargo fmt
+just fmt-can            # canonicalize every corpus .can file (per-file `canon check --fix`)
 just clippy             # cargo clippy -- -W warnings
 just ci                 # fmt + clippy + test (mirrors CI)
 just clean              # cargo clean + remove compiled examples
@@ -204,7 +205,7 @@ Non-obvious invariants the code won't spell out for you:
   `build_product_value` binds each value to the field whose type it
   matches — exact newtype match first (`Value(x)` → the `Value` field),
   then shared base type, then declaration order as a floor
-  (`field_match_score` / `widening_chain`). So `canon fmt` sorts a
+  (`field_match_score` / `widening_chain`). So `canon check --fix` sorts a
   product-type constructor's values alphabetically and codegen still
   routes them correctly. Two consequences: (1) same-underlying-type
   fields (map's `Key` and `Value`, both `String`) must be **distinct
@@ -216,7 +217,7 @@ Non-obvious invariants the code won't spell out for you:
   `Headers`/`Status` by type and treats the leftover as the body for the
   same reason.
 - **Canonical call form: the first input pipes, the rest ride the
-  parens.** `canon fmt` rewrites every call to `A -> B(rest)` (the
+  parens.** `canon check --fix` rewrites every call to `A -> B(rest)` (the
   `canon_expr` pass in `src/formatter.rs`): `B(A)` → `A -> B`, `B(A * C)`
   → `A -> B(C)`, `A.B(C)` / `A * C -> B` → `A -> B(C)`. Zero-arg calls
   and `List(…)` stay prefix. This is semantics-preserving because the
@@ -332,7 +333,7 @@ invariants:
 
 ## Key conventions
 
-- **Alphabetical ordering** is central to the language. If you modify the parser or checker, be aware that sort-order enforcement applies to: product type fields, union variants, function declarations, and dispatch arms. `canon fmt` auto-sorts all of these; the checker errors are the backstop. Union dispatch is also **exhaustive** (no wildcard arm) and duplicate-free; literal dispatch (String/Int) requires a trailing catch-all. Dead code — declarations unreachable from the entry — is a hard checker error, and `cargo test` includes `tests/format_corpus.rs`, which fails if any checked-in `.can` file drifts from canonical format.
+- **Alphabetical ordering** is central to the language. If you modify the parser or checker, be aware that sort-order enforcement applies to: product type fields, union variants, function declarations, and dispatch arms. `canon check --fix` auto-sorts all of these; the checker errors are the backstop. Union dispatch is also **exhaustive** (no wildcard arm) and duplicate-free; literal dispatch (String/Int) requires a trailing catch-all. Dead code — declarations unreachable from the entry — is a hard checker error, and `cargo test` includes `tests/format_corpus.rs`, which fails if any checked-in `.can` file drifts from canonical format.
 - **There is no `use` keyword — imports are automatic.** A reference to a name the file doesn't define resolves name → file: the file's own directory tree (`kebab(Name).can` or `kebab(name)/main.can`, recursive, skipping `deps/`/`bindgen/`), then the project `bindgen/` tree, `deps/`, and the bundled packages — the last three by *declared name* (declaration indexes), because binding functions like `getRandomU64` don't kebab back to their file. Resolving in more than one place is a hard error (no shadowing); resolving nowhere is left for the checker. Inside `canon/std`, wrapper (`src/`) declarations shadow the package's bindgen substrate for outside referrers, and bindgen files prefer bindgen (that's how `filesystem/types.can` gets the clocks `Instant` while user code gets `std`'s). The machinery lives in `src/loader.rs` (`discover_references`, `resolve_reference`, `bundled_decl_matches`). Consequence for bindgen: each generated binding is discovered by the type it constructs, so `canon install` mints a result newtype per function and interface-qualifies it when the WIT leaf name collides across the install set (`MonotonicClockNow` / `SystemClockNow`) — see `binding_return` in `src/bindgen/emit.rs`.
 - **Indexing is 1-based** everywhere (`ByteAt(1)`, `list -> At(1)`, positional access `.1`), and `substring(a, b)` is inclusive on both ends. Don't "fix" this to 0-based — it is a deliberate language decision (see the language spec, `docs/src/spec/`).
 - The compiler pipeline is: **source → lexer → parser → checker → codegen (wasm core module → Component Model wrapper)**. No external toolchain is invoked — `wasm-encoder` / `wit-component` produce the final `.wasm` in-process, and `canon run` executes it on the embedded wasmtime.

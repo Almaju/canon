@@ -66,7 +66,7 @@ User = Birthday * Username
   `User(Username("ada") * Birthday("..."))` and
   `User(Birthday("...") * Username("ada"))` build the same value -- position
   never carries meaning. Because the components are distinct types, each
-  value's type selects its field; `canon fmt` canonicalises the written
+  value's type selects its field; `canon check --fix` canonicalises the written
   order alphabetically. Where two fields share an underlying type
   (`Key = String` and `Value = String` in `Node = Key * Rest * Value`),
   tag the values with the newtype -- `Node(Key("k") * Value("v") * ...)` --

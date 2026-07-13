@@ -258,7 +258,7 @@ fn check_ordering(
             if let Some(recv) = &func.receiver {
                 // Compare *surface* names — a self-named constructor is
                 // rewritten to `Self` by `resolve_new_syntax`, but the
-                // source (and `canon fmt`'s sort) spells it as the type
+                // source (and `canon check --fix`'s sort) spells it as the type
                 // name. Comparing the resolved name made canonically
                 // formatted files fail the order check whenever a
                 // constructor sorted differently under "Self".

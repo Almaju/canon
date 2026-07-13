@@ -39,7 +39,7 @@ A call applies one PascalCase name to an input product. The three
 spellings -- `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` -- denote the
 *same* call (the receiver / left value fills the first slot of the input
 product). Since the choice between them is discretionary, the compiler
-picks one canonical form and `canon fmt` rewrites the rest to it,
+picks one canonical form and `canon check --fix` rewrites the rest to it,
 backstopped by the checker -- the same instrument that enforces
 alphabetical ordering.
 
@@ -177,7 +177,7 @@ Rules:
 - Literal arms can never be exhaustive, so **totality comes from the
   catch-all**: it is required, and it is always the last arm.
 - Literal arms follow canonical order (alphabetical for strings,
-  ascending for ints); duplicates are a compile error. `canon fmt`
+  ascending for ints); duplicates are a compile error. `canon check --fix`
   sorts the arms automatically.
 - Inside every arm body (including literal arms) the scrutinee value is
   in scope under its type name, exactly like a bound payload.
@@ -238,7 +238,7 @@ Label = (Int) => Json {
   handler program using interpolation fails at build with an error
   naming the unsatisfiable imports.
 - Literal layout is canonical like all Canon code: no spaces after `:`
-  or `,` (`{"k":v}`, not `{"k": v}`). `canon fmt` enforces it.
+  or `,` (`{"k":v}`, not `{"k": v}`). `canon check --fix` enforces it.
 
 ## HTML Literals
 
@@ -319,7 +319,7 @@ Int => Report {
 - Literal holes (`{42}`, `{"a"}`) fold to static text at parse time, so
   a fully constant backtick string costs one string constant at runtime,
   exactly like an all-static JSON or HTML literal. A backtick string
-  with no holes is just a string constant: `canon fmt` rewrites it to
+  with no holes is just a string constant: `canon check --fix` rewrites it to
   the plain-quoted form (`` `hi` `` → `"hi"`).
 
 Unlike `Json` and `Html`, a format string needs no prelude -- `String`

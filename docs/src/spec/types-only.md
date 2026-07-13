@@ -56,7 +56,7 @@ This is not a second function syntax -- it is the language's **only** function f
 
 Coherence: at most one arrow per (input product, constructed type) pair -- the same family-disjointness rule, with nothing left to name a conflict after.
 
-During migration the named form (`Url = (String) => ...`) remains legal and means the same thing; it is deprecated and will be removed with slice 6. `canon fmt` preserves whichever form is written until then.
+During migration the named form (`Url = (String) => ...`) remains legal and means the same thing; it is deprecated and will be removed with slice 6. `canon check --fix` preserves whichever form is written until then.
 
 ### The Value-Level Pipe -- `value -> B` *(implemented)*
 
@@ -69,7 +69,7 @@ map -> Value("k")                      # remaining components ride in parens
 list -> Json                           # pipes reach methods/shapes too, by receiver type
 ```
 
-`-> B?` needs no special rule: the pipe produces the `Result<B, E>` and the ordinary postfix `?` propagates it. The grammar is unambiguous because Canon has no parenthesized grouping expression -- a `(` at expression *start* is always a lambda (which consumes its own arrow), so a postfix `->` can only be a pipe. The right-hand side must be a PascalCase name; `canon fmt` breaks long pipe chains onto continuation lines exactly like `.` chains:
+`-> B?` needs no special rule: the pipe produces the `Result<B, E>` and the ordinary postfix `?` propagates it. The grammar is unambiguous because Canon has no parenthesized grouping expression -- a `(` at expression *start* is always a lambda (which consumes its own arrow), so a postfix `->` can only be a pipe. The right-hand side must be a PascalCase name; `canon check --fix` breaks long pipe chains onto continuation lines exactly like `.` chains:
 
 ```
 Map()
@@ -83,7 +83,7 @@ Three spellings of one call is a migration-period surplus; which become canonica
 
 ### The One-Operator Endgame -- `->` executes, `.` reads, `=>` declares *(landing)*
 
-> **Status: the declaration/execution split has landed.** `=>` declares (constructors, shapes, lambdas, dispatch arms); `->` executes (the value-level pipe). `canon fmt` writes `=>` for every declaration, and the whole tree is migrated; `->` in a declaration position is still *accepted* so mixed sources parse during the remaining work. Still ahead: retiring the `.`-method-call and `B(a)` prefix-call forms in favour of `->`, and the LSP discovery providers.
+> **Status: the declaration/execution split has landed.** `=>` declares (constructors, shapes, lambdas, dispatch arms); `->` executes (the value-level pipe). `canon check --fix` writes `=>` for every declaration, and the whole tree is migrated; `->` in a declaration position is still *accepted* so mixed sources parse during the remaining work. Still ahead: retiring the `.`-method-call and `B(a)` prefix-call forms in favour of `->`, and the LSP discovery providers.
 
 The migration collapses to a single execution operator. Three symbols, three non-overlapping jobs:
 
@@ -122,7 +122,7 @@ Commutativity is preserved: `(A * B) => C` is reachable from either side (`a -> 
 
 **Two decisions gated implementation; both have landed:**
 
-1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon fmt` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
+1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon check --fix` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
 2. *Declaration arrow* -- `=>` (minimal, "maps to"). `->` at a declaration site is now a parse error (`expect_decl_arrow` in `src/parser/parser.rs`): declarations use `=>`, execution uses `->`.
 
 Auto-discovery is the headline feature, not a side effect: `->` completion queries "functions whose input product mentions this type," `.` completion queries the value's fields. Building both in the LSP is its own slice, since it is the reason for the split.
@@ -224,6 +224,6 @@ Queued to move out of the compiler as their blockers clear:
 3. **Cross-file constructor families** -- [~] partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
 4. **Minimal primitives** -- [~] in progress. A compiler builtin is justified only by wasm numerics, linear-memory layout, canonical-ABI machinery, or a host boundary (see [Minimal Primitives](#minimal-primitives)); everything else moves to stdlib Canon. `Bool`'s `And`/`Or`/`Not` landed (pure dispatch). Remaining: the derived comparisons, `String(Int)` rendering, `print`.
 5. **Stdlib port** -- [x] landed, `json.can` included. The recursive-descent parser is ~30 anonymous arrows over result newtypes and the style held; **checkpoint verdict: full removal** (the fallback rule is retired).
-6. **Enforcement** -- [x] landed. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); `canon fmt` canonicalizes every call spelling (`B(a)` / `a.B()` / `a -> B`) to the parens-tail `a -> B(c)` form; entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized). The larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser.
+6. **Enforcement** -- [x] landed. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); `canon check --fix` canonicalizes every call spelling (`B(a)` / `a.B()` / `a -> B`) to the parens-tail `a -> B(c)` form; entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized). The larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser.
 7. **Spec rewrite** -- this page's content folds into the Functions / Traits / Ordering spec pages; the pre-migration descriptions there are replaced.
 

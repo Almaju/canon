@@ -24,7 +24,7 @@ non-idiomatic.
 Canon removes the choices. Wherever ordering is discretionary, the
 compiler enforces alphabetical order: product fields, union variants,
 function declarations, dispatch arms. Every call has one spelling —
-`canon fmt` rewrites `B(a)`, `a.B()`, and `a * c -> B` all to
+`canon check --fix` rewrites `B(a)`, `a.B()`, and `a * c -> B` all to
 `a -> B(c)`. Two programmers — or two model samples — writing the same
 program produce the **same bytes**.
 
@@ -107,7 +107,7 @@ at the earliest possible moment:
   unreachable from the entry point are hard errors — the model can't leave
   half-finished scaffolding behind.
 - **Ordering is enforced.** Out-of-order fields, variants, or functions are
-  errors (and `canon fmt` fixes them mechanically).
+  errors (and `canon check --fix` fixes them mechanically).
 - **Capabilities are typed.** You can't read a file without a `File` value,
   which you can only obtain from a `Path`. Reaching for an effect the
   function wasn't handed doesn't typecheck.
@@ -122,7 +122,7 @@ read the error, fix, repeat. Canon's toolchain is built for exactly that.
 
 The compiler is self-contained — source goes straight to a WebAssembly
 component with no external toolchain invoked — so a check is fast and
-reproducible. Errors carry precise spans. `canon fmt` is a fixpoint an
+reproducible. Errors carry precise spans. `canon check --fix` is a fixpoint an
 agent can run to normalize its own output. Tests are golden files and
 typed `TestResult` constructors, so "did this change break anything?" has a
 deterministic, machine-readable answer. The ground truth a model needs to
@@ -150,7 +150,7 @@ ones that make it tractable for a model to write:
 | No imports | Whole class of path/symbol errors removed |
 | Types are the only names | No naming state to keep consistent |
 | Exhaustive, duplicate-free dispatch | Missing cases caught at compile time |
-| Enforced ordering + `canon fmt` | Deterministic, mergeable edits |
+| Enforced ordering + `canon check --fix` | Deterministic, mergeable edits |
 | In-process compiler, golden tests | Fast, unambiguous feedback loop |
 | Capabilities as values | Generated code is sandboxed by construction |
 

@@ -116,16 +116,14 @@ fn install_vendors_latest_release_and_project_checks() {
 
     // The vendored package is usable: a program `use`s it and the
     // loader accepts the whole tree (directives validated, extern
-    // signatures resolved). Format first so the fixture doesn't encode
+    // signatures resolved). `--fix` so the fixture doesn't encode
     // the formatter's chain-breaking rules.
     fs::write(
         project.join("main.can"),
         "Unit => Program {\n    1\n        -> Triple\n        -> String\n        -> Print\n}\n",
     )
     .unwrap();
-    let (o, e, c) = run_canon(&project, &config, &["fmt", "main.can"]);
-    assert_eq!(c, Some(0), "fmt failed.\nstdout:\n{o}\nstderr:\n{e}");
-    let (o, e, c) = run_canon(&project, &config, &["check", "main.can"]);
+    let (o, e, c) = run_canon(&project, &config, &["check", "--fix", "main.can"]);
     assert_eq!(c, Some(0), "check failed.\nstdout:\n{o}\nstderr:\n{e}");
 }
 
