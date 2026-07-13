@@ -216,6 +216,7 @@
     overflow: hidden;
   }
   .install .cmd {
+    min-width: 0;
     color: var(--muted);
     white-space: nowrap;
     overflow-x: auto;
@@ -244,6 +245,7 @@
   /* ── code window ─────────────────────────────────────── */
 
   .window {
+    min-width: 0;
     border: 1px solid var(--border-hi);
     border-radius: 12px;
     background: linear-gradient(180deg, #101012, #0c0c0d);
@@ -517,7 +519,7 @@
 
   @media (max-width: 880px) {
     .grid { grid-template-columns: repeat(2, 1fr); }
-    .split { grid-template-columns: 1fr; gap: 32px; }
+    .split { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   }
   @media (max-width: 560px) {
     .grid { grid-template-columns: 1fr; }
