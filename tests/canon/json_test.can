@@ -64,7 +64,9 @@ Unit => DecodeUnwrapsString {
 FieldExtractsMember = TestResult
 
 Unit => FieldExtractsMember {
-    Json("{\"model\":\"gpt-4\",\"stream\":true}")?
+    "{\"model\":\"gpt-4\","
+        -> Joined("\"stream\":true}")
+        -> Json?
         -> Field("model")?
         -> Decoded?
         -> Eq("gpt-4")
@@ -74,7 +76,7 @@ Unit => FieldExtractsMember {
 FieldRejectsMissingKeyEmptyObject = TestResult
 
 Unit => FieldRejectsMissingKeyEmptyObject {
-    Json("{}")? -> Field("missing") -> (
+    "{" -> Joined("}") -> Json? -> Field("missing") -> (
         * Err<MalformedJson> => TestResult { Pass() }
         * Ok<Json> => TestResult { Fail("\"missing\" should not resolve in {}") }
     )
@@ -83,7 +85,7 @@ Unit => FieldRejectsMissingKeyEmptyObject {
 FieldRejectsMissingKeyNoMatch = TestResult
 
 Unit => FieldRejectsMissingKeyNoMatch {
-    Json("{\"model\":\"gpt-4\"}")? -> Field("missing") -> (
+    "{\"model\":" -> Joined("\"gpt-4\"}") -> Json? -> Field("missing") -> (
         * Err<MalformedJson> => TestResult { Pass() }
         * Ok<Json> => TestResult { Fail("\"missing\" should not resolve") }
     )
@@ -101,7 +103,7 @@ Unit => InvalidJsonRejected {
 JsonAcceptsArray = TestResult
 
 Unit => JsonAcceptsArray {
-    Json("[1,2,3]") -> (
+    "[1,2," -> Joined("3]") -> Json -> (
         * Err<MalformedJson> => TestResult { Fail("\"[1,2,3]\" should validate as JSON") }
         * Ok<Json> => TestResult { Pass() }
     )

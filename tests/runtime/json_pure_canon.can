@@ -14,14 +14,32 @@ Unit => Program {
     Json("42") -> Shown
     Json("-3.14e2") -> Shown
     Json("\"hello\"") -> Shown
-    Json("[1, 2, 3]") -> Shown
-    Json("[]") -> Shown
-    Json("{}") -> Shown
-    Json("{\"a\": 1, \"b\": [true, false, null]}") -> Shown
-    Json("{\"nested\": {\"deep\": [1, [2, [3]]]}}") -> Shown
+    "[1, 2,"
+        -> Joined(" 3]")
+        -> Json
+        -> Shown
+    "["
+        -> Joined("]")
+        -> Json
+        -> Shown
+    "{"
+        -> Joined("}")
+        -> Json
+        -> Shown
+    "{\"a\": 1,"
+        -> Joined(" \"b\": [true, false, null]}")
+        -> Json
+        -> Shown
+    "{\"nested\": {\"deep\":"
+        -> Joined(" [1, [2, [3]]]}}")
+        -> Json
+        -> Shown
     Json("  true  ") -> Shown
     Json("garbage") -> Shown
     Json("{bad}") -> Shown
-    Json("[1, 2,]") -> Shown
+    "[1, 2,"
+        -> Joined("]")
+        -> Json
+        -> Shown
     Json("true junk") -> Shown
 }

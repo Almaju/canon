@@ -1301,6 +1301,62 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
     }
 }
 
+/// `Json("…")` / `Html("…")` fed a **static string literal** that the
+/// corresponding literal form can already express is ceremony around a
+/// literal — the parse can never fail, so the validating-constructor
+/// spelling is a second way of writing the literal, and the language
+/// keeps one. The check fires only when the string's content, pasted
+/// into source, parses as a single all-static JSON/HTML literal;
+/// runtime strings (the actual parsing use case), scalar documents
+/// (`Json("\"text\"")` — no literal form), and malformed input all pass
+/// through untouched.
+fn check_literal_form_ceremony(name: &str, args: &[Expr], errors: &mut Vec<CanonError>) {
+    if name != "Json" && name != "Html" {
+        return;
+    }
+    let [Expr::StringLit { value, span }] = args else {
+        return;
+    };
+    let probe = format!("Unit => Probe {{\n    {}\n}}\n", value);
+    let Ok(tokens) = crate::lexer::Scanner::new(&probe).scan_tokens() else {
+        return;
+    };
+    let Ok(module) = crate::parser::Parser::new(tokens).parse() else {
+        return;
+    };
+    let [Item::Function(f)] = &module.items[..] else {
+        return;
+    };
+    let [expr] = &f.body.exprs[..] else {
+        return;
+    };
+    let expressible = match (name, expr) {
+        ("Json", Expr::JsonLit { parts, .. }) => {
+            parts.iter().all(|p| matches!(p, JsonLitPart::Static(_)))
+        }
+        ("Html", Expr::HtmlLit { parts, .. }) => {
+            parts.iter().all(|p| matches!(p, HtmlLitPart::Static(_)))
+        }
+        _ => false,
+    };
+    if expressible {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{name}(\"…\")` wraps a document the {name} literal already expresses: \
+                 write the literal directly ({example}) — the validating constructor is \
+                 for strings built at runtime",
+                name = name,
+                example = if name == "Json" {
+                    "`{\"k\":v}` / `[v]`"
+                } else {
+                    "`<tag>…</tag>`"
+                },
+            ),
+            span: *span,
+        });
+    }
+}
+
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     // Types are PascalCase. A camelCase type alias only means something
     // in a binding file, where `apply_bindings` has already rewritten it
@@ -2023,6 +2079,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: name.span,
                 });
             }
+            check_literal_form_ceremony(&name.name, args, errors);
             if args.is_empty() && !is_variant && !matches_free_func {
                 let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
                 let has_zero_arg_ctor = symbols

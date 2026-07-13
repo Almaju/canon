@@ -1,4 +1,7 @@
 Unit => Result<Program, MalformedJson> {
-    Json("{\"hello\":\"world\",\"answer\":42}")? -> Print
+    "{\"hello\":\"world\","
+        -> Joined("\"answer\":42}")
+        -> Json?
+        -> Print
     Unit() -> Ok
 }
