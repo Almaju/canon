@@ -898,17 +898,13 @@ fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
     let Some(mut loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
-    if fix {
-        if apply_fixes(&loaded) {
-            let Some(reloaded) = load_or_print(spec.entry_str()) else {
-                return false;
-            };
-            loaded = reloaded;
-        }
-    } else if !enforce_format(&loaded) {
-        return false;
+    if fix && apply_fixes(&loaded) {
+        let Some(reloaded) = load_or_print(spec.entry_str()) else {
+            return false;
+        };
+        loaded = reloaded;
     }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(spec.entry_str(), err);
@@ -959,10 +955,7 @@ fn build_spec(spec: &BuildSpec) -> bool {
     let Some(loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
-    if !enforce_format(&loaded) {
-        return false;
-    }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(spec.entry_str(), err);
@@ -1129,9 +1122,6 @@ fn cmd_test_dir(dir: &str) {
 /// shouldn't abort the rest.
 fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     let mut loaded = load_or_print(file_path)?;
-    if !enforce_format(&loaded) {
-        return None;
-    }
 
     // Reject test files that try to define their own `main` — we synthesise it.
     if let Some(idx) = loaded.module.items[loaded.entry_items_start..]
@@ -1229,7 +1219,7 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     }
     loaded.module.items.extend(synth_items);
 
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);
@@ -1380,10 +1370,7 @@ fn cmd_run(args: &[String]) {
         }
     };
     let loaded = load_or_exit(spec.entry_str());
-    if !enforce_format(&loaded) {
-        process::exit(1);
-    }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(spec.entry_str(), err);
@@ -1502,43 +1489,13 @@ fn auto_install(file_path: &str) -> bool {
     }
 }
 
-/// Enforce canonical formatting across every user-authored source file
-/// loaded for this build. Canon's guiding rule is "one way" — a
-/// formatting divergence *is* a compiler error, reported with the span
-/// of the first differing line exactly like a sort-order or type
-/// error; `canon check --fix` is the mechanical fixer. Bundled packages are
-/// skipped (they ship with the compiler).
-///
-/// Returns `true` when every file is canonical, `false` after printing
-/// the per-file diagnostics. Files that fail to parse are skipped here
-/// so the checker can produce the better-located error.
-fn enforce_format(loaded: &LoadResult) -> bool {
-    let mut errors = 0usize;
-    for src in &loaded.local_sources {
-        // `.md` assets are Markdown documents, not Canon source — their
-        // `LoadedSource` carries synthesized Canon, which the author never
-        // sees or edits. Never flag them as mis-formatted.
-        if src.path.extension().and_then(|e| e.to_str()) == Some("md") {
-            continue;
-        }
-        if let Some(err) = formatter::format_error(&src.source) {
-            print_error(&src.path.display().to_string(), &err);
-            errors += 1;
-        }
-    }
-    if errors == 0 {
-        return true;
-    }
-    eprintln!("{} error(s) found.", errors);
-    false
-}
-
 /// `canon check --fix`: rewrite every user-authored source that has
 /// drifted from canonical form back into it — the write-side mirror of
-/// `enforce_format`, repairing exactly the errors that function
-/// reports (formatting, including sort-order violations). Returns
-/// whether anything was written, so the caller knows to re-load.
-/// Same skips as `enforce_format`: `.md` assets, bundled packages, and
+/// the compiler's format phase (`checker::check_loaded`), repairing
+/// exactly the errors that phase reports (formatting, including
+/// sort-order violations). Returns whether anything was written, so
+/// the caller knows to re-load. Same skips as the phase: `.md` assets
+/// (synthesized Canon the author never edits), bundled packages, and
 /// files that don't parse (the checker owns that diagnostic).
 fn apply_fixes(loaded: &LoadResult) -> bool {
     let mut wrote = false;
@@ -2072,9 +2029,15 @@ fn shell_escape(s: &str) -> String {
 
 fn print_error(file_path: &str, err: &CanonError) {
     let span = err.span();
+    // Format errors carry the offending file themselves — in a
+    // multi-file load their span points into that file, not the entry.
+    let path = match err {
+        CanonError::FormatError { path, .. } => path.as_str(),
+        _ => file_path,
+    };
     eprintln!(
         "error[{}:{}:{}]: {}",
-        file_path,
+        path,
         span.line,
         span.column,
         err.message()

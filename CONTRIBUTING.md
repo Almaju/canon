@@ -79,8 +79,12 @@ just install-hooks
 ## Compiler pipeline
 
 ```
-source → lexer → parser → checker → codegen (WASM core module → Component Model wrapper)
+source → lexer → parser → checker (format phase + semantics) → codegen (WASM core module → Component Model wrapper)
 ```
+
+Formatting is a compiler phase: the checker diffs each source against
+its canonical rendering and reports a divergence as a `format error`,
+fused into the same run as sort-order and type errors.
 
 No external toolchain is invoked: `wasm-encoder` / `wit-component` produce
 the final `.wasm` in-process, and `canon run` executes it on the embedded

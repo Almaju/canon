@@ -1,9 +1,10 @@
-//! The check/fmt unification: canonical formatting is part of the
-//! language, so a formatting divergence IS a compiler error.
-//! `canon check` (and `build`/`run`/`test`, through the same gate)
-//! reports an unformatted file as an ordinary `error[path:line:col]`
-//! diagnostic pointing at the first divergence. There is no separate
-//! formatter command: `canon check --fix` rewrites what is
+//! Formatting is a compiler phase. A divergence from canonical form is
+//! a `FormatError` — its own error kind alongside lex/parse/check —
+//! produced inside `checker::check_loaded`, so `canon check` (and
+//! `build`/`run`/`test`) reports it as an ordinary
+//! `error[path:line:col]` diagnostic, fused into the same run as
+//! semantic errors rather than gating in front of them. There is no
+//! separate formatter command: `canon check --fix` rewrites what is
 //! mechanically fixable (formatting, including sort-order violations —
 //! the formatter sorts) in place, re-loads, and checks the result.
 
@@ -35,14 +36,19 @@ fn scratch(name: &str) -> PathBuf {
 fn canonical_source_has_no_format_error() {
     let canonical = format(UNFORMATTED).expect("fixture parses");
     assert!(
-        format_error(&canonical).is_none(),
+        format_error(&canonical, "main.can").is_none(),
         "canonical form must be a fixpoint"
     );
 }
 
 #[test]
-fn divergence_is_a_check_error_spanning_the_first_differing_line() {
-    let err = format_error(UNFORMATTED).expect("unformatted source yields an error");
+fn divergence_is_a_format_error_spanning_the_first_differing_line() {
+    let err = format_error(UNFORMATTED, "main.can").expect("unformatted source yields an error");
+    assert!(
+        err.to_string().starts_with("format error"),
+        "formatting is its own compiler phase, got: {}",
+        err
+    );
     assert!(
         err.message().contains("canon check --fix"),
         "error names the fixer, got: {}",
@@ -56,7 +62,7 @@ fn divergence_is_a_check_error_spanning_the_first_differing_line() {
 fn unparseable_source_defers_to_the_checker() {
     // A parse error is the checker pipeline's diagnostic to report,
     // with its precise location — format_error stays silent.
-    assert!(format_error("Unit => Program {").is_none());
+    assert!(format_error("Unit => Program {", "main.can").is_none());
 }
 
 #[test]
@@ -126,6 +132,29 @@ fn fix_repairs_sort_order_violations_too() {
     let false_at = fixed.find("* False").expect("False arm present");
     let true_at = fixed.find("* True").expect("True arm present");
     assert!(false_at < true_at, "arms sorted on disk:\n{fixed}");
+}
+
+#[test]
+fn format_and_semantic_errors_report_in_one_run() {
+    // Fused, not gated: the format phase lives inside
+    // `checker::check_loaded`, so it doesn't short-circuit the
+    // semantic checker. Unsorted arms yield both the format error and
+    // the arm-order check error from a single `canon check`.
+    let file = scratch("fused").join("main.can");
+    std::fs::write(&file, UNSORTED_ARMS).unwrap();
+
+    let out = Command::new(canon_bin())
+        .arg("check")
+        .arg(&file)
+        .output()
+        .expect("canon check spawns");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        stderr.contains("not canonically formatted")
+            && stderr.contains("dispatch arms must follow the union's variant order"),
+        "one run reports both phases, got:\n{stderr}"
+    );
 }
 
 #[test]
