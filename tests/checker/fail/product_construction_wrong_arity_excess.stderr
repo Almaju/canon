@@ -1,0 +1,1 @@
+error[tests/checker/fail/product_construction_wrong_arity_excess.can:8:5]: cannot construct `User`: expected 2 argument(s) (`Birthday * Username`), found 3
