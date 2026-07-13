@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::CanonError;
+use crate::error::{CanonError, Span};
 use std::collections::{HashMap, HashSet};
 
 pub mod auto_await;
@@ -1941,6 +1941,17 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     });
                 }
             }
+            if let Some(field_types) = symbols.product_fields.get(&name.name).cloned() {
+                let arg_refs: Vec<&Expr> = args.iter().collect();
+                check_product_construction_types(
+                    &name.name,
+                    &field_types,
+                    &arg_refs,
+                    symbols,
+                    *span,
+                    errors,
+                );
+            }
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
             }
@@ -2041,6 +2052,28 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             span: *span,
                         });
                     }
+                }
+            }
+            if is_piped_construction {
+                // The canonical call form pipes the first arg (`A -> B(rest)`
+                // for `B(A * rest)`), so a multi-field product's construction
+                // reaches the checker as a `MethodCall`, not an
+                // `Expr::Constructor` — validate it the same way, with the
+                // receiver standing in for the first constructor arg.
+                if let Some(field_types) = symbols.product_fields.get(&method.name).cloned() {
+                    let mut ctor_args: Vec<&Expr> = vec![receiver.as_ref()];
+                    match args.as_slice() {
+                        [Expr::ProductValue { fields, .. }] => ctor_args.extend(fields.iter()),
+                        _ => ctor_args.extend(args.iter()),
+                    }
+                    check_product_construction_types(
+                        &method.name,
+                        &field_types,
+                        &ctor_args,
+                        symbols,
+                        *span,
+                        errors,
+                    );
                 }
             }
         }
@@ -2440,6 +2473,122 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     // unions), so their methods arrive through `symbols.methods` like
     // any other stdlib declaration once the module is imported.
     false
+}
+
+/// Every type `name` widens to, most specific first: itself, its
+/// alias-unwrap chain, and — if it names a union variant — its parent
+/// union's alias chain too. Mirrors codegen's `WasmGen::widening_chain`
+/// (`src/codegen/wasm/compile.rs`), which drives the same by-type field
+/// binding at construction time; kept in lockstep so the checker rejects
+/// exactly the arg/field pairings codegen can't route.
+fn product_widening_chain(symbols: &SymbolTable, name: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut current = name.to_string();
+    for _ in 0..20 {
+        if !out.contains(&current) {
+            out.push(current.clone());
+        }
+        match symbols.aliases.get(&current) {
+            Some(next) => current = next.clone(),
+            None => break,
+        }
+    }
+    if let Some(parent) = symbols.variant_of.get(name) {
+        let mut cur = parent.clone();
+        for _ in 0..20 {
+            if !out.contains(&cur) {
+                out.push(cur.clone());
+            }
+            match symbols.aliases.get(&cur) {
+                Some(next) => cur = next.clone(),
+                None => break,
+            }
+        }
+    }
+    out
+}
+
+/// How well a value of type `value_ty` fits a field of type `field_ty`:
+/// `2` exact (own type name, or a union member whose parent chain
+/// reaches `field_ty`), `1` shared erasure base, `0` unrelated. Mirrors
+/// codegen's `WasmGen::field_match_score`.
+fn product_field_match_score(symbols: &SymbolTable, value_ty: &str, field_ty: &str) -> u8 {
+    if value_ty == field_ty {
+        return 2;
+    }
+    if let Some(parent) = symbols.variant_of.get(value_ty) {
+        if product_widening_chain(symbols, parent)
+            .iter()
+            .any(|n| n == field_ty)
+        {
+            return 2;
+        }
+    }
+    let value_chain = product_widening_chain(symbols, value_ty);
+    let field_chain = product_widening_chain(symbols, field_ty);
+    if value_chain.iter().any(|n| field_chain.contains(n)) {
+        return 1;
+    }
+    0
+}
+
+/// Validates that a product construction's argument types admit the same
+/// by-type field assignment codegen's `build_product_value` computes,
+/// instead of silently falling through to its positional floor with an
+/// incompatible type. That floor exists for values codegen can't infer a
+/// type for at all — never for a value whose type is known and simply
+/// wrong (e.g. two `Int`s constructing a `Birthday * Username` product,
+/// where `Username` is `String`) — so an unfillable field here means
+/// codegen would emit a value of the wrong wasm shape into that field's
+/// slot, producing a component wasmtime rejects as invalid.
+///
+/// Skips validation whenever any argument's type can't be statically
+/// named (`expr_type_name_in_scope` returns `"<unknown>"`) to avoid
+/// false positives on expressions this analysis can't see through.
+fn check_product_construction_types(
+    type_name: &str,
+    field_types: &[String],
+    args: &[&Expr],
+    symbols: &SymbolTable,
+    span: Span,
+    errors: &mut Vec<CanonError>,
+) {
+    if field_types.len() < 2 || args.len() != field_types.len() {
+        return;
+    }
+    let arg_types: Vec<String> = args
+        .iter()
+        .map(|a| expr_type_name_in_scope(a, symbols))
+        .collect();
+    if arg_types.iter().any(|t| t == "<unknown>") {
+        return;
+    }
+    let mut used = vec![false; arg_types.len()];
+    let mut slot_val: Vec<Option<usize>> = vec![None; field_types.len()];
+    for threshold in [2u8, 1u8] {
+        for (si, field_ty) in field_types.iter().enumerate() {
+            if slot_val[si].is_some() {
+                continue;
+            }
+            if let Some(vi) = (0..arg_types.len()).find(|&vi| {
+                !used[vi]
+                    && product_field_match_score(symbols, &arg_types[vi], field_ty) == threshold
+            }) {
+                slot_val[si] = Some(vi);
+                used[vi] = true;
+            }
+        }
+    }
+    for (si, field_ty) in field_types.iter().enumerate() {
+        if slot_val[si].is_none() {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "cannot construct `{type_name}`: no argument's type is compatible with field `{field_ty}`"
+                ),
+                span,
+            });
+        }
+    }
 }
 
 fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {

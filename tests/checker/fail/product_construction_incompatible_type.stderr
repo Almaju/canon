@@ -1,0 +1,1 @@
+error[tests/checker/fail/product_construction_incompatible_type.can:8:5]: cannot construct `User`: no argument's type is compatible with field `Username`
