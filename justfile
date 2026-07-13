@@ -162,6 +162,19 @@ regen-bindings: build
 fmt:
     cargo fmt
 
+# Rewrite every corpus `.can` file into canonical form. In a Canon
+# project the fixer is `canon check --fix` on the target; this repo's
+# corpus trees (stdlib source, fixtures, test files) have no shared
+# entry point, so fix each file singly — a file's own check errors
+# ("no main", missing goldens) don't block its formatting, which is
+# why exit codes are ignored and only `fixed:` lines show.
+# `tests/checker/fail/` stays out: those fixtures are non-canonical on
+# purpose. `tests/format_corpus.rs` is the enforcing mirror of this.
+fmt-can: build
+    find packages examples docs/src tests/canon tests/runtime tests/checker/ok \
+        -name '*.can' -not -path '*/bindgen/*' -print0 \
+        | xargs -0 -I{} sh -c './target/debug/canon check --fix "{}" 2>/dev/null | grep "^fixed:" || true'
+
 # Lint compiler source
 clippy:
     cargo clippy -- -W warnings

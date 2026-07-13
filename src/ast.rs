@@ -695,7 +695,7 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Race", "race"),
 ];
 
-/// The PascalCase pipe spelling `canon fmt` emits for a builtin method
+/// The PascalCase pipe spelling `canon check --fix` emits for a builtin method
 /// — the inverse direction of `builtin_method_alias`, from the same
 /// table. A name with no mapping (already-PascalCase user/stdlib
 /// methods, and the `String`/`Json` conversion methods) is emitted
@@ -711,7 +711,7 @@ pub fn builtin_pipe_name(name: &str) -> &str {
 /// Whether `name` is the PascalCase pipe spelling of a compiler builtin
 /// (`Sum`, `Print`, `Joined`, …). Builtins are receiver-oriented machine
 /// operations, not constructions — they have no prefix call form, so
-/// `canon fmt`'s literal-collapse (`"hi" -> Greeting` → `Greeting("hi")`)
+/// `canon check --fix`'s literal-collapse (`"hi" -> Greeting` → `Greeting("hi")`)
 /// must not touch them. The list shrinks as builtins migrate to stdlib
 /// result newtypes (the minimal-primitives doctrine).
 pub fn is_builtin_pipe_vocabulary(name: &str) -> bool {

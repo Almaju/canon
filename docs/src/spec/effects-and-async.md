@@ -53,7 +53,7 @@ exactly one in-scope value matched, but that made the call site's
 spelling optional (`Query()` and `SqliteConnection -> Query` were the
 same program), and the rule "wherever a choice is discretionary, the
 compiler removes it" cuts against optional spellings hardest of all.
-Since the inference could never be canonicalised by `canon fmt` (the
+Since the inference could never be canonicalised by `canon check --fix` (the
 formatter is purely syntactic and cannot see scope), the pipe is the one
 spelling: a call names every value it consumes, and an omitted argument
 is a plain missing-argument error.

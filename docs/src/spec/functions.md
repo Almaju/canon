@@ -28,7 +28,7 @@ A named form exists for exactly one thing: **shape implementations**,
 where the name carries information the types cannot (`Show = (Greeting)
 => String { ... }` implements the declared shape `Show`). A named
 declaration whose name is just the constructed type spells the name
-twice, so `canon fmt` rewrites it to the anonymous arrow (`Url =
+twice, so `canon check --fix` rewrites it to the anonymous arrow (`Url =
 (String) => Result<Url, InvalidUrl>` becomes `String => Result<Url,
 InvalidUrl>`). The checker enforces the boundary from both sides:
 

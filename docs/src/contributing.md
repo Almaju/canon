@@ -33,7 +33,7 @@ Three kinds of files live under `docs/src/`:
 1. Write `docs/src/<your-page>.md`.
 2. In `main.can`, add a dispatch arm to the `Page => Content` function:
    `* "<your-page>" => Content { YourPage() -> Html }` (arms are sorted
-   alphabetically — `canon fmt` enforces it).
+   alphabetically — `canon check --fix` enforces it).
 3. Add a `<button data-msg="Nav:<your-page>">…</button>` to the sidebar
    under the appropriate `<div class="sec">` section.
 

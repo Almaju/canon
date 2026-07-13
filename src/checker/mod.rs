@@ -135,6 +135,30 @@ pub fn check(module: &Module) -> Vec<CanonError> {
     check_with_entry(module, 0)
 }
 
+/// The compiler's front-door check: the format phase fused with the
+/// semantic checker, over a loaded target. Formatting is part of the
+/// language, so each user-authored source that has drifted from
+/// canonical form contributes a `FormatError` (spanning its first
+/// divergence) to the same error list as sort-order and type errors —
+/// one run reports both. Skips `.md` assets (their `LoadedSource`
+/// carries synthesized Canon the author never edits) and sources that
+/// don't parse (the parse diagnostic is better located); bundled
+/// packages never appear in `local_sources`. `check_with_entry` stays
+/// the AST-only layer for callers without source text (fixtures,
+/// synthetic-module tests).
+pub fn check_loaded(loaded: &crate::loader::LoadResult) -> Vec<CanonError> {
+    let mut errors: Vec<CanonError> = loaded
+        .local_sources
+        .iter()
+        .filter(|src| src.path.extension().and_then(|e| e.to_str()) != Some("md"))
+        .filter_map(|src| {
+            crate::formatter::format_error(&src.source, &src.path.display().to_string())
+        })
+        .collect();
+    errors.extend(check_with_entry(&loaded.module, loaded.entry_items_start));
+    errors
+}
+
 /// Variant of `check` that limits per-file ordering rules (free-function
 /// and type-definition alphabetical order) to items at or after
 /// `entry_items_start`. Items before that index originated from `use`
@@ -255,14 +279,14 @@ fn check_ordering(
     // every position they appear in, not just top-level TypeDef bodies).
 
     // Function declarations in the entry file must be alphabetical by
-    // *surface* name — the single sequence `canon fmt` sorts (constructors
+    // *surface* name — the single sequence `canon check --fix` sorts (constructors
     // spell their type name; a self-named constructor is rewritten to
     // `Self` by `resolve_new_syntax`, so map it back). Constructors,
     // shape implementations, and free functions all share the one
     // sequence: a per-receiver-only check would never compare two
     // anonymous arrows constructing different types. Equal surface names
     // (one shape's implementations for several receivers) keep their
-    // written order — `canon fmt`'s sort is stable, so the checker
+    // written order — `canon check --fix`'s sort is stable, so the checker
     // accepts any order among equals. Imported items are exempt — they
     // follow their own file's ordering. `main` is also exempt: it's the
     // entry point, a distinguished role rather than a regular free

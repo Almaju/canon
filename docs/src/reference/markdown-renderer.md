@@ -65,7 +65,7 @@ The compiler synthesizes `Intro = Markdown` and a nullary constructor
 carrying the (escaped) file contents, then resolves `Markdown` to the
 stdlib renderer as usual. `Intro()` is the document; `Intro() -> Html`
 renders it. The markdown lives in `intro.md`, never in a string literal,
-and `canon fmt` leaves `.md` files untouched.
+and `canon check --fix` leaves `.md` files untouched.
 
 ## In the browser
 

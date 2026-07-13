@@ -10,8 +10,8 @@ language that compiles directly to WebAssembly components.
   violations, and type-check errors
 - **Hover** documentation for built-in types and well-known constructors
 - **Go to definition**
-- **Formatting** via `canon fmt` (enable format-on-save for the `canon`
-  language to get auto-sorted declarations)
+- **Formatting** via the language server (enable format-on-save for the
+  `canon` language to get auto-sorted declarations)
 
 All language features are powered by the compiler's built-in language server
 (`canon lsp`) — there is no separate LSP binary to install.

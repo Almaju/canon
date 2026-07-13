@@ -111,15 +111,23 @@ canon check hello.can            # single-file mode
 canon check my-workspace -p foo # only one member of a workspace
 ```
 
-Runs the full checker (sort-order rules plus type checking) without
-codegen. Fast enough for an editor lint or a pre-commit gate.
+Runs the full checker (canonical formatting, sort-order rules, type
+checking) without codegen. Fast enough for an editor lint or a
+pre-commit gate.
 
 ## Format
 
 ```sh
-canon fmt hello.can
-canon fmt hello.can --check     # exit 1 if not already formatted
+canon check --fix hello.can     # fix what's mechanical, then check
 ```
+
+Formatting is not a separate concern in Canon: a file that isn't in
+canonical form is a **compile error** — `canon check`, `build`, `run`,
+and `test` all refuse it, pointing at the first line that diverges.
+There is no separate formatter command, because a formatting error is
+just a compiler error with a mechanical fix: `--fix` rewrites the
+loaded sources into canonical form (spacing, call shape, and every
+sort-order rule) and then reports whatever it couldn't fix.
 
 ## Run Tests
 
