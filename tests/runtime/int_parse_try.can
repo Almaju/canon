@@ -1,4 +1,6 @@
-Doubled = (String) => Result<Int, MalformedInt> {
+Doubled = Int
+
+String => Result<Doubled, MalformedInt> {
     String
         -> Int?
         -> Product(2)

@@ -2,7 +2,9 @@ Attr = String
 
 Tag = String
 
-Wrapped = (Attr * String * Tag) => String {
+Wrapped = String
+
+Attr * String * Tag => Wrapped {
     "<"
         -> Joined(Tag)
         -> Joined(" ")

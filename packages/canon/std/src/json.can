@@ -6,6 +6,10 @@ AfterWs = Int
 
 CheckedTrailing = ParseStep
 
+ClosedOrKey = Json
+
+ColonChecked = Json
+
 ConsumedArrayTail = ParseStep
 
 ConsumedColonValue = ParseStep
@@ -32,6 +36,8 @@ EscapedMeaning = String
 
 EscapedTail = String
 
+Field = Json
+
 HexDigit = String
 
 HexVal = Int
@@ -50,7 +56,13 @@ Json = String
 
 KeyEq = Bool
 
+KeyExpected = Json
+
+KeyParsed = Json
+
 KeyStart = Int
+
+OpenedObject = Json
 
 ParsedArray = ParseStep
 
@@ -74,6 +86,22 @@ ParsedNull = ParseStep
 
 ParsedNumber = ParseStep
 
+ParsedObject = ParseStep
+
+ParsedObjectColon = ParseStep
+
+ParsedObjectItems = ParseStep
+
+ParsedObjectTail = ParseStep
+
+ParsedString = ParseStep
+
+ParsedStringBody = ParseStep
+
+ParsedTrue = ParseStep
+
+ParsedValue = ParseStep
+
 Int * String => AfterDigits {
     Int -> Gt(String -> Length) -> (
         * False => AfterDigits {
@@ -86,7 +114,7 @@ Int * String => AfterDigits {
     )
 }
 
-ParsedObject = ParseStep
+Prefix = String
 
 Int * String => AfterSign {
     Int -> Gt(String -> Length) -> (
@@ -124,12 +152,12 @@ ParseStep * String => CheckedTrailing {
     )
 }
 
-ClosedOrKey = (Int * Json * String) => Result<Json, MalformedJson> {
+Int * Json * String => Result<ClosedOrKey, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Json, MalformedJson> {
+        * False => Result<ClosedOrKey, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(125) -> (
-                * False => Result<Json, MalformedJson> { Int -> KeyExpected(Json * String) }
-                * True => Result<Json, MalformedJson> {
+                * False => Result<ClosedOrKey, MalformedJson> { Int -> KeyExpected(Json * String) }
+                * True => Result<ClosedOrKey, MalformedJson> {
                     "field `"
                         -> Joined(String)
                         -> Joined("` not found")
@@ -138,20 +166,24 @@ ClosedOrKey = (Int * Json * String) => Result<Json, MalformedJson> {
                 }
             )
         }
-        * True => Result<Json, MalformedJson> { "unterminated object" -> MalformedJson -> Err }
+        * True => Result<ClosedOrKey, MalformedJson> {
+            "unterminated object"
+                -> MalformedJson
+                -> Err
+        }
     )
 }
 
-ColonChecked = (Int * KeyEq * Json * String) => Result<Json, MalformedJson> {
+Int * KeyEq * Json * String => Result<ColonChecked, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Json, MalformedJson> {
+        * False => Result<ColonChecked, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(58) -> (
-                * False => Result<Json, MalformedJson> {
+                * False => Result<ColonChecked, MalformedJson> {
                     "expected colon after key"
                         -> MalformedJson
                         -> Err
                 }
-                * True => Result<Json, MalformedJson> {
+                * True => Result<ColonChecked, MalformedJson> {
                     Int
                         -> Sum(1)
                         -> AfterWs(Json)
@@ -159,7 +191,11 @@ ColonChecked = (Int * KeyEq * Json * String) => Result<Json, MalformedJson> {
                 }
             )
         }
-        * True => Result<Json, MalformedJson> { "expected colon after key" -> MalformedJson -> Err }
+        * True => Result<ColonChecked, MalformedJson> {
+            "expected colon after key"
+                -> MalformedJson
+                -> Err
+        }
     )
 }
 
@@ -346,7 +382,7 @@ Int * String => EscapedTail {
     )
 }
 
-Field = (Json * String) => Result<Json, MalformedJson> {
+Json * String => Result<Field, MalformedJson> {
     1
         -> AfterWs(Json)
         -> OpenedObject(Json * String)
@@ -441,16 +477,16 @@ ParseStep * String => Result<Json, MalformedJson> {
     )
 }
 
-KeyExpected = (Int * Json * String) => Result<Json, MalformedJson> {
+Int * Json * String => Result<KeyExpected, MalformedJson> {
     Int
         -> ParsedString(Json)
         -> KeyParsed(Int -> KeyStart * Json * String)
 }
 
-KeyParsed = (ParseStep * KeyStart * Json * String) => Result<Json, MalformedJson> {
+ParseStep * KeyStart * Json * String => Result<KeyParsed, MalformedJson> {
     ParseStep -> (
-        * ParseFail => Result<Json, MalformedJson> { ParseFail.String -> MalformedJson -> Err }
-        * ParsePos => Result<Json, MalformedJson> {
+        * ParseFail => Result<KeyParsed, MalformedJson> { ParseFail.String -> MalformedJson -> Err }
+        * ParsePos => Result<KeyParsed, MalformedJson> {
             ParsePos.Int
                 -> AfterWs(Json)
                 -> ColonChecked(Json -> Substring(KeyStart -> Sum(1) -> From * ParsePos.Int -> Difference(2) -> To) -> Eq(String) -> KeyEq * Json * String)
@@ -458,12 +494,16 @@ KeyParsed = (ParseStep * KeyStart * Json * String) => Result<Json, MalformedJson
     )
 }
 
-OpenedObject = (Int * Json * String) => Result<Json, MalformedJson> {
+Int * Json * String => Result<OpenedObject, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Json, MalformedJson> {
+        * False => Result<OpenedObject, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(123) -> (
-                * False => Result<Json, MalformedJson> { "expected object" -> MalformedJson -> Err }
-                * True => Result<Json, MalformedJson> {
+                * False => Result<OpenedObject, MalformedJson> {
+                    "expected object"
+                        -> MalformedJson
+                        -> Err
+                }
+                * True => Result<OpenedObject, MalformedJson> {
                     Int
                         -> Sum(1)
                         -> AfterWs(Json)
@@ -471,7 +511,7 @@ OpenedObject = (Int * Json * String) => Result<Json, MalformedJson> {
                 }
             )
         }
-        * True => Result<Json, MalformedJson> { "expected object" -> MalformedJson -> Err }
+        * True => Result<OpenedObject, MalformedJson> { "expected object" -> MalformedJson -> Err }
     )
 }
 
@@ -633,23 +673,23 @@ Int * String => ParsedObjectItems {
     )
 }
 
-ParsedObjectColon = ParseStep
+Prefixed = Decoded
 
-ParsedObjectItems = ParseStep
-
-ParsedObjectTail = ParseStep
-
-ParsedString = ParseStep
-
-ParsedStringBody = ParseStep
-
-ParsedTrue = ParseStep
-
-ParsedValue = ParseStep
-
-Prefix = String
+QuoteChecked = Decoded
 
 RequiredDigits = ParseStep
+
+TailChecked = Json
+
+ToJson = () => Json
+
+UnescapedEscape = Decoded
+
+UnescapedTail = Decoded
+
+UnescapedUnicode = Decoded
+
+Utf8 = String
 
 ParseStep * String => ParsedObjectTail {
     ParseStep -> (
@@ -720,26 +760,30 @@ Int * String => ParsedValue {
         -> DispatchedValue(String)
 }
 
-Prefixed = (Result * Prefix) => Result<Decoded, MalformedJson> {
+Result * Prefix => Result<Prefixed, MalformedJson> {
     Result -> (
-        * Err<MalformedJson> => Result<Decoded, MalformedJson> { MalformedJson -> Err }
-        * Ok<Decoded> => Result<Decoded, MalformedJson> { Prefix -> Joined(Decoded) -> Ok }
+        * Err<MalformedJson> => Result<Prefixed, MalformedJson> { MalformedJson -> Err }
+        * Ok<Decoded> => Result<Prefixed, MalformedJson> { Prefix -> Joined(Decoded) -> Ok }
     )
 }
 
-QuoteChecked = (Int * Json) => Result<Decoded, MalformedJson> {
+Int * Json => Result<QuoteChecked, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Decoded, MalformedJson> {
+        * False => Result<QuoteChecked, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(34) -> (
-                * False => Result<Decoded, MalformedJson> {
+                * False => Result<QuoteChecked, MalformedJson> {
                     "expected string"
                         -> MalformedJson
                         -> Err
                 }
-                * True => Result<Decoded, MalformedJson> { Int -> Sum(1) -> UnescapedTail(Json) }
+                * True => Result<QuoteChecked, MalformedJson> {
+                    Int
+                        -> Sum(1)
+                        -> UnescapedTail(Json)
+                }
             )
         }
-        * True => Result<Decoded, MalformedJson> { "expected string" -> MalformedJson -> Err }
+        * True => Result<QuoteChecked, MalformedJson> { "expected string" -> MalformedJson -> Err }
     )
 }
 
@@ -755,18 +799,18 @@ Int * String => RequiredDigits {
     )
 }
 
-TailChecked = (Int * Json * String) => Result<Json, MalformedJson> {
+Int * Json * String => Result<TailChecked, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Json, MalformedJson> {
+        * False => Result<TailChecked, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(44) -> (
-                * False => Result<Json, MalformedJson> {
+                * False => Result<TailChecked, MalformedJson> {
                     Json -> ByteAt(Int) -> Eq(125) -> (
-                        * False => Result<Json, MalformedJson> {
+                        * False => Result<TailChecked, MalformedJson> {
                             "expected comma or closing brace in object"
                                 -> MalformedJson
                                 -> Err
                         }
-                        * True => Result<Json, MalformedJson> {
+                        * True => Result<TailChecked, MalformedJson> {
                             "field `"
                                 -> Joined(String)
                                 -> Joined("` not found")
@@ -775,7 +819,7 @@ TailChecked = (Int * Json * String) => Result<Json, MalformedJson> {
                         }
                     )
                 }
-                * True => Result<Json, MalformedJson> {
+                * True => Result<TailChecked, MalformedJson> {
                     Int
                         -> Sum(1)
                         -> AfterWs(Json)
@@ -783,7 +827,7 @@ TailChecked = (Int * Json * String) => Result<Json, MalformedJson> {
                 }
             )
         }
-        * True => Result<Json, MalformedJson> {
+        * True => Result<TailChecked, MalformedJson> {
             "expected comma or closing brace in object"
                 -> MalformedJson
                 -> Err
@@ -812,89 +856,97 @@ ToJson = (String) => Json {
         -> Joined("\"")
 }
 
-UnescapedEscape = (Int * Json) => Result<Decoded, MalformedJson> {
+Int * Json => Result<UnescapedEscape, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Decoded, MalformedJson> {
+        * False => Result<UnescapedEscape, MalformedJson> {
             Json -> ByteAt(Int) -> EscapeChar -> (
-                * EscapeOther => Result<Decoded, MalformedJson> {
+                * EscapeOther => Result<UnescapedEscape, MalformedJson> {
                     "bad escape"
                         -> MalformedJson
                         -> Err
                 }
-                * EscapePlain => Result<Decoded, MalformedJson> {
+                * EscapePlain => Result<UnescapedEscape, MalformedJson> {
                     Int
                         -> Sum(1)
                         -> UnescapedTail(Json)
                         -> Prefixed(Json -> ByteAt(Int) -> EscapedMeaning -> Prefix)
                 }
-                * EscapeUnicode => Result<Decoded, MalformedJson> {
+                * EscapeUnicode => Result<UnescapedEscape, MalformedJson> {
                     Int
                         -> Sum(1)
                         -> UnescapedUnicode(Json)
                 }
             )
         }
-        * True => Result<Decoded, MalformedJson> { "truncated escape" -> MalformedJson -> Err }
+        * True => Result<UnescapedEscape, MalformedJson> {
+            "truncated escape"
+                -> MalformedJson
+                -> Err
+        }
     )
 }
 
-UnescapedTail = (Int * Json) => Result<Decoded, MalformedJson> {
+Int * Json => Result<UnescapedTail, MalformedJson> {
     Int -> Gt(Json -> Length) -> (
-        * False => Result<Decoded, MalformedJson> {
+        * False => Result<UnescapedTail, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(34) -> (
-                * False => Result<Decoded, MalformedJson> {
+                * False => Result<UnescapedTail, MalformedJson> {
                     Json -> ByteAt(Int) -> Eq(92) -> (
-                        * False => Result<Decoded, MalformedJson> {
+                        * False => Result<UnescapedTail, MalformedJson> {
                             Int
                                 -> Sum(1)
                                 -> UnescapedTail(Json)
                                 -> Prefixed(Json -> Substring(Int -> From * Int -> To) -> Prefix)
                         }
-                        * True => Result<Decoded, MalformedJson> {
+                        * True => Result<UnescapedTail, MalformedJson> {
                             Int
                                 -> Sum(1)
                                 -> UnescapedEscape(Json)
                         }
                     )
                 }
-                * True => Result<Decoded, MalformedJson> { "" -> Ok }
+                * True => Result<UnescapedTail, MalformedJson> { "" -> Ok }
             )
         }
-        * True => Result<Decoded, MalformedJson> { "unterminated string" -> MalformedJson -> Err }
+        * True => Result<UnescapedTail, MalformedJson> {
+            "unterminated string"
+                -> MalformedJson
+                -> Err
+        }
     )
 }
 
-UnescapedUnicode = (Int * Json) => Result<Decoded, MalformedJson> {
+Int * Json => Result<UnescapedUnicode, MalformedJson> {
     Int -> Sum(3) -> Gt(Json -> Length) -> (
-        * False => Result<Decoded, MalformedJson> {
+        * False => Result<UnescapedUnicode, MalformedJson> {
             Json -> ByteAt(Int) -> IsHex -> (
-                * False => Result<Decoded, MalformedJson> {
+                * False => Result<UnescapedUnicode, MalformedJson> {
                     "bad \\u escape"
                         -> MalformedJson
                         -> Err
                 }
-                * True => Result<Decoded, MalformedJson> {
+                * True => Result<UnescapedUnicode, MalformedJson> {
                     Json -> ByteAt(Int -> Sum(1)) -> IsHex -> (
-                        * False => Result<Decoded, MalformedJson> {
+                        * False => Result<UnescapedUnicode, MalformedJson> {
                             "bad \\u escape"
                                 -> MalformedJson
                                 -> Err
                         }
-                        * True => Result<Decoded, MalformedJson> {
+                        * True => Result<UnescapedUnicode, MalformedJson> {
                             Json -> ByteAt(Int -> Sum(2)) -> IsHex -> (
-                                * False => Result<Decoded, MalformedJson> {
+                                * False => Result<UnescapedUnicode, MalformedJson> {
                                     "bad \\u escape"
                                         -> MalformedJson
                                         -> Err
                                 }
-                                * True => Result<Decoded, MalformedJson> {
+                                * True => Result<UnescapedUnicode, MalformedJson> {
                                     Json -> ByteAt(Int -> Sum(3)) -> IsHex -> (
-                                        * False => Result<Decoded, MalformedJson> {
+                                        * False => Result<UnescapedUnicode, MalformedJson> {
                                             "bad \\u escape"
                                                 -> MalformedJson
                                                 -> Err
                                         }
-                                        * True => Result<Decoded, MalformedJson> {
+                                        * True => Result<UnescapedUnicode, MalformedJson> {
                                             Int
                                                 -> Sum(4)
                                                 -> UnescapedTail(Json)
@@ -908,7 +960,11 @@ UnescapedUnicode = (Int * Json) => Result<Decoded, MalformedJson> {
                 }
             )
         }
-        * True => Result<Decoded, MalformedJson> { "truncated \\u escape" -> MalformedJson -> Err }
+        * True => Result<UnescapedUnicode, MalformedJson> {
+            "truncated \\u escape"
+                -> MalformedJson
+                -> Err
+        }
     )
 }
 
@@ -955,27 +1011,31 @@ String => Validated {
         -> CheckedTrailing(String)
 }
 
-ToJson = () => Json
-
-Utf8 = String
-
 Utf8Three = Utf8
 
 Validated = ParseStep
 
+ValueEnded = Json
+
+ValueParsed = Json
+
 ValueStart = Int
 
-ValueEnded = (ParseStep * ValueStart * KeyEq * Json * String) => Result<Json, MalformedJson> {
+ParseStep * ValueStart * KeyEq * Json * String => Result<ValueEnded, MalformedJson> {
     ParseStep -> (
-        * ParseFail => Result<Json, MalformedJson> { ParseFail.String -> MalformedJson -> Err }
-        * ParsePos => Result<Json, MalformedJson> {
+        * ParseFail => Result<ValueEnded, MalformedJson> {
+            ParseFail.String
+                -> MalformedJson
+                -> Err
+        }
+        * ParsePos => Result<ValueEnded, MalformedJson> {
             KeyEq -> (
-                * False => Result<Json, MalformedJson> {
+                * False => Result<ValueEnded, MalformedJson> {
                     ParsePos.Int
                         -> AfterWs(Json)
                         -> TailChecked(Json * String)
                 }
-                * True => Result<Json, MalformedJson> {
+                * True => Result<ValueEnded, MalformedJson> {
                     Json
                         -> Substring(ValueStart -> From * ParsePos.Int -> Difference(1) -> To)
                         -> Ok
@@ -985,7 +1045,7 @@ ValueEnded = (ParseStep * ValueStart * KeyEq * Json * String) => Result<Json, Ma
     )
 }
 
-ValueParsed = (Int * KeyEq * Json * String) => Result<Json, MalformedJson> {
+Int * KeyEq * Json * String => Result<ValueParsed, MalformedJson> {
     Int
         -> DispatchedValue(Json)
         -> ValueEnded(Int -> ValueStart * KeyEq * Json * String)

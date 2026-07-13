@@ -2,26 +2,30 @@ Chain = Link + Stop
 
 Label = String
 
+LastLabel = String
+
+Length = Int
+
 Link = Label * Next
 
 Next = Chain
 
-LastLabel = (Chain) => String {
+Chain => LastLabel {
     Chain -> (
-        * Link => String {
+        * Link => LastLabel {
             Link.Next -> Length -> Eq(0) -> (
-                * False => String { Link.Next -> LastLabel }
-                * True => String { Link.Label }
+                * False => LastLabel { Link.Next -> LastLabel }
+                * True => LastLabel { Link.Label }
             )
         }
-        * Stop => String { "" }
+        * Stop => LastLabel { "" }
     )
 }
 
-Length = (Chain) => Int {
+Chain => Length {
     Chain -> (
-        * Link => Int { Link.Next -> Length -> Sum(1) }
-        * Stop => Int { 0 }
+        * Link => Length { Link.Next -> Length -> Sum(1) }
+        * Stop => Length { 0 }
     )
 }
 

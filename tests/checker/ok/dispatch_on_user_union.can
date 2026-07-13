@@ -1,3 +1,5 @@
+Described = String
+
 Equal = Unit
 
 Greater = Unit
@@ -8,11 +10,11 @@ Ord = Equal
   + Greater
   + Less
 
-Described = (Ord) => String {
+Ord => Described {
     Ord -> (
-        * Equal => String { "equal" }
-        * Greater => String { "greater" }
-        * Less => String { "less" }
+        * Equal => Described { "equal" }
+        * Greater => Described { "greater" }
+        * Less => Described { "less" }
     )
 }
 

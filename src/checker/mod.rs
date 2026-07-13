@@ -3,7 +3,6 @@ use crate::error::{CanonError, Span};
 use std::collections::{HashMap, HashSet};
 
 pub mod auto_await;
-pub mod dep_infer;
 
 const BUILTIN_TYPES: &[&str] = &[
     "Bool",
@@ -91,6 +90,11 @@ pub struct SymbolTable {
     /// on `Path` (which is `Path = String`) resolves through to `String`'s
     /// `print` method without anyone having to redeclare it for `Path`.
     pub aliases: HashMap<String, String>,
+    /// Declared shapes — body-less function-type aliases (`Show = () =>
+    /// String`). A bodied declaration may carry a name that is not the
+    /// type it constructs only when that name is one of these: the shape
+    /// is the one place a name carries information the types cannot.
+    pub shapes: HashSet<String>,
 }
 
 pub struct MethodSig {
@@ -250,57 +254,41 @@ fn check_ordering(
     // Union variants and product fields are checked in check_type_expr (covers
     // every position they appear in, not just top-level TypeDef bodies).
 
-    // Functions on the same receiver type must be declared alphabetically.
-    let mut methods_per_receiver: HashMap<String, Vec<(String, crate::error::Span)>> =
-        HashMap::new();
-    for item in entry_items {
-        if let Item::Function(func) = item {
-            if let Some(recv) = &func.receiver {
-                // Compare *surface* names — a self-named constructor is
-                // rewritten to `Self` by `resolve_new_syntax`, but the
-                // source (and `canon fmt`'s sort) spells it as the type
-                // name. Comparing the resolved name made canonically
-                // formatted files fail the order check whenever a
-                // constructor sorted differently under "Self".
-                let surface = if func.name.name == "Self" {
-                    recv.name.clone()
-                } else {
-                    func.name.name.clone()
-                };
-                methods_per_receiver
-                    .entry(recv.name.clone())
-                    .or_default()
-                    .push((surface, func.name.span));
-            }
-        }
-    }
-    for methods in methods_per_receiver.values() {
-        let pairs: Vec<(&str, crate::error::Span)> =
-            methods.iter().map(|(n, s)| (n.as_str(), *s)).collect();
-        check_sorted_named("method declaration", &pairs, errors);
-    }
-
-    // Free functions (no receiver) declared in the entry file must be
-    // alphabetical. Imported items are exempt — they follow their own
-    // file's ordering. `main` is also exempt: it's the entry point, a
-    // distinguished role rather than a regular free function, and forcing
-    // it into alphabetical position with peers (or with synthesised mains
-    // produced by `canon test`) is arbitrary.
-    let free_funcs: Vec<(&str, crate::error::Span)> = entry_items
+    // Function declarations in the entry file must be alphabetical by
+    // *surface* name — the single sequence `canon fmt` sorts (constructors
+    // spell their type name; a self-named constructor is rewritten to
+    // `Self` by `resolve_new_syntax`, so map it back). Constructors,
+    // shape implementations, and free functions all share the one
+    // sequence: a per-receiver-only check would never compare two
+    // anonymous arrows constructing different types. Equal surface names
+    // (one shape's implementations for several receivers) keep their
+    // written order — `canon fmt`'s sort is stable, so the checker
+    // accepts any order among equals. Imported items are exempt — they
+    // follow their own file's ordering. `main` is also exempt: it's the
+    // entry point, a distinguished role rather than a regular free
+    // function, and forcing it into alphabetical position with peers (or
+    // with synthesised mains produced by `canon test`) is arbitrary.
+    let funcs: Vec<(&str, crate::error::Span)> = entry_items
         .iter()
         .filter_map(|item| {
             if let Item::Function(func) = item {
-                if func.receiver.is_none()
-                    && func.name.name != "main"
-                    && Some(func.name.name.as_str()) != http_entry_name
-                {
-                    return Some((func.name.name.as_str(), func.name.span));
+                if func.name.name == "main" || Some(func.name.name.as_str()) == http_entry_name {
+                    return None;
                 }
+                let surface = if func.name.name == "Self" {
+                    func.receiver
+                        .as_ref()
+                        .map(|r| r.name.as_str())
+                        .unwrap_or(func.name.name.as_str())
+                } else {
+                    func.name.name.as_str()
+                };
+                return Some((surface, func.name.span));
             }
             None
         })
         .collect();
-    check_sorted_named("function declaration", &free_funcs, errors);
+    check_sorted_named("function declaration", &funcs, errors);
 
     // Type definitions in the entry file must be alphabetical.
     let type_defs: Vec<(&str, crate::error::Span)> = entry_items
@@ -1210,6 +1198,17 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         }
     }
 
+    let shapes: HashSet<String> = module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) if matches!(td.body, TypeExpr::Function { .. }) => {
+                Some(td.name.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
+
     SymbolTable {
         types,
         generic_types,
@@ -1219,6 +1218,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         standalone_types,
         free_funcs,
         aliases,
+        shapes,
     }
 }
 
@@ -1350,12 +1350,11 @@ fn check_function(
         // The unified declaration rule (the language spec, § Types-Only
         // Canon): a bodied declaration is named after the type it
         // constructs — the name is checkable from the signature alone.
-        // Receiver-carrying declarations (constructors normalised to
-        // `Self`, shape implementations named for their shape) and
-        // anonymous arrows satisfy it by construction; what reaches here
-        // is a free named function, where the rule bites: the name must
-        // be the constructed return type (modulo `Result`/`Option`/
-        // `Future` peeling and newtype chains).
+        // Constructors normalised to `Self` and anonymous arrows satisfy
+        // it by construction; what reaches here is a free named function,
+        // where the rule bites: the name must be the constructed return
+        // type (modulo `Result`/`Option`/`Future` peeling and newtype
+        // chains).
         if let Some(constructed) = constructed_type_name(&func.return_ty) {
             let is_generic_param = func
                 .generic_params
@@ -1370,6 +1369,46 @@ fn check_function(
                         "a bodied declaration is named after the type it constructs: \
                          `{}` returns `{}`",
                         func.name.name, constructed
+                    ),
+                    span: func.name.span,
+                });
+            }
+        }
+    } else if func.extern_wasm.is_none()
+        && func.name.name != "Self"
+        && !func.anonymous
+        && func.receiver.is_some()
+    {
+        // The same rule, receiver-carrying half. `resolve_new_syntax`
+        // turns any named bodied declaration whose name is not a type in
+        // its file into a method on its first component — which would
+        // otherwise let an arbitrary verb wear PascalCase (`Frobnicated =
+        // (Int) => Int` is not a Frobnicated constructor; the name lies).
+        // The name must carry information the types cannot, and the only
+        // such name is a declared shape (a body-less function type).
+        // Failing that, it must construct the type it names (modulo
+        // `Result`/`Option`/`Future` peeling and newtype chains) — the
+        // cross-file result-newtype case, where the newtype's TypeDef
+        // lives in another loaded file.
+        if !symbols.shapes.contains(&func.name.name) {
+            let constructs_name = constructed_type_name(&func.return_ty)
+                .map(|constructed| {
+                    func.name.name == constructed
+                        || symbols.resolve_alias(&func.name.name)
+                            == symbols.resolve_alias(&constructed)
+                })
+                .unwrap_or(false);
+            if !constructs_name {
+                let constructed = constructed_type_name(&func.return_ty)
+                    .unwrap_or_else(|| "…".to_string());
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{name}` is neither a declared shape nor the type this declaration \
+                         constructs: mint a result newtype (`{name} = {constructed}`) and \
+                         construct it, or declare the shape (`{name} = (…) => …`, body-less) \
+                         this implements — a name carries no information the types don't",
+                        name = func.name.name,
+                        constructed = constructed,
                     ),
                     span: func.name.span,
                 });

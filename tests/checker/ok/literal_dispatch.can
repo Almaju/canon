@@ -1,18 +1,22 @@
+Classified = String
+
 Path = String
 
-Classified = (Int) => String {
+Routed = String
+
+Int => Classified {
     Int -> (
-        * 0 => String { "zero" }
-        * 1 => String { "one" }
-        * Int => String { "many" }
+        * 0 => Classified { "zero" }
+        * 1 => Classified { "one" }
+        * Int => Classified { "many" }
     )
 }
 
-Routed = (Path) => String {
+Path => Routed {
     Path -> (
-        * "/" => String { "home" }
-        * "/notes" => String { "index" }
-        * Path => String { "not found" }
+        * "/" => Routed { "home" }
+        * "/notes" => Routed { "index" }
+        * Path => Routed { "not found" }
     )
 }
 

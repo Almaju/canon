@@ -1,7 +1,9 @@
-Halved = (Bool) => Float {
+Halved = Float
+
+Bool => Halved {
     Bool -> (
-        * False => Float { 1.5 }
-        * True => Float { 2.5 }
+        * False => Halved { 1.5 }
+        * True => Halved { 2.5 }
     )
 }
 

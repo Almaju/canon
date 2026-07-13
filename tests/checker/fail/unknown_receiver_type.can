@@ -1,4 +1,6 @@
-Described = (Mystery) => String {
+Described = String
+
+Mystery => Described {
     "hello"
 }
 

@@ -1,8 +1,10 @@
+Greeted = Name
+
 Greeting = String
 
 Name = String
 
-Greeted = (Greeting * Name) => Name {
+Greeting * Name => Greeted {
     Name
 }
 

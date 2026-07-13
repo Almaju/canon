@@ -1,7 +1,9 @@
-Picked = (Int) => Option<String> {
+Picked = String
+
+Int => Option<Picked> {
     Int -> Eq(0) -> (
-        * False => Option<String> { "payload" -> Some }
-        * True => Option<String> { None() }
+        * False => Option<Picked> { "payload" -> Some }
+        * True => Option<Picked> { None() }
     )
 }
 

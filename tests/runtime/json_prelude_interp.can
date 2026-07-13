@@ -1,4 +1,6 @@
-Labeled = (Int) => Json {
+Labeled = Json
+
+Int => Labeled {
     {"answer":Int,"doubled":Int -> Product(2)}
 }
 

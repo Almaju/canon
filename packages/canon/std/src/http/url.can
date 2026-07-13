@@ -1,21 +1,23 @@
+HostChecked = Url
+
 SchemeEnd = Int
 
 Url = String
 
-HostChecked = (SchemeEnd * String) => Result<Url, InvalidUrl> {
+SchemeEnd * String => Result<HostChecked, InvalidUrl> {
     SchemeEnd -> Eq(0) -> (
-        * False => Result<Url, InvalidUrl> {
+        * False => Result<HostChecked, InvalidUrl> {
             String -> Length -> Gt(SchemeEnd) -> (
-                * False => Result<Url, InvalidUrl> {
+                * False => Result<HostChecked, InvalidUrl> {
                     "invalid URL: empty host in "
                         -> Joined(String)
                         -> InvalidUrl
                         -> Err
                 }
-                * True => Result<Url, InvalidUrl> {
+                * True => Result<HostChecked, InvalidUrl> {
                     String -> ByteAt(SchemeEnd -> Sum(1)) -> Eq(47) -> (
-                        * False => Result<Url, InvalidUrl> { String -> Ok }
-                        * True => Result<Url, InvalidUrl> {
+                        * False => Result<HostChecked, InvalidUrl> { String -> Ok }
+                        * True => Result<HostChecked, InvalidUrl> {
                             "invalid URL: empty host in "
                                 -> Joined(String)
                                 -> InvalidUrl
@@ -25,7 +27,7 @@ HostChecked = (SchemeEnd * String) => Result<Url, InvalidUrl> {
                 }
             )
         }
-        * True => Result<Url, InvalidUrl> {
+        * True => Result<HostChecked, InvalidUrl> {
             "invalid URL: expected http:// or https:// prefix, got "
                 -> Joined(String)
                 -> InvalidUrl

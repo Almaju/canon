@@ -341,25 +341,25 @@ pub enum EntryWorld {
 ///
 /// | Return type                                        | World |
 /// |----------------------------------------------------|-------|
-/// | `Exit`, `Program`, `Unit`, `ExitCode`              | Cli   |
-/// | `Result<Exit, _>` (and `Program`/`Unit`/`ExitCode`)| Cli   |
+/// | `Exit`, `Program`, `Unit`                          | Cli   |
+/// | `Result<Exit, _>` (and `Program`/`Unit`)           | Cli   |
 /// | `Response`                                         | Http  |
 /// | `Result<Response, _>`                              | Http  |
 ///
 /// `Exit` (`= Int`, from `canon/std`) is the canonical CLI world type —
 /// the entry is `Args => Exit`, mirroring the HTTP entry's
 /// `Request => Response`: the command's argument vector flows in, an
-/// exit status flows out. `Program` (`= Unit`) stays accepted for the
-/// arg-less legacy shape (`Unit => Program`), and `Unit`/`ExitCode`
-/// stay accepted so the legacy `main` and the `canon test`-synthesized
-/// entry still classify.
+/// exit status flows out. `Program` (`= Unit`) is the arg-less shape
+/// (`Unit => Program`), and `Unit` stays accepted so the
+/// `canon test`-synthesized entry still classifies. The legacy
+/// `ExitCode` return is retired — `Exit` is the one exit-status type.
 ///
 /// The unwrapping recurses through `Result` so wrapped and unwrapped
 /// shapes both classify.
 pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
     match ty {
         TypeExpr::Named { name, generics, .. } if generics.is_empty() => match name.as_str() {
-            "Exit" | "Program" | "Unit" | "ExitCode" => Some(EntryWorld::Cli),
+            "Exit" | "Program" | "Unit" => Some(EntryWorld::Cli),
             "Response" => Some(EntryWorld::Http),
             _ => None,
         },

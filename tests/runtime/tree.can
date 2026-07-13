@@ -1,5 +1,7 @@
 Branch = Left * Right * Value
 
+Described = String
+
 Left = Tree
 
 Right = Tree
@@ -8,10 +10,10 @@ Tree = Branch + Leaf
 
 Value = Int
 
-Described = (Tree) => String {
+Tree => Described {
     Tree -> (
-        * Branch => String { "branch" }
-        * Leaf => String { "leaf" }
+        * Branch => Described { "branch" }
+        * Leaf => Described { "leaf" }
     )
 }
 

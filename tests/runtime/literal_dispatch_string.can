@@ -1,8 +1,10 @@
-Routed = (String) => String {
+Routed = String
+
+String => Routed {
     String -> (
-        * "/notes" => String { "index" }
-        * "/notes/1" => String { "note one" }
-        * String => String { "not found: " -> Joined(String) }
+        * "/notes" => Routed { "index" }
+        * "/notes/1" => Routed { "note one" }
+        * String => Routed { "not found: " -> Joined(String) }
     )
 }
 

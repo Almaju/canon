@@ -1,4 +1,6 @@
-Greeting = (String) => Json {
+Greeting = Json
+
+String => Greeting {
     {"hello":String,"len":5}
 }
 

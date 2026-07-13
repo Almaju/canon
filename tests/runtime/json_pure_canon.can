@@ -1,7 +1,9 @@
-Shown = (Result) => Unit {
+Shown = Unit
+
+Result => Shown {
     Result -> (
-        * Err<MalformedJson> => Unit { "FAIL" -> Print }
-        * Ok<Json> => Unit { "OK" -> Print }
+        * Err<MalformedJson> => Shown { "FAIL" -> Print }
+        * Ok<Json> => Shown { "OK" -> Print }
     )
 }
 

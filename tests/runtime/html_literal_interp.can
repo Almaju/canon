@@ -1,8 +1,12 @@
-Row = (String) => Html {
+Row = Html
+
+Tagged = Html
+
+String => Row {
     <li>{String}</li>
 }
 
-Tagged = (Msg) => Html {
+Msg => Tagged {
     <button data-msg="{Msg}">go</button>
 }
 

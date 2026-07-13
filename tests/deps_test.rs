@@ -145,7 +145,7 @@ fn two_vendored_versions_are_rejected() {
     let msgs = check_errors("fail_two_versions");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("duplicate function `Shouted` on `String`")),
+            .any(|m| m.contains("duplicate constructor: `Shouted` already has a constructor whose first input is `String`")),
         "expected a duplicate-function error, got: {msgs:?}"
     );
 }
@@ -158,7 +158,7 @@ fn deps_and_local_resolution_is_ambiguous() {
     let msgs = check_errors("fail_ambiguous");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("duplicate function `Shouted` on `String`")),
+            .any(|m| m.contains("duplicate constructor: `Shouted` already has a constructor whose first input is `String`")),
         "expected a duplicate-function error, got: {msgs:?}"
     );
 }

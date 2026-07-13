@@ -1,8 +1,10 @@
-Doubled = (Int) => Int {
+Doubled = Int
+
+Int => Doubled {
     Int.mul(2)
 }
 
-Doubled = (Int) => Int {
+Int => Doubled {
     Int.mul(3)
 }
 

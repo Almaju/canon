@@ -1,11 +1,15 @@
-First = (Int) => Option<String> {
+First = String
+
+Second = String
+
+Int => Option<First> {
     Int -> Eq(0) -> (
-        * False => Option<String> { "found" -> Some }
-        * True => Option<String> { None() }
+        * False => Option<First> { "found" -> Some }
+        * True => Option<First> { None() }
     )
 }
 
-Second = (Int) => Option<String> {
+Int => Option<Second> {
     Int
         -> First?
         -> Joined(" and used")

@@ -1,12 +1,14 @@
 Birthday = String
 
+Equality = Bool
+
 OtherUser = User
 
 User = Birthday * Username
 
 Username = String
 
-Equality = (OtherUser * User) => Bool {
+OtherUser * User => Equality {
     True()
 }
 

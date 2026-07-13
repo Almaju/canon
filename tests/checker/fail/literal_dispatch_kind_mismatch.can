@@ -1,7 +1,9 @@
-Described = (Int) => String {
+Described = String
+
+Int => Described {
     Int -> (
-        * "zero" => String { "zero" }
-        * Int => String { "many" }
+        * "zero" => Described { "zero" }
+        * Int => Described { "many" }
     )
 }
 

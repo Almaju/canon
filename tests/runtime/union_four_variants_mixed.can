@@ -19,6 +19,8 @@ Shape = Count
   + Name
   + Ratio
 
+Shown = Unit
+
 Unit => MadeCount {
     42 -> Count
 }
@@ -35,7 +37,7 @@ Unit => MadeRatio {
     2.5 -> Ratio
 }
 
-Shown = (Shape) => Unit {
+Shape => Shown {
     Shape -> (
         * Count => Unit { Count -> Print }
         * Empty => Unit { "empty" -> Print }

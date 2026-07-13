@@ -2,6 +2,10 @@ Digits = Int
 
 IsIntDigit = Bool
 
+Maximum = Int
+
+Minimum = Int
+
 Negated = Int
 
 OtherInt = Int
@@ -42,17 +46,17 @@ Int => IsIntDigit {
     )
 }
 
-Maximum = (Int * OtherInt) => Int {
+Int * OtherInt => Maximum {
     Int -> Lt(OtherInt) -> (
-        * False => Int { Int }
-        * True => Int { OtherInt }
+        * False => Maximum { Int }
+        * True => Maximum { OtherInt }
     )
 }
 
-Minimum = (Int * OtherInt) => Int {
+Int * OtherInt => Minimum {
     Int -> Lt(OtherInt) -> (
-        * False => Int { OtherInt }
-        * True => Int { Int }
+        * False => Minimum { OtherInt }
+        * True => Minimum { Int }
     )
 }
 

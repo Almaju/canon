@@ -1,24 +1,28 @@
+DecodedShown = Unit
+
+FieldShown = Unit
+
 Sought = String
 
-DecodedShown = (String) => Unit {
+String => DecodedShown {
     String -> Json -> (
-        * Err<MalformedJson> => Unit { MalformedJson -> Print }
-        * Ok<Json> => Unit {
+        * Err<MalformedJson> => DecodedShown { MalformedJson -> Print }
+        * Ok<Json> => DecodedShown {
             Json -> Decoded -> (
-                * Err<MalformedJson> => Unit { MalformedJson -> Print }
-                * Ok<Decoded> => Unit { Decoded -> Print }
+                * Err<MalformedJson> => DecodedShown { MalformedJson -> Print }
+                * Ok<Decoded> => DecodedShown { Decoded -> Print }
             )
         }
     )
 }
 
-FieldShown = (Sought * String) => Unit {
+Sought * String => FieldShown {
     String -> Json -> (
-        * Err<MalformedJson> => Unit { MalformedJson -> Print }
-        * Ok<Json> => Unit {
+        * Err<MalformedJson> => FieldShown { MalformedJson -> Print }
+        * Ok<Json> => FieldShown {
             Json -> Field(Sought) -> (
-                * Err<MalformedJson> => Unit { MalformedJson -> Print }
-                * Ok<Json> => Unit { Json -> Print }
+                * Err<MalformedJson> => FieldShown { MalformedJson -> Print }
+                * Ok<Json> => FieldShown { Json -> Print }
             )
         }
     )

@@ -1,6 +1,8 @@
 Greeting = String
 
-Shouted = (Greeting) => String {
+Shouted = String
+
+Greeting => Shouted {
     "HELLO"
 }
 

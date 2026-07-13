@@ -1,4 +1,6 @@
-Shown = (Int) => Unit {
+Shown = Unit
+
+Int => Shown {
     Int
         -> Unix
         -> Now
