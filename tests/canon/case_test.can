@@ -5,6 +5,13 @@ LowercasedFoldsLetters = () => TestResult {
         -> TestResult
 }
 
+LowercasedKeepsBytesAboveUppercaseRange = () => TestResult {
+    "[\\]^_`"
+        -> Lowercased
+        -> Eq("[\\]^_`")
+        -> TestResult
+}
+
 LowercasedKeepsNonLetters = () => TestResult {
     "MiXeD 123 !?"
         -> Lowercased
