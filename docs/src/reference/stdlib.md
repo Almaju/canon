@@ -140,9 +140,8 @@ constructors ([Types-Only Canon](../spec/types-only.md)).
 
 ```canon
 Unit => Program {
-    "hello from canon"
-        -> Contents
-        -> Written("/tmp/greeting.txt" -> Path)?
+    Contents("hello from canon")
+        -> Written(Path("/tmp/greeting.txt"))?
         -> Path
         -> File?
         -> Read?
@@ -208,13 +207,17 @@ insertion order. (Of course it is: wherever ordering is discretionary,
 Canon picks alphabetical.)
 
 ```canon
+Inserted = Map
+
 Map = Empty + Node
+
+Removed = Map
 
 Value = String
 
-Inserted = (Map * String * Value) => Map
+Map * String * Value => Inserted
 
-Removed = (Map * String) => Map
+Map * String => Removed
 
 Unit => Map
 
@@ -236,18 +239,18 @@ construction -- returns the members, alphabetically, as a
 ```canon
 Unit => Program {
     Set()
-        -> Inserted("b")
-        -> Inserted("a")
-        -> Inserted("b")
+        -> Added("b")
+        -> Added("a")
+        -> Added("b")
         -> Length
         -> Print
     Set()
-        -> Inserted("x")
+        -> Added("x")
         -> Contains("x")
         -> Print
     Set()
-        -> Inserted("b")
-        -> Inserted("a")
+        -> Added("b")
+        -> Added("a")
         -> List
         -> Json
         -> Print
@@ -255,13 +258,17 @@ Unit => Program {
 ```
 
 ```canon
+Added = Set
+
+Dropped = Set
+
 Set = Absent + Entry
 
+Set * String => Added
+
+Set * String => Dropped
+
 Unit => Set
-
-Inserted = (Set * String) => Set
-
-Removed = (Set * String) => Set
 
 Set * String => Contains
 
@@ -284,8 +291,7 @@ directions are compiler builtins available without imports:
 ```canon
 Unit => Program {
     String(42) -> Print
-    123
-        -> String
+    String(123)
         -> Joined("!")
         -> Print
 }
@@ -297,7 +303,10 @@ in `canon/std/Int`, written in pure Canon (digit recursion over
 
 ```canon
 double = (String) => Result<Int, MalformedInt> {
-    Ok(Int(String)? -> Product(2))
+    String
+        -> Int?
+        -> Product(2)
+        -> Ok
 }
 ```
 
@@ -432,18 +441,12 @@ Labeled = (Int) => Json {
 
 Unit => Result<Program, MalformedJson> {
     Json("[1, 2, 3]")? -> Print
-    42
-        -> ToJson
-        -> Print
-    "hi"
-        -> ToJson
-        -> Print
-    42
-        -> Labeled
-        -> Print
+    ToJson(42) -> Print
+    ToJson("hi") -> Print
+    Labeled(42) -> Print
     {"a":1,"b":[true,false,null]} -> Print
     {"escaped":"a \"b\" c"} -> Print
-    Ok(Unit())
+    Unit() -> Ok
 }
 ```
 

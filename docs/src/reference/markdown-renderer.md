@@ -14,8 +14,10 @@ cursor, recursion in place of loops.
 
 ```canon
 Args => Exit {
-    "# Canon Docs\nRendered by Canon itself.\n\n## Why\nThe docs compile through the same pipeline as programs." -> Markdown -> Html -> Print
-    0 -> Exit
+    Markdown("# Canon Docs\nRendered by Canon itself.\n\n## Why\nThe docs compile through the same pipeline as programs.")
+        -> Html
+        -> Print
+    Exit(0)
 }
 ```
 
@@ -30,8 +32,13 @@ Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
 Args => Exit {
-    "notes.md" -> Path -> File? -> Read? -> Markdown -> Html -> Print
-    0 -> Exit
+    Path("notes.md")
+        -> File?
+        -> Read?
+        -> Markdown
+        -> Html
+        -> Print
+    Exit(0)
 }
 ```
 
@@ -47,8 +54,10 @@ Given `intro.md` beside your source, `Intro` names it:
 
 ```canon
 Args => Exit {
-    Intro() -> Html -> Print
-    0 -> Exit
+    Intro()
+        -> Html
+        -> Print
+    Exit(0)
 }
 ```
 

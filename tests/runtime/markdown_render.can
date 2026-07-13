@@ -1,7 +1,6 @@
 Args => Exit {
-    "# Title\nA paragraph with a < b & c > d.\n\n## Section\nSecond paragraph.\n\n### Deep\nDone."
-        -> Markdown
+    Markdown("# Title\nA paragraph with a < b & c > d.\n\n## Section\nSecond paragraph.\n\n### Deep\nDone.")
         -> Html
         -> Print
-    0 -> Exit
+    Exit(0)
 }

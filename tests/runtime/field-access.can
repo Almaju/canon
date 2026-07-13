@@ -5,6 +5,6 @@ User = Birthday * Username
 Username = String
 
 Unit => Program {
-    "1990" -> Birthday -> User("alice" -> Username).Username -> Print
-    "1990" -> Birthday -> User("alice" -> Username).Birthday -> Print
+    Birthday("1990") -> User(Username("alice")).Username -> Print
+    Birthday("1990") -> User(Username("alice")).Birthday -> Print
 }

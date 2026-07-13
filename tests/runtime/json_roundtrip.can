@@ -1,18 +1,14 @@
 Unit => Result<Program, MalformedJson> {
-    "[1, 2, 3]"
+    "[1, 2,"
+        -> Joined(" 3]")
         -> Json?
         -> Print
-    "{\"a\":1,\"b\":[true,false,null]}"
+    "{\"a\":1,"
+        -> Joined("\"b\":[true,false,null]}")
         -> Json?
         -> Print
-    "\"a plain string\""
-        -> Json?
-        -> Print
-    "42"
-        -> Json?
-        -> Print
-    "null"
-        -> Json?
-        -> Print
+    Json("\"a plain string\"")? -> Print
+    Json("42")? -> Print
+    Json("null")? -> Print
     Unit() -> Ok
 }

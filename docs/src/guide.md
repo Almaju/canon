@@ -96,7 +96,9 @@ Greeter => Shout {
 }
 
 Unit => Program {
-    "hi" -> Greeter -> Shout -> Print
+    Greeter("hi")
+        -> Shout
+        -> Print
 }
 ```
 
@@ -171,7 +173,10 @@ Full model: [Effects and the Async Model](./spec/effects-and-async.md).
 
 ```canon
 Unit => Program {
-    "./data.json" -> Path -> File? -> Read? -> Print
+    Path("./data.json")
+        -> File?
+        -> Read?
+        -> Print
 }
 ```
 
@@ -195,7 +200,10 @@ Model](./spec/effects-and-async.md).
 
 ```canon
 Unit => Program {
-    "https://example.com" -> Url? -> Get? -> Body? -> Print
+    Url("https://example.com")?
+        -> Get?
+        -> Body?
+        -> Print
 }
 ```
 
@@ -243,7 +251,9 @@ enum per call site:
 
 ```canon
 File * Path => Result<Bytes, IoError + NotFound + PermissionDenied> {
-    File -> Read(Path)? -> Decoded
+    File
+        -> Read(Path)?
+        -> Decoded
 }
 ```
 
@@ -266,7 +276,10 @@ constructor. Discovery is by shape.
 SumAddsOperands = TestResult
 
 Unit => SumAddsOperands {
-    1 -> Sum(2) -> Eq(3) -> TestResult
+    1
+        -> Sum(2)
+        -> Eq(3)
+        -> TestResult
 }
 ```
 
@@ -290,11 +303,11 @@ may return a world type, and helpers return ordinary values.
 ```canon
 Request => Response {
     Request.path() -> (
-        * None => Response { 400 -> Status -> Response(Headers() * NotFound()) }
+        * None => Response { Status(400) -> Response(Headers() * NotFound()) }
         * Some<String> => Response {
             String -> (
-                * "/notes" => Response { 200 -> Status -> Response(Headers() * Index()) }
-                * String   => Response { 404 -> Status -> Response(Headers() * NotFound()) }
+                * "/notes" => Response { Status(200) -> Response(Headers() * Index()) }
+                * String => Response { Status(404) -> Response(Headers() * NotFound()) }
             )
         }
     )

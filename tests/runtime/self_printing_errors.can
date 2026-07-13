@@ -2,42 +2,45 @@ Code = Int
 
 HttpError = Code * Reason
 
+Lookup = Reason
+
 Missing = String
+
+Printed = Unit
 
 Reason = String
 
-Lookup = (Bool) => Result<Reason, Missing> {
+Bool => Result<Lookup, Missing> {
     Bool -> (
-        * False => Result<Reason, Missing> { "user.name" -> Missing -> Err }
-        * True => Result<Reason, Missing> { "ada" -> Reason -> Ok }
+        * False => Result<Lookup, Missing> { Missing("user.name") -> Err }
+        * True => Result<Lookup, Missing> { Reason("ada") -> Ok }
     )
 }
 
-Print = (HttpError) => Unit {
+HttpError => Printed {
     "http "
         -> Joined(HttpError.Code -> String)
         -> Joined(": ")
         -> Joined(HttpError.Reason)
-        -> Print
+        -> Printed
 }
 
-Print = (Missing) => Unit {
+Missing => Printed {
     "missing key: "
         -> Joined(Missing)
-        -> Print
+        -> Printed
 }
 
 Unit => Program {
-    500
-        -> Code
-        -> HttpError("boom" -> Reason)
-        -> Print
+    Code(500)
+        -> HttpError(Reason("boom"))
+        -> Printed
     True() -> Lookup -> (
-        * Err<Missing> => Unit { Missing -> Print }
-        * Ok<Reason> => Unit { Reason -> Print }
+        * Err<Missing> => Unit { Missing -> Printed }
+        * Ok<Reason> => Unit { Reason -> Printed }
     )
     False() -> Lookup -> (
-        * Err<Missing> => Unit { Missing -> Print }
-        * Ok<Reason> => Unit { Reason -> Print }
+        * Err<Missing> => Unit { Missing -> Printed }
+        * Ok<Reason> => Unit { Reason -> Printed }
     )
 }

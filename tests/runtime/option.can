@@ -1,8 +1,6 @@
 Unit => Result<Program, Unit> {
-    42
-        -> Ok?
-        -> Print
-    7 -> Some -> (
+    Ok(42)? -> Print
+    Some(7) -> (
         * None => Unit { "absent" -> Print }
         * Some<Int> => Unit { "present" -> Print }
     )

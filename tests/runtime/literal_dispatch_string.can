@@ -1,19 +1,15 @@
-Routed = (String) => String {
+Routed = String
+
+String => Routed {
     String -> (
-        * "/notes" => String { "index" }
-        * "/notes/1" => String { "note one" }
-        * String => String { "not found: " -> Joined(String) }
+        * "/notes" => Routed { "index" }
+        * "/notes/1" => Routed { "note one" }
+        * String => Routed { "not found: " -> Joined(String) }
     )
 }
 
 Unit => Program {
-    "/notes"
-        -> Routed
-        -> Print
-    "/notes/1"
-        -> Routed
-        -> Print
-    "/oops"
-        -> Routed
-        -> Print
+    Routed("/notes") -> Print
+    Routed("/notes/1") -> Print
+    Routed("/oops") -> Print
 }

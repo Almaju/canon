@@ -2,13 +2,13 @@ InvalidUrl = String
 
 Url = String
 
-Url = (String) => Result<Url, InvalidUrl> {
+String => Result<Url, InvalidUrl> {
     String
         -> Url
         -> Ok
 }
 
 Unit => Program {
-    "https://example.com" -> Url
+    Url("https://example.com")
     "validated ctor declared" -> Print
 }

@@ -1,15 +1,12 @@
 Unit => Program {
-    65
-        -> Byte
+    Byte(65)
         -> String
         -> Print
-    97
-        -> Byte
+    Byte(97)
         -> String
-        -> Joined(98 -> Byte -> String)
+        -> Joined(Byte(98) -> String)
         -> Print
-    33
-        -> Byte
+    Byte(33)
         -> String
         -> Print
 }

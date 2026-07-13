@@ -7,8 +7,7 @@ TotalTokens = Int
 Usage = CompletionTokens * PromptTokens * TotalTokens
 
 Unit => Program {
-    11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).CompletionTokens
-        -> Print
-    11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).PromptTokens -> Print
-    11 -> CompletionTokens -> Usage(22 -> PromptTokens * 33 -> TotalTokens).TotalTokens -> Print
+    CompletionTokens(11) -> Usage(PromptTokens(22) * TotalTokens(33)).CompletionTokens -> Print
+    CompletionTokens(11) -> Usage(PromptTokens(22) * TotalTokens(33)).PromptTokens -> Print
+    CompletionTokens(11) -> Usage(PromptTokens(22) * TotalTokens(33)).TotalTokens -> Print
 }

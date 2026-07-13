@@ -5,7 +5,7 @@ Node = Key * String * Value
 Value = String
 
 Unit => Program {
-    "v" -> Value -> Node("bare" * "k" -> Key).Key -> Print
-    "v" -> Value -> Node("bare" * "k" -> Key).String -> Print
-    "v" -> Value -> Node("bare" * "k" -> Key).Value -> Print
+    Value("v") -> Node("bare" * Key("k")).Key -> Print
+    Value("v") -> Node("bare" * Key("k")).String -> Print
+    Value("v") -> Node("bare" * Key("k")).Value -> Print
 }

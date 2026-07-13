@@ -1,11 +1,15 @@
-Classified = (Int) => Result<String, String> {
+Classified = String
+
+Described = String
+
+Int => Result<Classified, String> {
     Int -> Eq(0) -> (
-        * False => Result<String, String> { "nonzero" -> Ok }
-        * True => Result<String, String> { "was zero" -> Err }
+        * False => Result<Classified, String> { Ok("nonzero") }
+        * True => Result<Classified, String> { Err("was zero") }
     )
 }
 
-Described = (Int) => Result<String, String> {
+Int => Result<Described, String> {
     Int
         -> Classified?
         -> Joined(" indeed")
@@ -13,11 +17,11 @@ Described = (Int) => Result<String, String> {
 }
 
 Unit => Program {
-    3 -> Described -> (
+    Described(3) -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }
     )
-    0 -> Described -> (
+    Described(0) -> (
         * Err<String> => Unit { String -> Print }
         * Ok<String> => Unit { String -> Print }
     )

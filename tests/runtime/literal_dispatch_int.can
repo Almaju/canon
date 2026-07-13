@@ -1,13 +1,15 @@
-Described = (Int) => Unit {
+Described = Unit
+
+Int => Described {
     Int -> (
-        * 0 => Unit { "zero" -> Print }
-        * 1 => Unit { "one" -> Print }
-        * Int => Unit { Int -> Print }
+        * 0 => Described { "zero" -> Print }
+        * 1 => Described { "one" -> Print }
+        * Int => Described { Int -> Print }
     )
 }
 
 Unit => Program {
-    0 -> Described
-    1 -> Described
-    42 -> Described
+    Described(0)
+    Described(1)
+    Described(42)
 }

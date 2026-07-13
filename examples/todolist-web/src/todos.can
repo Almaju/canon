@@ -48,8 +48,8 @@ String => FirstLine {
             String -> ByteAt(1) -> Eq(10) -> (
                 * False => FirstLine {
                     String
-                        -> Substring(1 -> From * 1 -> To)
-                        -> Joined(String -> Substring(2 -> From * String -> Length -> To) -> FirstLine)
+                        -> Substring(From(1) * To(1))
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> FirstLine)
                 }
                 * True => FirstLine { "" }
             )
@@ -62,7 +62,7 @@ String => ParsedNum {
     String -> Length -> Eq(0) -> (
         * False => ParsedNum {
             String
-                -> Substring(1 -> From * String -> Length -> Difference(1) -> To)
+                -> Substring(From(1) * String -> Length -> Difference(1) -> To)
                 -> ParsedNum
                 -> Product(10)
                 -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
@@ -98,7 +98,7 @@ Int * Todos => RenderedItems {
                 -> Joined(Int -> Sum(1) -> RenderedItems(Todos.String -> RestLines -> Todos) -> String)
                 -> Html
         }
-        * True => RenderedItems { "" -> Html }
+        * True => RenderedItems { Html("") }
     )
 }
 
@@ -108,10 +108,10 @@ String => RestLines {
             String -> ByteAt(1) -> Eq(10) -> (
                 * False => RestLines {
                     String
-                        -> Substring(2 -> From * String -> Length -> To)
+                        -> Substring(From(2) * String -> Length -> To)
                         -> RestLines
                 }
-                * True => RestLines { String -> Substring(2 -> From * String -> Length -> To) }
+                * True => RestLines { String -> Substring(From(2) * String -> Length -> To) }
             )
         }
         * True => RestLines { "" }

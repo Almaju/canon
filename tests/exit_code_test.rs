@@ -25,7 +25,7 @@ fn canon_test_exit_codes() {
 
 Unit => BrokenMath {
     1 -> Sum(2) -> Eq(7) -> (
-        * False => TestResult { "math is broken" -> Fail }
+        * False => TestResult { Fail("math is broken") }
         * True => TestResult { Pass() }
     )
 }
@@ -87,7 +87,7 @@ fn exit_code_propagates() {
         &src_path,
         r#"Unit => Program {
     "terminating with 3" -> Print
-    3 -> Exited
+    Exited(3)
 }
 "#,
     )

@@ -98,6 +98,7 @@
     position: relative;
     padding: 108px 0 48px;
     text-align: center;
+    overflow-x: clip;
   }
 
   .hero::before {
@@ -273,11 +274,19 @@
   }
 
   .window pre {
-    padding: 22px 24px;
+    padding: 22px 0;
     font-size: 13.5px;
     line-height: 1.75;
     overflow-x: auto;
     color: var(--text);
+  }
+  /* Horizontal padding rides the scrolled content (an inline-block), so the
+     trailing gap survives a scroll to the end — Safari/Firefox drop a scroll
+     container's own end padding. */
+  .window pre code {
+    display: inline-block;
+    min-width: 100%;
+    padding: 0 24px;
   }
 
   .hero-window { max-width: 620px; margin: 56px auto 0; }

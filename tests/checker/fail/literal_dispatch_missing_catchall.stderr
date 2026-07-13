@@ -1,1 +1,1 @@
-error[tests/checker/fail/literal_dispatch_missing_catchall.can:2:5]: literal dispatch must end with a catch-all arm `(String)`: literal arms can never be exhaustive
+error[tests/checker/fail/literal_dispatch_missing_catchall.can:4:5]: literal dispatch must end with a catch-all arm `(String)`: literal arms can never be exhaustive

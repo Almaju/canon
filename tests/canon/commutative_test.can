@@ -4,36 +4,28 @@ Greeting = String
 
 Name = String
 
-Greeted = (Greeting * Name) => Greeted {
+Greeting * Name => Greeted {
     Greeting
 }
 
 ProductCallableBothWays = TestResult
 
 Unit => ProductCallableBothWays {
-    "hello"
-        -> Greeting
-        -> Greeted("world" -> Name)
-    "world"
-        -> Name
-        -> Greeted("hello" -> Greeting)
+    Greeting("hello") -> Greeted(Name("world"))
+    Name("world") -> Greeted(Greeting("hello"))
     Pass()
 }
 
 ProductCanonicalDirection = TestResult
 
 Unit => ProductCanonicalDirection {
-    "hello"
-        -> Greeting
-        -> Greeted("world" -> Name)
+    Greeting("hello") -> Greeted(Name("world"))
     Pass()
 }
 
 ProductNonCanonicalDirection = TestResult
 
 Unit => ProductNonCanonicalDirection {
-    "world"
-        -> Name
-        -> Greeted("hello" -> Greeting)
+    Name("world") -> Greeted(Greeting("hello"))
     Pass()
 }

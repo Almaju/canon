@@ -199,28 +199,41 @@ Non-obvious invariants the code won't spell out for you:
   call, auto-loads the stdlib module. Interpolation can't run in the
   `wasi:http/service` world (its host bridge is unsatisfiable there), so
   an interpolating handler fails at build with a clear error.
+  `Json("…")`/`Html("…")` fed a **static string literal the literal
+  form can express** is a checker error (`check_literal_form_ceremony`)
+  — the validating constructor is for strings built at runtime; tests
+  of the parser build their documents with `Joined`.
 - **`le` / `ge` is the one comparison spelling** — there is no
   `lte` / `gte`.
 - **Product construction is positionless (by type, not slot).**
   `build_product_value` binds each value to the field whose type it
   matches — exact newtype match first (`Value(x)` → the `Value` field),
   then shared base type, then declaration order as a floor
-  (`field_match_score` / `widening_chain`). So `canon check --fix` sorts a
-  product-type constructor's values alphabetically and codegen still
-  routes them correctly. Two consequences: (1) same-underlying-type
-  fields (map's `Key` and `Value`, both `String`) must be **distinct
-  newtypes** and their values tagged to bind unambiguously — the spec's
-  "components are distinct types" rule guarantees the field types differ;
-  (2) the formatter sorts **only** `Expr::Constructor` product args —
-  never `List(…)` (ordered elements) and never method/pipe args
-  (`.set(name * value)` is positional). `build_http_response` picks
-  `Headers`/`Status` by type and treats the leftover as the body for the
-  same reason.
-- **Canonical call form: the first input pipes, the rest ride the
-  parens.** `canon check --fix` rewrites every call to `A -> B(rest)` (the
-  `canon_expr` pass in `src/formatter.rs`): `B(A)` → `A -> B`, `B(A * C)`
-  → `A -> B(C)`, `A.B(C)` / `A * C -> B` → `A -> B(C)`. Zero-arg calls
-  and `List(…)` stay prefix. This is semantics-preserving because the
+  (`field_match_score` / `widening_chain`). So `canon check --fix` may sort a
+  constructor's inputs and codegen still routes them correctly — but
+  **only when every input carries its type syntactically** (all-computed
+  input lists). Literal operands are NEVER reordered: an untagged
+  same-base value binds by declaration order, so position is meaning
+  (`Padded(5 * 4)` ≠ `Padded(4 * 5)`). Consequences: (1)
+  same-underlying-type fields (map's `Key` and `Value`, both `String`)
+  must be **distinct newtypes** and their values tagged to bind
+  unambiguously; (2) the formatter never reorders `List(…)` (ordered
+  elements) or method/pipe args (`.set(name * value)` is positional).
+  `build_http_response` picks `Headers`/`Status` by type and treats the
+  leftover as the body for the same reason.
+- **Canonical call form: values flow through pipes, literals are born
+  in the parens.** `canon check --fix` (the `canon_expr` pass in
+  `src/formatter.rs`) rewrites every call: a computed first input pipes
+  (`B(A)` → `A -> B`, `A.B(C)` → `A -> B(C)`); a **lone scalar literal
+  never pipes into a construction** (`"hi" -> Greeting` → `Greeting("hi")`,
+  `42 -> Show` → `Show(42)`); a same-kind primitive wrap unwraps
+  (`Int(3)` → `3`, `String("s")` → `"s"`); builtins (`Sum`, `Print`,
+  `Joined`, … — `is_builtin_pipe_vocabulary` in `src/ast.rs`) have no
+  prefix call form so literals keep piping into them; multi-input calls
+  keep the pipe (prefix arg lists are positional, piped calls bind
+  commutatively); operand order is never reordered except for
+  all-computed input lists. Zero-arg calls and `List(…)` stay prefix.
+  This is semantics-preserving because the
   compiler treats a piped call to a **type constructor** as construction:
   `compile_method_call` routes any type-name method (product / variant /
   newtype / primitive `Int`/`Float`/`String`/`Bool` / HTTP `Response`)
@@ -270,14 +283,28 @@ invariants:
   message. Execution sites (the postfix pipe) stay `->`-only. The
   legacy `value.( arms )` dispatch, parenthesized arm patterns
   `* (X) =>`, turbofish `::<T>`, and comma-separated declaration params
-  are all parse errors now. The endgame retires `.`-method-calls and
-  `B(a)` prefix-calls in favour of `->` (with `()` as the construction/
-  partial-application operator); see the spec
-  (`docs/src/spec/types-only.md` § The One-Operator Endgame).
-- **Anonymous arrows.** `(A) => B { … }` at top level declares the `B`
-  constructor (return type with `Result`/`Option`/`Future` peeled).
-  `FunctionDef.anonymous` drives the formatter to round-trip the arrow
-  form. Both the named (`B = (A) => …`) and anonymous forms are legal.
+  are all parse errors now. `.`-method-calls survive only for camelCase
+  FFI bindings, and `B(a)` prefix calls survive exactly where the
+  literals-in-parens rule puts them (lone literal subject, zero-input,
+  `List(…)`); `canon check --fix` rewrites everything else to `->`. See the
+  spec (`docs/src/spec/types-only.md` § The One-Operator Endgame).
+  There is also **no implicit dependency threading**: an omitted
+  constructor argument is a missing-argument error even when exactly
+  one in-scope value matches — the pipe is the one spelling of passing
+  a value (`docs/src/spec/effects-and-async.md`).
+- **Anonymous arrows are the one constructor form.** `(A) => B { … }`
+  at top level declares the `B` constructor (return type with
+  `Result`/`Option`/`Future` peeled). The named spelling
+  (`B = (A) => …`) still parses but `canon check --fix` rewrites it to the
+  arrow whenever the name is exactly the constructed type
+  (`is_redundantly_named` in `src/formatter.rs`); named declarations
+  survive only as shape implementations. The checker enforces both
+  halves of the naming rule: a receiver-less bodied declaration must be
+  named after the type it constructs, and a receiver-carrying one must
+  be a declared shape or a newtype of its return (no arbitrary verbs in
+  PascalCase). An arrow whose constructed type appears in its own input
+  product is also an error — endomorphisms take result newtypes
+  (`Inserted = Map`), by check, not convention.
   A **single named input drops its parentheses** — `A => B { … }` is
   exactly `(A) => B { … }` (`Parser::parse_paren_free_ctor`; the
   formatter emits the paren-free form). Products (`(A * B) => C`) and
@@ -296,8 +323,10 @@ invariants:
   HTTP `Response`. `resolve_new_syntax` renames an anonymous
   Cli-world-returning entry back to the canonical `main` so entry
   selection, the ordering exemption, and codegen's `$start` inlining all
-  still key on `main`; `Unit`/`ExitCode` returns and the literal `main`
-  name stay legal (the `canon test` harness synthesizes one). Because
+  still key on `main`; a `Unit` return stays legal (the `canon test`
+  harness synthesizes one), the legacy `ExitCode` return is retired, and
+  a **literal `main` name is a checker error** — entries are anonymous,
+  selected by their world-shaped return. Because
   `Unit` is zero-width and single-valued, all `Unit`-rooted types
   (`Program`, `Exited`, …) are interchangeable in a return position.
   The web-app triple is type-selected too — no names: `Model => Html`

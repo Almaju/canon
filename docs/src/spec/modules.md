@@ -57,6 +57,12 @@ functions in the type's own file can touch the raw representation.
 
 ## Package Manifests
 
+> **Status: slated for removal.** The manifest is the last `.toml` in
+> the language's surface, and the direction is to remove it (the
+> toolchain already keeps its `use` registry outside the project for
+> the same reason). Until the replacement design lands, `canon.toml`
+> works as described below.
+
 Every package has a `canon.toml`:
 
 ```toml

@@ -1,1 +1,1 @@
-error[tests/checker/fail/literal_dispatch_kind_mismatch.can:3:11]: string literal arm on an `Int` scrutinee
+error[tests/checker/fail/literal_dispatch_kind_mismatch.can:5:11]: string literal arm on an `Int` scrutinee

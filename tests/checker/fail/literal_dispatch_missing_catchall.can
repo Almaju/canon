@@ -1,7 +1,9 @@
-Routed = (String) => String {
+Routed = String
+
+String => Routed {
     String -> (
-        * "/a" => String { "a" }
-        * "/b" => String { "b" }
+        * "/a" => Routed { "a" }
+        * "/b" => Routed { "b" }
     )
 }
 

@@ -1,8 +1,7 @@
 Greeting = String
 
 Unit => Program {
-    "hello"
-        -> Greeting
+    Greeting("hello")
         -> Joined(" world")
         -> Print
 }
