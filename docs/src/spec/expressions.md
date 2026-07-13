@@ -337,7 +337,6 @@ handlers.
 | `T^*` | unbounded repetition (Kleene star) |
 | `<T>` | generic parameter |
 | `<T: Tr>` | generic with trait constraint |
-| `::<T>` | type argument at a call site (turbofish) |
 | `.` | call / field access (never executes a flow step) |
 | `-> ( )` | dispatch: pipe the scrutinee into an arm group |
 | `?` | propagate `Result` / `Option` failure |
