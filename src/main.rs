@@ -4,7 +4,7 @@ use canon::codegen;
 use canon::error::CanonError;
 use canon::formatter;
 use canon::lexer::Scanner;
-use canon::loader::{self, LoadResult, LoadedSource};
+use canon::loader::{self, LoadResult};
 use canon::manifest;
 use canon::parser::Parser;
 use std::collections::HashSet;
@@ -79,7 +79,7 @@ fn print_help() {
     println!("  test <file.can | dir>     Run tests (`X = TestResult` + `Unit => X`). A");
     println!("                            directory runs every `*_test.can` file under it");
     println!("                            in one process, sharing setup across files.");
-    println!("  fmt [path...] [--check]   Format Canon source files or directories");
+    println!("  fmt [path...]             Rewrite Canon source files into canonical form");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
     println!("                              stages: tokens | ast");
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
@@ -841,19 +841,20 @@ fn cmd_publish(args: &[String]) {
 }
 
 fn cmd_fmt(args: &[String]) {
-    let mut check_only = false;
     let mut inputs: Vec<String> = Vec::new();
 
     for arg in args {
         match arg.as_str() {
-            "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: canon fmt [path...] [--check]");
+                println!("Usage: canon fmt [path...]");
                 println!();
                 println!("  path         A `.can` file or a directory. Directories are walked");
                 println!("               recursively. With no arguments, formats every `.can`");
                 println!("               file under the current directory.");
-                println!("  --check      Check whether files are formatted (exit 1 if not).");
+                println!();
+                println!("  There is no verify-only mode: formatting is part of the language,");
+                println!("  so `canon check` reports an unformatted file as a compile error.");
+                println!("  `canon fmt` is the mechanical fixer.");
                 return;
             }
             other if other.starts_with('-') => {
@@ -894,7 +895,6 @@ fn cmd_fmt(args: &[String]) {
         process::exit(1);
     }
 
-    let mut any_unformatted = false;
     let mut any_parse_error = false;
 
     for file_path in &files {
@@ -905,16 +905,11 @@ fn cmd_fmt(args: &[String]) {
                 if source == formatted {
                     continue;
                 }
-                any_unformatted = true;
-                if check_only {
-                    eprintln!("{}: not formatted", display);
-                } else {
-                    if let Err(err) = fs::write(file_path, &formatted) {
-                        eprintln!("error: could not write '{}': {}", display, err);
-                        process::exit(1);
-                    }
-                    println!("formatted: {}", display);
+                if let Err(err) = fs::write(file_path, &formatted) {
+                    eprintln!("error: could not write '{}': {}", display, err);
+                    process::exit(1);
                 }
+                println!("formatted: {}", display);
             }
             Err(err) => {
                 print_error(&display, &err);
@@ -927,7 +922,7 @@ fn cmd_fmt(args: &[String]) {
         }
     }
 
-    if (check_only && any_unformatted) || any_parse_error {
+    if any_parse_error {
         process::exit(1);
     }
 }
@@ -1602,15 +1597,17 @@ fn auto_install(file_path: &str) -> bool {
 }
 
 /// Enforce canonical formatting across every user-authored source file
-/// loaded for this build. Canon's guiding rule is "one way" — the
-/// compiler refuses to proceed if any source isn't already in canonical
-/// form. Bundled packages are skipped (they ship with the compiler).
+/// loaded for this build. Canon's guiding rule is "one way" — a
+/// formatting divergence *is* a compiler error, reported with the span
+/// of the first differing line exactly like a sort-order or type
+/// error; `canon fmt` is the mechanical fixer. Bundled packages are
+/// skipped (they ship with the compiler).
 ///
 /// Returns `true` when every file is canonical, `false` after printing
-/// a diagnostic listing the offenders. Files that fail to parse are
-/// skipped here so the checker can produce the better-located error.
+/// the per-file diagnostics. Files that fail to parse are skipped here
+/// so the checker can produce the better-located error.
 fn enforce_format(loaded: &LoadResult) -> bool {
-    let mut unformatted: Vec<&LoadedSource> = Vec::new();
+    let mut errors = 0usize;
     for src in &loaded.local_sources {
         // `.md` assets are Markdown documents, not Canon source — their
         // `LoadedSource` carries synthesized Canon, which the author never
@@ -1618,29 +1615,15 @@ fn enforce_format(loaded: &LoadResult) -> bool {
         if src.path.extension().and_then(|e| e.to_str()) == Some("md") {
             continue;
         }
-        match formatter::format(&src.source) {
-            Ok(canonical) => {
-                if src.source != canonical {
-                    unformatted.push(src);
-                }
-            }
-            // Parse/lex error — leave it to the checker pipeline to
-            // surface the precise diagnostic.
-            Err(_) => continue,
+        if let Some(err) = formatter::format_error(&src.source) {
+            print_error(&src.path.display().to_string(), &err);
+            errors += 1;
         }
     }
-    if unformatted.is_empty() {
+    if errors == 0 {
         return true;
     }
-    eprintln!(
-        "error: {} file(s) are not canonically formatted:",
-        unformatted.len()
-    );
-    for src in &unformatted {
-        eprintln!("  {}", src.path.display());
-    }
-    eprintln!();
-    eprintln!("hint: run `canon fmt` to fix them in place.");
+    eprintln!("{} error(s) found.", errors);
     false
 }
 

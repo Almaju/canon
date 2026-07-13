@@ -113,5 +113,11 @@ fn check_source(source: &str, file_path: &str) -> Vec<CanonError> {
 
     let mut errors = checker::check_with_entry(&combined, entry_items_start);
     errors.retain(|e| e.message() != "no `main` entry point defined");
+    // A formatting divergence is a compiler error (`canon check`
+    // refuses unformatted sources), so the editor shows it like any
+    // other diagnostic.
+    if let Some(err) = crate::formatter::format_error(source) {
+        errors.push(err);
+    }
     errors
 }

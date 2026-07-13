@@ -5,7 +5,7 @@
 //! spacing, indentation, and line breaking.
 
 use crate::ast::*;
-use crate::error::{Result, Span};
+use crate::error::{CanonError, Result, Span};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
 
@@ -19,6 +19,65 @@ pub fn format(source: &str) -> Result<String> {
     let module = parser.parse()?;
     let module = canonicalize_module(&module);
     Ok(emit_module(&module))
+}
+
+/// Canonical formatting is part of the language, so a divergence from
+/// canonical form is an ordinary compiler error — the same class of
+/// diagnostic as a sort-order or type error, and every consumer of the
+/// checker pipeline (`canon check`/`build`/`run`/`test`, the LSP)
+/// reports it through this one function. Returns the error pointing at
+/// the first place `source` diverges from its canonical form, or
+/// `None` when the source is already canonical. A source that fails to
+/// parse also returns `None`: the checker pipeline owns the
+/// better-located parse diagnostic.
+pub fn format_error(source: &str) -> Option<CanonError> {
+    let canonical = format(source).ok()?;
+    if canonical == source {
+        return None;
+    }
+    Some(CanonError::CheckError {
+        message: "not canonically formatted: run `canon fmt`".to_string(),
+        span: divergence_span(source, &canonical),
+    })
+}
+
+/// Span of the first divergence between `source` and its `canonical`
+/// form: the first differing line, from the first differing character
+/// to the end of that line. When one text is a prefix of the other the
+/// span sits at `source`'s end (canonical has more lines) or on the
+/// first surplus source line.
+fn divergence_span(source: &str, canonical: &str) -> Span {
+    let mut offset = 0usize;
+    let mut line_no = 1u32;
+    let mut src_lines = source.split_inclusive('\n');
+    let mut canon_lines = canonical.split_inclusive('\n');
+    loop {
+        match (src_lines.next(), canon_lines.next()) {
+            (Some(s), Some(c)) if s == c => {
+                offset += s.len();
+                line_no += 1;
+            }
+            (Some(s), Some(c)) => {
+                let mut column = 1u32;
+                let mut byte = 0usize;
+                for ((i, sc), cc) in s.char_indices().zip(c.chars()) {
+                    if sc != cc {
+                        byte = i;
+                        break;
+                    }
+                    column += 1;
+                    byte = i + sc.len_utf8();
+                }
+                let line_end = offset + s.strip_suffix('\n').unwrap_or(s).len();
+                return Span::new(offset + byte, line_end.max(offset + byte), line_no, column);
+            }
+            (Some(s), None) => {
+                let line_end = offset + s.strip_suffix('\n').unwrap_or(s).len();
+                return Span::new(offset, line_end, line_no, 1);
+            }
+            (None, _) => return Span::new(offset, offset, line_no, 1),
+        }
+    }
 }
 
 // ── Canonical call form ───────────────────────────────────────────────────────

@@ -117,7 +117,7 @@ canon run --addr 127.0.0.1:8080 # serve an HTTP-entry program (default: 127.0.0.
 canon build hello.can            # compile to a WASM component (.wasm)
 canon check hello.can            # check sort order and types
 canon test hello_test.can        # run tests (`X = TestResult` newtypes)
-canon fmt hello.can              # format source (use --check to verify only)
+canon fmt hello.can              # rewrite source into canonical form
 canon inspect ast hello.can      # print the parsed AST
 canon inspect tokens hello.can   # print lexer tokens
 canon bindgen file.wit          # generate Canon bindings from WIT
