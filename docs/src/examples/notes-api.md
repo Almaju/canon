@@ -86,8 +86,8 @@ Request => Response {
 - **Per-route status codes.** `Status` is a value; each arm computes
   its own, piped in with `404 -> Status`.
 
-See the tour's [Serving HTTP](../guide.md#serving-http) for the rule in
-prose.
+See [Programs & Modules](../learn/programs-and-modules.md) for the
+entry-point rule in prose.
 
 ## The Compiled Shape
 

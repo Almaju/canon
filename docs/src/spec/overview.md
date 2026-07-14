@@ -3,30 +3,14 @@
 This section defines Canon's rules: what the lexer accepts, how the
 type algebra works, how expressions evaluate, what the compiler
 enforces, and what a compiled program *is* at the WebAssembly Component
-level. The [Tour](../guide.md) motivates; this section
+level. The **Learn** chapters (starting at
+[Types & Values](../learn/types-and-values.md)) motivate; this section
 defines.
 
-## How to Read It
-
-Each chapter is self-contained and cross-referenced:
-
-- [Lexical Structure](./lexical-structure.md): tokens, identifiers,
-  literals, escapes, and what the grammar omits (comments, semicolons).
-- [Types](./types.md): the `+` / `*` / `^` type algebra, newtypes,
-  generics, recursion, and the no-inference rule.
-- [Expressions and Dispatch](./expressions.md): precedence, the
-  construction-vs-observation rule, dispatch semantics, `?`, and JSON
-  literals.
-- [Functions and Traits](./functions.md): declarations, commutative
-  calling, lambdas, traits, and the entry-point rule.
-- [Ordering Rules](./ordering.md): every place alphabetical order is
-  enforced, and the exact comparison used.
-- [Modules and Packages](./modules.md): file/module conventions,
-  automatic name resolution, project layout, and workspaces.
-- [Effects and the Async Model](./effects-and-async.md): values as
-  capabilities, suspension inference, and auto-await.
-- [Compilation and the ABI](./compilation.md): the pipeline, the memory
-  model, worlds, the WIT <-> Canon mapping, and binding files.
+The chapters (in the sidebar, in reading order) are self-contained and
+cross-referenced: lexical structure, the type algebra, expressions and
+dispatch, functions and traits, ordering, modules, effects and async,
+compilation and the ABI, and the Types-Only naming model.
 
 ## Status and Authority
 

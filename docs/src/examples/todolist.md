@@ -6,9 +6,8 @@ them, clear the completed ones -- compiled to WebAssembly and running
 **entirely in your browser**. No React, no bundler, no npm. The list
 survives a reload because the host persists it to `localStorage`.
 
-This very page is proof the model works: the documentation site you are
-reading is itself a Canon web app of the same shape. Run the todo list
-yourself from a checkout:
+(The documentation site you are reading is itself a Canon web app of
+the same shape.) Run the todo list from a checkout:
 
 ```sh
 canon run examples/todolist-web        # serves on http://127.0.0.1:8080
@@ -94,23 +93,17 @@ is pure constructors piped with `->`.
 
 ## Persistence without a `localStorage` import
 
-The guest never touches `localStorage`. It doesn't need to. A Canon web
-app's model *is* a fold over its message history, so the host persists
-the **message log** and replays it through `Update` on the next load --
-rebuilding the identical model. That is the whole persistence story: the
-generated `index.html` passes a storage key to `canonWebStart`, the host
-appends each message to `localStorage` as it is sent, and reads the log
-back on boot. If a saved log ever stops folding (say the app's message
-grammar changed), the host discards it and starts fresh rather than
-breaking. See [The Web Target](../reference/web-target.md).
+The guest never touches `localStorage` — it doesn't need to. The model
+is a fold over its message history, so the host persists the **message
+log** and replays it through `Update` on the next load, rebuilding the
+identical model. A log that stops folding is discarded rather than
+allowed to brick the app. See [The Web Target](../reference/web-target.md).
 
 ## The rest of the program
 
 The model operations are shared, ordinary Canon -- the same code would
-run in a backend. Each operation is a **result newtype** named after
-what it produces, so chaining is free (an `AddedTodo` flows anywhere a
-`Todos` is expected). The pieces are split one type per file, as the
-module system requires:
+run in a backend -- split one type per file, as the module system
+requires:
 
 - [`src/todos.can`](https://github.com/Almaju/canon/tree/main/examples/todolist-web/src/todos.can)
   -- `Todos` holds the list and its folds (`AddedTodo`, `Cleared`,
@@ -129,12 +122,8 @@ encodings, no host help. The same folds reappear, shared, in the
 
 ## What it demonstrates
 
-- **A real frontend with no framework.** The `Init` / `Update` /
-  `Todos => Html` triple *is* the app; `canon/std/web` supplies the HTML
-  helpers and the declarative event attributes (`data-msg`,
-  `data-msg-form`).
-- **State that persists, with no effect in the guest.** `localStorage`
-  is a host capability layered onto the message log -- the program stays
-  pure and would compile unchanged for a server.
-- **Dispatch as control flow.** Routing messages and branching on a
-  task's done flag are both literal dispatch; there is no `if`.
+A real frontend with no framework (the triple *is* the app, with
+`canon/std/web` supplying the HTML helpers and declarative event
+attributes); state that persists with no effect in the guest; and
+dispatch as the only control flow — message routing and the done-flag
+branch are both literal dispatch.

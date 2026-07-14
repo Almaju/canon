@@ -1,8 +1,9 @@
 # Types-Only Canon
 
-> **Status: landed and enforced.** The naming model described here is what the checker enforces today -- camelCase declarations outside binding files are a hard error, constructors are anonymous arrows, and execution is the pipe. The short list of genuinely open work is at the [end of this page](#remaining-work).
-
-Canon removed local variables with the argument "names lie; types don't." The same argument applies to the last remaining name-space: **camelCase function names are removed from the language**. Every named callable is a PascalCase declaration -- a type. What other languages spell
+Canon removed local variables with the argument "names lie; types
+don't." The same argument removes the last name-space: **there are no
+function names**. Every named callable is a PascalCase declaration -- a
+type. What other languages spell
 
 ```
 insert = (Map * String * Value) => Map { ... }
@@ -19,50 +20,46 @@ Inserted = Map
 map -> Inserted("k" * "v")
 ```
 
-The result is a language in which **the only names are type names**. Values are already unnamed (no `let`); operations are unnamed too -- an operation is identified by *what it produces*, never by a verb. Function names lie (`nowRfc3339 = () => Now` was in the stdlib -- named after RFC 3339, returning `Now`); a constructor named after its return type is checked by the compiler. The naming treadmill (`fromX`, `intoX`, `parseX`, `tryX`) disappears because there is nothing left to name.
+An operation is identified by *what it produces*, never by a verb. A
+function name can drift from what the function does; a constructor
+named after its return type is checked by the compiler.
 
-What survives: commutative calling, dispatch, `?`, lambdas, and `.` as pure field access. Removing methods removed the *names*, not the calling convention -- `x -> Foo(y)` still reads left to right, lambdas stay anonymous (dispatch arms and `Mapped` arguments never had names), and `x.Foo` vs `x -> Foo` stays field-read vs construction.
+## The Unified Declaration
 
-### The Unified Declaration
+Every declaration is `PascalName = rhs`, and the RHS shape decides the
+meaning: a type expression declares a type; a body-less signature
+declares a **shape** (a named function type others implement); a
+bodied signature named after a declared shape is a **shape
+implementation** (`ToJson = (Bool) => Json { ... }`).
 
-Every declaration is `PascalName = rhs`, and the RHS shape decides the meaning:
-
-| RHS shape | Meaning | Formerly |
-|---|---|---|
-| type expression (`A * B`, `A + B`, `T^N`, alias) | type definition | type definition |
-| signature, no body | **shape** -- a named function type others implement | trait declaration / callback type |
-| signature + body, name = a declared shape | **shape implementation** | trait implementation |
-
-A bodied declaration must be named after a declared shape or the type it constructs -- and when the name *is* the constructed type, the name is redundant and the declaration is written as an anonymous arrow (below). Anything else is a compile error, checkable from signatures alone. Declaring a *new* body-less shape is itself a checker error until shapes can do something a result newtype cannot ([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype)); the two standing shapes are the compiler's interpolation hooks, `ToJson` and `ToHtml`, which programs implement but never re-declare.
-
-### Anonymous Constructors -- `(A) => B { ... }`
-
-A constructor named after its return type repeats information the signature already carries (`Url = (String) => Result<Url, InvalidUrl>` spells `Url` twice). So the constructor declaration form is the **anonymous arrow** -- the typed edge itself, with no name at all:
+A bodied declaration named after anything else is a compile error --
+except when the name is the type it constructs, in which case the name
+is redundant and the declaration is the **anonymous arrow**:
 
 ```
 String => Result<Url, InvalidUrl> { ... }        # the Url constructor
-Bool => Json { ... }                             # family members are just arrows
-Int => Json { ... }
 Unit => Map { ... }                              # the empty-map constructor
 Request => Response { ... }                      # an entire HTTP service
 ```
 
-The constructed type is the return type with `Result`/`Option`/`Future` peeled, so fallible constructors stay anonymous too. Call sites are unchanged -- a constructor is still invoked by its output type (`Url("...")?`); the arrow only removes the redundant *declaration-site* name. A single named input drops its parentheses (`Request => Response` is exactly `(Request) => Response`); products and generic inputs keep theirs.
+The constructed type is the return type with `Result`/`Option`/`Future`
+peeled. Call sites are unchanged (`Url("...")?`). This is the
+language's **only** function form: top level it declares a constructor,
+in expression position it is a lambda, and every dispatch arm is one.
+Declaring a *new* body-less shape is itself a checker error until
+shapes can do something a result newtype cannot
+([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype));
+the two standing shapes are the interpolation hooks `ToJson` and
+`ToHtml`, which programs implement but never re-declare.
 
-`Unit` is the name of "no input": a nullary constructor is `Unit => Map`, not `() => Map` -- `()` is not a declaration form. The CLI entry pairs an input world type with an output one, mirroring the HTTP handler: `Args => Exit` (`Args = List<String>`, `Exit = Int`, both from `canon/std`) is the argument-vector-in, exit-status-out shape, selected by its signature exactly as the HTTP handler `Request => Response` is. The arg-less `Unit => Program` (`Program = Unit`) remains valid for programs that read no arguments.
+**Constructors form families.** A type may have any number of
+constructor implementations, distinguished by input product (`Json`
+has `(Bool)`, `(Float)`, `(Int)`, and `(String)` constructors), with
+at most one implementation per (name, input product) pair in the whole
+program. Traits and overloads collapse into one concept: *a PascalCase
+name is a family of implementations selected by input product*.
 
-This is not a second function syntax -- it is the language's **only** function form, appearing at every level: top level it declares a constructor, in expression position it is a lambda, and every dispatch arm is one (`* False => Unit { ... }`). Named declarations remain for exactly one thing: shape *implementations* (`ToJson = (Bool) => Json { ... }`), where the name carries the only information the types cannot. The rule reads: *if the types fully determine the operation, it has no name; if they don't, the name is a result newtype* -- and declaring a new body-less shape is itself a checker error until shapes can do something a newtype cannot ([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype)).
-This is not a second function syntax -- it is the language's **only** function form, appearing at every level: top level it declares a constructor, in expression position it is a lambda, and every dispatch arm is one (`* False => Unit { ... }`). Named declarations remain for exactly one thing: shape *implementations* (`ToJson = (Bool) => Json { ... }`), where the name carries the only information the types cannot. The rule reads: *if the types fully determine the operation, it has no name; if they don't, the name is a result newtype.*
-
-Coherence: at most one arrow per (input product, constructed type) pair -- the same family-disjointness rule, with nothing left to name a conflict after.
-
-The named form (`Url = (String) => ...`) still parses and means the same thing, but it is not a second spelling: `canon check --fix` rewrites it to the anonymous arrow whenever the name is exactly the constructed type, and the format gate (`canon check`/`run` refuse non-canonical files) makes the arrow the one form that survives.
-
-**Constructors form families.** A type may have any number of constructor implementations, distinguished by input product: `Json` has `(Bool)`, `(Float)`, `(Int)`, and `(String) => Result<Json, MalformedJson>` constructors. Coherence generalizes from traits: at most one implementation per (name, input product) pair in the whole program. Traits and constructor overloads thereby collapse into one concept -- *a PascalCase name is a family of implementations selected by input product*.
-
-### Three Operators -- `->` executes, `.` reads, `=>` declares
-
-Three symbols, three non-overlapping jobs:
+## Three Operators
 
 | Symbol | Job | Editor completion after it |
 |---|---|---|
@@ -70,163 +67,55 @@ Three symbols, three non-overlapping jobs:
 | `.` | **read** -- field access only | the value's fields/components |
 | `=>` | **declare** -- every constructor / shape / lambda / dispatch-arm definition | -- |
 
-The point of the split: `.` and `->` stop competing to mean "call." `.` only *reads* a component; `->` *applies* a function **and** pipes a scrutinee into a dispatch (`value -> ( * ... )`). So typing `.` offers fields and typing `->` offers functions -- autocompletion on both, for different things. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.**
-
-Every construct in one table:
-
-| Migration-era form | Endgame form |
-|---|---|
-| `"hi".Print()` | `"hi" -> Print` |
-| `String.A().B().C()` | `String -> A -> B -> C` |
-| `alice.Compare(bob)` / `bob.Compare(alice)` | `alice -> Compare(bob)` / `bob -> Compare(alice)` |
-| `Now()` (zero input) | `-> Now` |
-| `"41".Int()?.add(1)` | `"41" -> Int? -> Add(1)` |
-| declaration `(A * B) => C { ... }` | `(A * B) => C { ... }` |
-| shape impl `ToJson = (Bool) => Json { ... }` | `ToJson = (Bool) => Json { ... }` |
-| lambda `(Int) => Int { ... }` | `(Int) => Int { ... }` |
-| dispatch arm `* False => Unit { ... }` | `* False => Unit { ... }` |
-| dispatch `bool.( ... )` | `bool -> ( ... )` |
-| field `user.Birthday` | unchanged |
-The point of the split: `.` and `->` do not compete to mean "call." `.` only *reads* a component; `->` *applies* a function **and** pipes a scrutinee into a dispatch (`value -> ( * ... )`). So typing `.` offers fields and typing `->` offers functions. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.** A `->` at a declaration site is a parse error with a targeted message, as is the retired `value.( ... )` dispatch.
-
-The declaration/execution mirror is the payoff -- the same shape, `=>` when defining, `->` when running:
+`.` and `->` do not compete to mean "call", so `.` completion offers
+fields and `->` completion offers every operation reachable from the
+value's type -- discovery is the payoff of the split. `=>` gives
+declaration a spelling distinct from execution; a `->` at a
+declaration site is a parse error:
 
 ```
 (From * String * To) => String { ... }         # declare
 string -> Substring(From(1) * To(4))           # execute
 ```
 
-Commutativity is preserved: `(A * B) => C` is reachable from either side (`a -> C(b)` or `b -> C(a)`), because the pipe fills one component of the input product and the rest follow. A function stays linked to every type in its input, never bound to a single receiver.
+## What Replaces Each Kind of Function
 
-**Two decisions gated implementation; both have landed:**
+- **Conversions and creations** are constructors: `openFile` ->
+  `File(Path)` ([Types § Conversions](./types.md#conversions)).
+- **Accessors** construct the accessed thing: `map -> Value("k")?`
+  reads "the Value in this Map at this key, which might not exist."
+- **Endomorphisms** (output type = an input type, the one place types
+  underdetermine the operation) take **result newtypes**:
+  `Inserted = Map`, `Joined = String`. Checked, not conventional: an
+  arrow constructing a type in its own input product is an error
+  directing to the newtype. Substitutability makes chaining free --
+  `Map() -> Inserted("a" * "1") -> Removed("a")`.
+- **Effects produce evidence**: a write returns `Written = Path`; a
+  function accepting `(Written)` requires proof the write happened
+  ([Effects](./effects-and-async.md)).
+- **Shared vocabulary** is a merged result newtype with a family:
+  every container declares `Length = Int` and contributes its arrow.
+  Arithmetic and comparison are the pipe vocabulary (`Sum`, `Product`,
+  `Eq`, `Lt`, ...).
+- **Entry points** are world shapes selected by signature
+  ([Functions § The Entry Point](./functions.md#the-entry-point)); a
+  literal `main` name is an error.
+- **The FFI boundary**: generated bindings mint a result newtype per
+  WIT function (`Int => ExitWithCode { "exit-with-code" }`), so even
+  the boundary is types-only; camelCase in a Canon program means
+  exactly "this identifier is foreign"
+  ([Compilation § Binding Files](./compilation.md#binding-files)).
 
-1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon check --fix` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
-2. *Declaration arrow* -- `=>` (minimal, "maps to"). `->` at a declaration site is now a parse error (`expect_decl_arrow` in `src/parser/parser.rs`): declarations use `=>`, execution uses `->`.
+## Name Resolution
 
-Auto-discovery is the headline feature, not a side effect: `->` completion queries "functions whose input product mentions this type," `.` completion queries the value's fields. Both providers exist in the LSP (`textDocument/completion`, `src/lsp/completion.rs`): after `->` it offers every reachable declaration whose input product contains the piped value's type -- constructors, family members, piped newtype wraps -- plus the builtin pipe vocabulary applicable to that type; after `.` it offers the value's product components (and 1-based positional indexes when a component type repeats). The v1 candidate universe is the open buffer, its import closure, and the bundled stdlib's wrapper tier; project files the buffer doesn't yet reference are not enumerated, and camelCase FFI bindings are excluded (they are reached through their PascalCase result newtypes).
+Type names recur across files (`Value`, `Key`, `Length`), so:
 
-Details still to pin: first-class function references (today `Int.Double` for passing a function as a value) collide with `.`-means-field, so those become either bare names resolved by expected type or plain lambdas; and zero-input application spelled `-> Now` (leading arrow) needs a parser rule for statement-initial `->`.
-
-`canon check --fix` canonicalizes every call, and the rule is *values flow through pipes; literals are born in the parens*: a computed first input pipes (`a -> Name(b)`), a lone scalar literal stays inside the construction (`Greeting("hi")`), builtin vocabulary (`Sum`, `Print`, `Joined`, ...) has no prefix form so literals keep piping into it, and operand order is never reordered. See [Expressions § Canonical Call Form](./expressions.md#canonical-call-form) for the full case list. The retired forms and their canonical replacements:
-
-| Retired form | Canonical form |
-|---|---|
-| `"hi".Print()` | `"hi" -> Print` |
-| `string.A().B().C()` | `string -> A -> B -> C` |
-| `alice.Compare(bob)` / `bob.Compare(alice)` | `alice -> Compare(bob)` / `bob -> Compare(alice)` |
-| `"41".Int()?.add(1)` | `Int("41")? -> Sum(1)` |
-| dispatch `bool.( ... )` | `bool -> ( ... )` |
-| arm `* (False) => Unit { ... }` | `* False => Unit { ... }` |
-| named ctor `Url = (String) => Result<Url, _> { ... }` | `String => Result<Url, _> { ... }` |
-| shape impl `ToJson = (Bool) => Json { ... }` | unchanged -- implementations keep their name |
-| field `user.Birthday` | unchanged -- `.` reads |
-
-### What Replaces Each Kind of Function
-
-- **Conversions and creations** are constructors ([Types § Conversions](./types.md#conversions)): `fromBool` -> `Json(Bool)`, `openFile` -> `File(Path)`.
-- **Accessors** construct the accessed thing: `get = (Map * String) => Option<Value>` becomes a `Value` constructor -- `map -> Value("k")?` reads "the Value in this Map at this key, which might not exist." `keys` -> `Keys = List<Key>` + `(Map) => Keys`.
-- **Endomorphisms** -- operations whose output type equals an input type, the one place a type genuinely underdetermines the function -- take **result newtypes**: `Inserted = Map`, `Removed = Map`, `Joined = String`. This is a *checked rule*, not a convention: an arrow that constructs a type appearing in its own input product is a checker error directing to the newtype. Newtype substitutability makes chaining free: `Map() -> Inserted("a" * "1") -> Removed("a")` composes because `Inserted` flows anywhere `Map` is expected. The verb's information relocates into a name that is checked, sorted, globally resolvable, and usable in downstream signatures.
-- **Effects produce evidence**: `write` becomes `Written = Path` + `(Contents * Path) => Result<Written, IoError>`. A downstream function that accepts `(Written)` instead of `(Path)` *requires proof the write happened* -- capability-style sequencing with no new machinery. Effect capabilities themselves are ordinary threaded values (`Stdin`, `Stdout`, `Stderr`, `Network` -- received as parameters, never conjured; see [Effects](./effects-and-async.md)); `Print` is the single tokenless exception.
-- **Shared vocabulary** -- operations whose meaning spans types -- are merged result newtypes with a constructor family: `Length = Int` declared identically by `map.can`, `set.can`, and friends merges into one type, and `(Map) => Length`, `(Set) => Length` are family members selected by receiver. Arithmetic and comparison take the noun/pipe vocabulary: `Sum`, `Product`, `Difference`, `Quotient`, `Remainder` and `Eq`/`Lt`/`Le`/`Gt`/`Ge` (`2 -> Sum(3)`, `price -> Product(quantity)`), with `Maximum`/`Minimum` as stdlib newtypes over `Int * OtherInt` -- non-commutative cases disambiguated by `OtherInt` under the ordinary binding rule. The two standing shapes are `ToJson`/`ToHtml`, the literal-interpolation hooks.
-- **Higher-order operations** take lambdas -- the anonymous arrow in expression position: `list -> Mapped((Int) => Int { Int -> Product(2) })`. `Mapped`/`Filtered` are builtin vocabulary today (linear-memory layout, per [Minimal Primitives](#minimal-primitives)). A bare-type-parameter return (a would-be `Fold`) is the canonical justification for re-admitting shapes; none is implemented yet.
-- **Entry points** are world shapes, selected by signature, never by name: the CLI entry `Args => Exit` (argv in, exit status out), the HTTP handler `Request => Response`, and the web triple `Model => Html` (view) with `Unit => Init` and `Model * Msg => Update` marker newtypes. A literal `main` name is a checker error -- entries are anonymous.
-- **The FFI boundary.** WIT functions are kebab-case verbs; no mechanical mapping can invent result nouns. Generated bindings are string-anchored anonymous constructors minting a result newtype per function (`Int => ExitWithCode { "exit-with-code" }` -- the string is the WIT fragment verbatim), so even the boundary is types-only. The camelCase alias form survives only in *hand-written* binding files for the two shapes the string-anchored lowering doesn't cover yet -- resource methods (pending resource lowering) and generic combinators (pending generic externs) -- so camelCase in a Canon program has exactly one meaning: *this identifier is foreign*.
-
-### Name Resolution Under Types-Only
-
-Moving every operation into the type namespace multiplies name pressure (`Item`, `Value`, `Key` recur across files), so resolution sharpens:
-
-1. **Structurally identical duplicates are one type.** Type equality is syntactic (alphabetical order gives every type one canonical spelling), so `Length = Int` declared by both `map.can` and `set.can` merges into a single type -- the co-declared `(Map) => Length` and `(Set) => Length` arrows are then ordinary family members selected by receiver (`map -> Length`, `set -> Length`; pinned by `tests/runtime/map_set_length.can`). *Differing* bodies under one name are a hard error.
-2. **Constructor families cross files.** A name declared only as function bodies co-resolves across files: a reference loads *all* declaring files, and the error is input-product overlap, not co-declaration.
-3. **Distinct same-shaped operations stay distinct** the same way same-typed parameters do: newtypes. Two different `String -> Int` operations are two result newtypes (`Length = Int`, `ByteCount = Int`) -- which is a feature: `Length` and `Age` can no longer accidentally interchange.
-
-### Worked Example
-
-`map.can` as shipped (excerpt -- the full file is `packages/canon/std/src/map.can`):
-
-```
-Inserted = Map
-
-Map * String * Value => Inserted {
-    Map -> (
-        * Empty => Inserted { Empty() -> Node(String * Value) }
-        * Node => Inserted {
-            String -> Lt(Node.Key) -> (
-                * False => Inserted {
-                    String -> Eq(Node.Key) -> (
-                        * False => Inserted {
-                            Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value)
-                        }
-                        * True => Inserted { Node.Rest -> Node(String * Value) }
-                    )
-                }
-                * True => Inserted { Map -> Node(String * Value) }
-            )
-        }
-    )
-}
-
-Value = String
-
-Map * String => Option<Value> {
-    Map -> (
-        * Empty => Option<Value> { None() }
-        * Node => Option<Value> {
-            Node.Key -> Eq(String) -> (
-                * False => Option<Value> { Node.Rest -> Value(String) }
-                * True => Option<Value> { Node.Value -> Some }
-            )
-        }
-    )
-}
-```
-
-Call site: `Map() -> Inserted("a" * "1") -> Inserted("b" * "2") -> Value("a")?`. Note `Value` carries two constructors -- the total newtype wrap `Value(String)` and the fallible lookup `Value(Map * String)` -- a family with disjoint inputs, which is the feature working, not a collision. The recursive call stores `Inserted` into the `Rest = Map` field through ordinary newtype substitutability.
-
-One honest limitation: `set.can`'s operations are `Added = Set` and `Dropped = Set`, not a second `Inserted`/`Removed`. `Inserted = Map` and `Inserted = Set` are *differing* type bodies under one name, which is a hard clash whenever both files load (and `Length`'s structural merge loads both). Reference-site-only ambiguity for type names (below) is what will let the shared vocabulary return; until it lands, cross-container endomorphism names must be distinct.
-
-### Costs, Named Honestly
-
-The information doesn't disappear; it relocates -- `Inserted` is `insert` wearing PascalCase, and the claim is only that the relocation makes the name checked, sorted, resolvable, and usable as evidence. Naming pressure shifts to English participles, and recursive helper chains are the stress test: the pure-Canon JSON parser (~30 same-signature anonymous arrows over result newtypes) was ported early on purpose, the style held, and the fallback rule that hedged against full removal was retired. Overload resolution enters the checker, mitigated by the absence of inference: selection uses declared types only, and disjointness is checked at declaration.
-
-### Minimal Primitives
-
-The compiler supplies a builtin only when it touches something the language *cannot* express. The test is mechanical -- a builtin is justified by exactly one of:
-
-1. **wasm numerics** -- `Int`/`Float` arithmetic and the base comparisons (`lt`, `eq`); machine ops have no decomposition.
-2. **linear-memory layout** -- `String`'s `byteAt`/`length`/`substring`/`concat`, `List`'s slot access and growth (`get`/`first`/`append`/`concat`/`map`); Canon values don't expose their own bytes.
-3. **canonical-ABI machinery** -- `Parallel`/`Race` waitable sequences, `Handle` resources, async lift/lower.
-4. **a host boundary** -- `print` (stdout), the `canon:builtins/*` and `wasi:*` imports.
-
-Everything else lives in Canon source, like any user code. Already pure Canon: `Map`, `Set`, the entire JSON parser and validator, `Int(String)` parsing, `TestResult`, the HTML element vocabulary -- and now `Bool`'s algebra (`And`/`Or`/`Not` in `canon/std/bool.can` are three dispatches; the compiler's `i32.and`/`or`/`eqz` arms are deleted) and the derived comparisons (`Ne`/`Le`/`Gt`/`Ge` on `Int`/`Float`/`String` in `canon/std/{int,float,string}.can` -- each is one dispatch over the base `Lt`/`Eq`, with `Gt` as `Lt` operand-swapped; the derivations are IEEE-exact under NaN, and the compiler's derived-comparison arms are deleted). Note the boolean *operations* need no primitives at all -- dispatch on the union is the machine op.
-Everything else lives in Canon source, like any user code. Already pure Canon: `Map`, `Set`, the entire JSON parser and validator, `Int(String)` parsing, `TestResult`, the HTML element vocabulary, and `Bool`'s algebra (`And`/`Or`/`Not` in `canon/std/bool.can` are three dispatches; the compiler's `i32.and`/`or`/`eqz` arms are deleted). The boolean *operations* need no primitives at all -- dispatch on the union is the machine op.
-
-Queued to move out of the compiler as their blockers clear:
-
-| Builtin today | Moves when |
-|---|---|
-| derived comparisons (`ne`, `le`, `gt`, `ge` on `Int`/`Float`/`String`) | with the comparison-vocabulary port (each is one dispatch over `lt`/`eq`) |
-| `String(Int)` decimal rendering | needs a load trigger (nothing in `String(42)` references a file); one digit-recursion over `div`/`rem` + `String(Byte)` |
-| `List<String>.Json()` | blocked on the `list.get`-on-`List<String>` [codegen gap](../reference/codegen-gaps.md) (element types erased) |
-| `print` | becomes a binding + `Print` wrapper when capability entry points land |
-
-### Remaining Work
-
-1. **Constructor families, in-file** -- [x] landed. Several self-named constructors per type, selected by the first input's type; duplicate (receiver, name, first-input) definitions are a checked error (`tests/runtime/ctor_family.can`).
-   1b. **Anonymous arrows** -- [x] landed. `(A) => B { ... }` declares the `B` constructor (`tests/runtime/ctor_arrow.can`); the named form stays legal until slice 6.
-2. **Stdlib cleanup** -- [x] landed. Every wrapper-layer camelCase function is ported except `cli/exit` (a `-> Unit` sink, exempt until capabilities). Accessors and predicates are constructors (`Value`, `Keys`, `Length`, `Contains = Bool`); HTML helpers are tag newtypes (`Button`/`Div`/... `= Html`, escaping via `Escaped`); `assert` is the `Bool => TestResult` constructor (tests themselves are result newtypes of `TestResult` named for what they assert, each with an anonymous nullary constructor); URL fetch is the `Fetched = Body` evidence constructor in its own file. camelCase survives only in binding files -- the FFI boundary, as designed.
-3. **Cross-file constructor families** -- [~] partially landed. A name declared *only* as function bodies co-resolves across files (all declaring files load; the checker's coherence guard reports real conflicts). Remaining: `Owner.Item` type-position qualification, reference-site-only ambiguity for type names.
-4. **Minimal primitives** -- [~] in progress. A compiler builtin is justified only by wasm numerics, linear-memory layout, canonical-ABI machinery, or a host boundary (see [Minimal Primitives](#minimal-primitives)); everything else moves to stdlib Canon. `Bool`'s `And`/`Or`/`Not` landed (pure dispatch), then the derived comparisons `Ne`/`Le`/`Gt`/`Ge` on `Int`/`Float`/`String` (one dispatch over `Lt`/`Eq` each). Remaining: `String(Int)` rendering, `print`.
-5. **Stdlib port** -- [x] landed, `json.can` included. The recursive-descent parser is ~30 anonymous arrows over result newtypes and the style held; **checkpoint verdict: full removal** (the fallback rule is retired).
-6. **Enforcement** -- [x] landed, then closed tight. camelCase outside binding files (and non-test functions) is a hard checker error, not a warning (`check_function`/`check_type_def` in `src/checker/mod.rs`); entry points are anonymous shape implementations selected by their world-shaped return (`main` as a literal name is itself a checker error unless synthesized); the larger syntax decision -- pipe-only execution plus a distinct `=>` declaration arrow -- is implemented and enforced by the parser. The second wave closed the remaining holes: a bodied declaration's name must be a declared shape or the type it constructs (the receiver-extraction path no longer admits arbitrary verbs); endomorphism arrows on the bare type are rejected (result newtypes are the rule, not the doctrine); the named constructor form is rewritten to the anonymous arrow by `canon check --fix`; the canonical call form is *values flow, literals are born in the parens*; implicit dependency threading is removed (the pipe is the one spelling of passing a value); and a static string the `Json`/`Html` literal expresses must be the literal.
-7. **Spec rewrite** -- this page's content folds into the Functions / Traits / Ordering spec pages; the pre-migration descriptions there are replaced.
-The model above is enforced end to end; these are the open slices, each independently shippable:
-
-- **LSP discovery providers** -- the reason for the operator split: `->` completion querying "functions whose input product mentions this type," `.` completion querying the value's fields. The LSP today ships hover, go-to-definition, formatting, and diagnostics; no completion provider yet.
-- **Minimal-primitive moves** -- the four builtins in the table above.
-- **Reference-site ambiguity for type names** -- two files declaring *differing* bodies under one name is currently a load-time hard error; moving the error to the ambiguous *reference* site (plus `Owner.Item` type-position qualification for the genuine collisions) is what lets `Inserted` mean both the Map and Set operation.
-- **Shapes return as justifications land** -- bare-type-parameter returns (`Fold`), generic constraints (`<T: Show>`), and default bodies are the three things a result newtype cannot do; the body-less shape declaration is re-admitted per case as each is implemented ([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype)).
-- **First-class function references** -- passing a constructor as a value (today every higher-order call site writes an inline lambda). Colliding with `.`-means-field, the likely form is bare names resolved by expected type.
-- **Statement-initial `->`** -- zero-input application spelled `-> Now` needs a parser rule; today zero-arg calls stay prefix (`Now()`).
-- **Capability entry points** -- printing that returns the capability (`Stdout -> Print("a") -> Print("b")`), retiring the tokenless `print` sink.
-- **Extern lowering completeness** -- resource methods and generic combinators still bind through the camelCase alias form in hand-written binding files; each lands (resource lowering, generic externs) and the alias form retires.
+1. **Structurally identical declarations are one type** -- `Length =
+   Int` in both `map.can` and `set.can` merges; the co-declared arrows
+   become family members. *Differing* bodies under one name are a hard
+   error.
+2. **Function-only names co-resolve across files**; the error is input
+   overlap, not co-declaration.
+3. **Distinct same-shaped operations take distinct newtypes**
+   (`Length = Int`, `ByteCount = Int`) -- which is a feature: they can
+   no longer accidentally interchange.

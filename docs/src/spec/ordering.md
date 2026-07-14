@@ -66,11 +66,9 @@ canon check --fix file.can  # same, sorting everything into canonical order firs
 ```
 
 `canon check --fix` sorts type definitions, function declarations, and
-dispatch arms into canonical order before checking. Ordering errors
-are reported for code that skipped `--fix`, never as a hand-sorting
-chore. Since `canon check` and `canon run` refuse files that are not
-canonically formatted, violations surface immediately rather than in
-review.
+dispatch arms into canonical order before checking; since `canon check`
+and `canon run` refuse files that are not canonically formatted,
+violations surface immediately rather than in review.
 
 ## Source-Level Only, Never a Wire Format
 
@@ -80,12 +78,3 @@ renumbers everything after it. Serialized values must therefore always
 carry variant **names**, not indices. At the Component Model boundary
 the WIT file's declared order governs the ABI, and the compiler maps
 between the two.
-
-## Rationale
-
-Ordering is a constant source of bikeshedding and diff noise. Forcing
-one canonical order makes code read the same regardless of author and
-makes "moved a declaration" disappear as a category of change. The rule
-is also why Canon needs newtypes for disambiguation instead of parameter
-names: if `(Name * Greeting)` were legal, argument order would be a
-choice again.

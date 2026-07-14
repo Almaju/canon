@@ -143,5 +143,6 @@ Three places, all diagnostic:
 3. **`canon inspect`**: shows which functions the compiler marked
    suspending.
 
-Day-to-day code sees none of it. See the [Async chapter of the
-Tour](../guide.md#async) for the design rationale and comparisons.
+Day-to-day code sees none of it. See the [Async
+chapter](../learn/async-without-keywords.md) for the working
+introduction.

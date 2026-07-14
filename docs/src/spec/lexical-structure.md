@@ -39,8 +39,8 @@ There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
 [Modules and Packages](./modules.md)). There is also no `extern` and no
 `bindings` keyword: the grammar has zero packaging or FFI vocabulary,
 and a [binding file](./compilation.md) is recognized by its shape and
-path alone. The absences are deliberate; the [Tour](../guide.md) lists
-what replaces each.
+path alone. The absences are deliberate; [The Philosophy](../philosophy.md)
+lists what replaces each.
 
 ## Literals
 

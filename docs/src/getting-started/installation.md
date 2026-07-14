@@ -1,13 +1,8 @@
 # Installation
 
-## Prerequisites
-
-None at runtime. Canon ships a single prebuilt `canon` binary with the
-`wasmtime` Component Model runtime embedded: no Rust toolchain, no
-`rustc`/`cargo` at build time, no external linker.
-
-Building the compiler from source (a contributor concern, not a user
-one) needs stable Rust via [rustup](https://rustup.rs).
+Canon is a single prebuilt binary with the runtime embedded — no Rust
+toolchain, no external linker, no prerequisites. (Building the
+*compiler* from source is a contributor concern and needs stable Rust.)
 
 ## Install
 
@@ -27,34 +22,18 @@ curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -
 
 ## Toolchains
 
-One installation holds both channels, and the `canon` on your `PATH` is a thin
-launcher that picks the active one:
-
-- **stable** (the fallback) -- versioned releases (`vX.Y.Z`), promoted from a
-  tested nightly.
-- **nightly** -- a rolling prerelease rebuilt automatically on every push to
-  `main`. Latest features, less settled.
-
-Switching is one word, scoped by where you run it -- no config file in your
-project, and no separate "default" vs "override" machinery:
+Two channels — **stable** (versioned releases, the fallback) and
+**nightly** (rebuilt on every push to `main`) — live in one
+installation, and the `canon` on your `PATH` picks the active one:
 
 ```sh
-canon use nightly       # this directory (and below) now uses nightly --
-                        # installs it first if it isn't on disk
-cd ~ && canon use nightly   # run it in your home directory: global default
-canon use               # show the active toolchain, why, and what's installed
+canon use nightly           # this directory (and below) now uses nightly
+canon use                   # show the active toolchain and why
+canon nightly run app.can   # one-shot: the channel as the first word
 ```
 
-For a single command, the channel is the first word -- like a dispatch arm:
-
-```sh
-canon nightly run app.can
-canon stable test suite.can
-```
-
-A bare `canon` resolves: explicit channel word -> nearest `canon use` ancestor
--> `stable`. Selections live centrally in `~/.canon/uses`; to remove a
-toolchain from disk, delete `~/.canon/toolchains/<channel>`.
+Run `canon use` from your home directory to set a global default.
+There is no project config file; selections live in `~/.canon/uses`.
 
 ## Verify
 
@@ -71,10 +50,7 @@ canon upgrade --check      # check whether a newer stable release is available
 
 ## Editor Support
 
-The Zed extension at
-[`editors/zed-canon`](https://github.com/Almaju/canon/tree/main/editors/zed-canon)
-provides syntax highlighting and a built-in language server. Install it
-via Zed's *Install Dev Extension* command;
-[`editors/README.md`](https://github.com/Almaju/canon/blob/main/editors/README.md)
-has the full instructions. The extension runs the same `canon` binary
-(`canon lsp` subcommand), so there is no separate LSP install.
+Extensions for Zed and VS Code live under
+[`editors/`](https://github.com/Almaju/canon/tree/main/editors) —
+syntax highlighting plus a language server that is just the `canon`
+binary (`canon lsp`), so there is nothing separate to install.
