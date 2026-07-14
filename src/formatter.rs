@@ -646,7 +646,7 @@ fn emit_fn_params(func: &FunctionDef) -> String {
         } else {
             let mut parts = vec![recv.name.clone()];
             for p in &func.params {
-                parts.push(emit_param(p));
+                parts.push(emit_type_expr(&p.ty));
             }
             parts.join(" * ")
         }
@@ -656,11 +656,11 @@ fn emit_fn_params(func: &FunctionDef) -> String {
 }
 
 fn emit_param_list(params: &[Param]) -> String {
-    params.iter().map(emit_param).collect::<Vec<_>>().join(", ")
-}
-
-fn emit_param(p: &Param) -> String {
-    emit_type_expr(&p.ty)
+    params
+        .iter()
+        .map(|p| emit_type_expr(&p.ty))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn emit_generic_params(params: &[GenericParam]) -> String {

@@ -29,7 +29,7 @@ leading underscores with special meaning.
 There are none. Every word in a Canon program is an identifier; the
 grammar is carried entirely by punctuation (`=`, `=>`, `->`, `.`, `?`,
 `+`, `*`, `^`, and the bracket pairs). One name is reserved without
-being a keyword: a type may not be declared `Self` (the compiler uses
+being a keyword: no declaration may be named `Self` (the compiler uses
 it internally to normalize constructors), exactly as an entry may not
 be named `main`.
 

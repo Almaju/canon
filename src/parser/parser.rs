@@ -114,6 +114,19 @@ impl Parser {
         }
 
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
+        // `Self` is the internal name every constructor is normalized to
+        // (`resolve_new_syntax`), so a user declaration under that name
+        // would masquerade as a constructor of its own receiver — reject
+        // it here, where user-written source is still distinguishable
+        // from the sentinel, like the literal-`main` rejection.
+        if first.lexeme == "Self" {
+            return Err(CanonError::ParseError {
+                message: "the name `Self` is reserved for the compiler's constructor \
+                          normalization — pick another type name"
+                    .to_string(),
+                span: first.span,
+            });
+        }
         let first_ident = Ident {
             name: first.lexeme.clone(),
             span: first.span,

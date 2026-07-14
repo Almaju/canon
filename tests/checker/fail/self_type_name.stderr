@@ -1,2 +1,1 @@
 error[tests/checker/fail/self_type_name.can:1:1]: the name `Self` is reserved for the compiler's constructor normalization — pick another type name
-error[tests/checker/fail/self_type_name.can:1:1]: `Self` is never used: dead code is not allowed to accumulate; delete it or wire it into the program
