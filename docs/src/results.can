@@ -140,18 +140,10 @@ String * Needle * Start * Step => PrefixMatch {
 Query => Results {
     Query -> Hits -> String -> Length -> Eq(0) -> (
         * False => Results {
-            "<div class=\"results\"><div class=\"results-head\">Matches for &#8220;"
-                -> Joined(Query.String)
-                -> Joined("&#8221;</div>")
-                -> Joined(Query -> Hits -> String)
-                -> Joined("</div>")
-                -> Html
+            <div class="results"><div class="results-head">Matches for &#8220;{Query -> String}&#8221;</div>{Query -> Hits}</div>
         }
         * True => Results {
-            "<div class=\"results\"><div class=\"results-head\">No matches for &#8220;"
-                -> Joined(Query.String)
-                -> Joined("&#8221;</div></div>")
-                -> Html
+            <div class="results"><div class="results-head">No matches for &#8220;{Query -> String}&#8221;</div></div>
         }
     )
 }
