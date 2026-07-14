@@ -93,5 +93,9 @@ Unix => Now {
 }
 
 Int => TimePart {
-    `{Int -> Quotient(3600) -> Padded(2)}:{Int -> Quotient(60) -> Remainder(60) -> Padded(2)}:{Int -> Remainder(60) -> Padded(2)}`
+    `{Int -> Quotient(3600) -> Padded(2)}:{Int -> Quotient(60) -> Remainder(60) -> Padded(2)}:{
+        Int
+            -> Remainder(60)
+            -> Padded(2)
+    }`
 }

@@ -232,7 +232,10 @@ These are the non-obvious rules the code won't spell out. Together with
   keep piping; multi-input calls keep the pipe; zero-arg and `List(…)` stay
   prefix. A `Joined` chain containing literal text folds into a backtick format
   string (`fold_joined_chain`) — all-computed chains stay pipes (`Joined` is
-  also list concat; only literal text proves strings). Semantics-preserving because `compile_method_call` routes any type-name
+  also list concat; only literal text proves strings). An interpolation hole
+  that overflows its line breaks onto indented lines (`emit_base_at` /
+  `LitWriter` in `src/formatter.rs`); static literal text is content and never
+  moves. Semantics-preserving because `compile_method_call` routes any type-name
   method through the single `compile_constructor` path unless the name is a
   builtin or has a func-table body. Scalar newtypes erase, so `static_recv_type`
   recovers the type from the syntactic constructor name. The checker mirrors this

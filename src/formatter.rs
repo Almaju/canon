@@ -913,8 +913,11 @@ fn emit_expr(expr: &Expr, indent: usize) -> String {
     // Multi-line needed.
     if chain.len() > 1 || has_dispatch {
         emit_chain_multi(&chain, indent)
+    } else if let [ChainPart::Base(e)] = chain.as_slice() {
+        // A single expression with no `->` to break at — a literal can
+        // still break inside its interpolation holes.
+        emit_base_at(e, indent)
     } else {
-        // A single expression with no chain to break — emit as-is.
         emit_chain_inline(&chain)
     }
 }
@@ -1003,6 +1006,10 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
             out.push_str(&before_str);
         } else if before.len() > 1 {
             out.push_str(&emit_chain_broken(before, indent));
+        } else if let [ChainPart::Base(e)] = before {
+            // A lone base with no `->` to break at — a literal can
+            // still break inside its interpolation holes.
+            out.push_str(&emit_base_at(e, indent));
         } else {
             out.push_str(&before_str);
         }
@@ -1049,7 +1056,7 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
     for part in chain {
         match part {
             ChainPart::Base(e) => {
-                out.push_str(&emit_base_inline(e));
+                out.push_str(&emit_base_at(e, indent));
             }
             ChainPart::Method { method, args, .. } => {
                 out.push('\n');
@@ -1082,6 +1089,133 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
 }
 
 // ── Base Expression (inline) ────────────────────────────────────────────────
+
+/// Indent-aware base rendering: a literal breaks an interpolation hole
+/// onto its own indented lines when the hole would push its line past
+/// [`MAX_WIDTH`] — the one place a single expression can grow without a
+/// `->` to break at. Static text is content and never moves (an HTML
+/// literal's own newlines and indentation stay verbatim; each hole is
+/// judged against the column it actually sits at), and the braces stay
+/// glued to the surrounding text:
+///
+///     `<td>{
+///         1 -> Inline(String)
+///     }</td>`
+///
+/// A constructor wrapping a lone literal argument (the `Html(...)`
+/// shape the `Joined`-chain fold produces) breaks through the parens.
+/// Everything else falls back to the inline renderer.
+fn emit_base_at(expr: &Expr, indent: usize) -> String {
+    match expr {
+        Expr::FormatLit { .. } | Expr::HtmlLit { .. } | Expr::JsonLit { .. } => {
+            emit_literal_at(expr, indent, indent * 4)
+        }
+        Expr::Constructor { name, args, .. } => match args.as_slice() {
+            [lit @ (Expr::FormatLit { .. } | Expr::HtmlLit { .. } | Expr::JsonLit { .. })] => {
+                // The wrapper shifts the literal right by `Name(`.
+                let inner = emit_literal_at(lit, indent, indent * 4 + name.name.len() + 1);
+                format!("{}({})", name.name, inner)
+            }
+            _ => emit_base_inline(expr),
+        },
+        _ => emit_base_inline(expr),
+    }
+}
+
+/// Render a literal starting at column `col`, breaking holes as needed.
+fn emit_literal_at(lit: &Expr, indent: usize, col: usize) -> String {
+    let mut w = LitWriter {
+        out: String::new(),
+        indent,
+        col,
+        line_indent: indent * 4,
+    };
+    match lit {
+        Expr::FormatLit { parts, .. } => {
+            w.out.push('`');
+            w.col += 1;
+            for p in parts {
+                match p {
+                    FormatLitPart::Static(s) => w.push_static(&escape_fmt_static(s)),
+                    FormatLitPart::Interp(e) => w.push_hole(e),
+                }
+            }
+            w.out.push('`');
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                match p {
+                    HtmlLitPart::Static(s) => {
+                        w.push_static(&s.replace('{', "{{").replace('}', "}}"))
+                    }
+                    HtmlLitPart::Interp(e) => w.push_hole(e),
+                }
+            }
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                match p {
+                    JsonLitPart::Static(s) => w.push_static(s),
+                    JsonLitPart::Interp(e) => w.push_hole(e),
+                }
+            }
+        }
+        _ => unreachable!("emit_literal_at is only called on literal exprs"),
+    }
+    w.out
+}
+
+/// Column-tracking writer for literal bodies. Static text advances the
+/// column (resetting at its own newlines — they are content); a hole
+/// breaks onto indented lines exactly when its inline form would push
+/// the current line past [`MAX_WIDTH`]. Bare references (`{Model}`,
+/// `{Node.Rest}`) never break — there is nothing to break them at.
+/// A broken hole indents from the current line's leading whitespace,
+/// so a hole deep inside an HTML literal's own indentation stays
+/// visually nested in the markup around it.
+struct LitWriter {
+    out: String,
+    indent: usize,
+    col: usize,
+    /// Leading whitespace of the current visual line, in spaces — the
+    /// code pad on the literal's first line, the static text's own
+    /// indentation after each of its newlines.
+    line_indent: usize,
+}
+
+impl LitWriter {
+    fn push_static(&mut self, s: &str) {
+        self.out.push_str(s);
+        if let Some(i) = s.rfind('\n') {
+            let tail = &s[i + 1..];
+            self.col = tail.len();
+            self.line_indent = tail.len() - tail.trim_start_matches(' ').len();
+        } else {
+            self.col += s.len();
+        }
+    }
+
+    fn push_hole(&mut self, e: &Expr) {
+        let inline = emit_inline(e);
+        let atomic = matches!(e, Expr::Ident(_) | Expr::FieldAccess { .. });
+        if atomic || self.col + inline.len() + 2 <= MAX_WIDTH {
+            self.out.push('{');
+            self.out.push_str(&inline);
+            self.out.push('}');
+            self.col += inline.len() + 2;
+        } else {
+            let base = self.indent.max(self.line_indent / 4);
+            self.out.push_str("{\n");
+            self.out.push_str(&"    ".repeat(base + 1));
+            self.out.push_str(&emit_expr(e, base + 1));
+            self.out.push('\n');
+            self.out.push_str(&"    ".repeat(base));
+            self.out.push('}');
+            self.col = base * 4 + 1;
+            self.line_indent = base * 4;
+        }
+    }
+}
 
 fn emit_base_inline(expr: &Expr) -> String {
     match expr {

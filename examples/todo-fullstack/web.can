@@ -14,7 +14,9 @@ Unit => AddForm {
 }
 
 Todos => Html {
-    Div(`<h1>Canon Todos</h1>{AddForm() -> String}{1 -> RenderedItems(Todos) -> Ul}{LoadButton() -> String}`)
+    Div(`<h1>Canon Todos</h1>{AddForm() -> String}{1 -> RenderedItems(Todos) -> Ul}{
+        LoadButton() -> String
+    }`)
 }
 
 Unit => Init {

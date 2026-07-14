@@ -14,10 +14,14 @@ Line => Flipped {
 Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49) -> (
         * False => RenderedItem {
-            Li(`{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped} {Msg(`Toggle:{Int -> String}`) -> Button("done")} {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
+            Li(`{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped} {
+                Msg(`Toggle:{Int -> String}`) -> Button("done")
+            } {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
         }
         * True => RenderedItem {
-            Li(`<s>{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped}</s> {Msg(`Toggle:{Int -> String}`) -> Button("undo")} {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
+            Li(`<s>{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped}</s> {
+                Msg(`Toggle:{Int -> String}`) -> Button("undo")
+            } {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
         }
     )
 }

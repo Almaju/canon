@@ -32,7 +32,151 @@ Query * Slug * Label * Text => Hit {
 }
 
 Query => Hits {
-    Html(`{Query -> Hit(Slug("introduction") * Label("Why Canon") * Introduction() -> String -> Text) -> String}{Query -> Hit(Slug("philosophy") * Label("The Philosophy") * Philosophy() -> String -> Text) -> String}{Query -> Hit(Slug("coming-from") * Label("Is Canon for You?") * ComingFrom() -> String -> Text) -> String}{Query -> Hit(Slug("canon-for-ai") * Label("Canon for AI") * CanonForAi() -> String -> Text) -> String}{Query -> Hit(Slug("installation") * Label("Installation") * Installation() -> String -> Text) -> String}{Query -> Hit(Slug("hello-world") * Label("Hello, World") * HelloWorld() -> String -> Text) -> String}{Query -> Hit(Slug("types-and-values") * Label("Types & Values") * TypesAndValues() -> String -> Text) -> String}{Query -> Hit(Slug("pipes-and-constructors") * Label("Pipes & Constructors") * PipesAndConstructors() -> String -> Text) -> String}{Query -> Hit(Slug("branching-and-loops") * Label("Branching & Loops") * BranchingAndLoops() -> String -> Text) -> String}{Query -> Hit(Slug("errors-and-options") * Label("Errors & Options") * ErrorsAndOptions() -> String -> Text) -> String}{Query -> Hit(Slug("capabilities") * Label("Capabilities") * Capabilities() -> String -> Text) -> String}{Query -> Hit(Slug("async-without-keywords") * Label("Async") * AsyncWithoutKeywords() -> String -> Text) -> String}{Query -> Hit(Slug("programs-and-modules") * Label("Programs & Modules") * ProgramsAndModules() -> String -> Text) -> String}{Query -> Hit(Slug("testing") * Label("Testing") * Testing() -> String -> Text) -> String}{Query -> Hit(Slug("how-do-i") * Label("How Do I…?") * HowDoI() -> String -> Text) -> String}{Query -> Hit(Slug("showcase") * Label("Examples Overview") * Showcase() -> String -> Text) -> String}{Query -> Hit(Slug("multifile") * Label("Multi-File Project") * Multifile() -> String -> Text) -> String}{Query -> Hit(Slug("notes-api") * Label("notes-api: JSON Service") * NotesApi() -> String -> Text) -> String}{Query -> Hit(Slug("todolist") * Label("Todo List in the Browser") * Todolist() -> String -> Text) -> String}{Query -> Hit(Slug("markdown-web") * Label("Docs Site in the Browser") * MarkdownWeb() -> String -> Text) -> String}{Query -> Hit(Slug("fullstack") * Label("Fullstack") * Fullstack() -> String -> Text) -> String}{Query -> Hit(Slug("stdlib") * Label("Standard Library") * Stdlib() -> String -> Text) -> String}{Query -> Hit(Slug("markdown-renderer") * Label("Markdown") * MarkdownRenderer() -> String -> Text) -> String}{Query -> Hit(Slug("wasi") * Label("WASI Interfaces") * Wasi() -> String -> Text) -> String}{Query -> Hit(Slug("web-target") * Label("The Web Target") * WebTarget() -> String -> Text) -> String}{Query -> Hit(Slug("building-and-running") * Label("The canon CLI") * BuildingAndRunning() -> String -> Text) -> String}{Query -> Hit(Slug("deploying") * Label("Deploying") * Deploying() -> String -> Text) -> String}{Query -> Hit(Slug("codegen-gaps") * Label("Known Codegen Gaps") * CodegenGaps() -> String -> Text) -> String}{Query -> Hit(Slug("overview") * Label("Specification Overview") * Overview() -> String -> Text) -> String}{Query -> Hit(Slug("lexical-structure") * Label("Lexical Structure") * LexicalStructure() -> String -> Text) -> String}{Query -> Hit(Slug("types") * Label("Types") * Types() -> String -> Text) -> String}{Query -> Hit(Slug("expressions") * Label("Expressions & Dispatch") * Expressions() -> String -> Text) -> String}{Query -> Hit(Slug("functions") * Label("Functions & Traits") * Functions() -> String -> Text) -> String}{Query -> Hit(Slug("ordering") * Label("Ordering Rules") * Ordering() -> String -> Text) -> String}{Query -> Hit(Slug("modules") * Label("Modules & Packages") * Modules() -> String -> Text) -> String}{Query -> Hit(Slug("effects-and-async") * Label("Effects & Async") * EffectsAndAsync() -> String -> Text) -> String}{Query -> Hit(Slug("compilation") * Label("Compilation & ABI") * Compilation() -> String -> Text) -> String}{Query -> Hit(Slug("types-only") * Label("Types-Only Canon") * TypesOnly() -> String -> Text) -> String}{Query -> Hit(Slug("contributing") * Label("Contributing") * Contributing() -> String -> Text) -> String}`)
+    Html(`{
+        Query
+            -> Hit(Slug("introduction") * Label("Why Canon") * Introduction() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("philosophy") * Label("The Philosophy") * Philosophy() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("coming-from") * Label("Is Canon for You?") * ComingFrom() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("canon-for-ai") * Label("Canon for AI") * CanonForAi() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("installation") * Label("Installation") * Installation() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("hello-world") * Label("Hello, World") * HelloWorld() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("types-and-values") * Label("Types & Values") * TypesAndValues() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("pipes-and-constructors") * Label("Pipes & Constructors") * PipesAndConstructors() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("branching-and-loops") * Label("Branching & Loops") * BranchingAndLoops() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("errors-and-options") * Label("Errors & Options") * ErrorsAndOptions() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("capabilities") * Label("Capabilities") * Capabilities() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("async-without-keywords") * Label("Async") * AsyncWithoutKeywords() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("programs-and-modules") * Label("Programs & Modules") * ProgramsAndModules() -> String -> Text)
+            -> String
+    }{Query -> Hit(Slug("testing") * Label("Testing") * Testing() -> String -> Text) -> String}{
+        Query
+            -> Hit(Slug("how-do-i") * Label("How Do I…?") * HowDoI() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("showcase") * Label("Examples Overview") * Showcase() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("multifile") * Label("Multi-File Project") * Multifile() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("notes-api") * Label("notes-api: JSON Service") * NotesApi() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("todolist") * Label("Todo List in the Browser") * Todolist() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("markdown-web") * Label("Docs Site in the Browser") * MarkdownWeb() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("fullstack") * Label("Fullstack") * Fullstack() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("stdlib") * Label("Standard Library") * Stdlib() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("markdown-renderer") * Label("Markdown") * MarkdownRenderer() -> String -> Text)
+            -> String
+    }{Query -> Hit(Slug("wasi") * Label("WASI Interfaces") * Wasi() -> String -> Text) -> String}{
+        Query
+            -> Hit(Slug("web-target") * Label("The Web Target") * WebTarget() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("building-and-running") * Label("The canon CLI") * BuildingAndRunning() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("deploying") * Label("Deploying") * Deploying() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("codegen-gaps") * Label("Known Codegen Gaps") * CodegenGaps() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("overview") * Label("Specification Overview") * Overview() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("lexical-structure") * Label("Lexical Structure") * LexicalStructure() -> String -> Text)
+            -> String
+    }{Query -> Hit(Slug("types") * Label("Types") * Types() -> String -> Text) -> String}{
+        Query
+            -> Hit(Slug("expressions") * Label("Expressions & Dispatch") * Expressions() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("functions") * Label("Functions & Traits") * Functions() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("ordering") * Label("Ordering Rules") * Ordering() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("modules") * Label("Modules & Packages") * Modules() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("effects-and-async") * Label("Effects & Async") * EffectsAndAsync() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("compilation") * Label("Compilation & ABI") * Compilation() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("types-only") * Label("Types-Only Canon") * TypesOnly() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("contributing") * Label("Contributing") * Contributing() -> String -> Text)
+            -> String
+    }`)
 }
 
 String * Needle * Start => Holds {
@@ -95,7 +239,9 @@ String * Needle * Start * Step => PrefixMatch {
 Query => Results {
     Query -> Hits -> String -> Length -> Eq(0) -> (
         * False => Results {
-            <div class="results"><div class="results-head">Matches for “{Query -> String}”</div>{Query -> Hits}</div>
+            <div class="results"><div class="results-head">Matches for “{Query -> String}”</div>{
+                Query -> Hits
+            }</div>
         }
         * True => Results {
             <div class="results"><div class="results-head">No matches for “{Query -> String}”</div></div>

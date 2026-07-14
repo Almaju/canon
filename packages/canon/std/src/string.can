@@ -75,7 +75,11 @@ Float => Magnitude {
                         * True => Magnitude {
                             Float -> Scaled -> Eq(0) -> (
                                 * False => Magnitude {
-                                    `{Float -> Int -> String}.{Float -> Scaled -> Fraction(Width(6))}`
+                                    `{Float -> Int -> String}.{
+                                        Float
+                                            -> Scaled
+                                            -> Fraction(Width(6))
+                                    }`
                                 }
                                 * True => Magnitude { Float -> Int -> String }
                             )

@@ -52,7 +52,12 @@ Int * Todos => RemovedAt {
         * False => RemovedAt {
             Int -> Eq(1) -> (
                 * False => RemovedAt {
-                    Todos(`{Todos.String -> FirstLine}\n{Int -> Difference(1) -> RemovedAt(Todos.String -> RestLines -> Todos) -> String}`)
+                    Todos(`{Todos.String -> FirstLine}\n{
+                        Int
+                            -> Difference(1)
+                            -> RemovedAt(Todos.String -> RestLines -> Todos)
+                            -> String
+                    }`)
                 }
                 * True => RemovedAt { Todos.String -> RestLines -> Todos }
             )
@@ -95,10 +100,17 @@ Int * Todos => ToggledAt {
         * False => ToggledAt {
             Int -> Eq(1) -> (
                 * False => ToggledAt {
-                    Todos(`{Todos.String -> FirstLine}\n{Int -> Difference(1) -> ToggledAt(Todos.String -> RestLines -> Todos) -> String}`)
+                    Todos(`{Todos.String -> FirstLine}\n{
+                        Int
+                            -> Difference(1)
+                            -> ToggledAt(Todos.String -> RestLines -> Todos)
+                            -> String
+                    }`)
                 }
                 * True => ToggledAt {
-                    Todos(`{Todos.String -> FirstLine -> Line -> Flipped -> String}\n{Todos.String -> RestLines}`)
+                    Todos(`{Todos.String -> FirstLine -> Line -> Flipped -> String}\n{
+                        Todos.String -> RestLines
+                    }`)
                 }
             )
         }

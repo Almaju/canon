@@ -46,7 +46,9 @@ Unit => ClearButton {
 }
 
 Todos => Html {
-    Div(`<h1>Canon Todos</h1>{AddForm() -> String}{1 -> RenderedItems(Todos) -> Ul}{ClearButton() -> String}`)
+    Div(`<h1>Canon Todos</h1>{AddForm() -> String}{1 -> RenderedItems(Todos) -> Ul}{
+        ClearButton() -> String
+    }`)
 }
 
 Unit => Init {

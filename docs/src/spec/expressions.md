@@ -373,6 +373,20 @@ Int => Report {
   exactly like an all-static JSON or HTML literal. A backtick string
   with no holes is just a string constant: `canon check --fix` rewrites it to
   the plain-quoted form (`` `hi` `` → `"hi"`).
+- **Holes break like code.** A hole whose expression would push its
+  line past the width limit opens onto its own indented lines — the
+  braces stay glued to the surrounding text, which is content and never
+  moves. The same rule formats JSON and HTML holes:
+
+  ```canon
+  `<td>{
+      1 -> Inline(String)
+  }</td>`
+  ```
+
+  A bare reference (`{Model}`, `{Node.Rest}`) never breaks, and a
+  hole inside an indented HTML literal indents from the markup around
+  it, not from the code margin.
 
 Unlike `Json` and `Html`, a format string needs no prelude -- `String`
 construction (including the built-in int-to-string) is intrinsic -- so
