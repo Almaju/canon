@@ -1,20 +1,14 @@
-; ─── Keywords ─────────────────────────────────────────────────────────────────
-"bindings" @keyword
-"mut" @keyword
-"package" @keyword
-"extern" @keyword
-
-; ─── Operators ───────────────────────────────────────────────────────────────────────
-; Note: `-` is only used inline as part of a negative-number literal
-; (see `seq("-", …)` inside `json_value` in grammar.js), so it is not
-; exposed as a standalone node type and cannot be queried directly.
+; ─── Operators ────────────────────────────────────────────────────────────────
+; `=` binds a name, `=>` declares (constructors, lambdas, dispatch arms),
+; `->` executes (the pipe). `*` is both the product separator and the
+; dispatch-arm bullet; `^` is type repetition (Byte^8, Byte^*).
 "=" @operator
+"=>" @operator
 "->" @operator
 "+" @operator
 "*" @operator
 "?" @operator
 "^" @operator
-"::" @operator
 
 ; ─── Punctuation ──────────────────────────────────────────────────────────────
 [
@@ -26,6 +20,8 @@
   "]"
   "<"
   ">"
+  "</"
+  "/>"
 ] @punctuation.bracket
 
 [
@@ -37,97 +33,86 @@
 ; ─── Literals ─────────────────────────────────────────────────────────────────
 (integer_literal) @number
 (float_literal) @number
-(hex_literal) @number
 (string_literal) @string
+
+; Backtick format strings: the text is a string, the {…} holes are code.
+(format_string) @string
+(format_text) @string
+(format_string "`" @string)
+(interpolation
+  "{" @punctuation.special
+  "}" @punctuation.special)
 
 ; ─── JSON Literals ────────────────────────────────────────────────────────────
 (json_pair key: (string_literal) @property)
 (json_pair ":" @punctuation.delimiter)
 
 ; true / false / null inside a JSON value
-((json_value (identifier) @constant.builtin)
+((json_pair value: (identifier_expr (identifier) @constant.builtin))
   (#any-of? @constant.builtin "true" "false" "null"))
+
+((json_array (identifier_expr (identifier) @constant.builtin))
+  (#any-of? @constant.builtin "true" "false" "null"))
+
+; ─── HTML Literals ────────────────────────────────────────────────────────────
+(html_tag_name) @tag
+(html_attr_name) @attribute
 
 ; ─── Definitions ──────────────────────────────────────────────────────────────
 
-; Function definition: receiver (PascalCase) + name (camelCase or PascalCase)
-(function_def receiver: (identifier) @type)
-(function_def name: (identifier) @function)
-
-; Type definition name
+; Type definition name: Bool = False + True
 (type_def name: (identifier) @type)
 
-; Bare extern type declaration
-(extern_type_decl name: (identifier) @type)
+; Named declarations: camelCase names are FFI binding aliases (functions),
+; PascalCase names construct the type they are named after.
+((named_def name: (identifier) @function)
+  (#match? @function "^[a-z_]"))
 
-; File-level directives: the URN / coordinate strings carry the
-; machine-readable identity, so they get the special-string face.
-(bindings_decl urn: (string_literal) @string.special)
-(package_decl coordinate: (string_literal) @string.special)
+((named_def name: (identifier) @type)
+  (#match? @type "^[A-Z]"))
 
-; Extern clause
-(extern_clause language: (identifier) @type.builtin)
-(extern_clause qualifier: (identifier) @keyword)
-(extern_clause path: (string_literal) @string.special)
-
-; Generic params
-(generic_param name: (identifier) @type.parameter)
-
-; Parameters: the type of each param
-(param type: (named_type name: (identifier) @type))
+; Generic parameters: parallel = <T>(…) => …
+(generic_param (identifier) @type.parameter)
 
 ; ─── Type Expressions ─────────────────────────────────────────────────────────
 
-; Names inside type expressions are types
+; Names inside type expressions are types (also covers dispatch-arm patterns
+; and constructor inputs/returns, which are all named types).
 (named_type name: (identifier) @type)
-
-; ─── Dispatch ─────────────────────────────────────────────────────────────────
-
-; The variant type in each dispatch arm — styled as @type
-(dispatch_arm param_type: (named_type name: (identifier) @type))
-(dispatch_arm "->" @operator)
 
 ; ─── Expressions ──────────────────────────────────────────────────────────────
 
-; Method calls
+; camelCase method calls survive only at the FFI boundary: req.method()
 (method_call method: (identifier) @function.method)
 
-; Constructor calls: PascalCase constructors are styled as @type because in Canon
-; the constructor name IS the type name (e.g. Greeting("hi") creates a Greeting).
-; This visually separates them from method calls (@function.method) in all themes.
-((constructor name: (identifier) @function.call)
+; Field access: user.Birthday, node.Rest
+(field_access field: (identifier) @property)
+
+; Constructor calls: PascalCase constructors are styled as @type because in
+; Canon the constructor name IS the type name (Greeting("hi") creates a
+; Greeting). camelCase calls are FFI functions.
+((call name: (identifier) @function.call)
   (#match? @function.call "^[a-z_]"))
 
-((constructor name: (identifier) @type)
+((call name: (identifier) @type)
   (#match? @type "^[A-Z]"))
 
-; Plain identifier in expression position — distinguish PascalCase vs camelCase
+; Plain identifier in expression position — PascalCase vs camelCase
 ((identifier_expr (identifier) @type)
   (#match? @type "^[A-Z]"))
 
 ((identifier_expr (identifier) @variable)
   (#match? @variable "^[a-z_]"))
 
-; ─── Lambda ───────────────────────────────────────────────────────────────────
-
-(lambda "->" @operator)
-
 ; ─── Special Names ────────────────────────────────────────────────────────────
-
-; `Self` is a builtin
-((identifier) @type.builtin
-  (#eq? @type.builtin "Self"))
 
 ; Built-in types, capabilities, and well-known constructors
 ((identifier) @type.builtin
   (#any-of? @type.builtin
-    "Bit" "Byte" "Bytes" "Off" "On"
-    "Int" "Float" "Hex" "String"
-    "Bool" "False" "True"
-    "Ord" "Equal" "Greater" "Less"
-    "Option" "Some" "None"
-    "Result" "Ok" "Err"
-    "Unit" "Never"
-    "List" "Map" "Set"
-    "Clock" "Filesystem" "Network" "Random"
-    "Stderr" "Stdin" "Stdout"))
+    "Bool" "Byte" "Bytes"
+    "Err" "False" "Float" "Future"
+    "Handle" "Html" "Int" "Json" "List"
+    "Network" "Never" "None"
+    "Ok" "Option" "Result" "Some"
+    "Stderr" "Stdin" "Stdout" "Stream" "String"
+    "True" "Unit"))
