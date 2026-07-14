@@ -28,11 +28,11 @@ pub(super) fn resolves_to_string(ty: &TypeExpr, type_defs: &HashMap<String, Type
 
 /// Resolves a type expression to the scalar primitive it represents at
 /// the component-model boundary, walking user alias chains: `Int` (and
-/// the prelude `Int`-aliases `Byte`/`Hex`) → `s64`, `Float` → `f64`,
-/// `Bool` → `bool`. `None` for `String`, `Unit`, and every compound
-/// shape. Canon's `Int` defaults to *signed* 64-bit here — for `wasi:*`
-/// imports the WIT-informed lowering overwrites the width and
-/// signedness with the vendored WIT's truth.
+/// the stdlib `Int`-alias `Byte`) → `s64`, `Float` → `f64`, `Bool` →
+/// `bool`. `None` for `String`, `Unit`, and every compound shape. Canon's
+/// `Int` defaults to *signed* 64-bit here — for `wasi:*` imports the
+/// WIT-informed lowering overwrites the width and signedness with the
+/// vendored WIT's truth.
 pub(super) fn resolves_to_scalar_prim(
     ty: &TypeExpr,
     type_defs: &HashMap<String, TypeExpr>,
@@ -53,7 +53,7 @@ pub(super) fn resolves_to_scalar_prim(
             return None;
         }
         match name {
-            "Int" | "Byte" | "Hex" => Some(P::S64),
+            "Int" | "Byte" => Some(P::S64),
             "Float" => Some(P::F64),
             "Bool" => Some(P::Bool),
             _ => match type_defs.get(name) {

@@ -788,8 +788,8 @@ fn detect_fn_gaps(func: &FunctionDef, type_defs: &HashMap<String, TypeExpr>) -> 
 
 /// True when a `List<T>` / `Option<T>` binding-return payload is a shape
 /// the extern decode implements: `String`, a scalar (`Int` / `Float` /
-/// `Bool` and the prelude `Int`-aliases), or a user alias chain ending in
-/// one of those. Compound payloads (products, unions, nested generics)
+/// `Bool` and the stdlib `Int`-alias `Byte`), or a user alias chain ending
+/// in one of those. Compound payloads (products, unions, nested generics)
 /// are the remaining gap.
 fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> bool {
     let mut cur = ty;
@@ -800,10 +800,7 @@ fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<String, TypeEx
         if !generics.is_empty() {
             return false;
         }
-        if matches!(
-            name.as_str(),
-            "String" | "Int" | "Float" | "Bool" | "Byte" | "Hex"
-        ) {
+        if matches!(name.as_str(), "String" | "Int" | "Float" | "Bool" | "Byte") {
             return true;
         }
         match type_defs.get(name) {
