@@ -1,8 +1,12 @@
+Body = Html
+
 Content = Html
 
-Init = Page
+Init = Model
 
 Label = String
+
+Model = Page * Query
 
 Msg = String
 
@@ -16,9 +20,24 @@ Pager = Html
 
 Prev = Html
 
+Query = String
+
 Slug = String
 
-Update = Page
+Update = Model
+
+Model => Body {
+    Model.Query -> Eq("") -> (
+        * False => Body { Model.Query -> Results }
+        * True => Body {
+            Model.Page
+                -> Content
+                -> String
+                -> Joined(Model.Page -> Pager -> String)
+                -> Html
+        }
+    )
+}
 
 Page => Content {
     Page -> (
@@ -64,63 +83,64 @@ Page => Content {
     )
 }
 
-Page => Html {
+Model => Html {
     <div class="app">
         {Styles()}
         <aside class="side">
             <a class="brand" data-msg="Nav:introduction"><b>&#10033;</b> canon</a>
+            <form class="search" data-msg-form="Find:"><input type="search" name="q" placeholder="Search the docs&#8230;" aria-label="Search the docs" autocomplete="off"></form>
             <div class="sec">Start</div>
-            {Page -> NavItem(Slug("introduction") * Label("Why Canon"))}
-            {Page -> NavItem(Slug("philosophy") * Label("The Philosophy"))}
-            {Page -> NavItem(Slug("coming-from") * Label("Is Canon for You?"))}
-            {Page -> NavItem(Slug("canon-for-ai") * Label("Canon for AI"))}
-            {Page -> NavItem(Slug("installation") * Label("Installation"))}
-            {Page -> NavItem(Slug("hello-world") * Label("Hello, World"))}
+            {Model.Page -> NavItem(Slug("introduction") * Label("Why Canon"))}
+            {Model.Page -> NavItem(Slug("philosophy") * Label("The Philosophy"))}
+            {Model.Page -> NavItem(Slug("coming-from") * Label("Is Canon for You?"))}
+            {Model.Page -> NavItem(Slug("canon-for-ai") * Label("Canon for AI"))}
+            {Model.Page -> NavItem(Slug("installation") * Label("Installation"))}
+            {Model.Page -> NavItem(Slug("hello-world") * Label("Hello, World"))}
             <div class="sec">Learn</div>
-            {Page -> NavItem(Slug("types-and-values") * Label("Types &amp; Values"))}
-            {Page -> NavItem(Slug("pipes-and-constructors") * Label("Pipes &amp; Constructors"))}
-            {Page -> NavItem(Slug("branching-and-loops") * Label("Branching &amp; Loops"))}
-            {Page -> NavItem(Slug("errors-and-options") * Label("Errors &amp; Options"))}
-            {Page -> NavItem(Slug("capabilities") * Label("Capabilities"))}
-            {Page -> NavItem(Slug("async-without-keywords") * Label("Async"))}
-            {Page -> NavItem(Slug("programs-and-modules") * Label("Programs &amp; Modules"))}
-            {Page -> NavItem(Slug("testing") * Label("Testing"))}
-            {Page -> NavItem(Slug("how-do-i") * Label("How Do I&#8230;?"))}
+            {Model.Page -> NavItem(Slug("types-and-values") * Label("Types &amp; Values"))}
+            {Model.Page -> NavItem(Slug("pipes-and-constructors") * Label("Pipes &amp; Constructors"))}
+            {Model.Page -> NavItem(Slug("branching-and-loops") * Label("Branching &amp; Loops"))}
+            {Model.Page -> NavItem(Slug("errors-and-options") * Label("Errors &amp; Options"))}
+            {Model.Page -> NavItem(Slug("capabilities") * Label("Capabilities"))}
+            {Model.Page -> NavItem(Slug("async-without-keywords") * Label("Async"))}
+            {Model.Page -> NavItem(Slug("programs-and-modules") * Label("Programs &amp; Modules"))}
+            {Model.Page -> NavItem(Slug("testing") * Label("Testing"))}
+            {Model.Page -> NavItem(Slug("how-do-i") * Label("How Do I&#8230;?"))}
             <div class="sec">Examples</div>
-            {Page -> NavItem(Slug("showcase") * Label("Overview"))}
-            {Page -> NavItem(Slug("multifile") * Label("Multi-File Project"))}
-            {Page -> NavItem(Slug("notes-api") * Label("notes-api: JSON Service"))}
-            {Page -> NavItem(Slug("todolist") * Label("Todo List in the Browser"))}
-            {Page -> NavItem(Slug("markdown-web") * Label("Docs Site in the Browser"))}
-            {Page -> NavItem(Slug("fullstack") * Label("Fullstack"))}
+            {Model.Page -> NavItem(Slug("showcase") * Label("Overview"))}
+            {Model.Page -> NavItem(Slug("multifile") * Label("Multi-File Project"))}
+            {Model.Page -> NavItem(Slug("notes-api") * Label("notes-api: JSON Service"))}
+            {Model.Page -> NavItem(Slug("todolist") * Label("Todo List in the Browser"))}
+            {Model.Page -> NavItem(Slug("markdown-web") * Label("Docs Site in the Browser"))}
+            {Model.Page -> NavItem(Slug("fullstack") * Label("Fullstack"))}
             <div class="sec">Reference</div>
-            {Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
-            {Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}
-            {Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}
-            {Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
-            {Page -> NavItem(Slug("building-and-running") * Label("The canon CLI"))}
-            {Page -> NavItem(Slug("deploying") * Label("Deploying"))}
-            {Page -> NavItem(Slug("codegen-gaps") * Label("Known Codegen Gaps"))}
+            {Model.Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
+            {Model.Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}
+            {Model.Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}
+            {Model.Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
+            {Model.Page -> NavItem(Slug("building-and-running") * Label("The canon CLI"))}
+            {Model.Page -> NavItem(Slug("deploying") * Label("Deploying"))}
+            {Model.Page -> NavItem(Slug("codegen-gaps") * Label("Known Codegen Gaps"))}
             <div class="sec">Specification</div>
-            {Page -> NavItem(Slug("overview") * Label("Overview"))}
-            {Page -> NavItem(Slug("lexical-structure") * Label("Lexical Structure"))}
-            {Page -> NavItem(Slug("types") * Label("Types"))}
-            {Page -> NavItem(Slug("expressions") * Label("Expressions &amp; Dispatch"))}
-            {Page -> NavItem(Slug("functions") * Label("Functions &amp; Traits"))}
-            {Page -> NavItem(Slug("ordering") * Label("Ordering Rules"))}
-            {Page -> NavItem(Slug("modules") * Label("Modules &amp; Packages"))}
-            {Page -> NavItem(Slug("effects-and-async") * Label("Effects &amp; Async"))}
-            {Page -> NavItem(Slug("compilation") * Label("Compilation &amp; ABI"))}
-            {Page -> NavItem(Slug("types-only") * Label("Types-Only Canon"))}
+            {Model.Page -> NavItem(Slug("overview") * Label("Overview"))}
+            {Model.Page -> NavItem(Slug("lexical-structure") * Label("Lexical Structure"))}
+            {Model.Page -> NavItem(Slug("types") * Label("Types"))}
+            {Model.Page -> NavItem(Slug("expressions") * Label("Expressions &amp; Dispatch"))}
+            {Model.Page -> NavItem(Slug("functions") * Label("Functions &amp; Traits"))}
+            {Model.Page -> NavItem(Slug("ordering") * Label("Ordering Rules"))}
+            {Model.Page -> NavItem(Slug("modules") * Label("Modules &amp; Packages"))}
+            {Model.Page -> NavItem(Slug("effects-and-async") * Label("Effects &amp; Async"))}
+            {Model.Page -> NavItem(Slug("compilation") * Label("Compilation &amp; ABI"))}
+            {Model.Page -> NavItem(Slug("types-only") * Label("Types-Only Canon"))}
             <div class="sec">Project</div>
-            {Page -> NavItem(Slug("contributing") * Label("Contributing"))}
+            {Model.Page -> NavItem(Slug("contributing") * Label("Contributing"))}
         </aside>
-        <main class="main"><article class="doc">{Page -> Content}{Page -> Pager}</article></main>
+        <main class="main"><article class="doc">{Model -> Body}</article></main>
     </div>
 }
 
 Unit => Init {
-    Page("introduction")
+    Page("introduction") -> Model(Query(""))
 }
 
 Page * Slug * Label => NavItem {
@@ -438,9 +458,17 @@ Slug * Label => Prev {
         -> Html
 }
 
-Page * Msg => Update {
+Model * Msg => Update {
     Msg -> Substring(From(1) * To(4)) -> (
-        * "Nav:" => Page { Msg -> Substring(From(5) * Msg -> Length -> To) -> Page }
-        * String => Page { Page }
+        * "Find" => Model {
+            Model.Page -> Model(Msg -> Substring(From(6) * Msg -> Length -> To) -> Query)
+        }
+        * "Nav:" => Model {
+            Msg
+                -> Substring(From(5) * Msg -> Length -> To)
+                -> Page
+                -> Model(Query(""))
+        }
+        * String => Model { Model }
     )
 }

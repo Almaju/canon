@@ -1,0 +1,169 @@
+Hit = Html
+
+Hits = Html
+
+Holds = Bool
+
+LineHolds = Bool
+
+Lowered = Int
+
+Needle = String
+
+PrefixMatch = Bool
+
+Results = Html
+
+Start = Int
+
+Step = Int
+
+Stop = Int
+
+Text = String
+
+Query * Slug * Label * Text => Hit {
+    Text.String -> Holds(Query.String -> Needle * Start(1)) -> (
+        * False => Hit { Html("") }
+        * True => Hit {
+            "<button class=\"result\" data-msg=\"Nav:"
+                -> Joined(Slug.String)
+                -> Joined("\">")
+                -> Joined(Label.String)
+                -> Joined("</button>")
+                -> Html
+        }
+    )
+}
+
+Query => Hits {
+    ""
+        -> Joined(Query -> Hit(Slug("introduction") * Label("Why Canon") * Introduction() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("philosophy") * Label("The Philosophy") * Philosophy() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("coming-from") * Label("Is Canon for You?") * ComingFrom() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("canon-for-ai") * Label("Canon for AI") * CanonForAi() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("installation") * Label("Installation") * Installation() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("hello-world") * Label("Hello, World") * HelloWorld() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("types-and-values") * Label("Types &amp; Values") * TypesAndValues() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("pipes-and-constructors") * Label("Pipes &amp; Constructors") * PipesAndConstructors() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("branching-and-loops") * Label("Branching &amp; Loops") * BranchingAndLoops() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("errors-and-options") * Label("Errors &amp; Options") * ErrorsAndOptions() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("capabilities") * Label("Capabilities") * Capabilities() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("async-without-keywords") * Label("Async") * AsyncWithoutKeywords() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("programs-and-modules") * Label("Programs &amp; Modules") * ProgramsAndModules() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("testing") * Label("Testing") * Testing() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("how-do-i") * Label("How Do I&#8230;?") * HowDoI() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("showcase") * Label("Examples Overview") * Showcase() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("multifile") * Label("Multi-File Project") * Multifile() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("notes-api") * Label("notes-api: JSON Service") * NotesApi() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("todolist") * Label("Todo List in the Browser") * Todolist() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("markdown-web") * Label("Docs Site in the Browser") * MarkdownWeb() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("fullstack") * Label("Fullstack") * Fullstack() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("stdlib") * Label("Standard Library") * Stdlib() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("markdown-renderer") * Label("Markdown") * MarkdownRenderer() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("wasi") * Label("WASI Interfaces") * Wasi() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("web-target") * Label("The Web Target") * WebTarget() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("building-and-running") * Label("The canon CLI") * BuildingAndRunning() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("deploying") * Label("Deploying") * Deploying() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("codegen-gaps") * Label("Known Codegen Gaps") * CodegenGaps() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("overview") * Label("Specification Overview") * Overview() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("lexical-structure") * Label("Lexical Structure") * LexicalStructure() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("types") * Label("Types") * Types() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("expressions") * Label("Expressions &amp; Dispatch") * Expressions() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("functions") * Label("Functions &amp; Traits") * Functions() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("ordering") * Label("Ordering Rules") * Ordering() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("modules") * Label("Modules &amp; Packages") * Modules() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("effects-and-async") * Label("Effects &amp; Async") * EffectsAndAsync() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("compilation") * Label("Compilation &amp; ABI") * Compilation() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("types-only") * Label("Types-Only Canon") * TypesOnly() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("contributing") * Label("Contributing") * Contributing() -> String -> Text) -> String)
+        -> Html
+}
+
+String * Needle * Start => Holds {
+    Start -> Gt(String -> Length) -> (
+        * False => Holds {
+            String -> LineHolds(Needle * Start * String -> Stop(Start)) -> (
+                * False => Holds {
+                    String -> Holds(Needle * String -> Stop(Start) -> Sum(1) -> Start)
+                }
+                * True => Holds { True() }
+            )
+        }
+        * True => Holds { False() }
+    )
+}
+
+String * Needle * Start * Stop => LineHolds {
+    Start -> Sum(Needle -> Length -> Difference(1)) -> Gt(Stop -> Difference(1)) -> (
+        * False => LineHolds {
+            String -> PrefixMatch(Needle * Start * Step(1)) -> (
+                * False => LineHolds {
+                    String -> LineHolds(Needle * Start -> Sum(1) -> Start * Stop)
+                }
+                * True => LineHolds { True() }
+            )
+        }
+        * True => LineHolds { False() }
+    )
+}
+
+Int => Lowered {
+    Int -> Ge(65) -> (
+        * False => Lowered { Int }
+        * True => Lowered {
+            Int -> Le(90) -> (
+                * False => Lowered { Int }
+                * True => Lowered { Int -> Sum(32) }
+            )
+        }
+    )
+}
+
+String * Needle * Start * Step => PrefixMatch {
+    Step -> Gt(Needle -> Length) -> (
+        * False => PrefixMatch {
+            String
+                -> ByteAt(Start -> Sum(Step) -> Difference(1))
+                -> Lowered
+                -> Eq(Needle -> ByteAt(Step) -> Lowered) -> (
+                * False => PrefixMatch { False() }
+                * True => PrefixMatch {
+                    String -> PrefixMatch(Needle * Start * Step -> Sum(1) -> Step)
+                }
+            )
+        }
+        * True => PrefixMatch { True() }
+    )
+}
+
+Query => Results {
+    Query -> Hits -> String -> Length -> Eq(0) -> (
+        * False => Results {
+            "<div class=\"results\"><div class=\"results-head\">Matches for &#8220;"
+                -> Joined(Query.String)
+                -> Joined("&#8221;</div>")
+                -> Joined(Query -> Hits -> String)
+                -> Joined("</div>")
+                -> Html
+        }
+        * True => Results {
+            "<div class=\"results\"><div class=\"results-head\">No matches for &#8220;"
+                -> Joined(Query.String)
+                -> Joined("&#8221;</div></div>")
+                -> Html
+        }
+    )
+}
+
+String * Start => Stop {
+    Start -> Gt(String -> Length) -> (
+        * False => Stop {
+            String -> ByteAt(Start) -> Eq(10) -> (
+                * False => Stop { String -> Stop(Start -> Sum(1) -> Start) }
+                * True => Stop { Start }
+            )
+        }
+        * True => Stop { Start }
+    )
+}
