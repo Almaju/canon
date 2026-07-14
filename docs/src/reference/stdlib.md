@@ -173,7 +173,7 @@ Contents * Path => Result<Written, IoError>
 the path back on success (`Written = Path`), so a write chains straight
 into a re-open -- the example above round-trips. Backed by
 `canon:builtins/filesystem`; will move to the async
-`wasi:filesystem/types` interface once Phase 5 lands.
+`wasi:filesystem/types` interface once resource lowering lands.
 
 ## Map and Set
 
