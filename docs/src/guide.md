@@ -46,10 +46,16 @@ small core of primitives. Types are `PascalCase`. Full rules:
 [Types](./spec/types.md).
 
 ```canon
-Bool = False + True            # union: variants alphabetical, no `enum`
-User = Birthday * Username     # product: fields alphabetical, no `struct`
-Birthday = String              # newtype: distinct type, shared storage
+Birthday = String
+
+Bool = False + True
+
+User = Birthday * Username
 ```
+
+`Bool` is a union (`+`, variants alphabetical, no `enum`); `User` is a
+product (`*`, fields alphabetical, no `struct`) of two newtypes;
+`Birthday` is a newtype -- a distinct type sharing `String`'s storage.
 
 Products are read by component type (`user.Birthday`) or, for repeats,
 by 1-based index (`byte.1`). Generics use angle brackets (`List<T>`,
@@ -74,7 +80,7 @@ String => Result<Url, InvalidUrl> {
 ```
 
 A fallible constructor forces `?` at the call site
-(`"https://example.com" -> Url? -> Get`), and external callers cannot
+(`"https://example.com" -> Url? -> Fetched?`), and external callers cannot
 bypass it -- the raw inner value is reachable only inside the type's own
 file.
 
