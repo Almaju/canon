@@ -23,29 +23,39 @@ This page is the canonical list. The checker's `CODEGEN_GAPS` table
 (`src/checker/mod.rs`) mirrors it, and a test pins the two together, so the
 list stays in one place.
 
-## binding declarations returning `list<T>` for non-string `T`
+## binding declarations returning `list<T>` for compound `T`
 
-*Warns.* The byte-packed canonical-ABI element layout needs per-width
-read-back before the generator can decode a returned list. `List<String>`
-returns already work; other element types (`List<Int>`, lists of records)
-do not.
+*Warns.* String and scalar elements decode: `List<String>` shares the
+canonical layout directly, 64-bit scalars (`u64`/`s64`/`f64`) share
+Canon's 8-byte list stride, and narrower scalars (`list<u8>` from
+`wasi:random`'s `get-random-bytes`, for example) are read back per-width
+using the vendored WIT and widened into a fresh Canon list. Lists of
+*compound* elements (records, variants, nested lists) are the remaining
+gap — and outside the `wasi:` namespace, narrow element widths are
+unknowable at codegen time, so `canon install` skips those bindings.
 
 ## sub-`u64` integers inside a compound WIT shape
 
 *Not detected* (Canon source has only `Int`). A `u8`/`u16`/`u32`/`s8`/`s16`/`s32`
-nested inside an `option` / `list` / `variant` / record parameter isn't lowered
-yet. Top-level scalar returns and record-of-scalars returns are handled.
+nested inside a `variant` / record parameter isn't lowered yet. Top-level
+scalar returns, record-of-scalars returns, and (for `wasi:*` imports,
+where the vendored WIT supplies the width) scalar `list` / `option`
+returns are handled.
 
-## WIT `result` with no payloads in binding declarations
+## WIT `result` with no payloads as a binding parameter
 
-*Not detected.* The bare `result;` form lowers to a discriminant-only shape the
-generator currently renders as `u32`, so a binding declared over it decodes
-incorrectly.
+*Not detected.* A bare `result;` *return* now decodes into an ordinary Canon
+`Result` (the discriminant flips into Canon's alphabetical Err/Ok tags), but
+the same shape as a *parameter* (see `wasi:cli/exit#exit`) has no Canon-value
+lowering yet; `canon install` skips such functions.
 
-## non-string `option<T>` extern returns
+## binding declarations returning `option<T>` for compound `T`
 
-*Warns.* Returning `option<T>` for a non-string `T` needs indirect-return
-decoding that isn't implemented. `option<string>` returns work.
+*Warns.* String and scalar payloads decode into an ordinary Canon
+`Option` value, so `(None, Some<Int>)` dispatch and `?` work on the
+result. Compound payloads (`option<instant>`, option-of-variant) are the
+remaining gap, and narrow scalar widths outside `wasi:` are skipped by
+`canon install` for the same width-unknowable reason as lists.
 
 ## WIT `resource` / `own<T>` / `borrow<T>` in binding signatures
 

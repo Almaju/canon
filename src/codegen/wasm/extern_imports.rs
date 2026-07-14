@@ -150,8 +150,40 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         // scalar, a bare `string`, or `result<string-alias, string-alias>`.
         // Anything else is too exotic for the current canonical-ABI
         // lowerings.
-        let indirect_return =
+        let mut indirect_return =
             record_shape.or_else(|| classify_return(&func.return_ty, &results, &type_defs));
+        // WIT-informed refinement for scalar option/list payloads: Canon's
+        // `Int` erases width and signedness, so the classification above
+        // defaults to `s64`. For `wasi:*` imports the vendored WIT knows
+        // the true element type (`get-random-bytes` returns `list<u8>`,
+        // not `list<s64>`) — both the component-level import type and the
+        // decode stride must match it.
+        if component_ns.starts_with("wasi:") {
+            match &mut indirect_return {
+                Some(IndirectReturnShape::OptionScalar { prim }) => {
+                    if let Some(p) = component::vendored_extern_option_payload(&ext.path) {
+                        *prim = p;
+                    }
+                }
+                Some(IndirectReturnShape::ListScalar { prim }) => {
+                    if let Some(p) = component::vendored_extern_list_elem(&ext.path) {
+                        *prim = p;
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Bare `result` (no ok/err payloads): a *direct* return — the
+        // canonical ABI flattens it to a single i32 discriminant, so the
+        // core signature needs no ret-area transformation. Only the
+        // component-level type (`result<_, _>`) and the call-site decode
+        // (flip the discriminant into a Canon `Result` struct) differ
+        // from a plain scalar.
+        let bare_result =
+            indirect_return.is_none() && is_bare_result_return(&func.return_ty, &type_defs);
+        if bare_result {
+            results = vec![ValType::I32];
+        }
         match (&indirect_return, results.len()) {
             (None, 0) | (None, 1) => {}
             (Some(_), _) => {
@@ -203,6 +235,7 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             narrow_params,
             narrow_result_signed,
             indirect_return,
+            bare_result,
             is_async: ext.is_async,
             func_idx: 0, // filled in below after sorting
         });
@@ -282,17 +315,63 @@ pub(super) fn classify_return(
                 err_name: named_type_name(&generics[1]).unwrap_or_else(|| "String".to_string()),
             });
         }
-        if name == "Option" && generics.len() == 1 && resolves_to_string(&generics[0], type_defs) {
-            return Some(IndirectReturnShape::OptionString);
+        if name == "Option" && generics.len() == 1 {
+            if resolves_to_string(&generics[0], type_defs) {
+                return Some(IndirectReturnShape::OptionString);
+            }
+            if let Some(prim) = resolves_to_scalar_prim(&generics[0], type_defs) {
+                return Some(IndirectReturnShape::OptionScalar { prim });
+            }
         }
-        if name == "List" && generics.len() == 1 && resolves_to_string(&generics[0], type_defs) {
-            return Some(IndirectReturnShape::ListString);
+        if name == "List" && generics.len() == 1 {
+            if resolves_to_string(&generics[0], type_defs) {
+                return Some(IndirectReturnShape::ListString);
+            }
+            if let Some(prim) = resolves_to_scalar_prim(&generics[0], type_defs) {
+                return Some(IndirectReturnShape::ListScalar { prim });
+            }
         }
     }
     if matches!(flat_results, [ValType::I32, ValType::I32]) {
         return Some(IndirectReturnShape::String);
     }
     None
+}
+
+/// True when an extern's return type is `Result<A, B>` with both arms
+/// resolving (through user alias chains) to `Unit` — the shape a
+/// bindgen mint takes for a WIT bare `result;` return (`Sync = Unit`
+/// plus a constructor returning `Result<Sync, Unit>`).
+pub(super) fn is_bare_result_return(
+    return_ty: &TypeExpr,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> bool {
+    let TypeExpr::Named { name, generics, .. } = return_ty else {
+        return false;
+    };
+    name == "Result"
+        && generics.len() == 2
+        && generics.iter().all(|g| resolves_to_unit(g, type_defs))
+}
+
+fn resolves_to_unit(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> bool {
+    let mut cur = ty;
+    for _ in 0..20 {
+        let TypeExpr::Named { name, generics, .. } = cur else {
+            return false;
+        };
+        if !generics.is_empty() {
+            return false;
+        }
+        if name == "Unit" {
+            return true;
+        }
+        match type_defs.get(name) {
+            Some(body) => cur = body,
+            None => return false,
+        }
+    }
+    false
 }
 
 /// Resolves an extern function's parameter types (receiver-first) into a list
@@ -390,12 +469,31 @@ pub(super) enum IndirectReturnShape {
     /// (i32 tag at +0, payload at +4/+8) so ordinary
     /// `(None, Some<String>)` dispatch works.
     OptionString,
+    /// `option<T>` return for a scalar payload `T` (WIT integer widths,
+    /// floats, bool). Return area: the canonical option layout — disc
+    /// byte at +0, payload at `align_to(1, align(T))` (= `align(T)`).
+    /// Decoded into a fresh Canon `Option` struct (i32 tag at +0,
+    /// 8-byte payload slot at +4), widening narrow ints per the WIT
+    /// signedness and promoting `f32` to `f64`, so ordinary
+    /// `(None, Some<Int>)` dispatch and `?` work unchanged.
+    OptionScalar {
+        prim: wasm_encoder::PrimitiveValType,
+    },
     /// `list<string>` return. Return area: 8 bytes — (i32 list ptr,
     /// i32 element count). The canonical-ABI element layout (8-byte
     /// stride, i32 ptr + i32 len per element) is byte-identical to
     /// Canon's `List<String>` representation, so the pair is pushed
     /// directly as `Ty::List`.
     ListString,
+    /// `list<T>` return for a scalar element `T`. Return area: 8 bytes
+    /// — (i32 element ptr, i32 count). 8-byte elements (`u64`/`s64`/
+    /// `f64`) share Canon's 8-byte-slot list layout and are pushed
+    /// as-is; narrower elements are re-packed into a fresh Canon list,
+    /// widening each element per the WIT signedness (`f32` promotes to
+    /// `f64`).
+    ListScalar {
+        prim: wasm_encoder::PrimitiveValType,
+    },
     /// A record whose fields are all scalar primitives (e.g.
     /// `wasi:clocks/system_clock#now`'s `instant`). The host writes
     /// the canonical record layout into the ret area; the decode
@@ -435,7 +533,16 @@ impl IndirectReturnShape {
             IndirectReturnShape::String => 8,
             IndirectReturnShape::ResultStringString { .. } => 12,
             IndirectReturnShape::OptionString => 12,
+            // Canonical option layout: disc byte at +0, payload at
+            // `align_to(1, align) = align`, total `align + size`
+            // (already a multiple of the variant alignment for every
+            // scalar), padded to the 4-byte ret-area minimum.
+            IndirectReturnShape::OptionScalar { prim } => {
+                let (size, align) = prim_size_align(*prim);
+                (align + size).max(4)
+            }
             IndirectReturnShape::ListString => 8,
+            IndirectReturnShape::ListScalar { .. } => 8,
             IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }
@@ -484,6 +591,11 @@ pub(super) struct ExternImport {
     /// nothing). `Some(shape)` means the core signature appends an `i32`
     /// return-area pointer and clears the result list.
     pub(super) indirect_return: Option<IndirectReturnShape>,
+    /// True for a WIT bare `result;` return (no ok/err payloads). A
+    /// *direct* return — one i32 discriminant — but the component-level
+    /// type is `result<_, _>` and the call site flips the discriminant
+    /// into a Canon `Result` struct (WIT: 0=ok; Canon: Err=0, Ok=1).
+    pub(super) bare_result: bool,
     /// `true` for an `extern Wasm.async` declaration. The canonical-ABI
     /// lowering uses `CanonicalOption::Async`, which collapses the core
     /// signature to `(i32, i32) -> i32` regardless of the original flat

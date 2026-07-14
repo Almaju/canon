@@ -1,3 +1,9 @@
+GetInsecureRandomBytes = List<Int>
+
+Int => GetInsecureRandomBytes {
+    "get-insecure-random-bytes"
+}
+
 GetInsecureRandomU64 = Int
 
 Unit => GetInsecureRandomU64 {

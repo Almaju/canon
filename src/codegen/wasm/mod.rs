@@ -581,7 +581,14 @@ impl<'m> WasmGen<'m> {
                     "String".to_string(),
                     "String".to_string(),
                 ),
+                // The decode rebuilds a plain Canon `Option` struct (i32
+                // tag at +0, scalar payload at +4), so dispatch and `?`
+                // treat it exactly like a user-constructed `Option`.
+                Some(IndirectReturnShape::OptionScalar { .. }) => {
+                    Ty::NamedPtr("Option".to_string())
+                }
                 Some(IndirectReturnShape::ListString) => Ty::List,
+                Some(IndirectReturnShape::ListScalar { .. }) => Ty::List,
                 Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
                     Ty::NamedPtr(product.clone())
                 }
@@ -594,6 +601,7 @@ impl<'m> WasmGen<'m> {
                 narrow_params: ext.narrow_params.clone(),
                 narrow_result_signed: ext.narrow_result_signed,
                 indirect_return: ext.indirect_return.clone(),
+                bare_result: ext.bare_result,
                 is_async: ext.is_async,
             };
             self.func_table.insert(key, info.clone());
@@ -682,6 +690,7 @@ impl<'m> WasmGen<'m> {
                     narrow_params: Vec::new(),
                     narrow_result_signed: None,
                     indirect_return: None,
+                    bare_result: false,
                     is_async: false,
                 };
                 if is_self_ctor(func) {

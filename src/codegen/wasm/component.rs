@@ -224,6 +224,47 @@ fn vendored_func(
     Some((resolve, func))
 }
 
+/// The scalar payload of a `wasi:*` extern's `option<T>` return, from
+/// the vendored WIT. `None` when the URN doesn't resolve or the result
+/// isn't an option of a scalar primitive.
+pub(super) fn vendored_extern_option_payload(urn: &str) -> Option<PrimitiveValType> {
+    vendored_extern_payload(urn, |kind| match kind {
+        wit_parser::TypeDefKind::Option(t) => Some(*t),
+        _ => None,
+    })
+}
+
+/// The scalar element of a `wasi:*` extern's `list<T>` return, from the
+/// vendored WIT. `None` when the URN doesn't resolve or the result
+/// isn't a list of a scalar primitive.
+pub(super) fn vendored_extern_list_elem(urn: &str) -> Option<PrimitiveValType> {
+    vendored_extern_payload(urn, |kind| match kind {
+        wit_parser::TypeDefKind::List(t) => Some(*t),
+        _ => None,
+    })
+}
+
+/// Shared walk for the two helpers above: chase `type x = y` aliases
+/// from the extern's WIT result to its structural kind, pick the inner
+/// type out of it, and resolve that to a primitive.
+fn vendored_extern_payload(
+    urn: &str,
+    pick: impl Fn(&wit_parser::TypeDefKind) -> Option<wit_parser::Type>,
+) -> Option<PrimitiveValType> {
+    let (resolve, func) = vendored_func(urn)?;
+    let mut t = *func.result.as_ref()?;
+    for _ in 0..20 {
+        let wit_parser::Type::Id(id) = t else {
+            return None;
+        };
+        match &resolve.types[id].kind {
+            wit_parser::TypeDefKind::Type(inner) => t = *inner,
+            other => return pick(other).and_then(|inner| wit_prim(resolve, &inner)),
+        }
+    }
+    None
+}
+
 /// WIT record-of-scalars return info for a `wasi:*` extern: the WIT
 /// type name (kebab) plus each field's kebab name and primitive type
 /// in declaration order. `None` unless the function returns a named
@@ -486,11 +527,29 @@ pub(super) fn wrap(core_module: &[u8], externs: &[ExternImport], _async_set: &As
                         next_local_ty += 1;
                         Some(idx)
                     }
+                    Some(IndirectReturnShape::OptionScalar { prim }) => {
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .option(ComponentValType::Primitive(*prim));
+                        let idx = next_local_ty;
+                        next_local_ty += 1;
+                        Some(idx)
+                    }
                     Some(IndirectReturnShape::ListString) => {
                         iface_ty
                             .ty()
                             .defined_type()
                             .list(ComponentValType::Primitive(PrimitiveValType::String));
+                        let idx = next_local_ty;
+                        next_local_ty += 1;
+                        Some(idx)
+                    }
+                    Some(IndirectReturnShape::ListScalar { prim }) => {
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .list(ComponentValType::Primitive(*prim));
                         let idx = next_local_ty;
                         next_local_ty += 1;
                         Some(idx)
@@ -515,6 +574,15 @@ pub(super) fn wrap(core_module: &[u8], externs: &[ExternImport], _async_set: &As
                         let named = next_local_ty;
                         next_local_ty += 1;
                         Some(named)
+                    }
+                    // Bare `result` return: a direct i32 discriminant at
+                    // the core level, but the component type must be the
+                    // real `result<_, _>`.
+                    None if ext.bare_result => {
+                        iface_ty.ty().defined_type().result(None, None);
+                        let idx = next_local_ty;
+                        next_local_ty += 1;
+                        Some(idx)
                     }
                     None => None,
                 };

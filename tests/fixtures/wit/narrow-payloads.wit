@@ -1,0 +1,18 @@
+package example:narrow@1.0.0;
+
+/// The same payload shapes as `payloads.wit`, but outside the `wasi:`
+/// namespace — codegen has no vendored WIT to read narrow widths from,
+/// so narrow payloads are skipped while wide ones are emitted.
+interface shapes {
+    /// Narrow scalar element — skipped outside `wasi:`.
+    read-bytes: func(max: u64) -> list<u8>;
+
+    /// Wide scalar element — emitted everywhere.
+    read-words: func() -> list<u64>;
+
+    /// Narrow scalar option payload — skipped outside `wasi:`.
+    peek-flag: func() -> option<u8>;
+
+    /// Wide scalar option payload — emitted everywhere.
+    peek-value: func() -> option<s64>;
+}

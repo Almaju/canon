@@ -38,8 +38,10 @@ interface kitchen-sink {
     /// Pure free function with multiple typed parameters.
     paint: func(palette: color-list, target: shape) -> result<style, string>;
 
-    /// Maybe-returning function.
-    centre: func(of: shape) -> option<point>;
+    /// Maybe-returning function. The payload is a scalar — compound
+    /// option payloads are a codegen gap and would be skipped (see
+    /// `payloads.wit`).
+    centre: func(of: shape) -> option<f64>;
 
     /// No-arg, no-result function.
     reset: func();
