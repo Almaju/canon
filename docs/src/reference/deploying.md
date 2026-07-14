@@ -63,4 +63,4 @@ random, and the HTTP handler surface are fully portable.
 The WASI rc version is embedded in every interface name, so a
 component either matches its host exactly or fails loudly at
 instantiation. No silent skew. When the vendored WIT is bumped
-(`wit-vendor/wasi/`), rebuild and redeploy.
+(`packages/canon/std/wit/wasi/`), rebuild and redeploy.

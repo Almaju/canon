@@ -8,7 +8,6 @@ pub mod install;
 pub mod lexer;
 pub mod loader;
 pub mod lsp;
-pub mod manifest;
 pub mod parser;
 pub mod registry;
 pub mod runtime;

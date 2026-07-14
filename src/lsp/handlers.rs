@@ -5,7 +5,6 @@ use crate::bindgen::camel_to_kebab;
 use crate::formatter;
 use crate::lexer::Scanner;
 use crate::loader::{kebab_case, BUNDLED_PACKAGES};
-use crate::manifest::{self, ImportSource};
 use crate::parser::Parser;
 
 use std::path::{Path, PathBuf};
@@ -538,16 +537,16 @@ fn path_to_uri(path: &str) -> String {
 // `canon install` writes bindgen output with bare `extern Wasm`
 // markers; the canonical-ABI URN lives in `<bindgen>/_install.toml`.
 // The WIT file itself — the actual source-of-truth definition the
-// bindgen was generated from — is reachable through the project
-// manifest's `[imports]` table.
+// bindgen was generated from — is reachable through the project's
+// `wit/` directory.
 //
 // The flow when the LSP gets a textDocument/definition request on a
 // bindgen file:
 //
 //   1. `urn_for_bindgen_file(current_file)` — is this file a bindgen
 //      artifact? Returns the file's interface URN if so.
-//   2. `wit_file_for_urn(urn, current_file)` — consult the manifest's
-//      `[imports]` table to find the matching `.wit` file on disk.
+//   2. `wit_file_for_urn(urn, current_file)` — scan the project's
+//      `wit/` sources to find the matching `.wit` file on disk.
 //   3. `find_wit_decl(wit_path, kebab_name)` — scan the WIT for a
 //      declaration matching the (camelCase → kebab) version of the
 //      identifier the user clicked.
@@ -605,50 +604,61 @@ fn urn_for_bindgen_file(current_file: &str) -> Option<String> {
     None
 }
 
-/// Locate the `.wit` file backing a given URN. The lookup goes through
-/// the project manifest's `[imports]` table: for each entry whose key
-/// is a prefix of the URN's `<ns>/<pkg>`, the entry's source path
-/// points at either a single `.wit` (return that) or a directory (look
-/// for `<pkg>.wit` inside).
+/// Locate the `.wit` file backing a given URN. The lookup scans the
+/// project's `wit/` directory — the file-structure declaration of
+/// external imports: each immediate entry is either a directory of
+/// `.wit` files (look for `<pkg>.wit` inside) or a single `.wit` file
+/// (match it by the `package <ns>:<pkg>` header it declares).
 ///
 /// For bundled bindgen files (the compiler's own `canon/std`), the
 /// project root we walk up to is `packages/canon/std/`, whose
-/// manifest's `[imports]` declares `"wasi" = "../../../wit-vendor/wasi"`.
-/// The lookup resolves relative to that manifest's directory, landing
-/// in the repo-root `wit-vendor/`.
+/// `wit/wasi/` directory holds the vendored WASI WIT files.
 fn wit_file_for_urn(urn: &str, current_file: &str) -> Option<(PathBuf, String)> {
     // Parse `<ns>:<pkg>/<iface>@<ver>` (or without `@<ver>`).
     let head = urn.rsplit_once('@').map(|(h, _)| h).unwrap_or(urn);
     let (ns_pkg, iface) = head.rsplit_once('/')?;
     let (ns, pkg) = ns_pkg.split_once(':')?;
-    let target = format!("{}/{}", ns, pkg);
 
     let project_root = find_project_root_from(&PathBuf::from(current_file))?;
-    let manifest_src = std::fs::read_to_string(project_root.join("canon.toml")).ok()?;
-    let manifest = manifest::parse(&manifest_src).ok()?;
+    let wit_root = project_root.join("wit");
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(&wit_root)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
 
-    for (key, source) in &manifest.imports {
-        let ImportSource::Wit(rel) = source else {
-            continue;
-        };
-        // Match the URN's `<ns>/<pkg>` against the manifest key. Either
-        // exact (`"wasi/clocks"`) or a broader prefix (`"wasi"`).
-        let key_matches = target == *key || target.starts_with(&format!("{}/", key));
-        if !key_matches {
-            continue;
-        }
-        let source_path = project_root.join(rel);
-        if source_path.is_file() {
-            return Some((source_path, iface.to_string()));
-        }
-        if source_path.is_dir() {
-            let candidate = source_path.join(format!("{}.wit", pkg));
+    for entry in entries {
+        if entry.is_dir() {
+            let candidate = entry.join(format!("{}.wit", pkg));
             if candidate.is_file() {
                 return Some((candidate, iface.to_string()));
             }
+        } else if entry.extension().and_then(|s| s.to_str()) == Some("wit")
+            && std::fs::read_to_string(&entry).is_ok_and(|src| wit_declares_package(&src, ns, pkg))
+        {
+            return Some((entry, iface.to_string()));
         }
     }
     None
+}
+
+/// True when a WIT source's `package` declaration names `<ns>:<pkg>`
+/// (with or without a trailing `@<version>`).
+fn wit_declares_package(src: &str, ns: &str, pkg: &str) -> bool {
+    let want = format!("{ns}:{pkg}");
+    src.lines().any(|line| {
+        let Some(rest) = line.trim().strip_prefix("package ") else {
+            return false;
+        };
+        let Some(tail) = rest.trim().strip_prefix(want.as_str()) else {
+            return false;
+        };
+        matches!(
+            tail.chars().next(),
+            None | Some('@') | Some(';') | Some(' ')
+        )
+    })
 }
 
 /// Scan a `.wit` file for a kebab-case identifier appearing in a
@@ -717,22 +727,11 @@ fn find_wit_decl(wit_path: &Path, kebab_name: &str) -> Option<(u32, u32)> {
     None
 }
 
-/// Walk up from `start` looking for the nearest directory that contains
-/// an `canon.toml`. Mirrors `loader::find_project_root` (which is
-/// private to that module — duplicated here rather than exported to
-/// keep the loader API surface narrow).
+/// Walk up from `start` looking for the nearest project root — a
+/// directory carrying one of the structural markers (`src/main.can`,
+/// `wit/`, `bindgen/`, `deps/`). See `install::is_project_root`.
 fn find_project_root_from(start: &Path) -> Option<PathBuf> {
-    let mut cur = if start.is_file() {
-        start.parent()?
-    } else {
-        start
-    };
-    loop {
-        if cur.join("canon.toml").is_file() {
-            return Some(cur.to_path_buf());
-        }
-        cur = cur.parent()?;
-    }
+    crate::install::find_project_root(start)
 }
 
 /// Resolve the filesystem path of a `.can` file for a local `use X`
@@ -850,9 +849,9 @@ fn collect_variant_defs(td: &TypeDef, defs: &mut Vec<DefInfo>) {
 #[cfg(test)]
 mod tests {
     //! Tests for the slice-5 WIT-navigation helpers. These exercise the
-    //! filesystem-level lookups end-to-end against the project's own
-    //! `wit-vendor/wasi/` fixtures; the higher-level LSP request/response
-    //! plumbing is still tested by hand against editors.
+    //! filesystem-level lookups end-to-end against the stdlib's own
+    //! `packages/canon/std/wit/wasi/` fixtures; the higher-level LSP
+    //! request/response plumbing is still tested by hand against editors.
     use super::*;
     use std::fs;
 
@@ -873,9 +872,10 @@ mod tests {
 
     #[test]
     fn find_wit_decl_locates_function() {
-        // `wit-vendor/wasi/clocks.wit` declares `now: func() -> ...`
+        // `wit/wasi/clocks.wit` declares `now: func() -> ...`
         // inside the `monotonic-clock` interface. Find it.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packages/canon/std/wit/wasi/clocks.wit");
         let (line, col) = find_wit_decl(&path, "now").expect("should find `now`");
         assert!(line > 0);
         assert!(col > 0);
@@ -893,7 +893,8 @@ mod tests {
     fn find_wit_decl_locates_kebab_function() {
         // `get-resolution: func()` is the kebab form `getResolution`
         // becomes in the bindgen. Verify the kebab scan finds it.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packages/canon/std/wit/wasi/clocks.wit");
         let (line, _) =
             find_wit_decl(&path, "get-resolution").expect("should find `get-resolution`");
         let src = fs::read_to_string(&path).unwrap();
@@ -907,7 +908,8 @@ mod tests {
     #[test]
     fn find_wit_decl_locates_type_alias() {
         // `type duration = u64` inside `wasi:clocks/types`.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packages/canon/std/wit/wasi/clocks.wit");
         let (line, _) = find_wit_decl(&path, "duration").expect("should find `duration`");
         let src = fs::read_to_string(&path).unwrap();
         let actual_line = src.lines().nth((line - 1) as usize).unwrap();
@@ -919,7 +921,8 @@ mod tests {
 
     #[test]
     fn find_wit_decl_locates_interface() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packages/canon/std/wit/wasi/clocks.wit");
         let (line, _) =
             find_wit_decl(&path, "monotonic-clock").expect("should find `monotonic-clock`");
         let src = fs::read_to_string(&path).unwrap();
@@ -935,7 +938,8 @@ mod tests {
         // `now` is a real function in clocks.wit; `no` is not, but we
         // need to make sure we don't half-match `now:` against the
         // kebab name `no`.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wit-vendor/wasi/clocks.wit");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packages/canon/std/wit/wasi/clocks.wit");
         let result = find_wit_decl(&path, "no");
         assert!(
             result.is_none(),
@@ -946,27 +950,16 @@ mod tests {
     #[test]
     fn end_to_end_resolves_function_in_bindgen_file_to_wit() {
         // Full slice-5 contract:
-        //   1. tmp project with manifest + vendored WIT directory
+        //   1. tmp project with a WIT source under `wit/`
         //   2. run install — produces `bindgen/wasi/.../monotonic_clock.can` + index
         //   3. resolve_to_wit_declaration(<that file>, "now")
         //      should land us on the `now: func…` line in the WIT
         let root = tmpdir("e2e_resolve");
-        let vendor_dir = root.join("vendor");
-        fs::create_dir_all(&vendor_dir).unwrap();
+        let wit_dir = root.join("wit");
+        fs::create_dir_all(&wit_dir).unwrap();
         let wit_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/wit/monotonic-clock.wit");
-        fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
-        fs::write(
-            root.join("canon.toml"),
-            r#"
-        name = "my-app"
-        version = "0.1.0"
-
-        [imports]
-        "wasi/clocks" = "vendor/monotonic-clock.wit"
-        "#,
-        )
-        .unwrap();
+        fs::copy(&wit_src, wit_dir.join("monotonic-clock.wit")).unwrap();
         crate::install::install(&root).expect("install");
 
         let bindgen_file = root.join("bindgen/wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can");
@@ -975,7 +968,7 @@ mod tests {
 
         let (wit_path, line, col) =
             resolve_to_wit_declaration(&bindgen_str, "now").expect("should resolve");
-        assert_eq!(wit_path, vendor_dir.join("monotonic-clock.wit"));
+        assert_eq!(wit_path, wit_dir.join("monotonic-clock.wit"));
 
         let src = fs::read_to_string(&wit_path).unwrap();
         let actual_line = src.lines().nth((line - 1) as usize).unwrap();
@@ -990,22 +983,11 @@ mod tests {
         // `getResolution` (camelCase as it appears in the bindgen) must
         // be reverse-mapped to `get-resolution` for the WIT scan.
         let root = tmpdir("e2e_camel");
-        let vendor_dir = root.join("vendor");
-        fs::create_dir_all(&vendor_dir).unwrap();
+        let wit_dir = root.join("wit");
+        fs::create_dir_all(&wit_dir).unwrap();
         let wit_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/wit/monotonic-clock.wit");
-        fs::copy(&wit_src, vendor_dir.join("monotonic-clock.wit")).unwrap();
-        fs::write(
-            root.join("canon.toml"),
-            r#"
-        name = "my-app"
-        version = "0.1.0"
-
-        [imports]
-        "wasi/clocks" = "vendor/monotonic-clock.wit"
-        "#,
-        )
-        .unwrap();
+        fs::copy(&wit_src, wit_dir.join("monotonic-clock.wit")).unwrap();
         crate::install::install(&root).expect("install");
 
         let bindgen_file = root.join("bindgen/wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can");
@@ -1013,7 +995,7 @@ mod tests {
             resolve_to_wit_declaration(&bindgen_file.to_string_lossy(), "getResolution")
                 .expect("camel name should resolve via kebab conversion");
 
-        let src = fs::read_to_string(vendor_dir.join("monotonic-clock.wit")).unwrap();
+        let src = fs::read_to_string(wit_dir.join("monotonic-clock.wit")).unwrap();
         let actual = src.lines().nth((line - 1) as usize).unwrap();
         assert!(
             actual.contains("get-resolution"),
@@ -1027,11 +1009,6 @@ mod tests {
         // resolve to nothing — the LSP will then fall back to its
         // ordinary in-file / follow-imports lookup.
         let root = tmpdir("non_bindgen");
-        fs::write(
-            root.join("canon.toml"),
-            "name = \"my-app\"\nversion = \"0.1.0\"\n",
-        )
-        .unwrap();
         let src_dir = root.join("src");
         fs::create_dir_all(&src_dir).unwrap();
         let main = src_dir.join("main.can");

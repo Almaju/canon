@@ -116,8 +116,7 @@ fn repo_root() -> PathBuf {
 /// package's entry file is always `src/main.can`. Returns
 /// `(name, entry_path)` pairs sorted by name for stable reporting.
 ///
-/// The `examples/` workspace root (`examples/canon.toml`, no `src/`) and
-/// any loose non-package example are naturally excluded — they have no
+/// Any loose non-package example is naturally excluded — it has no
 /// `src/main.can`.
 pub fn discover_examples() -> Vec<(String, PathBuf)> {
     let examples_dir = repo_root().join("examples");

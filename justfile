@@ -62,7 +62,8 @@ test-can: build
 # timeouts are expected and pass.
 #
 # `examples/` is a workspace whose members are individual packages under
-# `examples/<name>/`. Each member is built and run with a 5-second timeout
+# `examples/<name>/` (a package is any directory with `src/main.can`).
+# Each member is built and run with a 5-second timeout
 # so long-running examples (servers, fetch loops) don't block the smoke
 # check. Members that fail the checker are reported as skipped — they're
 
@@ -71,7 +72,7 @@ examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
     for d in examples/*/; do
-        [ -f "$d/canon.toml" ] || continue
+        [ -f "$d/src/main.can" ] || continue
         label=$(basename "$d")
         printf "%-20s" "$label"
         # Skip examples that do not pass the checker (stdlib gap, etc.)
@@ -120,8 +121,8 @@ examples: build
 example name:
     #!/usr/bin/env sh
     set -e
-    if [ ! -f "examples/{{ name }}/canon.toml" ]; then
-        echo "No example package at examples/{{ name }}/ (need an canon.toml there)" >&2
+    if [ ! -f "examples/{{ name }}/src/main.can" ]; then
+        echo "No example package at examples/{{ name }}/ (need a src/main.can there)" >&2
         exit 1
     fi
     exec cargo run --quiet -- run "examples/{{ name }}"
@@ -152,8 +153,8 @@ docs: build
     cargo run --quiet -- run docs --addr 127.0.0.1:8080
 
 # Regenerate the embedded WASI bindings from the vendored WIT files
-# under wit-vendor/. Run after upgrading the WASI version or after
-# changing the bindgen emitter. Commit the resulting
+# under packages/canon/std/wit/. Run after upgrading the WASI version
+# or after changing the bindgen emitter. Commit the resulting
 # packages/canon/std/bindgen/ tree.
 regen-bindings: build
     cargo run --quiet -- install packages/canon/std

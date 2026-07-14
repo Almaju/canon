@@ -44,8 +44,9 @@ This is why the naming convention has teeth: files are
 defines `HttpServer`?" has exactly one mechanical answer, and the
 compiler applies it so you never write it down.
 
-Version pins live in the manifest, never in source: a reference to
-`Decoder` carries no `@version`.
+Version pins live in the filesystem, never in source: a vendored
+package occupies `deps/<ns>/<name>@<version>/`, the directory name is
+the pin, and a reference to `Decoder` carries no `@version`.
 
 ## Visibility
 
@@ -55,67 +56,57 @@ that is handled by [validated constructors](./types.md#validated-constructors):
 declaring a constructor replaces the implicit total one, and only
 functions in the type's own file can touch the raw representation.
 
-## Package Manifests
+## No Manifest
 
-> **Status: slated for removal.** The manifest is the last `.toml` in
-> the language's surface, and the direction is to remove it (the
-> toolchain already keeps its `use` registry outside the project for
-> the same reason). Until the replacement design lands, `canon.toml`
-> works as described below.
+There is **no package manifest**. `canon.toml` left the language the
+same way the import statement did: wherever a config file would
+restate what the file structure already says, Canon keeps the file
+structure and removes the file (the toolchain keeps its `use` registry
+outside the project for the same reason). A project is defined
+entirely by its layout:
 
-Every package has a `canon.toml`:
+| Path | Meaning |
+|---|---|
+| `src/main.can` | the package's entry point — its presence makes the directory a package; the directory's name is the package's name |
+| `wit/` | external imports: every immediate entry is a WIT source — a `.wit` file, a directory of them, or a `.wasm` component |
+| `bindgen/` | bindings `canon install` materialized from `wit/` (derived; conventionally gitignored) |
+| `deps/` | vendored Canon-package dependencies, `deps/<ns>/<name>@<version>/` — the directory name is the pin |
+| `build/` | compiler output (gitignored) |
 
-```toml
-name    = "my-app"
-version = "0.1.0"
+The nearest ancestor directory carrying one of these markers is the
+project root; `wit/`, `bindgen/`, and `deps/` are resolved there.
 
-[deps]
-"canon/std" = "0.1.x"
+## External Imports (`wit/`)
 
-[imports]
-"wasi" = "./wit/wasi"
-```
+Dropping a WIT source under `wit/` *is* the import declaration.
+`canon install` (run explicitly, or implicitly by
+`canon build`/`run`/`check`/`test` when the bindings are stale)
+materializes every source into `bindgen/` as binding files
+([Compilation and the ABI](./compilation.md#binding-files)), laid out
+as `bindgen/<ns>/<pkg>@<version>/<iface>.can` — versions come from the
+WIT sources themselves. A `.wasm` component under `wit/` is recorded
+as deferred until build-time composition lands.
 
-- **`[deps]`** declares Canon-package dependencies by semver constraint.
-- **`[imports]`** maps a path prefix to a WIT source: a `.wit` file, a
-  directory of them, or a `.wasm` component. `canon install`
-  materializes these into `bindgen/` as binding files
-  ([Compilation and the ABI](./compilation.md#binding-files)).
-- Both tables are stored by key in alphabetical order — the parser
-  normalizes them into a map, so keys need not be written in
-  alphabetical order in the source ([Ordering Rules](./ordering.md)
-  covers the distinction from the checker-enforced rules elsewhere).
-  The manifest parser accepts a fixed TOML subset (top-level strings
-  plus the two tables); full TOML is a non-goal.
+## Dependencies (`deps/`)
 
-When a dependency's component must be fetched rather than host-provided,
-its own manifest carries `from = "<url>"` and a mandatory `sha256`.
-Fetching is `canon install`'s job; `canon build` never touches the
-network, and a cache miss offline is a hard error. Fetched components
-are cached content-addressed at `~/.canon/cache/<sha256>.wasm` and
-inlined into the output `.wasm` at build time, producing a
-self-contained binary. **The manifest is the lockfile**: there is no
-separate `canon.lock`.
+`canon install <ns>:<name>[@ver]` fetches a package from its registry
+and vendors it under `deps/<ns>/<name>@<version>/`. **The directory
+tree is the lockfile**: the version pin is the directory name, and the
+recorded dependency list of a published package is read off its
+`deps/` directory names. There is no `canon.lock`.
 
 ## Workspaces
 
-A directory whose `canon.toml` has a `[workspace]` table aggregates
-member packages, Cargo-style:
-
-```toml
-[workspace]
-members = ["*"]
-```
-
-`members = ["*"]` means "every immediate subdirectory containing an
-`canon.toml`"; explicit lists work too. Members share the workspace's
-`build/` directory. Nested workspaces are not allowed. `canon build`
-builds every member; `canon run -p foo` selects one.
+A workspace is a directory of packages: any directory that is not
+itself a package but whose immediate subdirectories include packages.
+There is no member list — adding a package subdirectory adds a member.
+`canon build` builds every member (each into its own `build/`);
+`canon run -p foo` selects one.
 
 ## Bundled Packages
 
 `canon/std` ships inside the compiler binary. It is pre-installed but
-indistinguishable from any other package at the language level: it has a
-manifest, declares its WIT imports, and its bindings are generated by
-the same `canon install` mechanism user packages use. There is no
-privileged stdlib path.
+indistinguishable from any other package at the language level: it
+vendors its WIT imports under `wit/wasi/`, and its bindings are
+generated by the same `canon install` mechanism user packages use.
+There is no privileged stdlib path.
