@@ -102,21 +102,8 @@ Two precise consequences:
 
 ## Concurrency
 
-Fan-out is expressed as combinator methods on the futures themselves,
-not keywords: the same commutative method-call shape as every other
-Canon call:
-
-```canon
-"a"
-    .slowEcho()
-    -> Parallel("b".slowEcho())
-    -> Json
-    -> Print
-"a"
-    .slowEcho()
-    -> Race("b".slowEcho())
-    -> Print
-```
+Fan-out is expressed as combinators over the futures themselves, not
+keywords: the same pipe shape as every other Canon call:
 
 ```
 Parallel = <T>(Future<T> * Future<T>) => Future<List<T>>
@@ -128,8 +115,12 @@ order; `a -> Race(b)` returns the first and cancels the loser. There is no
 bare call form: `Parallel(a * b)` is a compile error. The auto-await
 rule fires when the composed future is consumed, still with no keyword.
 
+(The runtime fixtures exercise these through `slowEcho`, a camelCase
+foreign binding to the async test bridge — camelCase means foreign;
+`Parallel`/`Race` themselves are the language surface.)
+
 **Cancellation** has no primitive. It is a consequence of composition:
-`race` cancels its losing branch; dropping a `Stream<T>` mid-iteration
+`Race` cancels its losing branch; dropping a `Stream<T>` mid-iteration
 stops it. To abandon a future, stop using it.
 
 ## Where Async Is Visible

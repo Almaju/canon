@@ -124,7 +124,7 @@ Bindings are produced mechanically:
 | `option<T>` | `Option<T>` |
 | `result<T, E>` | `Result<T, E>` |
 | `result<T>` / bare `result` | `Result<T, Unit>` / `Result<Unit, Unit>` |
-| `tuple<A, B>` | product with positional field names `_0`, `_1`, ... |
+| `tuple<A, B>` | the product `A * B`, accessed positionally (`.1`, `.2`); a same-typed tuple collapses to `T^N` |
 | `record { ... }` | product (fields alphabetical in source, WIT order at the ABI) |
 | `variant` / `enum` | union |
 | `flags` | product of `Bool` |
