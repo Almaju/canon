@@ -1098,9 +1098,11 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
 /// judged against the column it actually sits at), and the braces stay
 /// glued to the surrounding text:
 ///
-///     `<td>{
-///         1 -> Inline(String)
-///     }</td>`
+/// ```text
+/// `<td>{
+///     1 -> Inline(String)
+/// }</td>`
+/// ```
 ///
 /// A constructor wrapping a lone literal argument (the `Html(...)`
 /// shape the `Joined`-chain fold produces) breaks through the parens.
