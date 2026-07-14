@@ -1,10 +1,18 @@
 Digits = Int
 
+Ge = Bool
+
+Gt = Bool
+
 IsIntDigit = Bool
+
+Le = Bool
 
 Maximum = Int
 
 Minimum = Int
+
+Ne = Bool
 
 Negated = Int
 
@@ -27,6 +35,17 @@ Int * Pos * String => Result<Digits, MalformedInt> {
     )
 }
 
+Int * OtherInt => Ge {
+    OtherInt -> Lt(Int) -> (
+        * False => Ge { Int -> Eq(OtherInt) }
+        * True => Ge { True() }
+    )
+}
+
+Int * OtherInt => Gt {
+    OtherInt -> Lt(Int)
+}
+
 String => Result<Int, MalformedInt> {
     String -> Length -> Eq(0) -> (
         * False => Result<Int, MalformedInt> {
@@ -46,6 +65,13 @@ Int => IsIntDigit {
     )
 }
 
+Int * OtherInt => Le {
+    Int -> Lt(OtherInt) -> (
+        * False => Le { Int -> Eq(OtherInt) }
+        * True => Le { True() }
+    )
+}
+
 Int * OtherInt => Maximum {
     Int -> Lt(OtherInt) -> (
         * False => Maximum { Int }
@@ -57,6 +83,13 @@ Int * OtherInt => Minimum {
     Int -> Lt(OtherInt) -> (
         * False => Minimum { OtherInt }
         * True => Minimum { Int }
+    )
+}
+
+Int * OtherInt => Ne {
+    Int -> Eq(OtherInt) -> (
+        * False => Ne { True() }
+        * True => Ne { False() }
     )
 }
 

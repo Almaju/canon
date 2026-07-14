@@ -673,13 +673,11 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Product", "mul"),
     ("Quotient", "div"),
     ("Remainder", "rem"),
-    // Comparison — boolean predicates
+    // Comparison — the two base predicates (wasm numerics). The derived
+    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon/std`
+    // (`int.can`/`float.can`/`string.can`), one dispatch over `Lt`/`Eq`.
     ("Eq", "eq"),
-    ("Ne", "ne"),
     ("Lt", "lt"),
-    ("Le", "le"),
-    ("Gt", "gt"),
-    ("Ge", "ge"),
     // String / List
     ("Joined", "concat"),
     ("ByteAt", "byteAt"),
