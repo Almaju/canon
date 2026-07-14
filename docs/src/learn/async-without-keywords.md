@@ -7,7 +7,6 @@ suspends is a fact the compiler can compute, so you never write it:
 Unit => Program {
     Url("https://example.com")?
         -> Fetched?
-        -> Body?
         -> Print
 }
 ```
