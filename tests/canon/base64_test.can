@@ -1,0 +1,89 @@
+Base64DecodesPaddedPair = TestResult
+
+Unit => Base64DecodesPaddedPair {
+    Base64("Zm8=") -> Base64Decoded -> (
+        * Err<MalformedBase64> => Base64DecodesPaddedPair { MalformedBase64 -> Fail }
+        * Ok<Base64Decoded> => Base64DecodesPaddedPair { Base64Decoded -> Eq("fo") -> TestResult }
+    )
+}
+
+Base64DecodesPaddedSingle = TestResult
+
+Unit => Base64DecodesPaddedSingle {
+    Base64("Zg==") -> Base64Decoded -> (
+        * Err<MalformedBase64> => Base64DecodesPaddedSingle { MalformedBase64 -> Fail }
+        * Ok<Base64Decoded> => Base64DecodesPaddedSingle { Base64Decoded -> Eq("f") -> TestResult }
+    )
+}
+
+Base64EncodesEmpty = TestResult
+
+Unit => Base64EncodesEmpty {
+    Base64Encoded("")
+        -> Eq("")
+        -> TestResult
+}
+
+Base64EncodesFullBlocks = TestResult
+
+Unit => Base64EncodesFullBlocks {
+    Base64Encoded("foobar")
+        -> Eq("Zm9vYmFy")
+        -> TestResult
+}
+
+Base64EncodesWithDoublePadding = TestResult
+
+Unit => Base64EncodesWithDoublePadding {
+    Base64Encoded("foob")
+        -> Eq("Zm9vYg==")
+        -> TestResult
+}
+
+Base64EncodesWithSinglePadding = TestResult
+
+Unit => Base64EncodesWithSinglePadding {
+    Base64Encoded("fooba")
+        -> Eq("Zm9vYmE=")
+        -> TestResult
+}
+
+Base64RejectsBadLength = TestResult
+
+Unit => Base64RejectsBadLength {
+    Base64("Zm9") -> Base64Decoded -> (
+        * Err<MalformedBase64> => Base64RejectsBadLength { Pass() }
+        * Ok<Base64Decoded> => Base64RejectsBadLength { Fail("accepted truncated input") }
+    )
+}
+
+Base64RejectsInvalidCharacter = TestResult
+
+Unit => Base64RejectsInvalidCharacter {
+    Base64("Zm9!") -> Base64Decoded -> (
+        * Err<MalformedBase64> => Base64RejectsInvalidCharacter { Pass() }
+        * Ok<Base64Decoded> => Base64RejectsInvalidCharacter { Fail("accepted invalid character") }
+    )
+}
+
+Base64RejectsPaddingBeforeEnd = TestResult
+
+Unit => Base64RejectsPaddingBeforeEnd {
+    Base64("Zg==Zm9v") -> Base64Decoded -> (
+        * Err<MalformedBase64> => Base64RejectsPaddingBeforeEnd { Pass() }
+        * Ok<Base64Decoded> => Base64RejectsPaddingBeforeEnd { Fail("accepted early padding") }
+    )
+}
+
+Base64RoundTripsAllSextets = TestResult
+
+Unit => Base64RoundTripsAllSextets {
+    Base64Encoded("Canon emits WebAssembly components?!") -> Base64Decoded -> (
+        * Err<MalformedBase64> => Base64RoundTripsAllSextets { MalformedBase64 -> Fail }
+        * Ok<Base64Decoded> => Base64RoundTripsAllSextets {
+            Base64Decoded
+                -> Eq("Canon emits WebAssembly components?!")
+                -> TestResult
+        }
+    )
+}

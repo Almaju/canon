@@ -1,7 +1,0 @@
-Instant = Int
-
-Unit => Instant {
-    MonotonicClock
-        -> MonotonicClockNow
-        -> Instant
-}

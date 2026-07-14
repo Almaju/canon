@@ -2707,11 +2707,17 @@ impl<'m> WasmGen<'m> {
         // and `type_name` recovers only "Int" — losing "Port", which the
         // next step (`Port -> HttpServer`) dispatches on. Recover the
         // *static* type from the receiver's syntactic shape: `Foo(x)` or
-        // `x -> Foo` constructs a `Foo` when `Foo` names a type. Tried
-        // first so newtype-typed shapes still resolve.
+        // `x -> Foo` constructs a `Foo` when `Foo` names a type, and an
+        // identifier or product field is named after its declared type
+        // (there are no other value names). Tried first so newtype-typed
+        // shapes still resolve.
         let static_recv_type: Option<String> = match receiver {
             Expr::Constructor { name, .. } if self.type_defs.contains_key(&name.name) => {
                 Some(name.name.clone())
+            }
+            Expr::Ident(id) if self.type_defs.contains_key(&id.name) => Some(id.name.clone()),
+            Expr::FieldAccess { field, .. } if self.type_defs.contains_key(&field.name) => {
+                Some(field.name.clone())
             }
             Expr::MethodCall {
                 method: m,

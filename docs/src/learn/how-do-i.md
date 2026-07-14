@@ -86,8 +86,9 @@ Contents("hi") -> Written(Path("/tmp/out.txt"))?
 
 ## …get the time, or a random number?
 
-`Now()` (RFC 3339 wall clock), `Instant()` (monotonic nanoseconds),
-`Random()` (CSPRNG integer).
+`Now()` (RFC 3339 wall clock), `Mark()` (monotonic nanoseconds),
+`Random()` (CSPRNG integer). Calendar parts: `Unix() -> Date` (a
+`Day * Month * Year` product), `Unix() -> Weekday`/`Hour`/`Minute`/`Second`.
 
 ## …make an HTTP request?
 

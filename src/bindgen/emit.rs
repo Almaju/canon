@@ -580,7 +580,7 @@ fn emit_function(
     // constructs, so each mints a distinct newtype rather than reusing a
     // WIT type name — that keeps a binding's constructed name from ever
     // colliding with a hand-written wrapper's type (the monotonic
-    // `Instant = Int` wrapper vs the system-clock `instant` record). The
+    // `Mark = Int` wrapper vs the system-clock `instant` record). The
     // mint is interface-qualified when the WIT leaf name collides, so the
     // two `now`s become `MonotonicClockNow` / `SystemClockNow`.
     let mint_name = if collides {

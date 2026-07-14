@@ -1,0 +1,7 @@
+MarkIsNonNegative = TestResult
+
+Unit => MarkIsNonNegative {
+    Mark()
+        -> Ge(0)
+        -> TestResult
+}
