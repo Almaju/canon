@@ -3,9 +3,9 @@
 One page, the whole language. Each section is the short version; the
 [Language Specification](./spec/overview.md) is the authoritative long
 version, and every heading here links to its spec chapter for the
-precise rules. Canon is mid-migration to **[Types-Only
-Canon](./spec/types-only.md)** -- the forms shown here are the direction
-the language is heading, and what the examples compile with today.
+precise rules. Canon's naming model is **[Types-Only
+Canon](./spec/types-only.md)** -- the only names are type names, enforced
+by the checker; the forms shown here are what the compiler accepts today.
 
 > *There is one way to do everything.* Most languages give you ten ways
 > and ask you to pick. Canon picks for you, and the compiler enforces

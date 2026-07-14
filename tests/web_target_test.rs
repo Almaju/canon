@@ -251,11 +251,9 @@ fn web_todolist_example_loop_and_replay() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // `examples/` is a workspace, so members build to its shared
-    // `examples/build/<stem>.{wasm}` plus the three-file web bundle.
-    let build = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
-        .join("build");
+    // A package builds into its own `build/<stem>.wasm` plus the
+    // three-file web bundle.
+    let build = example.join("build");
     let wasm_path = build.join("todolist-web.wasm");
     assert!(
         wasm_path.exists(),

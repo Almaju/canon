@@ -91,7 +91,7 @@ The most direct port — you already have most of the mental model.
 `enum`, `*` is your `struct`, and `Result<T, E>` / `Option<T>` / `?`
 work as you'd expect (error unions can even be spelled inline). Dispatch
 is `match` by another name. The project layout mirrors Cargo
-(`canon.toml` + `src/main.can` + `build/`). And you get ADTs and
+(`src/main.can` + `build/`, no manifest). And you get ADTs and
 pattern matching *without* lifetimes or borrow sigils — ownership is
 inferred, so `'a`, `&`, and `&mut` are gone.
 

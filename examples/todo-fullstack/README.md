@@ -28,10 +28,10 @@ frontend decodes it with the *same shared code* that produced it.
 | `web.can` | **Frontend entry.** The Elm triple: `init`/`update`/`view` over `Todos` as the model. Messages are prefix-parsed strings (`Add:`, `Toggle:N`, `Delete:N`, `Load:payload`). |
 | `server.can` | **Backend entry.** `(Request) -> Response`: method dispatch (GET-only), path routing, CORS + content-type headers, and `GET /todos` serving the seed list in the shared encoding. |
 
-There is no `canon.toml` here on purpose: the two entries live in one
-directory so they can `use` the same sibling files. (Package-level
-`[deps]` sharing is future work; same-directory sharing is the honest
-mechanism available today.)
+There is no `src/main.can` here on purpose — this directory is not a
+package: the two entries live in one directory so they can `use` the
+same sibling files. (Package-level dependency sharing is future work;
+same-directory sharing is the honest mechanism available today.)
 
 ## What it demonstrates
 

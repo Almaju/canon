@@ -106,7 +106,8 @@ Bindings are produced mechanically:
 
 - `canon bindgen <wit-or-wasm>` emits one binding file per WIT
   interface (deterministic, alphabetical, `canon check --fix`-clean).
-- `canon install` reads the manifest's `[imports]` table and
+- `canon install` reads the WIT sources under the project's `wit/`
+  directory and
   materializes bindings into `bindgen/` in the same versioned layout.
   Functions whose shape the codegen can't lower yet are **skipped with
   a printed reason**, never emitted broken.

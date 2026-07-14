@@ -32,5 +32,5 @@ canon run examples/notes-api        # any single example
 just examples                       # compile + run all, report pass/fail
 ```
 
-Each packaged example is an ordinary `canon.toml` plus `src/`, so it
-doubles as a template for starting your own project.
+Each packaged example is an ordinary directory with a `src/main.can`,
+so it doubles as a template for starting your own project.
