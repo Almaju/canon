@@ -89,11 +89,6 @@ pub struct SymbolTable {
     /// on `Path` (which is `Path = String`) resolves through to `String`'s
     /// `print` method without anyone having to redeclare it for `Path`.
     pub aliases: HashMap<String, String>,
-    /// Declared shapes — body-less function-type aliases (`Show = () =>
-    /// String`). A bodied declaration may carry a name that is not the
-    /// type it constructs only when that name is one of these: the shape
-    /// is the one place a name carries information the types cannot.
-    pub shapes: HashSet<String>,
 }
 
 pub struct MethodSig {
@@ -1227,17 +1222,6 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         }
     }
 
-    let shapes: HashSet<String> = module
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            Item::TypeDef(td) if matches!(td.body, TypeExpr::Function { .. }) => {
-                Some(td.name.name.clone())
-            }
-            _ => None,
-        })
-        .collect();
-
     SymbolTable {
         types,
         generic_types,
@@ -1247,7 +1231,6 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         standalone_types,
         free_funcs,
         aliases,
-        shapes,
     }
 }
 
@@ -1518,34 +1501,29 @@ fn check_function(
         // its file into a method on its first component — which would
         // otherwise let an arbitrary verb wear PascalCase (`Frobnicated =
         // (Int) => Int` is not a Frobnicated constructor; the name lies).
-        // The name must carry information the types cannot, and the only
-        // such name is a declared shape (a body-less function type).
-        // Failing that, it must construct the type it names (modulo
+        // The name must construct the type it names (modulo
         // `Result`/`Option`/`Future` peeling and newtype chains) — the
         // cross-file result-newtype case, where the newtype's TypeDef
         // lives in another loaded file.
-        if !symbols.shapes.contains(&func.name.name) {
-            let constructs_name = constructed_type_name(&func.return_ty)
-                .map(|constructed| {
-                    func.name.name == constructed
-                        || symbols.resolve_alias(&func.name.name)
-                            == symbols.resolve_alias(&constructed)
-                })
-                .unwrap_or(false);
-            if !constructs_name {
-                let constructed =
-                    constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
-                errors.push(CanonError::CheckError {
-                    message: format!(
-                        "`{name}` is not the type this declaration constructs: mint a result \
-                         newtype (`{name} = {constructed}`) and construct it with an anonymous \
-                         arrow — a name carries no information the types don't",
-                        name = func.name.name,
-                        constructed = constructed,
-                    ),
-                    span: func.name.span,
-                });
-            }
+        let constructs_name = constructed_type_name(&func.return_ty)
+            .map(|constructed| {
+                func.name.name == constructed
+                    || symbols.resolve_alias(&func.name.name) == symbols.resolve_alias(&constructed)
+            })
+            .unwrap_or(false);
+        if !constructs_name {
+            let constructed =
+                constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "`{name}` is not the type this declaration constructs: mint a result \
+                     newtype (`{name} = {constructed}`) and construct it with an anonymous \
+                     arrow — a name carries no information the types don't",
+                    name = func.name.name,
+                    constructed = constructed,
+                ),
+                span: func.name.span,
+            });
         }
     }
 
