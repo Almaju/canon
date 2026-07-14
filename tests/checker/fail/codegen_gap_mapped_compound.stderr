@@ -1,0 +1,1 @@
+error[tests/checker/fail/codegen_gap_mapped_compound.can:2:5]: `Mapped` here produces `List<List<Int>>`, which has a compound payload: the code generator does not implement compound `List<T>` / `Option<T>` payloads yet, so this program cannot build. Tracked in docs/src/reference/codegen-gaps.md

@@ -651,6 +651,13 @@ pub fn builtin_method_alias(name: &str) -> Option<&'static str> {
         .map(|(_, camel)| *camel)
 }
 
+/// Extern-import namespaces the `wasi:http/service` world can satisfy:
+/// the handler intrinsics (`wasi:http/types`) and the synthetic
+/// concurrency interface. Both the checker's gap rejection
+/// (`checker::codegen_gap_errors`) and codegen's `WasmGen::new_http`
+/// consult this one list, so the two can't drift.
+pub const HTTP_WORLD_IMPORT_PREFIXES: &[&str] = &["canon:builtins/concurrent", "wasi:http/types"];
+
 /// One table, both directions: (PascalCase pipe spelling, canonical
 /// camelCase implementation name) for every compiler builtin.
 const BUILTIN_ALIASES: &[(&str, &str)] = &[

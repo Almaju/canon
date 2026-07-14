@@ -8,8 +8,6 @@ Response = Handle
 
 Response = (Body * Headers * Status) => Response
 
-body = (Request) => Future<Result<String, HttpError>>
-
 method = (Request) => String
 
 path = (Request) => Option<String>

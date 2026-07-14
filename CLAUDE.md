@@ -189,11 +189,12 @@ real-world usage (HTTP servers, file I/O, JSON, randomness — non-deterministic
 nature). They're a `just examples` smoke check, not a coverage layer. Small
 deterministic feature tests go in `tests/runtime/`.
 
-**Known codegen gaps.** The checker accepts more than codegen implements. The
-canonical list is `docs/src/reference/codegen-gaps.md`, mirrored by `CODEGEN_GAPS`
-in `src/checker/mod.rs` (pinned together by `tests/codegen_gaps.rs`). Reaching a
-statically-detectable gap emits a non-fatal warning. Add new gaps in both places,
-not here.
+**Known codegen gaps.** Features codegen doesn't implement are hard checker
+errors — the accepted language and the implemented language are the same set.
+The canonical list is `docs/src/reference/codegen-gaps.md`, mirrored by
+`CODEGEN_GAPS` in `src/checker/mod.rs` and by `canon install`'s skip reasons
+(pinned together by `tests/codegen_gaps.rs`). Add new gaps in both places, not
+here.
 
 ## Language invariants
 
@@ -208,8 +209,10 @@ These are the non-obvious rules the code won't spell out. Together with
 - **`Json` / `Html` are prelude types** (`= String`). A literal with an
   interpolation hole auto-loads the stdlib module; a hole lowers to a piped
   construction through a stdlib family — JSON `-> Encoded` (`Encoded = Json`),
-  HTML `-> Escaped` (`Escaped = Html`), format-string `-> String`. Interpolation can't run in the `wasi:http/service` world (host bridge
-  unsatisfiable) — an interpolating handler fails at build. `Json("…")`/`Html("…")`
+  HTML `-> Escaped` (`Escaped = Html`), format-string `-> String`. JSON
+  interpolation loads the `canon:builtins/json` bridge, which the
+  `wasi:http/service` world can't satisfy — a JSON-interpolating handler is a
+  checker error (HTML and format-string holes are fine). `Json("…")`/`Html("…")`
   fed a static literal the literal form can express is a checker error
   (`check_literal_form_ceremony`): the validating constructor is for runtime-built
   strings.

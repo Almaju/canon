@@ -794,7 +794,6 @@ fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
-    emit_gap_warnings(spec.entry_str(), &loaded);
     println!("All checks passed.");
     true
 }
@@ -845,7 +844,6 @@ fn build_spec(spec: &BuildSpec) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
-    emit_gap_warnings(spec.entry_str(), &loaded);
     let component_bytes = codegen::generate(&loaded.module);
 
     // Web apps get the three-file bundle instead of a `.wasm` + `.wit`
@@ -1109,7 +1107,6 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
         eprintln!("\n{} error(s) found.", errors.len());
         return None;
     }
-    emit_gap_warnings(file_path, &loaded);
 
     Some((tests.len(), codegen::generate(&loaded.module)))
 }
@@ -1260,7 +1257,6 @@ fn cmd_run(args: &[String]) {
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
     }
-    emit_gap_warnings(spec.entry_str(), &loaded);
     let component_bytes = codegen::generate(&loaded.module);
 
     // Web-app programs (the `init`/`update`/`view` triple, see
@@ -1924,17 +1920,4 @@ fn print_error(file_path: &str, err: &CanonError) {
         span.column,
         err.message()
     );
-}
-
-/// Emit non-fatal warnings for reachable use of features the code generator
-/// doesn't implement yet, so a program that type-checks but won't build gets
-/// a heads-up here rather than a bare codegen error later. Called after a
-/// successful check on every build/run/check/test path.
-fn emit_gap_warnings(file_path: &str, loaded: &LoadResult) {
-    for w in checker::codegen_gap_warnings(&loaded.module, loaded.entry_items_start) {
-        eprintln!(
-            "warning[{}:{}:{}]: {}",
-            file_path, w.span.line, w.span.column, w.message
-        );
-    }
 }
