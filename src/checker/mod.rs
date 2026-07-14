@@ -1403,6 +1403,17 @@ fn check_literal_form_ceremony(name: &str, args: &[Expr], errors: &mut Vec<Canon
 }
 
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
+    // `Self` is the internal name every constructor is normalized to
+    // (`resolve_new_syntax`), so a user type named `Self` would collide
+    // with every func-table key — reject it like the literal `main`.
+    if td.name.name == "Self" {
+        errors.push(CanonError::CheckError {
+            message: "the name `Self` is reserved for the compiler's constructor \
+                      normalization — pick another type name"
+                .to_string(),
+            span: td.name.span,
+        });
+    }
     // Types are PascalCase. A camelCase type alias only means something
     // in a binding file, where `apply_bindings` has already rewritten it
     // into an extern function before the checker runs.

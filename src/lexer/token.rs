@@ -41,10 +41,6 @@ pub enum TokenKind {
     Caret,
     Minus,
 
-    KwMut,
-    KwSelf,
-    KwImpl,
-
     Newline,
     Eof,
 }
@@ -80,9 +76,6 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Star => "`*`",
             TokenKind::Caret => "`^`",
             TokenKind::Minus => "`-`",
-            TokenKind::KwMut => "`mut`",
-            TokenKind::KwSelf => "`Self`",
-            TokenKind::KwImpl => "`impl`",
             TokenKind::Newline => "newline",
             TokenKind::Eof => "end of file",
         };

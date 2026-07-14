@@ -1,7 +1,7 @@
 # Lexical Structure
 
 Canon source is UTF-8 text. The lexer produces a token stream of
-identifiers, literals, keywords, and punctuation. Everything the
+identifiers, literals, and punctuation. Everything the
 language rejects at this level (comments, unknown escapes) is a lexer
 error with a source span.
 
@@ -26,13 +26,12 @@ leading underscores with special meaning.
 
 ## Keywords
 
-The keyword set is exactly three words:
-
-| Keyword | Role |
-|---|---|
-| `impl` | placeholder body marking a shape declaration's default implementation |
-| `mut` | marks a mutable parameter |
-| `Self` | the implementing type, inside a shape declaration |
+There are none. Every word in a Canon program is an identifier; the
+grammar is carried entirely by punctuation (`=`, `=>`, `->`, `.`, `?`,
+`+`, `*`, `^`, and the bracket pairs). One name is reserved without
+being a keyword: a type may not be declared `Self` (the compiler uses
+it internally to normalize constructors), exactly as an entry may not
+be named `main`.
 
 There is no `let`, `if`, `else`, `match`, `while`, `for`, `return`,
 `async`, `await`, `pub`, `mod`, or `use` (imports are automatic --

@@ -160,8 +160,9 @@ input's type. Call sites use the ordinary pipe:
 - **Traits as components**: a trait may appear directly in a parameter
   list; the component binds the implementation, which is invocable:
   `Show => Unit { Show() -> Print }`.
-- **Defaults**: a trait declaration may carry a default body marked
-  `{ impl }`; implementing types may override or inherit it.
+- **Defaults**: a trait declaration may carry a default body
+  implementing types override or inherit (the marker syntax lands with
+  the feature — the grammar reserves no keyword for it).
 - **Constraints**: `<T: Show>` bounds a generic parameter by a trait.
 
 ## Shape or Result Newtype?

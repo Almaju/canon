@@ -523,13 +523,7 @@ impl<'a> Scanner<'a> {
             self.column += 1;
         }
         let lex = self.source[start_pos..self.pos].to_string();
-        let kind = match lex.as_str() {
-            "mut" => TokenKind::KwMut,
-            "Self" => TokenKind::KwSelf,
-            "impl" => TokenKind::KwImpl,
-            _ => TokenKind::Ident,
-        };
-        (kind, lex)
+        (TokenKind::Ident, lex)
     }
 
     fn scan_number(&mut self, start_line: u32, start_col: u32) -> Result<(TokenKind, String)> {

@@ -609,7 +609,7 @@ fn emit_function(func: &FunctionDef) -> String {
 
 /// The paren-free input rendering of an anonymous constructor, or `None`
 /// when it must keep its parentheses. Zero params render as `Unit` (the
-/// single-value "no input" type). A single non-mutable param renders bare
+/// single-value "no input" type). A single param renders bare
 /// — `Request`, or the product `Todos * String` — as long as its first
 /// atom is a generics-free named type, since only then does the parser's
 /// paren-free path (a leading bare ident, then `=>`/`*`/`+`) round-trip.
@@ -618,7 +618,7 @@ fn emit_function(func: &FunctionDef) -> String {
 fn anon_input_paren_free(params: &[Param]) -> Option<String> {
     match params {
         [] => Some("Unit".to_string()),
-        [p] if !p.mutable && first_atom_is_bare_named(&p.ty) => Some(emit_type_expr(&p.ty)),
+        [p] if first_atom_is_bare_named(&p.ty) => Some(emit_type_expr(&p.ty)),
         _ => None,
     }
 }
@@ -664,12 +664,7 @@ fn emit_param_list(params: &[Param]) -> String {
 }
 
 fn emit_param(p: &Param) -> String {
-    let ty = emit_type_expr(&p.ty);
-    if p.mutable {
-        format!("mut {}", ty)
-    } else {
-        ty
-    }
+    emit_type_expr(&p.ty)
 }
 
 fn emit_generic_params(params: &[GenericParam]) -> String {

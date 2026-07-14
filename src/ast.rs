@@ -31,7 +31,6 @@ pub struct GenericParam {
 #[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub receiver: Option<Ident>,
-    pub receiver_mut: bool,
     pub name: Ident,
     pub generic_params: Vec<GenericParam>,
     pub params: Vec<Param>,
@@ -57,7 +56,6 @@ pub struct ExternWasm {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub ty: TypeExpr,
-    pub mutable: bool,
     pub span: Span,
 }
 
@@ -542,21 +540,18 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
 /// Extract the receiver type from the first component of a parameter list.
 /// In the new syntax `name = (A * B * C) -> ...`, A is the receiver and B, C are params.
 /// For a single param `name = (A) -> ...`, A is the receiver with no extra params.
-/// Returns `(receiver_name, receiver_mut, remaining_params)`.
-pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool, Vec<Param>) {
+/// Returns `(receiver_name, remaining_params)`.
+pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, Vec<Param>) {
     if params.is_empty() {
-        return (None, false, params);
+        return (None, params);
     }
 
     let mut param_iter = params.into_iter();
     let first_param = param_iter.next().unwrap();
-    let outer_mut = first_param.mutable;
     let remaining_original: Vec<Param> = param_iter.collect();
 
     match first_param.ty {
         TypeExpr::Product { fields, .. } => {
-            // `mut` written outside the parens of a product param marks the
-            // first component (the receiver) as mutable.
             if let Some(first_field) = fields.first() {
                 let recv = match first_field {
                     TypeExpr::Named { name, span, .. } => Some(Ident {
@@ -569,14 +564,13 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
                     .iter()
                     .map(|f| Param {
                         ty: f.clone(),
-                        mutable: false,
                         span: f.span(),
                     })
                     .collect();
                 remaining.extend(remaining_original);
-                (recv, outer_mut, remaining)
+                (recv, remaining)
             } else {
-                (None, false, remaining_original)
+                (None, remaining_original)
             }
         }
         TypeExpr::Named { ref name, span, .. } => {
@@ -584,12 +578,12 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
                 name: name.clone(),
                 span,
             });
-            (recv, outer_mut, remaining_original)
+            (recv, remaining_original)
         }
         _ => {
             let mut result = vec![first_param];
             result.extend(remaining_original);
-            (None, false, result)
+            (None, result)
         }
     }
 }
@@ -815,7 +809,6 @@ pub fn resolve_new_syntax(module: &mut Module) {
                                     .iter()
                                     .map(|f| Param {
                                         ty: f.clone(),
-                                        mutable: false,
                                         span: f.span(),
                                     })
                                     .collect();
@@ -850,10 +843,8 @@ pub fn resolve_new_syntax(module: &mut Module) {
                     } else if !func.params.is_empty() {
                         // Trait impl: extract first component as receiver
                         let old_params = std::mem::take(&mut func.params);
-                        let (receiver, recv_mut, new_params) =
-                            extract_receiver_from_params(old_params);
+                        let (receiver, new_params) = extract_receiver_from_params(old_params);
                         func.receiver = receiver;
-                        func.receiver_mut = recv_mut;
                         func.params = new_params;
                     }
                 }

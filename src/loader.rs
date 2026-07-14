@@ -113,7 +113,6 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
                     .map(|ty| Param {
                         span: ty.span(),
                         ty,
-                        mutable: false,
                     })
                     .collect();
             }
@@ -192,16 +191,15 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
             .iter()
             .map(|t| Param {
                 ty: t.clone(),
-                mutable: false,
                 span: t.span(),
             })
             .collect();
 
-        let (receiver, recv_mut, final_params) = if !starts_lower || new_params.is_empty() {
+        let (receiver, final_params) = if !starts_lower || new_params.is_empty() {
             // PascalCase declarations (constructors) and zero-arg
             // functions don't take a receiver — the parser does the
             // same for ordinary FunctionDefs.
-            (None, false, new_params)
+            (None, new_params)
         } else {
             extract_receiver_from_params(new_params)
         };
@@ -222,7 +220,6 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
         };
         let new_func = FunctionDef {
             receiver,
-            receiver_mut: recv_mut,
             name: td.name.clone(),
             generic_params: generic_params.clone(),
             params: final_params,
