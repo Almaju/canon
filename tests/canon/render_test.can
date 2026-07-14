@@ -1,0 +1,143 @@
+BoolRendersFalse = TestResult
+
+BoolRendersTrue = TestResult
+
+FloatCarriesRoundingIntoWhole = TestResult
+
+FloatKeepsLeadingFractionZeros = TestResult
+
+FloatRendersFraction = TestResult
+
+FloatRendersInf = TestResult
+
+FloatRendersNaN = TestResult
+
+FloatRendersNegative = TestResult
+
+FloatRendersNegativeInf = TestResult
+
+FloatRendersSmallestFraction = TestResult
+
+FloatRendersWholeWithoutFraction = TestResult
+
+FloatTrimsTrailingZeros = TestResult
+
+IntRendersDecimal = TestResult
+
+IntRendersMin = TestResult
+
+IntRendersNegative = TestResult
+
+IntRendersZero = TestResult
+
+Unit => BoolRendersFalse {
+    False()
+        -> String
+        -> Eq("False")
+        -> TestResult
+}
+
+Unit => BoolRendersTrue {
+    True()
+        -> String
+        -> Eq("True")
+        -> TestResult
+}
+
+Unit => FloatCarriesRoundingIntoWhole {
+    String(1.9999999)
+        -> Eq("2")
+        -> TestResult
+}
+
+Unit => FloatKeepsLeadingFractionZeros {
+    String(0.05)
+        -> Eq("0.05")
+        -> TestResult
+}
+
+Unit => FloatRendersFraction {
+    String(3.25)
+        -> Eq("3.25")
+        -> TestResult
+}
+
+Unit => FloatRendersInf {
+    1.0
+        -> Quotient(0.0)
+        -> String
+        -> Eq("Inf")
+        -> TestResult
+}
+
+Unit => FloatRendersNaN {
+    0.0
+        -> Quotient(0.0)
+        -> String
+        -> Eq("NaN")
+        -> TestResult
+}
+
+Unit => FloatRendersNegative {
+    0.0
+        -> Difference(2.5)
+        -> String
+        -> Eq("-2.5")
+        -> TestResult
+}
+
+Unit => FloatRendersNegativeInf {
+    0.0
+        -> Difference(1.0)
+        -> Quotient(0.0)
+        -> String
+        -> Eq("-Inf")
+        -> TestResult
+}
+
+Unit => FloatRendersSmallestFraction {
+    String(0.000001)
+        -> Eq("0.000001")
+        -> TestResult
+}
+
+Unit => FloatRendersWholeWithoutFraction {
+    String(2.0)
+        -> Eq("2")
+        -> TestResult
+}
+
+Unit => FloatTrimsTrailingZeros {
+    String(0.5)
+        -> Eq("0.5")
+        -> TestResult
+}
+
+Unit => IntRendersDecimal {
+    String(42)
+        -> Eq("42")
+        -> TestResult
+}
+
+Unit => IntRendersMin {
+    0
+        -> Difference(9223372036854775807)
+        -> Difference(1)
+        -> String
+        -> Eq("-9223372036854775808")
+        -> TestResult
+}
+
+Unit => IntRendersNegative {
+    0
+        -> Difference(123)
+        -> String
+        -> Eq("-123")
+        -> TestResult
+}
+
+Unit => IntRendersZero {
+    String(0)
+        -> Eq("0")
+        -> TestResult
+}

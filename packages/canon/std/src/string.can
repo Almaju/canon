@@ -1,12 +1,49 @@
+DecimalDigit = String
+
+Decimals = String
+
+Fraction = String
+
 Ge = Bool
 
 Gt = Bool
 
 Le = Bool
 
+Magnitude = String
+
 Ne = Bool
 
 OtherString = String
+
+Padded = String
+
+Scaled = Int
+
+Width = Int
+
+Int => DecimalDigit {
+    "0123456789" -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> To)
+}
+
+Int => Decimals {
+    Int -> Quotient(10) -> Eq(0) -> (
+        * False => Decimals {
+            Int
+                -> Quotient(10)
+                -> Decimals
+                -> Joined(0 -> Difference(Int -> Remainder(10)) -> DecimalDigit)
+        }
+        * True => Decimals { 0 -> Difference(Int) -> DecimalDigit }
+    )
+}
+
+Int * Width => Fraction {
+    Int -> Remainder(10) -> Eq(0) -> (
+        * False => Fraction { Int -> Padded(Width) }
+        * True => Fraction { Int -> Quotient(10) -> Fraction(Width -> Difference(1)) }
+    )
+}
 
 String * OtherString => Ge {
     OtherString -> Lt(String) -> (
@@ -26,9 +63,88 @@ String * OtherString => Le {
     )
 }
 
+Float => Magnitude {
+    Float -> Difference(Float) -> Eq(0.0) -> (
+        * False => Magnitude { "Inf" }
+        * True => Magnitude {
+            Float -> Lt(9223372036854776000.0) -> (
+                * False => Magnitude { "9223372036854775807" }
+                * True => Magnitude {
+                    Float -> Scaled -> Lt(1000000) -> (
+                        * False => Magnitude { Float -> Int -> Sum(1) -> String }
+                        * True => Magnitude {
+                            Float -> Scaled -> Eq(0) -> (
+                                * False => Magnitude {
+                                    Float
+                                        -> Int
+                                        -> String
+                                        -> Joined(".")
+                                        -> Joined(Float -> Scaled -> Fraction(Width(6)))
+                                }
+                                * True => Magnitude { Float -> Int -> String }
+                            )
+                        }
+                    )
+                }
+            )
+        }
+    )
+}
+
 String * OtherString => Ne {
     String -> Eq(OtherString) -> (
         * False => Ne { True() }
         * True => Ne { False() }
+    )
+}
+
+Int * Width => Padded {
+    Int -> Quotient(10) -> Eq(0) -> (
+        * False => Padded {
+            Int
+                -> Quotient(10)
+                -> Padded(Width -> Difference(1))
+                -> Joined(Int -> Remainder(10) -> DecimalDigit)
+        }
+        * True => Padded {
+            Width -> Lt(2) -> (
+                * False => Padded { "0" -> Joined(Int -> Padded(Width -> Difference(1))) }
+                * True => Padded { Int -> DecimalDigit }
+            )
+        }
+    )
+}
+
+Float => Scaled {
+    Float
+        -> Difference(Float -> Int -> Float)
+        -> Product(1000000.0)
+        -> Sum(0.5)
+        -> Int
+}
+
+Bool => String {
+    Bool -> (
+        * False => String { "False" }
+        * True => String { "True" }
+    )
+}
+
+Float => String {
+    Float -> Eq(Float) -> (
+        * False => String { "NaN" }
+        * True => String {
+            Float -> Lt(0.0) -> (
+                * False => String { Float -> Magnitude }
+                * True => String { "-" -> Joined(0.0 -> Difference(Float) -> Magnitude) }
+            )
+        }
+    )
+}
+
+Int => String {
+    Int -> Lt(0) -> (
+        * False => String { 0 -> Difference(Int) -> Decimals }
+        * True => String { "-" -> Joined(Int -> Decimals) }
     )
 }

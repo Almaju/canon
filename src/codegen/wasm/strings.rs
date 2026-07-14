@@ -245,9 +245,6 @@ impl StringTable {
         self.offsets.insert(s.to_string(), (offset, len));
         (offset, len)
     }
-    pub(super) fn get(&self, s: &str) -> Option<(u32, u32)> {
-        self.offsets.get(s).copied()
-    }
 }
 
 // ── Main compiler struct ──────────────────────────────────────────────────────

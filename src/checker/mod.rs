@@ -2326,7 +2326,17 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     scalar_primitive_root(symbols, &method.name),
                     scalar_primitive_root(symbols, &recv_ty),
                 ) {
-                    if target_scalar != recv_scalar {
+                    // The Int ↔ Float pair is the one cross-primitive
+                    // conversion codegen owns (wasm numerics:
+                    // `i64.trunc_f64_s` / `f64.convert_i64_s`), so
+                    // `x -> Int` on a Float truncates rather than
+                    // mismatching. Every other conversion is a stdlib
+                    // constructor (`has_alias_method` above).
+                    let is_numeric_conversion = matches!(
+                        (target_scalar, recv_scalar),
+                        ("Int", "Float") | ("Float", "Int")
+                    );
+                    if target_scalar != recv_scalar && !is_numeric_conversion {
                         errors.push(CanonError::CheckError {
                             message: format!(
                                 "`{}` expects a `{}`, found `{}`",
@@ -2740,12 +2750,6 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
         && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
     {
-        return true;
-    }
-    // Conversion is construction (the language spec § Conversions): `Int.String()`
-    // is the method spelling of the `String(Int)` constructor. `Byte`
-    // receivers reach this arm through the alias chain (`Byte = Int`).
-    if receiver_ty == "Int" && method == "String" && arg_count == 0 {
         return true;
     }
     if receiver_ty == "String"
@@ -3192,8 +3196,6 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("Int", "eq" | "lt") => "Bool".to_string(),
         ("Float", "eq" | "lt") => "Bool".to_string(),
         ("Hex", "eq" | "lt") => "Bool".to_string(),
-        // Conversion is construction: `Int.String()` renders decimal.
-        ("Int", "String") => "String".to_string(),
         ("String", "concat" | "substring") => "String".to_string(),
         ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "lt") => "Bool".to_string(),
