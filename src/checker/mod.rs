@@ -905,6 +905,15 @@ fn item_refs(item: &Item) -> (String, HashSet<String>) {
     }
 }
 
+/// Build a module's `SymbolTable`, discarding diagnostics. Tooling
+/// entry point — LSP completion needs the alias/variant/method indexes
+/// over a possibly half-typed buffer, where duplicate-definition noise
+/// (the buffer plus its own import closure) is expected and harmless.
+pub(crate) fn symbols_for_tooling(module: &Module) -> SymbolTable {
+    let mut errors = Vec::new();
+    collect_symbols(module, &mut errors)
+}
+
 fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
     let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES
@@ -2850,7 +2859,11 @@ fn check_product_construction_types(
     }
 }
 
-fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
+/// The static type name of an expression, or `"<unknown>"` when the
+/// analysis can't see through it. Crate-visible for tooling: LSP
+/// completion types the chain left of the cursor with the same rules
+/// the checker applies at construction sites.
+pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
     match expr {
         Expr::Ident(ident) => {
             if let Some(parent) = symbols.variant_of.get(&ident.name) {
@@ -3119,7 +3132,12 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
     }
 }
 
-fn method_return_type(receiver_ty: &str, method: &str) -> String {
+/// The builtin-method fallback table: what `receiver_ty -> method`
+/// returns when no user/stdlib declaration claims the pair, or
+/// `"<unknown>"` when the builtin doesn't exist on that receiver.
+/// Crate-visible for tooling: LSP completion gates the builtin pipe
+/// vocabulary (`Sum`, `Print`, `Joined`, …) on the same table.
+pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
     let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     match (receiver_ty, method) {
         ("String", "print")

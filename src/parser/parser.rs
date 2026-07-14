@@ -93,6 +93,14 @@ impl Parser {
         }
     }
 
+    /// Parse a single expression from the token stream. Tooling entry
+    /// point — LSP completion types the chain to the left of the cursor
+    /// by parsing it in isolation (it never appears inside a complete,
+    /// parseable declaration while the user is mid-keystroke).
+    pub(crate) fn parse_expression(&mut self) -> Result<Expr> {
+        self.parse_expr()
+    }
+
     fn parse_item(&mut self) -> Result<Item> {
         let start_span = self.current_span();
 

@@ -16,22 +16,23 @@ involved; you normally only touch the top one.
 3. **The WIT itself**: the contract any component-model host
    understands.
 
-There is no privileged mechanism for the stdlib: it declares its WIT
-sources in its `canon.toml` and runs the same `canon install` any
-package would.
+There is no privileged mechanism for the stdlib: it vendors its WIT
+sources under its `wit/` directory and runs the same `canon install`
+any package would.
 
-## Declaring imports in `canon.toml`
+## Declaring imports with `wit/`
 
-The `[imports]` table maps a path prefix to a WIT source: a `.wit`
-file, a directory of them, or a `.wasm` component to extract types
-from.
+There is no manifest — putting a WIT source under the project's `wit/`
+directory *is* the import declaration. Every immediate entry of `wit/`
+is one source: a `.wit` file, a directory of them, or a `.wasm`
+component to extract types from.
 
-```toml
-name    = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi" = "./wit/wasi"
+```text
+my-app/
+  src/main.can
+  wit/
+    wasi/          # a directory of .wit files
+      random.wit
 ```
 
 Then materialize the bindings:
@@ -39,6 +40,9 @@ Then materialize the bindings:
 ```sh
 canon install          # writes bindgen/wasi/<pkg>@<version>/<interface>.can
 ```
+
+(`canon build`, `run`, `check`, and `test` do this automatically when
+the bindings are missing or stale.)
 
 Each generated file is pure source -- plain function-type aliases, no
 header. The versioned directory name carries the interface's package
@@ -52,7 +56,7 @@ getInitialCwd = () => Option<String>
 ```
 
 Your code imports and calls them like any Canon function. `canon bindgen <wit-or-wasm> -o <dir>` does the same
-one-shot, without a manifest.
+one-shot, outside any project.
 
 ## Type mapping
 

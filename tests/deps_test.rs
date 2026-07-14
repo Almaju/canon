@@ -15,10 +15,9 @@
 //! directly under the package directory bind to the WIT interface the
 //! path spells (`ok_bindings` pins that end-to-end).
 //!
-//! None of these projects has an `canon.toml` — the `deps/` root falls
-//! back to the entry file's directory, which is exactly the
-//! manifest-free layout modules & packages (docs/src/spec/modules.md)
-//! ends at.
+//! Each project is nothing but files — a `deps/` tree next to the
+//! entry is the whole declaration, which is exactly the layout modules
+//! & packages (docs/src/spec/modules.md) specifies.
 
 mod common;
 

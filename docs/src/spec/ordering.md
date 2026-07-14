@@ -18,7 +18,6 @@ writing the same program produce the same bytes.
 | Error unions in `Result<T, A + B>` | alphabetical |
 | Dispatch arms | the union's variant order (itself alphabetical) |
 | Literal dispatch arms | alphabetical for strings, ascending for ints; catch-all last |
-| `canon.toml` tables (`[deps]`, `[imports]`) | alphabetical keys (normalized, not checker-enforced — see Exemptions) |
 
 One deliberate non-rule: **call operands are never reordered**. The
 piped value is the first operand and literal arguments keep their
@@ -51,16 +50,11 @@ message (``` `x` should come before `y` ```) will tell you.
   must follow the scrutinee union's variant order. Since variant order
   is alphabetical, these coincide; the arm rule is still "match the
   union", not "sort your arms".
-- **`canon.toml` tables** (`[deps]`, `[imports]`) are *normalized*, not
-  *enforced*: the parser (`src/manifest.rs`) stores each table in a map
-  keyed by name, so it always iterates alphabetically regardless of the
-  order keys were written in. Unlike every other row above, writing
-  keys out of order is not a checker error — there is no rejecting
-  check, and `canon check --fix` does not touch `canon.toml` at all. This gap
-  stays open deliberately: the manifest is slated for removal from the
-  language (the no-`.toml` direction the toolchain's central `uses`
-  registry already follows), so no enforcement is being added to a file
-  that is on its way out.
+- **Project configuration** has no ordering rules because there is
+  none to order: the manifest left the language ([Modules and
+  Packages](./modules.md#no-manifest)), and the trees that replaced it
+  (`wit/`, `deps/`, `bindgen/`) are directories — the filesystem keeps
+  them sorted.
 
 ## Auto-Fixing
 

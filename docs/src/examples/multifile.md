@@ -5,7 +5,6 @@ the smallest possible demonstration of Canon's module system.
 
 ```text
 multifile/
-  canon.toml
   src/
     greeter.can
     main.can

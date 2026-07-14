@@ -5,7 +5,6 @@ use canon::error::CanonError;
 use canon::formatter;
 use canon::lexer::Scanner;
 use canon::loader::{self, LoadResult};
-use canon::manifest;
 use canon::parser::Parser;
 use std::collections::HashSet;
 use std::env;
@@ -62,9 +61,9 @@ fn print_help() {
     println!();
     println!("Usage: canon <command> [args]");
     println!();
-    println!("A target is either a package directory (containing `canon.toml`");
-    println!("and `src/main.can`), a workspace directory (manifest with a");
-    println!("`[workspace]` table), or a single `.can` file. When omitted, defaults");
+    println!("A target is either a package directory (containing `src/main.can`),");
+    println!("a workspace directory (one whose immediate subdirectories are");
+    println!("packages), or a single `.can` file. When omitted, defaults");
     println!("to the current directory.");
     println!();
     println!("Commands:");
@@ -87,7 +86,7 @@ fn print_help() {
     println!(
         "                            Generate Canon bindings from a WIT package or WASM component"
     );
-    println!("  install [target]          Materialize bindings declared in `[imports]`");
+    println!("  install [target]          Materialize the WIT sources under `<target>/wit/`");
     println!(
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
@@ -127,22 +126,23 @@ fn read_source(file_path: &str) -> String {
     }
 }
 
-/// A single buildable compilation target: a package (`canon.toml` +
+/// A single buildable compilation target: a package (a directory with
 /// `src/main.can`) or a loose `.can` file in single-file mode.
 struct BuildSpec {
     /// Entry `.can` file the loader will read.
     entry: PathBuf,
-    /// Where `build/` lives for this target. For a workspace member, this
-    /// points at the workspace's shared `build/` (Cargo-style `target/`).
+    /// Where `build/` lives for this target — always the package's own
+    /// `build/` (or, for a loose file, a per-stem subdir of the file's
+    /// directory).
     output_dir: PathBuf,
     /// Stem used for output artifacts (`<stem>.wasm`, `<stem>.wit`). For a
-    /// package it's the last `/`-separated segment of the manifest `name`
-    /// (e.g. `canon/std` -> `std`). For a loose file it's the file stem.
+    /// package it's the directory name; for a loose file it's the file
+    /// stem.
     output_stem: String,
     /// Path the user typed (or the workspace member's display path), used
     /// as the context in error messages.
     label: String,
-    /// Full manifest `name` (e.g. `"canon/std"`). Empty for file-mode
+    /// Package name — the package directory's name. Empty for file-mode
     /// targets. Used by `-p <name>` filtering.
     name: String,
 }
@@ -157,10 +157,11 @@ impl BuildSpec {
 ///
 /// `canon run|build|check` accept any of:
 ///
-/// - a **package directory** (containing `canon.toml` and `src/main.can`),
+/// - a **package directory** (containing `src/main.can`),
 /// - a **single `.can` file** (anonymous single-file package), or
-/// - a **workspace directory** (containing `canon.toml` with a
-///   `[workspace]` table) which aggregates one or more member packages.
+/// - a **workspace directory** (one that is not itself a package but
+///   whose immediate subdirectories include packages). Structure is the
+///   declaration — there is no manifest or member list.
 enum Target {
     /// One package or one loose file.
     Build(BuildSpec),
@@ -245,13 +246,8 @@ fn apply_package_filter(target: Target, filter: Option<&str>) -> Target {
             process::exit(1);
         }
         Target::Workspace { members, label } => {
-            // Match against the full manifest name (`canon/std`) or its
-            // last segment (`std`). Workspace members in this repo use
-            // flat names, but we accept both for parity with `cargo -p`.
-            let matched: Vec<BuildSpec> = members
-                .into_iter()
-                .filter(|s| s.name == want || s.output_stem == want)
-                .collect();
+            // A member's name is its directory name.
+            let matched: Vec<BuildSpec> = members.into_iter().filter(|s| s.name == want).collect();
             match matched.len() {
                 0 => {
                     eprintln!("error: no member `{}` in workspace `{}`", want, label);
@@ -287,122 +283,54 @@ fn resolve_target(path_arg: Option<&str>) -> Target {
 }
 
 fn resolve_dir_target(path: &Path, arg: &str) -> Target {
-    let manifest_path = path.join("canon.toml");
-    if !manifest_path.exists() {
-        eprintln!("error: `{}` is a directory but has no `canon.toml`", arg);
+    if path.join("src").join("main.can").is_file() {
+        return Target::Build(resolve_package_spec(path, arg));
+    }
+
+    // Not a package itself: a directory whose immediate subdirectories
+    // include packages is a workspace over them.
+    let members = resolve_workspace_members(path, arg);
+    if members.is_empty() {
         eprintln!(
-            "hint: a package directory must contain an `canon.toml` manifest; \
+            "error: `{}` is not a Canon package (no `src/main.can`) and none of \
+             its subdirectories is one",
+            arg
+        );
+        eprintln!(
+            "hint: a package is a directory containing `src/main.can`; \
              pass a `.can` file directly to compile in single-file mode"
         );
         process::exit(1);
     }
-    let m = read_manifest(&manifest_path);
-
-    if let Some(ws) = &m.workspace {
-        let members = resolve_workspace_members(path, arg, &ws.members);
-        return Target::Workspace {
-            members,
-            label: arg.to_string(),
-        };
-    }
-
-    // Plain package directory. If it lives inside a workspace, route its
-    // artifacts to the workspace's shared `build/` (Cargo-style).
-    let workspace_root = find_parent_workspace(path);
-    Target::Build(resolve_package_spec(
-        path,
-        arg,
-        &m,
-        workspace_root.as_deref(),
-    ))
-}
-
-/// Walk up from `start` (exclusive) looking for an ancestor whose
-/// `canon.toml` carries a `[workspace]` table. Returns the workspace
-/// root directory, or `None` if there isn't one.
-///
-/// Failure to read or parse an ancestor's manifest is silent here: we
-/// only care about the workspace-or-not flag. The full parse error will
-/// surface when the user actually invokes a command on that path.
-fn find_parent_workspace(start: &Path) -> Option<PathBuf> {
-    let mut current = start.canonicalize().ok()?;
-    while let Some(parent) = current.parent() {
-        let parent = parent.to_path_buf();
-        let manifest = parent.join("canon.toml");
-        if manifest.exists() {
-            if let Ok(src) = fs::read_to_string(&manifest) {
-                if let Ok(m) = manifest::parse(&src) {
-                    if m.workspace.is_some() {
-                        return Some(parent);
-                    }
-                }
-            }
-        }
-        if parent == current {
-            break;
-        }
-        current = parent;
-    }
-    None
-}
-
-fn read_manifest(manifest_path: &Path) -> manifest::Manifest {
-    let src = match fs::read_to_string(manifest_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: could not read `{}`: {}", manifest_path.display(), e);
-            process::exit(1);
-        }
-    };
-    match manifest::parse(&src) {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("error: in `{}`: {}", manifest_path.display(), e);
-            process::exit(1);
-        }
+    Target::Workspace {
+        members,
+        label: arg.to_string(),
     }
 }
 
-/// Build a `BuildSpec` for a package directory. When `workspace_root` is
-/// `Some`, output is routed to `<workspace_root>/build/`; otherwise it
-/// lands in `<pkg_root>/build/`.
-fn resolve_package_spec(
-    pkg_root: &Path,
-    label: &str,
-    m: &manifest::Manifest,
-    workspace_root: Option<&Path>,
-) -> BuildSpec {
+/// Build a `BuildSpec` for a package directory. The package's name is
+/// its directory name and its artifacts land in its own `build/`.
+fn resolve_package_spec(pkg_root: &Path, label: &str) -> BuildSpec {
     let entry = pkg_root.join("src").join("main.can");
-    if !entry.exists() {
-        eprintln!(
-            "error: package `{}` has no entry point at `{}`",
-            if m.name.is_empty() { label } else { &m.name },
-            entry.display()
-        );
-        eprintln!("hint: create `src/main.can` with a `main` function");
-        process::exit(1);
-    }
-    let output_stem = m.name.rsplit('/').next().unwrap_or(&m.name);
-    let output_stem = if output_stem.is_empty() {
-        // Workspace member with no name: fall back to the directory name.
-        pkg_root
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("out")
-            .to_string()
-    } else {
-        output_stem.to_string()
-    };
-    let output_dir = match workspace_root {
-        Some(ws) => ws.join("build"),
-        None => pkg_root.join("build"),
-    };
+    // `.` and `..` have no usable `file_name`; canonicalize to recover
+    // the real directory name.
+    let name = pkg_root
+        .file_name()
+        .map(|s| s.to_os_string())
+        .or_else(|| {
+            pkg_root
+                .canonicalize()
+                .ok()
+                .and_then(|p| p.file_name().map(|s| s.to_os_string()))
+        })
+        .and_then(|s| s.to_str().map(str::to_string))
+        .unwrap_or_else(|| "out".to_string());
     BuildSpec {
         entry,
-        output_dir,
-        output_stem,
+        output_dir: pkg_root.join("build"),
+        output_stem: name.clone(),
         label: label.to_string(),
-        name: m.name.clone(),
+        name,
     }
 }
 
@@ -425,82 +353,36 @@ fn resolve_file_spec(path: &Path, arg: &str) -> BuildSpec {
     }
 }
 
-/// Resolve a workspace's `members = [...]` directive to concrete
-/// `BuildSpec`s. A single literal `"*"` expands to every immediate
-/// subdirectory of the workspace root that contains an `canon.toml`.
-/// Otherwise each entry is treated as a relative path from the workspace
-/// root. Members are returned sorted alphabetically by label.
-fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String]) -> Vec<BuildSpec> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-    let mut had_glob = false;
-
-    for entry in members {
-        if entry == "*" {
-            had_glob = true;
-            let read = match fs::read_dir(ws_root) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("error: could not list `{}`: {}", ws_root.display(), e);
-                    process::exit(1);
-                }
-            };
-            for d in read.flatten() {
-                let p = d.path();
-                if p.is_dir() && p.join("canon.toml").exists() {
-                    paths.push(p);
-                }
-            }
-        } else {
-            let p = ws_root.join(entry);
-            if !p.is_dir() {
-                eprintln!(
-                    "error: workspace member `{}` is not a directory (looked at `{}`)",
-                    entry,
-                    p.display()
-                );
-                process::exit(1);
-            }
-            if !p.join("canon.toml").exists() {
-                eprintln!(
-                    "error: workspace member `{}` has no `canon.toml`",
-                    p.display()
-                );
-                process::exit(1);
-            }
-            paths.push(p);
-        }
-    }
-
-    paths.sort();
-    paths.dedup();
-
-    if paths.is_empty() {
-        if had_glob {
+/// Discover a workspace's members: every immediate subdirectory of
+/// `ws_root` that is a package (contains `src/main.can`). There is no
+/// member list to declare — the directory structure is the workspace.
+/// Members are returned sorted alphabetically by path; each builds into
+/// its own `build/`.
+fn resolve_workspace_members(ws_root: &Path, ws_label: &str) -> Vec<BuildSpec> {
+    let read = match fs::read_dir(ws_root) {
+        Ok(r) => r,
+        Err(e) => {
             eprintln!(
-                "warning: workspace `{}` matched no members (no subdir of `{}` contains an `canon.toml`)",
+                "error: could not list `{}` ({}): {}",
                 ws_label,
-                ws_root.display()
+                ws_root.display(),
+                e
             );
-        } else {
-            eprintln!("warning: workspace `{}` has no members", ws_label);
+            process::exit(1);
         }
-    }
+    };
+    let mut paths: Vec<PathBuf> = read
+        .flatten()
+        .map(|d| d.path())
+        .filter(|p| p.join("src").join("main.can").is_file())
+        .collect();
+    paths.sort();
 
     paths
         .into_iter()
         .map(|p| {
             let label = p.to_string_lossy().into_owned();
-            let manifest_path = p.join("canon.toml");
-            let m = read_manifest(&manifest_path);
-            if m.workspace.is_some() {
-                eprintln!(
-                    "error: nested workspaces are not supported (`{}` is also a workspace)",
-                    p.display()
-                );
-                process::exit(1);
-            }
-            // All members share the workspace's `build/` (Cargo-style).
-            resolve_package_spec(&p, &label, &m, Some(ws_root))
+            resolve_package_spec(&p, &label)
         })
         .collect()
 }
@@ -694,12 +576,12 @@ fn cmd_install(args: &[String]) {
                 println!("               (shared with `wkg`); set CANON_REGISTRY_CONFIG to use");
                 println!("               an alternate config.");
                 println!();
-                println!("  target       The project directory (containing `canon.toml`).");
+                println!("  target       The project directory (containing `wit/`).");
                 println!("               Defaults to the current directory.");
                 println!();
-                println!("For every entry in the manifest's `[imports]` table, materializes");
-                println!("the corresponding Canon bindings into `<target>/bindgen/`. WIT");
-                println!("sources (`*.wit`) become Canon source under `<ns>/<pkg>/<iface>.can`.");
+                println!("For every WIT source under `<target>/wit/` (a `.wit` file or a");
+                println!("directory of them), materializes the corresponding Canon bindings");
+                println!("into `<target>/bindgen/` under `<ns>/<pkg>@<ver>/<iface>.can`.");
                 println!("Wasm-component sources (`*.wasm`) are recorded as deferred.");
                 return;
             }
@@ -722,7 +604,7 @@ fn cmd_install(args: &[String]) {
 
     // A `:` marks a registry spec (`<ns>:<name>[@ver]`) — paths can't
     // contain one in the position the grammar requires. Everything else
-    // stays the manifest-driven local install.
+    // stays the local `wit/`-driven install.
     if let Some(spec_str) = target.as_deref().filter(|t| t.contains(':')) {
         let spec = match canon::registry::parse_spec(spec_str) {
             Ok(s) => s,
@@ -732,8 +614,8 @@ fn cmd_install(args: &[String]) {
             }
         };
         // Vendor into the enclosing project when there is one, else
-        // treat the current directory as the (manifest-free) project
-        // root — the same fallback the loader's `deps/` lookup uses.
+        // treat the current directory as the project root — the same
+        // fallback the loader's `deps/` lookup uses.
         let cwd = PathBuf::from(".");
         let root = canon::install::find_project_root(&cwd).unwrap_or(cwd);
         match canon::registry::install_from_registry(&spec, &root) {
@@ -761,7 +643,7 @@ fn cmd_install(args: &[String]) {
         Ok(outcome) => {
             if outcome.written.is_empty() && outcome.skipped.is_empty() {
                 println!(
-                    "no `[imports]` entries in `{}/canon.toml` - nothing to install",
+                    "no WIT sources under `{}/wit/` - nothing to install",
                     target_path.display()
                 );
             } else {

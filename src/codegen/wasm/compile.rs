@@ -4924,7 +4924,7 @@ impl<'m> WasmGen<'m> {
                     }));
                     f.instruction(&Instruction::LocalSet(local));
                 }
-                // WIT declaration order (wit-vendor/wasi/http.wit).
+                // WIT declaration order (packages/canon/std/wit/wasi/http.wit).
                 const METHOD_NAMES: [&str; 9] = [
                     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
                 ];
