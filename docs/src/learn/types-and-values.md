@@ -12,15 +12,16 @@ User = Birthday * Username
 Birthday = String
 ```
 
-- `Bool` is a **union**: a value is a `False` *or* a `True`. Variants
-  are listed alphabetically (the compiler checks).
+- `Bool` is a **union**: a value is a `False` *or* a `True`.
 - `User` is a **product**: a value has a `Birthday` *and* a `Username`.
-  Fields are alphabetical too, and must be *distinct types* — which is
-  where the third form comes in.
+  Its fields must be *distinct types* — which is where the third form
+  comes in.
 - `Birthday` is a **newtype**: a distinct type wrapping `String`. Two
-  strings that mean different things get two names, and the names are
-  checked wherever the values flow. Newtypes are how Canon
-  disambiguates everything other languages use identifiers for.
+  strings that mean different things get two names, checked wherever
+  the values flow — newtypes disambiguate everything other languages
+  use identifiers for.
+
+(Variants and fields are listed alphabetically; the compiler checks.)
 
 A product is read by the type of its component — `User.Birthday` — so a
 field never needs a name of its own. Generics use angle brackets
@@ -62,10 +63,7 @@ The arrow `User => Greeting { … }` declares the `Greeting` constructor:
 give it a `User`, get a `Greeting`. Inside the body, `User` names the
 input value, and `User.Username` reads its component. Notice how the
 `User` is assembled: each argument binds to the field its *type*
-selects, never to a position — the `Birthday` pipes in, the `Username`
-rides in the parens. (The next chapter,
-[Pipes & Constructors](./pipes-and-constructors.md), is all about
-these arrows.)
+selects, never to a position.
 
 ## Conversion Is Construction
 

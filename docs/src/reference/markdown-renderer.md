@@ -137,28 +137,13 @@ exercising strings, dispatch, escaping, and file resolution end to end.
 
 ## Current limits
 
-Extending the renderer, and building a web app around it, surfaced two
-compiler rough edges worth knowing about, both about how a value's type
-picks a slot at the value level:
+Two compiler rough edges are worth knowing when writing renderer-style
+code (both are bugs, tracked, not language rules):
 
-- **Piping into a product constructor binds by type, but codegen mislays
-  the stack when the piped receiver matches a *later* field than the
-  paren argument.** `content -> HeadingHtml(level)` (a `String` piped into
-  an `Int * String` constructor) miscompiles; `level -> HeadingHtml(content)`
-  is equivalent by the positionless-construction rule and compiles. The
-  renderer uses the second form.
-- **A `Model * String` update whose model is also `String`-underlying
-  binds a bare `String` reference ambiguously.** In `examples/markdown-web`,
-  `Page = String` and the update took a `String` message; inside the body
-  `String -> Length` could resolve to the *model* rather than the message,
-  so `update` silently returned the wrong value and the page never
-  switched. Giving the message its own newtype (`Msg = String`,
-  `Page * Msg => Update`) disambiguates the two same-underlying-type
-  parameters -- the "components are distinct types" rule biting at the
-  value level.
-
-Both are compiler bugs, not language limits -- fixing them lets these
-programs read the natural way. (An earlier note here also flagged
-constructors returning an `Html`-aliased newtype as miscompiling; that
-turned out to be a stale-build artifact during bring-up, not a real bug --
-`String => Div { ... }` with `Div = Html` compiles fine.)
+- When a piped value and a paren argument could fill each other's
+  fields in a two-field constructor, prefer piping the *earlier* field
+  (`level -> HeadingHtml(content)`, not the reverse) — the other order
+  can miscompile.
+- When a web app's model is a `String` newtype, give the update's
+  message its own newtype too (`Msg = String`, `Page * Msg => Update`),
+  so a bare `String` reference in the body is unambiguous.

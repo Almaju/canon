@@ -59,11 +59,10 @@ canon test tests/           # every *_test.can under a directory
 ```
 
 The exit code is honest — `0` when everything passes, `1` on any
-failure — so `canon test` drops straight into CI with no wrapper.
-
-The design nudges architecture the right way: logic lives in
-constructors that take and return values, entries stay thin, and the
-testable surface falls out for free — a test is just one more caller.
+failure — so `canon test` drops straight into CI. And the design
+nudges architecture the right way: logic lives in constructors that
+take and return values, so the testable surface falls out for free — a
+test is just one more caller.
 
 **Next:** [How Do I…?](./how-do-i.md) — the whole language as a lookup
 table.

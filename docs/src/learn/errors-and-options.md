@@ -58,13 +58,11 @@ File * Path => Result<Bytes, IoError + NotFound + PermissionDenied> {
 Unions widen along `?`: a callee returning `Result<T, IoError>`
 propagates cleanly out of a caller declaring
 `Result<U, IoError + ParseError>`, because its errors are a subset.
-Alphabetical enforcement makes that check purely syntactic — every
-union has exactly one spelling.
 
 Name errors after **what failed** (`InvalidUrl`, `MalformedJson`), not
-after who raised them. And remember that
-[validated constructors](./types-and-values.md) return `Result` — so
-"parse, don't validate" is not a slogan here; it is what constructors
+after who raised them. And since
+[validated constructors](./types-and-values.md) return `Result`,
+"parse, don't validate" is not a slogan here — it is what constructors
 are.
 
 **Precise rules:** [Expressions & Dispatch](../spec/expressions.md).

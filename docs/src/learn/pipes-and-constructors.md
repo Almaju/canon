@@ -66,15 +66,10 @@ Name("ada") -> Line(Greeting("hi "))
 
 Both are the same call: because the input is a product of **distinct
 types**, each argument binds to the slot its type selects, not to a
-position. This is also why the piped position is not privileged — a
-function stays linked to every type in its input, never bound to a
-single "receiver".
-
-One canonical spelling is enforced (by `canon check --fix`, like all
-formatting): **values flow through pipes, literals are born in the
-parens**. A computed value pipes (`value -> Person(30)`); a lone scalar
-literal starts its chain inside the construction
-(`Greeting("hi")`, never `"hi" -> Greeting`).
+position — a function is never bound to a single "receiver". One
+canonical spelling is enforced, like all formatting: **values flow
+through pipes, literals are born in the parens** — `value -> Person(30)`
+but `Greeting("hi")`, never `"hi" -> Greeting`.
 
 ## Result Newtypes
 
@@ -93,8 +88,7 @@ Map * String * Value => Inserted {
 `map -> Inserted("k" * "v")` reads as what it is, and because a newtype
 flows anywhere its base type is expected, chaining is free:
 `Map() -> Inserted("a" * "1") -> Removed("a")`. The same idea gives
-effects their receipts — a file write returns a `Written` — and gives
-shared vocabulary its shape: every container declares the same
+shared vocabulary its shape — every container declares the same
 `Length = Int` and contributes its own arrow to it.
 
 ## Lambdas

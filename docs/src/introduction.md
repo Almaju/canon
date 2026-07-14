@@ -28,9 +28,8 @@ compiler sees one arrow returning `Response`, so the program *is* an
 HTTP service: a standard `wasi:http/service` component any compliant
 host can serve.
 
-Canon also compiles to the browser — which is why the next program has a
-**run** button. Press it: the snippet was compiled to WebAssembly and
-runs right here, on this page.
+Canon also compiles to the browser — which is why the next program has
+a **run** button. Press it.
 
 ```canon,run=intro
 Unit => Program {
@@ -66,24 +65,17 @@ sentence here and a full chapter in [The Philosophy](./philosophy.md).
 
 ## Where to Go Next
 
-- **Curious but skeptical?** [Is Canon for You?](./reference/coming-from.md)
-  maps Canon onto the language you already know — TypeScript, Python,
-  Rust, or Go.
+- **Skeptical?** [Is Canon for You?](./reference/coming-from.md) maps
+  Canon onto the language you already know.
 - **Want the ideas?** [The Philosophy](./philosophy.md) is the full
-  argument, one creative decision at a time.
-- **Want to write code?** [Install the toolchain](./getting-started/installation.md),
+  argument.
+- **Want to write code?** [Install](./getting-started/installation.md),
   say [Hello, World](./getting-started/hello-world.md), then walk the
-  **Learn** chapters — a short voyage from
-  [Types & Values](./learn/types-and-values.md) to
-  [Testing](./learn/testing.md), with runnable examples along the way.
-- **Looking for something specific?** [How Do I…?](./learn/how-do-i.md)
-  answers "how do I print / branch / loop / parse / serve HTTP" in one
-  place.
-- **Need the exact rules?** The **Specification** section is the
-  authoritative description of the language, starting at the
-  [overview](./spec/overview.md).
-- **Generating code with a model?** [Canon for AI](./canon-for-ai.md)
-  explains why the same constraints that help humans help machines.
+  **Learn** chapters from [Types & Values](./learn/types-and-values.md)
+  on — they run in the browser.
+- **Looking for something specific?** [How Do I…?](./learn/how-do-i.md).
+- **Need the exact rules?** The [Specification](./spec/overview.md).
+- **Generating code with a model?** [Canon for AI](./canon-for-ai.md).
 
 ## Status
 

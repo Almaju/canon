@@ -32,13 +32,10 @@ Database * User => Result<Saved, DbError> {
 ```
 
 No `UserRepository`, no dependency-injection framework, no globals: the
-`Database` arrives as an argument or the function cannot exist. And the
-argument is always written — Canon never fills in an omitted value from
-surrounding scope, because the pipe is the one spelling of passing a
-value.
-
-`Print` is the single deliberate exception: writing a line to stdout
-requires no token.
+`Database` arrives as an argument or the function cannot exist — and it
+is always written, never filled in from surrounding scope. `Print` is
+the single deliberate exception: writing a line to stdout requires no
+token.
 
 ## Evidence
 

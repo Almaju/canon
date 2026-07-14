@@ -47,19 +47,13 @@ entry:
 | `Request => Response` | an HTTP service (`wasi:http/service`) |
 | `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app (wasm + generated JS host) |
 
-The same forty lines of routing logic become a server because one arrow
-returns `Response`; the same fold over messages becomes a web app
-because a view returns `Html`. Helpers must return ordinary values —
-exactly one arrow may return a world type, so the layering the docs
-recommend is the layering the compiler enforces. The
+Exactly one arrow may return a world type — helpers return ordinary
+values, so good layering is compiler-enforced. The
 [fullstack example](../examples/fullstack.md) runs one shared codebase
-on both sides of the wire this way.
-
-Two details worth knowing early: `Args` (`= List<String>`) is your
-argv, handed to the CLI entry the way `Request` is handed to the HTTP
-handler; and a fallible entry is just a `Result` return
-(`Unit => Result<Program, MalformedJson>`), so `?` works at the top
-level too.
+on both sides of the wire this way. Two details worth knowing early:
+`Args` (`= List<String>`) is your argv, handed to the CLI entry the way
+`Request` is handed to the HTTP handler; and a fallible entry is just a
+`Result` return, so `?` works at the top level too.
 
 **Precise rules:** [Modules & Packages](../spec/modules.md) and
 [Functions & Traits](../spec/functions.md); commands in

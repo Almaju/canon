@@ -19,11 +19,9 @@ True() -> (
 Each arm is a lambda for one variant; the whole dispatch is an
 expression, so all arms produce the same type. When a variant carries
 data, the arm names the payload type and the body sees it under that
-name: `* Some<Int> => Unit { Int -> Print }`.
-
-Exhaustiveness is the point. Add a variant to a union and every
-dispatch that forgot it stops compiling — the compiler finds each
-branch you need to think about.
+name: `* Some<Int> => Unit { Int -> Print }`. Exhaustiveness is the
+point — add a variant to a union and every dispatch that forgot it
+stops compiling.
 
 ## Literal Dispatch
 
@@ -79,10 +77,9 @@ Unit => Program {
 }
 ```
 
-The `Len` constructor calls itself on the rest of the chain (`Link.Next
--> Len`) until dispatch hits the `Stop` arm — base case, recursive
-case, and branch are all one construct. The standard library's `Map`
-and `Set` are built exactly this way.
+`Len` calls itself on the rest of the chain until dispatch hits the
+`Stop` arm — base case, recursive case, and branch are one construct.
+The standard library's `Map` and `Set` are built exactly this way.
 
 **Precise rules:** [Expressions & Dispatch](../spec/expressions.md).
 

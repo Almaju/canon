@@ -27,34 +27,18 @@ curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -
 
 ## Toolchains
 
-One installation holds both channels, and the `canon` on your `PATH` is a thin
-launcher that picks the active one:
-
-- **stable** (the fallback) -- versioned releases (`vX.Y.Z`), promoted from a
-  tested nightly.
-- **nightly** -- a rolling prerelease rebuilt automatically on every push to
-  `main`. Latest features, less settled.
-
-Switching is one word, scoped by where you run it -- no config file in your
-project, and no separate "default" vs "override" machinery:
+Two channels — **stable** (versioned releases, the fallback) and
+**nightly** (rebuilt on every push to `main`) — live in one
+installation, and the `canon` on your `PATH` picks the active one:
 
 ```sh
-canon use nightly       # this directory (and below) now uses nightly --
-                        # installs it first if it isn't on disk
-cd ~ && canon use nightly   # run it in your home directory: global default
-canon use               # show the active toolchain, why, and what's installed
+canon use nightly           # this directory (and below) now uses nightly
+canon use                   # show the active toolchain and why
+canon nightly run app.can   # one-shot: the channel as the first word
 ```
 
-For a single command, the channel is the first word -- like a dispatch arm:
-
-```sh
-canon nightly run app.can
-canon stable test suite.can
-```
-
-A bare `canon` resolves: explicit channel word -> nearest `canon use` ancestor
--> `stable`. Selections live centrally in `~/.canon/uses`; to remove a
-toolchain from disk, delete `~/.canon/toolchains/<channel>`.
+Run `canon use` from your home directory to set a global default.
+There is no project config file; selections live in `~/.canon/uses`.
 
 ## Verify
 

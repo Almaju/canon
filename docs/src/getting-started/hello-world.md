@@ -65,11 +65,6 @@ There is no `Stdout` capability to thread through. The compiler lowers
 `Print` against the standard `wasi:cli/stdout` interface, so the
 resulting `.wasm` runs on any Component Model host.
 
-For redirectable output (a file, a log sink, a test buffer), construct
-an explicit destination value such as a `File` or a `Fileout` and pass
-it as an additional component. Plain `-> Print` is sugar for "I want
-stdout".
-
 ## Try Breaking Things
 
 - **Add a second `-> Print` line.** Each call writes its argument followed

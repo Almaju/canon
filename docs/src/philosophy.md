@@ -15,10 +15,7 @@ language needed, and shows what grows in the space it leaves behind.
 Give ten programmers a problem and most languages let them hand back
 ten different-looking programs — braces here or there, `if` or `match`,
 fields in whatever order they came to mind. None of those differences
-mean anything. They are noise that reviews argue about and diffs drown
-in.
-
-Canon deletes the noise at the root:
+mean anything. Canon deletes the noise at the root:
 
 - **Ordering is never yours to choose.** Product fields, union
   variants, declarations in a file, dispatch arms — everything whose
@@ -44,11 +41,10 @@ so does every argument it used to start.
 
 ## Types Are the Only Names
 
-Names are the leakiest abstraction in programming: a variable named
-`userList` that holds a map, a function named `validate` that also
-saves, a parameter named `data`. Names lie; types don't. So Canon keeps
-only the names the compiler can check — **type names** — and removes
-every other kind:
+A variable named `userList` that holds a map, a function named
+`validate` that also saves, a parameter named `data`: names lie; types
+don't. So Canon keeps only the names the compiler can check — **type
+names** — and removes every other kind:
 
 - **No local variables.** Values thread through the `->` pipe. To name
   an intermediate value, give it a *type* — the name is then checked,
@@ -179,10 +175,7 @@ A few choices look wrong until the principle behind them is visible:
 | style guides, formatter config | one canonical form, enforced at compile time |
 | permission systems | capabilities as values |
 
-Nothing on the left was forgotten. Each was weighed and found to be a
-choice the compiler could make better than a person — and the sections
-above are what each removal bought.
-
-The rest of this book shows the mechanics: the **Learn** chapters teach
-each construct with runnable examples, and the **Specification** states
-the precise rules.
+Nothing on the left was forgotten; each was weighed and found to be a
+choice the compiler could make better than a person. The **Learn**
+chapters teach what remains, with runnable examples; the
+**Specification** states the precise rules.
