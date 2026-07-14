@@ -1,0 +1,34 @@
+Ge = Bool
+
+Gt = Bool
+
+Le = Bool
+
+Ne = Bool
+
+OtherFloat = Float
+
+Float * OtherFloat => Ge {
+    OtherFloat -> Lt(Float) -> (
+        * False => Ge { Float -> Eq(OtherFloat) }
+        * True => Ge { True() }
+    )
+}
+
+Float * OtherFloat => Gt {
+    OtherFloat -> Lt(Float)
+}
+
+Float * OtherFloat => Le {
+    Float -> Lt(OtherFloat) -> (
+        * False => Le { Float -> Eq(OtherFloat) }
+        * True => Le { True() }
+    )
+}
+
+Float * OtherFloat => Ne {
+    Float -> Eq(OtherFloat) -> (
+        * False => Ne { True() }
+        * True => Ne { False() }
+    )
+}

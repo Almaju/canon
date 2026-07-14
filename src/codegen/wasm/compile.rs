@@ -2076,6 +2076,9 @@ impl<'m> WasmGen<'m> {
     /// same name (resolved earlier via `func_table`) always wins.
     pub(super) fn builtin_result_type(&self, method: &str, receiver: &Expr) -> Option<String> {
         match method {
+            // `Ne`/`Le`/`Gt`/`Ge` — like `And`/`Or`/`Not` — are stdlib
+            // result newtypes of `Bool` now, kept here as the static-type
+            // fallback for chains (each erases to `Bool` on the stack).
             "Eq" | "Ne" | "Lt" | "Le" | "Gt" | "Ge" | "And" | "Or" | "Not" => {
                 Some("Bool".to_string())
             }
@@ -2943,7 +2946,7 @@ impl<'m> WasmGen<'m> {
         // so piped and prefix spellings build identically: products,
         // union variants, newtypes, primitive conversions, constructor
         // families, shapes, and the HTTP `Response` all handled there.
-        // Builtins (`Sum`, `Ge`, `Joined`, …) and pure operations are
+        // Builtins (`Sum`, `Lt`, `Joined`, …) and pure operations are
         // not type names, so they fall through to the method paths
         // below. Runs before the receiver is compiled, so
         // `compile_constructor` owns every input — no double emit.
@@ -4309,34 +4312,17 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::I64RemS);
                 Ty::I64
             }
+            // Only the two base comparisons are builtins (wasm numerics);
+            // the derived comparisons (`ne`/`le`/`gt`/`ge`) are pure Canon
+            // dispatch over these in `canon/std/int.can`.
             ("lt", Ty::I64) => {
                 self.compile_i64_arg(args, scope, f);
                 f.instruction(&Instruction::I64LtS);
                 Ty::I32
             }
-            ("le", Ty::I64) => {
-                self.compile_i64_arg(args, scope, f);
-                f.instruction(&Instruction::I64LeS);
-                Ty::I32
-            }
-            ("gt", Ty::I64) => {
-                self.compile_i64_arg(args, scope, f);
-                f.instruction(&Instruction::I64GtS);
-                Ty::I32
-            }
-            ("ge", Ty::I64) => {
-                self.compile_i64_arg(args, scope, f);
-                f.instruction(&Instruction::I64GeS);
-                Ty::I32
-            }
             ("eq", Ty::I64) => {
                 self.compile_i64_arg(args, scope, f);
                 f.instruction(&Instruction::I64Eq);
-                Ty::I32
-            }
-            ("ne", Ty::I64) => {
-                self.compile_i64_arg(args, scope, f);
-                f.instruction(&Instruction::I64Ne);
                 Ty::I32
             }
             // ── Bool composition ─────────────────────────────────────────────
@@ -4384,34 +4370,19 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::F64Sub);
                 Ty::F64
             }
+            // Base comparisons only, as for Int — the derived comparisons
+            // live in `canon/std/float.can`. Their IEEE semantics survive
+            // the port: `Gt` is `Lt` with swapped operands, `Le`/`Ge` are
+            // `Lt`-or-`Eq`, and `Ne` is not-`Eq` — all exact under NaN
+            // (every ordered comparison with a NaN operand is false).
             ("lt", Ty::F64) => {
                 self.compile_f64_arg(args, scope, f);
                 f.instruction(&Instruction::F64Lt);
                 Ty::I32
             }
-            ("le", Ty::F64) => {
-                self.compile_f64_arg(args, scope, f);
-                f.instruction(&Instruction::F64Le);
-                Ty::I32
-            }
-            ("gt", Ty::F64) => {
-                self.compile_f64_arg(args, scope, f);
-                f.instruction(&Instruction::F64Gt);
-                Ty::I32
-            }
-            ("ge", Ty::F64) => {
-                self.compile_f64_arg(args, scope, f);
-                f.instruction(&Instruction::F64Ge);
-                Ty::I32
-            }
             ("eq", Ty::F64) => {
                 self.compile_f64_arg(args, scope, f);
                 f.instruction(&Instruction::F64Eq);
-                Ty::I32
-            }
-            ("ne", Ty::F64) => {
-                self.compile_f64_arg(args, scope, f);
-                f.instruction(&Instruction::F64Ne);
                 Ty::I32
             }
             // ── String concat ────────────────────────────────────────────────────
@@ -4633,7 +4604,10 @@ impl<'m> WasmGen<'m> {
             // (-1/0/1), mirroring `Int`'s comparison surface. This is
             // the primitive behind user-side alphabetical ordering —
             // the same order the language enforces on declarations.
-            ("lt" | "le" | "gt" | "ge" | "ne", _) if recv_ty.is_str_like() && args.len() == 1 => {
+            // Like `Int`/`Float`, only `lt` (and `eq` above) is a
+            // builtin; the derived comparisons dispatch over the two
+            // in `canon/std/string.can`.
+            ("lt", _) if recv_ty.is_str_like() && args.len() == 1 => {
                 let arg_ty = self.compile_expr(&args[0], scope, f);
                 if !arg_ty.is_str_like() {
                     // Mismatched arg type — drop everything, return false.
@@ -4644,13 +4618,7 @@ impl<'m> WasmGen<'m> {
                 }
                 f.instruction(&Instruction::Call(self.fn_str_cmp));
                 f.instruction(&Instruction::I32Const(0));
-                f.instruction(&match method {
-                    "lt" => Instruction::I32LtS,
-                    "le" => Instruction::I32LeS,
-                    "gt" => Instruction::I32GtS,
-                    "ge" => Instruction::I32GeS,
-                    _ => Instruction::I32Ne,
-                });
+                f.instruction(&Instruction::I32LtS);
                 Ty::I32
             }
             // ── List methods ───────────────────────────────────────────────────

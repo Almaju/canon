@@ -1,0 +1,244 @@
+FloatGeOfEqualIsTrue = TestResult
+
+Unit => FloatGeOfEqualIsTrue {
+    3.5
+        -> Ge(3.5)
+        -> TestResult
+}
+
+FloatGeOfLesserReceiverIsFalse = TestResult
+
+Unit => FloatGeOfLesserReceiverIsFalse {
+    2.5
+        -> Ge(3.5)
+        -> Not
+        -> TestResult
+}
+
+FloatGtOfGreaterReceiverIsTrue = TestResult
+
+Unit => FloatGtOfGreaterReceiverIsTrue {
+    4.5
+        -> Gt(3.5)
+        -> TestResult
+}
+
+FloatGtOfLesserReceiverIsFalse = TestResult
+
+Unit => FloatGtOfLesserReceiverIsFalse {
+    2.5
+        -> Gt(3.5)
+        -> Not
+        -> TestResult
+}
+
+FloatLeOfEqualIsTrue = TestResult
+
+Unit => FloatLeOfEqualIsTrue {
+    3.5
+        -> Le(3.5)
+        -> TestResult
+}
+
+FloatLeOfGreaterReceiverIsFalse = TestResult
+
+Unit => FloatLeOfGreaterReceiverIsFalse {
+    4.5
+        -> Le(3.5)
+        -> Not
+        -> TestResult
+}
+
+FloatLeOfLesserReceiverIsTrue = TestResult
+
+Unit => FloatLeOfLesserReceiverIsTrue {
+    2.5
+        -> Le(3.5)
+        -> TestResult
+}
+
+FloatNeOfDifferentIsTrue = TestResult
+
+Unit => FloatNeOfDifferentIsTrue {
+    2.5
+        -> Ne(3.5)
+        -> TestResult
+}
+
+FloatNeOfEqualIsFalse = TestResult
+
+Unit => FloatNeOfEqualIsFalse {
+    2.5
+        -> Ne(2.5)
+        -> Not
+        -> TestResult
+}
+
+IntGeOfEqualIsTrue = TestResult
+
+Unit => IntGeOfEqualIsTrue {
+    3
+        -> Ge(3)
+        -> TestResult
+}
+
+IntGeOfGreaterReceiverIsTrue = TestResult
+
+Unit => IntGeOfGreaterReceiverIsTrue {
+    5
+        -> Ge(3)
+        -> TestResult
+}
+
+IntGeOfLesserReceiverIsFalse = TestResult
+
+Unit => IntGeOfLesserReceiverIsFalse {
+    3
+        -> Ge(5)
+        -> Not
+        -> TestResult
+}
+
+IntGtOfEqualIsFalse = TestResult
+
+Unit => IntGtOfEqualIsFalse {
+    3
+        -> Gt(3)
+        -> Not
+        -> TestResult
+}
+
+IntGtOfGreaterReceiverIsTrue = TestResult
+
+Unit => IntGtOfGreaterReceiverIsTrue {
+    5
+        -> Gt(3)
+        -> TestResult
+}
+
+IntGtOfLesserReceiverIsFalse = TestResult
+
+Unit => IntGtOfLesserReceiverIsFalse {
+    3
+        -> Gt(5)
+        -> Not
+        -> TestResult
+}
+
+IntLeOfEqualIsTrue = TestResult
+
+Unit => IntLeOfEqualIsTrue {
+    3
+        -> Le(3)
+        -> TestResult
+}
+
+IntLeOfGreaterReceiverIsFalse = TestResult
+
+Unit => IntLeOfGreaterReceiverIsFalse {
+    5
+        -> Le(3)
+        -> Not
+        -> TestResult
+}
+
+IntLeOfLesserReceiverIsTrue = TestResult
+
+Unit => IntLeOfLesserReceiverIsTrue {
+    3
+        -> Le(5)
+        -> TestResult
+}
+
+IntNeOfDifferentIsTrue = TestResult
+
+Unit => IntNeOfDifferentIsTrue {
+    3
+        -> Ne(5)
+        -> TestResult
+}
+
+IntNeOfEqualIsFalse = TestResult
+
+Unit => IntNeOfEqualIsFalse {
+    3
+        -> Ne(3)
+        -> Not
+        -> TestResult
+}
+
+StringGeOfEarlierReceiverIsFalse = TestResult
+
+Unit => StringGeOfEarlierReceiverIsFalse {
+    "apple"
+        -> Ge("banana")
+        -> Not
+        -> TestResult
+}
+
+StringGeOfLaterReceiverIsTrue = TestResult
+
+Unit => StringGeOfLaterReceiverIsTrue {
+    "banana"
+        -> Ge("apple")
+        -> TestResult
+}
+
+StringGtOfEqualIsFalse = TestResult
+
+Unit => StringGtOfEqualIsFalse {
+    "apple"
+        -> Gt("apple")
+        -> Not
+        -> TestResult
+}
+
+StringGtOfLaterReceiverIsTrue = TestResult
+
+Unit => StringGtOfLaterReceiverIsTrue {
+    "banana"
+        -> Gt("apple")
+        -> TestResult
+}
+
+StringLeOfEarlierReceiverIsTrue = TestResult
+
+Unit => StringLeOfEarlierReceiverIsTrue {
+    "apple"
+        -> Le("banana")
+        -> TestResult
+}
+
+StringLeOfEqualIsTrue = TestResult
+
+Unit => StringLeOfEqualIsTrue {
+    "apple"
+        -> Le("apple")
+        -> TestResult
+}
+
+StringLeOfLaterReceiverIsFalse = TestResult
+
+Unit => StringLeOfLaterReceiverIsFalse {
+    "banana"
+        -> Le("apple")
+        -> Not
+        -> TestResult
+}
+
+StringNeOfDifferentIsTrue = TestResult
+
+Unit => StringNeOfDifferentIsTrue {
+    "apple"
+        -> Ne("banana")
+        -> TestResult
+}
+
+StringNeOfEqualIsFalse = TestResult
+
+Unit => StringNeOfEqualIsFalse {
+    "apple"
+        -> Ne("apple")
+        -> Not
+        -> TestResult
+}

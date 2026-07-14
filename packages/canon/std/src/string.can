@@ -1,0 +1,34 @@
+Ge = Bool
+
+Gt = Bool
+
+Le = Bool
+
+Ne = Bool
+
+OtherString = String
+
+String * OtherString => Ge {
+    OtherString -> Lt(String) -> (
+        * False => Ge { String -> Eq(OtherString) }
+        * True => Ge { True() }
+    )
+}
+
+String * OtherString => Gt {
+    OtherString -> Lt(String)
+}
+
+String * OtherString => Le {
+    String -> Lt(OtherString) -> (
+        * False => Le { String -> Eq(OtherString) }
+        * True => Le { True() }
+    )
+}
+
+String * OtherString => Ne {
+    String -> Eq(OtherString) -> (
+        * False => Ne { True() }
+        * True => Ne { False() }
+    )
+}

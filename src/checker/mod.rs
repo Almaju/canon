@@ -2692,11 +2692,11 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     ) {
         return true;
     }
+    // Only the base comparisons (`eq`/`lt`) are builtins; the derived
+    // `ne`/`le`/`gt`/`ge` are stdlib constructor families
+    // (`canon/std/{int,float,string}.can`) found via `symbols.methods`.
     if matches!(receiver_ty, "Int" | "Float" | "Hex")
-        && matches!(
-            method,
-            "add" | "sub" | "mul" | "div" | "rem" | "ne" | "eq" | "lt" | "gt" | "le" | "ge"
-        )
+        && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
     {
         return true;
@@ -2715,11 +2715,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("byteAt", 1)
                 | ("substring", 2)
                 | ("eq", 1)
-                | ("ne", 1)
                 | ("lt", 1)
-                | ("le", 1)
-                | ("gt", 1)
-                | ("ge", 1)
         )
     {
         return true;
@@ -3152,14 +3148,14 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
         ("Hex", "add" | "sub" | "mul" | "div" | "rem") => "Hex".to_string(),
-        ("Int", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
-        ("Float", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
-        ("Hex", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
+        ("Int", "eq" | "lt") => "Bool".to_string(),
+        ("Float", "eq" | "lt") => "Bool".to_string(),
+        ("Hex", "eq" | "lt") => "Bool".to_string(),
         // Conversion is construction: `Int.String()` renders decimal.
         ("Int", "String") => "String".to_string(),
         ("String", "concat" | "substring") => "String".to_string(),
         ("String", "length" | "byteAt") => "Int".to_string(),
-        ("String", "eq" | "ne" | "lt" | "le" | "gt" | "ge") => "Bool".to_string(),
+        ("String", "eq" | "lt") => "Bool".to_string(),
         ("List", "length") => "Int".to_string(),
         ("List", "map") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
