@@ -88,7 +88,7 @@ Model => Html {
         {Styles()}
         <aside class="side">
             <a class="brand" data-msg="Nav:introduction"><b>&#10033;</b> canon</a>
-            <form class="search" data-msg-form="Find:"><input type="search" name="q" placeholder="Search the docs&#8230;" aria-label="Search the docs" autocomplete="off"></form>
+            <form class="search" data-msg-form="Find:"><input type="search" name="q" placeholder="Search the docs…" aria-label="Search the docs" autocomplete="off"></form>
             <div class="sec">Start</div>
             {Model.Page -> NavItem(Slug("introduction") * Label("Why Canon"))}
             {Model.Page -> NavItem(Slug("philosophy") * Label("The Philosophy"))}
