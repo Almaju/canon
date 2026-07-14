@@ -26,12 +26,7 @@ Query * Slug * Label * Text => Hit {
     Text.String -> Holds(Query.String -> Needle * Start(1)) -> (
         * False => Hit { Html("") }
         * True => Hit {
-            "<button class=\"result\" data-msg=\"Nav:"
-                -> Joined(Slug.String)
-                -> Joined("\">")
-                -> Joined(Label.String)
-                -> Joined("</button>")
-                -> Html
+            <button class="result" data-msg="Nav:{Slug -> String}">{Label -> String}</button>
         }
     )
 }
@@ -44,15 +39,15 @@ Query => Hits {
         -> Joined(Query -> Hit(Slug("canon-for-ai") * Label("Canon for AI") * CanonForAi() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("installation") * Label("Installation") * Installation() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("hello-world") * Label("Hello, World") * HelloWorld() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("types-and-values") * Label("Types &amp; Values") * TypesAndValues() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("pipes-and-constructors") * Label("Pipes &amp; Constructors") * PipesAndConstructors() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("branching-and-loops") * Label("Branching &amp; Loops") * BranchingAndLoops() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("errors-and-options") * Label("Errors &amp; Options") * ErrorsAndOptions() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("types-and-values") * Label("Types & Values") * TypesAndValues() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("pipes-and-constructors") * Label("Pipes & Constructors") * PipesAndConstructors() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("branching-and-loops") * Label("Branching & Loops") * BranchingAndLoops() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("errors-and-options") * Label("Errors & Options") * ErrorsAndOptions() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("capabilities") * Label("Capabilities") * Capabilities() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("async-without-keywords") * Label("Async") * AsyncWithoutKeywords() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("programs-and-modules") * Label("Programs &amp; Modules") * ProgramsAndModules() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("programs-and-modules") * Label("Programs & Modules") * ProgramsAndModules() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("testing") * Label("Testing") * Testing() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("how-do-i") * Label("How Do I&#8230;?") * HowDoI() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("how-do-i") * Label("How Do I…?") * HowDoI() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("showcase") * Label("Examples Overview") * Showcase() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("multifile") * Label("Multi-File Project") * Multifile() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("notes-api") * Label("notes-api: JSON Service") * NotesApi() -> String -> Text) -> String)
@@ -69,12 +64,12 @@ Query => Hits {
         -> Joined(Query -> Hit(Slug("overview") * Label("Specification Overview") * Overview() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("lexical-structure") * Label("Lexical Structure") * LexicalStructure() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("types") * Label("Types") * Types() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("expressions") * Label("Expressions &amp; Dispatch") * Expressions() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("functions") * Label("Functions &amp; Traits") * Functions() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("expressions") * Label("Expressions & Dispatch") * Expressions() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("functions") * Label("Functions & Traits") * Functions() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("ordering") * Label("Ordering Rules") * Ordering() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("modules") * Label("Modules &amp; Packages") * Modules() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("effects-and-async") * Label("Effects &amp; Async") * EffectsAndAsync() -> String -> Text) -> String)
-        -> Joined(Query -> Hit(Slug("compilation") * Label("Compilation &amp; ABI") * Compilation() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("modules") * Label("Modules & Packages") * Modules() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("effects-and-async") * Label("Effects & Async") * EffectsAndAsync() -> String -> Text) -> String)
+        -> Joined(Query -> Hit(Slug("compilation") * Label("Compilation & ABI") * Compilation() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("types-only") * Label("Types-Only Canon") * TypesOnly() -> String -> Text) -> String)
         -> Joined(Query -> Hit(Slug("contributing") * Label("Contributing") * Contributing() -> String -> Text) -> String)
         -> Html
