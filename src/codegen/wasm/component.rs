@@ -117,12 +117,13 @@ pub(super) const WASI_HTTP_HANDLER: &str = "wasi:http/handler@0.3.0-rc-2026-03-1
 /// `wasi:filesystem` and `wasi:sockets` — so the whole vendored set
 /// must be in the `Resolve`. Order matters: dependencies before
 /// dependents.
-const WIT_WASI_CLOCKS: &str = include_str!("../../../wit-vendor/wasi/clocks.wit");
-const WIT_WASI_FILESYSTEM: &str = include_str!("../../../wit-vendor/wasi/filesystem.wit");
-const WIT_WASI_SOCKETS: &str = include_str!("../../../wit-vendor/wasi/sockets.wit");
-const WIT_WASI_CLI: &str = include_str!("../../../wit-vendor/wasi/cli.wit");
-const WIT_WASI_RANDOM: &str = include_str!("../../../wit-vendor/wasi/random.wit");
-const WIT_WASI_HTTP: &str = include_str!("../../../wit-vendor/wasi/http.wit");
+const WIT_WASI_CLOCKS: &str = include_str!("../../../packages/canon/std/wit/wasi/clocks.wit");
+const WIT_WASI_FILESYSTEM: &str =
+    include_str!("../../../packages/canon/std/wit/wasi/filesystem.wit");
+const WIT_WASI_SOCKETS: &str = include_str!("../../../packages/canon/std/wit/wasi/sockets.wit");
+const WIT_WASI_CLI: &str = include_str!("../../../packages/canon/std/wit/wasi/cli.wit");
+const WIT_WASI_RANDOM: &str = include_str!("../../../packages/canon/std/wit/wasi/random.wit");
+const WIT_WASI_HTTP: &str = include_str!("../../../packages/canon/std/wit/wasi/http.wit");
 
 /// The core-module import namespace for `wasi:http/types` functions and
 /// intrinsics. This is the `<iface>@<ver>` name `wit-component` matches

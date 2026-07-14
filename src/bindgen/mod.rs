@@ -113,7 +113,8 @@ fn parse_input(input: &Path) -> Result<Resolve, BindgenError> {
 /// Load every `.wit` file from a flat directory into a single `Resolve`.
 ///
 /// `Resolve::push_dir` expects a single-package layout with a nested
-/// `deps/` directory — not what we have. Our `wit-vendor/wasi/` is a flat
+/// `deps/` directory — not what we have. The stdlib's vendored
+/// `wit/wasi/` is a flat
 /// collection of independent packages (`cli.wit`, `clocks.wit`, …) that
 /// cross-reference each other through `import wasi:<pkg>/<iface>`
 /// declarations in their world definitions.

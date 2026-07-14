@@ -109,8 +109,8 @@ language changes are intentionally conservative.
 ### Adding a standard library item
 
 Add the Canon wrapper under `packages/canon/std/src/`. If it needs a new
-host binding, declare the WIT import in the package's `canon.toml`
-(`[imports]`) and regenerate the vendored bindings with `just
+host binding, drop the WIT source under the package's `wit/` directory
+and regenerate the vendored bindings with `just
 regen-bindings` (= `canon install packages/canon/std`) — never hand-edit
 the `bindgen/` tree. Add an example to `examples/` if the feature warrants
 one.

@@ -132,11 +132,11 @@ and the loader pulls in the same files for each compile:
 - [`title.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/title.can)
   -- the `Title` newtype.
 
-There is no `canon.toml` here on purpose: the two entries share the
-directory so they can reference the same sibling files. (Package-level
-`[deps]` sharing is future work; same-directory sharing is the honest
-mechanism available today, which is also why `just examples` does not
-run this one.)
+There is no `src/main.can` here on purpose — this directory is not a
+package: the two entries share the directory so they can reference the
+same sibling files. (Package-level dependency sharing is future work;
+same-directory sharing is the honest mechanism available today, which
+is also why `just examples` does not run this one.)
 
 ## What it demonstrates
 

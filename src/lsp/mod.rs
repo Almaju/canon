@@ -3,14 +3,17 @@
 /// Communicates over stdin/stdout using JSON-RPC 2.0 with Content-Length framing.
 /// No external dependencies — only std and the `canon` library crate.
 ///
-/// The server is split across three files:
-///   * `mod.rs`      — entry point, the read loop, method dispatch, the
-///                     `initialize` capability declaration, and the LSP
-///                     transport / JSON / URI / source-text helpers shared
-///                     by the handlers.
-///   * `state.rs`    — the `LspServer` document state and diagnostics.
-///   * `handlers.rs` — the `textDocument/*` handlers plus the hover and
-///                     go-to-definition machinery.
+/// The server is split across four files:
+///   * `mod.rs`        — entry point, the read loop, method dispatch, the
+///                       `initialize` capability declaration, and the LSP
+///                       transport / JSON / URI / source-text helpers shared
+///                       by the handlers.
+///   * `state.rs`      — the `LspServer` document state and diagnostics.
+///   * `handlers.rs`   — the `textDocument/*` handlers plus the hover and
+///                       go-to-definition machinery.
+///   * `completion.rs` — the `->` / `.` discovery completion providers
+///                       (public so tests can drive them directly).
+pub mod completion;
 mod handlers;
 mod state;
 
@@ -76,6 +79,7 @@ impl LspServer {
             | Some("$/cancelRequest") => {}
             Some("textDocument/hover") => self.handle_hover(msg, id),
             Some("textDocument/definition") => self.handle_definition(msg, id),
+            Some("textDocument/completion") => self.handle_completion(msg, id),
             Some("textDocument/formatting") => self.handle_formatting(msg, id),
             Some(m) => {
                 eprintln!("canon-lsp: unhandled method: {}", m);
@@ -95,6 +99,10 @@ impl LspServer {
     // -----------------------------------------------------------------------
 
     fn handle_initialize(&mut self, id: Option<String>) {
+        // Completion triggers on `>` (the tail of the pipe arrow `->`)
+        // and `.` (field access). A bare `>` — e.g. closing a generic —
+        // is filtered out by `completion::completion_context`, which
+        // requires the preceding `-` before treating it as an arrow.
         let result = format!(
             r#"{{
             "capabilities": {{
@@ -105,7 +113,10 @@ impl LspServer {
                 }},
                 "hoverProvider": true,
                 "definitionProvider": true,
-                "documentFormattingProvider": true
+                "documentFormattingProvider": true,
+                "completionProvider": {{
+                    "triggerCharacters": [">", "."]
+                }}
             }},
             "serverInfo": {{
                 "name": "canon-lsp",
