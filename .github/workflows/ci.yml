@@ -15,8 +15,44 @@ env:
   CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
-  ci:
-    name: ci
+  # A doc- or metadata-only change can't affect the compiler, the tests,
+  # or the examples, so the heavy `build` job below is skipped for it.
+  # `ci` is a required check, so it must always report — the gate job at
+  # the end runs unconditionally and reports the real result, whether or
+  # not `build` ran.
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - "src/**"
+              - "tests/**"
+              - "packages/**"
+              - "examples/**"
+              - "build.rs"
+              - "Cargo.toml"
+              - "Cargo.lock"
+              - "justfile"
+              - ".github/workflows/ci.yml"
+              # Two doc pages are pinned by the Rust test suite:
+              # codegen-gaps.md by tests/codegen_gaps.rs, and the example
+              # pages by tests/docs_examples_inline.rs. Editing them can
+              # break `cargo test`, so they count as code.
+              - "docs/src/reference/codegen-gaps.md"
+              - "docs/src/examples/**"
+
+  build:
+    name: build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,3 +81,19 @@ jobs:
       # servers are expected and do not fail.
       - name: examples
         run: just examples
+
+  # The required check. Always runs so the status is never left pending on
+  # a skipped `build`, and fails if `build` ran and failed.
+  ci:
+    name: ci
+    needs: [changes, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: gate
+        run: |
+          if [ "${{ needs.changes.result }}" != "success" ]; then exit 1; fi
+          case "${{ needs.build.result }}" in
+            success|skipped) exit 0 ;;
+            *) exit 1 ;;
+          esac
