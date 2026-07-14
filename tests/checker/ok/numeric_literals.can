@@ -1,5 +1,4 @@
 Unit => Program {
     42 -> Print
     1.0 -> Print
-    0xFF -> Print
 }

@@ -404,7 +404,6 @@ fn builtin_hover(name: &str) -> Option<String> {
         // Core numeric / text types
         "Int"    => "```canon\nInt\n```\nA 64-bit signed integer.",
         "Float"  => "```canon\nFloat\n```\nA 64-bit floating-point number.",
-        "Hex"    => "```canon\nHex\n```\nA 64-bit unsigned integer displayed in hexadecimal.",
         "String" => "```canon\nString = Byte^*\n```\nA UTF-8 string.",
         "Byte"   => "```canon\nByte\n```\nA single byte (u8).",
         "Bytes"  => "```canon\nBytes = Byte^*\n```\nA byte sequence.",

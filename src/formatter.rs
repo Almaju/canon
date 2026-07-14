@@ -209,12 +209,11 @@ fn is_scalar_literal(e: &Expr) -> bool {
         Expr::StringLit { .. }
             | Expr::IntLit { .. }
             | Expr::FloatLit { .. }
-            | Expr::HexLit { .. }
             | Expr::FormatLit { .. }
     )
 }
 
-/// `String("s")`, `Int(3)`, `Float(1.5)`, `Hex(0xFF)` wrap a literal in
+/// `String("s")`, `Int(3)`, `Float(1.5)` wrap a literal in
 /// the constructor that literal already desugars to — the wrap is pure
 /// ceremony, so `canon check --fix` unwraps it to the bare literal. Cross-kind
 /// construction (`String(42)` decimal rendering, `Int("42")` parsing)
@@ -225,17 +224,14 @@ fn primitive_literal_wrap(name: &str, input: &Expr) -> bool {
         ("String", Expr::StringLit { .. })
             | ("Int", Expr::IntLit { .. })
             | ("Float", Expr::FloatLit { .. })
-            | ("Hex", Expr::HexLit { .. })
     )
 }
 
 fn canon_expr(e: &Expr) -> Expr {
     match e {
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => e.clone(),
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {
+            e.clone()
+        }
 
         Expr::FieldAccess {
             receiver,
@@ -1005,7 +1001,6 @@ fn emit_base_inline(expr: &Expr) -> String {
         Expr::StringLit { value, .. } => format!("\"{}\"", escape_string(value)),
         Expr::IntLit { value, .. } => value.to_string(),
         Expr::FloatLit { value, .. } => format_float(*value),
-        Expr::HexLit { value, .. } => format!("0x{:X}", value),
         Expr::Constructor { name, args, .. } => {
             if args.is_empty() {
                 format!("{}()", name.name)

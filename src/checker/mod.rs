@@ -18,7 +18,6 @@ const BUILTIN_TYPES: &[&str] = &[
     // the canonical-ABI lowering reads it from the WIT signature, the
     // source-level type is just `Foo`.
     "Handle",
-    "Hex",
     "Int",
     "Network",
     "Never",
@@ -602,10 +601,7 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
                 }
             }
         }
-        Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => {}
+        Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
     }
 }
 
@@ -2116,7 +2112,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             }
         }
         Expr::StringLit { .. } => {}
-        Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. } => {}
+        Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
         Expr::JsonLit { .. } => {}
         Expr::HtmlLit { .. } => {}
         Expr::FormatLit { .. } => {}
@@ -2695,18 +2691,14 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     // checker-accepts-runs-wrong hole.
     if matches!(
         (receiver_ty, method, arg_count),
-        ("String", "print", 0)
-            | ("Int", "print", 0)
-            | ("Float", "print", 0)
-            | ("Hex", "print", 0)
-            | ("Bool", "print", 0)
+        ("String", "print", 0) | ("Int", "print", 0) | ("Float", "print", 0) | ("Bool", "print", 0)
     ) {
         return true;
     }
     // Only the base comparisons (`eq`/`lt`) are builtins; the derived
     // `ne`/`le`/`gt`/`ge` are stdlib constructor families
     // (`canon/std/{int,float,string}.can`) found via `symbols.methods`.
-    if matches!(receiver_ty, "Int" | "Float" | "Hex")
+    if matches!(receiver_ty, "Int" | "Float")
         && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
     {
@@ -2886,7 +2878,6 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
         Expr::StringLit { .. } => "String".to_string(),
         Expr::IntLit { .. } => "Int".to_string(),
         Expr::FloatLit { .. } => "Float".to_string(),
-        Expr::HexLit { .. } => "Hex".to_string(),
         Expr::Constructor { name, args, .. } => {
             // Variants widen to their parent union (e.g. `Some(x)` typed as
             // `Option`); free-function constructors take their declared
@@ -3151,17 +3142,13 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
 pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
     let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     match (receiver_ty, method) {
-        ("String", "print")
-        | ("Int", "print")
-        | ("Float", "print")
-        | ("Hex", "print")
-        | ("Bool", "print") => "Unit".to_string(),
+        ("String", "print") | ("Int", "print") | ("Float", "print") | ("Bool", "print") => {
+            "Unit".to_string()
+        }
         ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
-        ("Hex", "add" | "sub" | "mul" | "div" | "rem") => "Hex".to_string(),
         ("Int", "eq" | "lt") => "Bool".to_string(),
         ("Float", "eq" | "lt") => "Bool".to_string(),
-        ("Hex", "eq" | "lt") => "Bool".to_string(),
         // Conversion is construction: `Int.String()` renders decimal.
         ("Int", "String") => "String".to_string(),
         ("String", "concat" | "substring") => "String".to_string(),

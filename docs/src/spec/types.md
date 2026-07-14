@@ -29,7 +29,7 @@ True = Unit
 
 (There is no separate `Bit`: structurally identical types are one type,
 so a two-variant union of `Unit`s *is* `Bool`, and a byte is eight of
-them.) The higher-level primitives (`Int`, `Float`, `Hex`, `String`) are
+them.) The higher-level primitives (`Int`, `Float`, `String`) are
 defined from `Byte`/`Bytes`. The compiler supplies a small set of
 built-in operations on them (e.g. integer arithmetic), but their shape
 is still described by the algebra.

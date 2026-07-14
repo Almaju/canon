@@ -564,12 +564,9 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
     match expr {
         Expr::Constructor { name, args, .. } => {
             (name.name == "Int"
-                && args.first().is_some_and(|a| {
-                    !matches!(
-                        a,
-                        Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. }
-                    )
-                }))
+                && args
+                    .first()
+                    .is_some_and(|a| !matches!(a, Expr::IntLit { .. } | Expr::FloatLit { .. })))
                 || args.iter().any(expr_uses_int_parse)
         }
         Expr::MethodCall {
@@ -600,8 +597,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
         | Expr::Ident(_)
         | Expr::StringLit { .. }
         | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        | Expr::FloatLit { .. } => false,
     }
 }
 
@@ -717,11 +713,9 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
         Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_html_machinery),
         Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_html_machinery),
         Expr::FieldAccess { receiver, .. } => expr_uses_html_machinery(receiver),
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {
+            false
+        }
     }
 }
 
@@ -772,11 +766,9 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
         Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_json_machinery),
         Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_json_machinery),
         Expr::FieldAccess { receiver, .. } => expr_uses_json_machinery(receiver),
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {
+            false
+        }
     }
 }
 
@@ -824,7 +816,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Float",
     "Future",
     "Handle",
-    "Hex",
     "Int",
     "Json",
     "List",
@@ -1086,11 +1077,7 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
                 }
             }
         }
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => {}
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
     }
 }
 

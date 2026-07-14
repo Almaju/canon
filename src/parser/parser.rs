@@ -783,19 +783,6 @@ impl Parser {
                     span: tok.span,
                 })
             }
-            TokenKind::HexLit => {
-                self.advance();
-                let stripped = tok.lexeme.trim_start_matches("0x");
-                let value =
-                    u64::from_str_radix(stripped, 16).map_err(|_| CanonError::ParseError {
-                        message: format!("invalid hex literal `{}`", tok.lexeme),
-                        span: tok.span,
-                    })?;
-                Ok(Expr::HexLit {
-                    value,
-                    span: tok.span,
-                })
-            }
             TokenKind::LBrace => {
                 let open = tok.span;
                 self.advance();

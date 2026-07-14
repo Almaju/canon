@@ -1454,10 +1454,6 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::F64Const((*value).into()));
                 Ty::F64
             }
-            Expr::HexLit { value, .. } => {
-                f.instruction(&Instruction::I64Const(*value as i64));
-                Ty::I64
-            }
             Expr::StringLit { value, .. } => {
                 // Literal data is stored without a trailing newline; `.print`
                 // appends one universally (see `emit_print`).
@@ -2168,7 +2164,7 @@ impl<'m> WasmGen<'m> {
             | Expr::JsonLit { .. }
             | Expr::HtmlLit { .. }
             | Expr::FormatLit { .. } => Some("String".to_string()),
-            Expr::IntLit { .. } | Expr::HexLit { .. } => Some("Int".to_string()),
+            Expr::IntLit { .. } => Some("Int".to_string()),
             Expr::FloatLit { .. } => Some("Float".to_string()),
             Expr::Constructor { name, .. } => {
                 // Use the constructor's name as a hint — sufficient for the

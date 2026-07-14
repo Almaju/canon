@@ -533,21 +533,25 @@ impl<'a> Scanner<'a> {
             self.pos += 2;
             self.column += 2;
             let hex_start = self.pos;
+            let mut value: u64 = 0;
             while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_hexdigit() {
+                value = value
+                    .wrapping_mul(16)
+                    .wrapping_add((self.bytes[self.pos] as char).to_digit(16).unwrap() as u64);
                 self.pos += 1;
                 self.column += 1;
             }
-            if self.pos == hex_start {
-                return Err(self.err_at(
-                    start_line,
-                    start_col,
-                    "hex literal requires at least one digit after `0x`",
-                ));
-            }
-            return Ok((
-                TokenKind::HexLit,
-                self.source[start_pos..self.pos].to_string(),
-            ));
+            let message = if self.pos == hex_start {
+                "there is no hex notation: an integer has one spelling, its decimal digits"
+                    .to_string()
+            } else {
+                format!(
+                    "there is no hex notation: an integer has one spelling, its decimal \
+                     digits — write `{}`",
+                    value
+                )
+            };
+            return Err(self.err_at(start_line, start_col, &message));
         }
 
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {

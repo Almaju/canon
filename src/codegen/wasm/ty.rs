@@ -281,7 +281,7 @@ impl<'m> WasmGen<'m> {
             return Ty::NamedPtr(name.to_string());
         }
         match name {
-            "Int" | "Byte" | "Hex" => Ty::I64,
+            "Int" | "Byte" => Ty::I64,
             "Float" => Ty::F64,
             "Bool" | "True" | "False" => Ty::I32,
             "String" => Ty::Str,

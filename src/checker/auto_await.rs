@@ -200,7 +200,6 @@ fn transform_expr(expr: &mut Expr, ctx: &Ctx<'_>) {
         | Expr::StringLit { .. }
         | Expr::IntLit { .. }
         | Expr::FloatLit { .. }
-        | Expr::HexLit { .. }
         | Expr::JsonLit { .. }
         | Expr::HtmlLit { .. }
         | Expr::FormatLit { .. } => {}
@@ -452,7 +451,7 @@ fn infer_raw_type(expr: &Expr, returns: &MethodReturnMap) -> TypeExpr {
             generics: vec![],
             span: *span,
         },
-        Expr::IntLit { span, .. } | Expr::HexLit { span, .. } => TypeExpr::Named {
+        Expr::IntLit { span, .. } => TypeExpr::Named {
             name: "Int".to_string(),
             generics: vec![],
             span: *span,

@@ -172,10 +172,6 @@ pub enum Expr {
         value: f64,
         span: Span,
     },
-    HexLit {
-        value: u64,
-        span: Span,
-    },
     Constructor {
         name: Ident,
         args: Vec<Expr>,
@@ -275,7 +271,6 @@ impl Expr {
             Expr::StringLit { span, .. } => *span,
             Expr::IntLit { span, .. } => *span,
             Expr::FloatLit { span, .. } => *span,
-            Expr::HexLit { span, .. } => *span,
             Expr::Constructor { span, .. } => *span,
             Expr::MethodCall { span, .. } => *span,
             Expr::Match { span, .. } => *span,
@@ -441,7 +436,7 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
     let is_primitive = |n: &str| {
         matches!(
             n,
-            "Html" | "String" | "Int" | "Float" | "Bool" | "Hex" | "Unit" | "Byte"
+            "Html" | "String" | "Int" | "Float" | "Bool" | "Unit" | "Byte"
         )
     };
     // Every `_ => Html` with a non-primitive receiver is a *candidate*

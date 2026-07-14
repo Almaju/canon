@@ -47,7 +47,7 @@ alphabetical ordering.
 **Values flow through pipes; literals are born in the parens.**
 
 The pipe carries a value that already exists -- a parameter reference, a
-prior result. A scalar literal (string, int, float, hex, backtick)
+prior result. A scalar literal (string, int, float, backtick)
 springs into existence at the call site, so it rides inside the call
 instead of pretending to flow:
 
@@ -69,7 +69,7 @@ The full rule, case by case:
   `Show(42)`. A chain then *starts* with that construction and
   *continues* with `->`: `Path("./data.json") -> File? -> Read?`.
 - **Wrapping a literal in its own primitive constructor is ceremony** --
-  `Int(3)`, `String("foo")`, `Float(1.5)`, `Hex(0xFF)` unwrap to the
+  `Int(3)`, `String("foo")`, `Float(1.5)` unwrap to the
   bare literal (which already desugars to exactly that construction),
   the same way a hole-less backtick string collapses to a plain one.
   Cross-kind construction (`String(42)` decimal rendering, `Int("42")`

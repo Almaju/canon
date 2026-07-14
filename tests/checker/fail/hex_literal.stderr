@@ -1,0 +1,1 @@
+error[tests/checker/fail/hex_literal.can:2:5]: there is no hex notation: an integer has one spelling, its decimal digits — write `255`
