@@ -43,10 +43,11 @@ cancels its losing branch; to abandon a future, stop using it.
 
 ## Streams
 
-`Stream<T>` is to `List<T>` what `Future<T>` is to `T`: a stream used
-in an iterating position becomes a poll loop, with no `for await`.
-(Stream lowering is still a [known gap](../reference/codegen-gaps.md)
-in codegen, so the checker rejects programs that reach a stream.)
+`Stream<T>` is to `List<T>` what `Future<T>` is to `T`. The stdlib
+combinators (`streamOf`, `Mapped`, `filter`, `take`, `Joined`, `toList`,
+`toString`) compile and run — streams are eager and list-backed today.
+`Stream<T>` beyond that surface is a
+[known gap](../reference/codegen-gaps.md) in codegen.
 
 **Precise rules:** [Effects and the Async Model](../spec/effects-and-async.md).
 

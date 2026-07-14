@@ -65,7 +65,7 @@ A function is **suspending** if any of the following holds:
 1. It is a body-less declaration in a [binding file](./compilation.md#binding-files)
    whose WIT entry is `async func`; the mechanical mapping gives it a
    `Future<T>` return type.
-2. Its body consumes a `Future<T>` or iterates a `Stream<T>`.
+2. Its body consumes a `Future<T>`.
 3. It transitively calls a suspending function.
 
 The compiler computes this set bottom-up over the call graph and lifts
@@ -120,8 +120,7 @@ foreign binding to the async test bridge — camelCase means foreign;
 `Parallel`/`Race` themselves are the language surface.)
 
 **Cancellation** has no primitive. It is a consequence of composition:
-`Race` cancels its losing branch; dropping a `Stream<T>` mid-iteration
-stops it. To abandon a future, stop using it.
+`Race` cancels its losing branch. To abandon a future, stop using it.
 
 ## Where Async Is Visible
 

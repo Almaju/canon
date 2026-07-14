@@ -831,11 +831,7 @@ pub fn generate(module: &OModule) -> Vec<u8> {
 
     let core = generate_core_module(module);
     let externs = collect_extern_imports(module);
-    // Run the async-inference fixpoint so the component wrapper can
-    // surface async metadata in the emitted WIT and — once async lowering
-    // lands — attach `CanonicalOption::Async` to the right lifts/lowers.
-    let async_set = crate::codegen::async_analysis::analyse(module);
-    let bytes = component::wrap(&core, &externs, &async_set);
+    let bytes = component::wrap(&core, &externs);
     validate(&bytes);
     bytes
 }

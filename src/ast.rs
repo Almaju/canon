@@ -689,6 +689,23 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Race", "race"),
 ];
 
+/// Binding interfaces the codegen compiles inline, guest-side, instead of
+/// importing: the concurrency combinators (`compile_parallel` /
+/// `compile_race`) and the stream combinators (`compile_builtin_method`'s
+/// stream arms). They have no host implementation — the extern-import
+/// collection skips them so the linker never looks for one, and the
+/// checker's codegen-gap warnings exempt them.
+const SYNTHETIC_BUILTIN_INTERFACES: &[&str] =
+    &["canon:builtins/concurrent", "canon:builtins/stream"];
+
+/// True when an `extern Wasm` path belongs to a synthetic builtin
+/// interface (see `SYNTHETIC_BUILTIN_INTERFACES`).
+pub fn is_synthetic_builtin(path: &str) -> bool {
+    SYNTHETIC_BUILTIN_INTERFACES
+        .iter()
+        .any(|iface| path.starts_with(iface))
+}
+
 /// The PascalCase pipe spelling `canon check --fix` emits for a builtin method
 /// — the inverse direction of `builtin_method_alias`, from the same
 /// table. A name with no mapping (already-PascalCase user/stdlib

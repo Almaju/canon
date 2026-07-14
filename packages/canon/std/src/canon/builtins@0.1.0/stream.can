@@ -1,10 +1,6 @@
 concat = <T>(Stream<T> * Stream<T>) => Stream<T>
 
-empty = <T>() => Stream<T>
-
 filter = <T>(Stream<T> * ((T) => Bool)) => Stream<T>
-
-generate = <T>(() => Option<Stream<T> * T>) => Stream<T>
 
 map = <A, B>(Stream<A> * ((A) => B)) => Stream<B>
 
@@ -12,6 +8,6 @@ streamOf = <T>(List<T>) => Stream<T>
 
 take = <T>(Stream<T> * Int) => Stream<T>
 
-toList = <T>(Stream<T>) => Future<List<T>>
+toList = <T>(Stream<T>) => List<T>
 
-toString = (Stream<String>) => Future<String>
+toString = (Stream<String>) => String

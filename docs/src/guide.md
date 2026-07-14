@@ -216,8 +216,9 @@ Unit => Program {
 Parallelism is combinators over futures, entered through the pipe:
 `a -> Parallel(b)` fans out and awaits both; `a -> Race(b)` returns the
 first and cancels the loser. `Stream<T>` is to `List<T>` as `Future<T>`
-is to `T`; a `Stream<T>` used in an iterating position becomes a poll
-loop, with no `for await`.
+is to `T`; the stdlib combinators (`streamOf`, `Mapped`, `filter`,
+`take`, `Joined`, `toList`, `toString`) compile and run — streams are
+eager and list-backed today.
 
 ## Modules
 

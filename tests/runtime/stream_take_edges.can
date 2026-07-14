@@ -1,0 +1,12 @@
+Unit => Program {
+    List("a" * "b")
+        .streamOf()
+        .take(9)
+        .toString()
+        -> Print
+    List("x")
+        .streamOf()
+        .take(0)
+        .toString()
+        -> Print
+}
