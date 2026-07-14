@@ -46,17 +46,13 @@ impl<'m> WasmGen<'m> {
         // indices so an accidental call fails validation loudly instead
         // of silently calling the wrong import.
         gen.fn_print_str = HTTP_BASE_DEFINED;
-        gen.fn_print_int = HTTP_BASE_DEFINED + 1;
-        gen.fn_print_bool = HTTP_BASE_DEFINED + 2;
-        gen.fn_alloc = HTTP_BASE_DEFINED + 3;
-        gen.fn_start = HTTP_BASE_DEFINED + 4; // the `handle` wrapper slot
-        gen.fn_list_to_json_array = HTTP_BASE_DEFINED + 5;
-        gen.fn_print_float = HTTP_BASE_DEFINED + 6;
-        gen.fn_int_to_str = HTTP_BASE_DEFINED + 7;
-        gen.fn_str_cmp = HTTP_BASE_DEFINED + 8;
-        gen.fn_list_append = HTTP_BASE_DEFINED + 9;
-        gen.fn_list_concat = HTTP_BASE_DEFINED + 10;
-        gen.fn_user_start = HTTP_BASE_DEFINED + 11;
+        gen.fn_alloc = HTTP_BASE_DEFINED + 1;
+        gen.fn_start = HTTP_BASE_DEFINED + 2; // the `handle` wrapper slot
+        gen.fn_list_to_json_array = HTTP_BASE_DEFINED + 3;
+        gen.fn_str_cmp = HTTP_BASE_DEFINED + 4;
+        gen.fn_list_append = HTTP_BASE_DEFINED + 5;
+        gen.fn_list_concat = HTTP_BASE_DEFINED + 6;
+        gen.fn_user_start = HTTP_BASE_DEFINED + 7;
         gen.fn_waitable_set_new = u32::MAX;
         gen.fn_waitable_join = u32::MAX;
         gen.fn_waitable_set_wait = u32::MAX;
@@ -391,9 +387,6 @@ impl<'m> WasmGen<'m> {
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32]);
         let list_to_json_array_ty =
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
-        let print_float_ty = self.get_or_add_wasm_type(&[ValType::F64], &[]);
-        let int_to_str_ty =
-            self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
         let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         let list_append_ty = self.get_or_add_wasm_type(
             &[ValType::I32, ValType::I32, ValType::I64],
@@ -450,16 +443,15 @@ impl<'m> WasmGen<'m> {
         // ── Type section — same fixed TY_* prefix as `compile()` ─────
         let mut types = TypeSection::new();
         types.ty().function([ValType::I32, ValType::I32], []); // 0
-        types.ty().function([ValType::I64], []); // 1
-        types.ty().function([ValType::I32], []); // 2
-        types.ty().function([], []); // 3
+        types.ty().function([ValType::I32], []); // 1
+        types.ty().function([], []); // 2
+        types.ty().function([ValType::I32], [ValType::I32]); // 3
         types.ty().function([ValType::I32], [ValType::I32]); // 4
-        types.ty().function([ValType::I32], [ValType::I32]); // 5
-        types.ty().function([], [ValType::I64]); // 6
+        types.ty().function([], [ValType::I64]); // 5
         types
             .ty()
-            .function([ValType::I32, ValType::I32, ValType::I32], [ValType::I32]); // 7
-        types.ty().function([], [ValType::I32]); // 8
+            .function([ValType::I32, ValType::I32, ValType::I32], [ValType::I32]); // 6
+        types.ty().function([], [ValType::I32]); // 7
         let user_sigs: Vec<_> = self.user_type_sigs.clone();
         for (params, results) in &user_sigs {
             types
@@ -583,13 +575,9 @@ impl<'m> WasmGen<'m> {
         // ── Function section ─────────────────────────────────────────
         let mut funcs = FunctionSection::new();
         funcs.function(TY_PRINT_STR);
-        funcs.function(TY_PRINT_INT);
-        funcs.function(TY_PRINT_BOOL);
         funcs.function(TY_ALLOC);
         funcs.function(TY_PRINT_BOOL); // fn_start slot = handle wrapper, (i32) -> ()
         funcs.function(list_to_json_array_ty);
-        funcs.function(print_float_ty);
-        funcs.function(int_to_str_ty);
         funcs.function(str_cmp_ty);
         funcs.function(list_append_ty);
         funcs.function(list_concat_ty);
@@ -638,13 +626,9 @@ impl<'m> WasmGen<'m> {
         // ── Code section — order must match the function section ─────
         let mut codes = CodeSection::new();
         codes.function(&self.build_print_str());
-        codes.function(&self.build_print_int());
-        codes.function(&self.build_print_bool());
         codes.function(&self.build_alloc());
         codes.function(&self.build_http_handle_wrapper(user_fn_idx));
         codes.function(&self.build_list_to_json_array());
-        codes.function(&self.build_print_float());
-        codes.function(&self.build_int_to_str());
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
@@ -662,7 +646,7 @@ impl<'m> WasmGen<'m> {
 
         // ── Data ─────────────────────────────────────────────────────
         let mut data = DataSection::new();
-        data.active(0, &ConstExpr::i32_const(MEM_INT_BUF_END as i32), *b"\n");
+        data.active(0, &ConstExpr::i32_const(MEM_NEWLINE as i32), *b"\n");
         if !self.strings.data.is_empty() {
             data.active(
                 0,

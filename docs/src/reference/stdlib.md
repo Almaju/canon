@@ -132,7 +132,9 @@ code for [recursive types](../spec/types.md#recursive-types).
 
 ## Conversions: `Int`, `Byte`, `Case`
 
-The infallible directions are built in (`String(42)` is `"42"`); the
+The infallible directions are pure Canon in `string.can` — `String(42)`
+is `"42"` by digit recursion, and `String(2.5)` / `String(True())`
+render the same way (`Print` goes through the same constructors); the
 fallible direction is a validated constructor in pure Canon:
 
 ```canon

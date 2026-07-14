@@ -14,11 +14,7 @@ Mp = Int
 
 Now = String
 
-Padded = String
-
 TimePart = String
-
-Width = Int
 
 Year = Int
 
@@ -105,13 +101,6 @@ Unix => Now {
         -> Joined("T")
         -> Joined(Unix -> Remainder(86400) -> TimePart)
         -> Joined("Z")
-}
-
-Int * Width => Padded {
-    Int -> String -> Length -> Ge(Width) -> (
-        * False => Padded { "0" -> Joined(Int -> Padded(Width -> Difference(1))) }
-        * True => Padded { Int -> String }
-    )
 }
 
 Int => TimePart {

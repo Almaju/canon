@@ -189,8 +189,10 @@ signature already carries; `canon check --fix` rewrites it to the arrow.)
 constructing a `T`, because it is one:
 
 ```canon
-String(42)              # "42" -- decimal rendering
+String(42)              # "42" -- decimal rendering; String(2.5) and
+                        # String(True()) render the same way
 Int("42")?              # Result<Int, MalformedInt> -- parsing can fail
+Int(2.9)                # 2 -- a Float truncates toward zero
 String(Byte(65))        # "A" -- a Byte renders as its character
 List("1" * "2") -> Json # [1,2] -- a list of JSON values as a JSON array
 ```

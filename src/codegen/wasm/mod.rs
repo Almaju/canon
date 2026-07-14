@@ -52,7 +52,7 @@ use ty::*;
 use web::generate_web_core_module;
 
 // ── Memory constants ──────────────────────────────────────────────────────────
-const MEM_INT_BUF_END: u32 = 32; // '\n' lives at this byte
+const MEM_NEWLINE: u32 = 32; // the shared '\n' byte `.print` appends
 const MEM_STR_START: u32 = 64;
 pub(super) const MEM_HEAP_START: u32 = 65536; // bump heap begins at second page
 
@@ -110,38 +110,37 @@ const WEB_BASE_DEFINED: u32 = 5;
 // body/trailer writes must happen *after* `task.return` hands the
 // response to the host (they block until the host consumes them), so
 // construction stashes the write-phase state at fixed addresses for
-// the `handle` wrapper to pick up. Addresses 0..16 are otherwise
-// unused (the int buffer is 16..32, '\n' at 32, strings from 64) and
-// no user code runs between the stores and the loads.
+// the `handle` wrapper to pick up. Addresses 0..32 are otherwise
+// unused ('\n' at 32, strings from 64) and no user code runs between
+// the stores and the loads.
 const MEM_HTTP_BODY_WRITER: u32 = 0; // contents-stream writer (0 = no body)
 const MEM_HTTP_BODY_PTR: u32 = 4;
 const MEM_HTTP_BODY_LEN: u32 = 8;
 const MEM_HTTP_TRAILERS_WRITER: u32 = 12;
-const MEM_HTTP_RET: u32 = 16; // response.new tuple ret (int-buffer reuse is safe)
+const MEM_HTTP_RET: u32 = 16; // response.new tuple ret
 const MEM_HTTP_TRAILERS_ZERO: u32 = 40; // `ok(none)` — all zero bytes, never written
 
 // ── Type index constants (pre-defined) ──────────────────────────────
 const TY_PRINT_STR: u32 = 0; // (i32,i32) → ()  — print_str body / waitable.join
-const TY_PRINT_INT: u32 = 1; // (i64) → ()
-const TY_PRINT_BOOL: u32 = 2; // (i32) → ()  — also stdout-builtin (i32) -> () slot
+const TY_PRINT_BOOL: u32 = 1; // (i32) → ()  — also stdout-builtin (i32) -> () slot
                               // `run` is lifted as an *async stackful* function at the component level so
                               // nested calls to `extern Wasm.async` can suspend on `waitable-set.wait`
                               // without tripping wasmtime's "cannot block a synchronous task" check.
                               // The async-stackful lift delivers the result via `task.return(…)` rather
                               // than the function's wasm return value, so `run`'s core signature is
                               // `() -> ()`.
-const TY_RUN: u32 = 3; // () → ()
-const TY_ALLOC: u32 = 4; // (i32) → (i32)
+const TY_RUN: u32 = 2; // () → ()
+const TY_ALLOC: u32 = 3; // (i32) → (i32)
                          // WASI stdout canonical-ABI builtin signatures (declared after the
                          // pre-existing TY_* slots so user types still start at a stable offset).
-const TY_STDOUT_WRITE_VIA_STREAM: u32 = 5; // (i32) → (i32)
-const TY_STDOUT_STREAM_NEW: u32 = 6; // () → (i64)
-const TY_STDOUT_STREAM_WRITE: u32 = 7; // (i32, i32, i32) → (i32)
+const TY_STDOUT_WRITE_VIA_STREAM: u32 = 4; // (i32) → (i32)
+const TY_STDOUT_STREAM_NEW: u32 = 5; // () → (i64)
+const TY_STDOUT_STREAM_WRITE: u32 = 6; // (i32, i32, i32) → (i32)
                                        // `waitable-set.new` needs `() -> i32`. `TY_RUN` used to fit but is now
                                        // `() -> ()` because `run` is lifted as an *async-stackful* function
                                        // (result delivered via `task.return`).
-const TY_HANDLE_RETURN: u32 = 8; // () → (i32)
-const TY_USER_START: u32 = 9; // first dynamic user type
+const TY_HANDLE_RETURN: u32 = 7; // () → (i32)
+const TY_USER_START: u32 = 8; // first dynamic user type
 
 // ── Global index constants ──────────────────────────────────────────────────────────
 // The bump pointer is now an *imported* mutable global so it can be shared
@@ -216,8 +215,6 @@ struct WasmGen<'m> {
     //                                                  i32 result is the new
     //                                                  CallState; we drop it.
     fn_print_str: u32,
-    fn_print_int: u32,
-    fn_print_bool: u32,
     fn_alloc: u32,
     fn_start: u32, // exported as "run"
     /// Helper that converts a `List<String>` (list of pre-encoded JSON
@@ -227,18 +224,6 @@ struct WasmGen<'m> {
     /// Core signature: `(list_ptr: i32, list_len: i32) -> (i32, i32)`.
     /// See `build_list_to_json_array` for the body.
     fn_list_to_json_array: u32,
-    /// Formats and prints an `f64` (fixed-point, up to 6 fraction
-    /// digits, trailing zeros trimmed; `NaN` / `Inf` / `-Inf` for the
-    /// specials). Core signature: `(f64) -> ()`. See
-    /// `build_print_float`.
-    fn_print_float: u32,
-    /// Renders an `i64` as its decimal string in a fresh heap
-    /// allocation — the value half of `String(Int)` / `Int.String()`
-    /// (conversion-is-construction, the language spec (docs/src/spec/)). Same
-    /// digit loop as `build_print_int` but the bytes are copied out of
-    /// the shared int buffer into an `$alloc` block so later renders
-    /// can't clobber the result. Core signature: `(i64) -> (i32, i32)`.
-    fn_int_to_str: u32,
     /// Byte-wise lexicographic string compare returning -1/0/1 —
     /// backs `String.lt/le/gt/ge/ne` (and the alphabetical-order rule
     /// the language is built on). Core signature:
@@ -306,17 +291,13 @@ impl<'m> WasmGen<'m> {
             fn_task_return: base_waitable + 5,
             fn_subtask_cancel: base_waitable + 6,
             fn_print_str: base_defined,
-            fn_print_int: base_defined + 1,
-            fn_print_bool: base_defined + 2,
-            fn_alloc: base_defined + 3,
-            fn_start: base_defined + 4,
-            fn_list_to_json_array: base_defined + 5,
-            fn_print_float: base_defined + 6,
-            fn_int_to_str: base_defined + 7,
-            fn_str_cmp: base_defined + 8,
-            fn_list_append: base_defined + 9,
-            fn_list_concat: base_defined + 10,
-            fn_user_start: base_defined + 11,
+            fn_alloc: base_defined + 1,
+            fn_start: base_defined + 2,
+            fn_list_to_json_array: base_defined + 3,
+            fn_str_cmp: base_defined + 4,
+            fn_list_append: base_defined + 5,
+            fn_list_concat: base_defined + 6,
+            fn_user_start: base_defined + 7,
             cur_fn_early_return: None,
             http_mode: false,
         }
@@ -432,8 +413,6 @@ impl<'m> WasmGen<'m> {
     }
 
     fn collect_all_strings(&mut self) {
-        self.strings.intern("False");
-        self.strings.intern("True");
         for item in self.ast.items.iter() {
             if let Item::Function(f) = item {
                 self.collect_strings_block(&f.body);
