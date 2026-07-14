@@ -1182,7 +1182,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
 
     // JSON prelude: a JSON literal types as `Json` even when the module
     // never mentions `canon/std/Json` (the loader auto-injects the stdlib
-    // module only when interpolation / the `Json` validator / `ToJson` is
+    // module only when interpolation / the `Json` validator / `Encoded` is
     // actually used — a fully static literal is a plain constant). For the
     // static case the checker still needs `Json` to be a known type whose
     // alias chain reaches `String`, so `{"k":"v"}.print()` and a `-> Json`
@@ -1330,18 +1330,6 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
     }
 }
 
-/// The compiler-known interpolation hooks — the two shapes the JSON and
-/// HTML literal machinery dispatches through when a hole converts a
-/// value. They sit at the literal boundary the way builtins sit at the
-/// host boundary, and they are the only body-less shapes a program may
-/// declare: every other operation takes a result newtype (`X = T` plus
-/// anonymous arrows). Shapes as a user-facing feature return when their
-/// justifications exist — generic constraints (`<T: Show>`),
-/// bare-type-parameter returns (`Fold`), trait components — none of
-/// which the compiler implements yet, so declaring one today would only
-/// open a second spelling of a constructor family.
-const INTERPOLATION_SHAPES: &[&str] = &["ToHtml", "ToJson"];
-
 /// `Json("…")` / `Html("…")` fed a **static string literal** that the
 /// corresponding literal form can already express is ceremony around a
 /// literal — the parse can never fail, so the validating-constructor
@@ -1413,12 +1401,12 @@ fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonErr
     }
     // A body-less shape declaration opens a second spelling of a
     // constructor family with none of a shape's justifications
-    // implemented yet — only the interpolation hooks are allowed. See
-    // `INTERPOLATION_SHAPES` and the spec (functions.md § Shape or
+    // implemented yet (generic constraints, bare-type-parameter returns,
+    // default bodies). Even the literal-interpolation hooks are ordinary
+    // result-newtype families now (`Encoded = Json`, `Escaped = Html`),
+    // so no shape survives. See the spec (functions.md § Shape or
     // Result Newtype).
-    if matches!(td.body, TypeExpr::Function { .. })
-        && !INTERPOLATION_SHAPES.contains(&td.name.name.as_str())
-    {
+    if matches!(td.body, TypeExpr::Function { .. }) {
         errors.push(CanonError::CheckError {
             message: format!(
                 "`{name}` declares a shape, and operations take result newtypes: replace it \
@@ -1549,10 +1537,9 @@ fn check_function(
                     constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
                 errors.push(CanonError::CheckError {
                     message: format!(
-                        "`{name}` is neither a declared shape nor the type this declaration \
-                         constructs: mint a result newtype (`{name} = {constructed}`) and \
-                         construct it, or declare the shape (`{name} = (…) => …`, body-less) \
-                         this implements — a name carries no information the types don't",
+                        "`{name}` is not the type this declaration constructs: mint a result \
+                         newtype (`{name} = {constructed}`) and construct it with an anonymous \
+                         arrow — a name carries no information the types don't",
                         name = func.name.name,
                         constructed = constructed,
                     ),

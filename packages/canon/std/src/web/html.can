@@ -16,8 +16,6 @@ Li = Html
 
 Span = Html
 
-ToHtml = () => Html
-
 Ul = Html
 
 Msg * String => Button {
@@ -96,6 +94,16 @@ String => Escaped {
     )
 }
 
+Html => Escaped {
+    Html
+}
+
+Int => Escaped {
+    Int
+        -> String
+        -> Escaped
+}
+
 String => H1 {
     "<h1>"
         -> Joined(String)
@@ -115,20 +123,6 @@ String => Span {
         -> Joined(String)
         -> Joined("</span>")
         -> Html
-}
-
-ToHtml = (Html) => Html {
-    Html
-}
-
-ToHtml = (Int) => Html {
-    Int
-        -> String
-        -> Escaped
-}
-
-ToHtml = (String) => Html {
-    String -> Escaped
 }
 
 String => Ul {

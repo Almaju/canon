@@ -44,9 +44,9 @@ the vendored WIT under `packages/canon/std/wit/wasi/`.
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
-| `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
+| `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), the `Encoded` family, `Field`, `Decoded` |
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
-| `web/Html` | `Html = String`, `ToHtml` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
+| `web/Html` | `Html = String`, `Escaped` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
@@ -401,11 +401,12 @@ negative, decimal, exponent), strings (with escapes), arrays, objects,
 and arbitrary nesting. It rejects trailing characters and trailing
 commas.
 
-`ToJson` is a trait with instances for the primitive types (`Bool`,
-`Float`, `Int`, `String`), each emitting the appropriately-escaped
-JSON spelling of the value. All of them are pure Canon -- the string
-instance walks the bytes and escapes quotes, backslashes, and control
-characters (`\u00XX`) itself. The one remaining host import is
+`Encoded = Json` is a result newtype whose constructor family covers
+the primitive types (`Bool`, `Float`, `Int`, `String`), each member
+emitting the appropriately-escaped JSON spelling of the value. All of
+them are pure Canon -- the string member walks the bytes and escapes
+quotes, backslashes, and control characters (`\u00XX`) itself. The one
+remaining host import is
 `canon:builtins/json#from-float`: shortest-round-trip `f64` formatting
 is genuinely numeric machinery.
 
@@ -422,18 +423,21 @@ Reading a parsed tree back is pure Canon too:
 **Literal syntax.** JSON object and array literals are first-class
 expressions, and the module is part of the prelude: nothing to import.
 The loader pulls `canon/std/Json` in automatically when a program uses
-interpolation, the `Json(...)` validator, or `.ToJson()`. A fully
-static literal is a plain constant and needs nothing at all.
+interpolation or the `Json(...)` validator (an explicit `-> Encoded`
+loads it by ordinary reference discovery). A fully static literal is a
+plain constant and needs nothing at all.
 
 ```canon
-Labeled = (Int) => Json {
+Labeled = Json
+
+Int => Labeled {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
 Unit => Result<Program, MalformedJson> {
     Json("[1, 2, 3]")? -> Print
-    ToJson(42) -> Print
-    ToJson("hi") -> Print
+    Encoded(42) -> Print
+    Encoded("hi") -> Print
     Labeled(42) -> Print
     {"a":1,"b":[true,false,null]} -> Print
     {"escaped":"a \"b\" c"} -> Print
@@ -446,13 +450,13 @@ Literal values may be:
 - **Static**: strings, numbers, `true` / `false` / `null`, or nested
   literals. Baked into a single constant at parse time.
 - **Interpolated**: any Canon expression. Its runtime value is
-  converted via `.ToJson()`, so it must have a `ToJson` instance
-  (primitives, `Json` values, or any type with a hand-written
-  instance). The result is concatenated into the surrounding JSON
-  scaffolding at runtime.
+  converted via `-> Encoded`, so its type must select an `Encoded`
+  family member (primitives, `Json` values, or any type with a
+  hand-written member). The result is concatenated into the
+  surrounding JSON scaffolding at runtime.
 
-`.ToJson()` follows newtype alias chains: `Email = String` dispatches
-to `String`'s instance without a hand-written one. A structural derive
+`-> Encoded` follows newtype alias chains: `Email = String` selects
+`String`'s member without a hand-written one. A structural derive
 that walks product / union types is still a follow-up slice.
 
 ## Not Yet Available

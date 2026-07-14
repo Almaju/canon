@@ -1645,9 +1645,9 @@ impl<'m> WasmGen<'m> {
             //
             // Mixed (with interpolations): synthesize a left-associated
             // chain of `String.concat` calls over alternating `StringLit`
-            // (Static fragments) and `MethodCall { method: "ToJson" }`
+            // (Static fragments) and piped `Encoded` constructions
             // (Interp expressions), then compile that. This reuses the
-            // existing `concat` builtin and the existing `ToJson` trait
+            // existing `concat` builtin and the `Encoded` family
             // dispatch so we don't need new codegen for either; the
             // surface-syntax `{"k": foo}` is purely parser sugar over
             // machinery that already exists.
@@ -1678,7 +1678,7 @@ impl<'m> WasmGen<'m> {
             // all-static literal collapses to one interned string; a
             // literal with interpolation holes becomes a
             // `String.concat` chain whose `Interp` links are
-            // `.ToHtml()` calls (escaping for `String`/`Int` via the
+            // `-> Escaped` constructions (escaping for `String`/`Int` via the
             // stdlib's `text()`, identity for `Html` — see
             // `packages/canon/std/src/web/html.can`).
             Expr::HtmlLit { parts, span } => {
@@ -3031,8 +3031,8 @@ impl<'m> WasmGen<'m> {
                 _ => None,
             });
         // Try the receiver's own type name first, then every name in
-        // its newtype alias chain — `Foo("x").ToJson()` with `Foo =
-        // String` must find a `ToJson` declared on `String`.
+        // its newtype alias chain — `Foo("x") -> Encoded` with `Foo =
+        // String` must find the `(String)` family member.
         // A method resolves to a user/stdlib function under its written
         // name or — for the types-only vocabulary — under its camelCase
         // alias. `stream -> Mapped(f)` finds the `map` binding on

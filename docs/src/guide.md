@@ -249,11 +249,11 @@ Map => Length {
 Under Types-Only, shapes (traits) and constructor families are one
 concept -- *a `PascalCase` name is a family of implementations selected
 by input product* -- and the family is the one spelling: declaring a
-body-less shape is a checker error today. Shapes return when the things
-only they can do (generic constraints like `<T: Show>`, bare-parameter
-returns like `Fold`) land; the compiler's own `ToJson` / `ToHtml`
-interpolation hooks are the two exceptions. See [Functions and
-Traits](./spec/functions.md).
+body-less shape is a checker error today, with no exceptions -- even
+the literal-interpolation hooks are ordinary families (`Encoded = Json`,
+`Escaped = Html`). Shapes return when the things only they can do
+(generic constraints like `<T: Show>`, bare-parameter returns like
+`Fold`) land. See [Functions and Traits](./spec/functions.md).
 
 ## Errors
 

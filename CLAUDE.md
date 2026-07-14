@@ -206,8 +206,9 @@ These are the non-obvious rules the code won't spell out. Together with
 - **`Parallel` / `Race` are methods** (`a -> Parallel(b)`), never bare calls —
   Canon has no bare free-function call form.
 - **`Json` / `Html` are prelude types** (`= String`). A literal with an
-  interpolation hole, or a `.ToJson()`/`.ToHtml()` call, auto-loads the stdlib
-  module. Interpolation can't run in the `wasi:http/service` world (host bridge
+  interpolation hole auto-loads the stdlib module; a hole lowers to a piped
+  construction through a stdlib family — JSON `-> Encoded` (`Encoded = Json`),
+  HTML `-> Escaped` (`Escaped = Html`), format-string `-> String`. Interpolation can't run in the `wasi:http/service` world (host bridge
   unsatisfiable) — an interpolating handler fails at build. `Json("…")`/`Html("…")`
   fed a static literal the literal form can express is a checker error
   (`check_literal_form_ceremony`): the validating constructor is for runtime-built
@@ -264,8 +265,8 @@ treatment in `docs/src/spec/types-only.md`.
   Checked: a receiver-less bodied decl must be named after the type it constructs;
   a receiver-carrying one must be a declared shape or a newtype of its return; an
   arrow whose constructed type appears in its own input is an error (endomorphisms
-  take result newtypes, `Inserted = Map`). **User-declared shapes are rejected** —
-  `ToJson`/`ToHtml` (`INTERPOLATION_SHAPES`) are the only exceptions. A single
+  take result newtypes, `Inserted = Map`). **Shapes are rejected outright** —
+  no exceptions; the interpolation hooks are ordinary result-newtype families. A single
   named input drops its parens (`A => B { … }` == `(A) => B { … }`); products and
   generic inputs keep them.
 - **Nullary is `Unit => X`, not `() => X`.** `Unit` is the single-value type — the

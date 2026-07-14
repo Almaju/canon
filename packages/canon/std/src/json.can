@@ -20,6 +20,8 @@ Decoded = String
 
 DispatchedValue = ParseStep
 
+Encoded = Json
+
 EscapeChar = EscapeOther
   + EscapePlain
   + EscapeUnicode
@@ -100,8 +102,6 @@ ParsedStringBody = ParseStep
 
 ParsedTrue = ParseStep
 
-ParsedValue = ParseStep
-
 Int * String => AfterDigits {
     Int -> Gt(String -> Length) -> (
         * False => AfterDigits {
@@ -114,7 +114,7 @@ Int * String => AfterDigits {
     )
 }
 
-Prefix = String
+ParsedValue = ParseStep
 
 Int * String => AfterSign {
     Int -> Gt(String -> Length) -> (
@@ -305,6 +305,27 @@ Int * String => DispatchedValue {
         }
         * True => DispatchedValue { ParseFail("unexpected end of input") }
     )
+}
+
+Bool => Encoded {
+    Bool -> (
+        * False => Encoded { "false" }
+        * True => Encoded { "true" }
+    )
+}
+
+Float => Encoded {
+    Float -> Number
+}
+
+Int => Encoded {
+    Int -> String
+}
+
+String => Encoded {
+    "\""
+        -> Joined(1 -> EscapedTail(String))
+        -> Joined("\"")
 }
 
 Int => EscapeChar {
@@ -622,6 +643,24 @@ Int * String => ParsedNull {
     )
 }
 
+Prefix = String
+
+Prefixed = Decoded
+
+QuoteChecked = Decoded
+
+RequiredDigits = ParseStep
+
+TailChecked = Json
+
+UnescapedEscape = Decoded
+
+UnescapedTail = Decoded
+
+UnescapedUnicode = Decoded
+
+Utf8 = String
+
 Int * String => ParsedNumber {
     String -> ByteAt(Int) -> Eq(45) -> (
         * False => ParsedNumber { Int -> ParsedIntPart(String) }
@@ -662,24 +701,6 @@ Int * String => ParsedObjectItems {
         * True => ParsedObjectItems { ParseFail("unterminated object") }
     )
 }
-
-Prefixed = Decoded
-
-QuoteChecked = Decoded
-
-RequiredDigits = ParseStep
-
-TailChecked = Json
-
-ToJson = () => Json
-
-UnescapedEscape = Decoded
-
-UnescapedTail = Decoded
-
-UnescapedUnicode = Decoded
-
-Utf8 = String
 
 ParseStep * String => ParsedObjectTail {
     ParseStep -> (
@@ -817,27 +838,6 @@ Int * Json * String => Result<TailChecked, MalformedJson> {
             MalformedJson("expected comma or closing brace in object") -> Err
         }
     )
-}
-
-ToJson = (Bool) => Json {
-    Bool -> (
-        * False => Json { "false" }
-        * True => Json { "true" }
-    )
-}
-
-ToJson = (Float) => Json {
-    Float -> Number
-}
-
-ToJson = (Int) => Json {
-    Int -> String
-}
-
-ToJson = (String) => Json {
-    "\""
-        -> Joined(1 -> EscapedTail(String))
-        -> Joined("\"")
 }
 
 Int * Json => Result<UnescapedEscape, MalformedJson> {

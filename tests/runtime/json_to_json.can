@@ -1,12 +1,12 @@
 Unit => Program {
-    ToJson(42) -> Print
-    ToJson("hello") -> Print
-    ToJson(1.5) -> Print
+    Encoded(42) -> Print
+    Encoded("hello") -> Print
+    Encoded(1.5) -> Print
     True()
-        -> ToJson
+        -> Encoded
         -> Print
     False()
-        -> ToJson
+        -> Encoded
         -> Print
-    ToJson("with \"quotes\" and \nnewline") -> Print
+    Encoded("with \"quotes\" and \nnewline") -> Print
 }

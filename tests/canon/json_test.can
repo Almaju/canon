@@ -61,6 +61,56 @@ Unit => DecodeUnwrapsString {
         -> TestResult
 }
 
+EncodedFalse = TestResult
+
+Unit => EncodedFalse {
+    False()
+        -> Encoded
+        -> Eq("false")
+        -> TestResult
+}
+
+EncodedFloat = TestResult
+
+Unit => EncodedFloat {
+    Encoded(1.5)
+        -> Eq("1.5")
+        -> TestResult
+}
+
+EncodedInt = TestResult
+
+Unit => EncodedInt {
+    Encoded(42)
+        -> Eq("42")
+        -> TestResult
+}
+
+EncodedStringEscapes = TestResult
+
+Unit => EncodedStringEscapes {
+    Encoded("a\"b\\c")
+        -> Eq("\"a\\\"b\\\\c\"")
+        -> TestResult
+}
+
+EncodedStringPlain = TestResult
+
+Unit => EncodedStringPlain {
+    Encoded("hi")
+        -> Eq("\"hi\"")
+        -> TestResult
+}
+
+EncodedTrue = TestResult
+
+Unit => EncodedTrue {
+    True()
+        -> Encoded
+        -> Eq("true")
+        -> TestResult
+}
+
 FieldExtractsMember = TestResult
 
 Unit => FieldExtractsMember {
@@ -134,54 +184,4 @@ Unit => JsonRejectsMalformedNumber {
         * Err<MalformedJson> => TestResult { Pass() }
         * Ok<Json> => TestResult { Fail("\"1.\" should not validate (missing fractional digits)") }
     )
-}
-
-ToJsonFalse = TestResult
-
-Unit => ToJsonFalse {
-    False()
-        -> ToJson
-        -> Eq("false")
-        -> TestResult
-}
-
-ToJsonFloat = TestResult
-
-Unit => ToJsonFloat {
-    ToJson(1.5)
-        -> Eq("1.5")
-        -> TestResult
-}
-
-ToJsonInt = TestResult
-
-Unit => ToJsonInt {
-    ToJson(42)
-        -> Eq("42")
-        -> TestResult
-}
-
-ToJsonStringEscapes = TestResult
-
-Unit => ToJsonStringEscapes {
-    ToJson("a\"b\\c")
-        -> Eq("\"a\\\"b\\\\c\"")
-        -> TestResult
-}
-
-ToJsonStringPlain = TestResult
-
-Unit => ToJsonStringPlain {
-    ToJson("hi")
-        -> Eq("\"hi\"")
-        -> TestResult
-}
-
-ToJsonTrue = TestResult
-
-Unit => ToJsonTrue {
-    True()
-        -> ToJson
-        -> Eq("true")
-        -> TestResult
 }

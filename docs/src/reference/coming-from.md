@@ -50,7 +50,7 @@ casts, no `strictNullChecks` to remember to switch on.
 no `let` or `const` — you chain methods and, when you want to name an
 intermediate value, you give it a *type* instead. Conversion stops being
 a zoo of `String(x)`, `.toString()`, `Number()`, `JSON.parse` and
-becomes one idea: constructing the target type (`Int(s)?`, `x.ToJson()`).
+becomes one idea: constructing the target type (`Int(s)?`, `x -> Encoded`).
 
 **What might trip you up.** Canon is nominal, not structural — two
 records with the same fields are different types unless you say

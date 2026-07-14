@@ -245,10 +245,12 @@ JSON object and array literals are first-class expressions producing
 support is part of the prelude. The compiler knows `Json = String`
 intrinsically, and the loader pulls in `canon/std/Json` automatically
 the moment a program uses its machinery (interpolation, the validating
-`Json(...)` constructor, or `.ToJson()`):
+`Json(...)` constructor, or the `Encoded` family):
 
 ```canon
-Label = (Int) => Json {
+Label = Json
+
+Int => Label {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 ```
@@ -259,10 +261,12 @@ Label = (Int) => Json {
   requirements, so it works in every world (including
   `wasi:http/service` handlers).
 - **Interpolated** members are ordinary Canon expressions converted at
-  runtime via their `ToJson` instance. The instances are host-backed
-  (`canon:builtins/json`), which the HTTP world can't satisfy yet; a
-  handler program using interpolation fails at build with an error
-  naming the unsatisfiable imports.
+  runtime through the stdlib's `Encoded` family (`Encoded = Json`, one
+  anonymous arrow per source type) -- a hole is exactly `-> Encoded`,
+  the way a format-string hole is `-> String`. The `Float` member is
+  host-backed (`canon:builtins/json`), which the HTTP world can't
+  satisfy yet; a handler program using interpolation fails at build
+  with an error naming the unsatisfiable imports.
 - Literal layout is canonical like all Canon code: no spaces after `:`
   or `,` (`{"k":v}`, not `{"k": v}`). `canon check --fix` enforces it.
 - **The literal is the only spelling of a static document.** Feeding the
@@ -293,9 +297,11 @@ Model => Html {
 }
 ```
 
-Interpolated values convert through the `ToHtml` trait: a `String` or
-`Int` is HTML-escaped (via the stdlib's `Escaped`), while an `Html` value
-passes through unchanged, so composing literals never double-escapes:
+Interpolated values convert through the stdlib's `Escaped` family
+(`Escaped = Html`): a hole is exactly `-> Escaped`, and the family
+member selected by the hole's type escapes a `String` or `Int` while
+passing an `Html` value through unchanged, so composing literals never
+double-escapes:
 
 ```canon
 Listing = Html
@@ -327,7 +333,8 @@ String => Row {
 
 Like `Json`, `Html` is a prelude type (`Html = String` intrinsically);
 the loader pulls in `canon/std/web/Html` the moment a literal carries a
-hole or `.ToHtml()` is called. HTML literals power the
+hole (an explicit `-> Escaped` loads it by ordinary reference
+discovery). HTML literals power the
 [web target](../reference/web-target.md)'s `view`.
 
 ## Format Strings

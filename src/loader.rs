@@ -606,10 +606,11 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
 /// JSON literal is constant-folded and needs nothing at all (the checker
 /// knows `Json = String` intrinsically), so the stdlib module is pulled
 /// in only when the program actually reaches for its machinery:
-/// interpolation inside a literal (`{"n":Int}` converts via `ToJson`),
-/// the validating `Json(...)` constructor, or an explicit `.ToJson()` /
-/// `.Json()` call. Skipped when the file defines `Json` itself or the
-/// module already loaded a `Json` definition.
+/// interpolation inside a literal (`{"n":Int}` converts via the
+/// `Encoded` family), the validating `Json(...)` constructor, or a
+/// `.Json()` call. An explicit `-> Encoded` loads the module through
+/// ordinary reference discovery. Skipped when the file defines `Json`
+/// itself or the module already loaded a `Json` definition.
 fn inject_json_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
     let already_in_scope = ctx.defined_types.contains("Json")
         || other_items.iter().any(|item| match item {
@@ -641,10 +642,10 @@ fn items_use_json_machinery(items: &[Item]) -> bool {
 /// needs nothing at all (the checker knows `Html = String`
 /// intrinsically), so the stdlib module is pulled in only when a
 /// literal carries an interpolation hole (`<li>{Model}</li>` converts
-/// via `ToHtml`, which escapes through `text()`) or the program calls
-/// `.ToHtml()` explicitly. Programs that *name* `Html` (annotations,
-/// `Html(...)` constructors) already load the module through ordinary
-/// reference discovery — this covers the literal-only case. Skipped
+/// via the `Escaped` family). Programs that *name* `Html` (annotations,
+/// `Html(...)` constructors) or `Escaped` already load the module
+/// through ordinary reference discovery — this covers the literal-only
+/// case. Skipped
 /// when the file defines `Html` itself or the module already loaded an
 /// `Html` definition.
 fn inject_html_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
@@ -677,7 +678,7 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
     match expr {
         Expr::HtmlLit { parts, .. } => parts.iter().any(|p| match p {
             HtmlLitPart::Static(_) => false,
-            // The interpolation itself needs `ToHtml`, whatever the
+            // The interpolation itself needs `Escaped`, whatever the
             // inner expression is.
             HtmlLitPart::Interp(_) => true,
         }),
@@ -691,15 +692,8 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
             FormatLitPart::Interp(e) => expr_uses_html_machinery(e),
         }),
         Expr::Constructor { args, .. } => args.iter().any(expr_uses_html_machinery),
-        Expr::MethodCall {
-            receiver,
-            method,
-            args,
-            ..
-        } => {
-            method.name == "ToHtml"
-                || expr_uses_html_machinery(receiver)
-                || args.iter().any(expr_uses_html_machinery)
+        Expr::MethodCall { receiver, args, .. } => {
+            expr_uses_html_machinery(receiver) || args.iter().any(expr_uses_html_machinery)
         }
         Expr::Match {
             scrutinee, arms, ..
@@ -725,7 +719,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
         Expr::JsonLit { parts, .. } => parts.iter().any(|p| match p {
             JsonLitPart::Static(_) => false,
             JsonLitPart::Interp(e) => {
-                // The interpolation itself needs `ToJson`, whatever the
+                // The interpolation itself needs `Encoded`, whatever the
                 // inner expression is.
                 let _ = e;
                 true
@@ -749,8 +743,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
             args,
             ..
         } => {
-            method.name == "ToJson"
-                || method.name == "Json"
+            method.name == "Json"
                 || expr_uses_json_machinery(receiver)
                 || args.iter().any(expr_uses_json_machinery)
         }

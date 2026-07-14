@@ -126,7 +126,7 @@ pub enum JsonLitPart {
     /// Inlined verbatim into the output.
     Static(String),
     /// An interpolated Canon expression. Its runtime value is converted
-    /// to JSON via `.ToJson()` and concatenated into the surrounding
+    /// to JSON via `-> Encoded` and concatenated into the surrounding
     /// JSON text.
     Interp(Box<Expr>),
 }
@@ -151,7 +151,7 @@ pub enum HtmlLitPart {
     /// Inlined verbatim into the output.
     Static(String),
     /// An interpolated Canon expression (`{expr}` in the literal). Its
-    /// runtime value is converted to HTML via `.ToHtml()` — escaping
+    /// runtime value is converted to HTML via `-> Escaped` — escaping
     /// for `String`/`Int`, identity for `Html` — and concatenated into
     /// the surrounding HTML text.
     Interp(Box<Expr>),
@@ -218,7 +218,7 @@ pub enum Expr {
     ///
     /// Compiled-out at parse time into an alternating list of `Static`
     /// (pre-encoded JSON text fragments) and `Interp` (arbitrary Canon
-    /// expressions whose runtime values are `.ToJson()`-converted and
+    /// expressions whose runtime values are `-> Encoded`-converted and
     /// concatenated into the surrounding scaffolding). When `parts`
     /// contains a single `Static`, the literal is fully constant and
     /// codegen lowers it to a single string-literal load; otherwise it
@@ -234,7 +234,7 @@ pub enum Expr {
     /// valid Canon) and compiled-out at parse time into an alternating
     /// list of `Static` (raw HTML text fragments) and `Interp`
     /// (arbitrary Canon expressions in `{…}` holes whose runtime values
-    /// are `.ToHtml()`-converted and concatenated into the surrounding
+    /// are `-> Escaped`-converted and concatenated into the surrounding
     /// markup). When `parts` is a single `Static`, the literal is fully
     /// constant and codegen lowers it to one string-literal load;
     /// otherwise it emits a `String.concat` chain over the parts.
@@ -403,7 +403,7 @@ pub struct WebEntry {
 
 /// Detects the web-app entry triple among `items` by *shape*, not name.
 /// The anchor is `view` — the sole `Model => Html` whose receiver is a
-/// user type (excluding primitive receivers filters out stdlib `ToHtml`,
+/// user type (excluding primitive receivers filters out stdlib `Escaped`,
 /// which converts `Html`/`Int`/`String` to `Html`). From the model,
 /// `init` is the unique nullary constructor whose result aliases the
 /// model, and `update` the unique two-input constructor whose first
@@ -432,7 +432,7 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
         .collect();
 
     // Primitive receivers can't be the model, so they mark stdlib
-    // conversions (`ToHtml`) rather than the user's `view`.
+    // conversions (`Escaped`) rather than the user's `view`.
     let is_primitive = |n: &str| {
         matches!(
             n,

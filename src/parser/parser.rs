@@ -841,7 +841,7 @@ impl Parser {
     /// HTML-escaped at parse time, ints/floats render as digits, and a
     /// nested HTML literal splices its parts verbatim (it is already
     /// HTML). Anything with runtime content becomes an `Interp` part,
-    /// which the codegen `.ToHtml()`-converts and concats into the
+    /// which the codegen `-> Escaped`-converts and concats into the
     /// surrounding markup.
     fn parse_html_literal(&mut self) -> Result<Expr> {
         let start = self.peek().span;
@@ -1052,7 +1052,7 @@ impl Parser {
     ///    emitted as Static — so `{"k": 42}` stays fully constant. Any
     ///    expression with runtime content (`Ident`, `MethodCall`, etc.)
     ///    becomes an `Interp` part, which the codegen later
-    ///    `.ToJson()`-converts and concats into the surrounding
+    ///    `-> Encoded`-converts and concats into the surrounding
     ///    scaffolding.
     ///
     /// This two-tier approach lets `{"x": foo.bar()}` parse as a JSON
