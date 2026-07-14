@@ -51,6 +51,7 @@ The constructed type is the return type with `Result`/`Option`/`Future` peeled, 
 
 `Unit` is the name of "no input": a nullary constructor is `Unit => Map`, not `() => Map` -- `()` is not a declaration form. The CLI entry pairs an input world type with an output one, mirroring the HTTP handler: `Args => Exit` (`Args = List<String>`, `Exit = Int`, both from `canon/std`) is the argument-vector-in, exit-status-out shape, selected by its signature exactly as the HTTP handler `Request => Response` is. The arg-less `Unit => Program` (`Program = Unit`) remains valid for programs that read no arguments.
 
+This is not a second function syntax -- it is the language's **only** function form, appearing at every level: top level it declares a constructor, in expression position it is a lambda, and every dispatch arm is one (`* False => Unit { ... }`). Named declarations remain for exactly one thing: shape *implementations* (`ToJson = (Bool) => Json { ... }`), where the name carries the only information the types cannot. The rule reads: *if the types fully determine the operation, it has no name; if they don't, the name is a result newtype* -- and declaring a new body-less shape is itself a checker error until shapes can do something a newtype cannot ([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype)).
 This is not a second function syntax -- it is the language's **only** function form, appearing at every level: top level it declares a constructor, in expression position it is a lambda, and every dispatch arm is one (`* False => Unit { ... }`). Named declarations remain for exactly one thing: shape *implementations* (`ToJson = (Bool) => Json { ... }`), where the name carries the only information the types cannot. The rule reads: *if the types fully determine the operation, it has no name; if they don't, the name is a result newtype.*
 
 Coherence: at most one arrow per (input product, constructed type) pair -- the same family-disjointness rule, with nothing left to name a conflict after.
@@ -69,6 +70,23 @@ Three symbols, three non-overlapping jobs:
 | `.` | **read** -- field access only | the value's fields/components |
 | `=>` | **declare** -- every constructor / shape / lambda / dispatch-arm definition | -- |
 
+The point of the split: `.` and `->` stop competing to mean "call." `.` only *reads* a component; `->` *applies* a function **and** pipes a scrutinee into a dispatch (`value -> ( * ... )`). So typing `.` offers fields and typing `->` offers functions -- autocompletion on both, for different things. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.**
+
+Every construct in one table:
+
+| Migration-era form | Endgame form |
+|---|---|
+| `"hi".Print()` | `"hi" -> Print` |
+| `String.A().B().C()` | `String -> A -> B -> C` |
+| `alice.Compare(bob)` / `bob.Compare(alice)` | `alice -> Compare(bob)` / `bob -> Compare(alice)` |
+| `Now()` (zero input) | `-> Now` |
+| `"41".Int()?.add(1)` | `"41" -> Int? -> Add(1)` |
+| declaration `(A * B) => C { ... }` | `(A * B) => C { ... }` |
+| shape impl `ToJson = (Bool) => Json { ... }` | `ToJson = (Bool) => Json { ... }` |
+| lambda `(Int) => Int { ... }` | `(Int) => Int { ... }` |
+| dispatch arm `* False => Unit { ... }` | `* False => Unit { ... }` |
+| dispatch `bool.( ... )` | `bool -> ( ... )` |
+| field `user.Birthday` | unchanged |
 The point of the split: `.` and `->` do not compete to mean "call." `.` only *reads* a component; `->` *applies* a function **and** pipes a scrutinee into a dispatch (`value -> ( * ... )`). So typing `.` offers fields and typing `->` offers functions. And `=>` vs `->` gives declaration a spelling distinct from execution: **`=>` defines a mapping, `->` flows a value through one.** A `->` at a declaration site is a parse error with a targeted message, as is the retired `value.( ... )` dispatch.
 
 The declaration/execution mirror is the payoff -- the same shape, `=>` when defining, `->` when running:
