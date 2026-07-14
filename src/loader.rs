@@ -382,6 +382,14 @@ struct LoadCtx {
     /// mutually-referencing files don't chase each other. Reference
     /// discovery consults this set before searching any root.
     defined: HashSet<String>,
+    /// Subset of `defined` contributed by *bundled* files. A name
+    /// defined only by loaded stdlib modules must not block discovery:
+    /// several bundled files can declare the same constructor family
+    /// (`Ge` in int.can / float.can / string.can), and whichever loads
+    /// first — a prelude injection, an earlier reference — must not
+    /// hide the siblings from later references. Only user-defined
+    /// names shadow, so only they skip discovery.
+    defined_bundled: HashSet<String>,
     /// Subset of `defined` limited to *type* declarations. A prelude
     /// module (`Html`, `Json`, `Int`) is skipped only when its name is a
     /// user-defined **type** — not merely when something *constructs* it
@@ -466,6 +474,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         defined: HashSet::new(),
+        defined_bundled: HashSet::new(),
         defined_types: HashSet::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
@@ -519,6 +528,7 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
     inject_json_prelude(&other_items, ctx)?;
     inject_html_prelude(&other_items, ctx)?;
     inject_int_prelude(&other_items, ctx)?;
+    inject_string_prelude(&other_items, ctx)?;
     discover_references(&other_items, dir, ctx)?;
     let start = ctx.items.len();
     ctx.items.extend(other_items);
@@ -551,6 +561,79 @@ fn inject_int_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
         load_bundled_source(pkg, file, ctx)?;
     }
     Ok(())
+}
+
+/// String prelude: the `String` constructor family — `Bool => String`,
+/// `Float => String`, `Int => String`, the decimal renderers behind
+/// `Print`, `-> String` conversions, and format-string holes — lives
+/// in `canon/std/String` (pure Canon). The name `String` is
+/// undiscoverable for the same reason `Int` is (it appears in
+/// virtually every program as the builtin type), and a `Print` call or
+/// format hole names nothing the loader can see at all, so — mirror of
+/// the Int prelude — the module loads when a render site appears.
+/// Skipped when the file supplies its own `String` constructor
+/// function.
+fn inject_string_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
+    let already_in_scope = other_items.iter().any(|item| match item {
+        Item::Function(f) => f.name.name == "String",
+        _ => false,
+    });
+    if already_in_scope || !items_use_rendering(other_items) {
+        return Ok(());
+    }
+    let Some((pkg, file)) = resolve_bundled_use("canon/std/String") else {
+        return Ok(());
+    };
+    let key = format!("{}/{}", pkg.name, file.path);
+    if ctx.seen_bundled.insert(key) {
+        load_bundled_source(pkg, file, ctx)?;
+    }
+    Ok(())
+}
+
+fn items_use_rendering(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Function(f) => f.body.exprs.iter().any(expr_uses_rendering),
+        _ => false,
+    })
+}
+
+fn expr_uses_rendering(expr: &Expr) -> bool {
+    match expr {
+        Expr::FormatLit { .. } => true,
+        Expr::Constructor { name, args, .. } => {
+            (name.name == "String" && !args.is_empty()) || args.iter().any(expr_uses_rendering)
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            (method.name == "print" || method.name == "Print")
+                || (method.name == "String" && args.is_empty())
+                || expr_uses_rendering(receiver)
+                || args.iter().any(expr_uses_rendering)
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_uses_rendering(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| arm.body.exprs.iter().any(expr_uses_rendering))
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_uses_rendering(inner),
+        Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_rendering),
+        Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_rendering),
+        Expr::FieldAccess { receiver, .. } => expr_uses_rendering(receiver),
+        Expr::JsonLit { .. }
+        | Expr::HtmlLit { .. }
+        | Expr::Ident(_)
+        | Expr::StringLit { .. }
+        | Expr::IntLit { .. }
+        | Expr::FloatLit { .. } => false,
+    }
 }
 
 fn items_use_int_parse(items: &[Item]) -> bool {
@@ -882,6 +965,19 @@ fn register_defined_names(items: &[Item], ctx: &mut LoadCtx) {
     }
 }
 
+/// `register_defined_names` for a bundled file: the same registration,
+/// plus provenance — see `LoadCtx::defined_bundled`.
+fn register_bundled_defined_names(items: &[Item], ctx: &mut LoadCtx) {
+    register_defined_names(items, ctx);
+    for item in items {
+        let name = match item {
+            Item::TypeDef(td) => &td.name.name,
+            Item::Function(f) => &f.name.name,
+        };
+        ctx.defined_bundled.insert(name.clone());
+    }
+}
+
 /// Referenced names, each with the span of its first occurrence (for
 /// error reporting). BTreeMap so resolution order — and therefore item
 /// order in the loaded module — is deterministic and alphabetical, the
@@ -1099,7 +1195,9 @@ fn discover_references(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<
         collect_item_refs(item, &mut refs);
     }
     for (name, span) in refs {
-        if is_undiscoverable(&name) || ctx.defined.contains(&name) {
+        if is_undiscoverable(&name)
+            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
+        {
             continue;
         }
         resolve_reference(&name, span, dir, ctx)?;
@@ -1153,10 +1251,14 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
         }
     }
 
-    // A candidate that's already loaded means this reference was
-    // resolved by a file currently mid-load (mutual references) — the
-    // name lands in the module either way, so there's nothing to do.
-    let already_loaded = unique.iter().any(|f| match f {
+    // Every candidate already loaded means this reference was resolved
+    // by files currently mid-load (mutual references) — the name lands
+    // in the module either way, so there's nothing to do. A *partially*
+    // loaded candidate set still resolves: a constructor-family member
+    // loaded early (a prelude injection, an earlier reference) must not
+    // hide its siblings, and each load below is seen-guarded, so only
+    // the missing files actually load.
+    let all_loaded = unique.iter().all(|f| match f {
         Found::Local(p) => {
             let canonical = p.canonicalize().unwrap_or_else(|_| p.clone());
             ctx.seen.contains(&canonical)
@@ -1165,7 +1267,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             .seen_bundled
             .contains(&format!("{}/{}", pkg.name, file.path)),
     });
-    if already_loaded {
+    if all_loaded {
         return Ok(());
     }
 
@@ -1489,6 +1591,7 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
         seen_bundled: HashSet::new(),
         items: Vec::new(),
         defined: HashSet::new(),
+        defined_bundled: HashSet::new(),
         defined_types: HashSet::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
@@ -1501,6 +1604,7 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
     register_defined_names(items, &mut ctx);
     let _ = inject_json_prelude(items, &mut ctx);
     let _ = inject_html_prelude(items, &mut ctx);
+    let _ = inject_string_prelude(items, &mut ctx);
     let _ = discover_references(items, dir, &mut ctx);
     ctx.items
 }
@@ -1551,16 +1655,37 @@ fn discover_bundled_references(
     for item in items {
         collect_item_refs(item, &mut refs);
     }
+    // A file's own declarations aren't references: `string.can`
+    // declaring `String * OtherString => Ge` names `Ge` without
+    // reaching for the Int/Float members of the family, so its
+    // self-declared names must not chain-load the other declaring
+    // files. (A stdlib file that *uses* a family member on another
+    // receiver type must therefore not also declare one — the current
+    // files keep to builtins internally.)
+    let own: HashSet<&str> = items
+        .iter()
+        .map(|item| match item {
+            Item::TypeDef(td) => td.name.name.as_str(),
+            Item::Function(f) => f.name.name.as_str(),
+        })
+        .collect();
     for (name, span) in refs {
-        if is_undiscoverable(&name) || ctx.defined.contains(&name) {
+        if own.contains(name.as_str())
+            || is_undiscoverable(&name)
+            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
+        {
             continue;
         }
         let candidates = bundled_decl_matches(&name, referrer_is_bindgen);
-        let already_loaded = candidates.iter().any(|(pkg, file)| {
-            ctx.seen_bundled
-                .contains(&format!("{}/{}", pkg.name, file.path))
-        });
-        if already_loaded {
+        // All loaded → nothing to do; partially loaded → the missing
+        // family members still load (each load below is seen-guarded).
+        // See the mirror comment in `resolve_reference`.
+        let all_loaded = !candidates.is_empty()
+            && candidates.iter().all(|(pkg, file)| {
+                ctx.seen_bundled
+                    .contains(&format!("{}/{}", pkg.name, file.path))
+            });
+        if all_loaded {
             continue;
         }
         match candidates.len() {
@@ -1816,6 +1941,7 @@ fn load_source(
     register_defined_names(&other_items, ctx);
     inject_json_prelude(&other_items, ctx)?;
     inject_html_prelude(&other_items, ctx)?;
+    inject_string_prelude(&other_items, ctx)?;
     discover_references(&other_items, dir, ctx)?;
     ctx.items.extend(other_items);
     Ok(())
@@ -1830,7 +1956,12 @@ fn load_bundled_source(
     ctx: &mut LoadCtx,
 ) -> Result<()> {
     let other_items = parsed_bundled_items(current)?;
-    register_defined_names(&other_items, ctx);
+    register_bundled_defined_names(&other_items, ctx);
+    // Stdlib files render through `-> String` too (`web/html.can`'s
+    // escaping, `time/now.can`'s padding) — the same prelude rule
+    // applies to them. `seen_bundled` already holds `string.can`'s own
+    // key by the time its items get here, so this terminates.
+    inject_string_prelude(&other_items, ctx)?;
     discover_bundled_references(&other_items, current, ctx)?;
     ctx.items.extend(other_items);
     Ok(())

@@ -1,8 +1,12 @@
+Body = Html
+
 Content = Html
 
-Init = Page
+Init = Model
 
 Label = String
+
+Model = Page * Query
 
 Msg = String
 
@@ -16,25 +20,44 @@ Pager = Html
 
 Prev = Html
 
+Query = String
+
 Slug = String
 
-Update = Page
+Update = Model
+
+Model => Body {
+    Model.Query -> Eq("") -> (
+        * False => Body { Model.Query -> Results }
+        * True => Body {
+            Model.Page
+                -> Content
+                -> String
+                -> Joined(Model.Page -> Pager -> String)
+                -> Html
+        }
+    )
+}
 
 Page => Content {
     Page -> (
+        * "async-without-keywords" => Content { AsyncWithoutKeywords() -> Html }
+        * "branching-and-loops" => Content { BranchingAndLoops() -> Html }
         * "building-and-running" => Content { BuildingAndRunning() -> Html }
         * "canon-for-ai" => Content { CanonForAi() -> Html }
+        * "capabilities" => Content { Capabilities() -> Html }
         * "codegen-gaps" => Content { CodegenGaps() -> Html }
         * "coming-from" => Content { ComingFrom() -> Html }
         * "compilation" => Content { Compilation() -> Html }
         * "contributing" => Content { Contributing() -> Html }
         * "deploying" => Content { Deploying() -> Html }
         * "effects-and-async" => Content { EffectsAndAsync() -> Html }
+        * "errors-and-options" => Content { ErrorsAndOptions() -> Html }
         * "expressions" => Content { Expressions() -> Html }
         * "fullstack" => Content { Fullstack() -> Html }
         * "functions" => Content { Functions() -> Html }
-        * "guide" => Content { Guide() -> Html }
         * "hello-world" => Content { HelloWorld() -> Html }
+        * "how-do-i" => Content { HowDoI() -> Html }
         * "installation" => Content { Installation() -> Html }
         * "lexical-structure" => Content { LexicalStructure() -> Html }
         * "markdown-renderer" => Content { MarkdownRenderer() -> Html }
@@ -44,10 +67,15 @@ Page => Content {
         * "notes-api" => Content { NotesApi() -> Html }
         * "ordering" => Content { Ordering() -> Html }
         * "overview" => Content { Overview() -> Html }
+        * "philosophy" => Content { Philosophy() -> Html }
+        * "pipes-and-constructors" => Content { PipesAndConstructors() -> Html }
+        * "programs-and-modules" => Content { ProgramsAndModules() -> Html }
         * "showcase" => Content { Showcase() -> Html }
         * "stdlib" => Content { Stdlib() -> Html }
+        * "testing" => Content { Testing() -> Html }
         * "todolist" => Content { Todolist() -> Html }
         * "types" => Content { Types() -> Html }
+        * "types-and-values" => Content { TypesAndValues() -> Html }
         * "types-only" => Content { TypesOnly() -> Html }
         * "wasi" => Content { Wasi() -> Html }
         * "web-target" => Content { WebTarget() -> Html }
@@ -55,53 +83,64 @@ Page => Content {
     )
 }
 
-Page => Html {
+Model => Html {
     <div class="app">
         {Styles()}
         <aside class="side">
             <a class="brand" data-msg="Nav:introduction"><b>&#10033;</b> canon</a>
+            <form class="search" data-msg-form="Find:"><input type="search" name="q" placeholder="Search the docs…" aria-label="Search the docs" autocomplete="off"></form>
             <div class="sec">Start</div>
-            {Page -> NavItem(Slug("introduction") * Label("Introduction"))}
-            {Page -> NavItem(Slug("installation") * Label("Installation"))}
-            {Page -> NavItem(Slug("hello-world") * Label("Hello, World"))}
-            {Page -> NavItem(Slug("building-and-running") * Label("Building &amp; Running"))}
-            {Page -> NavItem(Slug("guide") * Label("A Tour of Canon"))}
-            {Page -> NavItem(Slug("canon-for-ai") * Label("Canon for AI"))}
-            <div class="sec">Specification</div>
-            {Page -> NavItem(Slug("overview") * Label("Overview"))}
-            {Page -> NavItem(Slug("lexical-structure") * Label("Lexical Structure"))}
-            {Page -> NavItem(Slug("types") * Label("Types"))}
-            {Page -> NavItem(Slug("expressions") * Label("Expressions &amp; Dispatch"))}
-            {Page -> NavItem(Slug("functions") * Label("Functions &amp; Traits"))}
-            {Page -> NavItem(Slug("ordering") * Label("Ordering Rules"))}
-            {Page -> NavItem(Slug("modules") * Label("Modules &amp; Packages"))}
-            {Page -> NavItem(Slug("effects-and-async") * Label("Effects &amp; Async"))}
-            {Page -> NavItem(Slug("compilation") * Label("Compilation &amp; ABI"))}
-            {Page -> NavItem(Slug("types-only") * Label("Types-Only Canon"))}
+            {Model.Page -> NavItem(Slug("introduction") * Label("Why Canon"))}
+            {Model.Page -> NavItem(Slug("philosophy") * Label("The Philosophy"))}
+            {Model.Page -> NavItem(Slug("coming-from") * Label("Is Canon for You?"))}
+            {Model.Page -> NavItem(Slug("canon-for-ai") * Label("Canon for AI"))}
+            {Model.Page -> NavItem(Slug("installation") * Label("Installation"))}
+            {Model.Page -> NavItem(Slug("hello-world") * Label("Hello, World"))}
+            <div class="sec">Learn</div>
+            {Model.Page -> NavItem(Slug("types-and-values") * Label("Types &amp; Values"))}
+            {Model.Page -> NavItem(Slug("pipes-and-constructors") * Label("Pipes &amp; Constructors"))}
+            {Model.Page -> NavItem(Slug("branching-and-loops") * Label("Branching &amp; Loops"))}
+            {Model.Page -> NavItem(Slug("errors-and-options") * Label("Errors &amp; Options"))}
+            {Model.Page -> NavItem(Slug("capabilities") * Label("Capabilities"))}
+            {Model.Page -> NavItem(Slug("async-without-keywords") * Label("Async"))}
+            {Model.Page -> NavItem(Slug("programs-and-modules") * Label("Programs &amp; Modules"))}
+            {Model.Page -> NavItem(Slug("testing") * Label("Testing"))}
+            {Model.Page -> NavItem(Slug("how-do-i") * Label("How Do I&#8230;?"))}
             <div class="sec">Examples</div>
-            {Page -> NavItem(Slug("showcase") * Label("Overview"))}
-            {Page -> NavItem(Slug("multifile") * Label("Multi-File Project"))}
-            {Page -> NavItem(Slug("notes-api") * Label("notes-api: JSON Service"))}
-            {Page -> NavItem(Slug("todolist") * Label("Todo List in the Browser"))}
-            {Page -> NavItem(Slug("markdown-web") * Label("Docs Site in the Browser"))}
-            {Page -> NavItem(Slug("fullstack") * Label("Fullstack"))}
+            {Model.Page -> NavItem(Slug("showcase") * Label("Overview"))}
+            {Model.Page -> NavItem(Slug("multifile") * Label("Multi-File Project"))}
+            {Model.Page -> NavItem(Slug("notes-api") * Label("notes-api: JSON Service"))}
+            {Model.Page -> NavItem(Slug("todolist") * Label("Todo List in the Browser"))}
+            {Model.Page -> NavItem(Slug("markdown-web") * Label("Docs Site in the Browser"))}
+            {Model.Page -> NavItem(Slug("fullstack") * Label("Fullstack"))}
             <div class="sec">Reference</div>
-            {Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
-            {Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}
-            {Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}
-            {Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
-            {Page -> NavItem(Slug("codegen-gaps") * Label("Known Codegen Gaps"))}
-            {Page -> NavItem(Slug("deploying") * Label("Deploying"))}
-            {Page -> NavItem(Slug("coming-from") * Label("Coming from Another Language"))}
+            {Model.Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
+            {Model.Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}
+            {Model.Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}
+            {Model.Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
+            {Model.Page -> NavItem(Slug("building-and-running") * Label("The canon CLI"))}
+            {Model.Page -> NavItem(Slug("deploying") * Label("Deploying"))}
+            {Model.Page -> NavItem(Slug("codegen-gaps") * Label("Known Codegen Gaps"))}
+            <div class="sec">Specification</div>
+            {Model.Page -> NavItem(Slug("overview") * Label("Overview"))}
+            {Model.Page -> NavItem(Slug("lexical-structure") * Label("Lexical Structure"))}
+            {Model.Page -> NavItem(Slug("types") * Label("Types"))}
+            {Model.Page -> NavItem(Slug("expressions") * Label("Expressions &amp; Dispatch"))}
+            {Model.Page -> NavItem(Slug("functions") * Label("Functions &amp; Traits"))}
+            {Model.Page -> NavItem(Slug("ordering") * Label("Ordering Rules"))}
+            {Model.Page -> NavItem(Slug("modules") * Label("Modules &amp; Packages"))}
+            {Model.Page -> NavItem(Slug("effects-and-async") * Label("Effects &amp; Async"))}
+            {Model.Page -> NavItem(Slug("compilation") * Label("Compilation &amp; ABI"))}
+            {Model.Page -> NavItem(Slug("types-only") * Label("Types-Only Canon"))}
             <div class="sec">Project</div>
-            {Page -> NavItem(Slug("contributing") * Label("Contributing"))}
+            {Model.Page -> NavItem(Slug("contributing") * Label("Contributing"))}
         </aside>
-        <main class="main"><article class="doc">{Page -> Content}{Page -> Pager}</article></main>
+        <main class="main"><article class="doc">{Model -> Body}</article></main>
     </div>
 }
 
 Unit => Init {
-    Page("introduction")
+    Page("introduction") -> Model(Query(""))
 }
 
 Page * Slug * Label => NavItem {
@@ -119,29 +158,41 @@ Slug * Label => Next {
 
 Page => Pager {
     Page -> (
+        * "async-without-keywords" => Pager {
+            Html(`<nav class="pager">{Slug("capabilities") -> Prev(Label("Capabilities")) -> String}{Slug("programs-and-modules") -> Next(Label("Programs &amp; Modules")) -> String}</nav>`)
+        }
+        * "branching-and-loops" => Pager {
+            Html(`<nav class="pager">{Slug("pipes-and-constructors") -> Prev(Label("Pipes &amp; Constructors")) -> String}{Slug("errors-and-options") -> Next(Label("Errors &amp; Options")) -> String}</nav>`)
+        }
         * "building-and-running" => Pager {
-            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{Slug("guide") -> Next(Label("A Tour of Canon")) -> String}</nav>`)
-        }
-        * "canon-for-ai" => Pager {
-            Html(`<nav class="pager">{Slug("guide") -> Prev(Label("A Tour of Canon")) -> String}{Slug("overview") -> Next(Label("Overview")) -> String}</nav>`)
-        }
-        * "codegen-gaps" => Pager {
             Html(`<nav class="pager">{Slug("web-target") -> Prev(Label("The Web Target")) -> String}{Slug("deploying") -> Next(Label("Deploying")) -> String}</nav>`)
         }
+        * "canon-for-ai" => Pager {
+            Html(`<nav class="pager">{Slug("coming-from") -> Prev(Label("Is Canon for You?")) -> String}{Slug("installation") -> Next(Label("Installation")) -> String}</nav>`)
+        }
+        * "capabilities" => Pager {
+            Html(`<nav class="pager">{Slug("errors-and-options") -> Prev(Label("Errors &amp; Options")) -> String}{Slug("async-without-keywords") -> Next(Label("Async")) -> String}</nav>`)
+        }
+        * "codegen-gaps" => Pager {
+            Html(`<nav class="pager">{Slug("deploying") -> Prev(Label("Deploying")) -> String}{Slug("overview") -> Next(Label("Overview")) -> String}</nav>`)
+        }
         * "coming-from" => Pager {
-            Html(`<nav class="pager">{Slug("deploying") -> Prev(Label("Deploying")) -> String}{Slug("contributing") -> Next(Label("Contributing")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("philosophy") -> Prev(Label("The Philosophy")) -> String}{Slug("canon-for-ai") -> Next(Label("Canon for AI")) -> String}</nav>`)
         }
         * "compilation" => Pager {
             Html(`<nav class="pager">{Slug("effects-and-async") -> Prev(Label("Effects &amp; Async")) -> String}{Slug("types-only") -> Next(Label("Types-Only Canon")) -> String}</nav>`)
         }
         * "contributing" => Pager {
-            Html(`<nav class="pager">{Slug("coming-from") -> Prev(Label("Coming from Another Language")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("types-only") -> Prev(Label("Types-Only Canon")) -> String}</nav>`)
         }
         * "deploying" => Pager {
-            Html(`<nav class="pager">{Slug("codegen-gaps") -> Prev(Label("Known Codegen Gaps")) -> String}{Slug("coming-from") -> Next(Label("Coming from Another Language")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("building-and-running") -> Prev(Label("The canon CLI")) -> String}{Slug("codegen-gaps") -> Next(Label("Known Codegen Gaps")) -> String}</nav>`)
         }
         * "effects-and-async" => Pager {
             Html(`<nav class="pager">{Slug("modules") -> Prev(Label("Modules &amp; Packages")) -> String}{Slug("compilation") -> Next(Label("Compilation &amp; ABI")) -> String}</nav>`)
+        }
+        * "errors-and-options" => Pager {
+            Html(`<nav class="pager">{Slug("branching-and-loops") -> Prev(Label("Branching &amp; Loops")) -> String}{Slug("capabilities") -> Next(Label("Capabilities")) -> String}</nav>`)
         }
         * "expressions" => Pager {
             Html(`<nav class="pager">{Slug("types") -> Prev(Label("Types")) -> String}{Slug("functions") -> Next(Label("Functions &amp; Traits")) -> String}</nav>`)
@@ -152,14 +203,14 @@ Page => Pager {
         * "functions" => Pager {
             Html(`<nav class="pager">{Slug("expressions") -> Prev(Label("Expressions &amp; Dispatch")) -> String}{Slug("ordering") -> Next(Label("Ordering Rules")) -> String}</nav>`)
         }
-        * "guide" => Pager {
-            Html(`<nav class="pager">{Slug("building-and-running") -> Prev(Label("Building &amp; Running")) -> String}{Slug("canon-for-ai") -> Next(Label("Canon for AI")) -> String}</nav>`)
-        }
         * "hello-world" => Pager {
-            Html(`<nav class="pager">{Slug("installation") -> Prev(Label("Installation")) -> String}{Slug("building-and-running") -> Next(Label("Building &amp; Running")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("installation") -> Prev(Label("Installation")) -> String}{Slug("types-and-values") -> Next(Label("Types &amp; Values")) -> String}</nav>`)
+        }
+        * "how-do-i" => Pager {
+            Html(`<nav class="pager">{Slug("testing") -> Prev(Label("Testing")) -> String}{Slug("showcase") -> Next(Label("Overview")) -> String}</nav>`)
         }
         * "installation" => Pager {
-            Html(`<nav class="pager">{Slug("introduction") -> Prev(Label("Introduction")) -> String}{Slug("hello-world") -> Next(Label("Hello, World")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("canon-for-ai") -> Prev(Label("Canon for AI")) -> String}{Slug("hello-world") -> Next(Label("Hello, World")) -> String}</nav>`)
         }
         * "lexical-structure" => Pager {
             Html(`<nav class="pager">{Slug("overview") -> Prev(Label("Overview")) -> String}{Slug("types") -> Next(Label("Types")) -> String}</nav>`)
@@ -183,13 +234,25 @@ Page => Pager {
             Html(`<nav class="pager">{Slug("functions") -> Prev(Label("Functions &amp; Traits")) -> String}{Slug("modules") -> Next(Label("Modules &amp; Packages")) -> String}</nav>`)
         }
         * "overview" => Pager {
-            Html(`<nav class="pager">{Slug("canon-for-ai") -> Prev(Label("Canon for AI")) -> String}{Slug("lexical-structure") -> Next(Label("Lexical Structure")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("codegen-gaps") -> Prev(Label("Known Codegen Gaps")) -> String}{Slug("lexical-structure") -> Next(Label("Lexical Structure")) -> String}</nav>`)
+        }
+        * "philosophy" => Pager {
+            Html(`<nav class="pager">{Slug("introduction") -> Prev(Label("Why Canon")) -> String}{Slug("coming-from") -> Next(Label("Is Canon for You?")) -> String}</nav>`)
+        }
+        * "pipes-and-constructors" => Pager {
+            Html(`<nav class="pager">{Slug("types-and-values") -> Prev(Label("Types &amp; Values")) -> String}{Slug("branching-and-loops") -> Next(Label("Branching &amp; Loops")) -> String}</nav>`)
+        }
+        * "programs-and-modules" => Pager {
+            Html(`<nav class="pager">{Slug("async-without-keywords") -> Prev(Label("Async")) -> String}{Slug("testing") -> Next(Label("Testing")) -> String}</nav>`)
         }
         * "showcase" => Pager {
-            Html(`<nav class="pager">{Slug("types-only") -> Prev(Label("Types-Only Canon")) -> String}{Slug("multifile") -> Next(Label("Multi-File Project")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("how-do-i") -> Prev(Label("How Do I&#8230;?")) -> String}{Slug("multifile") -> Next(Label("Multi-File Project")) -> String}</nav>`)
         }
         * "stdlib" => Pager {
             Html(`<nav class="pager">{Slug("fullstack") -> Prev(Label("Fullstack")) -> String}{Slug("markdown-renderer") -> Next(Label("Markdown")) -> String}</nav>`)
+        }
+        * "testing" => Pager {
+            Html(`<nav class="pager">{Slug("programs-and-modules") -> Prev(Label("Programs &amp; Modules")) -> String}{Slug("how-do-i") -> Next(Label("How Do I&#8230;?")) -> String}</nav>`)
         }
         * "todolist" => Pager {
             Html(`<nav class="pager">{Slug("notes-api") -> Prev(Label("notes-api: JSON Service")) -> String}{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
@@ -197,17 +260,20 @@ Page => Pager {
         * "types" => Pager {
             Html(`<nav class="pager">{Slug("lexical-structure") -> Prev(Label("Lexical Structure")) -> String}{Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String}</nav>`)
         }
+        * "types-and-values" => Pager {
+            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{Slug("pipes-and-constructors") -> Next(Label("Pipes &amp; Constructors")) -> String}</nav>`)
+        }
         * "types-only" => Pager {
-            Html(`<nav class="pager">{Slug("compilation") -> Prev(Label("Compilation &amp; ABI")) -> String}{Slug("showcase") -> Next(Label("Overview")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("compilation") -> Prev(Label("Compilation &amp; ABI")) -> String}{Slug("contributing") -> Next(Label("Contributing")) -> String}</nav>`)
         }
         * "wasi" => Pager {
             Html(`<nav class="pager">{Slug("markdown-renderer") -> Prev(Label("Markdown")) -> String}{Slug("web-target") -> Next(Label("The Web Target")) -> String}</nav>`)
         }
         * "web-target" => Pager {
-            Html(`<nav class="pager">{Slug("wasi") -> Prev(Label("WASI Interfaces")) -> String}{Slug("codegen-gaps") -> Next(Label("Known Codegen Gaps")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("wasi") -> Prev(Label("WASI Interfaces")) -> String}{Slug("building-and-running") -> Next(Label("The canon CLI")) -> String}</nav>`)
         }
         * String => Pager {
-            Html(`<nav class="pager">{Slug("installation") -> Next(Label("Installation")) -> String}</nav>`)
+            Html(`<nav class="pager">{Slug("philosophy") -> Next(Label("The Philosophy")) -> String}</nav>`)
         }
     )
 }
@@ -216,9 +282,17 @@ Slug * Label => Prev {
     Html(`<a class="pager-link pager-prev" data-msg="Nav:{Slug.String}"><span class="pager-dir">&#8592; Previous</span><span class="pager-title">{Label.String}</span></a>`)
 }
 
-Page * Msg => Update {
+Model * Msg => Update {
     Msg -> Substring(From(1) * To(4)) -> (
-        * "Nav:" => Page { Msg -> Substring(From(5) * Msg -> Length -> To) -> Page }
-        * String => Page { Page }
+        * "Find" => Model {
+            Model.Page -> Model(Msg -> Substring(From(6) * Msg -> Length -> To) -> Query)
+        }
+        * "Nav:" => Model {
+            Msg
+                -> Substring(From(5) * Msg -> Length -> To)
+                -> Page
+                -> Model(Query(""))
+        }
+        * String => Model { Model }
     )
 }

@@ -626,10 +626,12 @@ pub struct CodegenGap {
     pub title: &'static str,
 }
 
-/// Binding declarations returning `list<T>` for non-string `T`. `List<String>`
-/// returns already work; other element types need per-width read-back.
-pub const GAP_LIST_NON_STRING_RETURN: CodegenGap = CodegenGap {
-    title: "binding declarations returning `list<T>` for non-string `T`",
+/// Binding declarations returning `list<T>` for compound `T`. String and
+/// scalar elements (including narrow widths, whose stride the codegen
+/// reads back from the vendored WIT) decode; lists of records/variants
+/// don't.
+pub const GAP_LIST_COMPOUND_RETURN: CodegenGap = CodegenGap {
+    title: "binding declarations returning `list<T>` for compound `T`",
 };
 
 /// Sub-`u64` integers (`u8`/`u16`/`u32`/`s8`/`s16`/`s32`) inside a compound
@@ -639,15 +641,17 @@ pub const GAP_SUB_U64_COMPOUND: CodegenGap = CodegenGap {
     title: "sub-`u64` integers inside a compound WIT shape",
 };
 
-/// WIT `result` with no payloads in binding declarations. Not statically
+/// WIT `result` with no payloads as a binding *parameter*. (Bare-result
+/// returns decode into an ordinary Canon `Result` now.) Not statically
 /// detectable from Canon source, so documented but not warned about.
 pub const GAP_RESULT_NO_PAYLOAD: CodegenGap = CodegenGap {
-    title: "WIT `result` with no payloads in binding declarations",
+    title: "WIT `result` with no payloads as a binding parameter",
 };
 
-/// Non-string `option<T>` extern returns (no indirect-return decode).
-pub const GAP_OPTION_NON_STRING_RETURN: CodegenGap = CodegenGap {
-    title: "non-string `option<T>` extern returns",
+/// Binding declarations returning `option<T>` for compound `T`. String
+/// and scalar payloads decode; option-of-record/variant payloads don't.
+pub const GAP_OPTION_COMPOUND_RETURN: CodegenGap = CodegenGap {
+    title: "binding declarations returning `option<T>` for compound `T`",
 };
 
 /// WIT `resource` / `own<T>` / `borrow<T>` in binding signatures. Bindgen
@@ -680,10 +684,10 @@ pub const GAP_STREAM: CodegenGap = CodegenGap {
 /// Every known codegen gap, in the same order as the doc page. Single source
 /// of truth for the list.
 pub const CODEGEN_GAPS: &[CodegenGap] = &[
-    GAP_LIST_NON_STRING_RETURN,
+    GAP_LIST_COMPOUND_RETURN,
     GAP_SUB_U64_COMPOUND,
     GAP_RESULT_NO_PAYLOAD,
-    GAP_OPTION_NON_STRING_RETURN,
+    GAP_OPTION_COMPOUND_RETURN,
     GAP_RESOURCES,
     GAP_LIST_STRING_INDEXING,
     GAP_HTTP_REQUEST_HEADERS_BODY,
@@ -712,6 +716,15 @@ pub struct GapWarning {
 pub fn codegen_gap_warnings(module: &Module, entry_items_start: usize) -> Vec<GapWarning> {
     let reachable = reachable_decl_names(module, entry_items_start);
 
+    // Alias map so payload checks can chase user newtypes (`Duration =
+    // Int`) to the scalar they erase to.
+    let mut type_defs: HashMap<String, TypeExpr> = HashMap::new();
+    for item in &module.items {
+        if let Item::TypeDef(td) = item {
+            type_defs.insert(td.name.name.clone(), td.body.clone());
+        }
+    }
+
     let mut warnings = Vec::new();
     let mut seen: HashSet<(usize, usize, &'static str)> = HashSet::new();
     for item in &module.items {
@@ -719,7 +732,7 @@ pub fn codegen_gap_warnings(module: &Module, entry_items_start: usize) -> Vec<Ga
         if !reachable.contains(&decl_key(func)) {
             continue;
         }
-        for gap in detect_fn_gaps(func) {
+        for gap in detect_fn_gaps(func, &type_defs) {
             let span = func.name.span;
             if seen.insert((span.start, span.end, gap.title)) {
                 warnings.push(GapWarning {
@@ -744,7 +757,7 @@ fn gap_warning_message(gap: &CodegenGap) -> String {
 /// The codegen gaps a single declaration triggers. Only the gaps that are
 /// statically detectable from Canon source are matched here; the rest live in
 /// `CODEGEN_GAPS` (and the doc page) for tracking but never warn.
-fn detect_fn_gaps(func: &FunctionDef) -> Vec<CodegenGap> {
+fn detect_fn_gaps(func: &FunctionDef, type_defs: &HashMap<String, TypeExpr>) -> Vec<CodegenGap> {
     let mut gaps = Vec::new();
 
     // `Stream<T>` anywhere in the signature: codegen drops imports whose
@@ -759,18 +772,46 @@ fn detect_fn_gaps(func: &FunctionDef) -> Vec<CodegenGap> {
     if func.extern_wasm.is_some() {
         let ret = unwrap_binding_return(&func.return_ty);
         if let Some(elem) = generic_arg(ret, "List") {
-            if elem.simple_name() != Some("String") {
-                gaps.push(GAP_LIST_NON_STRING_RETURN);
+            if !is_scalar_or_string_payload(elem, type_defs) {
+                gaps.push(GAP_LIST_COMPOUND_RETURN);
             }
         }
         if let Some(elem) = generic_arg(ret, "Option") {
-            if elem.simple_name() != Some("String") {
-                gaps.push(GAP_OPTION_NON_STRING_RETURN);
+            if !is_scalar_or_string_payload(elem, type_defs) {
+                gaps.push(GAP_OPTION_COMPOUND_RETURN);
             }
         }
     }
 
     gaps
+}
+
+/// True when a `List<T>` / `Option<T>` binding-return payload is a shape
+/// the extern decode implements: `String`, a scalar (`Int` / `Float` /
+/// `Bool` and the prelude `Int`-aliases), or a user alias chain ending in
+/// one of those. Compound payloads (products, unions, nested generics)
+/// are the remaining gap.
+fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> bool {
+    let mut cur = ty;
+    for _ in 0..20 {
+        let TypeExpr::Named { name, generics, .. } = cur else {
+            return false;
+        };
+        if !generics.is_empty() {
+            return false;
+        }
+        if matches!(
+            name.as_str(),
+            "String" | "Int" | "Float" | "Bool" | "Byte" | "Hex"
+        ) {
+            return true;
+        }
+        match type_defs.get(name) {
+            Some(body) => cur = body,
+            None => return false,
+        }
+    }
+    false
 }
 
 /// Peel the wrappers `apply_bindings` may leave on an extern's return so the
@@ -2246,7 +2287,17 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     scalar_primitive_root(symbols, &method.name),
                     scalar_primitive_root(symbols, &recv_ty),
                 ) {
-                    if target_scalar != recv_scalar {
+                    // The Int ↔ Float pair is the one cross-primitive
+                    // conversion codegen owns (wasm numerics:
+                    // `i64.trunc_f64_s` / `f64.convert_i64_s`), so
+                    // `x -> Int` on a Float truncates rather than
+                    // mismatching. Every other conversion is a stdlib
+                    // constructor (`has_alias_method` above).
+                    let is_numeric_conversion = matches!(
+                        (target_scalar, recv_scalar),
+                        ("Int", "Float") | ("Float", "Int")
+                    );
+                    if target_scalar != recv_scalar && !is_numeric_conversion {
                         errors.push(CanonError::CheckError {
                             message: format!(
                                 "`{}` expects a `{}`, found `{}`",
@@ -2656,12 +2707,6 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
         && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
     {
-        return true;
-    }
-    // Conversion is construction (the language spec § Conversions): `Int.String()`
-    // is the method spelling of the `String(Int)` constructor. `Byte`
-    // receivers reach this arm through the alias chain (`Byte = Int`).
-    if receiver_ty == "Int" && method == "String" && arg_count == 0 {
         return true;
     }
     if receiver_ty == "String"
@@ -3103,8 +3148,6 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
         ("Int", "eq" | "lt") => "Bool".to_string(),
         ("Float", "eq" | "lt") => "Bool".to_string(),
-        // Conversion is construction: `Int.String()` renders decimal.
-        ("Int", "String") => "String".to_string(),
         ("String", "concat" | "substring") => "String".to_string(),
         ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "lt") => "Bool".to_string(),

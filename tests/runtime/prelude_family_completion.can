@@ -1,0 +1,10 @@
+Unit => Program {
+    Int("5") -> (
+        * Err<MalformedInt> => Unit { "bad" -> Print }
+        * Ok<Int> => Unit { "parsed" -> Print }
+    )
+    "a" -> Ge("b") -> (
+        * False => Unit { "lt" -> Print }
+        * True => Unit { "ge" -> Print }
+    )
+}

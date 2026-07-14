@@ -136,16 +136,10 @@ is also why `just examples` does not run this one.)
 
 ## What it demonstrates
 
-- **Shared types across the stack.** `Todos` and its operations are
-  written once. The backend serves the encoding; the frontend's `Load:`
-  message swaps it straight into the model. No JSON schema, no client
-  codegen -- the type file is the protocol.
-- **One language, two worlds.** `server.can` compiles to a standard
-  `wasi:http/service` component; `web.can` compiles to the browser
-  bundle. The entry-point *shape* selects the world -- same compiler,
-  same stdlib, no flags.
-- **Host-mediated effects.** The frontend stays pure; the fetch happens
-  in the JS host via the declarative `data-fetch` attribute, and the
-  response arrives as an ordinary message through the `Update` arm.
-- **CORS as plain data.** Response headers are constructed with
-  `Headers()` and its setters -- just values.
+**Shared types across the stack** — `Todos` and its operations are
+written once, and the type file is the protocol (no JSON schema, no
+client codegen). **One language, two worlds** — the entry-point shape
+selects component vs browser bundle; same compiler, no flags. The
+frontend stays pure (the fetch happens in the JS host via
+`data-fetch`, arriving as an ordinary `Update` message), and CORS
+headers are just values.

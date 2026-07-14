@@ -210,7 +210,7 @@ Rules:
 
 Nested dispatch composes: dispatch on a union, then literal-dispatch
 the payload inside an arm. This is the shape of every HTTP route table
-(see [Serving HTTP](../guide.md#serving-http)).
+(see the [notes-api example](../examples/notes-api.md)).
 
 ## The `?` Operator
 

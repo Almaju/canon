@@ -206,6 +206,11 @@ pub(super) struct FuncInfo {
     /// `Some(signed)` when the extern's result narrowed from i64 to
     /// i32 — the call site extends back to Canon's i64.
     pub(super) narrow_result_signed: Option<bool>,
+    /// True for an extern with a WIT bare `result;` return: the call
+    /// site receives one i32 discriminant directly and re-shapes it
+    /// into a Canon `Result` struct (flipping 0=ok/1=err into Canon's
+    /// Err=0/Ok=1 tags). Always false for user body functions.
+    pub(super) bare_result: bool,
     /// `true` for `extern Wasm.async` functions. Call sites use the
     /// component-model async-lower calling convention: the args go flat
     /// on the stack (as in sync), but the function returns an `i32`
@@ -239,9 +244,6 @@ impl StringTable {
         self.data.extend_from_slice(s.as_bytes());
         self.offsets.insert(s.to_string(), (offset, len));
         (offset, len)
-    }
-    pub(super) fn get(&self, s: &str) -> Option<(u32, u32)> {
-        self.offsets.get(s).copied()
     }
 }
 

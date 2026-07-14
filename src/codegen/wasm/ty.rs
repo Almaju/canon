@@ -26,6 +26,49 @@ pub(super) fn resolves_to_string(ty: &TypeExpr, type_defs: &HashMap<String, Type
     chase(name, type_defs, 0)
 }
 
+/// Resolves a type expression to the scalar primitive it represents at
+/// the component-model boundary, walking user alias chains: `Int` (and
+/// the prelude `Int`-aliases `Byte`/`Hex`) → `s64`, `Float` → `f64`,
+/// `Bool` → `bool`. `None` for `String`, `Unit`, and every compound
+/// shape. Canon's `Int` defaults to *signed* 64-bit here — for `wasi:*`
+/// imports the WIT-informed lowering overwrites the width and
+/// signedness with the vendored WIT's truth.
+pub(super) fn resolves_to_scalar_prim(
+    ty: &TypeExpr,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> Option<wasm_encoder::PrimitiveValType> {
+    use wasm_encoder::PrimitiveValType as P;
+    let TypeExpr::Named { name, generics, .. } = ty else {
+        return None;
+    };
+    if !generics.is_empty() {
+        return None;
+    }
+    fn chase(
+        name: &str,
+        type_defs: &HashMap<String, TypeExpr>,
+        depth: u32,
+    ) -> Option<wasm_encoder::PrimitiveValType> {
+        if depth > 20 {
+            return None;
+        }
+        match name {
+            "Int" | "Byte" | "Hex" => Some(P::S64),
+            "Float" => Some(P::F64),
+            "Bool" => Some(P::Bool),
+            _ => match type_defs.get(name) {
+                Some(TypeExpr::Named {
+                    name: inner,
+                    generics,
+                    ..
+                }) if generics.is_empty() => chase(inner, type_defs, depth + 1),
+                _ => None,
+            },
+        }
+    }
+    chase(name, type_defs, 0)
+}
+
 pub(super) fn named_type_name(ty: &TypeExpr) -> Option<String> {
     if let TypeExpr::Named { name, .. } = ty {
         Some(name.clone())

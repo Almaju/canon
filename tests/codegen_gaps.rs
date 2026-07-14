@@ -41,20 +41,27 @@ fn mark_extern(module: &mut Module, fn_name: &str) {
 }
 
 #[test]
-fn warns_on_reachable_non_string_list_binding() {
-    // `readBytes` is a binding returning `List<Int>` — a non-string list
-    // return — and `main` reaches it, so codegen would fail.
+fn warns_on_reachable_compound_list_binding() {
+    // `readPairs` is a binding returning `List<Pair>` where `Pair` is a
+    // product — a compound element type — and `main` reaches it, so
+    // codegen would fail.
     let source = r#"
-readBytes = () => List<Int> {
+Pair = Left * Right
+
+Left = Int
+
+Right = Int
+
+readPairs = () => List<Pair> {
     List()
 }
 
 main = () => Unit {
-    readBytes()
+    readPairs()
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readBytes");
+    mark_extern(&mut module, "readPairs");
 
     let warnings = checker::codegen_gap_warnings(&module, 0);
     assert_eq!(
@@ -67,6 +74,89 @@ main = () => Unit {
     assert!(
         msg.contains("list<T>") && msg.contains("codegen-gaps.md"),
         "warning should name the gap and point to the doc page: {msg}"
+    );
+}
+
+#[test]
+fn scalar_list_binding_is_fine() {
+    // `List<Int>` returns decode now (per-width read-back) — no warning.
+    // The alias hop (`Duration = Int`) exercises the payload check's
+    // alias chase.
+    let source = r#"
+Duration = Int
+
+readBytes = () => List<Duration> {
+    List()
+}
+
+main = () => Unit {
+    readBytes()
+}
+"#;
+    let mut module = parse(source);
+    mark_extern(&mut module, "readBytes");
+
+    let warnings = checker::codegen_gap_warnings(&module, 0);
+    assert!(
+        warnings.is_empty(),
+        "a scalar list return should not warn, got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn warns_on_reachable_compound_option_binding() {
+    let source = r#"
+Pair = Left * Right
+
+Left = Int
+
+Right = Int
+
+readPair = () => Option<Pair> {
+    List()
+}
+
+main = () => Unit {
+    readPair()
+}
+"#;
+    let mut module = parse(source);
+    mark_extern(&mut module, "readPair");
+
+    let warnings = checker::codegen_gap_warnings(&module, 0);
+    assert_eq!(
+        warnings.len(),
+        1,
+        "expected exactly one option gap warning, got: {:?}",
+        warnings
+    );
+    assert!(
+        warnings[0].message.contains("option<T>"),
+        "warning should name the option gap: {}",
+        warnings[0].message
+    );
+}
+
+#[test]
+fn scalar_option_binding_is_fine() {
+    let source = r#"
+readMaybe = () => Option<Int> {
+    List()
+}
+
+main = () => Unit {
+    readMaybe()
+}
+"#;
+    let mut module = parse(source);
+    mark_extern(&mut module, "readMaybe");
+
+    let warnings = checker::codegen_gap_warnings(&module, 0);
+    assert!(
+        warnings.is_empty(),
+        "a scalar option return should not warn, got: {:?}",
+        warnings
     );
 }
 

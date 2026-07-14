@@ -246,7 +246,7 @@ Rules the compiler enforces:
 
 The same shape-driven selection powers testing: every result newtype
 `X = TestResult` with a nullary `Unit => X` constructor in a file is a
-test under `canon test` ([Testing](../guide.md#testing)) -- the name is
+test under `canon test` ([Testing](../learn/testing.md)) -- the name is
 a type name, and the arrow stays anonymous.
 
 ## Declaration Order

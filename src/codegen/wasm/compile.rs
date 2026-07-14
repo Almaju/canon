@@ -34,6 +34,65 @@ pub(super) fn substring_bounds(args: &[Expr]) -> Option<(&Expr, &Expr)> {
     }
 }
 
+/// Emits a load of a scalar primitive at `offset` from the address on
+/// top of the stack, widened to Canon's 8-byte value representation:
+/// integer widths and `bool`/`char` widen to i64 (sign- or
+/// zero-extending per the WIT signedness), `f32` promotes to f64,
+/// `u64`/`s64`/`f64` load directly. Leaves one i64 (or f64 for floats).
+pub(super) fn emit_prim_load_widen(
+    f: &mut Function,
+    prim: wasm_encoder::PrimitiveValType,
+    offset: u64,
+) {
+    use wasm_encoder::PrimitiveValType as P;
+    let mem = |align: u32| MemArg {
+        offset,
+        align,
+        memory_index: 0,
+    };
+    match prim {
+        P::U64 | P::S64 => {
+            f.instruction(&Instruction::I64Load(mem(3)));
+        }
+        P::F64 => {
+            f.instruction(&Instruction::F64Load(mem(3)));
+        }
+        P::F32 => {
+            f.instruction(&Instruction::F32Load(mem(2)));
+            f.instruction(&Instruction::F64PromoteF32);
+        }
+        P::S32 => {
+            f.instruction(&Instruction::I32Load(mem(2)));
+            f.instruction(&Instruction::I64ExtendI32S);
+        }
+        P::S16 => {
+            f.instruction(&Instruction::I32Load16S(mem(1)));
+            f.instruction(&Instruction::I64ExtendI32S);
+        }
+        P::S8 => {
+            f.instruction(&Instruction::I32Load8S(mem(0)));
+            f.instruction(&Instruction::I64ExtendI32S);
+        }
+        P::U32 | P::Char => {
+            f.instruction(&Instruction::I32Load(mem(2)));
+            f.instruction(&Instruction::I64ExtendI32U);
+        }
+        P::U16 => {
+            f.instruction(&Instruction::I32Load16U(mem(1)));
+            f.instruction(&Instruction::I64ExtendI32U);
+        }
+        P::U8 | P::Bool => {
+            f.instruction(&Instruction::I32Load8U(mem(0)));
+            f.instruction(&Instruction::I64ExtendI32U);
+        }
+        // `string` and every compound never reach here — the shape
+        // classifiers only produce scalar primitives.
+        _ => {
+            f.instruction(&Instruction::I64Const(0));
+        }
+    }
+}
+
 pub(super) fn arm_type_name(arm: &MatchArm) -> Option<&str> {
     if let TypeExpr::Named { name, .. } = &arm.param_ty {
         Some(name.as_str())
@@ -411,217 +470,6 @@ impl<'m> WasmGen<'m> {
         f
     }
 
-    pub(super) fn build_print_int(&self) -> Function {
-        let mut f = Function::new([
-            (1, ValType::I32), // local 1: ptr
-            (1, ValType::I32), // local 2: is_neg
-            (1, ValType::I32), // local 3: digit
-        ]);
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Const(0));
-        f.instruction(&Instruction::I64LtS);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::LocalSet(2));
-        f.instruction(&Instruction::I64Const(0));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Sub);
-        f.instruction(&Instruction::LocalSet(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(b'0' as i32));
-        f.instruction(&Instruction::I32Store8(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
-        f.instruction(&Instruction::Else);
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Eqz);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64RemU);
-        f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(3));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64DivU);
-        f.instruction(&Instruction::LocalSet(0));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(b'0' as i32));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Store8(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(b'-' as i32));
-        f.instruction(&Instruction::I32Store8(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32 + 1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::Call(self.fn_print_str));
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Build the `fn_int_to_str` helper: `(i64) -> (i32, i32)`.
-    ///
-    /// Renders the value's decimal digits into the shared int buffer
-    /// (same backward digit loop as `build_print_int`, minus the
-    /// trailing-newline convention), then copies them into a fresh
-    /// `$alloc` block so the result survives later renders. Returns
-    /// the `(ptr, len)` pair of the copy.
-    pub(super) fn build_int_to_str(&self) -> Function {
-        let store8 = MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        };
-        let load8 = store8;
-        // Locals: 0 = value (param, i64); 1 = ptr; 2 = is_neg;
-        // 3 = digit; 4 = len; 5 = dst; 6 = out_ptr.
-        let mut f = Function::new([(6, ValType::I32)]);
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
-        f.instruction(&Instruction::LocalSet(1));
-        // Negative? Remember the sign, work on the magnitude. (i64::MIN
-        // survives this: `0 - i64::MIN` wraps back to itself and the
-        // unsigned digit loop below reads it as the correct magnitude.)
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Const(0));
-        f.instruction(&Instruction::I64LtS);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::LocalSet(2));
-        f.instruction(&Instruction::I64Const(0));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Sub);
-        f.instruction(&Instruction::LocalSet(0));
-        f.instruction(&Instruction::End);
-        // Zero short-circuits to a single '0' digit.
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(b'0' as i32));
-        f.instruction(&Instruction::I32Store8(store8));
-        f.instruction(&Instruction::Else);
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Eqz);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64RemU);
-        f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(3));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64DivU);
-        f.instruction(&Instruction::LocalSet(0));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(b'0' as i32));
-        f.instruction(&Instruction::LocalGet(3));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Store8(store8));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        // Leading '-' for negatives.
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(b'-' as i32));
-        f.instruction(&Instruction::I32Store8(store8));
-        f.instruction(&Instruction::End);
-        // len = MEM_INT_BUF_END - ptr (the '\n' at END is print_int's
-        // convention, not part of the rendered value).
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(4));
-        // out_ptr = alloc(len); dst = out_ptr.
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::LocalTee(6));
-        f.instruction(&Instruction::LocalSet(5));
-        // Copy loop: while ptr < MEM_INT_BUF_END { *dst++ = *ptr++ }.
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
-        f.instruction(&Instruction::I32GeU);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Load8U(load8));
-        f.instruction(&Instruction::I32Store8(store8));
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(5));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        // Return (out_ptr, len).
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::End);
-        f
-    }
-
     /// Build the `fn_str_cmp` helper: `(ptr1, len1, ptr2, len2) -> i32`
     /// returning -1 / 0 / 1 — byte-wise lexicographic order, with the
     /// shorter string ordering first on a shared prefix. Backs the
@@ -840,241 +688,6 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::LocalGet(1));
         f.instruction(&Instruction::LocalGet(3));
         f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    pub(super) fn build_print_bool(&self) -> Function {
-        // invariant: `collect_all_strings` unconditionally interns the
-        // "False"/"True" literals before any function body is built.
-        let (fp, fl) = self.strings.get("False").expect("False interned");
-        let (tp, tl) = self.strings.get("True").expect("True interned");
-        let mut f = Function::new([]);
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::I32Const(tp as i32));
-        f.instruction(&Instruction::I32Const(tl as i32));
-        f.instruction(&Instruction::Call(self.fn_print_str));
-        f.instruction(&Instruction::Else);
-        f.instruction(&Instruction::I32Const(fp as i32));
-        f.instruction(&Instruction::I32Const(fl as i32));
-        f.instruction(&Instruction::Call(self.fn_print_str));
-        f.instruction(&Instruction::End);
-        // Trailing newline (the shared '\n' byte), same as every other
-        // `.print` path — one call, one line.
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::Call(self.fn_print_str));
-        f.instruction(&Instruction::End);
-        f
-    }
-
-    /// Formats an `f64` into the shared int buffer and prints it.
-    ///
-    /// Output format: fixed-point with up to 6 fraction digits,
-    /// trailing zeros trimmed; whole values print with no fraction
-    /// (`2.0` → `2`); specials print as `NaN`, `Inf`, `-Inf`. Values
-    /// whose integer part exceeds `u64::MAX` saturate (the buffer is
-    /// sized for 20 integer digits). This is a pragmatic decimal
-    /// rendering, not shortest-round-trip dtoa — good enough until a
-    /// proper Grisu/Ryū port becomes worth the code size.
-    ///
-    /// Locals: 0 = value (param, f64), 1 = int_part (i64),
-    /// 2 = frac (i64), 3 = ptr, 4 = digit, 5 = neg, 6 = started,
-    /// 7 = counter (i32).
-    pub(super) fn build_print_float(&self) -> Function {
-        const PTR: u32 = 3;
-        let mut f = Function::new([(2, ValType::I64), (5, ValType::I32)]);
-        let store8 = MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        };
-        // Helper closure: ptr -= 1; mem[ptr] = byte.
-        let push_byte = |f: &mut Function, byte: u8| {
-            f.instruction(&Instruction::LocalGet(PTR));
-            f.instruction(&Instruction::I32Const(1));
-            f.instruction(&Instruction::I32Sub);
-            f.instruction(&Instruction::LocalSet(PTR));
-            f.instruction(&Instruction::LocalGet(PTR));
-            f.instruction(&Instruction::I32Const(byte as i32));
-            f.instruction(&Instruction::I32Store8(store8));
-        };
-        // Helper closure: print buffer [ptr, MEM_INT_BUF_END] (the byte
-        // at MEM_INT_BUF_END is the shared '\n').
-        let flush = |f: &mut Function, print_str: u32| {
-            f.instruction(&Instruction::LocalGet(PTR));
-            f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32 + 1));
-            f.instruction(&Instruction::LocalGet(PTR));
-            f.instruction(&Instruction::I32Sub);
-            f.instruction(&Instruction::Call(print_str));
-        };
-
-        // ptr = MEM_INT_BUF_END
-        f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
-        f.instruction(&Instruction::LocalSet(PTR));
-
-        // NaN: value != value.
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::F64Ne);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        push_byte(&mut f, b'N');
-        push_byte(&mut f, b'a');
-        push_byte(&mut f, b'N');
-        flush(&mut f, self.fn_print_str);
-        f.instruction(&Instruction::Return);
-        f.instruction(&Instruction::End);
-
-        // neg = value < 0; value = |value|
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::F64Const(0.0.into()));
-        f.instruction(&Instruction::F64Lt);
-        f.instruction(&Instruction::LocalSet(5));
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::F64Neg);
-        f.instruction(&Instruction::LocalSet(0));
-        f.instruction(&Instruction::End);
-
-        // Inf.
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::F64Const(f64::INFINITY.into()));
-        f.instruction(&Instruction::F64Eq);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        push_byte(&mut f, b'f');
-        push_byte(&mut f, b'n');
-        push_byte(&mut f, b'I');
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        push_byte(&mut f, b'-');
-        f.instruction(&Instruction::End);
-        flush(&mut f, self.fn_print_str);
-        f.instruction(&Instruction::Return);
-        f.instruction(&Instruction::End);
-
-        // int_part = trunc_sat(value)
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::I64TruncSatF64U);
-        f.instruction(&Instruction::LocalSet(1));
-        // frac = trunc_sat((value - int_part) * 1e6 + 0.5)
-        f.instruction(&Instruction::LocalGet(0));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::F64ConvertI64U);
-        f.instruction(&Instruction::F64Sub);
-        f.instruction(&Instruction::F64Const(1e6.into()));
-        f.instruction(&Instruction::F64Mul);
-        f.instruction(&Instruction::F64Const(0.5.into()));
-        f.instruction(&Instruction::F64Add);
-        f.instruction(&Instruction::I64TruncSatF64U);
-        f.instruction(&Instruction::LocalSet(2));
-        // Rounding carry: frac == 1_000_000 → bump int_part.
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I64Const(1_000_000));
-        f.instruction(&Instruction::I64GeU);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I64Const(1));
-        f.instruction(&Instruction::I64Add);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::I64Const(0));
-        f.instruction(&Instruction::LocalSet(2));
-        f.instruction(&Instruction::End);
-
-        // Fraction digits, least-significant first, trailing zeros
-        // skipped until the first significant digit (`started`).
-        f.instruction(&Instruction::I32Const(6));
-        f.instruction(&Instruction::LocalSet(7));
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(7));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(7));
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64RemU);
-        f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(4));
-        f.instruction(&Instruction::LocalGet(2));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64DivU);
-        f.instruction(&Instruction::LocalSet(2));
-        // Skip while nothing started and digit is zero.
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::I32And);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        f.instruction(&Instruction::Br(1)); // continue the loop
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::LocalSet(6));
-        f.instruction(&Instruction::LocalGet(PTR));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(PTR));
-        f.instruction(&Instruction::LocalGet(PTR));
-        f.instruction(&Instruction::I32Const(b'0' as i32));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Store8(store8));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-
-        // Decimal point (only when fraction digits were written).
-        f.instruction(&Instruction::LocalGet(6));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        push_byte(&mut f, b'.');
-        f.instruction(&Instruction::End);
-
-        // Integer digits (same shape as `build_print_int`).
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I64Eqz);
-        f.instruction(&Instruction::If(BlockType::Empty));
-        push_byte(&mut f, b'0');
-        f.instruction(&Instruction::Else);
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I64Eqz);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64RemU);
-        f.instruction(&Instruction::I32WrapI64);
-        f.instruction(&Instruction::LocalSet(4));
-        f.instruction(&Instruction::LocalGet(1));
-        f.instruction(&Instruction::I64Const(10));
-        f.instruction(&Instruction::I64DivU);
-        f.instruction(&Instruction::LocalSet(1));
-        f.instruction(&Instruction::LocalGet(PTR));
-        f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalSet(PTR));
-        f.instruction(&Instruction::LocalGet(PTR));
-        f.instruction(&Instruction::I32Const(b'0' as i32));
-        f.instruction(&Instruction::LocalGet(4));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Store8(store8));
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-
-        // Sign.
-        f.instruction(&Instruction::LocalGet(5));
-        f.instruction(&Instruction::If(BlockType::Empty));
-        push_byte(&mut f, b'-');
-        f.instruction(&Instruction::End);
-
-        flush(&mut f, self.fn_print_str);
         f.instruction(&Instruction::End);
         f
     }
@@ -1772,6 +1385,30 @@ impl<'m> WasmGen<'m> {
         Ty::Str
     }
 
+    /// Emit a call to the stdlib `String` constructor family member for
+    /// `recv` (`"Bool"` / `"Float"` / `"Int"`) — the pure-Canon decimal
+    /// renderers in `canon/std/string.can`. The receiver value is
+    /// already on the stack. The loader's string prelude
+    /// (`inject_string_prelude`) loads the module wherever a render
+    /// site compiles, so a miss here is a compiler bug.
+    pub(super) fn emit_render_to_str(
+        &mut self,
+        recv: &str,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let info = self
+            .func_table
+            .get(&(Some(recv.to_string()), "String".to_string()))
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "`canon/std/String` carries the `{recv} => String` renderer (string prelude)"
+                )
+            });
+        self.emit_func_table_call(&info, &[], scope, f)
+    }
+
     pub(super) fn compile_constructor(
         &mut self,
         name: &str,
@@ -1821,6 +1458,10 @@ impl<'m> WasmGen<'m> {
                             f.instruction(&Instruction::I64ExtendI32S);
                             Ty::I64
                         }
+                        ("Int", Ty::F64) => {
+                            f.instruction(&Instruction::I64TruncF64S);
+                            Ty::I64
+                        }
                         ("Float", Ty::I64) => {
                             f.instruction(&Instruction::F64ConvertI64S);
                             Ty::F64
@@ -1829,10 +1470,11 @@ impl<'m> WasmGen<'m> {
                             if is_byte {
                                 self.emit_byte_to_str(scope, f)
                             } else {
-                                f.instruction(&Instruction::Call(self.fn_int_to_str));
-                                Ty::Str
+                                self.emit_render_to_str("Int", scope, f)
                             }
                         }
+                        ("String", Ty::F64) => self.emit_render_to_str("Float", scope, f),
+                        ("String", Ty::I32) => self.emit_render_to_str("Bool", scope, f),
                         ("Int", ty) if ty.is_str_like() => {
                             // `Int("42")` — the fallible parse constructor
                             // from `canon/std/Int`. The compiled string is
@@ -3016,6 +2658,14 @@ impl<'m> WasmGen<'m> {
 
         let recv_ty = self.compile_expr(receiver, scope, f);
 
+        // `String(Byte)` — the one-byte-string memory primitive — must
+        // win over the stdlib `String` constructor family: a `Byte`
+        // receiver erases to `Ty::I64`, and its alias chain passes
+        // through `Int`, whose family member is the decimal renderer.
+        if method == "String" && args.is_empty() && self.expr_is_byte(receiver) {
+            return self.emit_byte_to_str(scope, f);
+        }
+
         // Check user func table first: look up by Canon type name. Scalars
         // (`Int`, `Float`, `Bool`, `String`) don't carry their name on the
         // `Ty` enum, so we map them back to a canonical Canon type name here
@@ -3111,25 +2761,14 @@ impl<'m> WasmGen<'m> {
         let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
 
         // Conversion is construction (the language spec, docs/src/spec/):
-        // `Int.String()` / `Byte.String()` are the method spellings of
-        // the `String(Int)` / `String(Byte)` constructors. Placed after
-        // the func-table lookups so a user-declared `String` method on
-        // some other receiver type still wins.
-        if method == "String" && args.is_empty() {
-            match &recv_ty {
-                Ty::I64 => {
-                    return if self.expr_is_byte(receiver) {
-                        self.emit_byte_to_str(scope, f)
-                    } else {
-                        f.instruction(&Instruction::Call(self.fn_int_to_str));
-                        Ty::Str
-                    };
-                }
-                // A String-alias receiver (`Path("/x").String()`) is
-                // the identity conversion — the value already is one.
-                ty if ty.is_str_like() => return Ty::Str,
-                _ => {}
-            }
+        // a String-alias receiver (`Path("/x").String()`) is the
+        // identity conversion — the value already is one. The scalar
+        // renderings (`Int.String()`, `Float.String()`, `Bool.String()`)
+        // resolved through the func-table lookups above into the
+        // `canon/std/string.can` constructor family; `Byte.String()`
+        // took the one-byte-string primitive before them.
+        if method == "String" && args.is_empty() && recv_ty.is_str_like() {
+            return Ty::Str;
         }
 
         // Primitive construction via pipe: `1 -> Int`, `2.5 -> Float`,
@@ -3226,6 +2865,30 @@ impl<'m> WasmGen<'m> {
         }
         let Some(shape) = info.indirect_return.clone() else {
             f.instruction(&Instruction::Call(info.func_idx));
+            if info.bare_result {
+                // WIT bare `result;` return: the single i32 on the stack
+                // is the canonical discriminant (0=ok, 1=err). Flip it
+                // into Canon's alphabetical tag convention (Err=0, Ok=1)
+                // and box it as an ordinary Canon Result struct so
+                // dispatch and `?` treat it like any user-constructed
+                // Result. The payload slot stays zero — both arms are
+                // Unit, so nothing ever reads it.
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Xor);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                return Ty::NamedPtr("Result".to_string());
+            }
             // Widen a narrow scalar result back to Canon's i64 `Int`,
             // zero- or sign-extending per the WIT signedness.
             match info.narrow_result_signed {
@@ -3304,6 +2967,59 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
+            IndirectReturnShape::OptionScalar { prim } => {
+                // Re-shape the canonical `option<T>` ret area (disc byte
+                // at +0, scalar payload at +align(T)) into a fresh Canon
+                // Option struct (i32 tag at +0, 8-byte payload at +4),
+                // widening the payload to Canon's i64/f64 value repr so
+                // `(None, Some<Int>)` dispatch and `?` read it like any
+                // user-constructed Option.
+                use wasm_encoder::PrimitiveValType as P;
+                let payload_off = prim_size_align(prim).1 as u64;
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // Tag: the WIT discriminant (0=none, 1=some) already
+                // matches Canon's alphabetical (None=0, Some=1)
+                // convention; store the byte as a full i32 so the
+                // host's padding bytes become zero.
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                // Payload. On `none` this copies undefined ret-area
+                // bytes — harmless: the area is sized for the payload
+                // and a tag-0 Option's payload slot is never read.
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                emit_prim_load_widen(f, prim, payload_off);
+                match prim {
+                    P::F32 | P::F64 => {
+                        f.instruction(&Instruction::F64Store(MemArg {
+                            offset: 4,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                    _ => {
+                        f.instruction(&Instruction::I64Store(MemArg {
+                            offset: 4,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                }
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr("Option".to_string())
+            }
             IndirectReturnShape::ListString => {
                 // (i32 list ptr at +0, i32 count at +4). The canonical
                 // element layout matches Canon's `List<String>` exactly
@@ -3322,6 +3038,105 @@ impl<'m> WasmGen<'m> {
                 }));
                 Ty::List
             }
+            IndirectReturnShape::ListScalar { prim } => {
+                use wasm_encoder::PrimitiveValType as P;
+                let (elem_size, _) = prim_size_align(prim);
+                if elem_size == 8 {
+                    // u64 / s64 / f64: the canonical 8-byte element
+                    // stride is byte-identical to Canon's list layout —
+                    // push the (ptr, count) pair as-is, like ListString.
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: 4,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    return Ty::List;
+                }
+                // Narrow elements: re-pack the byte-packed canonical
+                // buffer into a fresh 8-byte-stride Canon list, widening
+                // each element per the WIT signedness. No user code
+                // compiles inside this sequence, so the ordinary scratch
+                // locals are safe to use.
+                // src elem ptr → rptr, count → rlen
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(scope.rlen()));
+                // dst = $alloc(count * 8) → rbool
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // i = 0
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                // if i >= count: break
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                f.instruction(&Instruction::I32GeS);
+                f.instruction(&Instruction::BrIf(1));
+                // dst + i*8
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Add);
+                // src + i*elem_size
+                f.instruction(&Instruction::LocalGet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(elem_size as i32));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Add);
+                // dst[i] = widen(src[i])
+                emit_prim_load_widen(f, prim, 0);
+                match prim {
+                    P::F32 => {
+                        f.instruction(&Instruction::F64Store(MemArg {
+                            offset: 0,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                    _ => {
+                        f.instruction(&Instruction::I64Store(MemArg {
+                            offset: 0,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                }
+                // i++
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End); // end loop
+                f.instruction(&Instruction::End); // end block
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                Ty::List
+            }
             IndirectReturnShape::ScalarRecord {
                 product, fields, ..
             } => {
@@ -3329,7 +3144,6 @@ impl<'m> WasmGen<'m> {
                 // struct, widening narrow ints to i64. The ret area is
                 // still in the `alloc_ptr` local ($alloc the function
                 // doesn't touch codegen locals).
-                use wasm_encoder::PrimitiveValType as P;
                 let layout = self.product_field_layout(&product);
                 let total: u32 = layout
                     .iter()
@@ -3347,56 +3161,7 @@ impl<'m> WasmGen<'m> {
                     };
                     f.instruction(&Instruction::LocalGet(scope.rbool()));
                     f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-                    let off = field.offset as u64;
-                    match field.prim {
-                        P::U64 | P::S64 => {
-                            f.instruction(&Instruction::I64Load(MemArg {
-                                offset: off,
-                                align: 3,
-                                memory_index: 0,
-                            }));
-                        }
-                        P::F64 => {
-                            f.instruction(&Instruction::F64Load(MemArg {
-                                offset: off,
-                                align: 3,
-                                memory_index: 0,
-                            }));
-                        }
-                        P::U32 | P::S32 | P::U16 | P::S16 | P::U8 | P::S8 | P::Bool | P::Char => {
-                            match field.prim {
-                                P::U16 | P::S16 => {
-                                    f.instruction(&Instruction::I32Load16U(MemArg {
-                                        offset: off,
-                                        align: 1,
-                                        memory_index: 0,
-                                    }));
-                                }
-                                P::U8 | P::S8 | P::Bool => {
-                                    f.instruction(&Instruction::I32Load8U(MemArg {
-                                        offset: off,
-                                        align: 0,
-                                        memory_index: 0,
-                                    }));
-                                }
-                                _ => {
-                                    f.instruction(&Instruction::I32Load(MemArg {
-                                        offset: off,
-                                        align: 2,
-                                        memory_index: 0,
-                                    }));
-                                }
-                            }
-                            if matches!(field.prim, P::S8 | P::S16 | P::S32) {
-                                f.instruction(&Instruction::I64ExtendI32S);
-                            } else {
-                                f.instruction(&Instruction::I64ExtendI32U);
-                            }
-                        }
-                        _ => {
-                            f.instruction(&Instruction::I64Const(0));
-                        }
-                    }
+                    emit_prim_load_widen(f, field.prim, field.offset as u64);
                     match repr {
                         Ty::F64 => {
                             f.instruction(&Instruction::F64Store(MemArg {
@@ -5866,33 +5631,38 @@ impl<'m> WasmGen<'m> {
 
     // ── Print helpers ──────────────────────────────────────────────────────────
 
-    pub(super) fn emit_print(&self, ty: Ty, scope: &LocalScope, f: &mut Function) {
+    pub(super) fn emit_print(&mut self, ty: Ty, scope: &LocalScope, f: &mut Function) {
+        // Scalars render through the stdlib `String` constructor family
+        // (`canon/std/string.can`) and then print as the string they
+        // became — one print path, one newline convention.
+        let ty = match ty {
+            Ty::I64 => self.emit_render_to_str("Int", scope, f),
+            Ty::F64 => self.emit_render_to_str("Float", scope, f),
+            Ty::I32 => self.emit_render_to_str("Bool", scope, f),
+            other => other,
+        };
         match ty {
-            Ty::I64 => {
-                f.instruction(&Instruction::Call(self.fn_print_int));
-            }
-            Ty::F64 => {
-                f.instruction(&Instruction::Call(self.fn_print_float));
-            }
-            Ty::I32 => {
-                f.instruction(&Instruction::Call(self.fn_print_bool));
-            }
             Ty::Str | Ty::NamedStr(_) => {
                 // print_str writes raw bytes — we always append a single `\n`
-                // (the byte at `MEM_INT_BUF_END`) so `.print` produces one
+                // (the byte at `MEM_NEWLINE`) so `.print` produces one
                 // line of output whether the receiver is a literal or a
                 // host-returned string.
                 f.instruction(&Instruction::Call(self.fn_print_str));
-                f.instruction(&Instruction::I32Const(MEM_INT_BUF_END as i32));
+                f.instruction(&Instruction::I32Const(MEM_NEWLINE as i32));
                 f.instruction(&Instruction::I32Const(1));
                 f.instruction(&Instruction::Call(self.fn_print_str));
             }
-            Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) | Ty::Ptr | Ty::List => {
+            Ty::I64
+            | Ty::F64
+            | Ty::I32
+            | Ty::NamedPtr(_)
+            | Ty::NamedPtrStr(_, _, _)
+            | Ty::Ptr
+            | Ty::List => {
                 self.drop_value(ty, f); // unknown print — drop
             }
             Ty::Unit => {}
         }
-        let _ = scope;
     }
 
     pub(super) fn drop_value(&self, ty: Ty, f: &mut Function) {
@@ -5935,12 +5705,7 @@ impl<'m> WasmGen<'m> {
         // returned absolute index.
         let list_to_json_array_ty =
             self.get_or_add_wasm_type(&[ValType::I32, ValType::I32], &[ValType::I32, ValType::I32]);
-        // Reserve the wasm type for the float printer: `(f64) -> ()`.
-        let print_float_ty = self.get_or_add_wasm_type(&[ValType::F64], &[]);
-        // Int→String renderer: `(i64) -> (i32, i32)`; string compare:
-        // `(ptr1, len1, ptr2, len2) -> i32`.
-        let int_to_str_ty =
-            self.get_or_add_wasm_type(&[ValType::I64], &[ValType::I32, ValType::I32]);
+        // String compare: `(ptr1, len1, ptr2, len2) -> i32`.
         let str_cmp_ty = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         // Map + list-growth helper shapes.
         let list_append_ty = self.get_or_add_wasm_type(
@@ -5964,26 +5729,24 @@ impl<'m> WasmGen<'m> {
         let mut types = TypeSection::new();
         // 0: print_str    (i32, i32) -> ()
         types.ty().function([ValType::I32, ValType::I32], []);
-        // 1: print_int    (i64) -> ()
-        types.ty().function([ValType::I64], []);
-        // 2: print_bool   (i32) -> ()  — also used by waitable-set.drop,
+        // 1: print_bool   (i32) -> ()  — also used by waitable-set.drop,
         //                                  subtask.drop, task.return,
         //                                  stream.drop-writable,
         //                                  future.drop-readable
         types.ty().function([ValType::I32], []);
-        // 3: run          () -> ()   (async-stackful lift; result via task.return)
+        // 2: run          () -> ()   (async-stackful lift; result via task.return)
         types.ty().function([], []);
-        // 4: alloc        (i32) -> (i32)
+        // 3: alloc        (i32) -> (i32)
         types.ty().function([ValType::I32], [ValType::I32]);
-        // 5: stdout write-via-stream  (i32 readable) -> (i32 future)
+        // 4: stdout write-via-stream  (i32 readable) -> (i32 future)
         types.ty().function([ValType::I32], [ValType::I32]);
-        // 6: stdout stream-new        () -> (i64 packed handles)
+        // 5: stdout stream-new        () -> (i64 packed handles)
         types.ty().function([], [ValType::I64]);
-        // 7: stdout stream-write      (i32 writable, i32 ptr, i32 len) -> (i32 status)
+        // 6: stdout stream-write      (i32 writable, i32 ptr, i32 len) -> (i32 status)
         types
             .ty()
             .function([ValType::I32, ValType::I32, ValType::I32], [ValType::I32]);
-        // 8: handle return             () -> (i32)   — waitable-set.new
+        // 7: handle return             () -> (i32)   — waitable-set.new
         types.ty().function([], [ValType::I32]);
         // User function types
         let user_sigs: Vec<_> = self.user_type_sigs.clone();
@@ -6112,13 +5875,9 @@ impl<'m> WasmGen<'m> {
         // space (right after the import block).
         let mut funcs = FunctionSection::new();
         funcs.function(TY_PRINT_STR);
-        funcs.function(TY_PRINT_INT);
-        funcs.function(TY_PRINT_BOOL);
         funcs.function(TY_ALLOC);
         funcs.function(TY_RUN); // exported run() -> i32
         funcs.function(list_to_json_array_ty); // list → json array helper
-        funcs.function(print_float_ty); // float printer (f64) -> ()
-        funcs.function(int_to_str_ty); // Int→String renderer (i64) -> (i32, i32)
         funcs.function(str_cmp_ty); // string compare -> -1/0/1
         funcs.function(list_append_ty); // list append
         funcs.function(list_concat_ty); // list concat
@@ -6151,13 +5910,9 @@ impl<'m> WasmGen<'m> {
         // ── Code section ─────────────────────────────────────────────────────────────
         let mut codes = CodeSection::new();
         codes.function(&self.build_print_str());
-        codes.function(&self.build_print_int());
-        codes.function(&self.build_print_bool());
         codes.function(&self.build_alloc());
         codes.function(&self.build_start());
         codes.function(&self.build_list_to_json_array());
-        codes.function(&self.build_print_float());
-        codes.function(&self.build_int_to_str());
         codes.function(&self.build_str_cmp());
         codes.function(&self.build_list_append());
         codes.function(&self.build_list_concat());
@@ -6176,8 +5931,8 @@ impl<'m> WasmGen<'m> {
 
         // ── Data section ──────────────────────────────────────────────────────
         let mut data = DataSection::new();
-        // '\n' at offset MEM_INT_BUF_END
-        data.active(0, &ConstExpr::i32_const(MEM_INT_BUF_END as i32), *b"\n");
+        // '\n' at offset MEM_NEWLINE
+        data.active(0, &ConstExpr::i32_const(MEM_NEWLINE as i32), *b"\n");
         if !self.strings.data.is_empty() {
             data.active(
                 0,
