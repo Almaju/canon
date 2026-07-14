@@ -1,4 +1,4 @@
-# Building and Running
+# The canon CLI
 
 Canon commands operate on a **target**, one of:
 
@@ -87,7 +87,7 @@ canon run hello.can --addr 127.0.0.1:8080  # single-file mode
 
 The runtime opens a TCP listener and dispatches each incoming HTTP/1.1
 request to the guest's `handle` export. See
-[Serving HTTP](../guide.md#serving-http).
+[Programs & Modules](../learn/programs-and-modules.md).
 
 ## Inspect Compiler Stages
 
@@ -135,7 +135,7 @@ Discovers every test in the file -- a result newtype `X = TestResult`
 with a nullary `Unit => X` constructor -- and prints a
 `[ ok ]` / `[FAIL]` line per test. The process exits `1` when any test
 fails, so `canon test` slots straight into CI. See
-[Testing](../guide.md#testing) for the conventions.
+[Testing](../learn/testing.md) for the conventions.
 
 ## Language Server
 
@@ -158,4 +158,4 @@ There is no `canon new` or project scaffolder yet. For quick
 experimentation, drop a `.can` file anywhere and `canon run` it. For
 proper projects, create a `src/main.can` and run `canon build` /
 `canon run` from that directory. For multi-file projects, see
-[Modules](../guide.md#modules).
+[Programs & Modules](../learn/programs-and-modules.md).

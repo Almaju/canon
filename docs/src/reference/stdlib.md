@@ -8,7 +8,7 @@ never write the path -- each name resolves to exactly one module, and a
 name that clashes with one of your own types is a compile error.
 
 Each module exposes a single primary type. The modules are written in
-ordinary Canon on top of [`extern Wasm`](../guide.md#binding-files)
+ordinary Canon on top of [binding-file](../spec/compilation.md)
 declarations against either standard
 [WASI](https://github.com/WebAssembly/WASI) interfaces or temporary
 `canon:builtins/*` host bridges. The `canon run` runtime fulfils both
@@ -52,7 +52,7 @@ the vendored WIT under `packages/canon/std/wit/wasi/`.
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
 | `cli/Cwd` | `Cwd = String`, `Unit => Option<Cwd>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
-| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Serving HTTP](../guide.md#serving-http) |
+| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Programs & Modules](../learn/programs-and-modules.md) |
 
 ---
 
@@ -349,7 +349,7 @@ body. TLS (`https://`) and async lowering arrive with the
 ## `TestResult`
 
 The Canon-language testing primitive. See
-[Testing](../guide.md#testing) for the full convention.
+[Testing](../learn/testing.md) for the full convention.
 
 ```canon
 SumAddsOperands = TestResult

@@ -30,12 +30,23 @@ Three kinds of files live under `docs/src/`:
 
 ### Adding a Page
 
-1. Write `docs/src/<your-page>.md`.
+1. Write `docs/src/<your-page>.md` (pages live in a subdirectory per
+   sidebar section — `learn/`, `reference/`, `spec/`, … — but the slug
+   is just the file's basename).
 2. In `main.can`, add a dispatch arm to the `Page => Content` function:
    `* "<your-page>" => Content { YourPage() -> Html }` (arms are sorted
    alphabetically — `canon check --fix` enforces it).
-3. Add a `<button data-msg="Nav:<your-page>">…</button>` to the sidebar
-   under the appropriate `<div class="sec">` section.
+3. Add a `{Page -> NavItem(Slug("<your-page>") * Label("…"))}` line to
+   the sidebar under the appropriate `<div class="sec">` section.
+4. Wire the page into the reading order: add a `Page => Pager` arm for
+   it, and update the `Next`/`Prev` targets of its new neighbours.
+
+To make a snippet runnable in the browser, fence it as
+` ```canon,run=<unique-name> ` — it must be a complete program in
+canonical format that uses only stdout printing and JSON (the
+interfaces the browser shims cover); `docs/runner/build.mjs` compiles
+every such snippet at docs-build time and fails the build if one stops
+compiling.
 
 ## Previewing the Docs Locally
 

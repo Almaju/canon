@@ -1,9 +1,11 @@
 # The Canon Programming Language
 
-Canon is a small, maximally opinionated language that compiles directly to
-**WebAssembly Components** targeting WASI Preview 3. Every program is a
-portable `.wasm` file that runs on any Component Model host: no toolchain
-at build time, no runtime of its own to ship.
+Canon is a small, radically opinionated language that compiles straight
+to **WebAssembly**. It has no `if`, no loops, no local variables, no
+imports, and no comments — and it is not missing any of them. What is
+left is a language where **types do everything**: they name your values,
+route your logic, guard your effects, and even decide what kind of
+program you are writing.
 
 A complete HTTP service:
 
@@ -15,58 +17,20 @@ Request => Response {
 
 ```sh
 $ canon run service.can
-HTTP handler detected: serving on http://127.0.0.1:8080 (override with `canon run … --addr <ip:port>`)
-canon run --addr 127.0.0.1:8080: listening on http://127.0.0.1:8080
+HTTP handler detected: serving on http://127.0.0.1:8080
 
 $ curl localhost:8080
 hello from canon
 ```
 
 No framework, no router registration, no port wiring, no `main`. The
-compiler sees one function returning `Response`, so the program *is* an
-HTTP service: it compiles to a standard `wasi:http/service` component
-that any compliant host can serve.
+compiler sees one arrow returning `Response`, so the program *is* an
+HTTP service: a standard `wasi:http/service` component any compliant
+host can serve.
 
-## Three Ideas
-
-**One way to do everything.** Wherever ordering is discretionary, the
-compiler enforces alphabetical order: product fields, union variants,
-function declarations, dispatch arms. There is no `if`/`else`
-*and* `match`; there is dispatch. There is no `while` *and* `for` *and*
-recursion; there are collection methods and recursion. Two programmers
-writing the same program produce the same bytes.
-
-**Types are the only names.** Canon has no local variables, no `let`, no
-comments, no parameter names. A function's inputs are a product of types,
-referenced in the body by their type names:
-
-```canon
-OtherUser * User => Ord {
-    User.Birthday -> Compared(OtherUser.Birthday)
-}
-```
-
-If code needs explaining, the fix is a better type, not a comment. Names
-lie; types don't.
-
-**Having a value is having the capability.** There are no service
-singletons and no permission system. Reading a file requires a `File`
-value, which you can only get from a `Path`, which you can only build
-from a `String`. The type chain *is* the access control:
-
-```canon
-Unit => Program {
-    Path("./data.json")
-        -> File?
-        -> Read?
-        -> Print
-}
-```
-
-## What It Looks Like
-
-A CLI program, with branching (dispatch on a union, Canon's only
-control-flow construct) and iteration (methods on collections):
+Canon also compiles to the browser — which is why the next program has a
+**run** button. Press it: the snippet was compiled to WebAssembly and
+runs right here, on this page.
 
 ```canon,run=intro
 Unit => Program {
@@ -81,39 +45,52 @@ Unit => Program {
 }
 ```
 
-- Constructors are `(Components) => Return { body }`; the last
-  expression is the return value.
-- `Bool` is an ordinary union, `False + True`; dispatch applies the
-  value to one handler arm per variant.
-- Any component can be piped in at the call site
-  (`a -> Compare(b)` and `b -> Compare(a)` are the same call).
-- `T()` constructs a value; `value.Field` (no parens) reads a field.
-- `?` propagates `Result` errors and `Option` absence.
-- Async exists at the ABI, never in the source: no `async`, no
-  `.await`. The compiler infers suspension and lifts the component
-  accordingly.
+## Why Canon?
 
-## How to Read This Book
+Four commitments explain nearly every design decision. Each gets one
+sentence here and a full chapter in [The Philosophy](./philosophy.md).
 
-The book is split into sections; use the tabs at the top.
+- **One way to do everything.** Wherever a choice is discretionary —
+  ordering, formatting, call spelling — the compiler picks the answer,
+  so two programmers writing the same program produce the same bytes.
+- **Types are the only names.** No variables, no parameter names, no
+  function names: every name in a Canon program is a type, and every
+  operation is named after what it produces.
+- **Having a value is having the capability.** No permission system and
+  no ambient authority: reading a file requires holding a `File`, and
+  the type chain that produces one *is* the access control.
+- **The artifact is a standard.** Every program compiles to a
+  WebAssembly component (or a browser bundle) with no runtime of its
+  own to ship — it runs on any Component Model host, sandboxed by
+  construction.
 
-- **Getting Started**: install the toolchain, run your first program,
-  and read [A Tour of Canon](./guide.md) -- the whole language on one
-  page, an afternoon's read.
-- **Specification**: the precise rules: lexical structure, the type
-  algebra, ordering, the compilation model and ABI. The authoritative
-  description of the language.
-- **Examples**: a curated set of real programs from the repository --
-  their source is pulled in live, so it always matches what compiles.
-- **Reference**: the standard library, WASI interfaces, deployment.
+## Where to Go Next
+
+- **Curious but skeptical?** [Is Canon for You?](./reference/coming-from.md)
+  maps Canon onto the language you already know — TypeScript, Python,
+  Rust, or Go.
+- **Want the ideas?** [The Philosophy](./philosophy.md) is the full
+  argument, one creative decision at a time.
+- **Want to write code?** [Install the toolchain](./getting-started/installation.md),
+  say [Hello, World](./getting-started/hello-world.md), then walk the
+  **Learn** chapters — a short voyage from
+  [Types & Values](./learn/types-and-values.md) to
+  [Testing](./learn/testing.md), with runnable examples along the way.
+- **Looking for something specific?** [How Do I…?](./learn/how-do-i.md)
+  answers "how do I print / branch / loop / parse / serve HTTP" in one
+  place.
+- **Need the exact rules?** The **Specification** section is the
+  authoritative description of the language, starting at the
+  [overview](./spec/overview.md).
+- **Generating code with a model?** [Canon for AI](./canon-for-ai.md)
+  explains why the same constraints that help humans help machines.
 
 ## Status
 
-Canon is an **experimental design exploration**. The compiler exists, the
-examples run, and the design is stable enough to write about, but every
-detail is subject to change. The reference implementation lives in the
-same repository as this book; the [language specification](./spec/overview.md)
-is the authoritative description of the language.
+Canon is an **experimental design exploration**. The compiler exists,
+the examples run, and the design is stable enough to write about, but
+every detail is subject to change. The reference implementation lives in
+the same repository as this book.
 
 ## On Authorship and AI
 

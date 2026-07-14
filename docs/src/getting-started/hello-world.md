@@ -37,13 +37,13 @@ as `Args`, an exit status flows out as `Exit`**.
 compiler binds it from `wasi:cli/environment`, so you never fetch it, it
 is handed to you. `Exit` (`= Int`) is the exit status; the whole arrow is
 what the compiler lifts as the component's `wasi:cli/run.run` export.
-This program ignores its arguments (a later chapter reads them), but the
-shape is always there -- the same way an HTTP handler names `Request` even
-when it ignores it.
+This program ignores its arguments, but the shape is always there -- the
+same way an HTTP handler names `Request` even when it ignores it. (More
+on entry points in [Programs & Modules](../learn/programs-and-modules.md).)
 
 ```canon
     "hello" -> Print
-    0 -> Exit
+    Exit(0)
 }
 ```
 
@@ -76,9 +76,12 @@ stdout".
   by a newline.
 - **Add a comment** (`// hi`). The lexer rejects it; comments are not
   allowed.
-- **Drop the `0 -> Exit` line.** The body's last expression must match the
+- **Drop the `Exit(0)` line.** The body's last expression must match the
   declared return type (`Exit`), so ending on a `Print` (which yields
   `Unit`) is a checker error.
 - **Inspect the compiled component.** `canon build hello.can` writes
   `build/hello/hello.wasm` and a sibling `.wit` describing the
   component's world.
+
+Next stop on the voyage: [Types & Values](../learn/types-and-values.md),
+the first Learn chapter.

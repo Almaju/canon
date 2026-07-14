@@ -146,9 +146,9 @@ if you're happy trading a familiar escape hatch for a guarantee.
 You'll fight it if you love a REPL, reach often for `any` / `nil` /
 reflection, want comments, or need a mature package ecosystem today.
 
-Either way, the fastest next step is the same: read
-[A Tour of Canon](../guide.md), skim [Types](../spec/types.md) and
-[Expressions & Dispatch](../spec/expressions.md), and poke at the
+Either way, the fastest next step is the same: walk the **Learn**
+chapters (start at [Types & Values](../learn/types-and-values.md) --
+they run in the browser), and poke at the
 [`examples/`](https://github.com/Almaju/canon/tree/main/examples). The
 language is small enough that an afternoon is enough to know whether it's
 your kind of strange.
