@@ -80,6 +80,15 @@ string -> Substring(From(1) * To(4))           # execute
 
 Commutativity is preserved: `(A * B) => C` is reachable from either side (`a -> C(b)` or `b -> C(a)`), because the pipe fills one component of the input product and the rest follow. A function stays linked to every type in its input, never bound to a single receiver.
 
+**Two decisions gated implementation; both have landed:**
+
+1. *Multi-input spelling* -- the **parens tail**, `a -> C(b)` (best for chaining and editor discovery -- enter from any component, editor completes the rest). `canon check --fix` canonicalizes every call to this form (the `canon_expr` pass in `src/formatter.rs`): `B(a)` -> `a -> B`, `B(a * c)` -> `a -> B(c)`, `a.B(c)` -> `a -> B(c)`.
+2. *Declaration arrow* -- `=>` (minimal, "maps to"). `->` at a declaration site is now a parse error (`expect_decl_arrow` in `src/parser/parser.rs`): declarations use `=>`, execution uses `->`.
+
+Auto-discovery is the headline feature, not a side effect: `->` completion queries "functions whose input product mentions this type," `.` completion queries the value's fields. Both providers exist in the LSP (`textDocument/completion`, `src/lsp/completion.rs`): after `->` it offers every reachable declaration whose input product contains the piped value's type -- constructors, family members, piped newtype wraps -- plus the builtin pipe vocabulary applicable to that type; after `.` it offers the value's product components (and 1-based positional indexes when a component type repeats). The v1 candidate universe is the open buffer, its import closure, and the bundled stdlib's wrapper tier; project files the buffer doesn't yet reference are not enumerated, and camelCase FFI bindings are excluded (they are reached through their PascalCase result newtypes).
+
+Details still to pin: first-class function references (today `Int.Double` for passing a function as a value) collide with `.`-means-field, so those become either bare names resolved by expected type or plain lambdas; and zero-input application spelled `-> Now` (leading arrow) needs a parser rule for statement-initial `->`.
+
 `canon check --fix` canonicalizes every call, and the rule is *values flow through pipes; literals are born in the parens*: a computed first input pipes (`a -> Name(b)`), a lone scalar literal stays inside the construction (`Greeting("hi")`), builtin vocabulary (`Sum`, `Print`, `Joined`, ...) has no prefix form so literals keep piping into it, and operand order is never reordered. See [Expressions § Canonical Call Form](./expressions.md#canonical-call-form) for the full case list. The retired forms and their canonical replacements:
 
 | Retired form | Canonical form |

@@ -253,6 +253,60 @@ impl LspServer {
     }
 
     // -----------------------------------------------------------------------
+    // Completion
+    // -----------------------------------------------------------------------
+
+    pub(super) fn handle_completion(&self, msg: &str, id: Option<String>) {
+        let id = match id {
+            Some(id) => id,
+            None => return,
+        };
+        // Graceful degradation is part of the contract: any failure to
+        // read the request yields an empty item list, never an error.
+        const EMPTY: &str = r#"{"isIncomplete":false,"items":[]}"#;
+
+        let uri = match json_get_nested_string(msg, "textDocument", "uri") {
+            Some(u) => u,
+            None => {
+                send_response(&id, EMPTY);
+                return;
+            }
+        };
+        let (line, character) = match json_get_position(msg) {
+            Some(pos) => pos,
+            None => {
+                send_response(&id, EMPTY);
+                return;
+            }
+        };
+        let source = match self.files.get(&uri) {
+            Some(s) => s.as_str(),
+            None => {
+                send_response(&id, EMPTY);
+                return;
+            }
+        };
+
+        let path = uri_to_path(&uri);
+        let items = super::completion::completion_items(source, &path, line, character);
+
+        let mut result = String::from(r#"{"isIncomplete":false,"items":["#);
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                result.push(',');
+            }
+            result.push_str(&format!(
+                r#"{{"label":"{}","kind":{},"detail":"{}"}}"#,
+                json_escape(&item.label),
+                item.kind.lsp_code(),
+                json_escape(&item.detail)
+            ));
+        }
+        result.push_str("]}");
+        send_response(&id, &result);
+    }
+
+    // -----------------------------------------------------------------------
     // Formatting
     // -----------------------------------------------------------------------
 
@@ -469,7 +523,7 @@ fn format_generic_params(params: &[crate::ast::GenericParam]) -> String {
     format!("({})", parts.join(", "))
 }
 
-fn format_type_expr(ty: &TypeExpr) -> String {
+pub(super) fn format_type_expr(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Named { name, generics, .. } => {
             if generics.is_empty() {
