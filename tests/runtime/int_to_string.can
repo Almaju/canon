@@ -1,20 +1,14 @@
 Unit => Program {
-    42
-        -> String
-        -> Print
-    0
-        -> String
-        -> Print
+    String(42) -> Print
+    String(0) -> Print
     0
         -> Difference(7)
         -> String
         -> Print
-    123
-        -> String
+    String(123)
         -> Joined("!")
         -> Print
-    9
-        -> String
-        -> Joined(10 -> String)
+    String(9)
+        -> Joined(String(10))
         -> Print
 }

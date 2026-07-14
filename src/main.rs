@@ -4,8 +4,7 @@ use canon::codegen;
 use canon::error::CanonError;
 use canon::formatter;
 use canon::lexer::Scanner;
-use canon::loader::{self, LoadResult, LoadedSource};
-use canon::manifest;
+use canon::loader::{self, LoadResult};
 use canon::parser::Parser;
 use std::collections::HashSet;
 use std::env;
@@ -37,7 +36,6 @@ fn main() {
         "build" => cmd_build(&rest),
         "check" => cmd_check(&rest),
         "test" => cmd_test(&rest),
-        "fmt" => cmd_fmt(&rest),
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
@@ -63,9 +61,9 @@ fn print_help() {
     println!();
     println!("Usage: canon <command> [args]");
     println!();
-    println!("A target is either a package directory (containing `canon.toml`");
-    println!("and `src/main.can`), a workspace directory (manifest with a");
-    println!("`[workspace]` table), or a single `.can` file. When omitted, defaults");
+    println!("A target is either a package directory (containing `src/main.can`),");
+    println!("a workspace directory (one whose immediate subdirectories are");
+    println!("packages), or a single `.can` file. When omitted, defaults");
     println!("to the current directory.");
     println!();
     println!("Commands:");
@@ -75,18 +73,20 @@ fn print_help() {
         "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
     );
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
-    println!("  check [target] [-p name]  Check sort order and types");
+    println!("  check [target] [-p name] [--fix]");
+    println!("                            Check canonical form, sort order, and types.");
+    println!("                            With `--fix`, rewrites what is mechanically");
+    println!("                            fixable (formatting, ordering) in place first.");
     println!("  test <file.can | dir>     Run tests (`X = TestResult` + `Unit => X`). A");
     println!("                            directory runs every `*_test.can` file under it");
     println!("                            in one process, sharing setup across files.");
-    println!("  fmt [path...] [--check]   Format Canon source files or directories");
     println!("  inspect <stage> <file.can> Print an intermediate pipeline stage");
     println!("                              stages: tokens | ast");
     println!("  bindgen <wit-or-wasm> [-o <dir>]");
     println!(
         "                            Generate Canon bindings from a WIT package or WASM component"
     );
-    println!("  install [target]          Materialize bindings declared in `[imports]`");
+    println!("  install [target]          Materialize the WIT sources under `<target>/wit/`");
     println!(
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
@@ -126,22 +126,23 @@ fn read_source(file_path: &str) -> String {
     }
 }
 
-/// A single buildable compilation target: a package (`canon.toml` +
+/// A single buildable compilation target: a package (a directory with
 /// `src/main.can`) or a loose `.can` file in single-file mode.
 struct BuildSpec {
     /// Entry `.can` file the loader will read.
     entry: PathBuf,
-    /// Where `build/` lives for this target. For a workspace member, this
-    /// points at the workspace's shared `build/` (Cargo-style `target/`).
+    /// Where `build/` lives for this target — always the package's own
+    /// `build/` (or, for a loose file, a per-stem subdir of the file's
+    /// directory).
     output_dir: PathBuf,
     /// Stem used for output artifacts (`<stem>.wasm`, `<stem>.wit`). For a
-    /// package it's the last `/`-separated segment of the manifest `name`
-    /// (e.g. `canon/std` -> `std`). For a loose file it's the file stem.
+    /// package it's the directory name; for a loose file it's the file
+    /// stem.
     output_stem: String,
     /// Path the user typed (or the workspace member's display path), used
     /// as the context in error messages.
     label: String,
-    /// Full manifest `name` (e.g. `"canon/std"`). Empty for file-mode
+    /// Package name — the package directory's name. Empty for file-mode
     /// targets. Used by `-p <name>` filtering.
     name: String,
 }
@@ -156,10 +157,11 @@ impl BuildSpec {
 ///
 /// `canon run|build|check` accept any of:
 ///
-/// - a **package directory** (containing `canon.toml` and `src/main.can`),
+/// - a **package directory** (containing `src/main.can`),
 /// - a **single `.can` file** (anonymous single-file package), or
-/// - a **workspace directory** (containing `canon.toml` with a
-///   `[workspace]` table) which aggregates one or more member packages.
+/// - a **workspace directory** (one that is not itself a package but
+///   whose immediate subdirectories include packages). Structure is the
+///   declaration — there is no manifest or member list.
 enum Target {
     /// One package or one loose file.
     Build(BuildSpec),
@@ -244,13 +246,8 @@ fn apply_package_filter(target: Target, filter: Option<&str>) -> Target {
             process::exit(1);
         }
         Target::Workspace { members, label } => {
-            // Match against the full manifest name (`canon/std`) or its
-            // last segment (`std`). Workspace members in this repo use
-            // flat names, but we accept both for parity with `cargo -p`.
-            let matched: Vec<BuildSpec> = members
-                .into_iter()
-                .filter(|s| s.name == want || s.output_stem == want)
-                .collect();
+            // A member's name is its directory name.
+            let matched: Vec<BuildSpec> = members.into_iter().filter(|s| s.name == want).collect();
             match matched.len() {
                 0 => {
                     eprintln!("error: no member `{}` in workspace `{}`", want, label);
@@ -286,122 +283,54 @@ fn resolve_target(path_arg: Option<&str>) -> Target {
 }
 
 fn resolve_dir_target(path: &Path, arg: &str) -> Target {
-    let manifest_path = path.join("canon.toml");
-    if !manifest_path.exists() {
-        eprintln!("error: `{}` is a directory but has no `canon.toml`", arg);
+    if path.join("src").join("main.can").is_file() {
+        return Target::Build(resolve_package_spec(path, arg));
+    }
+
+    // Not a package itself: a directory whose immediate subdirectories
+    // include packages is a workspace over them.
+    let members = resolve_workspace_members(path, arg);
+    if members.is_empty() {
         eprintln!(
-            "hint: a package directory must contain an `canon.toml` manifest; \
+            "error: `{}` is not a Canon package (no `src/main.can`) and none of \
+             its subdirectories is one",
+            arg
+        );
+        eprintln!(
+            "hint: a package is a directory containing `src/main.can`; \
              pass a `.can` file directly to compile in single-file mode"
         );
         process::exit(1);
     }
-    let m = read_manifest(&manifest_path);
-
-    if let Some(ws) = &m.workspace {
-        let members = resolve_workspace_members(path, arg, &ws.members);
-        return Target::Workspace {
-            members,
-            label: arg.to_string(),
-        };
-    }
-
-    // Plain package directory. If it lives inside a workspace, route its
-    // artifacts to the workspace's shared `build/` (Cargo-style).
-    let workspace_root = find_parent_workspace(path);
-    Target::Build(resolve_package_spec(
-        path,
-        arg,
-        &m,
-        workspace_root.as_deref(),
-    ))
-}
-
-/// Walk up from `start` (exclusive) looking for an ancestor whose
-/// `canon.toml` carries a `[workspace]` table. Returns the workspace
-/// root directory, or `None` if there isn't one.
-///
-/// Failure to read or parse an ancestor's manifest is silent here: we
-/// only care about the workspace-or-not flag. The full parse error will
-/// surface when the user actually invokes a command on that path.
-fn find_parent_workspace(start: &Path) -> Option<PathBuf> {
-    let mut current = start.canonicalize().ok()?;
-    while let Some(parent) = current.parent() {
-        let parent = parent.to_path_buf();
-        let manifest = parent.join("canon.toml");
-        if manifest.exists() {
-            if let Ok(src) = fs::read_to_string(&manifest) {
-                if let Ok(m) = manifest::parse(&src) {
-                    if m.workspace.is_some() {
-                        return Some(parent);
-                    }
-                }
-            }
-        }
-        if parent == current {
-            break;
-        }
-        current = parent;
-    }
-    None
-}
-
-fn read_manifest(manifest_path: &Path) -> manifest::Manifest {
-    let src = match fs::read_to_string(manifest_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: could not read `{}`: {}", manifest_path.display(), e);
-            process::exit(1);
-        }
-    };
-    match manifest::parse(&src) {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("error: in `{}`: {}", manifest_path.display(), e);
-            process::exit(1);
-        }
+    Target::Workspace {
+        members,
+        label: arg.to_string(),
     }
 }
 
-/// Build a `BuildSpec` for a package directory. When `workspace_root` is
-/// `Some`, output is routed to `<workspace_root>/build/`; otherwise it
-/// lands in `<pkg_root>/build/`.
-fn resolve_package_spec(
-    pkg_root: &Path,
-    label: &str,
-    m: &manifest::Manifest,
-    workspace_root: Option<&Path>,
-) -> BuildSpec {
+/// Build a `BuildSpec` for a package directory. The package's name is
+/// its directory name and its artifacts land in its own `build/`.
+fn resolve_package_spec(pkg_root: &Path, label: &str) -> BuildSpec {
     let entry = pkg_root.join("src").join("main.can");
-    if !entry.exists() {
-        eprintln!(
-            "error: package `{}` has no entry point at `{}`",
-            if m.name.is_empty() { label } else { &m.name },
-            entry.display()
-        );
-        eprintln!("hint: create `src/main.can` with a `main` function");
-        process::exit(1);
-    }
-    let output_stem = m.name.rsplit('/').next().unwrap_or(&m.name);
-    let output_stem = if output_stem.is_empty() {
-        // Workspace member with no name: fall back to the directory name.
-        pkg_root
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("out")
-            .to_string()
-    } else {
-        output_stem.to_string()
-    };
-    let output_dir = match workspace_root {
-        Some(ws) => ws.join("build"),
-        None => pkg_root.join("build"),
-    };
+    // `.` and `..` have no usable `file_name`; canonicalize to recover
+    // the real directory name.
+    let name = pkg_root
+        .file_name()
+        .map(|s| s.to_os_string())
+        .or_else(|| {
+            pkg_root
+                .canonicalize()
+                .ok()
+                .and_then(|p| p.file_name().map(|s| s.to_os_string()))
+        })
+        .and_then(|s| s.to_str().map(str::to_string))
+        .unwrap_or_else(|| "out".to_string());
     BuildSpec {
         entry,
-        output_dir,
-        output_stem,
+        output_dir: pkg_root.join("build"),
+        output_stem: name.clone(),
         label: label.to_string(),
-        name: m.name.clone(),
+        name,
     }
 }
 
@@ -424,82 +353,36 @@ fn resolve_file_spec(path: &Path, arg: &str) -> BuildSpec {
     }
 }
 
-/// Resolve a workspace's `members = [...]` directive to concrete
-/// `BuildSpec`s. A single literal `"*"` expands to every immediate
-/// subdirectory of the workspace root that contains an `canon.toml`.
-/// Otherwise each entry is treated as a relative path from the workspace
-/// root. Members are returned sorted alphabetically by label.
-fn resolve_workspace_members(ws_root: &Path, ws_label: &str, members: &[String]) -> Vec<BuildSpec> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-    let mut had_glob = false;
-
-    for entry in members {
-        if entry == "*" {
-            had_glob = true;
-            let read = match fs::read_dir(ws_root) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("error: could not list `{}`: {}", ws_root.display(), e);
-                    process::exit(1);
-                }
-            };
-            for d in read.flatten() {
-                let p = d.path();
-                if p.is_dir() && p.join("canon.toml").exists() {
-                    paths.push(p);
-                }
-            }
-        } else {
-            let p = ws_root.join(entry);
-            if !p.is_dir() {
-                eprintln!(
-                    "error: workspace member `{}` is not a directory (looked at `{}`)",
-                    entry,
-                    p.display()
-                );
-                process::exit(1);
-            }
-            if !p.join("canon.toml").exists() {
-                eprintln!(
-                    "error: workspace member `{}` has no `canon.toml`",
-                    p.display()
-                );
-                process::exit(1);
-            }
-            paths.push(p);
-        }
-    }
-
-    paths.sort();
-    paths.dedup();
-
-    if paths.is_empty() {
-        if had_glob {
+/// Discover a workspace's members: every immediate subdirectory of
+/// `ws_root` that is a package (contains `src/main.can`). There is no
+/// member list to declare — the directory structure is the workspace.
+/// Members are returned sorted alphabetically by path; each builds into
+/// its own `build/`.
+fn resolve_workspace_members(ws_root: &Path, ws_label: &str) -> Vec<BuildSpec> {
+    let read = match fs::read_dir(ws_root) {
+        Ok(r) => r,
+        Err(e) => {
             eprintln!(
-                "warning: workspace `{}` matched no members (no subdir of `{}` contains an `canon.toml`)",
+                "error: could not list `{}` ({}): {}",
                 ws_label,
-                ws_root.display()
+                ws_root.display(),
+                e
             );
-        } else {
-            eprintln!("warning: workspace `{}` has no members", ws_label);
+            process::exit(1);
         }
-    }
+    };
+    let mut paths: Vec<PathBuf> = read
+        .flatten()
+        .map(|d| d.path())
+        .filter(|p| p.join("src").join("main.can").is_file())
+        .collect();
+    paths.sort();
 
     paths
         .into_iter()
         .map(|p| {
             let label = p.to_string_lossy().into_owned();
-            let manifest_path = p.join("canon.toml");
-            let m = read_manifest(&manifest_path);
-            if m.workspace.is_some() {
-                eprintln!(
-                    "error: nested workspaces are not supported (`{}` is also a workspace)",
-                    p.display()
-                );
-                process::exit(1);
-            }
-            // All members share the workspace's `build/` (Cargo-style).
-            resolve_package_spec(&p, &label, &m, Some(ws_root))
+            resolve_package_spec(&p, &label)
         })
         .collect()
 }
@@ -693,12 +576,12 @@ fn cmd_install(args: &[String]) {
                 println!("               (shared with `wkg`); set CANON_REGISTRY_CONFIG to use");
                 println!("               an alternate config.");
                 println!();
-                println!("  target       The project directory (containing `canon.toml`).");
+                println!("  target       The project directory (containing `wit/`).");
                 println!("               Defaults to the current directory.");
                 println!();
-                println!("For every entry in the manifest's `[imports]` table, materializes");
-                println!("the corresponding Canon bindings into `<target>/bindgen/`. WIT");
-                println!("sources (`*.wit`) become Canon source under `<ns>/<pkg>/<iface>.can`.");
+                println!("For every WIT source under `<target>/wit/` (a `.wit` file or a");
+                println!("directory of them), materializes the corresponding Canon bindings");
+                println!("into `<target>/bindgen/` under `<ns>/<pkg>@<ver>/<iface>.can`.");
                 println!("Wasm-component sources (`*.wasm`) are recorded as deferred.");
                 return;
             }
@@ -721,7 +604,7 @@ fn cmd_install(args: &[String]) {
 
     // A `:` marks a registry spec (`<ns>:<name>[@ver]`) — paths can't
     // contain one in the position the grammar requires. Everything else
-    // stays the manifest-driven local install.
+    // stays the local `wit/`-driven install.
     if let Some(spec_str) = target.as_deref().filter(|t| t.contains(':')) {
         let spec = match canon::registry::parse_spec(spec_str) {
             Ok(s) => s,
@@ -731,8 +614,8 @@ fn cmd_install(args: &[String]) {
             }
         };
         // Vendor into the enclosing project when there is one, else
-        // treat the current directory as the (manifest-free) project
-        // root — the same fallback the loader's `deps/` lookup uses.
+        // treat the current directory as the project root — the same
+        // fallback the loader's `deps/` lookup uses.
         let cwd = PathBuf::from(".");
         let root = canon::install::find_project_root(&cwd).unwrap_or(cwd);
         match canon::registry::install_from_registry(&spec, &root) {
@@ -760,7 +643,7 @@ fn cmd_install(args: &[String]) {
         Ok(outcome) => {
             if outcome.written.is_empty() && outcome.skipped.is_empty() {
                 println!(
-                    "no `[imports]` entries in `{}/canon.toml` - nothing to install",
+                    "no WIT sources under `{}/wit/` - nothing to install",
                     target_path.display()
                 );
             } else {
@@ -840,139 +723,26 @@ fn cmd_publish(args: &[String]) {
     }
 }
 
-fn cmd_fmt(args: &[String]) {
-    let mut check_only = false;
-    let mut inputs: Vec<String> = Vec::new();
-
-    for arg in args {
-        match arg.as_str() {
-            "--check" | "-c" => check_only = true,
-            "--help" | "-h" => {
-                println!("Usage: canon fmt [path...] [--check]");
-                println!();
-                println!("  path         A `.can` file or a directory. Directories are walked");
-                println!("               recursively. With no arguments, formats every `.can`");
-                println!("               file under the current directory.");
-                println!("  --check      Check whether files are formatted (exit 1 if not).");
-                return;
-            }
-            other if other.starts_with('-') => {
-                eprintln!("error: unknown fmt flag '{}'", other);
-                process::exit(1);
-            }
-            _ => inputs.push(arg.clone()),
-        }
-    }
-
-    // No args — default to the current directory so `canon fmt` can be
-    // run from a project root with no further ceremony.
-    if inputs.is_empty() {
-        inputs.push(".".to_string());
-    }
-
-    // Expand directories into their `.can` files. File arguments pass
-    // through unchanged. When the user explicitly passed only file
-    // paths, a parse error aborts; when any input was a directory we
-    // soldier on past individual parse failures (one bad file in 100
-    // shouldn't block formatting the other 99).
-    let mut files: Vec<PathBuf> = Vec::new();
-    let mut had_dir_input = false;
-    for input in &inputs {
-        let path = Path::new(input);
-        if path.is_dir() {
-            had_dir_input = true;
-            collect_can_files(path, &mut files);
-        } else {
-            files.push(path.to_path_buf());
-        }
-    }
-    files.sort();
-    files.dedup();
-
-    if files.is_empty() {
-        eprintln!("error: no `.can` files found");
-        process::exit(1);
-    }
-
-    let mut any_unformatted = false;
-    let mut any_parse_error = false;
-
-    for file_path in &files {
-        let display = file_path.display().to_string();
-        let source = read_source(&display);
-        match formatter::format(&source) {
-            Ok(formatted) => {
-                if source == formatted {
-                    continue;
-                }
-                any_unformatted = true;
-                if check_only {
-                    eprintln!("{}: not formatted", display);
-                } else {
-                    if let Err(err) = fs::write(file_path, &formatted) {
-                        eprintln!("error: could not write '{}': {}", display, err);
-                        process::exit(1);
-                    }
-                    println!("formatted: {}", display);
-                }
-            }
-            Err(err) => {
-                print_error(&display, &err);
-                if had_dir_input {
-                    any_parse_error = true;
-                    continue;
-                }
-                process::exit(1);
-            }
-        }
-    }
-
-    if (check_only && any_unformatted) || any_parse_error {
-        process::exit(1);
-    }
-}
-
-/// Recursively collect every `.can` file under `dir`, skipping common
-/// generated/build directories (`target`, `node_modules`, `.git`).
-fn collect_can_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(err) => {
-            eprintln!("error: could not read '{}': {}", dir.display(), err);
-            process::exit(1);
-        }
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if path.is_dir() {
-            // Skip a few well-known directories that have no business
-            // being formatted: build artefacts, deps, VCS metadata, and
-            // `bindgen/` output (derived by `canon install`, regenerated
-            // wholesale — like `target/`, formatting it only creates
-            // churn against the generator). An explicit
-            // `canon fmt path/to/bindgen/file.can` still works.
-            if matches!(
-                name.as_ref(),
-                "target" | "node_modules" | ".git" | "bindgen"
-            ) {
-                continue;
-            }
-            collect_can_files(&path, out);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
-            out.push(path);
-        }
-    }
-}
-
 fn cmd_check(args: &[String]) {
-    let parsed = parse_target_args(args, false);
+    let mut fix = false;
+    let filtered: Vec<String> = args
+        .iter()
+        .filter(|a| {
+            if a.as_str() == "--fix" {
+                fix = true;
+                false
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect();
+    let parsed = parse_target_args(&filtered, false);
     let target = resolve_target(parsed.target_path.as_deref());
     let target = apply_package_filter(target, parsed.package.as_deref());
     match target {
         Target::Build(spec) => {
-            if !check_spec(&spec) {
+            if !check_spec(&spec, fix) {
                 process::exit(1);
             }
         }
@@ -985,7 +755,7 @@ fn cmd_check(args: &[String]) {
             let mut failures = 0usize;
             for spec in &members {
                 println!("\n-- {} --", spec.label);
-                if !check_spec(spec) {
+                if !check_spec(spec, fix) {
                     failures += 1;
                 }
             }
@@ -1000,14 +770,23 @@ fn cmd_check(args: &[String]) {
 
 /// Run the checker on one buildable target. Returns `true` on success,
 /// `false` if any errors were printed.
-fn check_spec(spec: &BuildSpec) -> bool {
-    let Some(loaded) = load_or_print(spec.entry_str()) else {
+///
+/// With `fix`, every mechanically fixable error is repaired in place
+/// before checking: the loaded sources are rewritten to canonical form
+/// (which also resolves sort-order violations — the formatter sorts),
+/// and the target is re-loaded so the checker sees what's now on disk.
+/// Whatever the fixer can't repair is then reported as usual.
+fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
+    let Some(mut loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
-    if !enforce_format(&loaded) {
-        return false;
+    if fix && apply_fixes(&loaded) {
+        let Some(reloaded) = load_or_print(spec.entry_str()) else {
+            return false;
+        };
+        loaded = reloaded;
     }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(spec.entry_str(), err);
@@ -1058,10 +837,7 @@ fn build_spec(spec: &BuildSpec) -> bool {
     let Some(loaded) = load_or_print(spec.entry_str()) else {
         return false;
     };
-    if !enforce_format(&loaded) {
-        return false;
-    }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(spec.entry_str(), err);
@@ -1228,9 +1004,6 @@ fn cmd_test_dir(dir: &str) {
 /// shouldn't abort the rest.
 fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     let mut loaded = load_or_print(file_path)?;
-    if !enforce_format(&loaded) {
-        return None;
-    }
 
     // Reject test files that try to define their own `main` — we synthesise it.
     if let Some(idx) = loaded.module.items[loaded.entry_items_start..]
@@ -1328,7 +1101,7 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     }
     loaded.module.items.extend(synth_items);
 
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(file_path, err);
@@ -1479,10 +1252,7 @@ fn cmd_run(args: &[String]) {
         }
     };
     let loaded = load_or_exit(spec.entry_str());
-    if !enforce_format(&loaded) {
-        process::exit(1);
-    }
-    let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+    let errors = checker::check_loaded(&loaded);
     if !errors.is_empty() {
         for err in &errors {
             print_error(spec.entry_str(), err);
@@ -1601,47 +1371,34 @@ fn auto_install(file_path: &str) -> bool {
     }
 }
 
-/// Enforce canonical formatting across every user-authored source file
-/// loaded for this build. Canon's guiding rule is "one way" — the
-/// compiler refuses to proceed if any source isn't already in canonical
-/// form. Bundled packages are skipped (they ship with the compiler).
-///
-/// Returns `true` when every file is canonical, `false` after printing
-/// a diagnostic listing the offenders. Files that fail to parse are
-/// skipped here so the checker can produce the better-located error.
-fn enforce_format(loaded: &LoadResult) -> bool {
-    let mut unformatted: Vec<&LoadedSource> = Vec::new();
+/// `canon check --fix`: rewrite every user-authored source that has
+/// drifted from canonical form back into it — the write-side mirror of
+/// the compiler's format phase (`checker::check_loaded`), repairing
+/// exactly the errors that phase reports (formatting, including
+/// sort-order violations). Returns whether anything was written, so
+/// the caller knows to re-load. Same skips as the phase: `.md` assets
+/// (synthesized Canon the author never edits), bundled packages, and
+/// files that don't parse (the checker owns that diagnostic).
+fn apply_fixes(loaded: &LoadResult) -> bool {
+    let mut wrote = false;
     for src in &loaded.local_sources {
-        // `.md` assets are Markdown documents, not Canon source — their
-        // `LoadedSource` carries synthesized Canon, which the author never
-        // sees or edits. Never flag them as mis-formatted.
         if src.path.extension().and_then(|e| e.to_str()) == Some("md") {
             continue;
         }
-        match formatter::format(&src.source) {
-            Ok(canonical) => {
-                if src.source != canonical {
-                    unformatted.push(src);
-                }
-            }
-            // Parse/lex error — leave it to the checker pipeline to
-            // surface the precise diagnostic.
-            Err(_) => continue,
+        let Ok(canonical) = formatter::format(&src.source) else {
+            continue;
+        };
+        if canonical == src.source {
+            continue;
         }
+        if let Err(err) = fs::write(&src.path, &canonical) {
+            eprintln!("error: could not write '{}': {}", src.path.display(), err);
+            process::exit(1);
+        }
+        println!("fixed: {}", src.path.display());
+        wrote = true;
     }
-    if unformatted.is_empty() {
-        return true;
-    }
-    eprintln!(
-        "error: {} file(s) are not canonically formatted:",
-        unformatted.len()
-    );
-    for src in &unformatted {
-        eprintln!("  {}", src.path.display());
-    }
-    eprintln!();
-    eprintln!("hint: run `canon fmt` to fix them in place.");
-    false
+    wrote
 }
 
 const INSTALL_URL: &str = "https://raw.githubusercontent.com/almaju/canon/main/install.sh";
@@ -2154,9 +1911,15 @@ fn shell_escape(s: &str) -> String {
 
 fn print_error(file_path: &str, err: &CanonError) {
     let span = err.span();
+    // Format errors carry the offending file themselves — in a
+    // multi-file load their span points into that file, not the entry.
+    let path = match err {
+        CanonError::FormatError { path, .. } => path.as_str(),
+        _ => file_path,
+    };
     eprintln!(
         "error[{}:{}:{}]: {}",
-        file_path,
+        path,
         span.line,
         span.column,
         err.message()

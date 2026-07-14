@@ -3,7 +3,6 @@ use crate::error::{CanonError, Span};
 use std::collections::{HashMap, HashSet};
 
 pub mod auto_await;
-pub mod dep_infer;
 
 const BUILTIN_TYPES: &[&str] = &[
     "Bool",
@@ -91,6 +90,11 @@ pub struct SymbolTable {
     /// on `Path` (which is `Path = String`) resolves through to `String`'s
     /// `print` method without anyone having to redeclare it for `Path`.
     pub aliases: HashMap<String, String>,
+    /// Declared shapes — body-less function-type aliases (`Show = () =>
+    /// String`). A bodied declaration may carry a name that is not the
+    /// type it constructs only when that name is one of these: the shape
+    /// is the one place a name carries information the types cannot.
+    pub shapes: HashSet<String>,
 }
 
 pub struct MethodSig {
@@ -129,6 +133,30 @@ impl SymbolTable {
 
 pub fn check(module: &Module) -> Vec<CanonError> {
     check_with_entry(module, 0)
+}
+
+/// The compiler's front-door check: the format phase fused with the
+/// semantic checker, over a loaded target. Formatting is part of the
+/// language, so each user-authored source that has drifted from
+/// canonical form contributes a `FormatError` (spanning its first
+/// divergence) to the same error list as sort-order and type errors —
+/// one run reports both. Skips `.md` assets (their `LoadedSource`
+/// carries synthesized Canon the author never edits) and sources that
+/// don't parse (the parse diagnostic is better located); bundled
+/// packages never appear in `local_sources`. `check_with_entry` stays
+/// the AST-only layer for callers without source text (fixtures,
+/// synthetic-module tests).
+pub fn check_loaded(loaded: &crate::loader::LoadResult) -> Vec<CanonError> {
+    let mut errors: Vec<CanonError> = loaded
+        .local_sources
+        .iter()
+        .filter(|src| src.path.extension().and_then(|e| e.to_str()) != Some("md"))
+        .filter_map(|src| {
+            crate::formatter::format_error(&src.source, &src.path.display().to_string())
+        })
+        .collect();
+    errors.extend(check_with_entry(&loaded.module, loaded.entry_items_start));
+    errors
 }
 
 /// Variant of `check` that limits per-file ordering rules (free-function
@@ -250,57 +278,41 @@ fn check_ordering(
     // Union variants and product fields are checked in check_type_expr (covers
     // every position they appear in, not just top-level TypeDef bodies).
 
-    // Functions on the same receiver type must be declared alphabetically.
-    let mut methods_per_receiver: HashMap<String, Vec<(String, crate::error::Span)>> =
-        HashMap::new();
-    for item in entry_items {
-        if let Item::Function(func) = item {
-            if let Some(recv) = &func.receiver {
-                // Compare *surface* names — a self-named constructor is
-                // rewritten to `Self` by `resolve_new_syntax`, but the
-                // source (and `canon fmt`'s sort) spells it as the type
-                // name. Comparing the resolved name made canonically
-                // formatted files fail the order check whenever a
-                // constructor sorted differently under "Self".
-                let surface = if func.name.name == "Self" {
-                    recv.name.clone()
-                } else {
-                    func.name.name.clone()
-                };
-                methods_per_receiver
-                    .entry(recv.name.clone())
-                    .or_default()
-                    .push((surface, func.name.span));
-            }
-        }
-    }
-    for methods in methods_per_receiver.values() {
-        let pairs: Vec<(&str, crate::error::Span)> =
-            methods.iter().map(|(n, s)| (n.as_str(), *s)).collect();
-        check_sorted_named("method declaration", &pairs, errors);
-    }
-
-    // Free functions (no receiver) declared in the entry file must be
-    // alphabetical. Imported items are exempt — they follow their own
-    // file's ordering. `main` is also exempt: it's the entry point, a
-    // distinguished role rather than a regular free function, and forcing
-    // it into alphabetical position with peers (or with synthesised mains
-    // produced by `canon test`) is arbitrary.
-    let free_funcs: Vec<(&str, crate::error::Span)> = entry_items
+    // Function declarations in the entry file must be alphabetical by
+    // *surface* name — the single sequence `canon check --fix` sorts (constructors
+    // spell their type name; a self-named constructor is rewritten to
+    // `Self` by `resolve_new_syntax`, so map it back). Constructors,
+    // shape implementations, and free functions all share the one
+    // sequence: a per-receiver-only check would never compare two
+    // anonymous arrows constructing different types. Equal surface names
+    // (one shape's implementations for several receivers) keep their
+    // written order — `canon check --fix`'s sort is stable, so the checker
+    // accepts any order among equals. Imported items are exempt — they
+    // follow their own file's ordering. `main` is also exempt: it's the
+    // entry point, a distinguished role rather than a regular free
+    // function, and forcing it into alphabetical position with peers (or
+    // with synthesised mains produced by `canon test`) is arbitrary.
+    let funcs: Vec<(&str, crate::error::Span)> = entry_items
         .iter()
         .filter_map(|item| {
             if let Item::Function(func) = item {
-                if func.receiver.is_none()
-                    && func.name.name != "main"
-                    && Some(func.name.name.as_str()) != http_entry_name
-                {
-                    return Some((func.name.name.as_str(), func.name.span));
+                if func.name.name == "main" || Some(func.name.name.as_str()) == http_entry_name {
+                    return None;
                 }
+                let surface = if func.name.name == "Self" {
+                    func.receiver
+                        .as_ref()
+                        .map(|r| r.name.as_str())
+                        .unwrap_or(func.name.name.as_str())
+                } else {
+                    func.name.name.as_str()
+                };
+                return Some((surface, func.name.span));
             }
             None
         })
         .collect();
-    check_sorted_named("function declaration", &free_funcs, errors);
+    check_sorted_named("function declaration", &funcs, errors);
 
     // Type definitions in the entry file must be alphabetical.
     let type_defs: Vec<(&str, crate::error::Span)> = entry_items
@@ -893,6 +905,15 @@ fn item_refs(item: &Item) -> (String, HashSet<String>) {
     }
 }
 
+/// Build a module's `SymbolTable`, discarding diagnostics. Tooling
+/// entry point — LSP completion needs the alias/variant/method indexes
+/// over a possibly half-typed buffer, where duplicate-definition noise
+/// (the buffer plus its own import closure) is expected and harmless.
+pub(crate) fn symbols_for_tooling(module: &Module) -> SymbolTable {
+    let mut errors = Vec::new();
+    collect_symbols(module, &mut errors)
+}
+
 fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
     let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES
@@ -1210,6 +1231,17 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         }
     }
 
+    let shapes: HashSet<String> = module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) if matches!(td.body, TypeExpr::Function { .. }) => {
+                Some(td.name.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
+
     SymbolTable {
         types,
         generic_types,
@@ -1219,6 +1251,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         standalone_types,
         free_funcs,
         aliases,
+        shapes,
     }
 }
 
@@ -1268,6 +1301,105 @@ fn check_self_constructor_signature(
             span: func.return_ty.span(),
         });
     }
+
+    check_endomorphism_input(func, receiver_name, errors);
+}
+
+/// An arrow may not construct a type that is also one of its inputs. An
+/// endomorphism (`Map * String => Map`) is the one operation whose types
+/// cannot identify it — insert, remove, and update all share that
+/// signature — so the operation takes a **result newtype** (`Inserted =
+/// Map`, `Removed = Map`): the name relocates into a type the compiler
+/// checks, sorts, and resolves. Exact-name comparison only: an input
+/// that is a *newtype* of the constructed type (`Rest = Map` flowing
+/// into a `Map` constructor) is a different type and carries its own
+/// information. Binding files are exempt — WIT shapes its signatures.
+fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut Vec<CanonError>) {
+    if func.extern_wasm.is_some() {
+        return;
+    }
+    for param in &func.params {
+        if let TypeExpr::Named { name, generics, .. } = &param.ty {
+            if name == constructed && generics.is_empty() {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "an arrow that returns its own input type needs a name the types can't \
+                         supply: mint a result newtype (`X = {constructed}`) and construct that \
+                         (`… => X`) instead of `{constructed}` itself",
+                    ),
+                    span: param.span,
+                });
+            }
+        }
+    }
+}
+
+/// The compiler-known interpolation hooks — the two shapes the JSON and
+/// HTML literal machinery dispatches through when a hole converts a
+/// value. They sit at the literal boundary the way builtins sit at the
+/// host boundary, and they are the only body-less shapes a program may
+/// declare: every other operation takes a result newtype (`X = T` plus
+/// anonymous arrows). Shapes as a user-facing feature return when their
+/// justifications exist — generic constraints (`<T: Show>`),
+/// bare-type-parameter returns (`Fold`), trait components — none of
+/// which the compiler implements yet, so declaring one today would only
+/// open a second spelling of a constructor family.
+const INTERPOLATION_SHAPES: &[&str] = &["ToHtml", "ToJson"];
+
+/// `Json("…")` / `Html("…")` fed a **static string literal** that the
+/// corresponding literal form can already express is ceremony around a
+/// literal — the parse can never fail, so the validating-constructor
+/// spelling is a second way of writing the literal, and the language
+/// keeps one. The check fires only when the string's content, pasted
+/// into source, parses as a single all-static JSON/HTML literal;
+/// runtime strings (the actual parsing use case), scalar documents
+/// (`Json("\"text\"")` — no literal form), and malformed input all pass
+/// through untouched.
+fn check_literal_form_ceremony(name: &str, args: &[Expr], errors: &mut Vec<CanonError>) {
+    if name != "Json" && name != "Html" {
+        return;
+    }
+    let [Expr::StringLit { value, span }] = args else {
+        return;
+    };
+    let probe = format!("Unit => Probe {{\n    {}\n}}\n", value);
+    let Ok(tokens) = crate::lexer::Scanner::new(&probe).scan_tokens() else {
+        return;
+    };
+    let Ok(module) = crate::parser::Parser::new(tokens).parse() else {
+        return;
+    };
+    let [Item::Function(f)] = &module.items[..] else {
+        return;
+    };
+    let [expr] = &f.body.exprs[..] else {
+        return;
+    };
+    let expressible = match (name, expr) {
+        ("Json", Expr::JsonLit { parts, .. }) => {
+            parts.iter().all(|p| matches!(p, JsonLitPart::Static(_)))
+        }
+        ("Html", Expr::HtmlLit { parts, .. }) => {
+            parts.iter().all(|p| matches!(p, HtmlLitPart::Static(_)))
+        }
+        _ => false,
+    };
+    if expressible {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{name}(\"…\")` wraps a document the {name} literal already expresses: \
+                 write the literal directly ({example}) — the validating constructor is \
+                 for strings built at runtime",
+                name = name,
+                example = if name == "Json" {
+                    "`{\"k\":v}` / `[v]`"
+                } else {
+                    "`<tag>…</tag>`"
+                },
+            ),
+            span: *span,
+        });
+    }
 }
 
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
@@ -1279,6 +1411,24 @@ fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonErr
             message: format!(
                 "camelCase names are not allowed: types are PascalCase — rename `{}`",
                 td.name.name
+            ),
+            span: td.name.span,
+        });
+    }
+    // A body-less shape declaration opens a second spelling of a
+    // constructor family with none of a shape's justifications
+    // implemented yet — only the interpolation hooks are allowed. See
+    // `INTERPOLATION_SHAPES` and the spec (functions.md § Shape or
+    // Result Newtype).
+    if matches!(td.body, TypeExpr::Function { .. })
+        && !INTERPOLATION_SHAPES.contains(&td.name.name.as_str())
+    {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{name}` declares a shape, and operations take result newtypes: replace it \
+                 with `{name} = <ReturnType>` and anonymous arrows (`(Receiver) => {name}`) — \
+                 shapes return when generic constraints land",
+                name = td.name.name
             ),
             span: td.name.span,
         });
@@ -1350,12 +1500,11 @@ fn check_function(
         // The unified declaration rule (the language spec, § Types-Only
         // Canon): a bodied declaration is named after the type it
         // constructs — the name is checkable from the signature alone.
-        // Receiver-carrying declarations (constructors normalised to
-        // `Self`, shape implementations named for their shape) and
-        // anonymous arrows satisfy it by construction; what reaches here
-        // is a free named function, where the rule bites: the name must
-        // be the constructed return type (modulo `Result`/`Option`/
-        // `Future` peeling and newtype chains).
+        // Constructors normalised to `Self` and anonymous arrows satisfy
+        // it by construction; what reaches here is a free named function,
+        // where the rule bites: the name must be the constructed return
+        // type (modulo `Result`/`Option`/`Future` peeling and newtype
+        // chains).
         if let Some(constructed) = constructed_type_name(&func.return_ty) {
             let is_generic_param = func
                 .generic_params
@@ -1370,6 +1519,46 @@ fn check_function(
                         "a bodied declaration is named after the type it constructs: \
                          `{}` returns `{}`",
                         func.name.name, constructed
+                    ),
+                    span: func.name.span,
+                });
+            }
+        }
+    } else if func.extern_wasm.is_none()
+        && func.name.name != "Self"
+        && !func.anonymous
+        && func.receiver.is_some()
+    {
+        // The same rule, receiver-carrying half. `resolve_new_syntax`
+        // turns any named bodied declaration whose name is not a type in
+        // its file into a method on its first component — which would
+        // otherwise let an arbitrary verb wear PascalCase (`Frobnicated =
+        // (Int) => Int` is not a Frobnicated constructor; the name lies).
+        // The name must carry information the types cannot, and the only
+        // such name is a declared shape (a body-less function type).
+        // Failing that, it must construct the type it names (modulo
+        // `Result`/`Option`/`Future` peeling and newtype chains) — the
+        // cross-file result-newtype case, where the newtype's TypeDef
+        // lives in another loaded file.
+        if !symbols.shapes.contains(&func.name.name) {
+            let constructs_name = constructed_type_name(&func.return_ty)
+                .map(|constructed| {
+                    func.name.name == constructed
+                        || symbols.resolve_alias(&func.name.name)
+                            == symbols.resolve_alias(&constructed)
+                })
+                .unwrap_or(false);
+            if !constructs_name {
+                let constructed =
+                    constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{name}` is neither a declared shape nor the type this declaration \
+                         constructs: mint a result newtype (`{name} = {constructed}`) and \
+                         construct it, or declare the shape (`{name} = (…) => …`, body-less) \
+                         this implements — a name carries no information the types don't",
+                        name = func.name.name,
+                        constructed = constructed,
                     ),
                     span: func.name.span,
                 });
@@ -1403,6 +1592,12 @@ fn check_function(
         if func.name.name == "Self" {
             check_self_constructor_signature(func, &recv.name, errors);
         }
+    } else if func.name.name != "main" {
+        // A receiver-less constructor (the constructed type's TypeDef
+        // lives in another loaded file, so `resolve_new_syntax` left it
+        // free) gets the same endomorphism check as a `Self` constructor:
+        // the constructed identity is the function's own name.
+        check_endomorphism_input(func, &func.name.name, errors);
     }
 
     if func.extern_wasm.is_some() {
@@ -1947,6 +2142,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: name.span,
                 });
             }
+            check_literal_form_ceremony(&name.name, args, errors);
             if args.is_empty() && !is_variant && !matches_free_func {
                 let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
                 let has_zero_arg_ctor = symbols
@@ -2667,7 +2863,11 @@ fn check_product_construction_types(
     }
 }
 
-fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
+/// The static type name of an expression, or `"<unknown>"` when the
+/// analysis can't see through it. Crate-visible for tooling: LSP
+/// completion types the chain left of the cursor with the same rules
+/// the checker applies at construction sites.
+pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
     match expr {
         Expr::Ident(ident) => {
             if let Some(parent) = symbols.variant_of.get(&ident.name) {
@@ -2936,7 +3136,12 @@ fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
     }
 }
 
-fn method_return_type(receiver_ty: &str, method: &str) -> String {
+/// The builtin-method fallback table: what `receiver_ty -> method`
+/// returns when no user/stdlib declaration claims the pair, or
+/// `"<unknown>"` when the builtin doesn't exist on that receiver.
+/// Crate-visible for tooling: LSP completion gates the builtin pipe
+/// vocabulary (`Sum`, `Print`, `Joined`, …) on the same table.
+pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
     let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     match (receiver_ty, method) {
         ("String", "print")

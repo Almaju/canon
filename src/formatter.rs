@@ -5,7 +5,7 @@
 //! spacing, indentation, and line breaking.
 
 use crate::ast::*;
-use crate::error::{Result, Span};
+use crate::error::{CanonError, Result, Span};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
 
@@ -21,6 +21,66 @@ pub fn format(source: &str) -> Result<String> {
     Ok(emit_module(&module))
 }
 
+/// Formatting is a compiler phase: a divergence from canonical form is
+/// a `FormatError`, the same standing as a lex, parse, or check error.
+/// The canonical form is *defined* by this module's emitter, so the
+/// phase is the emitter run against the written source — there is no
+/// second rulebook to drift from it. Returns the error pointing at the
+/// first place `source` diverges from its canonical form, or `None`
+/// when the source is already canonical. A source that fails to parse
+/// also returns `None`: the pipeline owns the better-located parse
+/// diagnostic. `path` names the offending file in multi-file loads.
+pub fn format_error(source: &str, path: &str) -> Option<CanonError> {
+    let canonical = format(source).ok()?;
+    if canonical == source {
+        return None;
+    }
+    Some(CanonError::FormatError {
+        message: "not canonically formatted: run `canon check --fix`".to_string(),
+        path: path.to_string(),
+        span: divergence_span(source, &canonical),
+    })
+}
+
+/// Span of the first divergence between `source` and its `canonical`
+/// form: the first differing line, from the first differing character
+/// to the end of that line. When one text is a prefix of the other the
+/// span sits at `source`'s end (canonical has more lines) or on the
+/// first surplus source line.
+fn divergence_span(source: &str, canonical: &str) -> Span {
+    let mut offset = 0usize;
+    let mut line_no = 1u32;
+    let mut src_lines = source.split_inclusive('\n');
+    let mut canon_lines = canonical.split_inclusive('\n');
+    loop {
+        match (src_lines.next(), canon_lines.next()) {
+            (Some(s), Some(c)) if s == c => {
+                offset += s.len();
+                line_no += 1;
+            }
+            (Some(s), Some(c)) => {
+                let mut column = 1u32;
+                let mut byte = 0usize;
+                for ((i, sc), cc) in s.char_indices().zip(c.chars()) {
+                    if sc != cc {
+                        byte = i;
+                        break;
+                    }
+                    column += 1;
+                    byte = i + sc.len_utf8();
+                }
+                let line_end = offset + s.strip_suffix('\n').unwrap_or(s).len();
+                return Span::new(offset + byte, line_end.max(offset + byte), line_no, column);
+            }
+            (Some(s), None) => {
+                let line_end = offset + s.strip_suffix('\n').unwrap_or(s).len();
+                return Span::new(offset, line_end, line_no, 1);
+            }
+            (None, _) => return Span::new(offset, offset, line_no, 1),
+        }
+    }
+}
+
 // ── Canonical call form ───────────────────────────────────────────────────────
 //
 // One way to spell a call: the first input always rides the pipe, the
@@ -30,7 +90,7 @@ pub fn format(source: &str) -> Result<String> {
 // to `A`". Zero-input calls stay prefix (`Now()`, `Map()`), and
 // `List(…)` keeps its elements (an ordered sequence, not a
 // subject-bearing call). The parser accepts every spelling; this pass is
-// what makes `canon fmt` pick the canonical one. The compiler treats a
+// what makes `canon check --fix` pick the canonical one. The compiler treats a
 // piped call to a type constructor as construction (`A -> B(rest)` ≡
 // `B(A * rest)`), so the rewrite is semantics-preserving.
 
@@ -42,6 +102,7 @@ fn canonicalize_module(m: &Module) -> Module {
             .map(|it| match it {
                 Item::Function(f) => Item::Function(FunctionDef {
                     body: canon_block(&f.body),
+                    anonymous: f.anonymous || is_redundantly_named(f),
                     ..f.clone()
                 }),
                 other => other.clone(),
@@ -49,6 +110,20 @@ fn canonicalize_module(m: &Module) -> Module {
             .collect(),
         span: m.span,
     }
+}
+
+/// A named bodied declaration whose name is exactly the type its return
+/// constructs (`Url = (String) => Result<Url, InvalidUrl> { … }`) spells
+/// the name twice — the signature already carries it. The anonymous
+/// arrow is the one declaration form for constructors, so `canon check --fix`
+/// drops the redundant name (`String => Result<Url, InvalidUrl> { … }`).
+/// Named declarations remain for exactly one thing: shape
+/// implementations, where the name differs from the constructed type.
+fn is_redundantly_named(f: &FunctionDef) -> bool {
+    !f.anonymous
+        && f.receiver.is_none()
+        && f.generic_params.is_empty()
+        && crate::ast::constructed_type_name(&f.return_ty).as_deref() == Some(f.name.name.as_str())
 }
 
 fn canon_block(b: &Block) -> Block {
@@ -107,6 +182,51 @@ fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
         piped: true,
         span,
     }
+}
+
+/// Build the canonical prefix call `Name(a * b * …)` with operand order
+/// preserved.
+fn prefix_call(name: Ident, inputs: Vec<Expr>, span: Span) -> Expr {
+    let args = match inputs.len() {
+        0 | 1 => inputs,
+        _ => vec![Expr::ProductValue {
+            fields: inputs,
+            span,
+        }],
+    };
+    Expr::Constructor { name, args, span }
+}
+
+/// Scalar literals are born inside the call parens — they never pipe.
+/// The pipe carries a value that already exists (a parameter, a prior
+/// result); a literal springs into existence at the call site, so it
+/// rides in the parens: `Greeting("hi")`, `Sum(1 * 2)`,
+/// `Print("hello")`. Structured values (`List(…)`, JSON/HTML literals)
+/// and every computed expression flow with `->`.
+fn is_scalar_literal(e: &Expr) -> bool {
+    matches!(
+        e,
+        Expr::StringLit { .. }
+            | Expr::IntLit { .. }
+            | Expr::FloatLit { .. }
+            | Expr::HexLit { .. }
+            | Expr::FormatLit { .. }
+    )
+}
+
+/// `String("s")`, `Int(3)`, `Float(1.5)`, `Hex(0xFF)` wrap a literal in
+/// the constructor that literal already desugars to — the wrap is pure
+/// ceremony, so `canon check --fix` unwraps it to the bare literal. Cross-kind
+/// construction (`String(42)` decimal rendering, `Int("42")` parsing)
+/// is a real conversion and stays.
+fn primitive_literal_wrap(name: &str, input: &Expr) -> bool {
+    matches!(
+        (name, input),
+        ("String", Expr::StringLit { .. })
+            | ("Int", Expr::IntLit { .. })
+            | ("Float", Expr::FloatLit { .. })
+            | ("Hex", Expr::HexLit { .. })
+    )
 }
 
 fn canon_expr(e: &Expr) -> Expr {
@@ -217,9 +337,32 @@ fn canon_expr(e: &Expr) -> Expr {
                     span: *span,
                 };
             }
-            // A prefix constructor binds its inputs by type (distinct
-            // field types — the product rule), so the order is free:
-            // sort for determinism, pipe the first, parens hold the rest.
+            if inputs.len() == 1 && primitive_literal_wrap(&name.name, &inputs[0]) {
+                return inputs.pop().unwrap();
+            }
+            if inputs.len() == 1
+                && is_scalar_literal(&inputs[0])
+                && !crate::ast::is_builtin_pipe_vocabulary(&name.name)
+            {
+                // Single literal input: the literal is born in the
+                // parens, so the call stays prefix (`Greeting("hi")`).
+                // Builtins (`Sum`, `Print`, …) are receiver-oriented
+                // machine operations with no prefix form; they keep the
+                // pipe until they migrate to stdlib newtypes. Multi-input
+                // calls keep the pipe too: the piped call binds its
+                // components commutatively, while a prefix argument list
+                // is positional.
+                return prefix_call(name.clone(), inputs, *span);
+            }
+            if inputs.iter().any(is_scalar_literal) {
+                // Literal inputs present: order carries operand
+                // positions — pipe the first, keep the rest as written.
+                let subject = inputs.remove(0);
+                return make_pipe(subject, name.clone(), inputs, *span);
+            }
+            // All-computed inputs bind by type (distinct field types —
+            // the product rule), so the order is free: sort for
+            // determinism, pipe the first, parens hold the rest.
             inputs.sort_by_key(emit_inline);
             let subject = inputs.remove(0);
             make_pipe(subject, name.clone(), inputs, *span)
@@ -248,6 +391,22 @@ fn canon_expr(e: &Expr) -> Expr {
             let (subject, mut rest) = split_receiver(canon_expr(receiver));
             for input in flatten_inputs(args) {
                 rest.push(canon_expr(&input));
+            }
+            if is_scalar_literal(&subject)
+                && rest.is_empty()
+                && !crate::ast::is_builtin_pipe_vocabulary(&method.name)
+            {
+                // A lone literal never pipes into a construction —
+                // collapse to the prefix call: `"hi" -> Greeting`
+                // becomes `Greeting("hi")`. Builtins (`Sum`, `Print`, …)
+                // are receiver-oriented machine operations with no
+                // prefix form, and multi-input calls bind their
+                // components commutatively through the pipe — both keep
+                // the arrow.
+                if primitive_literal_wrap(&method.name, &subject) {
+                    return subject;
+                }
+                return prefix_call(method.clone(), vec![subject], *span);
             }
             make_pipe(subject, method.clone(), rest, *span)
         }
@@ -977,7 +1136,7 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
 
 /// Emit the fields of a product-type constructor, sorted alphabetically
 /// by their rendered form. Construction is positionless (values bind to
-/// fields by type), so a canonical order keeps `canon fmt` output
+/// fields by type), so a canonical order keeps `canon check --fix` output
 /// stable regardless of the order the author wrote the fields.
 fn emit_product_fields_sorted(out: &mut String, fields: &[Expr]) {
     let mut parts: Vec<String> = fields.iter().map(emit_inline).collect();
@@ -1054,7 +1213,7 @@ fn contains_dispatch(expr: &Expr) -> bool {
 /// dispatch's arms into variant (alphabetical) order. Arm order never
 /// carries meaning (union arms are matched by variant name, literal
 /// arms by equality), so sorting is safe here and makes the ordering
-/// rule auto-fixable via `canon fmt` instead of a hand-edit.
+/// rule auto-fixable via `canon check --fix` instead of a hand-edit.
 fn sort_arms(arms: &[MatchArm]) -> Vec<MatchArm> {
     let mut sorted: Vec<MatchArm> = arms.to_vec();
     sorted.sort_by_key(arm_sort_key);
@@ -1227,7 +1386,7 @@ mod tests {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
             "Route = (String) => String {\n    String -> (\n        * String => String { \"other\" }\n        * \"/b\" => String { \"b\" }\n        * \"/a\" => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
-            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\"\n        -> Route\n        -> Print\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    Route(\"/a\") -> Print\n}\n",
         );
     }
 
@@ -1299,13 +1458,15 @@ mod tests {
 
     #[test]
     fn test_product_values_canonicalized() {
-        // A product-type constructor is positionless, so its inputs sort
-        // deterministically; the canonical call form then pipes the first
-        // and keeps the rest in the parens as a partial application
-        // (`Node("c" * "a" * "b")` → `"a" -> Node("b" * "c")`).
+        // Literal operands keep their written order — untagged
+        // same-typed components bind by declaration order, so
+        // reordering would change which field gets which value. The
+        // canonical call form pipes the first written input and keeps
+        // the rest in the parens (`Node("c" * "a" * "b")` →
+        // `"c" -> Node("a" * "b")`).
         assert_format(
             "main = () => Unit {\n    Node(\"c\" * \"a\" * \"b\").print()\n}\n",
-            "main = () => Unit {\n    \"a\"\n        -> Node(\"b\" * \"c\")\n        -> Print\n}\n",
+            "main = () => Unit {\n    \"c\"\n        -> Node(\"a\" * \"b\")\n        -> Print\n}\n",
         );
     }
 

@@ -2,6 +2,6 @@ Exit = Int
 
 Exited = Unit
 
-Exited = (Int) => Exited {
-    Int.exitWithCode()
+Int => Exited {
+    Int -> ExitWithCode
 }

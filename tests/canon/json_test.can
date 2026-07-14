@@ -1,26 +1,25 @@
 DecodeRejectsBadEscape = TestResult
 
 Unit => DecodeRejectsBadEscape {
-    "\"\\q\"" -> Json? -> Decoded -> (
+    Json("\"\\q\"")? -> Decoded -> (
         * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Decoded> => TestResult { "unknown escape should be rejected" -> Fail }
+        * Ok<Decoded> => TestResult { Fail("unknown escape should be rejected") }
     )
 }
 
 DecodeRejectsMalformedUnicodeEscape = TestResult
 
 Unit => DecodeRejectsMalformedUnicodeEscape {
-    "\"\\u00zz\"" -> Json? -> Decoded -> (
+    Json("\"\\u00zz\"")? -> Decoded -> (
         * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Decoded> => TestResult { "non-hex \\u escape should be rejected" -> Fail }
+        * Ok<Decoded> => TestResult { Fail("non-hex \\u escape should be rejected") }
     )
 }
 
 DecodeUnescapesAllControlEscapes = TestResult
 
 Unit => DecodeUnescapesAllControlEscapes {
-    "\"\\\\ \\/ \\b \\f \\n \\r \\t\""
-        -> Json?
+    Json("\"\\\\ \\/ \\b \\f \\n \\r \\t\"")?
         -> Decoded?
         -> Eq("\\ / \u0008 \u000C \n \r \t")
         -> TestResult
@@ -29,8 +28,7 @@ Unit => DecodeUnescapesAllControlEscapes {
 DecodeUnescapesQuote = TestResult
 
 Unit => DecodeUnescapesQuote {
-    "\"esc \\\" quote\""
-        -> Json?
+    Json("\"esc \\\" quote\"")?
         -> Decoded?
         -> Eq("esc \" quote")
         -> TestResult
@@ -39,8 +37,7 @@ Unit => DecodeUnescapesQuote {
 DecodeUnescapesUnicodeEscape = TestResult
 
 Unit => DecodeUnescapesUnicodeEscape {
-    "\"\\u0041\\u00e9\\u20ac\""
-        -> Json?
+    Json("\"\\u0041\\u00e9\\u20ac\"")?
         -> Decoded?
         -> Eq("Aé€")
         -> TestResult
@@ -49,8 +46,7 @@ Unit => DecodeUnescapesUnicodeEscape {
 DecodeUnescapesUppercaseHexUnicode = TestResult
 
 Unit => DecodeUnescapesUppercaseHexUnicode {
-    "\"\\u00FF\""
-        -> Json?
+    Json("\"\\u00FF\"")?
         -> Decoded?
         -> Eq("ÿ")
         -> TestResult
@@ -59,8 +55,7 @@ Unit => DecodeUnescapesUppercaseHexUnicode {
 DecodeUnwrapsString = TestResult
 
 Unit => DecodeUnwrapsString {
-    "\"gpt-4\""
-        -> Json?
+    Json("\"gpt-4\"")?
         -> Decoded?
         -> Eq("gpt-4")
         -> TestResult
@@ -69,7 +64,8 @@ Unit => DecodeUnwrapsString {
 FieldExtractsMember = TestResult
 
 Unit => FieldExtractsMember {
-    "{\"model\":\"gpt-4\",\"stream\":true}"
+    "{\"model\":\"gpt-4\","
+        -> Joined("\"stream\":true}")
         -> Json?
         -> Field("model")?
         -> Decoded?
@@ -80,35 +76,35 @@ Unit => FieldExtractsMember {
 FieldRejectsMissingKeyEmptyObject = TestResult
 
 Unit => FieldRejectsMissingKeyEmptyObject {
-    "{}" -> Json? -> Field("missing") -> (
+    "{" -> Joined("}") -> Json? -> Field("missing") -> (
         * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { "\"missing\" should not resolve in {}" -> Fail }
+        * Ok<Json> => TestResult { Fail("\"missing\" should not resolve in {}") }
     )
 }
 
 FieldRejectsMissingKeyNoMatch = TestResult
 
 Unit => FieldRejectsMissingKeyNoMatch {
-    "{\"model\":\"gpt-4\"}" -> Json? -> Field("missing") -> (
+    "{\"model\":" -> Joined("\"gpt-4\"}") -> Json? -> Field("missing") -> (
         * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { "\"missing\" should not resolve" -> Fail }
+        * Ok<Json> => TestResult { Fail("\"missing\" should not resolve") }
     )
 }
 
 InvalidJsonRejected = TestResult
 
 Unit => InvalidJsonRejected {
-    "{oops" -> Json -> (
+    Json("{oops") -> (
         * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { "\"{oops\" should not validate" -> Fail }
+        * Ok<Json> => TestResult { Fail("\"{oops\" should not validate") }
     )
 }
 
 JsonAcceptsArray = TestResult
 
 Unit => JsonAcceptsArray {
-    "[1,2,3]" -> Json -> (
-        * Err<MalformedJson> => TestResult { "\"[1,2,3]\" should validate as JSON" -> Fail }
+    "[1,2," -> Joined("3]") -> Json -> (
+        * Err<MalformedJson> => TestResult { Fail("\"[1,2,3]\" should validate as JSON") }
         * Ok<Json> => TestResult { Pass() }
     )
 }
@@ -116,8 +112,8 @@ Unit => JsonAcceptsArray {
 JsonAcceptsNull = TestResult
 
 Unit => JsonAcceptsNull {
-    "null" -> Json -> (
-        * Err<MalformedJson> => TestResult { "\"null\" should validate as JSON" -> Fail }
+    Json("null") -> (
+        * Err<MalformedJson> => TestResult { Fail("\"null\" should validate as JSON") }
         * Ok<Json> => TestResult { Pass() }
     )
 }
@@ -125,8 +121,8 @@ Unit => JsonAcceptsNull {
 JsonAcceptsNumber = TestResult
 
 Unit => JsonAcceptsNumber {
-    "-1.5e10" -> Json -> (
-        * Err<MalformedJson> => TestResult { "\"-1.5e10\" should validate as JSON" -> Fail }
+    Json("-1.5e10") -> (
+        * Err<MalformedJson> => TestResult { Fail("\"-1.5e10\" should validate as JSON") }
         * Ok<Json> => TestResult { Pass() }
     )
 }
@@ -134,11 +130,9 @@ Unit => JsonAcceptsNumber {
 JsonRejectsMalformedNumber = TestResult
 
 Unit => JsonRejectsMalformedNumber {
-    "1." -> Json -> (
+    Json("1.") -> (
         * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult {
-            "\"1.\" should not validate (missing fractional digits)" -> Fail
-        }
+        * Ok<Json> => TestResult { Fail("\"1.\" should not validate (missing fractional digits)") }
     )
 }
 
@@ -154,8 +148,7 @@ Unit => ToJsonFalse {
 ToJsonFloat = TestResult
 
 Unit => ToJsonFloat {
-    1.5
-        -> ToJson
+    ToJson(1.5)
         -> Eq("1.5")
         -> TestResult
 }
@@ -163,8 +156,7 @@ Unit => ToJsonFloat {
 ToJsonInt = TestResult
 
 Unit => ToJsonInt {
-    42
-        -> ToJson
+    ToJson(42)
         -> Eq("42")
         -> TestResult
 }
@@ -172,8 +164,7 @@ Unit => ToJsonInt {
 ToJsonStringEscapes = TestResult
 
 Unit => ToJsonStringEscapes {
-    "a\"b\\c"
-        -> ToJson
+    ToJson("a\"b\\c")
         -> Eq("\"a\\\"b\\\\c\"")
         -> TestResult
 }
@@ -181,8 +172,7 @@ Unit => ToJsonStringEscapes {
 ToJsonStringPlain = TestResult
 
 Unit => ToJsonStringPlain {
-    "hi"
-        -> ToJson
+    ToJson("hi")
         -> Eq("\"hi\"")
         -> TestResult
 }

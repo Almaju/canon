@@ -59,7 +59,7 @@ fn corpus_is_canonically_formatted() {
     }
     assert!(
         drifted.is_empty(),
-        "{} corpus file(s) drifted from canonical format (run `canon fmt` on them):\n  {}",
+        "{} corpus file(s) drifted from canonical format (run `just fmt-can`):\n  {}",
         drifted.len(),
         drifted.join("\n  ")
     );

@@ -79,6 +79,11 @@ pub(super) fn newtype_unwrap_ty(recv_ty: &Ty, field: &str) -> Option<Ty> {
         (Ty::I64, "Int") => Some(Ty::I64),
         (Ty::F64, "Float") => Some(Ty::F64),
         (Ty::I32, "Bool") => Some(Ty::I32),
+        // Idempotent unwrap through a product alias: `X.Instant` where
+        // `X = Instant` and the compiled value is already the `Instant`
+        // struct pointer (a string-anchored binding's record decode
+        // pushes the product it aliases). Static-type retype only.
+        (Ty::NamedPtr(product), _) if product == field => Some(Ty::NamedPtr(product.clone())),
         _ => None,
     }
 }
@@ -3164,9 +3169,8 @@ impl<'m> WasmGen<'m> {
             }
         }
 
-        // `.print()` is a universal method that delegates to the type-aware
-        // `emit_print` helper. It accepts 0 args (`x.print()`) — a single
-        // arg form for the legacy `Stdout` convention can be added later.
+        // `.print()` is a universal zero-arg method that delegates to the
+        // type-aware `emit_print` helper.
         if method == "print" && args.is_empty() {
             self.emit_print(recv_ty, scope, f);
             return Ty::Unit;
@@ -4952,7 +4956,7 @@ impl<'m> WasmGen<'m> {
                     }));
                     f.instruction(&Instruction::LocalSet(local));
                 }
-                // WIT declaration order (wit-vendor/wasi/http.wit).
+                // WIT declaration order (packages/canon/std/wit/wasi/http.wit).
                 const METHOD_NAMES: [&str; 9] = [
                     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
                 ];

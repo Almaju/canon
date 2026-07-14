@@ -35,9 +35,8 @@ Prefix = String
 Update = Todos
 
 Unit => AddForm {
-    "data-msg-form=\"Add:\""
-        -> Attr
-        -> ElAttr("placeholder=\"What needs doing?\"" -> Attr -> ElAttr("" * "input" -> Tag) * "form" -> Tag)
+    Attr("data-msg-form=\"Add:\"")
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("" * Tag("input")) * Tag("form"))
 }
 
 Todos => Html {
@@ -49,35 +48,33 @@ Todos => Html {
 }
 
 Unit => Init {
-    "check the canon backend"
-        -> Title
-        -> AddedTodo("build the canon frontend" -> Title -> AddedTodo("" -> Todos))
+    Title("check the canon backend")
+        -> AddedTodo(Title("build the canon frontend") -> AddedTodo(Todos("")))
 }
 
 Unit => LoadButton {
-    "data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\""
-        -> Attr
-        -> ElAttr("Load todos from the server" * "button" -> Tag)
+    Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
+        -> ElAttr("Load todos from the server" * Tag("button"))
 }
 
 Todos * String => Update {
-    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
+    String -> Substring(From(1) * To(4)) -> Prefix -> (
         * "Add:" => Todos {
             String
-                -> Substring(5 -> From * String -> Length -> To)
+                -> Substring(From(5) * String -> Length -> To)
                 -> Title
                 -> AddedTodo(Todos)
         }
         * "Dele" => Todos {
             String
-                -> Substring(8 -> From * String -> Length -> To)
+                -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> RemovedAt(Todos)
         }
-        * "Load" => Todos { String -> Substring(6 -> From * String -> Length -> To) -> Todos }
+        * "Load" => Todos { String -> Substring(From(6) * String -> Length -> To) -> Todos }
         * "Togg" => Todos {
             String
-                -> Substring(8 -> From * String -> Length -> To)
+                -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> ToggledAt(Todos)
         }
@@ -103,32 +100,20 @@ Request => Response {
     Request.method() -> (
         * "GET" => Response {
             Request.path() -> (
-                * None => Response {
-                    "bad request"
-                        -> Body
-                        -> Response(400 -> Status * CorsHeaders())
-                }
+                * None => Response { Body("bad request") -> Response(Status(400) * CorsHeaders()) }
                 * Some<String> => Response {
                     String -> (
                         * "/todos" => Response {
-                            200
-                                -> Status
-                                -> Response(CorsHeaders() * Seeded() -> String -> Body)
+                            Status(200) -> Response(CorsHeaders() * Seeded() -> String -> Body)
                         }
                         * String => Response {
-                            "not found"
-                                -> Body
-                                -> Response(404 -> Status * CorsHeaders())
+                            Body("not found") -> Response(Status(404) * CorsHeaders())
                         }
                     )
                 }
             )
         }
-        * String => Response {
-            "method not allowed"
-                -> Body
-                -> Response(405 -> Status * CorsHeaders())
-        }
+        * String => Response { Body("method not allowed") -> Response(Status(405) * CorsHeaders()) }
     )
 }
 ```
@@ -147,11 +132,11 @@ and the loader pulls in the same files for each compile:
 - [`title.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/title.can)
   -- the `Title` newtype.
 
-There is no `canon.toml` here on purpose: the two entries share the
-directory so they can reference the same sibling files. (Package-level
-`[deps]` sharing is future work; same-directory sharing is the honest
-mechanism available today, which is also why `just examples` does not
-run this one.)
+There is no `src/main.can` here on purpose — this directory is not a
+package: the two entries share the directory so they can reference the
+same sibling files. (Package-level dependency sharing is future work;
+same-directory sharing is the honest mechanism available today, which
+is also why `just examples` does not run this one.)
 
 ## What it demonstrates
 

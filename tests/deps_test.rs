@@ -15,10 +15,9 @@
 //! directly under the package directory bind to the WIT interface the
 //! path spells (`ok_bindings` pins that end-to-end).
 //!
-//! None of these projects has an `canon.toml` — the `deps/` root falls
-//! back to the entry file's directory, which is exactly the
-//! manifest-free layout modules & packages (docs/src/spec/modules.md)
-//! ends at.
+//! Each project is nothing but files — a `deps/` tree next to the
+//! entry is the whole declaration, which is exactly the layout modules
+//! & packages (docs/src/spec/modules.md) specifies.
 
 mod common;
 
@@ -145,7 +144,7 @@ fn two_vendored_versions_are_rejected() {
     let msgs = check_errors("fail_two_versions");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("duplicate function `Shouted` on `String`")),
+            .any(|m| m.contains("duplicate constructor: `Shouted` already has a constructor whose first input is `String`")),
         "expected a duplicate-function error, got: {msgs:?}"
     );
 }
@@ -158,7 +157,7 @@ fn deps_and_local_resolution_is_ambiguous() {
     let msgs = check_errors("fail_ambiguous");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("duplicate function `Shouted` on `String`")),
+            .any(|m| m.contains("duplicate constructor: `Shouted` already has a constructor whose first input is `String`")),
         "expected a duplicate-function error, got: {msgs:?}"
     );
 }

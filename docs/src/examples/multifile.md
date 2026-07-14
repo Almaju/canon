@@ -5,7 +5,6 @@ the smallest possible demonstration of Canon's module system.
 
 ```text
 multifile/
-  canon.toml
   src/
     greeter.can
     main.can
@@ -29,8 +28,7 @@ Greeter => Shout {
 
 ```canon
 Unit => Program {
-    "hi"
-        -> Greeter
+    Greeter("hi")
         -> Shout
         -> Print
 }

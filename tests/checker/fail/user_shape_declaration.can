@@ -1,0 +1,13 @@
+Greeting = String
+
+Show = () => String
+
+Show = (Greeting) => String {
+    "HELLO!"
+}
+
+Unit => Program {
+    Greeting("hi")
+        -> Show
+        -> Print
+}

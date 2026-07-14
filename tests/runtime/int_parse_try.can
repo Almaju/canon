@@ -1,4 +1,6 @@
-Doubled = (String) => Result<Int, MalformedInt> {
+Doubled = Int
+
+String => Result<Doubled, MalformedInt> {
     String
         -> Int?
         -> Product(2)
@@ -6,11 +8,11 @@ Doubled = (String) => Result<Int, MalformedInt> {
 }
 
 Unit => Program {
-    "21" -> Doubled -> (
+    Doubled("21") -> (
         * Err<MalformedInt> => Unit { "err" -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
-    "x" -> Doubled -> (
+    Doubled("x") -> (
         * Err<MalformedInt> => Unit { MalformedInt -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )

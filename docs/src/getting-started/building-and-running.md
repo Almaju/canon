@@ -2,51 +2,47 @@
 
 Canon commands operate on a **target**, one of:
 
-- a **package directory** (`canon.toml` + `src/main.can`),
-- a **workspace directory** (`canon.toml` with a `[workspace]` table
-  aggregating member packages), or
+- a **package directory** (one containing `src/main.can`),
+- a **workspace directory** (one whose immediate subdirectories are
+  packages), or
 - a single **`.can` file** (anonymous single-file package).
 
-When omitted, the target defaults to the current directory.
+When omitted, the target defaults to the current directory. There is
+no manifest file: the directory structure is the whole declaration.
 
 ## Package Layout
 
 ```text
 my-app/
-  canon.toml      # name, version, dependencies
   src/
-    main.can        # entry point
+    main.can        # entry point — this file makes the directory a package
     helpers.can
   build/           # compiler output (gitignored)
     my-app.wasm
     my-app.wit
 ```
 
-The artifact is named after the package, not the entry file.
+The package's name is its directory name, and the artifact is named
+after the package, not the entry file.
 
 ## Workspace Layout
 
-A workspace is a directory whose `canon.toml` carries a `[workspace]`
-table instead of (or in addition to) `name`/`version`. Each member is a
-full package; all members share the workspace's `build/`, Cargo-style.
+A workspace is nothing but a directory of packages: any directory that
+is not itself a package but whose immediate subdirectories include
+packages. Each member builds into its own `build/`.
 
 ```text
 my-workspace/
-  canon.toml      # [workspace] members = ["*"]
-  build/           # shared artifacts
-    foo.wasm
-    bar.wasm
   foo/
-    canon.toml
     src/main.can
+    build/foo.wasm
   bar/
-    canon.toml
     src/main.can
+    build/bar.wasm
 ```
 
-`members = ["*"]` means every immediate subdirectory containing an
-`canon.toml`. Explicit lists (`members = ["foo", "bar"]`) work too.
-Nested workspaces are not allowed.
+There is no member list to maintain — adding a package subdirectory
+adds it to the workspace.
 
 ## Run a Program
 
@@ -71,8 +67,8 @@ canon build my-workspace -p foo # builds only `foo`
 ```
 
 Package mode produces `build/<name>.wasm` and `build/<name>.wit` next
-to the package's `src/`. Workspace mode puts every member's artifacts
-in the workspace's shared `build/`. Single-file mode writes
+to the package's `src/`. Workspace mode builds every member into that
+member's own `build/`. Single-file mode writes
 `build/<stem>/<stem>.wasm` next to the file. The component runs on any
 host that supports WASI Preview 3 and satisfies its imports:
 `canon run`, `wasmtime serve`, browser polyfills, edge runtimes.
@@ -111,15 +107,23 @@ canon check hello.can            # single-file mode
 canon check my-workspace -p foo # only one member of a workspace
 ```
 
-Runs the full checker (sort-order rules plus type checking) without
-codegen. Fast enough for an editor lint or a pre-commit gate.
+Runs the full checker (canonical formatting, sort-order rules, type
+checking) without codegen. Fast enough for an editor lint or a
+pre-commit gate.
 
 ## Format
 
 ```sh
-canon fmt hello.can
-canon fmt hello.can --check     # exit 1 if not already formatted
+canon check --fix hello.can     # fix what's mechanical, then check
 ```
+
+Formatting is not a separate concern in Canon: a file that isn't in
+canonical form is a **compile error** — `canon check`, `build`, `run`,
+and `test` all refuse it, pointing at the first line that diverges.
+There is no separate formatter command, because a formatting error is
+just a compiler error with a mechanical fix: `--fix` rewrites the
+loaded sources into canonical form (spacing, call shape, and every
+sort-order rule) and then reports whatever it couldn't fix.
 
 ## Run Tests
 
@@ -152,6 +156,6 @@ canon help
 
 There is no `canon new` or project scaffolder yet. For quick
 experimentation, drop a `.can` file anywhere and `canon run` it. For
-proper projects, create an `canon.toml` next to a `src/main.can` and
-run `canon build` / `canon run` from that directory. For multi-file
-projects, see [Modules](../guide.md#modules).
+proper projects, create a `src/main.can` and run `canon build` /
+`canon run` from that directory. For multi-file projects, see
+[Modules](../guide.md#modules).

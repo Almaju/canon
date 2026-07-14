@@ -1,11 +1,8 @@
 Foo = String
 
 Unit => Program {
-    "x"
-        -> ToJson
-        -> Print
-    "x"
-        -> Foo
+    ToJson("x") -> Print
+    Foo("x")
         -> ToJson
         -> Print
 }

@@ -1,3 +1,5 @@
-Shouted = (String) => String {
+Shouted = String
+
+String => Shouted {
     String -> Joined("!")
 }

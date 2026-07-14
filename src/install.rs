@@ -1,31 +1,26 @@
-//! `canon install` — materialize external bindings declared in
-//! `[imports]`.
+//! `canon install` — materialize external bindings from the project's
+//! `wit/` directory.
 //!
-//! For each `[imports]` entry of type `.wit`, this generates one Canon
-//! file per interface within the WIT package, writing them under the
-//! project's `bindgen/` directory at `<namespace>/<package>/<iface>.can`.
-//! The output is the same Canon source `canon bindgen` produces, only
-//! relocated: `canon bindgen` was designed for one-shot point-at-a-WIT
-//! generation; `canon install` is the manifest-driven flow a user will
-//! actually run from inside a project.
+//! External imports are declared by file structure, not by a manifest:
+//! every immediate entry of `<project>/wit/` is one import source —
+//! a directory of cross-referencing `.wit` files (the shape the real
+//! WASI vendor tree uses), a single `.wit` file, or a `.wasm` component
+//! (deferred until the composition pipeline lands). Putting a WIT
+//! source under `wit/` *is* the import declaration; there is nothing
+//! else to write.
 //!
-//! Wasm-component entries (`*.wasm` bundled deps) are recorded as
-//! deferred — the composition pipeline that satisfies their imports
-//! lands in a later slice.
-//!
-//! The manifest key (`"wasi"`, `"wasi/random"`, …) acts as a *prefix*
-//! guard: every emitted file's path (with kebab→snake normalization,
-//! and the bindgen's internal `src/` segment stripped) must start with
-//! the key. A key of `"wasi"` matches `wasi/cli/stdout.can`,
-//! `wasi/clocks/monotonic_clock.can`, etc.; a key of `"wasi/random"`
-//! matches only files under `wasi/random/`. Mismatches surface at install
-//! time, not at the eventual `use` site, so the error names both the
-//! key and the file that failed to match.
+//! For each WIT source this generates one Canon file per interface,
+//! writing them under the project's `bindgen/` directory at
+//! `<namespace>/<package>@<version>/<iface>.can`. The output is the
+//! same Canon source `canon bindgen` produces, only relocated:
+//! `canon bindgen` was designed for one-shot point-at-a-WIT generation;
+//! `canon install` is the flow a user will actually run from inside a
+//! project.
 //!
 //! `bindgen/` is the conventional output directory; it's expected to be
 //! gitignored in user projects (the binding files are derivable from
-//! the manifest plus the WIT sources, same way `target/` is derivable
-//! from Cargo manifests). Compiler-internal packages may commit their
+//! the WIT sources under `wit/`, same way `target/` is derivable from
+//! Cargo manifests). Compiler-internal packages may commit their
 //! `bindgen/` so `cargo build` works on a fresh clone.
 
 use std::collections::BTreeMap;
@@ -34,7 +29,6 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::bindgen;
-use crate::manifest::{self, ImportSource, Manifest};
 
 /// Name of the sidecar file `canon install` writes alongside the
 /// generated bindings. Maps each emitted `.can` file's `bindgen/`-relative
@@ -47,10 +41,9 @@ use crate::manifest::{self, ImportSource, Manifest};
 /// committed for `canon/std` so `cargo build` works on a fresh clone,
 /// gitignored in user projects.
 ///
-/// Format is a TOML subset matching `canon.toml`: one `"<rel>" =
-/// "<urn>"` line per file, in alphabetical order. The first two lines
-/// are a fixed comment header so anyone opening the file knows it's a
-/// derived artifact.
+/// Format is a tiny TOML subset: one `"<rel>" = "<urn>"` line per
+/// file, in alphabetical order. The first two lines are a fixed comment
+/// header so anyone opening the file knows it's a derived artifact.
 pub const INSTALL_INDEX_FILENAME: &str = "_install.toml";
 
 /// The parsed contents of `bindgen/_install.toml`.
@@ -103,9 +96,9 @@ fn unquote(raw: &str) -> Result<String, String> {
     Ok(inner.to_string())
 }
 
-/// Top-level install error. Wraps every failure mode (manifest parse,
-/// missing WIT, bindgen failure, IO) in one type so the CLI surface has
-/// a single error to print.
+/// Top-level install error. Wraps every failure mode (missing WIT,
+/// bindgen failure, IO) in one type so the CLI surface has a single
+/// error to print.
 #[derive(Debug)]
 pub struct InstallError(pub String);
 
@@ -131,24 +124,78 @@ pub struct InstallOutcome {
     pub skipped: Vec<String>,
 }
 
-/// Read `<project_root>/canon.toml` and install every entry in
-/// `[imports]`. Returns the list of files written and any deferred items.
-pub fn install(project_root: &Path) -> Result<InstallOutcome, InstallError> {
-    let manifest_path = project_root.join("canon.toml");
-    let source = fs::read_to_string(&manifest_path)
-        .map_err(|e| InstallError(format!("could not read `{}`: {e}", manifest_path.display())))?;
-    let manifest = manifest::parse(&source).map_err(|e| InstallError(e.to_string()))?;
-    install_from_manifest(project_root, &manifest)
+/// One import source found under `<project>/wit/`.
+///
+/// The kind is determined by shape: a directory or a `.wit` file is a
+/// WIT contract the runtime must satisfy (linker-provided, à la WASI);
+/// a `.wasm` file is a component to compose into the final artifact at
+/// build time (deferred until composition lands).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WitSource {
+    /// A `.wit` file or a directory of `.wit` files.
+    Wit(PathBuf),
+    /// A wasm component whose exports satisfy the imports.
+    Wasm(PathBuf),
 }
 
-/// Walk up from `start` looking for the nearest directory containing
-/// `canon.toml`. Returns `None` if the walk reaches the filesystem
-/// root without finding one. `start` may be a file or a directory.
+/// Enumerate the import sources under `wit_root`: every immediate
+/// entry, alphabetically. Hidden entries (dotfiles) are skipped;
+/// anything that is neither a directory, a `.wit` file, nor a `.wasm`
+/// component is an error — the `wit/` directory is a declaration, so
+/// stray files in it are a mistake worth naming.
+fn wit_sources(wit_root: &Path) -> Result<Vec<WitSource>, InstallError> {
+    let entries = fs::read_dir(wit_root)
+        .map_err(|e| InstallError(format!("could not read `{}`: {e}", wit_root.display())))?;
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+
+    let mut sources = Vec::new();
+    for path in paths {
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
+        if name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() || name.ends_with(".wit") {
+            sources.push(WitSource::Wit(path));
+        } else if name.ends_with(".wasm") {
+            sources.push(WitSource::Wasm(path));
+        } else {
+            return Err(InstallError(format!(
+                "unexpected entry `{}` under `{}` (expected a `.wit` file, a directory of `.wit` files, or a `.wasm` component)",
+                name,
+                wit_root.display()
+            )));
+        }
+    }
+    Ok(sources)
+}
+
+/// Install every WIT source under `<project_root>/wit/`. Returns the
+/// list of files written and any deferred items.
+pub fn install(project_root: &Path) -> Result<InstallOutcome, InstallError> {
+    let wit_root = project_root.join("wit");
+    if !wit_root.is_dir() {
+        return Err(InstallError(format!(
+            "no `wit/` directory at `{}` — external imports are declared by putting WIT sources under `wit/`",
+            project_root.display()
+        )));
+    }
+    let sources = wit_sources(&wit_root)?;
+    install_sources(project_root, &sources)
+}
+
+/// Walk up from `start` looking for the nearest project root — a
+/// directory carrying any of the structural project markers: a
+/// `src/main.can` entry point, or a `wit/`, `bindgen/`, or `deps/`
+/// tree. Returns `None` if the walk reaches the filesystem root
+/// without finding one. `start` may be a file or a directory.
 ///
-/// Used by `ensure_installed` to anchor the staleness check against
-/// the manifest; the loader and LSP have their own analogous walks
-/// for the directories they care about (the duplication is small and
-/// stable enough that consolidating it isn't yet worth the indirection).
+/// Used by `ensure_installed` to anchor the staleness check; the
+/// loader and LSP share the same marker rule (see
+/// `loader::find_project_root`).
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut cur: PathBuf = if start.is_file() {
         start.parent()?.to_path_buf()
@@ -156,21 +203,32 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
         start.to_path_buf()
     };
     loop {
-        if cur.join("canon.toml").is_file() {
+        if is_project_root(&cur) {
             return Some(cur);
         }
         cur = cur.parent()?.to_path_buf();
     }
 }
 
+/// The structural project-root test: a directory is a project root when
+/// it contains a `src/main.can` entry point or any of the conventional
+/// project trees (`wit/`, `bindgen/`, `deps/`). Structure is the only
+/// marker — there is no manifest file.
+pub fn is_project_root(dir: &Path) -> bool {
+    dir.join("src").join("main.can").is_file()
+        || dir.join("wit").is_dir()
+        || dir.join("bindgen").is_dir()
+        || dir.join("deps").is_dir()
+}
+
 /// Result of an `ensure_installed` call.
 #[derive(Debug)]
 pub enum EnsureOutcome {
-    /// No project root found, or the manifest has no `[imports]`
-    /// entries. Nothing was done; the binding tree (if any) is left as-is.
+    /// No project root found, or the project has no `wit/` sources.
+    /// Nothing was done; the binding tree (if any) is left as-is.
     NoProject,
-    /// `bindgen/` was already in sync with the manifest and the WIT
-    /// sources — no install needed. This is the steady-state path,
+    /// `bindgen/` was already in sync with the WIT sources under
+    /// `wit/` — no install needed. This is the steady-state path,
     /// so it stays silent.
     UpToDate,
     /// An install was run because the binding tree was missing or
@@ -179,50 +237,51 @@ pub enum EnsureOutcome {
     Installed(InstallOutcome),
 }
 
-/// Run `install` on the project containing `start_path` if any of its
-/// `[imports]` entries appear out-of-date relative to the materialized
-/// `bindgen/_install.toml` index. This is the auto-installer hook the
-/// CLI calls from `canon run` / `canon check` / `canon build` /
-/// `canon test`, so users don't have to remember a separate step.
+/// Run `install` on the project containing `start_path` if any of the
+/// WIT sources under its `wit/` directory appear out-of-date relative
+/// to the materialized `bindgen/_install.toml` index. This is the
+/// auto-installer hook the CLI calls from `canon run` / `canon check` /
+/// `canon build` / `canon test`, so users don't have to remember a
+/// separate step.
 ///
 /// Staleness rules (any of):
 ///   * `bindgen/_install.toml` doesn't exist (never installed).
-///   * `canon.toml`'s mtime is newer than the index (manifest changed).
-///   * Any WIT source declared in `[imports]` has an mtime newer than
-///     the index. For directory sources, we take the max mtime over
-///     every `.wit` file inside.
+///   * `wit/` itself has an mtime newer than the index (a source was
+///     added or removed).
+///   * Any WIT source under `wit/` has an mtime newer than the index.
+///     For directory sources, we take the max mtime over every `.wit`
+///     file inside.
 ///
-/// Up-to-date short-circuits fast — no parse beyond the manifest, no
-/// bindgen, no IO into `bindgen/`. The cost on the steady-state path is
-/// one `read_to_string` of the manifest plus a `metadata()` per
-/// imported source.
+/// Up-to-date short-circuits fast — no bindgen, no IO into `bindgen/`.
+/// The cost on the steady-state path is one directory listing of
+/// `wit/` plus a `metadata()` per source.
 pub fn ensure_installed(start_path: &Path) -> Result<EnsureOutcome, InstallError> {
     let project_root = match find_project_root(start_path) {
         Some(p) => p,
         None => return Ok(EnsureOutcome::NoProject),
     };
 
-    let manifest_path = project_root.join("canon.toml");
-    let manifest_src = fs::read_to_string(&manifest_path)
-        .map_err(|e| InstallError(format!("could not read `{}`: {e}", manifest_path.display())))?;
-    let manifest = manifest::parse(&manifest_src).map_err(|e| InstallError(e.to_string()))?;
-
-    if manifest.imports.is_empty() {
+    let wit_root = project_root.join("wit");
+    if !wit_root.is_dir() {
+        return Ok(EnsureOutcome::NoProject);
+    }
+    let sources = wit_sources(&wit_root)?;
+    if sources.is_empty() {
         return Ok(EnsureOutcome::NoProject);
     }
 
-    if !needs_install(&project_root, &manifest, &manifest_path) {
+    if !needs_install(&project_root, &sources, &wit_root) {
         return Ok(EnsureOutcome::UpToDate);
     }
 
-    let outcome = install_from_manifest(&project_root, &manifest)?;
+    let outcome = install_sources(&project_root, &sources)?;
     Ok(EnsureOutcome::Installed(outcome))
 }
 
 /// Decide whether the materialized bindings are stale relative to the
-/// manifest and the WIT sources. Returns `true` when an install should
+/// WIT sources under `wit/`. Returns `true` when an install should
 /// be run.
-fn needs_install(project_root: &Path, manifest: &Manifest, manifest_path: &Path) -> bool {
+fn needs_install(project_root: &Path, sources: &[WitSource], wit_root: &Path) -> bool {
     let bindgen_root = project_root.join("bindgen");
     let index_path = bindgen_root.join(INSTALL_INDEX_FILENAME);
 
@@ -254,18 +313,18 @@ fn needs_install(project_root: &Path, manifest: &Manifest, manifest_path: &Path)
         return true;
     };
 
-    // Manifest changed since the last install.
-    if mtime_newer_than(manifest_path, index_mtime) {
+    // `wit/` itself changed since the last install (a source was added
+    // or removed — a directory's mtime tracks its entry list).
+    if mtime_newer_than(wit_root, index_mtime) {
         return true;
     }
 
-    // Any imported WIT source newer than the index.
-    for source in manifest.imports.values() {
-        let ImportSource::Wit(rel) = source else {
+    // Any WIT source newer than the index.
+    for source in sources {
+        let WitSource::Wit(path) = source else {
             continue;
         };
-        let abs = project_root.join(rel);
-        if max_wit_mtime_newer_than(&abs, index_mtime) {
+        if max_wit_mtime_newer_than(path, index_mtime) {
             return true;
         }
     }
@@ -305,33 +364,30 @@ fn max_wit_mtime_newer_than(path: &Path, cutoff: SystemTime) -> bool {
     false
 }
 
-/// Same as [`install`], but with a pre-parsed manifest. Useful for tests
-/// and for callers (e.g. a future `canon build`) that already parsed the
-/// manifest for their own reasons.
-pub fn install_from_manifest(
+/// Same as [`install`], but with an already-enumerated source list.
+fn install_sources(
     project_root: &Path,
-    manifest: &Manifest,
+    sources: &[WitSource],
 ) -> Result<InstallOutcome, InstallError> {
     let bindgen_root = project_root.join("bindgen");
     let mut written = Vec::new();
     let mut skipped = Vec::new();
     let mut index = InstallIndex::default();
 
-    for (import_key, source) in &manifest.imports {
+    for source in sources {
         match source {
-            ImportSource::Wit(rel_path) => {
-                let abs_wit = project_root.join(rel_path);
-                let entry_result = install_wit_entry(import_key, &abs_wit, &bindgen_root)?;
+            WitSource::Wit(wit_path) => {
+                let entry_result = install_wit_entry(wit_path, &bindgen_root)?;
                 written.extend(entry_result.written);
                 skipped.extend(entry_result.skipped);
                 for (rel, urn) in entry_result.index_entries {
                     index.entries.insert(rel, urn);
                 }
             }
-            ImportSource::Wasm(rel_path) => {
+            WitSource::Wasm(path) => {
                 skipped.push(format!(
-                    "import `{}` from `{}`: bundled wasm components are not yet supported by `canon install`",
-                    import_key, rel_path
+                    "import `{}`: bundled wasm components are not yet supported by `canon install`",
+                    path.display()
                 ));
             }
         }
@@ -353,7 +409,7 @@ pub fn install_from_manifest(
     Ok(InstallOutcome { written, skipped })
 }
 
-/// Result of installing a single `[imports]` entry. Internal helper —
+/// Result of installing a single `wit/` source. Internal helper —
 /// the public outcome flattens these.
 struct EntryResult {
     written: Vec<PathBuf>,
@@ -384,43 +440,22 @@ fn write_install_index(path: &Path, index: &InstallIndex) -> Result<(), InstallE
     Ok(())
 }
 
-/// Install a single WIT entry: parse the WIT (file or directory),
-/// validate every emitted interface's path against the manifest-key
-/// prefix, and write the generated source under `<bindgen_root>/`.
+/// Install a single WIT source: parse the WIT (file or directory) and
+/// write the generated source under `<bindgen_root>/`.
 ///
 /// The bindgen emits the vendored-package layout directly
 /// (`<ns>/<pkg>@<version>/<iface>.can`, see docs/src/spec/modules.md): the
 /// directory name carries the pin and the loader derives each
 /// binding's URN from the path — the files carry no directive.
-fn install_wit_entry(
-    import_key: &str,
-    wit_path: &Path,
-    bindgen_root: &Path,
-) -> Result<EntryResult, InstallError> {
-    if !wit_path.exists() {
-        return Err(InstallError(format!(
-            "import `{}` references `{}`, which does not exist",
-            import_key,
-            wit_path.display()
-        )));
-    }
-
-    let emitted = bindgen::generate_from_path(wit_path).map_err(|e| {
-        InstallError(format!(
-            "import `{}`: bindgen failed for `{}`: {e}",
-            import_key,
-            wit_path.display()
-        ))
-    })?;
+fn install_wit_entry(wit_path: &Path, bindgen_root: &Path) -> Result<EntryResult, InstallError> {
+    let emitted = bindgen::generate_from_path(wit_path)
+        .map_err(|e| InstallError(format!("bindgen failed for `{}`: {e}", wit_path.display())))?;
     if emitted.is_empty() {
         return Err(InstallError(format!(
-            "import `{}`: `{}` produced no interfaces",
-            import_key,
+            "`{}` produced no interfaces",
             wit_path.display()
         )));
     }
-
-    let key_prefix = format!("{}/", import_key);
 
     let mut written = Vec::new();
     let mut skipped = Vec::new();
@@ -434,23 +469,6 @@ fn install_wit_entry(
         }
 
         let rel = file.relative_path.clone();
-
-        // Prefix guard: every emitted file's path must sit under the
-        // manifest key. This is what makes the manifest key meaningful
-        // — a `"wasi"` import can install all WASI interfaces, but a
-        // `"wasi/random"` import can't accidentally pull in `wasi/cli`.
-        // The key is written without versions (`"wasi/clocks"`), so the
-        // comparison strips the `@<version>` suffixes the emitted path
-        // carries.
-        if !strip_version_suffixes(&rel).starts_with(&key_prefix) {
-            return Err(InstallError(format!(
-                "import `{}`: WIT at `{}` produced interface at `{}`, which is not under `{}/`. The manifest key must be a path prefix of every emitted file.",
-                import_key,
-                wit_path.display(),
-                rel.trim_end_matches(".can"),
-                import_key,
-            )));
-        }
 
         let target = bindgen_root.join(&rel);
         if let Some(parent) = target.parent() {
@@ -482,8 +500,8 @@ fn install_wit_entry(
 /// Drop the `@<version>` suffix from every path segment:
 /// `wasi/clocks@0.3.0/monotonic_clock.can` →
 /// `wasi/clocks/monotonic_clock.can`. Used to compare version-carrying
-/// vendored paths against version-less keys (manifest `[imports]`
-/// keys, use paths) — source never states versions.
+/// vendored paths against version-less package prefixes — source never
+/// states versions.
 pub(crate) fn strip_version_suffixes(rel: &str) -> String {
     rel.split('/')
         .map(|seg| seg.split_once('@').map(|(l, _)| l).unwrap_or(seg))

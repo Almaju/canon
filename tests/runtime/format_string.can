@@ -11,10 +11,6 @@ Int => Line {
 }
 
 Unit => Program {
-    "world"
-        -> Greeting
-        -> Print
-    41
-        -> Line
-        -> Print
+    Greeting("world") -> Print
+    Line(41) -> Print
 }

@@ -5,6 +5,6 @@ Price = Float
 Quote = Label * Price
 
 Unit => Program {
-    "widget" -> Label -> Quote(19.99 -> Price).Label -> Print
-    "widget" -> Label -> Quote(19.99 -> Price).Price -> Print
+    Label("widget") -> Quote(Price(19.99)).Label -> Print
+    Label("widget") -> Quote(Price(19.99)).Price -> Print
 }

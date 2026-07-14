@@ -621,7 +621,7 @@ fn preflight(files: &[(String, String)], root: &Path) -> Result<(), InstallError
             .map_err(|e| InstallError(format!("`{rel}` does not parse: {e:?}")))?;
         if &formatted != source {
             return Err(InstallError(format!(
-                "`{rel}` is not canonically formatted: run `canon fmt` before publishing"
+                "`{rel}` is not canonically formatted: run `canon check --fix` before publishing"
             )));
         }
     }

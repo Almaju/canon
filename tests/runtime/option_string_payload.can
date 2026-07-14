@@ -1,16 +1,18 @@
-Picked = (Int) => Option<String> {
+Picked = String
+
+Int => Option<Picked> {
     Int -> Eq(0) -> (
-        * False => Option<String> { "payload" -> Some }
-        * True => Option<String> { None() }
+        * False => Option<Picked> { Some("payload") }
+        * True => Option<Picked> { None() }
     )
 }
 
 Unit => Program {
-    1 -> Picked -> (
+    Picked(1) -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    0 -> Picked -> (
+    Picked(0) -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )

@@ -5,7 +5,5 @@ Unit => NotFound {
 }
 
 Request => Response {
-    404
-        -> Status
-        -> Response(Headers() * NotFound())
+    Status(404) -> Response(Headers() * NotFound())
 }

@@ -66,12 +66,15 @@ User = Birthday * Username
   `User(Username("ada") * Birthday("..."))` and
   `User(Birthday("...") * Username("ada"))` build the same value -- position
   never carries meaning. Because the components are distinct types, each
-  value's type selects its field; `canon fmt` canonicalises the written
-  order alphabetically. Where two fields share an underlying type
-  (`Key = String` and `Value = String` in `Node = Key * Rest * Value`),
-  tag the values with the newtype -- `Node(Key("k") * Value("v") * ...)` --
-  so each still selects its field. A bare, untagged `String` carries no
-  such tag and falls back to declaration order.
+  value's type selects its field; `canon check --fix` canonicalises the written
+  order alphabetically when every input carries its type syntactically
+  (a tagged construction, a typed reference). Where two fields share an
+  underlying type (`Key = String` and `Value = String` in
+  `Node = Key * Rest * Value`), tag the values with the newtype --
+  `Node(Key("k") * Value("v") * ...)` -- so each still selects its field.
+  A bare, untagged `String` carries no such tag and falls back to
+  declaration order -- which is why `canon check --fix` never reorders literal
+  operands: their position is their identity.
 
 ## Newtypes
 
@@ -153,15 +156,19 @@ code for the pattern.
 ## Validated Constructors
 
 By default every type `T` has a total constructor `T(inner)`. A file may
-replace it by declaring a **function with the type's own name**:
+replace it by declaring the **anonymous constructor arrow** for the
+type:
 
 ```canon
 Url = String
 
-Url = (String) => Result<Url, InvalidUrl> {
+String => Result<Url, InvalidUrl> {
     ...
 }
 ```
+
+(The named spelling `Url = (String) => …` repeats the name the
+signature already carries; `canon check --fix` rewrites it to the arrow.)
 
 - If a constructor is declared, it *is* the constructor; the implicit
   total one is gone.
@@ -182,12 +189,10 @@ Url = (String) => Result<Url, InvalidUrl> {
 constructing a `T`, because it is one:
 
 ```canon
-String(42)            # "42" -- decimal rendering
-42.String()           # the same declaration, method spelling
-Int("42")             # Result<Int, MalformedInt> -- parsing can fail
-"42".Int()?           # method spelling, ?-propagated
-String(Byte(65))      # "A" -- a Byte renders as its character
-List("1", "2").Json() # [1,2] -- a list of JSON values as a JSON array
+String(42)              # "42" -- decimal rendering
+Int("42")?              # Result<Int, MalformedInt> -- parsing can fail
+String(Byte(65))        # "A" -- a Byte renders as its character
+List("1" * "2") -> Json # [1,2] -- a list of JSON values as a JSON array
 ```
 
 - Infallible conversions return the target type; the function's name
@@ -195,8 +200,8 @@ List("1", "2").Json() # [1,2] -- a list of JSON values as a JSON array
 - Fallible conversions are [validated
   constructors](#validated-constructors) returning `Result<T, E>` --
   `Int(String)` forces `?` or dispatch exactly like `Url(String)`.
-- `T(value)` and `value.T()` are the same declaration (the commutative
-  method-call rule), so what Rust splits into `From` and `Into` is one
+- `T(value)` and `value -> T` are the same declaration (the commutative
+  call rule), so what Rust splits into `From` and `Into` is one
   function here.
 - Ambiguity is resolved by newtypes: `String(42)` renders decimal
   digits, `String(Byte(42))` is the one-byte string `"*"` -- wrapping

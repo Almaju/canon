@@ -1,5 +1,7 @@
 Contains = Bool
 
+Inserted = Map
+
 Key = String
 
 Keys = List<Key>
@@ -9,6 +11,8 @@ Length = Int
 Map = Empty + Node
 
 Node = Key * Rest * Value
+
+Removed = Map
 
 Rest = Map
 
@@ -23,20 +27,20 @@ Map * String => Contains {
     )
 }
 
-Inserted = (Map * String * Value) => Map {
+Map * String * Value => Inserted {
     Map -> (
-        * Empty => Map { Empty() -> Node(String * Value) }
-        * Node => Map {
+        * Empty => Inserted { Empty() -> Node(String * Value) }
+        * Node => Inserted {
             String -> Lt(Node.Key) -> (
-                * False => Map {
+                * False => Inserted {
                     String -> Eq(Node.Key) -> (
-                        * False => Map {
+                        * False => Inserted {
                             Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value)
                         }
-                        * True => Map { Node.Rest -> Node(String * Value) }
+                        * True => Inserted { Node.Rest -> Node(String * Value) }
                     )
                 }
-                * True => Map { Map -> Node(String * Value) }
+                * True => Inserted { Map -> Node(String * Value) }
             )
         }
     )
@@ -60,13 +64,13 @@ Unit => Map {
     Empty()
 }
 
-Removed = (Map * String) => Map {
+Map * String => Removed {
     Map -> (
-        * Empty => Map { Empty() }
-        * Node => Map {
+        * Empty => Removed { Empty() }
+        * Node => Removed {
             Node.Key -> Eq(String) -> (
-                * False => Map { Node.Key -> Node(Node.Rest -> Removed(String) * Node.Value) }
-                * True => Map { Node.Rest }
+                * False => Removed { Node.Key -> Node(Node.Rest -> Removed(String) * Node.Value) }
+                * True => Removed { Node.Rest }
             )
         }
     )

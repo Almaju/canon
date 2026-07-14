@@ -1,10 +1,14 @@
+Murmur = String
+
+Shout = String
+
 Greeting = String
 
-Shout = (Greeting) => String {
+Greeting => Shout {
     "HELLO"
 }
 
-Murmur = (Greeting) => String {
+Greeting => Murmur {
     "hello"
 }
 

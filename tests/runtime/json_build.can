@@ -1,8 +1,8 @@
 Unit => Result<Program, MalformedJson> {
     "{\"answer\":"
-        -> Joined(42 -> ToJson)
+        -> Joined(ToJson(42))
         -> Joined(",\"label\":")
-        -> Joined("life" -> ToJson)
+        -> Joined(ToJson("life"))
         -> Joined("}")
         -> Json?
         -> Print

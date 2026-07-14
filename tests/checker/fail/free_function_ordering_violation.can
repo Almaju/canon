@@ -1,8 +1,12 @@
-Zebra = () => String {
+Apple = String
+
+Zebra = String
+
+Unit => Zebra {
     "z"
 }
 
-Apple = () => String {
+Unit => Apple {
     "a"
 }
 

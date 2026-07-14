@@ -5,7 +5,7 @@ Create a file named `hello.can`:
 ```canon,run=hello-world
 Args => Exit {
     "hello" -> Print
-    0 -> Exit
+    Exit(0)
 }
 ```
 

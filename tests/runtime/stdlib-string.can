@@ -1,14 +1,6 @@
 Unit => Program {
-    "Hello, World"
-        -> Uppercased
-        -> Print
-    "GoodBye"
-        -> Lowercased
-        -> Print
-    "MiXeD 123 !?"
-        -> Uppercased
-        -> Print
-    "MiXeD 123 !?"
-        -> Lowercased
-        -> Print
+    Uppercased("Hello, World") -> Print
+    Lowercased("GoodBye") -> Print
+    Uppercased("MiXeD 123 !?") -> Print
+    Lowercased("MiXeD 123 !?") -> Print
 }

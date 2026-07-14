@@ -1,15 +1,17 @@
-Reported = (String) => Unit {
+Reported = Unit
+
+String => Reported {
     String -> Url -> (
-        * Err<InvalidUrl> => Unit { InvalidUrl -> Print }
-        * Ok<Url> => Unit { Url -> Print }
+        * Err<InvalidUrl> => Reported { InvalidUrl -> Print }
+        * Ok<Url> => Reported { Url -> Print }
     )
 }
 
 Unit => Program {
-    "http://example.com/path" -> Reported
-    "https://example.com" -> Reported
-    "ftp://example.com" -> Reported
-    "http://" -> Reported
-    "http:///path" -> Reported
-    "https://x" -> Reported
+    Reported("http://example.com/path")
+    Reported("https://example.com")
+    Reported("ftp://example.com")
+    Reported("http://")
+    Reported("http:///path")
+    Reported("https://x")
 }

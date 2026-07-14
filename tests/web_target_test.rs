@@ -25,16 +25,15 @@ Model = Int
 Update = Model
 
 Model => Html {
-    "Canon Counter"
-        -> H1
-        -> Joined("Decrement" -> Msg -> Button("-"))
+    H1("Canon Counter")
+        -> Joined(Msg("Decrement") -> Button("-"))
         -> Joined(Model -> String -> Span)
-        -> Joined("Increment" -> Msg -> Button("+"))
+        -> Joined(Msg("Increment") -> Button("+"))
         -> Div
 }
 
 Unit => Init {
-    0 -> Model
+    Model(0)
 }
 
 Model * String => Update {
@@ -252,11 +251,9 @@ fn web_todolist_example_loop_and_replay() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // `examples/` is a workspace, so members build to its shared
-    // `examples/build/<stem>.{wasm}` plus the three-file web bundle.
-    let build = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
-        .join("build");
+    // A package builds into its own `build/<stem>.wasm` plus the
+    // three-file web bundle.
+    let build = example.join("build");
     let wasm_path = build.join("todolist-web.wasm");
     assert!(
         wasm_path.exists(),

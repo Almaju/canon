@@ -24,11 +24,32 @@ Greeting * Name => Line {
 }
 ```
 
-A named form also exists -- `Line = (Greeting * Name) => Line { ... }` --
-and is how a *result newtype* declares the operation that produces it
-(`Inserted = (Map * String * Value) => Map { ... }`). The name must be
-PascalCase: a camelCase declaration is a checker error everywhere
-except [binding files](./compilation.md).
+A named form exists for exactly one thing: **shape implementations**,
+where the name carries information the types cannot (`ToJson = (Bool)
+=> Json { ... }` implements the declared shape `ToJson`). A named
+declaration whose name is just the constructed type spells the name
+twice, so `canon check --fix` rewrites it to the anonymous arrow (`Url =
+(String) => Result<Url, InvalidUrl>` becomes `String => Result<Url,
+InvalidUrl>`). The checker enforces the boundary from both sides:
+
+- A bodied declaration's name must be a **declared shape** (a body-less
+  function-type alias, visible in scope) or the **type it constructs**
+  (modulo `Result`/`Option`/`Future` peeling and newtype chains).
+  Anything else -- an arbitrary verb wearing PascalCase, like
+  `Frobnicated = (Int) => Int` with no `Frobnicated` shape or newtype
+  anywhere -- is a checker error: *a name carries no information the
+  types don't*.
+- An arrow may not construct a type that is also one of its inputs. An
+  endomorphism (`Map * String => Map`) is the one operation whose types
+  cannot identify it -- insert, remove, and update all share that
+  signature -- so the operation takes a **result newtype**: `Inserted =
+  Map` plus `Map * String * Value => Inserted { ... }`. Exact-name
+  comparison only: a newtype input flowing into its base type's
+  constructor (`Rest = Map` into a `Map` constructor) is a different
+  type and stays legal.
+
+The name must be PascalCase: a camelCase declaration is a checker error
+everywhere except [binding files](./compilation.md).
 
 - Components follow the [alphabetical rule](./ordering.md):
   `Greeting * Name => Line` is legal, `Name * Greeting => Line` is a
@@ -101,6 +122,17 @@ top-level name: the same `=>` arrow that declares every constructor.
 
 ## Traits
 
+> **Status: user-declared shapes are currently rejected.** Everything a
+> shape can do today, a result newtype does with a checked name, so a
+> body-less shape declaration is a checker error (`… operations take
+> result newtypes`) — see [Shape or Result Newtype](#shape-or-result-newtype)
+> below. The two exceptions are the compiler's interpolation hooks,
+> `ToJson` and `ToHtml`, which programs *implement* (a bodied
+> declaration named after them) but never re-declare. This section
+> describes the shape mechanism those implementations use, and the
+> design that returns once a shape can do something a newtype cannot
+> (generic constraints, bare-parameter returns, defaults).
+
 A trait is a **callable type signature**, declared like a body-less
 function type and named in PascalCase (traits are types):
 
@@ -132,6 +164,33 @@ input's type. Call sites use the ordinary pipe:
   `{ impl }`; implementing types may override or inherit it.
 - **Constraints**: `<T: Show>` bounds a generic parameter by a trait.
 
+## Shape or Result Newtype?
+
+Shapes and constructor families overlap: both give one name per-type
+implementations selected by the receiver (`Length` spans `Map`, `Set`,
+`String`, and `List` as a merged result newtype with a family of
+arrows; `ToJson` spans `Bool`, `Float`, `Int`, and `String` as a
+shape). To keep the choice out of the writer's hands, the rule is
+**checked, not advisory**: a body-less shape declaration is a checker
+error, and the operation is a result newtype plus a family of anonymous
+arrows.
+
+A shape is justified only by something a newtype cannot do:
+
+1. the return type is a **bare type parameter** (`Fold` -- there is no
+   type to name the result after);
+2. the name is used as a **generic constraint** (`<T: Show>`) or as a
+   **trait component** in a parameter list;
+3. the declaration carries a **default body** implementing types
+   inherit.
+
+None of these is implemented yet, so today the checker rejects every
+user shape; as each justification lands, the rejection relaxes for
+exactly that case. The compiler's interpolation hooks (`ToJson`,
+`ToHtml`) are the standing exceptions -- they sit at the literal
+boundary the way builtins sit at the host boundary, and programs
+implement them without re-declaring them.
+
 ## The Entry Point
 
 A module becomes a runnable program when **exactly one** anonymous
@@ -144,8 +203,11 @@ vector flows in, an exit status flows out, mirroring the HTTP entry's
 
 | Signature | World | Export |
 |---|---|---|
-| `Args => Exit` (also `Unit => Program`, `... => Result<Exit, _>`, and the legacy `ExitCode`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Args => Exit` (also `Unit => Program` and `... => Result<Exit, _>`) | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
+
+(The legacy `ExitCode` return is retired -- `Exit` is the one
+exit-status type.)
 
 `Args` (`= List<String>`, from `canon/std`) is the program's `argv`: the
 compiler binds it from `wasi:cli/environment#get-arguments` at the lifted

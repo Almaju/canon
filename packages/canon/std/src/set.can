@@ -1,4 +1,8 @@
+Added = Set
+
 Contains = Bool
+
+Dropped = Set
 
 Entry = Item * Remaining
 
@@ -9,6 +13,23 @@ Length = Int
 Remaining = Set
 
 Set = Absent + Entry
+
+Set * String => Added {
+    Set -> (
+        * Absent => Added { Absent() -> Entry(String) }
+        * Entry => Added {
+            String -> Lt(Entry.Item) -> (
+                * False => Added {
+                    String -> Eq(Entry.Item) -> (
+                        * False => Added { Entry.Item -> Entry(Entry.Remaining -> Added(String)) }
+                        * True => Added { Set }
+                    )
+                }
+                * True => Added { Set -> Entry(String) }
+            )
+        }
+    )
+}
 
 Set * String => Contains {
     Set -> (
@@ -22,18 +43,13 @@ Set * String => Contains {
     )
 }
 
-Inserted = (Set * String) => Set {
+Set * String => Dropped {
     Set -> (
-        * Absent => Set { Absent() -> Entry(String) }
-        * Entry => Set {
-            String -> Lt(Entry.Item) -> (
-                * False => Set {
-                    String -> Eq(Entry.Item) -> (
-                        * False => Set { Entry.Item -> Entry(Entry.Remaining -> Inserted(String)) }
-                        * True => Set { Set }
-                    )
-                }
-                * True => Set { Set -> Entry(String) }
+        * Absent => Dropped { Absent() }
+        * Entry => Dropped {
+            Entry.Item -> Eq(String) -> (
+                * False => Dropped { Entry.Item -> Entry(Entry.Remaining -> Dropped(String)) }
+                * True => Dropped { Entry.Remaining }
             )
         }
     )
@@ -50,18 +66,6 @@ Set => List<Item> {
     Set -> (
         * Absent => List<Item> { List() }
         * Entry => List<Item> { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
-    )
-}
-
-Removed = (Set * String) => Set {
-    Set -> (
-        * Absent => Set { Absent() }
-        * Entry => Set {
-            Entry.Item -> Eq(String) -> (
-                * False => Set { Entry.Item -> Entry(Entry.Remaining -> Removed(String)) }
-                * True => Set { Entry.Remaining }
-            )
-        }
     )
 }
 

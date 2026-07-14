@@ -55,10 +55,9 @@ fn run_canon(cwd: &Path, config: &Path, args: &[&str]) -> (String, String, Optio
     )
 }
 
-const SHOUT_CAN: &str = "Shouted = (String) => String {\n    String -> Joined(\"!\")\n}\n";
+const SHOUT_CAN: &str = "Shouted = String\n\nString => Shouted {\n    String -> Joined(\"!\")\n}\n";
 
-const MAIN_CAN: &str =
-    "Unit => Program {\n    \"hello\"\n        -> Shouted\n        -> Print\n}\n";
+const MAIN_CAN: &str = "Unit => Program {\n    Shouted(\"hello\") -> Print\n}\n";
 
 #[test]
 fn publish_install_run_round_trip() {
@@ -176,7 +175,7 @@ fn publish_refuses_unformatted_source() {
     // Same program, non-canonical whitespace.
     fs::write(
         lib.join("shouted.can"),
-        "Shouted = (String) => String { String -> Joined(\"!\") }\n",
+        "Shouted = String\n\nString => Shouted { String -> Joined(\"!\") }\n",
     )
     .unwrap();
 

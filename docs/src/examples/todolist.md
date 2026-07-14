@@ -38,15 +38,12 @@ Prefix = String
 Update = Todos
 
 Unit => AddForm {
-    "data-msg-form=\"Add:\""
-        -> Attr
-        -> ElAttr("placeholder=\"What needs doing?\"" -> Attr -> ElAttr("" * "input" -> Tag) * "form" -> Tag)
+    Attr("data-msg-form=\"Add:\"")
+        -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("" * Tag("input")) * Tag("form"))
 }
 
 Unit => ClearButton {
-    "Clear"
-        -> Msg
-        -> Button("Clear completed")
+    Msg("Clear") -> Button("Clear completed")
 }
 
 Todos => Html {
@@ -58,29 +55,28 @@ Todos => Html {
 }
 
 Unit => Init {
-    "toggle a task to mark it done"
-        -> Title
-        -> AddedTodo("edit this list - it is saved in your browser" -> Title -> AddedTodo("" -> Todos))
+    Title("toggle a task to mark it done")
+        -> AddedTodo(Title("edit this list - it is saved in your browser") -> AddedTodo(Todos("")))
 }
 
 Todos * String => Update {
-    String -> Substring(1 -> From * 4 -> To) -> Prefix -> (
+    String -> Substring(From(1) * To(4)) -> Prefix -> (
         * "Add:" => Todos {
             String
-                -> Substring(5 -> From * String -> Length -> To)
+                -> Substring(From(5) * String -> Length -> To)
                 -> Title
                 -> AddedTodo(Todos)
         }
         * "Clea" => Todos { Todos -> Cleared }
         * "Dele" => Todos {
             String
-                -> Substring(8 -> From * String -> Length -> To)
+                -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> RemovedAt(Todos)
         }
         * "Togg" => Todos {
             String
-                -> Substring(8 -> From * String -> Length -> To)
+                -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> ToggledAt(Todos)
         }

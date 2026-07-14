@@ -64,7 +64,7 @@ just install-hooks
 | `src/checker/` | Type checker and sort-order validation |
 | `src/codegen/` | WebAssembly component code generation |
 | `src/bindgen/` | `canon bindgen` — WIT → Canon source emitter |
-| `src/formatter.rs` | Source formatter (`canon fmt`) |
+| `src/formatter.rs` | Source formatter (`canon check --fix`, format diagnostics) |
 | `src/lsp/` | Language server |
 | `src/webhost.rs` | Web target's generated JS host and static server |
 | `src/ast.rs` | AST node definitions |
@@ -79,8 +79,12 @@ just install-hooks
 ## Compiler pipeline
 
 ```
-source → lexer → parser → checker → codegen (WASM core module → Component Model wrapper)
+source → lexer → parser → checker (format phase + semantics) → codegen (WASM core module → Component Model wrapper)
 ```
+
+Formatting is a compiler phase: the checker diffs each source against
+its canonical rendering and reports a divergence as a `format error`,
+fused into the same run as sort-order and type errors.
 
 No external toolchain is invoked: `wasm-encoder` / `wit-component` produce
 the final `.wasm` in-process, and `canon run` executes it on the embedded
@@ -105,8 +109,8 @@ language changes are intentionally conservative.
 ### Adding a standard library item
 
 Add the Canon wrapper under `packages/canon/std/src/`. If it needs a new
-host binding, declare the WIT import in the package's `canon.toml`
-(`[imports]`) and regenerate the vendored bindings with `just
+host binding, drop the WIT source under the package's `wit/` directory
+and regenerate the vendored bindings with `just
 regen-bindings` (= `canon install packages/canon/std`) — never hand-edit
 the `bindgen/` tree. Add an example to `examples/` if the feature warrants
 one.

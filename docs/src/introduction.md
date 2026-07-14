@@ -9,9 +9,7 @@ A complete HTTP service:
 
 ```canon
 Request => Response {
-    "hello from canon"
-        -> Body
-        -> Response(200 -> Status * Headers())
+    Body("hello from canon") -> Response(Status(200) * Headers())
 }
 ```
 
@@ -43,7 +41,7 @@ comments, no parameter names. A function's inputs are a product of types,
 referenced in the body by their type names:
 
 ```canon
-Ord = (OtherUser * User) => Ord {
+OtherUser * User => Ord {
     User.Birthday -> Compared(OtherUser.Birthday)
 }
 ```
@@ -58,8 +56,7 @@ from a `String`. The type chain *is* the access control:
 
 ```canon
 Unit => Program {
-    "./data.json"
-        -> Path
+    Path("./data.json")
         -> File?
         -> Read?
         -> Print
@@ -84,12 +81,12 @@ Unit => Program {
 }
 ```
 
-- Functions are `name = (Components) => Return { body }`; the last
+- Constructors are `(Components) => Return { body }`; the last
   expression is the return value.
 - `Bool` is an ordinary union, `False + True`; dispatch applies the
   value to one handler arm per variant.
-- Any component can be the dot-receiver at the call site
-  (`a.compare(b)` and `b.compare(a)` are the same call).
+- Any component can be piped in at the call site
+  (`a -> Compare(b)` and `b -> Compare(a)` are the same call).
 - `T()` constructs a value; `value.Field` (no parens) reads a field.
 - `?` propagates `Result` errors and `Option` absence.
 - Async exists at the ABI, never in the source: no `async`, no

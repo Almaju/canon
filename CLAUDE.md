@@ -38,14 +38,13 @@ and reference documentation lives under `docs/src/`. Do not add new
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading |
 | `src/bindgen/` | `canon bindgen` — WIT → Canon source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
-| `src/main.rs` | CLI entry point (`run`, `build`, `check`, `test`, `fmt`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
+| `src/main.rs` | CLI entry point (`run`, `build`, `check` (`--fix` autofixes), `test`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
 | `src/webhost.rs` | Web target's browser side — the generated JS host (`canon-web.js`), `index.html` shell, bundle writer, static server for `canon run` (see `docs/src/reference/web-target.md`) |
 | `src/lib.rs` | Public crate modules |
-| `src/manifest.rs` | `canon.toml` parser (TOML subset, hand-written) |
 | `build.rs` | Walks `packages/` and emits a bundled-package registry baked into the compiler binary |
-| `packages/canon/std/` | The standard library — one shipped package. Contains hand-written wrappers under `src/`, WIT-derived bindings under `bindgen/` (committed), and an `canon.toml` declaring its WIT imports under `[imports]`. The loader resolves references to stdlib names against this tree. |
+| `packages/canon/std/` | The standard library — one shipped package. Contains hand-written wrappers under `src/`, WIT-derived bindings under `bindgen/` (committed), and the vendored upstream WIT sources under `wit/` (its import declaration — there is no manifest). The loader resolves references to stdlib names against this tree. |
 | `packages/canon/std/bindgen/` | Generated WASI bindings in the versioned vendored layout (`wasi/<pkg>@<ver>/<iface>.can`), produced by `just regen-bindings` (= `canon install packages/canon/std`). Committed so `cargo build` works on a fresh clone; derived — never hand-edited. A same-`rel_path` file under `src/` shadows its `bindgen/` twin (how the hand-written `wasi/http@<ver>/types.can` supersedes the generated one until resource lowering lands). |
-| `wit-vendor/wasi/` | Vendored upstream WIT files — source for `packages/canon/std/bindgen/`. Bumped when WASI advances. |
+| `packages/canon/std/wit/wasi/` | Vendored upstream WIT files — source for `packages/canon/std/bindgen/`. Bumped when WASI advances. |
 | `examples/` | Example `.can` programs |
 | `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests (incl. `tests/fixtures/` & `tests/canon/`) |
@@ -67,8 +66,9 @@ just examples           # compile + run all examples, report pass/fail/skip
 just example <name>     # run a single example by name
 just bench              # benchmark codegen::generate() over the example programs
 just docs               # build docs and serve it locally on 127.0.0.1:8080
-just regen-bindings     # regenerate packages/canon/std/bindgen/ from wit-vendor/
+just regen-bindings     # regenerate packages/canon/std/bindgen/ from packages/canon/std/wit/
 just fmt                # cargo fmt
+just fmt-can            # canonicalize every corpus .can file (per-file `canon check --fix`)
 just clippy             # cargo clippy -- -W warnings
 just ci                 # fmt + clippy + test (mirrors CI)
 just clean              # cargo clean + remove compiled examples
@@ -85,7 +85,7 @@ Releases run on two channels, and **no release workflow ever pushes to `main`** 
 
 Both entry points call the reusable **`release.yml`** via `workflow_call` (inputs: `ref`, `tag`, `version`, `prerelease`, `make_latest`, `move_tag`). GitHub's `/releases/latest` ignores prereleases, so the stable channel never picks up a nightly.
 
-**Client side: canon-style toolchains — two concepts.** One installation holds both channels under `$CANON_INSTALL/toolchains/<channel>/canon` (`$CANON_INSTALL` = `$HOME/.canon` by default), and `$CANON_INSTALL/bin/canon` (on `PATH`) is a thin **launcher** — a copy of a real toolchain binary; every canon binary can act as the launcher via `toolchain::launch` in `src/main.rs`. The CLI surface is deliberately two concepts (rustup's five — toolchain mgmt / default / override / `+sigil` / env — collapsed, per the "wherever choice is discretionary, remove the concept" rule): (1) **`canon use [stable|nightly]`**, scoped by cwd — records "this directory and below use X" in `$CANON_INSTALL/uses` (central registry, **no project config file**, in keeping with the no-`.toml` direction; longest-prefix match wins, so a deeper `use` shadows an outer one, and a `use` at `$HOME` acts as the global default); using a channel that isn't on disk installs it first; bare `canon use` prints the active toolchain + provenance + installed list. (2) **`canon stable <cmd>` / `canon nightly <cmd>`** — one-shot, the channel as first word like a dispatch arm. Resolution: explicit word → `CANON_TOOLCHAIN` env (undocumented CI escape hatch) → nearest `use` ancestor → `stable`; if that fallback isn't installed, the sole installed toolchain runs, else the launcher runs in-process — there is no persisted "default" state. The launcher `exec`s `toolchains/<tc>/canon` setting `CANON_RESOLVED` to guard re-entry; `is_launcher()` (running exe's parent == `<install>/bin`) gates dispatch so dev builds and the exec'd toolchain run the compiler in-process, and `canon use` itself runs in-launcher. `install.sh` reads `CANON_CHANNEL` (`stable` default / `nightly`) to lay a toolchain into `toolchains/<channel>/` and refreshes the launcher. `canon upgrade` updates the active toolchain. Pushes touching `editors/vscode-canon/` instead run **publish-vscode-extension**, which packages the `.vsix` and publishes it to the VS Code Marketplace / Open VSX when `package.json`'s version is new there (requires the `VSCE_PAT` / `OVSX_PAT` secrets — see `editors/PUBLISHING.md`); the release pipeline also attaches the `.vsix` to every GitHub release.
+**Client side: canon-style toolchains — two concepts.** One installation holds both channels under `$CANON_INSTALL/toolchains/<channel>/canon` (`$CANON_INSTALL` = `$HOME/.canon` by default), and `$CANON_INSTALL/bin/canon` (on `PATH`) is a thin **launcher** — a copy of a real toolchain binary; every canon binary can act as the launcher via `toolchain::launch` in `src/main.rs`. The CLI surface is deliberately two concepts (rustup's five — toolchain mgmt / default / override / `+sigil` / env — collapsed, per the "wherever choice is discretionary, remove the concept" rule): (1) **`canon use [stable|nightly]`**, scoped by cwd — records "this directory and below use X" in `$CANON_INSTALL/uses` (central registry, **no project config file** — the language itself has no `canon.toml` either; longest-prefix match wins, so a deeper `use` shadows an outer one, and a `use` at `$HOME` acts as the global default); using a channel that isn't on disk installs it first; bare `canon use` prints the active toolchain + provenance + installed list. (2) **`canon stable <cmd>` / `canon nightly <cmd>`** — one-shot, the channel as first word like a dispatch arm. Resolution: explicit word → `CANON_TOOLCHAIN` env (undocumented CI escape hatch) → nearest `use` ancestor → `stable`; if that fallback isn't installed, the sole installed toolchain runs, else the launcher runs in-process — there is no persisted "default" state. The launcher `exec`s `toolchains/<tc>/canon` setting `CANON_RESOLVED` to guard re-entry; `is_launcher()` (running exe's parent == `<install>/bin`) gates dispatch so dev builds and the exec'd toolchain run the compiler in-process, and `canon use` itself runs in-launcher. `install.sh` reads `CANON_CHANNEL` (`stable` default / `nightly`) to lay a toolchain into `toolchains/<channel>/` and refreshes the launcher. `canon upgrade` updates the active toolchain. Pushes touching `editors/vscode-canon/` instead run **publish-vscode-extension**, which packages the `.vsix` and publishes it to the VS Code Marketplace / Open VSX when `package.json`'s version is new there (requires the `VSCE_PAT` / `OVSX_PAT` secrets — see `editors/PUBLISHING.md`); the release pipeline also attaches the `.vsix` to every GitHub release.
 
 ## Testing
 
@@ -198,28 +198,41 @@ Non-obvious invariants the code won't spell out for you:
   call, auto-loads the stdlib module. Interpolation can't run in the
   `wasi:http/service` world (its host bridge is unsatisfiable there), so
   an interpolating handler fails at build with a clear error.
+  `Json("…")`/`Html("…")` fed a **static string literal the literal
+  form can express** is a checker error (`check_literal_form_ceremony`)
+  — the validating constructor is for strings built at runtime; tests
+  of the parser build their documents with `Joined`.
 - **`le` / `ge` is the one comparison spelling** — there is no
   `lte` / `gte`.
 - **Product construction is positionless (by type, not slot).**
   `build_product_value` binds each value to the field whose type it
   matches — exact newtype match first (`Value(x)` → the `Value` field),
   then shared base type, then declaration order as a floor
-  (`field_match_score` / `widening_chain`). So `canon fmt` sorts a
-  product-type constructor's values alphabetically and codegen still
-  routes them correctly. Two consequences: (1) same-underlying-type
-  fields (map's `Key` and `Value`, both `String`) must be **distinct
-  newtypes** and their values tagged to bind unambiguously — the spec's
-  "components are distinct types" rule guarantees the field types differ;
-  (2) the formatter sorts **only** `Expr::Constructor` product args —
-  never `List(…)` (ordered elements) and never method/pipe args
-  (`.set(name * value)` is positional). `build_http_response` picks
-  `Headers`/`Status` by type and treats the leftover as the body for the
-  same reason.
-- **Canonical call form: the first input pipes, the rest ride the
-  parens.** `canon fmt` rewrites every call to `A -> B(rest)` (the
-  `canon_expr` pass in `src/formatter.rs`): `B(A)` → `A -> B`, `B(A * C)`
-  → `A -> B(C)`, `A.B(C)` / `A * C -> B` → `A -> B(C)`. Zero-arg calls
-  and `List(…)` stay prefix. This is semantics-preserving because the
+  (`field_match_score` / `widening_chain`). So `canon check --fix` may sort a
+  constructor's inputs and codegen still routes them correctly — but
+  **only when every input carries its type syntactically** (all-computed
+  input lists). Literal operands are NEVER reordered: an untagged
+  same-base value binds by declaration order, so position is meaning
+  (`Padded(5 * 4)` ≠ `Padded(4 * 5)`). Consequences: (1)
+  same-underlying-type fields (map's `Key` and `Value`, both `String`)
+  must be **distinct newtypes** and their values tagged to bind
+  unambiguously; (2) the formatter never reorders `List(…)` (ordered
+  elements) or method/pipe args (`.set(name * value)` is positional).
+  `build_http_response` picks `Headers`/`Status` by type and treats the
+  leftover as the body for the same reason.
+- **Canonical call form: values flow through pipes, literals are born
+  in the parens.** `canon check --fix` (the `canon_expr` pass in
+  `src/formatter.rs`) rewrites every call: a computed first input pipes
+  (`B(A)` → `A -> B`, `A.B(C)` → `A -> B(C)`); a **lone scalar literal
+  never pipes into a construction** (`"hi" -> Greeting` → `Greeting("hi")`,
+  `42 -> Show` → `Show(42)`); a same-kind primitive wrap unwraps
+  (`Int(3)` → `3`, `String("s")` → `"s"`); builtins (`Sum`, `Print`,
+  `Joined`, … — `is_builtin_pipe_vocabulary` in `src/ast.rs`) have no
+  prefix call form so literals keep piping into them; multi-input calls
+  keep the pipe (prefix arg lists are positional, piped calls bind
+  commutatively); operand order is never reordered except for
+  all-computed input lists. Zero-arg calls and `List(…)` stay prefix.
+  This is semantics-preserving because the
   compiler treats a piped call to a **type constructor** as construction:
   `compile_method_call` routes any type-name method (product / variant /
   newtype / primitive `Int`/`Float`/`String`/`Bool` / HTTP `Response`)
@@ -269,14 +282,34 @@ invariants:
   message. Execution sites (the postfix pipe) stay `->`-only. The
   legacy `value.( arms )` dispatch, parenthesized arm patterns
   `* (X) =>`, turbofish `::<T>`, and comma-separated declaration params
-  are all parse errors now. The endgame retires `.`-method-calls and
-  `B(a)` prefix-calls in favour of `->` (with `()` as the construction/
-  partial-application operator); see the spec
-  (`docs/src/spec/types-only.md` § The One-Operator Endgame).
-- **Anonymous arrows.** `(A) => B { … }` at top level declares the `B`
-  constructor (return type with `Result`/`Option`/`Future` peeled).
-  `FunctionDef.anonymous` drives the formatter to round-trip the arrow
-  form. Both the named (`B = (A) => …`) and anonymous forms are legal.
+  are all parse errors now. `.`-method-calls survive only for camelCase
+  FFI bindings, and `B(a)` prefix calls survive exactly where the
+  literals-in-parens rule puts them (lone literal subject, zero-input,
+  `List(…)`); `canon check --fix` rewrites everything else to `->`. See the
+  spec (`docs/src/spec/types-only.md` § Three Operators).
+  There is also **no implicit dependency threading**: an omitted
+  constructor argument is a missing-argument error even when exactly
+  one in-scope value matches — the pipe is the one spelling of passing
+  a value (`docs/src/spec/effects-and-async.md`).
+- **Anonymous arrows are the one constructor form.** `(A) => B { … }`
+  at top level declares the `B` constructor (return type with
+  `Result`/`Option`/`Future` peeled). The named spelling
+  (`B = (A) => …`) still parses but `canon check --fix` rewrites it to the
+  arrow whenever the name is exactly the constructed type
+  (`is_redundantly_named` in `src/formatter.rs`); named declarations
+  survive only as shape implementations. The checker enforces both
+  halves of the naming rule: a receiver-less bodied declaration must be
+  named after the type it constructs, and a receiver-carrying one must
+  be a declared shape or a newtype of its return (no arbitrary verbs in
+  PascalCase). An arrow whose constructed type appears in its own input
+  product is also an error — endomorphisms take result newtypes
+  (`Inserted = Map`), by check, not convention. **User-declared shapes
+  are rejected** (`check_type_def`): a body-less function-type alias is
+  an error directing to a result newtype, because nothing a shape can
+  do today (constraints, bare-parameter returns, defaults) is
+  implemented — `ToJson`/`ToHtml` (`INTERPOLATION_SHAPES`) are the two
+  standing exceptions, the compiler's literal-interpolation hooks,
+  which programs implement but never re-declare.
   A **single named input drops its parentheses** — `A => B { … }` is
   exactly `(A) => B { … }` (`Parser::parse_paren_free_ctor`; the
   formatter emits the paren-free form). Products (`(A * B) => C`) and
@@ -295,8 +328,10 @@ invariants:
   HTTP `Response`. `resolve_new_syntax` renames an anonymous
   Cli-world-returning entry back to the canonical `main` so entry
   selection, the ordering exemption, and codegen's `$start` inlining all
-  still key on `main`; `Unit`/`ExitCode` returns and the literal `main`
-  name stay legal (the `canon test` harness synthesizes one). Because
+  still key on `main`; a `Unit` return stays legal (the `canon test`
+  harness synthesizes one), the legacy `ExitCode` return is retired, and
+  a **literal `main` name is a checker error** — entries are anonymous,
+  selected by their world-shaped return. Because
   `Unit` is zero-width and single-valued, all `Unit`-rooted types
   (`Program`, `Exited`, …) are interchangeable in a return position.
   The web-app triple is type-selected too — no names: `Model => Html`
@@ -332,16 +367,16 @@ invariants:
 
 ## Key conventions
 
-- **Alphabetical ordering** is central to the language. If you modify the parser or checker, be aware that sort-order enforcement applies to: product type fields, union variants, function declarations, and dispatch arms. `canon fmt` auto-sorts all of these; the checker errors are the backstop. Union dispatch is also **exhaustive** (no wildcard arm) and duplicate-free; literal dispatch (String/Int) requires a trailing catch-all. Dead code — declarations unreachable from the entry — is a hard checker error, and `cargo test` includes `tests/format_corpus.rs`, which fails if any checked-in `.can` file drifts from canonical format.
+- **Alphabetical ordering** is central to the language. If you modify the parser or checker, be aware that sort-order enforcement applies to: product type fields, union variants, function declarations, and dispatch arms. `canon check --fix` auto-sorts all of these; the checker errors are the backstop. Union dispatch is also **exhaustive** (no wildcard arm) and duplicate-free; literal dispatch (String/Int) requires a trailing catch-all. Dead code — declarations unreachable from the entry — is a hard checker error, and `cargo test` includes `tests/format_corpus.rs`, which fails if any checked-in `.can` file drifts from canonical format.
 - **There is no `use` keyword — imports are automatic.** A reference to a name the file doesn't define resolves name → file: the file's own directory tree (`kebab(Name).can` or `kebab(name)/main.can`, recursive, skipping `deps/`/`bindgen/`), then the project `bindgen/` tree, `deps/`, and the bundled packages — the last three by *declared name* (declaration indexes), because binding functions like `getRandomU64` don't kebab back to their file. Resolving in more than one place is a hard error (no shadowing); resolving nowhere is left for the checker. Inside `canon/std`, wrapper (`src/`) declarations shadow the package's bindgen substrate for outside referrers, and bindgen files prefer bindgen (that's how `filesystem/types.can` gets the clocks `Instant` while user code gets `std`'s). The machinery lives in `src/loader.rs` (`discover_references`, `resolve_reference`, `bundled_decl_matches`). Consequence for bindgen: each generated binding is discovered by the type it constructs, so `canon install` mints a result newtype per function and interface-qualifies it when the WIT leaf name collides across the install set (`MonotonicClockNow` / `SystemClockNow`) — see `binding_return` in `src/bindgen/emit.rs`.
 - **Indexing is 1-based** everywhere (`ByteAt(1)`, `list -> At(1)`, positional access `.1`), and `substring(a, b)` is inclusive on both ends. Don't "fix" this to 0-based — it is a deliberate language decision (see the language spec, `docs/src/spec/`).
-- The compiler pipeline is: **source → lexer → parser → checker → codegen (wasm core module → Component Model wrapper)**. No external toolchain is invoked — `wasm-encoder` / `wit-component` produce the final `.wasm` in-process, and `canon run` executes it on the embedded wasmtime.
-- Standard library is **layered** but ships as a single bundled package, `canon/std`. The package's manifest declares its WIT dependencies under `[imports]`; `canon install` materializes the bindings into `packages/canon/std/bindgen/<ns>/<pkg>@<version>/<iface>.can` (one file per interface, the vendored-package layout). The hand-written wrappers under `packages/canon/std/src/` pipe into the binding constructors by the type each constructs (`GetRandomU64() -> Random`, `Path -> Opened`) and the loader resolves them within the package by declared name (versioned directory), exactly as user code's references resolve against bindings installed into its own `bindgen/` or `deps/` tree. The stdlib's own `canon:builtins/*` host bridges follow the identical shape — string-anchored constructor bindings under `src/canon/builtins@0.1.0/` (`Float => Number { "from-float" }`), idioms (the `File`/`Fetched` constructors, `ToJson`'s `Float` instance) as ordinary bodied wrappers over them; string-processing idioms that once bridged to the host (`Url` validation, JSON escaping/`Field`/`Decoded`, `Now`'s RFC-3339 formatting, `Uppercased`/`Lowercased`) are pure Canon. Where two interfaces collide on a function name (`wasi:clocks` monotonic + system `now`), the generated binding mints an interface-qualified result type (`MonotonicClockNow` / `SystemClockNow`) so discovery resolves on the unique type. There is no privileged shape that only the stdlib can use. The compiler's runtime fulfils the WASI imports through `wasmtime_wasi::p3`.
+- The compiler pipeline is: **source → lexer → parser → checker (format phase + semantics) → codegen (wasm core module → Component Model wrapper)**. Formatting is a compiler phase: `checker::check_loaded` runs the format pass (each user-authored source diffed against its canonical rendering, a divergence is a `CanonError::FormatError` with the span of the first differing line) fused with the semantic checker, so one run reports both kinds. No external toolchain is invoked — `wasm-encoder` / `wit-component` produce the final `.wasm` in-process, and `canon run` executes it on the embedded wasmtime.
+- Standard library is **layered** but ships as a single bundled package, `canon/std`. The package declares its WIT dependencies by vendoring them under `wit/` (the file-structure import declaration); `canon install` materializes the bindings into `packages/canon/std/bindgen/<ns>/<pkg>@<version>/<iface>.can` (one file per interface, the vendored-package layout). The hand-written wrappers under `packages/canon/std/src/` pipe into the binding constructors by the type each constructs (`GetRandomU64() -> Random`, `Path -> Opened`) and the loader resolves them within the package by declared name (versioned directory), exactly as user code's references resolve against bindings installed into its own `bindgen/` or `deps/` tree. The stdlib's own `canon:builtins/*` host bridges follow the identical shape — string-anchored constructor bindings under `src/canon/builtins@0.1.0/` (`Float => Number { "from-float" }`), idioms (the `File`/`Fetched` constructors, `ToJson`'s `Float` instance) as ordinary bodied wrappers over them; string-processing idioms that once bridged to the host (`Url` validation, JSON escaping/`Field`/`Decoded`, `Now`'s RFC-3339 formatting, `Uppercased`/`Lowercased`) are pure Canon. Where two interfaces collide on a function name (`wasi:clocks` monotonic + system `now`), the generated binding mints an interface-qualified result type (`MonotonicClockNow` / `SystemClockNow`) so discovery resolves on the unique type. There is no privileged shape that only the stdlib can use. The compiler's runtime fulfils the WASI imports through `wasmtime_wasi::p3`.
 - The `packages/canon/std/bindgen/` tree is regenerated by `just regen-bindings` (which is just `canon install packages/canon/std`). Don't hand-edit it; bump the vendored WIT and regenerate.
-- A binding file is recognized by **shape and path**, never by a header (there is no `bindings` or `package` keyword — the grammar has zero packaging vocabulary). A file directly under a versioned package directory (`<ns>/<name>@<ver>/<iface>.can`, under `deps/`, a project's `bindgen/`, or inside a bundled package) has its bindings lifted into externs by `apply_bindings` in `src/loader.rs`. **Preferred form (types-only): a string-anchored anonymous constructor** — `Float => Number { "from-float" }`, `File => Result<Read, IoError> { "read" }`. The single string-literal body is the WIT fragment verbatim (`"from-float"`, `"[method]fields.set"`); `apply_bindings` sets `extern_wasm.path = "<urn>#<string>"`, unwraps a `Future<T>` return for async, and normalises the constructor into a `Self`-constructor (registering the commutative `(Param, Type)` key that makes `x -> Type` dispatch to the extern). Because a binding is discovered by the type it *constructs*, `canon install` mints a result newtype per function (`Now = Instant`, `GetRandomU64 = Int`), interface-qualified when the WIT leaf name collides (`MonotonicClockNow` / `SystemClockNow`) — this replaces the old capability-marker-method trick. **Legacy form (still supported):** a camelCase body-less function-type alias (`getRandomU64 = () => Int`) rewritten to `extern_wasm.path = "…#<fn-kebab>"`. The generated bindgen tree keeps the legacy form only for return shapes the self-constructor extern lowering can't decode yet — no result (`Unit`), `option`, `list`, and record returns; everything else (scalars, `string`, `result`) takes the new form. Resource fragments derive from shape in the legacy path: a camelCase decl whose first param is an in-file `X = Handle` newtype binds `[method]x.<fn>`; a PascalCase decl named like an in-file resource binds `[constructor]x`. Other PascalCase function-type aliases stay callback types everywhere.
+- A binding file is recognized by **shape and path**, never by a header (there is no `bindings` or `package` keyword — the grammar has zero packaging vocabulary). A file directly under a versioned package directory (`<ns>/<name>@<ver>/<iface>.can`, under `deps/`, a project's `bindgen/`, or inside a bundled package) has its bindings lifted into externs by `apply_bindings` in `src/loader.rs`. **Preferred form (types-only): a string-anchored anonymous constructor** — `Float => Number { "from-float" }`, `File => Result<Read, IoError> { "read" }`. The single string-literal body is the WIT fragment verbatim (`"from-float"`, `"[method]fields.set"`); `apply_bindings` sets `extern_wasm.path = "<urn>#<string>"`, unwraps a `Future<T>` return for async, and normalises the constructor into a `Self`-constructor (registering the commutative `(Param, Type)` key that makes `x -> Type` dispatch to the extern). Because a binding is discovered by the type it *constructs*, `canon install` mints a result newtype per function (`Now = Instant`, `GetRandomU64 = Int`), interface-qualified when the WIT leaf name collides (`MonotonicClockNow` / `SystemClockNow`) — this replaces the old capability-marker-method trick. **The generated bindgen tree is 100% string-anchored**: every return shape decodes through the mint (the extern lowering resolves alias chains, so `GetInitialCwd = Option<String>` classifies as an option return and `SystemClockNow = Instant` keys the record decode on the product it aliases); a no-result WIT function mints a `Unit` evidence newtype (`ExitWithCode = Unit`). **The camelCase alias form** (`body = (Request) => Future<Result<String, HttpError>>`, rewritten to `extern_wasm.path = "…#<fn-kebab>"`) survives only in *hand-written* binding files for the two shapes the string-anchored lowering doesn't cover yet — resource methods (`wasi/http`'s `types.can`, pending resource lowering) and generic combinators (`canon:builtins`' `concurrent.can`/`stream.can`, pending generic externs). Resource fragments derive from shape there: a camelCase decl whose first param is an in-file `X = Handle` newtype binds `[method]x.<fn>`; a PascalCase decl named like an in-file resource binds `[constructor]x`. Other PascalCase function-type aliases stay callback types everywhere.
 - Renames don't exist at the binding layer: kebab↔camelCase round-trips, so a WIT name that doesn't match the desired Canon idiom gets a raw binding under its mechanical name plus an ordinary bodied wrapper (or, for `canon:builtins/*` where Canon owns the host, the host function is renamed to match). Scalar-newtype receivers must be declared as bare `Int` in binding files — scalar newtypes erase to `Int` at the value level (the `exitWithCode` receiver is `Int`, not `Exit`).
 - Each `bindgen/` directory also contains an `_install.toml` sidecar written by `canon install`: a map from `<rel-path>.can` to the WIT interface URN that file was generated from. It's a derived artifact used only for install staleness detection now (the loader derives URNs from paths); committed for `canon/std`, gitignored for user projects. Parser: `src/install.rs::parse_install_index`.
-- Manifest schema: `[deps]` declares Canon-package dependencies (`"name" = "version"`), `[imports]` declares external bindings (`"<path-prefix>" = "<source>"` where source is a local `.wit` file, a directory of `.wit` files, or a `.wasm` component; remote sources are deferred). Both tables are normalized into alphabetical key order by the parser (a `BTreeMap`) — unlike the checker-enforced alphabetical-order rules elsewhere in the language, keys need not be written in alphabetical order in the source; there is no rejecting check. See `src/manifest.rs` for the parser and `src/install.rs` for the install logic.
+- **There is no package manifest** — `canon.toml` left the language; file structure is the whole declaration. A **package** is a directory with `src/main.can` (its name is the directory name; artifacts land in its own `build/`); a **workspace** is a directory whose immediate subdirectories include packages (no member list; each member builds into its own `build/`). **External imports** are the `wit/` directory: every immediate entry is one source — a `.wit` file, a directory of `.wit` files, or a `.wasm` component (deferred). **Dependencies** are the `deps/` tree (`deps/<ns>/<name>@<ver>/`, the directory name is the pin; `canon publish` reads the dependency list off it). The **project root** is the nearest ancestor with any structural marker (`src/main.can`, `wit/`, `bindgen/`, `deps/`) — `install::is_project_root` / `find_project_root`, shared by the loader and LSP. See `src/install.rs` for the install logic.
 - `build.rs` walks `packages/` at build time and emits a bundled-package registry the loader consults at runtime. Both `src/` and `bindgen/` under each package contribute files; `rel_path` is taken relative to whichever root the file lived under, so they share a flat namespace. Collisions between the two roots panic at build time. Drop a new file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up — there is no hand-maintained STDLIB array.
 - Example programs in `examples/` should always compile and run after changes — use `just examples` to verify.
 

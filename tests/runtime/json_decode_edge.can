@@ -1,45 +1,41 @@
+DecodedShown = Unit
+
+FieldShown = Unit
+
 Sought = String
 
-DecodedShown = (String) => Unit {
+String => DecodedShown {
     String -> Json -> (
-        * Err<MalformedJson> => Unit { MalformedJson -> Print }
-        * Ok<Json> => Unit {
+        * Err<MalformedJson> => DecodedShown { MalformedJson -> Print }
+        * Ok<Json> => DecodedShown {
             Json -> Decoded -> (
-                * Err<MalformedJson> => Unit { MalformedJson -> Print }
-                * Ok<Decoded> => Unit { Decoded -> Print }
+                * Err<MalformedJson> => DecodedShown { MalformedJson -> Print }
+                * Ok<Decoded> => DecodedShown { Decoded -> Print }
             )
         }
     )
 }
 
-FieldShown = (Sought * String) => Unit {
+Sought * String => FieldShown {
     String -> Json -> (
-        * Err<MalformedJson> => Unit { MalformedJson -> Print }
-        * Ok<Json> => Unit {
+        * Err<MalformedJson> => FieldShown { MalformedJson -> Print }
+        * Ok<Json> => FieldShown {
             Json -> Field(Sought) -> (
-                * Err<MalformedJson> => Unit { MalformedJson -> Print }
-                * Ok<Json> => Unit { Json -> Print }
+                * Err<MalformedJson> => FieldShown { MalformedJson -> Print }
+                * Ok<Json> => FieldShown { Json -> Print }
             )
         }
     )
 }
 
 Unit => Program {
-    "b"
-        -> Sought
-        -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,2]}")
-    "c"
-        -> Sought
-        -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,{\"d\":4}]}")
-    "missing"
-        -> Sought
-        -> FieldShown("{\"a\":1,\"b\":\"two\"}")
-    "a"
-        -> Sought
-        -> FieldShown("[1,2]")
-    "\"line\\nbreak\\ttab.\"" -> DecodedShown
-    "\"esc \\\" quote and \\\\ slash\"" -> DecodedShown
-    "\"caf\\u00e9 \\u2713 ok\"" -> DecodedShown
-    "\"bad\\qesc\"" -> DecodedShown
-    "42" -> DecodedShown
+    Sought("b") -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,2]}")
+    Sought("c") -> FieldShown("{\"a\":1,\"b\":\"two\",\"c\":[1,{\"d\":4}]}")
+    Sought("missing") -> FieldShown("{\"a\":1,\"b\":\"two\"}")
+    Sought("a") -> FieldShown("[1,2]")
+    DecodedShown("\"line\\nbreak\\ttab.\"")
+    DecodedShown("\"esc \\\" quote and \\\\ slash\"")
+    DecodedShown("\"caf\\u00e9 \\u2713 ok\"")
+    DecodedShown("\"bad\\qesc\"")
+    DecodedShown("42")
 }

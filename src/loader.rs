@@ -264,8 +264,8 @@ fn single_string_body(block: &Block) -> Option<String> {
 /// One package shipped with the compiler.
 #[derive(Debug, Clone, Copy)]
 pub struct BundledPackage {
-    /// Canonical name, e.g. `"canon/std"`. Matches the package's
-    /// declared `name` in its `canon.toml`.
+    /// Canonical name, e.g. `"canon/std"`, derived from the package's
+    /// directory path under `packages/<namespace>/<package>/`.
     pub name: &'static str,
     /// Every `.can` file under the package root, sorted alphabetically by
     /// package-relative path.
@@ -406,48 +406,45 @@ struct LoadCtx {
     /// text so callers can validate canonical formatting later.
     local_sources: Vec<LoadedSource>,
     /// Root of the project that contains the entry file, identified by
-    /// the nearest ancestor directory containing an `canon.toml`. `None`
+    /// the nearest ancestor directory carrying a structural project
+    /// marker (`src/main.can`, `wit/`, `bindgen/`, or `deps/`). `None`
     /// when the entry is a loose `.can` file outside any project (in that
     /// case references resolve via the local tree and bundled packages
     /// only).
     ///
     /// When set, reference discovery consults `<project_root>/bindgen/` —
-    /// where `canon install` writes the materialized bindings declared
-    /// in the manifest's `[imports]` table.
+    /// where `canon install` writes the bindings materialized from the
+    /// project's `wit/` sources.
     project_root: Option<PathBuf>,
     /// Canonicalized path of the project's vendored-dependency tree
     /// (`<root>/deps/`, see modules & packages (docs/src/spec/modules.md)),
     /// when it exists on disk. The
     /// root is the project root when there is one, otherwise the entry
-    /// file's directory — so manifest-free projects (the modules &
-    /// packages end state) resolve `deps/` without an `canon.toml` marker.
+    /// file's directory — so a loose file next to a `deps/` tree still
+    /// resolves it.
     ///
     /// `Some` enables two things: reference discovery resolves names
     /// against the `deps/` tree, and `load_into` recognizes files under
     /// this prefix as vendored, deriving each top-level file's binding
     /// URN from its path (identity lives in the path, not a directive).
     deps_dir: Option<PathBuf>,
-    /// Canonicalized `<project_root>/bindgen/` — the directory the
-    /// manifest-driven `canon install` materializes into. Same
-    /// versioned layout and path-derived binding rules as `deps_dir`;
-    /// the separate root survives only until a later cleanup deletes
-    /// the manifest flow.
+    /// Canonicalized `<project_root>/bindgen/` — the directory
+    /// `canon install` materializes into. Same versioned layout and
+    /// path-derived binding rules as `deps_dir`; the separate root
+    /// keeps installed-binding and vendored-dependency trees apart.
     bindgen_dir: Option<PathBuf>,
 }
 
-/// Walk up from `start` looking for the nearest directory that contains
-/// an `canon.toml`. Returns that directory, or `None` if the walk
-/// reaches the filesystem root without finding one. Used to anchor the
-/// `bindgen/` lookup so a project's installed bindings are reachable
-/// from any source file beneath the project root.
+/// Walk up from `start` looking for the nearest project root — a
+/// directory carrying one of the structural markers: a `src/main.can`
+/// entry point, or a `wit/`, `bindgen/`, or `deps/` tree (see
+/// `install::is_project_root`; there is no manifest file). Returns
+/// that directory, or `None` if the walk reaches the filesystem root
+/// without finding one. Used to anchor the `bindgen/` lookup so a
+/// project's installed bindings are reachable from any source file
+/// beneath the project root.
 fn find_project_root(start: &Path) -> Option<PathBuf> {
-    let mut cur: &Path = start;
-    loop {
-        if cur.join("canon.toml").is_file() {
-            return Some(cur.to_path_buf());
-        }
-        cur = cur.parent()?;
-    }
+    crate::install::find_project_root(start)
 }
 
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
@@ -496,11 +493,6 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         items: ctx.items,
         span,
     };
-    // Dependency inference: supply omitted constructor arguments from the
-    // enclosing scope by type, so capabilities thread down the call tree
-    // without being repeated. Runs before auto-await and the checker so both
-    // see the fully-applied calls. See `docs/src/spec/effects-and-async.md`.
-    crate::checker::dep_infer::transform(&mut module);
     // Auto-await: insert implicit `Expr::Await` nodes wherever a `Future<T>`
     // value is used in a position that expects `T`. Runs before the checker
     // so type comparisons see the post-rewrite tree.
@@ -831,7 +823,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Bool",
     "Deserialize",
     "Err",
-    "ExitCode",
     "False",
     "Float",
     "Future",
@@ -1153,7 +1144,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
     }
 
     // 2. Project `bindgen/` — where `canon install` materializes the
-    //    bindings declared in the manifest's `[imports]` table.
+    //    bindings generated from the project's `wit/` sources.
     for path in ctx.bindgen_decl_matches(name) {
         found.push(Found::Local(path));
     }
@@ -1539,6 +1530,31 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
     let _ = inject_html_prelude(items, &mut ctx);
     let _ = discover_references(items, dir, &mut ctx);
     ctx.items
+}
+
+/// Every item of the bundled packages' wrapper tier (the non-versioned,
+/// hand-written `src/` files — bindgen-tier FFI files are excluded),
+/// parsed once per process. Tooling entry point: LSP completion
+/// enumerates the full stdlib surface for discovery, unlike
+/// compilation, which only loads what a program references. The
+/// bindgen tier is left out deliberately — its camelCase names are the
+/// FFI boundary, reached through the wrappers' PascalCase types.
+pub(crate) fn bundled_wrapper_items() -> &'static [Item] {
+    static ITEMS: OnceLock<Vec<Item>> = OnceLock::new();
+    ITEMS.get_or_init(|| {
+        let mut items = Vec::new();
+        for pkg in BUNDLED_PACKAGES {
+            for file in pkg.files {
+                if urn_base_for_bundled_path(file.path).is_some() {
+                    continue;
+                }
+                if let Ok(parsed) = parsed_bundled_items(file) {
+                    items.extend(parsed);
+                }
+            }
+        }
+        items
+    })
 }
 
 /// Bundled files declaring `name`, wrapper tier first. Tooling helper

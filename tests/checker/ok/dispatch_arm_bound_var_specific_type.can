@@ -1,3 +1,7 @@
+Described = Unit
+
+Extracted = String
+
 JsonEntry = String
 
 JsonMissing = String
@@ -6,20 +10,19 @@ JsonObject = JsonEntry
 
 JsonValue = JsonMissing + JsonObject
 
-Described = (JsonValue) => Unit {
+JsonValue => Described {
     JsonValue -> (
-        * JsonMissing => Unit { "missing" -> Print }
-        * JsonObject => Unit { JsonObject -> Extracted -> Print }
+        * JsonMissing => Described { "missing" -> Print }
+        * JsonObject => Described { JsonObject -> Extracted -> Print }
     )
 }
 
-Extracted = (JsonObject) => String {
+JsonObject => Extracted {
     "extracted"
 }
 
 Unit => Program {
-    "payload"
-        -> JsonEntry
+    JsonEntry("payload")
         -> JsonObject
         -> Described
     "ok" -> Print

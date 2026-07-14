@@ -13,12 +13,13 @@ So `A + B * C^3` parses as `A + (B * (C^3))`.
 
 Expression-level, tightest first:
 
-1. `.`: call / field access
+1. `.`: field access (and FFI binding calls — the one place `.`
+   still executes, because camelCase means *foreign*)
 2. `()`: application
 3. `?`: postfix propagation
 4. `*`: value-level product (only inside a constructor argument)
 
-So `foo.bar()?` is `((foo.bar)())?`.
+So `user.Birthday.String?` is `((user.Birthday).String)?`.
 
 ## Construction vs Observation
 
@@ -39,35 +40,60 @@ A call applies one PascalCase name to an input product. The three
 spellings -- `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` -- denote the
 *same* call (the receiver / left value fills the first slot of the input
 product). Since the choice between them is discretionary, the compiler
-picks one canonical form and `canon fmt` rewrites the rest to it,
+picks one canonical form and `canon check --fix` rewrites the rest to it,
 backstopped by the checker -- the same instrument that enforces
 alphabetical ordering.
 
-**The first input always rides the pipe; the rest ride in the parens.**
+**Values flow through pipes; literals are born in the parens.**
+
+The pipe carries a value that already exists -- a parameter reference, a
+prior result. A scalar literal (string, int, float, hex, backtick)
+springs into existence at the call site, so it rides inside the call
+instead of pretending to flow:
 
 ```canon
-Name("toto") -> Display          # not  Display(Name("toto"))
-5 -> Sum(5)                       # not  5 * 5 -> Sum   or  Sum(5 * 5)
-List -> List(Item)               # append: the list flows, the item is bound
-"bob" -> Person(30)              # a product built by piping its first field
+Greeting("hi")                    # not  "hi" -> Greeting
+Name("toto") -> Display          # the construction flows into the next step
+value -> Person(30)              # a computed value pipes; the literal rides
+list -> Mapped(f)                # computed values always pipe
 ```
 
-`a -> Name(b)` reads as "apply `Name`, which already carries `b`, to
-`a`" -- a partial application `Name(b)` fed the flowing value. `B(A)` (the
-subject alone in parens) is never canonical: it becomes `A -> B`. Two
-consequences:
+The full rule, case by case:
 
-- **Zero-input calls stay prefix** -- `Now()`, `Map()`, `None()`. A chain
-  *starts* with a prefix call or a leaf and *continues* with `->`.
-- **`List(...)` keeps its elements** -- a list is an ordered sequence, not a
-  subject-bearing call, so `List(1 * 2 * 3)` is left as written.
+- **A computed first input pipes**, and the rest ride in the parens:
+  `a -> Name(b)` reads as "apply `Name`, which already carries `b`, to
+  `a`" -- a partial application fed the flowing value. `B(A)` with a
+  computed `A` is never canonical: it becomes `A -> B`.
+- **A lone scalar literal never pipes into a construction** --
+  `"hi" -> Greeting` is rewritten to `Greeting("hi")`, `42 -> Show` to
+  `Show(42)`. A chain then *starts* with that construction and
+  *continues* with `->`: `Path("./data.json") -> File? -> Read?`.
+- **Wrapping a literal in its own primitive constructor is ceremony** --
+  `Int(3)`, `String("foo")`, `Float(1.5)`, `Hex(0xFF)` unwrap to the
+  bare literal (which already desugars to exactly that construction),
+  the same way a hole-less backtick string collapses to a plain one.
+  Cross-kind construction (`String(42)` decimal rendering, `Int("42")`
+  parsing) is a real conversion and stays.
+- **Builtins keep the pipe** -- `Sum`, `Print`, `Joined`, and the rest of
+  the compiler's builtin vocabulary are receiver-oriented machine
+  operations, not constructions; they have no prefix call form, so
+  `1 -> Sum(2)` and `"hello" -> Print` stay pipes. The set shrinks as
+  builtins migrate to stdlib newtypes (`Maximum(3 * 5)` already
+  constructs).
+- **Zero-input calls stay prefix** -- `Now()`, `Map()`, `None()`.
+- **`List(...)` keeps its elements** -- a list is an ordered sequence, not
+  a subject-bearing call, so `List(1 * 2 * 3)` is left as written.
+- **Operand order is positional and never reordered.** The pipe receiver
+  is always the first operand (`0 -> Difference(5)` is -5), and literal
+  operands keep their written order -- untagged same-typed components
+  bind by declaration order, so reshuffling them would change which
+  field gets which value. Only an all-computed input list (where every
+  operand carries its type syntactically) is sorted for determinism
+  before the first pipes.
 
-Because the spellings denote the same call, the rewrite is
+Because the spellings denote the same call, every rewrite is
 semantics-preserving: the compiler treats a piped call to a type
 constructor exactly as the prefix construction `Name(A * rest)`.
-Position-sensitive builtins keep their operand order -- the pipe receiver
-is always the first operand, so `0 -> Difference(5)` (= -5) is never
-reordered.
 
 ## Function Bodies
 
@@ -177,7 +203,7 @@ Rules:
 - Literal arms can never be exhaustive, so **totality comes from the
   catch-all**: it is required, and it is always the last arm.
 - Literal arms follow canonical order (alphabetical for strings,
-  ascending for ints); duplicates are a compile error. `canon fmt`
+  ascending for ints); duplicates are a compile error. `canon check --fix`
   sorts the arms automatically.
 - Inside every arm body (including literal arms) the scrutinee value is
   in scope under its type name, exactly like a bound payload.
@@ -238,7 +264,14 @@ Label = (Int) => Json {
   handler program using interpolation fails at build with an error
   naming the unsatisfiable imports.
 - Literal layout is canonical like all Canon code: no spaces after `:`
-  or `,` (`{"k":v}`, not `{"k": v}`). `canon fmt` enforces it.
+  or `,` (`{"k":v}`, not `{"k": v}`). `canon check --fix` enforces it.
+- **The literal is the only spelling of a static document.** Feeding the
+  validating `Json("…")` constructor a static string literal the
+  literal form can already express is a checker error -- the parse can
+  never fail, so the constructor spelling would be a second way of
+  writing the literal. `Json(String)` exists for strings built at
+  runtime; scalar documents (`Json("42")` -- no literal form) and
+  runtime-computed strings pass through untouched.
 
 ## HTML Literals
 
@@ -284,6 +317,13 @@ String => Row {
   literal costs one string constant at runtime, exactly like an
   all-static JSON literal.
 - `{{` and `}}` escape literal braces.
+- **The literal is the only spelling of static markup.** `Html("…")`
+  fed a static string the literal form can already express is a checker
+  error, exactly like `Json` above -- write `<button>+</button>`, not
+  `Html("<button>+</button>")`. The stdlib's tag-newtype constructors
+  (`Button`, `Div`, … `= Html`) are for markup *computed* from values;
+  static structure belongs in the literal, dynamic composition in the
+  constructors.
 
 Like `Json`, `Html` is a prelude type (`Html = String` intrinsically);
 the loader pulls in `canon/std/web/Html` the moment a literal carries a
@@ -319,7 +359,7 @@ Int => Report {
 - Literal holes (`{42}`, `{"a"}`) fold to static text at parse time, so
   a fully constant backtick string costs one string constant at runtime,
   exactly like an all-static JSON or HTML literal. A backtick string
-  with no holes is just a string constant: `canon fmt` rewrites it to
+  with no holes is just a string constant: `canon check --fix` rewrites it to
   the plain-quoted form (`` `hi` `` → `"hi"`).
 
 Unlike `Json` and `Html`, a format string needs no prelude -- `String`
@@ -337,7 +377,7 @@ handlers.
 | `T^*` | unbounded repetition (Kleene star) |
 | `<T>` | generic parameter |
 | `<T: Tr>` | generic with trait constraint |
-| `.` | call / field access (never executes a flow step) |
+| `.` | field access — reads a component (dot-*calls* survive only for camelCase FFI bindings) |
 | `-> ( )` | dispatch: pipe the scrutinee into an arm group |
 | `?` | propagate `Result` / `Option` failure |
 | `"..."` | string literal |

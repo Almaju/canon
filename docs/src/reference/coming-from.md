@@ -16,9 +16,9 @@ First, a taste. Here's the whole shape of the language in one snippet —
 a union, two products, and a function that branches by dispatch:
 
 ```canon
-Shape = Circle + Square
-
 Circle = Radius
+
+Shape = Circle + Square
 
 Square = Side
 
@@ -91,7 +91,7 @@ The most direct port — you already have most of the mental model.
 `enum`, `*` is your `struct`, and `Result<T, E>` / `Option<T>` / `?`
 work as you'd expect (error unions can even be spelled inline). Dispatch
 is `match` by another name. The project layout mirrors Cargo
-(`canon.toml` + `src/main.can` + `build/`). And you get ADTs and
+(`src/main.can` + `build/`, no manifest). And you get ADTs and
 pattern matching *without* lifetimes or borrow sigils — ownership is
 inferred, so `'a`, `&`, and `&mut` are gone.
 
@@ -119,7 +119,7 @@ both further than you may be ready for.
 **What you'll like.** It's a small language you can hold in your head,
 it compiles fast to a single portable artifact (a `.wasm` Component,
 much like a static binary), everything is public with no export
-ceremony, and `canon fmt` ends formatting debates the way `gofmt` did —
+ceremony, and `canon check --fix` ends formatting debates the way `gofmt` did —
 except the canonical form is baked into the *language*, so there's
 nothing to disagree about in the first place.
 

@@ -1,17 +1,18 @@
 Content = String
 
+Described = String
+
 MessageContent = Option<Content>
 
-Described = (MessageContent) => String {
+MessageContent => Described {
     MessageContent -> (
-        * None => String { "absent" }
-        * Some<Content> => String { "present" }
+        * None => Described { "absent" }
+        * Some<Content> => Described { "present" }
     )
 }
 
 Unit => Program {
-    "hi"
-        -> Some
+    Some("hi")
         -> MessageContent
         -> Described
         -> Print

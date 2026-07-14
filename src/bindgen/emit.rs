@@ -558,46 +558,6 @@ fn emit_function(
     // the common single-of-each-type case.
     params.sort();
 
-    // Some return shapes keep the legacy `camel = input => Ret` binding
-    // form because the self-constructor extern lowering doesn't decode
-    // them yet: no result (`Unit`), `option`, `list`, and record returns.
-    // The mint would hide the shape the codegen keys on (an `option`'s
-    // discriminant, a `list`'s element read-back, a record's field
-    // layout), so these stay on the camelCase alias the loader still lifts
-    // into an extern. Scalars, `string`, named scalars, and `result` all
-    // take the new string-anchored constructor form. This is the shrinking
-    // remainder of the migration — each shape is unblocked by teaching the
-    // self-ctor extern path to decode it.
-    let legacy_return_shape = match &func.result {
-        None => true,
-        Some(t) => {
-            is_scalar_record(resolve, t)
-                || is_option_return(resolve, t)
-                || is_list_return(resolve, t)
-        }
-    };
-    if legacy_return_shape {
-        let collides = ctx.fn_name_uses.get(&camel).copied().unwrap_or(0) > 1;
-        let ret = match &func.result {
-            Some(t) => render_type(resolve, t, external_use_paths, self_iface)?,
-            None => "Unit".to_string(),
-        };
-        let input = if collides {
-            let cap = kebab_to_pascal(ctx.iface_name);
-            if params.is_empty() {
-                format!("({cap})")
-            } else {
-                format!("({cap} * {})", params.join(" * "))
-            }
-        } else if params.is_empty() {
-            "()".to_string()
-        } else {
-            format!("({})", params.join(" * "))
-        };
-        let decl = format!("{camel} = {input} => {ret}\n");
-        return Ok((camel, decl, collides));
-    }
-
     // A name that collides across the install set (two interfaces both
     // exporting `now`) can't be discovered by its bare leaf name in the
     // flat, `use`-free namespace, so it takes the interface's zero-data
@@ -737,42 +697,6 @@ fn structural_kind(resolve: &Resolve, t: &Type) -> StructuralKind {
         },
         TypeDefKind::Type(inner) => structural_kind(resolve, inner),
         _ => StructuralKind::Plain,
-    }
-}
-
-/// True when `t` is (or transparently aliases) an inline WIT `option<_>`.
-fn is_option_return(resolve: &Resolve, t: &Type) -> bool {
-    match t {
-        Type::Id(id) => {
-            let td = &resolve.types[*id];
-            if td.name.is_some() {
-                return false;
-            }
-            match &td.kind {
-                TypeDefKind::Option(_) => true,
-                TypeDefKind::Type(inner) => is_option_return(resolve, inner),
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
-
-/// True when `t` is (or transparently aliases) an inline WIT `list<_>`.
-fn is_list_return(resolve: &Resolve, t: &Type) -> bool {
-    match t {
-        Type::Id(id) => {
-            let td = &resolve.types[*id];
-            if td.name.is_some() {
-                return false;
-            }
-            match &td.kind {
-                TypeDefKind::List(_) => true,
-                TypeDefKind::Type(inner) => is_list_return(resolve, inner),
-                _ => false,
-            }
-        }
-        _ => false,
     }
 }
 

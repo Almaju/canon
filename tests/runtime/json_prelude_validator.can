@@ -1,5 +1,6 @@
 Unit => Result<Program, MalformedJson> {
-    "[1, 2, 3]"
+    "[1, 2,"
+        -> Joined(" 3]")
         -> Json?
         -> Print
     Unit() -> Ok

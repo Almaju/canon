@@ -1,14 +1,14 @@
+Greeted = Name
+
 Greeting = String
 
 Name = String
 
-Greeted = (Greeting * Name) => Name {
+Greeting * Name => Greeted {
     Name
 }
 
 Unit => Program {
-    "hello"
-        -> Greeting
-        -> Greeted("world" -> Name)
+    Greeting("hello") -> Greeted(Name("world"))
     "ok" -> Print
 }

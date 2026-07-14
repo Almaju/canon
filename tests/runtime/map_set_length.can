@@ -4,8 +4,8 @@ Unit => Program {
         -> Length
         -> Print
     Set()
-        -> Inserted("a")
-        -> Inserted("b")
+        -> Added("a")
+        -> Added("b")
         -> Length
         -> Print
     Map()

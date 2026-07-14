@@ -1,19 +1,20 @@
 Birthday = String
 
+Equality = Bool
+
 OtherUser = User
 
 User = Birthday * Username
 
 Username = String
 
-Equality = (OtherUser * User) => Bool {
+OtherUser * User => Equality {
     True()
 }
 
 Unit => Program {
-    "1990"
-        -> Birthday
-        -> User("alice" -> Username)
-        -> Equality("1991" -> Birthday -> User("bob" -> Username) -> OtherUser)
+    Birthday("1990")
+        -> User(Username("alice"))
+        -> Equality(Birthday("1991") -> User(Username("bob")) -> OtherUser)
     "compared" -> Print
 }

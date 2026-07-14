@@ -61,30 +61,53 @@ reported in Canon terms.
 ## Binding Files
 
 All interop happens at the Component Model boundary, declared in
-**binding files**: `.can` files whose declarations are body-less,
-sitting directly in a versioned package directory
-(`wasi/cli@0.3.0-rc-2026-03-15/environment.can`) whose path spells the
-WIT interface -- no directive, no header:
+**binding files**: `.can` files sitting directly in a versioned package
+directory (`wasi/cli@0.3.0-rc-2026-03-15/environment.can`) whose path
+spells the WIT interface -- no directive, no header. A binding is a
+**string-anchored anonymous constructor**: an ordinary arrow whose body
+is a single string literal naming the WIT fragment verbatim, minting a
+result newtype per function so reference discovery resolves on the type
+it constructs:
 
 ```canon
-getArguments = () => List<String>
+GetArguments = List<String>
 
-getInitialCwd = () => Option<String>
+Unit => GetArguments {
+    "get-arguments"
+}
+
+GetInitialCwd = Option<String>
+
+Unit => GetInitialCwd {
+    "get-initial-cwd"
+}
 ```
 
-The loader rewrites each alias into an external function bound to
-`<urn>#<kebab-case-name>`, deriving the URN from the file's vendored
-path:
+The loader lifts each constructor into an external function bound to
+`<urn>#<fragment>`, deriving the URN from the file's vendored path. The
+mint aliases the WIT return wholesale (`Option<String>`, a record's
+product, `Unit` for a pure effect); a `result` return is the one
+unwrapped shape -- the mint aliases the `ok` payload and the constructor
+returns `Result<Mint, Err>`, so a wrapper's `?` still sees a `Result`.
+The extern lowering resolves the alias chain to decode the return, and
+call sites are ordinary construction (`GetArguments() -> Args`).
 
-Body-less camelCase declarations are only meaningful inside a binding
-file -- anywhere else they remain plain function-type aliases. Bound
-functions are first-class values like any other function.
+One boundary remainder: a **camelCase body-less alias**
+(`body = (Request) => Future<Result<String, HttpError>>`) survives in
+*hand-written* binding files for the two shapes the string-anchored
+lowering doesn't cover yet -- resource methods (pending resource
+lowering) and generic combinators (pending generic externs). The loader
+rewrites those to `<urn>#<kebab-case-name>`. Body-less camelCase
+declarations are only meaningful inside a binding file -- anywhere else
+camelCase is a checker error. Bound functions are first-class values
+like any other function.
 
 Bindings are produced mechanically:
 
 - `canon bindgen <wit-or-wasm>` emits one binding file per WIT
-  interface (deterministic, alphabetical, `canon fmt`-clean).
-- `canon install` reads the manifest's `[imports]` table and
+  interface (deterministic, alphabetical, `canon check --fix`-clean).
+- `canon install` reads the WIT sources under the project's `wit/`
+  directory and
   materializes bindings into `bindgen/` in the same versioned layout.
   Functions whose shape the codegen can't lower yet are **skipped with
   a printed reason**, never emitted broken.

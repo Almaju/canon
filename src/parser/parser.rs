@@ -93,6 +93,14 @@ impl Parser {
         }
     }
 
+    /// Parse a single expression from the token stream. Tooling entry
+    /// point — LSP completion types the chain to the left of the cursor
+    /// by parsing it in isolation (it never appears inside a complete,
+    /// parseable declaration while the user is mid-keystroke).
+    pub(crate) fn parse_expression(&mut self) -> Result<Expr> {
+        self.parse_expr()
+    }
+
     fn parse_item(&mut self) -> Result<Item> {
         let start_span = self.current_span();
 
@@ -153,7 +161,7 @@ impl Parser {
                     span: first_ident.span,
                 });
             }
-            return self.parse_function_after_eq(None, first_ident, start_span);
+            return self.parse_function_after_eq(first_ident, start_span);
         }
 
         let body = self.parse_type_expr()?;
@@ -254,12 +262,7 @@ impl Parser {
         }))
     }
 
-    fn parse_function_after_eq(
-        &mut self,
-        receiver: Option<Ident>,
-        name: Ident,
-        start_span: Span,
-    ) -> Result<Item> {
+    fn parse_function_after_eq(&mut self, name: Ident, start_span: Span) -> Result<Item> {
         let generic_params = if self.check(TokenKind::Lt) {
             self.parse_generic_params()?
         } else {
@@ -282,31 +285,29 @@ impl Parser {
             let body = self.parse_block()?;
             let end_span = self.previous_span();
 
-            // New syntax: extract receiver from first param component
-            let (final_receiver, recv_mut, final_params) = if receiver.is_some() {
-                // Old dot syntax — keep as-is
-                (receiver, false, params)
-            } else if name.name == "main" || params.is_empty() {
-                // main or no-param function: no receiver
-                (None, false, params)
-            } else if matches!(
-                crate::ast::entry_world_of(&return_ty),
-                Some(crate::ast::EntryWorld::Http)
-            ) {
-                // World-shape return (`Response` / `Result<Response, _>`):
-                // this is an HTTP entry, not a method. Suppress receiver
-                // extraction so `home = (Request) -> Response { … }` stays
-                // a free function with `Request` as its parameter (not
-                // a method on `Request`). See the entry-point rule
-                // (docs/src/spec/functions.md).
-                (None, false, params)
-            } else if Self::is_pascal_case_str(&name.name) {
-                // PascalCase: defer to post-parse resolve_new_syntax
-                (None, false, params)
-            } else {
-                // camelCase with params: extract first component as receiver
-                extract_receiver_from_params(params)
-            };
+            // Extract receiver from first param component
+            let (final_receiver, recv_mut, final_params) =
+                if name.name == "main" || params.is_empty() {
+                    // main or no-param function: no receiver
+                    (None, false, params)
+                } else if matches!(
+                    crate::ast::entry_world_of(&return_ty),
+                    Some(crate::ast::EntryWorld::Http)
+                ) {
+                    // World-shape return (`Response` / `Result<Response, _>`):
+                    // this is an HTTP entry, not a method. Suppress receiver
+                    // extraction so `home = (Request) -> Response { … }` stays
+                    // a free function with `Request` as its parameter (not
+                    // a method on `Request`). See the entry-point rule
+                    // (docs/src/spec/functions.md).
+                    (None, false, params)
+                } else if Self::is_pascal_case_str(&name.name) {
+                    // PascalCase: defer to post-parse resolve_new_syntax
+                    (None, false, params)
+                } else {
+                    // camelCase with params: extract first component as receiver
+                    extract_receiver_from_params(params)
+                };
 
             return Ok(Item::Function(FunctionDef {
                 receiver: final_receiver,
@@ -320,13 +321,6 @@ impl Parser {
                 anonymous: false,
                 span: span_join(start_span, end_span),
             }));
-        }
-
-        if receiver.is_some() {
-            return Err(CanonError::ParseError {
-                message: "method definition requires a body `{ ... }`".to_string(),
-                span: self.peek().span,
-            });
         }
 
         let end_span = self.previous_span();
@@ -934,7 +928,7 @@ impl Parser {
     /// verbatim — no HTML escaping, unlike `parse_html_literal` — and
     /// ints/floats render as digits), so a fully constant backtick string
     /// collapses to a single `StringLit`, making `` `hi` `` identical to
-    /// `"hi"` and keeping `canon fmt`'s canonical plain-quote form.
+    /// `"hi"` and keeping `canon check --fix`'s canonical plain-quote form.
     /// Anything with runtime content becomes an `Interp` part, which the
     /// codegen `-> String`-converts and concats into the surrounding text.
     fn parse_format_literal(&mut self) -> Result<Expr> {

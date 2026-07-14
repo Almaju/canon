@@ -1,0 +1,10 @@
+Frobnicated = (Int) => Int {
+    Int -> Sum(1)
+}
+
+Unit => Program {
+    1
+        -> Frobnicated
+        -> String
+        -> Print
+}

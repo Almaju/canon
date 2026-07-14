@@ -5,5 +5,5 @@ Args => Exit {
     Args
         -> Json
         -> Print
-    0 -> Exit
+    Exit(0)
 }
