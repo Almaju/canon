@@ -287,7 +287,7 @@ invariants:
   FFI bindings, and `B(a)` prefix calls survive exactly where the
   literals-in-parens rule puts them (lone literal subject, zero-input,
   `List(…)`); `canon check --fix` rewrites everything else to `->`. See the
-  spec (`docs/src/spec/types-only.md` § The One-Operator Endgame).
+  spec (`docs/src/spec/types-only.md` § Three Operators).
   There is also **no implicit dependency threading**: an omitted
   constructor argument is a missing-argument error even when exactly
   one in-scope value matches — the pipe is the one spelling of passing
