@@ -2,18 +2,11 @@
 
 A small, curated set of **real programs** from the repository's
 [`examples/`](https://github.com/Almaju/canon/tree/main/examples)
-directory. Each page shows the program's real source, kept in step with
-the compiling code by a drift-guard test in the build.
-
-These five are the showcase: a multi-file project, an HTTP JSON API, an
-interactive browser frontend, a documentation site rendered in the
-browser, and a fullstack app that shares one set of types across both.
-The rest of the language's surface is exercised as
-**tests**, not examples -- the deterministic feature demos live in
-`tests/runtime/` (where CI pins their exact output) and the stdlib is
-covered by `tests/canon/`. Examples exist only to show *real-world
-usage*: I/O, networking, a browser, things with environment-dependent
-behavior.
+directory. Each page shows the program's real source, kept in step
+with the compiling code by a drift-guard test in the build. Examples
+exist to show *real-world usage* — I/O, networking, a browser; the
+language's feature-by-feature coverage lives in the test suite
+instead.
 
 | Example | What it shows | Page |
 |---|---|---|

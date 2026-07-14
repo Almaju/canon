@@ -1,12 +1,10 @@
 # Markdown
 
-Canon's standard library can render Markdown to HTML entirely in Canon --
+Canon's standard library renders Markdown to HTML entirely in Canon --
 no external parser, no build plugin. The renderer is an ordinary Canon
-program that walks a `String` byte-by-byte and emits `Html`, compiled
-through the same pipeline as everything else. It lives in
-`canon/std` as `markdown.can` and is modelled on the JSON parser
-(`json.can`): a cursor threaded as an `Int`, dispatch on the byte at the
-cursor, recursion in place of loops.
+program (dispatch on bytes, recursion in place of loops), compiled
+through the same pipeline as everything else -- which is how this docs
+site renders itself.
 
 ## Rendering
 
@@ -123,17 +121,6 @@ emphasis, setext headings, and images -- each an additive
 extension in the same byte-walking style. The renderer is byte-oriented, so non-ASCII (UTF-8) text in string
 literals is subject to the compiler's existing lexer handling of
 multi-byte characters; ASCII markdown is unaffected.
-
-## Why this exists
-
-A language that compiles to WebAssembly and runs in the browser should be
-able to present its own documentation as a Canon app, not a separate
-toolchain. The Markdown renderer plus `.md` import make that direct:
-content is authored as ordinary markdown files, imported by name, and
-rendered to HTML by the standard library -- on the server for a CLI
-generator, or client-side inside the [web target](./web-target.md), where
-Canon acts as the frontend framework. The same renderer serves both,
-exercising strings, dispatch, escaping, and file resolution end to end.
 
 ## Current limits
 

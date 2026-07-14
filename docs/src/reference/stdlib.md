@@ -1,19 +1,16 @@
 # Standard Library
 
-The standard library is embedded into the compiler; there are no files
-to install and nothing to import: referencing a stdlib type by name
-(`File`, `Now`, `Random`) loads its module automatically. The thematic
-sub-namespaces below (`fs/`, `time/`, `http/`) organize the files; you
-never write the path -- each name resolves to exactly one module, and a
-name that clashes with one of your own types is a compile error.
+The standard library is embedded in the compiler: nothing to install,
+nothing to import — referencing a stdlib type by name (`File`, `Now`,
+`Random`) loads its module automatically, and a name that clashes with
+one of your own types is a compile error.
 
 Each module exposes a single primary type, written in ordinary Canon
 over [binding-file](../spec/compilation.md) declarations against
 standard [WASI](https://github.com/WebAssembly/WASI) interfaces or
 temporary `canon:builtins/*` host bridges — see
 [Using WASI Interfaces](./wasi.md) for the layering. Idiomatic code
-only ever reaches the wrappers below; the raw `wasi/...` bindings
-underneath are an implementation detail.
+only ever reaches the wrappers below.
 
 ## At a Glance
 
@@ -26,7 +23,7 @@ underneath are an implementation detail.
 | `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `Read`, `Written` |
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
-| `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values); see [Map and Set](#map-and-set) |
+| `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set.List()` = members, alphabetically |
 | `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
@@ -37,96 +34,40 @@ underneath are an implementation detail.
 | `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
 | `web/Html` | `Html = String`, `ToHtml` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
-| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test` |
+| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../learn/testing.md) |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
 | `cli/Cwd` | `Cwd = String`, `Unit => Option<Cwd>` | `wasi/cli/environment` | initial working directory, when the host provides one |
-| `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds (record-of-scalars return) |
-| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world; see [Programs & Modules](../learn/programs-and-modules.md) |
+| `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds |
+| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world |
+
+Anything not listed is third-party territory: a library to be
+published, or future stdlib work.
 
 ---
 
-## `Instant`
-
-Monotonic-clock reading, as nanoseconds since an unspecified initial
-value. The constructor `Instant()` reads the clock; `Instant` is a
-newtype over `Int`, so the standard `Int` methods (`add`, `sub`,
-comparison, `.print`) work on it directly.
+## Clocks and Randomness
 
 ```canon
 Unit => Program {
     Instant() -> Print
-}
-```
-
-```canon
-Instant = Int
-
-Unit => Instant
-```
-
-Backed by the generated `wasi/clocks/monotonic_clock` binding, which
-imports `wasi:clocks/monotonic-clock@0.3.0-rc-2026-03-15`. A second
-generated interface, `wasi/clocks/system_clock`, exposes wall-clock
-time as a `record instant` (a `seconds` + `nanoseconds` shape) for
-callers that need it directly; most users want `canon/std/time/Now`.
-
-> **Known limitation.** The monotonic `Instant` (`= Int`) and the
-> wall-clock modules (`Now` / `Unix`, which pull in `system_clock`)
-> both surface a type named `Instant` -- the second from WASI's
-> `record instant`. Because the two bodies differ, a single program
-> that references *both* the monotonic `Instant()` and `Now()` / `Unix()`
-> currently fails to load with a duplicate-`Instant` error. Use one
-> clock family per program until per-referrer type resolution lands.
-
-## `Random`
-
-Cryptographic-quality random integer. The constructor `Random()` draws
-a fresh value from the WASI CSPRNG; `Random` is a newtype over `Int`,
-so arithmetic and printing work normally on the result.
-
-```canon
-Unit => Program {
     Random() -> Print
-}
-```
-
-```canon
-Random = Int
-
-Random = () => Random
-```
-
-Backed by the generated `wasi/random/random` binding, which imports
-`wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64`.
-
-## `Now`
-
-Current UTC wall-clock time, formatted as an RFC 3339 string. Useful
-for log lines.
-
-```canon
-Unit => Program {
     Now() -> Print
 }
 ```
 
-Prints an RFC 3339 timestamp, e.g. `2026-05-23T22:30:35Z`.
+`Instant()` reads the monotonic clock (nanoseconds, an `Int` newtype,
+so arithmetic and comparison work directly). `Random()` draws from the
+WASI CSPRNG. `Now()` is the RFC 3339 wall-clock time, formatted by a
+calendar conversion written in pure Canon — the host provides only the
+`Unix()` clock reading.
 
-```canon
-Now = String
+> **Known limitation.** The monotonic and wall-clock modules both
+> surface a type named `Instant` with differing bodies, so one program
+> cannot yet use both `Instant()` and `Now()`/`Unix()`. Use one clock
+> family per program until per-referrer resolution lands.
 
-Now = () => Now
-```
-
-Pure Canon: `Now()` reads `Unix()` (the WASI system clock) and
-formats it with a civil-from-days calendar conversion written in
-Canon itself -- the host provides only the clock reading.
-
-## `File`, `Path`, `Contents`, `IoError`
-
-Synchronous file I/O -- read and write, both evidence-newtype
-constructors ([Types-Only Canon](../spec/types-only.md)).
+## Files: `File`, `Path`, `Contents`, `IoError`
 
 ```canon
 Unit => Program {
@@ -140,13 +81,7 @@ Unit => Program {
 ```
 
 ```canon
-Contents = String
-
-File = String
-
 File = (Path) => Result<File, IoError>
-
-Path = String
 
 Read = String
 
@@ -157,24 +92,17 @@ Written = Path
 Contents * Path => Result<Written, IoError>
 ```
 
-`path -> File` opens the file, returning a `File` handle or an
-`IoError`; `file -> Read?` reads the entire contents as a `String`.
-`contents -> Written(path)?` creates or truncates the file and returns
-the path back on success (`Written = Path`), so a write chains straight
-into a re-open -- the example above round-trips. Backed by
-`canon:builtins/filesystem`; will move to the async
-`wasi:filesystem/types` interface once resource lowering lands.
+`path -> File?` opens; `file -> Read?` reads the whole contents;
+`contents -> Written(path)?` creates or truncates and returns the path
+as evidence — so a write chains straight into a re-open, as above.
 
 ## Map and Set
 
-Sorted collections, written in **pure Canon** -- recursive unions built
-from nothing but dispatch, recursion, and `String` comparison. Keys
-(and Map values) are `String`s until stdlib generics land. All updates
-are functional: `Inserted` / `Removed` return a new collection. Every
-operation is a constructor named after what it produces
-([Types-Only Canon](../spec/types-only.md)): `Inserted`, `Removed`,
-`Value` (the value at a key), `Contains` (whether a key is present),
-`Keys`, `Values`, `Length`.
+Sorted, immutable collections in **pure Canon** — recursive unions
+walked by dispatch and recursion (`String` keys and values until
+stdlib generics land). Every operation is a constructor named after
+what it produces; iteration order is alphabetical by key, whatever the
+insertion order (of course it is).
 
 ```canon
 Unit => Program {
@@ -188,125 +116,35 @@ Unit => Program {
         * None => Unit { "absent" -> Print }
         * Some<Value> => Unit { Value -> Print }
     )
-}
-```
-
-Iteration order is **alphabetical by key** -- `Inserted` is a sorted
-insert, so `Keys` / `Values` come back ordered no matter the
-insertion order. (Of course it is: wherever ordering is discretionary,
-Canon picks alphabetical.)
-
-```canon
-Inserted = Map
-
-Map = Empty + Node
-
-Removed = Map
-
-Value = String
-
-Map * String * Value => Inserted
-
-Map * String => Removed
-
-Unit => Map
-
-Map * String => Contains
-
-Map * String => Option<Value>
-
-Map => Keys
-
-Map => Length
-
-Map => Values
-```
-
-`Set` is the set-shaped counterpart. `Set -> List` -- conversion is
-construction -- returns the members, alphabetically, as a
-`List<String>`:
-
-```canon
-Unit => Program {
     Set()
         -> Added("b")
         -> Added("a")
         -> Added("b")
         -> Length
         -> Print
-    Set()
-        -> Added("x")
-        -> Contains("x")
-        -> Print
-    Set()
-        -> Added("b")
-        -> Added("a")
-        -> List
-        -> Json
-        -> Print
 }
 ```
 
-```canon
-Added = Set
+Map: `Inserted`, `Removed`, `Value` (lookup, `Option`), `Contains`,
+`Keys`, `Values`, `Length`. Set: `Added`, `Dropped`, `Contains`,
+`Length`, `List` (members, alphabetically). Both double as reference
+code for [recursive types](../spec/types.md#recursive-types).
 
-Dropped = Set
+## Conversions: `Int`, `Byte`, `Case`
 
-Set = Absent + Entry
-
-Set * String => Added
-
-Set * String => Dropped
-
-Unit => Set
-
-Set * String => Contains
-
-Set => Length
-
-Set => List<Item>
-```
-
-Both modules double as reference code for **recursive union types**:
-`Map = Empty + Node` with `Node = Key * Rest * Value` and
-`Rest = Map` is the canonical self-referential shape, auto-boxed by
-the compiler (see [Recursive Types](../spec/types.md#recursive-types)).
-
-## `Int`, `MalformedInt`, `Byte`
-
-Conversions follow one rule -- **conversion is construction** (see
-[Conversions](../spec/types.md#conversions)). The infallible
-directions are compiler builtins available without imports:
-
-```canon
-Unit => Program {
-    String(42) -> Print
-    String(123)
-        -> Joined("!")
-        -> Print
-}
-```
-
-The fallible direction, `String` -> `Int`, is a validated constructor
-in `canon/std/Int`, written in pure Canon (digit recursion over
-`byteAt`):
+The infallible directions are built in (`String(42)` is `"42"`); the
+fallible direction is a validated constructor in pure Canon:
 
 ```canon
 Int = (String) => Result<Int, MalformedInt>
-
-MalformedInt = String
 ```
 
-`Byte = Int` resolves the ambiguity of `Int` -> `String` (decimal
-rendering vs. byte-to-character) the way Canon resolves everything:
-wrap to mean the other thing. `String(42)` is `"42"`;
-`String(Byte(42))` is `"*"`.
+`Byte = Int` picks the character reading of `String(...)`:
+`String(42)` is `"42"`, `String(Byte(42))` is `"*"` — wrapping to mean
+the other thing is what newtypes are for. `Uppercased` / `Lowercased`
+map ASCII case.
 
-## `Url`, `Fetched`, `HttpError`
-
-URL parsing plus blocking HTTP GET. Fetching is a constructor:
-`Fetched = Body` is the evidence that a `Url` was retrieved
-([Types-Only Canon](../spec/types-only.md)).
+## HTTP Client: `Url`, `Fetched`
 
 ```canon
 Unit => Program {
@@ -316,98 +154,14 @@ Unit => Program {
 }
 ```
 
-```canon
-Fetched = Body
+`Url(s)` validates (scheme, non-empty host); `url -> Fetched?` is a
+blocking GET returning the body. TLS and async lowering arrive with
+the `wasi:http/outgoing-handler` migration.
 
-HttpError = String
+## `Json`
 
-InvalidUrl = String
-
-Url = String
-
-(String) => Result<Url, InvalidUrl>
-
-(Url) => Result<Fetched, HttpError>
-```
-
-`Url(s)` is a validated constructor: malformed inputs are rejected.
-The validation (scheme prefix, non-empty host) is pure Canon.
-`url -> Fetched` performs a blocking HTTP GET and returns the response
-body. TLS (`https://`) and async lowering arrive with the
-`wasi:http/outgoing-handler` migration.
-
-## `TestResult`
-
-The Canon-language testing primitive. See
-[Testing](../learn/testing.md) for the full convention.
-
-```canon
-SumAddsOperands = TestResult
-
-Unit => SumAddsOperands {
-    1
-        -> Sum(2)
-        -> Eq(3)
-        -> TestResult
-}
-```
-
-```canon
-Fail = String
-
-Pass = Unit
-
-TestResult = Fail + Pass
-
-Bool => TestResult
-```
-
-The assertion *is* the `TestResult` constructor
-([Types-Only Canon](../spec/types-only.md)): a `Bool` constructs a
-`Pass` (on `True`) or an empty `Fail` (on `False`). When a failure
-diagnostic helps, construct `Fail("why")` directly in a dispatch arm.
-
-Each test is a result newtype of `TestResult`, named for the behaviour
-it asserts, with a nullary constructor as its body. `canon test <file>`
-discovers every `X = TestResult` newtype with a `Unit => X` constructor
-in the entry file and runs them, printing `[ ok ] TestName` or
-`[FAIL] TestName: message` per test.
-
-## `Json`, `MalformedJson`
-
-`Json = String`: a JSON-encoded text. `Json(s)` validates the string
-as well-formed JSON and returns it back as a `Json` value, or a
-`MalformedJson` error.
-
-The validator is a recursive-descent parser written in pure Canon
-(dispatch on `ByteAt`, recursion in place of loops). It handles the
-full JSON grammar — keywords, numbers (negative, decimal, exponent),
-strings with escapes, arrays, objects, arbitrary nesting — and rejects
-trailing characters and trailing commas.
-
-`ToJson` is a trait with instances for the primitive types (`Bool`,
-`Float`, `Int`, `String`), each emitting the appropriately-escaped
-JSON spelling of the value. All of them are pure Canon -- the string
-instance walks the bytes and escapes quotes, backslashes, and control
-characters (`\u00XX`) itself. The one remaining host import is
-`canon:builtins/json#from-float`: shortest-round-trip `f64` formatting
-is genuinely numeric machinery.
-
-Reading a parsed tree back is pure Canon too:
-
-- `json -> Field("key")` returns the raw JSON text of that field's
-  value in an object (`Result<Json, MalformedJson>`), ready to be
-  re-parsed or passed on.
-- `json -> Decoded` decodes a JSON string literal into its contents
-  (`Result<Decoded, MalformedJson>`, `Decoded = String`), handling the
-  standard escapes and `\uXXXX` (BMP code points; unpaired surrogates
-  become U+FFFD).
-
-**Literal syntax.** JSON object and array literals are first-class
-expressions, and the module is part of the prelude: nothing to import.
-The loader pulls `canon/std/Json` in automatically when a program uses
-interpolation, the `Json(...)` validator, or `.ToJson()`. A fully
-static literal is a plain constant and needs nothing at all.
+`Json = String`: JSON-encoded text. Object and array **literals are
+first-class expressions**, part of the prelude — nothing to import:
 
 ```canon
 Labeled = (Int) => Json {
@@ -417,27 +171,21 @@ Labeled = (Int) => Json {
 Unit => Result<Program, MalformedJson> {
     Json("[1, 2, 3]")? -> Print
     ToJson(42) -> Print
-    ToJson("hi") -> Print
-    Labeled(42) -> Print
     {"a":1,"b":[true,false,null]} -> Print
-    {"escaped":"a \"b\" c"} -> Print
+    Labeled(42) -> Print
     Unit() -> Ok
 }
 ```
 
-Literal values may be:
-
-- **Static**: strings, numbers, `true` / `false` / `null`, or nested
-  literals. Baked into a single constant at parse time.
-- **Interpolated**: any Canon expression. Its runtime value is
-  converted via `.ToJson()`, so it must have a `ToJson` instance
-  (primitives, `Json` values, or any type with a hand-written
-  instance). The result is concatenated into the surrounding JSON
-  scaffolding at runtime.
-
-`.ToJson()` follows newtype alias chains: `Email = String` dispatches
-to `String`'s instance without a hand-written one. A structural derive
-that walks product / union types is still a follow-up slice.
-
-Anything not listed in *At a Glance* is third-party territory: either
-a library to be published under any path, or future stdlib work.
+- **Static** literal members are baked into a constant at parse time
+  and work in every world, including HTTP handlers.
+- **Interpolated** members convert at runtime via `ToJson` (instances
+  for `Bool`, `Float`, `Int`, `String`; newtype chains follow to their
+  base instance). The instances are host-backed, which the HTTP world
+  can't satisfy yet.
+- `Json("…")` validates a *runtime-built* string (full JSON grammar,
+  pure Canon); feeding it a static literal the literal form can
+  express is a checker error — the literal is the one spelling.
+- Read back with `json -> Field("key")` (the raw text of an object
+  field) and `json -> Decoded` (a JSON string's contents, escapes
+  handled).

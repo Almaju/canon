@@ -1,13 +1,8 @@
 # Installation
 
-## Prerequisites
-
-None at runtime. Canon ships a single prebuilt `canon` binary with the
-`wasmtime` Component Model runtime embedded: no Rust toolchain, no
-`rustc`/`cargo` at build time, no external linker.
-
-Building the compiler from source (a contributor concern, not a user
-one) needs stable Rust via [rustup](https://rustup.rs).
+Canon is a single prebuilt binary with the runtime embedded — no Rust
+toolchain, no external linker, no prerequisites. (Building the
+*compiler* from source is a contributor concern and needs stable Rust.)
 
 ## Install
 
@@ -55,10 +50,7 @@ canon upgrade --check      # check whether a newer stable release is available
 
 ## Editor Support
 
-The Zed extension at
-[`editors/zed-canon`](https://github.com/Almaju/canon/tree/main/editors/zed-canon)
-provides syntax highlighting and a built-in language server. Install it
-via Zed's *Install Dev Extension* command;
-[`editors/README.md`](https://github.com/Almaju/canon/blob/main/editors/README.md)
-has the full instructions. The extension runs the same `canon` binary
-(`canon lsp` subcommand), so there is no separate LSP install.
+Extensions for Zed and VS Code live under
+[`editors/`](https://github.com/Almaju/canon/tree/main/editors) —
+syntax highlighting plus a language server that is just the `canon`
+binary (`canon lsp`), so there is nothing separate to install.
