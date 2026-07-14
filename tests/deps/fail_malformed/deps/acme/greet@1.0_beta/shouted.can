@@ -1,5 +1,5 @@
 Shouted = String
 
 String => Shouted {
-    String -> Joined("!")
+    `{String}!`
 }

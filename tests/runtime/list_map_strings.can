@@ -1,6 +1,6 @@
 Unit => Program {
     List("alpha" * "beta")
-        -> Mapped((String) => String { String -> Joined("!") })
+        -> Mapped((String) => String { `{String}!` })
         -> Json
         -> Print
     List("xx" * "yyy" * "z") -> Mapped((String) => Int { String -> Length }) -> At(2) -> (

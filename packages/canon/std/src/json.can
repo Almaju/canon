@@ -158,11 +158,7 @@ Int * Json * String => Result<ClosedOrKey, MalformedJson> {
             Json -> ByteAt(Int) -> Eq(125) -> (
                 * False => Result<ClosedOrKey, MalformedJson> { Int -> KeyExpected(Json * String) }
                 * True => Result<ClosedOrKey, MalformedJson> {
-                    "field `"
-                        -> Joined(String)
-                        -> Joined("` not found")
-                        -> MalformedJson
-                        -> Err
+                    MalformedJson(`field \`{String}\` not found`) -> Err
                 }
             )
         }
@@ -323,9 +319,7 @@ Int => Encoded {
 }
 
 String => Encoded {
-    "\""
-        -> Joined(1 -> EscapedTail(String))
-        -> Joined("\"")
+    `"{1 -> EscapedTail(String)}"`
 }
 
 Int => EscapeChar {
@@ -360,9 +354,7 @@ Int => EscapedByte {
                 * 12 => EscapedByte { "\\f" }
                 * 13 => EscapedByte { "\\r" }
                 * Int => EscapedByte {
-                    "\\u00"
-                        -> Joined(Int -> Quotient(16) -> HexDigit)
-                        -> Joined(Int -> Remainder(16) -> HexDigit)
+                    `\\u00{Int -> Quotient(16) -> HexDigit}{Int -> Remainder(16) -> HexDigit}`
                 }
             )
         }
@@ -818,11 +810,7 @@ Int * Json * String => Result<TailChecked, MalformedJson> {
                             MalformedJson("expected comma or closing brace in object") -> Err
                         }
                         * True => Result<TailChecked, MalformedJson> {
-                            "field `"
-                                -> Joined(String)
-                                -> Joined("` not found")
-                                -> MalformedJson
-                                -> Err
+                            MalformedJson(`field \`{String}\` not found`) -> Err
                         }
                     )
                 }

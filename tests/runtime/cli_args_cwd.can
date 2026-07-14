@@ -7,6 +7,6 @@ Unit => Program {
         -> Print
     Cwd() -> (
         * None => Unit { "no cwd" -> Print }
-        * Some<String> => Unit { "cwd: " -> Joined(String) -> Print }
+        * Some<String> => Unit { `cwd: {String}` -> Print }
     )
 }

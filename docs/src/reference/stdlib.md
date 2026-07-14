@@ -291,9 +291,7 @@ directions are compiler builtins available without imports:
 ```canon
 Unit => Program {
     String(42) -> Print
-    String(123)
-        -> Joined("!")
-        -> Print
+    `{String(123)}!` -> Print
 }
 ```
 

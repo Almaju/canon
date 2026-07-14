@@ -18,17 +18,11 @@ Bool => Result<Lookup, Missing> {
 }
 
 HttpError => Printed {
-    "http "
-        -> Joined(HttpError.Code -> String)
-        -> Joined(": ")
-        -> Joined(HttpError.Reason)
-        -> Printed
+    Printed(`http {HttpError.Code -> String}: {HttpError.Reason}`)
 }
 
 Missing => Printed {
-    "missing key: "
-        -> Joined(Missing)
-        -> Printed
+    Printed(`missing key: {Missing}`)
 }
 
 Unit => Program {

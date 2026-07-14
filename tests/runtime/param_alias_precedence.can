@@ -5,15 +5,7 @@ Tag = String
 Wrapped = String
 
 Attr * String * Tag => Wrapped {
-    "<"
-        -> Joined(Tag)
-        -> Joined(" ")
-        -> Joined(Attr)
-        -> Joined(">")
-        -> Joined(String)
-        -> Joined("</")
-        -> Joined(Tag)
-        -> Joined(">")
+    `<{Tag} {Attr}>{String}</{Tag}>`
 }
 
 Unit => Program {

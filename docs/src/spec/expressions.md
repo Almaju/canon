@@ -358,8 +358,13 @@ Int => Report {
 - A hole holds an arbitrary Canon expression whose value is converted
   through `String` construction and concatenated into the surrounding
   text: an `Int` renders as its decimal digits, a `String` passes
-  through unchanged. This replaces hand-written `-> Joined(...)` chains
-  (`` `<{x}>` `` instead of `"<" -> Joined(x) -> Joined(">")`).
+  through unchanged. This replaces hand-written `-> Joined(...)` chains,
+  and the replacement is enforced: `canon check --fix` folds a `Joined`
+  chain that contains literal text into the format string
+  (`"<" -> Joined(x) -> Joined(">")` becomes `` `<{x}>` ``, and an
+  all-literal chain constant-folds to the plain string). An all-computed
+  chain keeps the pipe — `Joined` is also list concatenation, and only
+  literal text proves the chain builds a string.
 - `{{` and `}}` escape literal braces; ``\` `` escapes a backtick, and
   the usual `\n` / `\t` / `\\` / `\u….` escapes work as in a
   double-quoted string. A format string may span multiple source lines.

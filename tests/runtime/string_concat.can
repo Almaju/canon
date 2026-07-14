@@ -1,8 +1,4 @@
 Unit => Program {
-    "hello, "
-        -> Joined("world")
-        -> Print
-    "[FAIL] "
-        -> Joined("the message")
-        -> Print
+    "hello, world" -> Print
+    "[FAIL] the message" -> Print
 }

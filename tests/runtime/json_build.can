@@ -1,10 +1,4 @@
 Unit => Result<Program, MalformedJson> {
-    "{\"answer\":"
-        -> Joined(Encoded(42))
-        -> Joined(",\"label\":")
-        -> Joined(Encoded("life"))
-        -> Joined("}")
-        -> Json?
-        -> Print
+    Json(`{{"answer":{Encoded(42)},"label":{Encoded("life")}}}`)? -> Print
     Unit() -> Ok
 }

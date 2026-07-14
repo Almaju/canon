@@ -6,39 +6,18 @@ RenderedItem = Html
 
 Line => Flipped {
     Line -> ByteAt(1) -> Eq(48) -> (
-        * False => Flipped {
-            "0"
-                -> Joined(Line -> Substring(From(2) * Line -> Length -> To))
-                -> Line
-        }
-        * True => Flipped {
-            "1"
-                -> Joined(Line -> Substring(From(2) * Line -> Length -> To))
-                -> Line
-        }
+        * False => Flipped { Line(`0{Line -> Substring(From(2) * Line -> Length -> To)}`) }
+        * True => Flipped { Line(`1{Line -> Substring(From(2) * Line -> Length -> To)}`) }
     )
 }
 
 Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49) -> (
         * False => RenderedItem {
-            Line
-                -> Substring(From(3) * Line -> Length -> To)
-                -> Escaped
-                -> Joined(" ")
-                -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("done"))
-                -> Joined(" ")
-                -> Joined("Delete:" -> Joined(Int -> String) -> Msg -> Button("remove"))
-                -> Li
+            Li(`{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped} {Msg(`Toggle:{Int -> String}`) -> Button("done")} {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
         }
         * True => RenderedItem {
-            "<s>"
-                -> Joined(Line -> Substring(From(3) * Line -> Length -> To) -> Escaped)
-                -> Joined("</s> ")
-                -> Joined("Toggle:" -> Joined(Int -> String) -> Msg -> Button("undo"))
-                -> Joined(" ")
-                -> Joined("Delete:" -> Joined(Int -> String) -> Msg -> Button("remove"))
-                -> Li
+            Li(`<s>{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped}</s> {Msg(`Toggle:{Int -> String}`) -> Button("undo")} {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
         }
     )
 }

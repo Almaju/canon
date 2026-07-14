@@ -117,8 +117,8 @@ fn canonicalize_module(m: &Module) -> Module {
 /// the name twice — the signature already carries it. The anonymous
 /// arrow is the one declaration form for constructors, so `canon check --fix`
 /// drops the redundant name (`String => Result<Url, InvalidUrl> { … }`).
-/// Named declarations remain for exactly one thing: shape
-/// implementations, where the name differs from the constructed type.
+/// A name that differs from the constructed type is a checker error, so
+/// the arrow is the only bodied form that survives canonical format.
 fn is_redundantly_named(f: &FunctionDef) -> bool {
     !f.anonymous
         && f.receiver.is_none()
@@ -225,6 +225,82 @@ fn primitive_literal_wrap(name: &str, input: &Expr) -> bool {
             | ("Int", Expr::IntLit { .. })
             | ("Float", Expr::FloatLit { .. })
     )
+}
+
+/// Fold a `Joined` chain into a format string when literal text anchors
+/// it. Returns `None` when no direct segment is a string literal or
+/// format string (the chain may be list concatenation — only literal
+/// text proves strings) or when a bare numeric literal appears as a
+/// segment (ill-typed as concatenation; folding would change the
+/// failure mode). An all-static fold collapses to the plain string, the
+/// same constant-folding the parser applies to literal holes.
+fn fold_joined_chain(chain: &Expr, span: crate::error::Span) -> Option<Expr> {
+    let mut parts: Vec<FormatLitPart> = Vec::new();
+    let mut saw_text = false;
+    if !joined_parts(chain, &mut parts, &mut saw_text) || !saw_text {
+        return None;
+    }
+    // Merge adjacent statics so the parts alternate the way the parser
+    // produces them (round-trip stability).
+    let mut merged: Vec<FormatLitPart> = Vec::with_capacity(parts.len());
+    for p in parts {
+        match (&p, merged.last_mut()) {
+            (FormatLitPart::Static(s), Some(FormatLitPart::Static(last))) => last.push_str(s),
+            _ => merged.push(p),
+        }
+    }
+    if merged.iter().all(|p| matches!(p, FormatLitPart::Static(_))) {
+        let value = merged
+            .iter()
+            .map(|p| match p {
+                FormatLitPart::Static(s) => s.as_str(),
+                FormatLitPart::Interp(_) => unreachable!(),
+            })
+            .collect::<String>();
+        return Some(Expr::StringLit { value, span });
+    }
+    Some(Expr::FormatLit {
+        parts: merged,
+        span,
+    })
+}
+
+/// Flatten a `Joined` tree (receiver chains and `Joined` arguments —
+/// concatenation is associative) into format-string parts. `Static`
+/// parts come only from direct string-literal / format-string segments;
+/// every other segment becomes an interpolation hole. Returns `false`
+/// (abort the fold) on a bare numeric-literal segment.
+fn joined_parts(expr: &Expr, parts: &mut Vec<FormatLitPart>, saw_text: &mut bool) -> bool {
+    match expr {
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } if crate::ast::builtin_pipe_name(&method.name) == "Joined" && args.len() == 1 => {
+            joined_parts(receiver, parts, saw_text) && joined_parts(&args[0], parts, saw_text)
+        }
+        Expr::StringLit { value, .. } => {
+            *saw_text = true;
+            parts.push(FormatLitPart::Static(value.clone()));
+            true
+        }
+        Expr::FormatLit { parts: inner, .. } => {
+            *saw_text = true;
+            for p in inner {
+                parts.push(match p {
+                    FormatLitPart::Static(s) => FormatLitPart::Static(s.clone()),
+                    FormatLitPart::Interp(e) => FormatLitPart::Interp(Box::new(canon_expr(e))),
+                });
+            }
+            true
+        }
+        Expr::IntLit { .. } | Expr::FloatLit { .. } => false,
+        other => {
+            parts.push(FormatLitPart::Interp(Box::new(canon_expr(other))));
+            true
+        }
+    }
 }
 
 fn canon_expr(e: &Expr) -> Expr {
@@ -372,6 +448,18 @@ fn canon_expr(e: &Expr) -> Expr {
             piped,
             span,
         } => {
+            // A `Joined` chain anchored by literal text is a hand-written
+            // format string — fold it into the backtick literal, the one
+            // spelling of building a string around text (`"<" -> Joined(x)
+            // -> Joined(">")` becomes `` `<{x}>` ``). A chain with no
+            // direct string-literal segment stays a pipe: `Joined` is also
+            // list concatenation, and only literal text proves the chain
+            // builds a string.
+            if crate::ast::builtin_pipe_name(&method.name) == "Joined" && args.len() == 1 {
+                if let Some(folded) = fold_joined_chain(e, *span) {
+                    return folded;
+                }
+            }
             // camelCase methods are FFI binding calls at the boundary
             // (`.now()`, `.set()`); `->` only pipes into PascalCase
             // constructors, so leave these as dot-calls.

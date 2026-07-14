@@ -4,7 +4,7 @@ String => Routed {
     String -> (
         * "/notes" => Routed { "index" }
         * "/notes/1" => Routed { "note one" }
-        * String => Routed { "not found: " -> Joined(String) }
+        * String => Routed { `not found: {String}` }
     )
 }
 

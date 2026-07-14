@@ -106,254 +106,114 @@ Unit => Init {
 
 Page * Slug * Label => NavItem {
     Page.String -> Eq(Slug.String) -> (
-        * False => NavItem {
-            "<button data-msg=\"Nav:"
-                -> Joined(Slug.String)
-                -> Joined("\">")
-                -> Joined(Label.String)
-                -> Joined("</button>")
-                -> Html
-        }
+        * False => NavItem { Html(`<button data-msg="Nav:{Slug.String}">{Label.String}</button>`) }
         * True => NavItem {
-            "<button class=\"active\" aria-current=\"page\" data-msg=\"Nav:"
-                -> Joined(Slug.String)
-                -> Joined("\">")
-                -> Joined(Label.String)
-                -> Joined("</button>")
-                -> Html
+            Html(`<button class="active" aria-current="page" data-msg="Nav:{Slug.String}">{Label.String}</button>`)
         }
     )
 }
 
 Slug * Label => Next {
-    "<a class=\"pager-link pager-next\" data-msg=\"Nav:"
-        -> Joined(Slug.String)
-        -> Joined("\"><span class=\"pager-dir\">Next &#8594;</span><span class=\"pager-title\">")
-        -> Joined(Label.String)
-        -> Joined("</span></a>")
-        -> Html
+    Html(`<a class="pager-link pager-next" data-msg="Nav:{Slug.String}"><span class="pager-dir">Next &#8594;</span><span class="pager-title">{Label.String}</span></a>`)
 }
 
 Page => Pager {
     Page -> (
         * "building-and-running" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("hello-world") -> Prev(Label("Hello, World")) -> String)
-                -> Joined(Slug("guide") -> Next(Label("A Tour of Canon")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{Slug("guide") -> Next(Label("A Tour of Canon")) -> String}</nav>`)
         }
         * "canon-for-ai" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("guide") -> Prev(Label("A Tour of Canon")) -> String)
-                -> Joined(Slug("overview") -> Next(Label("Overview")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("guide") -> Prev(Label("A Tour of Canon")) -> String}{Slug("overview") -> Next(Label("Overview")) -> String}</nav>`)
         }
         * "codegen-gaps" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("web-target") -> Prev(Label("The Web Target")) -> String)
-                -> Joined(Slug("deploying") -> Next(Label("Deploying")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("web-target") -> Prev(Label("The Web Target")) -> String}{Slug("deploying") -> Next(Label("Deploying")) -> String}</nav>`)
         }
         * "coming-from" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("deploying") -> Prev(Label("Deploying")) -> String)
-                -> Joined(Slug("contributing") -> Next(Label("Contributing")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("deploying") -> Prev(Label("Deploying")) -> String}{Slug("contributing") -> Next(Label("Contributing")) -> String}</nav>`)
         }
         * "compilation" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("effects-and-async") -> Prev(Label("Effects &amp; Async")) -> String)
-                -> Joined(Slug("types-only") -> Next(Label("Types-Only Canon")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("effects-and-async") -> Prev(Label("Effects &amp; Async")) -> String}{Slug("types-only") -> Next(Label("Types-Only Canon")) -> String}</nav>`)
         }
         * "contributing" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("coming-from") -> Prev(Label("Coming from Another Language")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("coming-from") -> Prev(Label("Coming from Another Language")) -> String}</nav>`)
         }
         * "deploying" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("codegen-gaps") -> Prev(Label("Known Codegen Gaps")) -> String)
-                -> Joined(Slug("coming-from") -> Next(Label("Coming from Another Language")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("codegen-gaps") -> Prev(Label("Known Codegen Gaps")) -> String}{Slug("coming-from") -> Next(Label("Coming from Another Language")) -> String}</nav>`)
         }
         * "effects-and-async" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("modules") -> Prev(Label("Modules &amp; Packages")) -> String)
-                -> Joined(Slug("compilation") -> Next(Label("Compilation &amp; ABI")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("modules") -> Prev(Label("Modules &amp; Packages")) -> String}{Slug("compilation") -> Next(Label("Compilation &amp; ABI")) -> String}</nav>`)
         }
         * "expressions" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("types") -> Prev(Label("Types")) -> String)
-                -> Joined(Slug("functions") -> Next(Label("Functions &amp; Traits")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("types") -> Prev(Label("Types")) -> String}{Slug("functions") -> Next(Label("Functions &amp; Traits")) -> String}</nav>`)
         }
         * "fullstack" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("markdown-web") -> Prev(Label("Docs Site in the Browser")) -> String)
-                -> Joined(Slug("stdlib") -> Next(Label("Standard Library")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("markdown-web") -> Prev(Label("Docs Site in the Browser")) -> String}{Slug("stdlib") -> Next(Label("Standard Library")) -> String}</nav>`)
         }
         * "functions" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("expressions") -> Prev(Label("Expressions &amp; Dispatch")) -> String)
-                -> Joined(Slug("ordering") -> Next(Label("Ordering Rules")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("expressions") -> Prev(Label("Expressions &amp; Dispatch")) -> String}{Slug("ordering") -> Next(Label("Ordering Rules")) -> String}</nav>`)
         }
         * "guide" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("building-and-running") -> Prev(Label("Building &amp; Running")) -> String)
-                -> Joined(Slug("canon-for-ai") -> Next(Label("Canon for AI")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("building-and-running") -> Prev(Label("Building &amp; Running")) -> String}{Slug("canon-for-ai") -> Next(Label("Canon for AI")) -> String}</nav>`)
         }
         * "hello-world" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("installation") -> Prev(Label("Installation")) -> String)
-                -> Joined(Slug("building-and-running") -> Next(Label("Building &amp; Running")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("installation") -> Prev(Label("Installation")) -> String}{Slug("building-and-running") -> Next(Label("Building &amp; Running")) -> String}</nav>`)
         }
         * "installation" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("introduction") -> Prev(Label("Introduction")) -> String)
-                -> Joined(Slug("hello-world") -> Next(Label("Hello, World")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("introduction") -> Prev(Label("Introduction")) -> String}{Slug("hello-world") -> Next(Label("Hello, World")) -> String}</nav>`)
         }
         * "lexical-structure" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("overview") -> Prev(Label("Overview")) -> String)
-                -> Joined(Slug("types") -> Next(Label("Types")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("overview") -> Prev(Label("Overview")) -> String}{Slug("types") -> Next(Label("Types")) -> String}</nav>`)
         }
         * "markdown-renderer" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("stdlib") -> Prev(Label("Standard Library")) -> String)
-                -> Joined(Slug("wasi") -> Next(Label("WASI Interfaces")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("stdlib") -> Prev(Label("Standard Library")) -> String}{Slug("wasi") -> Next(Label("WASI Interfaces")) -> String}</nav>`)
         }
         * "markdown-web" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("todolist") -> Prev(Label("Todo List in the Browser")) -> String)
-                -> Joined(Slug("fullstack") -> Next(Label("Fullstack")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("todolist") -> Prev(Label("Todo List in the Browser")) -> String}{Slug("fullstack") -> Next(Label("Fullstack")) -> String}</nav>`)
         }
         * "modules" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("ordering") -> Prev(Label("Ordering Rules")) -> String)
-                -> Joined(Slug("effects-and-async") -> Next(Label("Effects &amp; Async")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("ordering") -> Prev(Label("Ordering Rules")) -> String}{Slug("effects-and-async") -> Next(Label("Effects &amp; Async")) -> String}</nav>`)
         }
         * "multifile" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("showcase") -> Prev(Label("Overview")) -> String)
-                -> Joined(Slug("notes-api") -> Next(Label("notes-api: JSON Service")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("showcase") -> Prev(Label("Overview")) -> String}{Slug("notes-api") -> Next(Label("notes-api: JSON Service")) -> String}</nav>`)
         }
         * "notes-api" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("multifile") -> Prev(Label("Multi-File Project")) -> String)
-                -> Joined(Slug("todolist") -> Next(Label("Todo List in the Browser")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("multifile") -> Prev(Label("Multi-File Project")) -> String}{Slug("todolist") -> Next(Label("Todo List in the Browser")) -> String}</nav>`)
         }
         * "ordering" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("functions") -> Prev(Label("Functions &amp; Traits")) -> String)
-                -> Joined(Slug("modules") -> Next(Label("Modules &amp; Packages")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("functions") -> Prev(Label("Functions &amp; Traits")) -> String}{Slug("modules") -> Next(Label("Modules &amp; Packages")) -> String}</nav>`)
         }
         * "overview" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("canon-for-ai") -> Prev(Label("Canon for AI")) -> String)
-                -> Joined(Slug("lexical-structure") -> Next(Label("Lexical Structure")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("canon-for-ai") -> Prev(Label("Canon for AI")) -> String}{Slug("lexical-structure") -> Next(Label("Lexical Structure")) -> String}</nav>`)
         }
         * "showcase" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("types-only") -> Prev(Label("Types-Only Canon")) -> String)
-                -> Joined(Slug("multifile") -> Next(Label("Multi-File Project")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("types-only") -> Prev(Label("Types-Only Canon")) -> String}{Slug("multifile") -> Next(Label("Multi-File Project")) -> String}</nav>`)
         }
         * "stdlib" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("fullstack") -> Prev(Label("Fullstack")) -> String)
-                -> Joined(Slug("markdown-renderer") -> Next(Label("Markdown")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("fullstack") -> Prev(Label("Fullstack")) -> String}{Slug("markdown-renderer") -> Next(Label("Markdown")) -> String}</nav>`)
         }
         * "todolist" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("notes-api") -> Prev(Label("notes-api: JSON Service")) -> String)
-                -> Joined(Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("notes-api") -> Prev(Label("notes-api: JSON Service")) -> String}{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
         }
         * "types" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("lexical-structure") -> Prev(Label("Lexical Structure")) -> String)
-                -> Joined(Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("lexical-structure") -> Prev(Label("Lexical Structure")) -> String}{Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String}</nav>`)
         }
         * "types-only" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("compilation") -> Prev(Label("Compilation &amp; ABI")) -> String)
-                -> Joined(Slug("showcase") -> Next(Label("Overview")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("compilation") -> Prev(Label("Compilation &amp; ABI")) -> String}{Slug("showcase") -> Next(Label("Overview")) -> String}</nav>`)
         }
         * "wasi" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("markdown-renderer") -> Prev(Label("Markdown")) -> String)
-                -> Joined(Slug("web-target") -> Next(Label("The Web Target")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("markdown-renderer") -> Prev(Label("Markdown")) -> String}{Slug("web-target") -> Next(Label("The Web Target")) -> String}</nav>`)
         }
         * "web-target" => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("wasi") -> Prev(Label("WASI Interfaces")) -> String)
-                -> Joined(Slug("codegen-gaps") -> Next(Label("Known Codegen Gaps")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("wasi") -> Prev(Label("WASI Interfaces")) -> String}{Slug("codegen-gaps") -> Next(Label("Known Codegen Gaps")) -> String}</nav>`)
         }
         * String => Pager {
-            "<nav class=\"pager\">"
-                -> Joined(Slug("installation") -> Next(Label("Installation")) -> String)
-                -> Joined("</nav>")
-                -> Html
+            Html(`<nav class="pager">{Slug("installation") -> Next(Label("Installation")) -> String}</nav>`)
         }
     )
 }
 
 Slug * Label => Prev {
-    "<a class=\"pager-link pager-prev\" data-msg=\"Nav:"
-        -> Joined(Slug.String)
-        -> Joined("\"><span class=\"pager-dir\">&#8592; Previous</span><span class=\"pager-title\">")
-        -> Joined(Label.String)
-        -> Joined("</span></a>")
-        -> Html
+    Html(`<a class="pager-link pager-prev" data-msg="Nav:{Slug.String}"><span class="pager-dir">&#8592; Previous</span><span class="pager-title">{Label.String}</span></a>`)
 }
 
 Page * Msg => Update {

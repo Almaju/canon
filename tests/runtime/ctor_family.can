@@ -12,9 +12,7 @@ Bool => Greeting {
 }
 
 Int => Greeting {
-    "int:"
-        -> Joined(Int -> String)
-        -> Greeting
+    Greeting(`int:{Int -> String}`)
 }
 
 Unit => Program {

@@ -2035,6 +2035,15 @@ impl<'m> WasmGen<'m> {
                                         let _ = arg_ty;
                                         Ty::NamedPtr(name.to_string())
                                     }
+                                    // Zero-width target (`Printed = Unit`, an
+                                    // evidence newtype): the argument is
+                                    // evaluated for its effects and dropped —
+                                    // the same value-discarding the piped
+                                    // spelling (`x -> Printed`) compiles to.
+                                    Ty::Unit => {
+                                        self.drop_value(arg_ty, f);
+                                        repr
+                                    }
                                     _ => {
                                         let _ = arg_ty;
                                         repr
