@@ -1,3 +1,9 @@
+GetRandomBytes = List<Int>
+
+Int => GetRandomBytes {
+    "get-random-bytes"
+}
+
 GetRandomU64 = Int
 
 Unit => GetRandomU64 {

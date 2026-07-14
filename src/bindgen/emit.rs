@@ -147,6 +147,7 @@ fn emit_interface(
     let fn_ctx = FnEmitCtx {
         iface_name: &iface_name,
         fn_name_uses,
+        wit_informed: ns == "wasi",
     };
     let mut fn_decls: BTreeMap<(String, String), String> = BTreeMap::new();
     let mut needs_capability = false;
@@ -458,6 +459,13 @@ fn emit_type_decl(
 struct FnEmitCtx<'a> {
     iface_name: &'a str,
     fn_name_uses: &'a BTreeMap<String, u32>,
+    /// True when the interface lives in the `wasi` namespace — the one
+    /// namespace whose WIT the compiler carries vendored, so codegen's
+    /// WIT-informed lowering can recover exact integer widths that
+    /// Canon's single `Int` erases. Narrow widths inside `list`/`option`
+    /// returns are only emittable when this is set; elsewhere the
+    /// decode stride would be unknowable at codegen time.
+    wit_informed: bool,
 }
 
 fn emit_function(
@@ -500,26 +508,21 @@ fn emit_function(
         return Err("handle in signature (codegen lowering pending, see CLAUDE.md)".into());
     }
 
-    // V1 codegen gap: `extern Wasm` functions returning `list<T>` produce
-    // a broken core/component type signature pair — the import is rejected
-    // by the validator even when the function isn't called. Until the
-    // codegen learns to emit indirect-return list shapes correctly we skip
-    // such functions here so the binding file as a whole stays usable.
-    if returns_list(resolve, &func.result) {
-        return Err("list<T> return type (codegen gap, see CLAUDE.md)".into());
-    }
+    // `list<T>` / `option<T>` returns: string payloads and 8-byte scalars
+    // (u64/s64/f64) decode directly; narrower scalars (u8..u32, s8..s32,
+    // f32, bool) need the per-width read-back whose true width codegen
+    // reads from the vendored WIT — available only for `wasi:*` imports.
+    // Compound payloads (records, variants, nested lists) aren't lowered
+    // yet and stay skipped.
+    check_payload_return(resolve, &func.result, ctx.wit_informed)?;
 
-    // Codegen gap: WIT `result` (no `<ok, err>` payloads) lowers to a
-    // discriminant-only canonical-ABI shape that the current core-module
-    // emitter renders as `u32`, mismatched with the host's `result` shape.
-    // The whole component is rejected when this import is declared, even
-    // if the user code never calls the function (see `wasi:cli/exit#exit`).
-    // Skip until codegen learns the bare-result shape; `exit-with-code`
-    // covers the same use case via plain `u8`.
-    if has_bare_result(resolve, &func.result)
-        || func.params.iter().any(|p| is_bare_result(resolve, &p.ty))
-    {
-        return Err("bare `result` (codegen gap, no ok/err payloads)".into());
+    // Codegen gap: a bare `result` (no `<ok, err>` payloads) as a
+    // *parameter* has no Canon-value lowering yet (see
+    // `wasi:cli/exit#exit`; `exit-with-code` covers the same use case
+    // via plain `u8`). Bare-result *returns* decode into an ordinary
+    // Canon `Result` and are emitted.
+    if func.params.iter().any(|p| is_bare_result(resolve, &p.ty)) {
+        return Err("bare `result` parameter (codegen gap, no ok/err payloads)".into());
     }
 
     // Narrow integer widths (u8..u32, s8..s32) are supported when they
@@ -533,10 +536,14 @@ fn emit_function(
     // compounds that would otherwise slip through.
     let compound_narrow = |t: &Type| has_narrow_int(resolve, t) && !is_plain_int(resolve, t);
     if func.params.iter().any(|p| compound_narrow(&p.ty))
-        || func
-            .result
-            .as_ref()
-            .is_some_and(|t| compound_narrow(t) && !is_scalar_record(resolve, t))
+        || func.result.as_ref().is_some_and(|t| {
+            compound_narrow(t)
+                && !is_scalar_record(resolve, t)
+                // Scalar list/option payloads were already vetted by
+                // `check_payload_return` above — a narrow payload that
+                // survived it is WIT-informed and decodable.
+                && list_or_option_payload(resolve, t).is_none()
+        })
     {
         return Err("sub-u64 integer inside a compound shape (codegen gap)".into());
     }
@@ -703,38 +710,105 @@ fn structural_kind(resolve: &Resolve, t: &Type) -> StructuralKind {
 /// Returns true if the function's result type is (or transparently aliases)
 /// a WIT `list<T>`. Used to filter out functions whose extern import the
 /// current core codegen can't lower correctly.
-fn returns_list(resolve: &Resolve, result: &Option<Type>) -> bool {
-    let Some(t) = result else { return false };
-    // `list<string>` returns are supported: the canonical element
-    // layout (8-byte stride, ptr+len) is byte-identical to Canon's
-    // `List<String>`, and codegen decodes the indirect return
-    // directly (`IndirectReturnShape::ListString`). Other element
-    // types still need per-width read-back and stay skipped.
-    if is_list_of_string(resolve, t) {
-        return false;
+///
+/// Supported payloads:
+///   - `string` — the canonical element/payload layout matches Canon's
+///     string-shaped decodes (`ListString` / `OptionString`).
+///   - `u64` / `s64` / `f64` — 8-byte scalars share Canon's value layout,
+///     so the decode needs no width information.
+///   - narrow scalars (`u8`..`u32`, `s8`..`s32`, `f32`, `bool`) — decoded
+///     by per-width read-back, but only when the vendored WIT can tell
+///     codegen the true width (`wit_informed`, i.e. `wasi:*`).
+///
+/// Everything else (records, variants, nested lists, `char`) is skipped.
+fn check_payload_return(
+    resolve: &Resolve,
+    result: &Option<Type>,
+    wit_informed: bool,
+) -> Result<(), String> {
+    let Some(t) = result else { return Ok(()) };
+    let Some((ctor, payload)) = list_or_option_payload_raw(resolve, t) else {
+        return Ok(());
+    };
+    if matches!(payload, Type::String) {
+        return Ok(());
     }
-    is_list_shape(resolve, t)
+    let Some(prim) = wit_scalar_prim(resolve, &payload) else {
+        return Err(format!(
+            "{ctor}<T> return with compound payload (codegen gap, see CLAUDE.md)"
+        ));
+    };
+    match prim {
+        ScalarPrim::Wide => Ok(()),
+        ScalarPrim::Narrow if wit_informed => Ok(()),
+        ScalarPrim::Narrow => Err(format!(
+            "narrow {ctor} payload outside `wasi:` (payload width unknowable at codegen)"
+        )),
+        ScalarPrim::Char => Err(format!("{ctor}<char> return (no Canon value shape)")),
+    }
 }
 
-fn is_list_of_string(resolve: &Resolve, t: &Type) -> bool {
+/// Width class of a scalar WIT payload, for the skip rule above.
+enum ScalarPrim {
+    /// `u64` / `s64` / `f64` — matches Canon's 8-byte value slots as-is.
+    Wide,
+    /// Every sub-8-byte scalar — decodable only with WIT width info.
+    Narrow,
+    /// `char` — renders as `String` in Canon, which would misclassify
+    /// the decode as string-shaped; no value shape yet.
+    Char,
+}
+
+/// Resolves a WIT type (walking `type x = y` aliases) to its scalar
+/// width class. `None` for strings and compound shapes.
+fn wit_scalar_prim(resolve: &Resolve, t: &Type) -> Option<ScalarPrim> {
+    match t {
+        Type::U64 | Type::S64 | Type::F64 => Some(ScalarPrim::Wide),
+        Type::Bool
+        | Type::U8
+        | Type::U16
+        | Type::U32
+        | Type::S8
+        | Type::S16
+        | Type::S32
+        | Type::F32 => Some(ScalarPrim::Narrow),
+        Type::Char => Some(ScalarPrim::Char),
+        Type::Id(id) => match &resolve.types[*id].kind {
+            TypeDefKind::Type(inner) => wit_scalar_prim(resolve, inner),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// If `t` (after walking aliases) is a `list<T>` or `option<T>`, return
+/// the constructor's name and the raw payload type.
+fn list_or_option_payload_raw(resolve: &Resolve, t: &Type) -> Option<(&'static str, Type)> {
     match t {
         Type::Id(id) => match &resolve.types[*id].kind {
-            TypeDefKind::Type(inner) => is_list_of_string(resolve, inner),
-            TypeDefKind::List(elem) => matches!(elem, Type::String),
-            _ => false,
+            TypeDefKind::Type(inner) => list_or_option_payload_raw(resolve, inner),
+            TypeDefKind::List(elem) => Some(("list", *elem)),
+            TypeDefKind::Option(payload) => Some(("option", *payload)),
+            _ => None,
         },
-        _ => false,
+        _ => None,
     }
 }
 
-/// True when the function returns a WIT `result` with neither `ok` nor `err`
-/// payloads (i.e. the bare `result;` form). See the skip-rule comment in
-/// `emit_function` for why this matters.
-fn has_bare_result(resolve: &Resolve, result: &Option<Type>) -> bool {
-    let Some(t) = result else { return false };
-    is_bare_result(resolve, t)
+/// True when `t` is a `list`/`option` whose payload is a scalar or
+/// string — the shapes `check_payload_return` vets. Used to exempt them
+/// from the narrow-in-compound skip below.
+fn list_or_option_payload(resolve: &Resolve, t: &Type) -> Option<()> {
+    let (_, payload) = list_or_option_payload_raw(resolve, t)?;
+    if matches!(payload, Type::String) || wit_scalar_prim(resolve, &payload).is_some() {
+        return Some(());
+    }
+    None
 }
 
+/// True when `t` is a WIT `result` with neither `ok` nor `err` payloads
+/// (the bare `result;` form). See the parameter skip-rule comment in
+/// `emit_function`.
 fn is_bare_result(resolve: &Resolve, t: &Type) -> bool {
     match t {
         Type::Id(id) => {
@@ -895,20 +969,6 @@ fn mentions_handle_ty(resolve: &Resolve, t: &Type) -> bool {
                 _ => false,
             }
         }
-    }
-}
-
-fn is_list_shape(resolve: &Resolve, t: &Type) -> bool {
-    match t {
-        Type::Id(id) => {
-            let td = &resolve.types[*id];
-            match &td.kind {
-                TypeDefKind::List(_) => true,
-                TypeDefKind::Type(inner) => is_list_shape(resolve, inner),
-                _ => false,
-            }
-        }
-        _ => false,
     }
 }
 

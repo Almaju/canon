@@ -198,11 +198,97 @@ fn kitchen_sink_roundtrip() {
         .contains("(ColorList * Shape) => Result<Paint, String> {\n    \"paint\"\n}"));
     // `option` and no-result functions take the string-anchored form
     // like every other shape: the mint aliases the whole rendered type
-    // (`Centre = Option<Point>`) or `Unit` for a pure effect.
-    assert!(f.content.contains("Centre = Option<Point>"));
+    // (`Centre = Option<Float>`) or `Unit` for a pure effect.
+    assert!(f.content.contains("Centre = Option<Float>"));
     assert!(f.content.contains("Shape => Centre {\n    \"centre\"\n}"));
     assert!(f.content.contains("Reset = Unit"));
     assert!(f.content.contains("Unit => Reset {\n    \"reset\"\n}"));
+
+    parse_canon(&f.content);
+}
+
+#[test]
+fn wasi_scalar_payload_returns_are_emitted() {
+    // In the `wasi:` namespace codegen reads exact widths from the
+    // vendored WIT, so both wide and narrow scalar list/option returns
+    // are emitted; compound payloads stay skipped.
+    let path = Path::new("tests/fixtures/wit/payloads.wit");
+    let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
+    assert_eq!(files.len(), 1);
+    let f = &files[0];
+
+    // Narrow list element (`list<u8>`) — the `get-random-bytes` shape.
+    assert!(f.content.contains("ReadBytes = List<Int>"));
+    assert!(f
+        .content
+        .contains("Int => ReadBytes {\n    \"read-bytes\"\n}"));
+    // Wide list element.
+    assert!(f.content.contains("ReadWords = List<Int>"));
+    // Scalar option payloads, wide and narrow.
+    assert!(f.content.contains("PeekValue = Option<Int>"));
+    assert!(f.content.contains("PeekFlag = Option<Int>"));
+
+    // Compound payloads are skipped with a reason naming the gap.
+    assert!(
+        f.skipped
+            .iter()
+            .any(|s| s.contains("readPairs") && s.contains("compound payload")),
+        "list<record> return should be skipped: {:?}",
+        f.skipped
+    );
+    assert!(
+        f.skipped
+            .iter()
+            .any(|s| s.contains("peekPair") && s.contains("compound payload")),
+        "option<record> return should be skipped: {:?}",
+        f.skipped
+    );
+
+    // Bare `result` returns are emitted (the mint aliases the absent ok
+    // payload as `Unit`, so the constructor still returns a `Result`);
+    // bare `result` parameters stay skipped.
+    assert!(f.content.contains("SyncAll = Unit"));
+    assert!(f
+        .content
+        .contains("Unit => Result<SyncAll, Unit> {\n    \"sync-all\"\n}"));
+    assert!(
+        f.skipped
+            .iter()
+            .any(|s| s.contains("abortWith") && s.contains("bare `result` parameter")),
+        "bare-result parameter should be skipped: {:?}",
+        f.skipped
+    );
+
+    parse_canon(&f.content);
+}
+
+#[test]
+fn narrow_payloads_outside_wasi_are_skipped() {
+    // Outside `wasi:` there is no vendored WIT to read narrow widths
+    // from — the decode stride would be a guess — so narrow scalar
+    // payloads are skipped while wide ones are emitted.
+    let path = Path::new("tests/fixtures/wit/narrow-payloads.wit");
+    let files = bindgen::generate_from_path(path).expect("bindgen should succeed");
+    assert_eq!(files.len(), 1);
+    let f = &files[0];
+
+    assert!(f.content.contains("ReadWords = List<Int>"));
+    assert!(f.content.contains("PeekValue = Option<Int>"));
+
+    assert!(
+        f.skipped
+            .iter()
+            .any(|s| s.contains("readBytes") && s.contains("width unknowable")),
+        "narrow list element outside wasi should be skipped: {:?}",
+        f.skipped
+    );
+    assert!(
+        f.skipped
+            .iter()
+            .any(|s| s.contains("peekFlag") && s.contains("width unknowable")),
+        "narrow option payload outside wasi should be skipped: {:?}",
+        f.skipped
+    );
 
     parse_canon(&f.content);
 }

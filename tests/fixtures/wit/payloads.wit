@@ -1,0 +1,35 @@
+package wasi:payloads@0.1.0;
+
+/// Exercises the scalar list/option return rules in a `wasi:`
+/// namespace, where codegen's WIT-informed lowering can read back
+/// narrow widths from the vendored WIT.
+interface shapes {
+    record pair {
+        left: u64,
+        right: u64,
+    }
+
+    /// Narrow scalar element — emitted (wasi is WIT-informed).
+    read-bytes: func(max: u64) -> list<u8>;
+
+    /// Wide scalar element — emitted everywhere.
+    read-words: func() -> list<u64>;
+
+    /// Scalar option payload — emitted.
+    peek-value: func() -> option<u64>;
+
+    /// Narrow scalar option payload — emitted (wasi is WIT-informed).
+    peek-flag: func() -> option<u8>;
+
+    /// Compound list element — skipped (codegen gap).
+    read-pairs: func() -> list<pair>;
+
+    /// Compound option payload — skipped (codegen gap).
+    peek-pair: func() -> option<pair>;
+
+    /// Bare `result` return — emitted (decodes into a Canon Result).
+    sync-all: func() -> result;
+
+    /// Bare `result` parameter — skipped (codegen gap).
+    abort-with: func(status: result);
+}

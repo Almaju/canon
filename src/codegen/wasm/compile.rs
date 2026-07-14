@@ -34,6 +34,65 @@ pub(super) fn substring_bounds(args: &[Expr]) -> Option<(&Expr, &Expr)> {
     }
 }
 
+/// Emits a load of a scalar primitive at `offset` from the address on
+/// top of the stack, widened to Canon's 8-byte value representation:
+/// integer widths and `bool`/`char` widen to i64 (sign- or
+/// zero-extending per the WIT signedness), `f32` promotes to f64,
+/// `u64`/`s64`/`f64` load directly. Leaves one i64 (or f64 for floats).
+pub(super) fn emit_prim_load_widen(
+    f: &mut Function,
+    prim: wasm_encoder::PrimitiveValType,
+    offset: u64,
+) {
+    use wasm_encoder::PrimitiveValType as P;
+    let mem = |align: u32| MemArg {
+        offset,
+        align,
+        memory_index: 0,
+    };
+    match prim {
+        P::U64 | P::S64 => {
+            f.instruction(&Instruction::I64Load(mem(3)));
+        }
+        P::F64 => {
+            f.instruction(&Instruction::F64Load(mem(3)));
+        }
+        P::F32 => {
+            f.instruction(&Instruction::F32Load(mem(2)));
+            f.instruction(&Instruction::F64PromoteF32);
+        }
+        P::S32 => {
+            f.instruction(&Instruction::I32Load(mem(2)));
+            f.instruction(&Instruction::I64ExtendI32S);
+        }
+        P::S16 => {
+            f.instruction(&Instruction::I32Load16S(mem(1)));
+            f.instruction(&Instruction::I64ExtendI32S);
+        }
+        P::S8 => {
+            f.instruction(&Instruction::I32Load8S(mem(0)));
+            f.instruction(&Instruction::I64ExtendI32S);
+        }
+        P::U32 | P::Char => {
+            f.instruction(&Instruction::I32Load(mem(2)));
+            f.instruction(&Instruction::I64ExtendI32U);
+        }
+        P::U16 => {
+            f.instruction(&Instruction::I32Load16U(mem(1)));
+            f.instruction(&Instruction::I64ExtendI32U);
+        }
+        P::U8 | P::Bool => {
+            f.instruction(&Instruction::I32Load8U(mem(0)));
+            f.instruction(&Instruction::I64ExtendI32U);
+        }
+        // `string` and every compound never reach here — the shape
+        // classifiers only produce scalar primitives.
+        _ => {
+            f.instruction(&Instruction::I64Const(0));
+        }
+    }
+}
+
 pub(super) fn arm_type_name(arm: &MatchArm) -> Option<&str> {
     if let TypeExpr::Named { name, .. } = &arm.param_ty {
         Some(name.as_str())
@@ -3221,6 +3280,30 @@ impl<'m> WasmGen<'m> {
         }
         let Some(shape) = info.indirect_return.clone() else {
             f.instruction(&Instruction::Call(info.func_idx));
+            if info.bare_result {
+                // WIT bare `result;` return: the single i32 on the stack
+                // is the canonical discriminant (0=ok, 1=err). Flip it
+                // into Canon's alphabetical tag convention (Err=0, Ok=1)
+                // and box it as an ordinary Canon Result struct so
+                // dispatch and `?` treat it like any user-constructed
+                // Result. The payload slot stays zero — both arms are
+                // Unit, so nothing ever reads it.
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Xor);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                return Ty::NamedPtr("Result".to_string());
+            }
             // Widen a narrow scalar result back to Canon's i64 `Int`,
             // zero- or sign-extending per the WIT signedness.
             match info.narrow_result_signed {
@@ -3299,6 +3382,59 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
+            IndirectReturnShape::OptionScalar { prim } => {
+                // Re-shape the canonical `option<T>` ret area (disc byte
+                // at +0, scalar payload at +align(T)) into a fresh Canon
+                // Option struct (i32 tag at +0, 8-byte payload at +4),
+                // widening the payload to Canon's i64/f64 value repr so
+                // `(None, Some<Int>)` dispatch and `?` read it like any
+                // user-constructed Option.
+                use wasm_encoder::PrimitiveValType as P;
+                let payload_off = prim_size_align(prim).1 as u64;
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // Tag: the WIT discriminant (0=none, 1=some) already
+                // matches Canon's alphabetical (None=0, Some=1)
+                // convention; store the byte as a full i32 so the
+                // host's padding bytes become zero.
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load8U(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                // Payload. On `none` this copies undefined ret-area
+                // bytes — harmless: the area is sized for the payload
+                // and a tag-0 Option's payload slot is never read.
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                emit_prim_load_widen(f, prim, payload_off);
+                match prim {
+                    P::F32 | P::F64 => {
+                        f.instruction(&Instruction::F64Store(MemArg {
+                            offset: 4,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                    _ => {
+                        f.instruction(&Instruction::I64Store(MemArg {
+                            offset: 4,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                }
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr("Option".to_string())
+            }
             IndirectReturnShape::ListString => {
                 // (i32 list ptr at +0, i32 count at +4). The canonical
                 // element layout matches Canon's `List<String>` exactly
@@ -3317,6 +3453,105 @@ impl<'m> WasmGen<'m> {
                 }));
                 Ty::List
             }
+            IndirectReturnShape::ListScalar { prim } => {
+                use wasm_encoder::PrimitiveValType as P;
+                let (elem_size, _) = prim_size_align(prim);
+                if elem_size == 8 {
+                    // u64 / s64 / f64: the canonical 8-byte element
+                    // stride is byte-identical to Canon's list layout —
+                    // push the (ptr, count) pair as-is, like ListString.
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: 4,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                    return Ty::List;
+                }
+                // Narrow elements: re-pack the byte-packed canonical
+                // buffer into a fresh 8-byte-stride Canon list, widening
+                // each element per the WIT signedness. No user code
+                // compiles inside this sequence, so the ordinary scratch
+                // locals are safe to use.
+                // src elem ptr → rptr, count → rlen
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(MemArg {
+                    offset: 4,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::LocalSet(scope.rlen()));
+                // dst = $alloc(count * 8) → rbool
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // i = 0
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                // if i >= count: break
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                f.instruction(&Instruction::I32GeS);
+                f.instruction(&Instruction::BrIf(1));
+                // dst + i*8
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Add);
+                // src + i*elem_size
+                f.instruction(&Instruction::LocalGet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(elem_size as i32));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Add);
+                // dst[i] = widen(src[i])
+                emit_prim_load_widen(f, prim, 0);
+                match prim {
+                    P::F32 => {
+                        f.instruction(&Instruction::F64Store(MemArg {
+                            offset: 0,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                    _ => {
+                        f.instruction(&Instruction::I64Store(MemArg {
+                            offset: 0,
+                            align: 3,
+                            memory_index: 0,
+                        }));
+                    }
+                }
+                // i++
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End); // end loop
+                f.instruction(&Instruction::End); // end block
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                Ty::List
+            }
             IndirectReturnShape::ScalarRecord {
                 product, fields, ..
             } => {
@@ -3324,7 +3559,6 @@ impl<'m> WasmGen<'m> {
                 // struct, widening narrow ints to i64. The ret area is
                 // still in the `alloc_ptr` local ($alloc the function
                 // doesn't touch codegen locals).
-                use wasm_encoder::PrimitiveValType as P;
                 let layout = self.product_field_layout(&product);
                 let total: u32 = layout
                     .iter()
@@ -3342,56 +3576,7 @@ impl<'m> WasmGen<'m> {
                     };
                     f.instruction(&Instruction::LocalGet(scope.rbool()));
                     f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-                    let off = field.offset as u64;
-                    match field.prim {
-                        P::U64 | P::S64 => {
-                            f.instruction(&Instruction::I64Load(MemArg {
-                                offset: off,
-                                align: 3,
-                                memory_index: 0,
-                            }));
-                        }
-                        P::F64 => {
-                            f.instruction(&Instruction::F64Load(MemArg {
-                                offset: off,
-                                align: 3,
-                                memory_index: 0,
-                            }));
-                        }
-                        P::U32 | P::S32 | P::U16 | P::S16 | P::U8 | P::S8 | P::Bool | P::Char => {
-                            match field.prim {
-                                P::U16 | P::S16 => {
-                                    f.instruction(&Instruction::I32Load16U(MemArg {
-                                        offset: off,
-                                        align: 1,
-                                        memory_index: 0,
-                                    }));
-                                }
-                                P::U8 | P::S8 | P::Bool => {
-                                    f.instruction(&Instruction::I32Load8U(MemArg {
-                                        offset: off,
-                                        align: 0,
-                                        memory_index: 0,
-                                    }));
-                                }
-                                _ => {
-                                    f.instruction(&Instruction::I32Load(MemArg {
-                                        offset: off,
-                                        align: 2,
-                                        memory_index: 0,
-                                    }));
-                                }
-                            }
-                            if matches!(field.prim, P::S8 | P::S16 | P::S32) {
-                                f.instruction(&Instruction::I64ExtendI32S);
-                            } else {
-                                f.instruction(&Instruction::I64ExtendI32U);
-                            }
-                        }
-                        _ => {
-                            f.instruction(&Instruction::I64Const(0));
-                        }
-                    }
+                    emit_prim_load_widen(f, field.prim, field.offset as u64);
                     match repr {
                         Ty::F64 => {
                             f.instruction(&Instruction::F64Store(MemArg {

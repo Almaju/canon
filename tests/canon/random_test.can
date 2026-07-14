@@ -1,0 +1,26 @@
+RandomByteFitsOneByte = TestResult
+
+Unit => RandomByteFitsOneByte {
+    GetRandomBytes(1)
+        -> At(1)?
+        -> Lt(256)
+        -> TestResult
+}
+
+RandomByteIsNonNegative = TestResult
+
+Unit => RandomByteIsNonNegative {
+    GetRandomBytes(1)
+        -> At(1)?
+        -> Ge(0)
+        -> TestResult
+}
+
+RandomBytesHasRequestedLength = TestResult
+
+Unit => RandomBytesHasRequestedLength {
+    GetRandomBytes(8)
+        -> Length
+        -> Eq(8)
+        -> TestResult
+}
