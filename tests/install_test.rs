@@ -1,12 +1,10 @@
 //! End-to-end tests for `canon install`.
 //!
-//! Each test stands up a temporary project directory containing an
-//! `canon.toml` (with an `[imports]` table) and one or more vendored
-//! `.wit` files, runs `canon::install::install` against the project
-//! root, and asserts on what landed under `bindgen/`.
-//!
-//! These tests don't exercise the loader yet — that's slice 2b. Here we
-//! just verify the materialization step in isolation.
+//! Each test stands up a temporary project directory whose `wit/`
+//! directory holds one or more WIT sources (imports are declared by
+//! file structure — there is no manifest), runs
+//! `canon::install::install` against the project root, and asserts on
+//! what landed under `bindgen/`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,37 +29,24 @@ fn tmpdir(name: &str) -> PathBuf {
     p
 }
 
-/// Copy a vendored WIT fixture into the project under `vendor/<name>.wit`.
-fn vendor_wit(project_root: &Path, fixture_relative: &str, dest_name: &str) {
+/// Copy a WIT fixture into the project under `wit/<dest>` — declaring
+/// it as an import. `dest` may contain a subdirectory (a directory
+/// source: `clocks/monotonic-clock.wit`).
+fn vendor_wit(project_root: &Path, fixture_relative: &str, dest: &str) {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
         .join("wit")
         .join(fixture_relative);
-    let dst_dir = project_root.join("vendor");
-    fs::create_dir_all(&dst_dir).expect("create vendor dir");
-    let dst = dst_dir.join(dest_name);
+    let dst = project_root.join("wit").join(dest);
+    fs::create_dir_all(dst.parent().expect("dest has a parent")).expect("create wit dir");
     fs::copy(&src, &dst).expect("copy fixture");
-}
-
-fn write_manifest(project_root: &Path, contents: &str) {
-    fs::write(project_root.join("canon.toml"), contents).expect("write manifest");
 }
 
 #[test]
 fn install_emits_one_file_per_interface() {
     let root = tmpdir("monotonic_clock");
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
-"#,
-    );
 
     let outcome = install::install(&root).expect("install should succeed");
 
@@ -112,49 +97,14 @@ version = "0.1.0"
 }
 
 #[test]
-fn install_rejects_mismatched_manifest_key() {
-    let root = tmpdir("mismatched_key");
-    vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
+fn install_accepts_directory_source() {
+    // A subdirectory of `wit/` is a directory-of-WITs source (the shape
+    // the vendored WASI tree uses). Installing the fixture from inside
+    // one should produce the same binding as the flat-file form.
+    let root = tmpdir("directory_source");
+    vendor_wit(&root, "monotonic-clock.wit", "clocks/monotonic-clock.wit");
 
-[imports]
-"wasi/random" = "vendor/monotonic-clock.wit"
-"#,
-    );
-
-    let err = install::install(&root).expect_err("expected manifest-key mismatch");
-    let msg = err.to_string();
-    // Error should name both the key (`wasi/random`) and the actual
-    // interface path the WIT produced (`wasi/clocks/monotonic_clock`).
-    assert!(
-        msg.contains("wasi/random") && msg.contains("monotonic_clock"),
-        "error message should name both the manifest key and the offending interface path; got: {msg}",
-    );
-}
-
-#[test]
-fn install_accepts_broader_prefix_key() {
-    // A key of `"wasi"` is a valid prefix for `wasi/clocks/...`, so
-    // installing the monotonic-clock fixture under that broader key
-    // should succeed and produce a file at `bindgen/wasi/clocks/...`.
-    let root = tmpdir("broad_prefix_key");
-    vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi" = "vendor/monotonic-clock.wit"
-"#,
-    );
-
-    let outcome = install::install(&root).expect("install with broad prefix should succeed");
+    let outcome = install::install(&root).expect("directory source should install");
     let expected = root.join("bindgen/wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can");
     assert!(
         expected.exists(),
@@ -165,49 +115,48 @@ version = "0.1.0"
 }
 
 #[test]
-fn install_reports_missing_wit_source() {
-    let root = tmpdir("missing_wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
+fn install_rejects_stray_file_in_wit_dir() {
+    // `wit/` is a declaration: anything in it that isn't a `.wit` file,
+    // a directory, or a `.wasm` component is an error, not silently
+    // ignored.
+    let root = tmpdir("stray_wit_entry");
+    fs::create_dir_all(root.join("wit")).unwrap();
+    fs::write(root.join("wit/README.txt"), "not a wit file").unwrap();
 
-[imports]
-"wasi/clocks" = "vendor/does-not-exist.wit"
-"#,
-    );
-
-    let err = install::install(&root).expect_err("expected missing-source error");
+    let err = install::install(&root).expect_err("expected stray-entry error");
     let msg = err.to_string();
     assert!(
-        msg.contains("does-not-exist.wit"),
-        "error should name the missing path; got: {msg}",
+        msg.contains("README.txt") && msg.contains(".wit"),
+        "error should name the stray entry and the accepted shapes; got: {msg}",
+    );
+}
+
+#[test]
+fn install_reports_missing_wit_dir() {
+    let root = tmpdir("missing_wit_dir");
+
+    let err = install::install(&root).expect_err("expected missing-`wit/` error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("wit/"),
+        "error should point at the `wit/` convention; got: {msg}",
     );
 }
 
 #[test]
 fn install_defers_wasm_component_entries() {
     let root = tmpdir("wasm_deferred");
-    // The file doesn't need to exist — `.wasm` entries are recorded as
-    // skipped without being read in this slice.
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"example/foo" = "vendor/some-lib.wasm"
-"#,
-    );
+    // The file's contents don't matter — `.wasm` entries are recorded
+    // as skipped without being read in this slice.
+    fs::create_dir_all(root.join("wit")).unwrap();
+    fs::write(root.join("wit/some-lib.wasm"), b"\0asm").unwrap();
 
     let outcome =
         install::install(&root).expect("install should succeed even with a deferred wasm entry");
     assert!(outcome.written.is_empty());
     assert_eq!(outcome.skipped.len(), 1);
     assert!(
-        outcome.skipped[0].contains("example/foo")
+        outcome.skipped[0].contains("some-lib.wasm")
             && outcome.skipped[0].contains("not yet supported"),
         "skip message should name the import and explain why; got: {}",
         outcome.skipped[0],
@@ -215,15 +164,9 @@ version = "0.1.0"
 }
 
 #[test]
-fn install_on_manifest_without_imports_is_a_no_op() {
+fn install_on_empty_wit_dir_is_a_no_op() {
     let root = tmpdir("no_imports");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-"#,
-    );
+    fs::create_dir_all(root.join("wit")).unwrap();
 
     let outcome = install::install(&root).expect("install should succeed");
     assert!(outcome.written.is_empty());
@@ -237,10 +180,10 @@ version = "0.1.0"
 
 #[test]
 fn loader_resolves_use_against_installed_bindgen() {
-    // The end-to-end story for slices 2a+2b: a user declares a WIT
-    // import in their manifest, runs `canon install` to materialize
-    // the bindings under `bindgen/`, and then their program can `use`
-    // the bound interface as if it were any other Canon module.
+    // The end-to-end story for slices 2a+2b: a user drops a WIT source
+    // under `wit/`, runs `canon install` to materialize the bindings
+    // under `bindgen/`, and then their program can `use` the bound
+    // interface as if it were any other Canon module.
     //
     // We stand up that exact shape on disk and assert that
     // `loader::load_module` resolves the `use` line against the
@@ -250,16 +193,6 @@ fn loader_resolves_use_against_installed_bindgen() {
     // `bindgen/` without colliding with the standard library.
     let root = tmpdir("loader_uses_bindgen");
     vendor_wit(&root, "widget.wit", "widget.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"example/widget" = "vendor/widget.wit"
-"#,
-    );
 
     install::install(&root).expect("install should succeed");
 
@@ -291,16 +224,6 @@ fn loader_derives_extern_urns_from_vendored_path() {
     // function name camel-back-converted to kebab-case.
     let root = tmpdir("patch_bare_externs");
     vendor_wit(&root, "widget.wit", "widget.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"example/widget" = "vendor/widget.wit"
-"#,
-    );
 
     install::install(&root).expect("install should succeed");
 
@@ -345,19 +268,10 @@ version = "0.1.0"
 
 #[test]
 fn loader_falls_back_to_local_when_bindgen_does_not_exist() {
-    // Project that has a manifest but no `[imports]` entry for the path
-    // being imported. The loader must NOT short-circuit on the bindgen
-    // lookup; it must continue to local-relative resolution exactly as
-    // it did before slice 2b. This protects pre-slice-2b projects from
-    // any regression.
+    // Project with no `wit/` and no `bindgen/`. The loader must NOT
+    // short-circuit on the bindgen lookup; it must continue to
+    // local-relative resolution exactly as it did before slice 2b.
     let root = tmpdir("loader_falls_back");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-"#,
-    );
     let src_dir = root.join("src");
     fs::create_dir_all(&src_dir).expect("create src/");
     // A local sibling file, resolved by the name → file convention.
@@ -383,8 +297,9 @@ version = "0.1.0"
 }
 
 #[test]
-fn ensure_installed_no_project_when_outside_any_canon_toml() {
-    // A path with no `canon.toml` ancestor produces `NoProject` and
+fn ensure_installed_no_project_when_outside_any_project() {
+    // A path with no project-root ancestor (no `src/main.can`, `wit/`,
+    // `bindgen/`, or `deps/` on the walk up) produces `NoProject` and
     // does nothing. This is the case for loose `.can` files outside any
     // project (e.g. our own `tests/runtime/` fixtures).
     let root = tmpdir("ensure_no_project");
@@ -399,22 +314,16 @@ fn ensure_installed_no_project_when_outside_any_canon_toml() {
 }
 
 #[test]
-fn ensure_installed_no_project_when_manifest_has_no_imports() {
-    // Manifest exists but `[imports]` is empty — nothing to install,
-    // and we don't want a stray `bindgen/` directory created.
+fn ensure_installed_no_project_when_wit_dir_is_empty() {
+    // `wit/` exists but holds no sources — nothing to install, and we
+    // don't want a stray `bindgen/` directory created.
     let root = tmpdir("ensure_no_imports");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-"#,
-    );
+    fs::create_dir_all(root.join("wit")).unwrap();
 
     let outcome = install::ensure_installed(&root).expect("ensure_installed should not fail");
     assert!(
         matches!(outcome, EnsureOutcome::NoProject),
-        "expected NoProject for manifest without `[imports]`, got {outcome:?}",
+        "expected NoProject for an empty `wit/`, got {outcome:?}",
     );
     assert!(!root.join("bindgen").exists());
 }
@@ -423,16 +332,6 @@ version = "0.1.0"
 fn ensure_installed_installs_when_bindgen_missing() {
     let root = tmpdir("ensure_first_install");
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
-"#,
-    );
 
     let outcome = install::ensure_installed(&root).expect("ensure_installed should succeed");
     let installed = match outcome {
@@ -452,16 +351,6 @@ version = "0.1.0"
 fn ensure_installed_up_to_date_after_first_install() {
     let root = tmpdir("ensure_up_to_date");
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
-"#,
-    );
 
     // First call: installs.
     let first = install::ensure_installed(&root).unwrap();
@@ -479,33 +368,26 @@ version = "0.1.0"
 }
 
 #[test]
-fn ensure_installed_reinstalls_when_manifest_is_touched() {
-    let root = tmpdir("ensure_manifest_touched");
+fn ensure_installed_reinstalls_when_wit_source_is_touched() {
+    let root = tmpdir("ensure_wit_touched");
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    let manifest_src = r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
-"#;
-    write_manifest(&root, manifest_src);
 
     install::ensure_installed(&root).unwrap();
 
-    // Bump the manifest's mtime past the index's by sleeping just over
+    // Bump the WIT source's mtime past the index's by sleeping just over
     // a second (filesystem mtime resolution on macOS is 1s for some
     // volumes) and then rewriting the file. We avoid pulling in a
     // `filetime` dependency for this single test — a 1.1s sleep is
     // acceptable in the suite (this test is the only one paying it).
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    let manifest_path = root.join("canon.toml");
-    fs::write(&manifest_path, manifest_src).unwrap();
+    let wit_path = root.join("wit/monotonic-clock.wit");
+    let wit_src = fs::read_to_string(&wit_path).unwrap();
+    fs::write(&wit_path, wit_src).unwrap();
 
     let outcome = install::ensure_installed(&root).unwrap();
     assert!(
         matches!(outcome, EnsureOutcome::Installed(_)),
-        "touched manifest should trigger reinstall, got {outcome:?}",
+        "touched WIT source should trigger reinstall, got {outcome:?}",
     );
 }
 
@@ -513,16 +395,6 @@ version = "0.1.0"
 fn install_is_idempotent() {
     let root = tmpdir("idempotent");
     vendor_wit(&root, "monotonic-clock.wit", "monotonic-clock.wit");
-    write_manifest(
-        &root,
-        r#"
-name = "my-app"
-version = "0.1.0"
-
-[imports]
-"wasi/clocks" = "vendor/monotonic-clock.wit"
-"#,
-    );
 
     let first = install::install(&root).expect("first install");
     let first_content = fs::read_to_string(&first.written[0]).expect("read after first install");

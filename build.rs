@@ -65,7 +65,6 @@ fn main() {
         }
         code.push_str("        ],\n");
         code.push_str("    },\n");
-        println!("cargo:rerun-if-changed={}", pkg.manifest_path.display());
     }
     code.push_str("];\n");
 
@@ -75,11 +74,8 @@ fn main() {
 #[derive(Debug)]
 struct DiscoveredPackage {
     /// Canonical package name as declared on disk: `<namespace>/<package>`.
-    /// We don't parse the manifest here — the runtime parser is authoritative
-    /// — but we trust the directory layout to give us the right name. If a
-    /// manifest disagrees, the loader will complain at startup.
+    /// The directory layout is the single source of the name.
     name: String,
-    manifest_path: PathBuf,
     files: Vec<DiscoveredFile>,
 }
 
@@ -96,7 +92,7 @@ fn discover_packages(root: &Path) -> Vec<DiscoveredPackage> {
     if !root.exists() {
         return out;
     }
-    // Layout: packages/<namespace>/<package>/canon.toml + sources.
+    // Layout: packages/<namespace>/<package>/ + sources.
     for namespace_entry in fs::read_dir(root).expect("read packages dir").flatten() {
         let namespace_path = namespace_entry.path();
         if !namespace_path.is_dir() {
@@ -120,18 +116,9 @@ fn discover_packages(root: &Path) -> Vec<DiscoveredPackage> {
                 .and_then(|s| s.to_str())
                 .expect("package name is utf-8")
                 .to_string();
-            let manifest_path = package_path.join("canon.toml");
-            assert!(
-                manifest_path.exists(),
-                "package directory `{}` has no `canon.toml`",
-                package_path.display()
-            );
-            // Sources live under `<package>/src/`. Keeping the manifest at the
-            // package root (alongside `src/`) makes the metadata immediately
-            // visible when scanning the directory — same shape as Cargo's
-            // `Cargo.toml` + `src/`. The `path` we record on each
-            // `BundledFile` is relative to `src/`, not to the package root,
-            // so `use canon/std/Body` continues to map to `body.can`.
+            // Sources live under `<package>/src/`. The `path` we record on
+            // each `BundledFile` is relative to `src/`, not to the package
+            // root, so `use canon/std/Body` continues to map to `body.can`.
             let src_root = package_path.join("src");
             let mut files = Vec::new();
             if src_root.exists() {
@@ -163,7 +150,6 @@ fn discover_packages(root: &Path) -> Vec<DiscoveredPackage> {
             files.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
             out.push(DiscoveredPackage {
                 name: format!("{namespace}/{package}"),
-                manifest_path,
                 files,
             });
         }
