@@ -708,6 +708,14 @@ pub fn builtin_pipe_name(name: &str) -> &str {
         .unwrap_or(name)
 }
 
+/// The full builtin pipe-vocabulary table — (PascalCase pipe spelling,
+/// canonical camelCase implementation name) pairs. Crate-visible for
+/// tooling: LSP completion offers the builtins applicable to the piped
+/// value's type (gated by the checker's builtin-method table).
+pub(crate) fn builtin_pipe_aliases() -> &'static [(&'static str, &'static str)] {
+    BUILTIN_ALIASES
+}
+
 /// Whether `name` is the PascalCase pipe spelling of a compiler builtin
 /// (`Sum`, `Print`, `Joined`, …). Builtins are receiver-oriented machine
 /// operations, not constructions — they have no prefix call form, so

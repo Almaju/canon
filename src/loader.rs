@@ -1535,6 +1535,31 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
     ctx.items
 }
 
+/// Every item of the bundled packages' wrapper tier (the non-versioned,
+/// hand-written `src/` files — bindgen-tier FFI files are excluded),
+/// parsed once per process. Tooling entry point: LSP completion
+/// enumerates the full stdlib surface for discovery, unlike
+/// compilation, which only loads what a program references. The
+/// bindgen tier is left out deliberately — its camelCase names are the
+/// FFI boundary, reached through the wrappers' PascalCase types.
+pub(crate) fn bundled_wrapper_items() -> &'static [Item] {
+    static ITEMS: OnceLock<Vec<Item>> = OnceLock::new();
+    ITEMS.get_or_init(|| {
+        let mut items = Vec::new();
+        for pkg in BUNDLED_PACKAGES {
+            for file in pkg.files {
+                if urn_base_for_bundled_path(file.path).is_some() {
+                    continue;
+                }
+                if let Ok(parsed) = parsed_bundled_items(file) {
+                    items.extend(parsed);
+                }
+            }
+        }
+        items
+    })
+}
+
 /// Bundled files declaring `name`, wrapper tier first. Tooling helper
 /// (go-to-definition into the shipped sources).
 pub fn bundled_files_declaring(name: &str) -> Vec<&'static BundledFile> {
