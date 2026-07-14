@@ -1,5 +1,22 @@
 /// <reference types="tree-sitter-cli/dsl" />
 
+// Tree-sitter grammar for Canon (types-only Canon).
+//
+// This is a pragmatic highlighting grammar, not a full reimplementation of
+// the compiler's parser. It is deliberately permissive: it accepts a
+// superset of Canon (the checker is the backstop), but it parses the real
+// corpus — stdlib, tests, examples, binding files — without ERROR nodes.
+//
+// The shapes it knows:
+//   Type def            Bool = False + True          Node = Key * Rest * Value
+//   Anonymous ctor      Map * String => Contains { … }      Unit => Program { … }
+//   Named decl / FFI    parallel = <T>(Future<T> * Future<T>) => Future<List<T>>
+//                       Response = (Body * Headers * Status) => Response
+//   Pipe                value -> Name(args) -> Other?
+//   Dispatch            value -> ( * Variant => Type { … } * Other => Type { … } )
+//   Lambda              (Int) => Int { Int -> Product(2) }
+//   Literals            42  -5  1.5  "s"  `fmt {expr}`  {"k":v}  [1,2]  <div>{x}</div>
+
 module.exports = grammar({
   name: "canon",
 
@@ -7,227 +24,294 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
-  conflicts: ($) => [],
+  conflicts: ($) => [[$.generic_param, $.named_type]],
 
   rules: {
     source_file: ($) => repeat($._item),
 
-    _item: ($) =>
-      choice(
-        $.bindings_decl,
-        $.package_decl,
-        $.function_def,
-        $.type_def,
-        $.extern_type_decl,
-      ),
+    _item: ($) => choice($.type_def, $.named_def, $.constructor_def),
 
-    // bindings "wasi:random/random@0.3.0"   (generated binding files)
-    bindings_decl: ($) => seq("bindings", field("urn", $.string_literal)),
-
-    // package "acme:http@1.2.3"             (vendored files under deps/)
-    package_decl: ($) =>
-      seq("package", field("coordinate", $.string_literal)),
-
-    // extern Rust("path")
-    // name       = (params) -> Ret { body }   (normal free function)
-    // name       = (params) -> Ret            (trait-shaped — no body)
-    function_def: ($) =>
-      seq(
-        optional(field("extern", $.extern_clause)),
-        optional(seq(field("receiver", $.identifier), ".")),
-        field("name", $.identifier),
-        "=",
-        optional(field("generics", $.generic_params)),
-        field("params", $.param_list),
-        "->",
-        field("return_type", $._type),
-        optional(field("body", $.block)),
-      ),
-
-    extern_clause: ($) =>
-      seq(
-        "extern",
-        field("language", $.identifier),
-        optional(seq(".", field("qualifier", $.identifier))),
-        "(",
-        field("path", $.string_literal),
-        ")",
-      ),
-
-    // Name<Gen> = TypeExpr
-    // extern Rust("...") Name = TypeExpr      (extern type alias)
+    // Name = TypeExpr        Name<T> = TypeExpr
     type_def: ($) =>
       seq(
-        optional(field("extern", $.extern_clause)),
         field("name", $.identifier),
         optional(field("generics", $.generic_params)),
         "=",
         field("body", $._type),
       ),
 
-    // Bare extern type declaration: extern Rust("...") TypeName
-    // Now supports generic params: extern Rust("Foo") Bar<S>
-    extern_type_decl: ($) =>
+    // name = <T>(A * B) => Ret          (body-less FFI / callback alias)
+    // Name = (A) => B { body }          (named declaration)
+    named_def: ($) =>
       seq(
-        field("extern", $.extern_clause),
         field("name", $.identifier),
+        "=",
         optional(field("generics", $.generic_params)),
+        field("params", $.param_list),
+        "=>",
+        field("return_type", $._type),
+        optional(field("body", $.block)),
       ),
+
+    // (A * B) => C { body }
+    // Request => Response { body }      (paren-free input)
+    // Map * String => Contains { body } (paren-free product input)
+    // Unit => Program { body }          (nullary)
+    constructor_def: ($) =>
+      seq(
+        field("input", choice($.param_list, $.input_product)),
+        "=>",
+        field("return_type", $._type),
+        field("body", $.block),
+      ),
+
+    input_product: ($) => prec.right(sep1($.named_type, "*")),
 
     generic_params: ($) => seq("<", sep1($.generic_param, ","), ">"),
 
-    generic_param: ($) =>
-      seq(
-        field("name", $.identifier),
-        optional(seq(":", field("bound", $._type))),
-      ),
+    generic_param: ($) => $.identifier,
 
-    param_list: ($) => seq("(", optional(sep1($.param, ",")), ")"),
+    // ─── Types ───────────────────────────────────────────────────────────
 
-    param: ($) => seq(optional("mut"), field("type", $._type)),
-
-    // Type expressions — precedence (tightest first):
-    //   T^N / T^*, T<...>, *, +
-    _type: ($) => $._type_union,
-
-    _type_union: ($) => choice($._type_product, $.union_type),
+    _type: ($) => choice($.union_type, $._type_product),
 
     union_type: ($) =>
       prec.left(seq($._type_product, repeat1(seq("+", $._type_product)))),
 
-    _type_product: ($) => choice($._type_postfix, $.product_type),
+    _type_product: ($) => choice($.product_type, $._type_postfix),
 
     product_type: ($) =>
       prec.left(seq($._type_postfix, repeat1(seq("*", $._type_postfix)))),
 
-    _type_postfix: ($) => choice($._type_atom, $.repeat_type, $.spread_type),
+    _type_postfix: ($) => choice($.repeat_type, $._type_atom),
 
+    // Byte^8    Bytes = Byte^*
     repeat_type: ($) =>
-      seq($._type_atom, "^", field("count", $.integer_literal)),
+      seq($._type_atom, "^", field("count", choice($.integer_literal, "*"))),
 
-    spread_type: ($) => seq($._type_atom, "^", "*"),
-
-    _type_atom: ($) => $.named_type,
+    _type_atom: ($) => choice($.named_type, $.param_list),
 
     named_type: ($) =>
       seq(
         field("name", $.identifier),
-        optional(seq("<", field("generics", sep1($._type, ",")), ">")),
+        optional(field("type_args", $.type_args)),
       ),
 
-    // Expressions
+    type_args: ($) => seq("<", sep1($._param_type, ","), ">"),
+
+    // (A * B)    ()    (Some<T>)    (() => Option<Stream<T> * T>)
+    param_list: ($) => seq("(", optional($._param_type), ")"),
+
+    _param_type: ($) => choice($.function_type, $._type),
+
+    // (A) => B    () => Stream<T>     (nested callback / FFI alias types)
+    function_type: ($) =>
+      prec.right(
+        seq(
+          field("params", $.param_list),
+          "=>",
+          field("return_type", $._type),
+        ),
+      ),
+
+    // ─── Expressions ─────────────────────────────────────────────────────
+
     block: ($) => seq("{", repeat($._expression), "}"),
 
-    _expression: ($) =>
-      choice(
-        $.dispatch,
-        $.try_expression,
-        $.method_call,
-        $.constructor,
-        $.lambda,
-        $.identifier_expr,
-        $.integer_literal,
-        $.float_literal,
-        $.hex_literal,
-        $.string_literal,
-        $.json_object,
-        $.json_array,
+    _expression: ($) => choice($.pipe_expression, $._postfix_expression),
+
+    // value -> Name(args) -> Other    value -> ( * A => T { … } … )
+    pipe_expression: ($) =>
+      prec.left(
+        seq(
+          field("left", $._expression),
+          "->",
+          field("right", choice($.dispatch, $._postfix_expression)),
+        ),
       ),
 
-    identifier_expr: ($) => $.identifier,
+    // The arm group a scrutinee pipes into.
+    dispatch: ($) =>
+      seq("(", repeat1(seq(optional("*"), field("arm", $.dispatch_arm))), ")"),
 
-    constructor: ($) =>
+    // * Some<Value> => Contains { … }    * "GET" => Response { … }    * 34 => X { … }
+    dispatch_arm: ($) =>
+      seq(
+        field(
+          "pattern",
+          choice($.named_type, $.string_literal, $.integer_literal),
+        ),
+        "=>",
+        field("return_type", $._type),
+        field("body", $.block),
+      ),
+
+    _postfix_expression: ($) =>
+      choice($._atom, $.try_expression, $.field_access, $.method_call),
+
+    try_expression: ($) => prec.left(seq($._postfix_expression, "?")),
+
+    // user.Birthday    Node.Rest    tuple.1
+    field_access: ($) =>
+      prec.left(
+        1,
+        seq(
+          field("receiver", $._postfix_expression),
+          ".",
+          field("field", choice($.identifier, $.integer_literal)),
+        ),
+      ),
+
+    // req.method()    Headers().set("k" * "v")    (camelCase = FFI boundary)
+    method_call: ($) =>
+      prec.left(
+        2,
+        seq(
+          field("receiver", $._postfix_expression),
+          ".",
+          field("method", $.identifier),
+          "(",
+          optional(field("arguments", $.arguments)),
+          ")",
+        ),
+      ),
+
+    _atom: ($) =>
+      choice(
+        $.call,
+        $.identifier_expr,
+        $.lambda,
+        $.integer_literal,
+        $.float_literal,
+        $.string_literal,
+        $.format_string,
+        $.json_object,
+        $.json_array,
+        $.html_element,
+      ),
+
+    // Greeting("hi")    List(1 * 2 * 3)    Empty()
+    call: ($) =>
       prec(
         1,
         seq(
           field("name", $.identifier),
           "(",
-          optional(sep1($._expression, ",")),
+          optional(field("arguments", $.arguments)),
           ")",
         ),
       ),
 
-    method_call: ($) =>
-      prec.left(
-        2,
-        seq(
-          field("receiver", $._expression),
-          ".",
-          field("method", $.identifier),
-          optional(seq("::", "<", field("type_args", sep1($._type, ",")), ">")),
-          "(",
-          optional(sep1($._expression, ",")),
-          ")",
-        ),
-      ),
+    // Args are `*`-separated full expressions: Substring(From(2) * Line -> Length -> To)
+    arguments: ($) => sep1($._expression, "*"),
 
-    // Dispatch: value.( * (Type) -> RetType { body } * (Type) -> RetType { body } )
-    // The `*` before each arm is enforced by the formatter; the grammar accepts
-    // it as optional before the first arm for resilience.
-    dispatch: ($) =>
-      prec.left(
-        2,
-        seq(
-          field("scrutinee", $._expression),
-          ".",
-          "(",
-          repeat(seq(optional("*"), field("arms", $.dispatch_arm))),
-          ")",
-        ),
-      ),
+    identifier_expr: ($) => $.identifier,
 
-    // Each dispatch arm is a lambda: (VariantType) -> ReturnType { body }
-    // The VariantType may carry generic type args: Ok<Int>, Err<String>, Some<T>
-    dispatch_arm: ($) =>
-      seq(
-        "(",
-        field("param_type", $.named_type),
-        ")",
-        "->",
-        field("return_type", $._type),
-        field("body", $.block),
-      ),
-
-    try_expression: ($) =>
-      prec.left(2, seq(field("inner", $._expression), "?")),
-
-    // Lambda: (Type) -> RetType { body }
+    // (Int) => Int { Int -> Product(2) }
     lambda: ($) =>
       seq(
         field("params", $.param_list),
-        "->",
+        "=>",
         field("return_type", $._type),
         field("body", $.block),
       ),
 
-    // JSON literals
+    // ─── Format strings ──────────────────────────────────────────────────
+
+    // `count is {Int}, doubled {Int -> Product(2)}` — {{ }} escape braces.
+    format_string: ($) =>
+      seq("`", repeat(choice($.format_text, $.interpolation)), "`"),
+
+    format_text: ($) => token(prec(1, /([^`{}\\]|\\.|\{\{|\}\})+/)),
+
+    interpolation: ($) => seq("{", $._expression, "}"),
+
+    // ─── JSON literals ───────────────────────────────────────────────────
+
     json_object: ($) => seq("{", optional(sep1($.json_pair, ",")), "}"),
 
     json_pair: ($) =>
-      seq(field("key", $.string_literal), ":", field("value", $.json_value)),
+      seq(field("key", $.string_literal), ":", field("value", $._expression)),
 
-    json_array: ($) => seq("[", optional(sep1($.json_value, ",")), "]"),
+    json_array: ($) => seq("[", optional(sep1($._expression, ",")), "]"),
 
-    json_value: ($) =>
+    // ─── HTML literals ───────────────────────────────────────────────────
+
+    // <div class="box">hello {expr}</div> — permissive: the close tag is not
+    // checked against the open tag (the checker is the backstop).
+    html_element: ($) =>
       choice(
-        $.json_object,
-        $.json_array,
-        $.string_literal,
-        seq("-", choice($.integer_literal, $.float_literal)),
-        $.integer_literal,
-        $.float_literal,
-        $.identifier,
+        seq(
+          $.html_open_tag,
+          repeat($._html_content),
+          $.html_close_tag,
+        ),
+        $.html_void_tag,
+        $.html_self_closing_tag,
       ),
 
-    // Literals
-    integer_literal: ($) => /[0-9]+/,
-    float_literal: ($) => /[0-9]+\.[0-9]+/,
-    hex_literal: ($) => /0x[0-9a-fA-F]+/,
+    // Void elements never take a close tag: <hr> <br> <img src="…">
+    html_void_tag: ($) =>
+      seq(
+        "<",
+        field(
+          "name",
+          alias($._html_void_tag_name, $.html_tag_name),
+        ),
+        repeat($.html_attribute),
+        choice(">", "/>"),
+      ),
+
+    _html_void_tag_name: ($) =>
+      token(
+        prec(
+          1,
+          /area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr/,
+        ),
+      ),
+
+    html_open_tag: ($) =>
+      seq(
+        "<",
+        field("name", $.html_tag_name),
+        repeat($.html_attribute),
+        ">",
+      ),
+
+    html_self_closing_tag: ($) =>
+      seq(
+        "<",
+        field("name", $.html_tag_name),
+        repeat($.html_attribute),
+        "/>",
+      ),
+
+    html_close_tag: ($) => seq("</", field("name", $.html_tag_name), ">"),
+
+    html_attribute: ($) =>
+      seq(
+        field("name", $.html_attr_name),
+        optional(seq("=", field("value", $.string_literal))),
+      ),
+
+    html_tag_name: ($) => /[a-z][a-zA-Z0-9-]*/,
+
+    html_attr_name: ($) => /[a-z][a-zA-Z0-9-]*/,
+
+    _html_content: ($) =>
+      choice($.html_text, $.interpolation, $.html_element),
+
+    html_text: ($) => token(/([^<{}\s]|\{\{|\}\})([^<{}]|\{\{|\}\})*/),
+
+    // ─── Literals ────────────────────────────────────────────────────────
+
+    integer_literal: ($) => /-?[0-9]+/,
+    float_literal: ($) => /-?[0-9]+\.[0-9]+/,
     // String literals support backslash escape sequences
     string_literal: ($) => /"([^"\\\n]|\\.)*"/,
 
-    // Identifier — both camelCase and PascalCase share this lexeme.
-    // Highlight queries use #match? to distinguish types vs values.
+    // Identifier — PascalCase (types, the only names) and camelCase (FFI)
+    // share this lexeme. Highlight queries use #match? to distinguish.
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
   },
 });

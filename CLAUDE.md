@@ -206,8 +206,9 @@ These are the non-obvious rules the code won't spell out. Together with
 - **`Parallel` / `Race` are methods** (`a -> Parallel(b)`), never bare calls —
   Canon has no bare free-function call form.
 - **`Json` / `Html` are prelude types** (`= String`). A literal with an
-  interpolation hole, or a `.ToJson()`/`.ToHtml()` call, auto-loads the stdlib
-  module. Interpolation can't run in the `wasi:http/service` world (host bridge
+  interpolation hole auto-loads the stdlib module; a hole lowers to a piped
+  construction through a stdlib family — JSON `-> Encoded` (`Encoded = Json`),
+  HTML `-> Escaped` (`Escaped = Html`), format-string `-> String`. Interpolation can't run in the `wasi:http/service` world (host bridge
   unsatisfiable) — an interpolating handler fails at build. `Json("…")`/`Html("…")`
   fed a static literal the literal form can express is a checker error
   (`check_literal_form_ceremony`): the validating constructor is for runtime-built
@@ -229,7 +230,12 @@ These are the non-obvious rules the code won't spell out. Together with
   a same-kind primitive wrap unwraps (`Int(3)` → `3`); builtins
   (`is_builtin_pipe_vocabulary` in `src/ast.rs`) have no prefix form so literals
   keep piping; multi-input calls keep the pipe; zero-arg and `List(…)` stay
-  prefix. Semantics-preserving because `compile_method_call` routes any type-name
+  prefix. A `Joined` chain containing literal text folds into a backtick format
+  string (`fold_joined_chain`) — all-computed chains stay pipes (`Joined` is
+  also list concat; only literal text proves strings). An interpolation hole
+  that overflows its line breaks onto indented lines (`emit_base_at` /
+  `LitWriter` in `src/formatter.rs`); static literal text is content and never
+  moves. Semantics-preserving because `compile_method_call` routes any type-name
   method through the single `compile_constructor` path unless the name is a
   builtin or has a func-table body. Scalar newtypes erase, so `static_recv_type`
   recovers the type from the syntactic constructor name. The checker mirrors this
@@ -264,8 +270,8 @@ treatment in `docs/src/spec/types-only.md`.
   Checked: a receiver-less bodied decl must be named after the type it constructs;
   a receiver-carrying one must be a declared shape or a newtype of its return; an
   arrow whose constructed type appears in its own input is an error (endomorphisms
-  take result newtypes, `Inserted = Map`). **User-declared shapes are rejected** —
-  `ToJson`/`ToHtml` (`INTERPOLATION_SHAPES`) are the only exceptions. A single
+  take result newtypes, `Inserted = Map`). **Shapes are rejected outright** —
+  no exceptions; the interpolation hooks are ordinary result-newtype families. A single
   named input drops its parens (`A => B { … }` == `(A) => B { … }`); products and
   generic inputs keep them.
 - **Nullary is `Unit => X`, not `() => X`.** `Unit` is the single-value type — the

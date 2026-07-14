@@ -6,7 +6,6 @@ pub enum TokenKind {
 
     IntLit,
     FloatLit,
-    HexLit,
     StringLit,
     /// A raw fragment of an HTML literal that is followed by a `{…}`
     /// interpolation (the scanner has already consumed the `{`).
@@ -41,10 +40,6 @@ pub enum TokenKind {
     Caret,
     Minus,
 
-    KwMut,
-    KwSelf,
-    KwImpl,
-
     Newline,
     Eof,
 }
@@ -55,7 +50,6 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Ident => "identifier",
             TokenKind::IntLit => "int literal",
             TokenKind::FloatLit => "float literal",
-            TokenKind::HexLit => "hex literal",
             TokenKind::StringLit => "string literal",
             TokenKind::HtmlText => "HTML literal fragment",
             TokenKind::HtmlEnd => "HTML literal",
@@ -80,9 +74,6 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Star => "`*`",
             TokenKind::Caret => "`^`",
             TokenKind::Minus => "`-`",
-            TokenKind::KwMut => "`mut`",
-            TokenKind::KwSelf => "`Self`",
-            TokenKind::KwImpl => "`impl`",
             TokenKind::Newline => "newline",
             TokenKind::Eof => "end of file",
         };

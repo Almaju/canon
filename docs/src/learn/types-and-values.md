@@ -48,7 +48,7 @@ User = Birthday * Username
 Username = String
 
 User => Greeting {
-    "hello, " -> Joined(User.Username)
+    `hello, {User.Username}`
 }
 
 Unit => Program {

@@ -1,5 +1,7 @@
 ChatCompletionRequest = Model
 
+Doc = String
+
 Model = String
 
 Json => Result<ChatCompletionRequest, MalformedJson> {
@@ -11,8 +13,7 @@ Json => Result<ChatCompletionRequest, MalformedJson> {
 }
 
 Unit => Result<Program, MalformedJson> {
-    "{\"model\":"
-        -> Joined("\"gpt-4\"}")
+    Doc("{\"model\":\"gpt-4\"}")
         -> Json?
         -> ChatCompletionRequest?
         -> Print

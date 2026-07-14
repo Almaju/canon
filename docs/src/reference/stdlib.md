@@ -31,9 +31,9 @@ only ever reaches the wrappers below.
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
-| `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), `ToJson` instances, `Field`, `Decoded` |
+| `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), the `Encoded` family, `Field`, `Decoded` |
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
-| `web/Html` | `Html = String`, `ToHtml` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
+| `web/Html` | `Html = String`, `Escaped` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../learn/testing.md) |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
@@ -166,13 +166,17 @@ the `wasi:http/outgoing-handler` migration.
 first-class expressions**, part of the prelude — nothing to import:
 
 ```canon
-Labeled = (Int) => Json {
+Doc = String
+
+Labeled = Json
+
+Int => Labeled {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 
 Unit => Result<Program, MalformedJson> {
-    Json("[1, 2, 3]")? -> Print
-    ToJson(42) -> Print
+    Doc("[1, 2, 3]") -> Json? -> Print
+    Encoded(42) -> Print
     {"a":1,"b":[true,false,null]} -> Print
     Labeled(42) -> Print
     Unit() -> Ok
@@ -181,10 +185,10 @@ Unit => Result<Program, MalformedJson> {
 
 - **Static** literal members are baked into a constant at parse time
   and work in every world, including HTTP handlers.
-- **Interpolated** members convert at runtime via `ToJson` (instances
-  for `Bool`, `Float`, `Int`, `String`; newtype chains follow to their
-  base instance). The instances are host-backed, which the HTTP world
-  can't satisfy yet.
+- **Interpolated** members convert at runtime via `-> Encoded`
+  (`Encoded = Json`, family members for `Bool`, `Float`, `Int`,
+  `String`; newtype chains follow to their base member). The `Float`
+  member is host-backed, which the HTTP world can't satisfy yet.
 - `Json("…")` validates a *runtime-built* string (full JSON grammar,
   pure Canon); feeding it a static literal the literal form can
   express is a checker error — the literal is the one spelling.

@@ -75,11 +75,11 @@ Float => Magnitude {
                         * True => Magnitude {
                             Float -> Scaled -> Eq(0) -> (
                                 * False => Magnitude {
-                                    Float
-                                        -> Int
-                                        -> String
-                                        -> Joined(".")
-                                        -> Joined(Float -> Scaled -> Fraction(Width(6)))
+                                    `{Float -> Int -> String}.{
+                                        Float
+                                            -> Scaled
+                                            -> Fraction(Width(6))
+                                    }`
                                 }
                                 * True => Magnitude { Float -> Int -> String }
                             )
@@ -108,7 +108,7 @@ Int * Width => Padded {
         }
         * True => Padded {
             Width -> Lt(2) -> (
-                * False => Padded { "0" -> Joined(Int -> Padded(Width -> Difference(1))) }
+                * False => Padded { `0{Int -> Padded(Width -> Difference(1))}` }
                 * True => Padded { Int -> DecimalDigit }
             )
         }
@@ -136,7 +136,7 @@ Float => String {
         * True => String {
             Float -> Lt(0.0) -> (
                 * False => String { Float -> Magnitude }
-                * True => String { "-" -> Joined(0.0 -> Difference(Float) -> Magnitude) }
+                * True => String { `-{0.0 -> Difference(Float) -> Magnitude}` }
             )
         }
     )
@@ -145,6 +145,6 @@ Float => String {
 Int => String {
     Int -> Lt(0) -> (
         * False => String { 0 -> Difference(Int) -> Decimals }
-        * True => String { "-" -> Joined(Int -> Decimals) }
+        * True => String { `-{Int -> Decimals}` }
     )
 }

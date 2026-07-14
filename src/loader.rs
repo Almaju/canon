@@ -113,7 +113,6 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
                     .map(|ty| Param {
                         span: ty.span(),
                         ty,
-                        mutable: false,
                     })
                     .collect();
             }
@@ -192,16 +191,15 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
             .iter()
             .map(|t| Param {
                 ty: t.clone(),
-                mutable: false,
                 span: t.span(),
             })
             .collect();
 
-        let (receiver, recv_mut, final_params) = if !starts_lower || new_params.is_empty() {
+        let (receiver, final_params) = if !starts_lower || new_params.is_empty() {
             // PascalCase declarations (constructors) and zero-arg
             // functions don't take a receiver — the parser does the
             // same for ordinary FunctionDefs.
-            (None, false, new_params)
+            (None, new_params)
         } else {
             extract_receiver_from_params(new_params)
         };
@@ -222,7 +220,6 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
         };
         let new_func = FunctionDef {
             receiver,
-            receiver_mut: recv_mut,
             name: td.name.clone(),
             generic_params: generic_params.clone(),
             params: final_params,
@@ -635,8 +632,7 @@ fn expr_uses_rendering(expr: &Expr) -> bool {
         | Expr::Ident(_)
         | Expr::StringLit { .. }
         | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        | Expr::FloatLit { .. } => false,
     }
 }
 
@@ -651,12 +647,9 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
     match expr {
         Expr::Constructor { name, args, .. } => {
             (name.name == "Int"
-                && args.first().is_some_and(|a| {
-                    !matches!(
-                        a,
-                        Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. }
-                    )
-                }))
+                && args
+                    .first()
+                    .is_some_and(|a| !matches!(a, Expr::IntLit { .. } | Expr::FloatLit { .. })))
                 || args.iter().any(expr_uses_int_parse)
         }
         Expr::MethodCall {
@@ -687,8 +680,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
         | Expr::Ident(_)
         | Expr::StringLit { .. }
         | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        | Expr::FloatLit { .. } => false,
     }
 }
 
@@ -697,10 +689,11 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
 /// JSON literal is constant-folded and needs nothing at all (the checker
 /// knows `Json = String` intrinsically), so the stdlib module is pulled
 /// in only when the program actually reaches for its machinery:
-/// interpolation inside a literal (`{"n":Int}` converts via `ToJson`),
-/// the validating `Json(...)` constructor, or an explicit `.ToJson()` /
-/// `.Json()` call. Skipped when the file defines `Json` itself or the
-/// module already loaded a `Json` definition.
+/// interpolation inside a literal (`{"n":Int}` converts via the
+/// `Encoded` family), the validating `Json(...)` constructor, or a
+/// `.Json()` call. An explicit `-> Encoded` loads the module through
+/// ordinary reference discovery. Skipped when the file defines `Json`
+/// itself or the module already loaded a `Json` definition.
 fn inject_json_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
     let already_in_scope = ctx.defined_types.contains("Json")
         || other_items.iter().any(|item| match item {
@@ -732,10 +725,10 @@ fn items_use_json_machinery(items: &[Item]) -> bool {
 /// needs nothing at all (the checker knows `Html = String`
 /// intrinsically), so the stdlib module is pulled in only when a
 /// literal carries an interpolation hole (`<li>{Model}</li>` converts
-/// via `ToHtml`, which escapes through `text()`) or the program calls
-/// `.ToHtml()` explicitly. Programs that *name* `Html` (annotations,
-/// `Html(...)` constructors) already load the module through ordinary
-/// reference discovery — this covers the literal-only case. Skipped
+/// via the `Escaped` family). Programs that *name* `Html` (annotations,
+/// `Html(...)` constructors) or `Escaped` already load the module
+/// through ordinary reference discovery — this covers the literal-only
+/// case. Skipped
 /// when the file defines `Html` itself or the module already loaded an
 /// `Html` definition.
 fn inject_html_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
@@ -768,7 +761,7 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
     match expr {
         Expr::HtmlLit { parts, .. } => parts.iter().any(|p| match p {
             HtmlLitPart::Static(_) => false,
-            // The interpolation itself needs `ToHtml`, whatever the
+            // The interpolation itself needs `Escaped`, whatever the
             // inner expression is.
             HtmlLitPart::Interp(_) => true,
         }),
@@ -782,15 +775,8 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
             FormatLitPart::Interp(e) => expr_uses_html_machinery(e),
         }),
         Expr::Constructor { args, .. } => args.iter().any(expr_uses_html_machinery),
-        Expr::MethodCall {
-            receiver,
-            method,
-            args,
-            ..
-        } => {
-            method.name == "ToHtml"
-                || expr_uses_html_machinery(receiver)
-                || args.iter().any(expr_uses_html_machinery)
+        Expr::MethodCall { receiver, args, .. } => {
+            expr_uses_html_machinery(receiver) || args.iter().any(expr_uses_html_machinery)
         }
         Expr::Match {
             scrutinee, arms, ..
@@ -804,11 +790,9 @@ fn expr_uses_html_machinery(expr: &Expr) -> bool {
         Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_html_machinery),
         Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_html_machinery),
         Expr::FieldAccess { receiver, .. } => expr_uses_html_machinery(receiver),
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {
+            false
+        }
     }
 }
 
@@ -818,7 +802,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
         Expr::JsonLit { parts, .. } => parts.iter().any(|p| match p {
             JsonLitPart::Static(_) => false,
             JsonLitPart::Interp(e) => {
-                // The interpolation itself needs `ToJson`, whatever the
+                // The interpolation itself needs `Encoded`, whatever the
                 // inner expression is.
                 let _ = e;
                 true
@@ -842,8 +826,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
             args,
             ..
         } => {
-            method.name == "ToJson"
-                || method.name == "Json"
+            method.name == "Json"
                 || expr_uses_json_machinery(receiver)
                 || args.iter().any(expr_uses_json_machinery)
         }
@@ -859,11 +842,9 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
         Expr::Lambda { body, .. } => body.exprs.iter().any(expr_uses_json_machinery),
         Expr::ProductValue { fields, .. } => fields.iter().any(expr_uses_json_machinery),
         Expr::FieldAccess { receiver, .. } => expr_uses_json_machinery(receiver),
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => false,
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {
+            false
+        }
     }
 }
 
@@ -911,7 +892,6 @@ const UNDISCOVERABLE_TYPES: &[&str] = &[
     "Float",
     "Future",
     "Handle",
-    "Hex",
     "Int",
     "Json",
     "List",
@@ -1186,11 +1166,7 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
                 }
             }
         }
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => {}
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
     }
 }
 

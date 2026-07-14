@@ -1,0 +1,9 @@
+Loud = String
+
+Self = (Loud) => Loud {
+    Loud
+}
+
+Unit => Program {
+    "hello" -> Loud -> Print
+}

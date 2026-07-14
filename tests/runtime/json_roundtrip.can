@@ -1,10 +1,10 @@
+Doc = String
+
 Unit => Result<Program, MalformedJson> {
-    "[1, 2,"
-        -> Joined(" 3]")
+    Doc("[1, 2, 3]")
         -> Json?
         -> Print
-    "{\"a\":1,"
-        -> Joined("\"b\":[true,false,null]}")
+    Doc("{\"a\":1,\"b\":[true,false,null]}")
         -> Json?
         -> Print
     Json("\"a plain string\"")? -> Print

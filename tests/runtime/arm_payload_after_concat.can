@@ -2,15 +2,9 @@ Unit => Result<Program, Unit> {
     Ok("model") -> (
         * Err<Unit> => Unit { "err" -> Print }
         * Ok<String> => Unit {
-            "first: "
-                -> Joined("literal")
-                -> Print
+            "first: literal" -> Print
             String -> Print
-            "echo: "
-                -> Joined(String)
-                -> Joined(":")
-                -> Joined(String)
-                -> Print
+            `echo: {String}:{String}` -> Print
         }
     )
     Unit() -> Ok

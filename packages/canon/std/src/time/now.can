@@ -81,12 +81,7 @@ Month * Doy * Era * Mp * Yoe => DatePart {
 }
 
 Year * Month * Day => DatePart {
-    Year
-        -> Padded(4)
-        -> Joined("-")
-        -> Joined(Month -> Padded(2))
-        -> Joined("-")
-        -> Joined(Day -> Padded(2))
+    `{Year -> Padded(4)}-{Month -> Padded(2)}-{Day -> Padded(2)}`
 }
 
 Unit => Now {
@@ -94,21 +89,13 @@ Unit => Now {
 }
 
 Unix => Now {
-    Unix
-        -> Quotient(86400)
-        -> Sum(719468)
-        -> DatePart
-        -> Joined("T")
-        -> Joined(Unix -> Remainder(86400) -> TimePart)
-        -> Joined("Z")
+    `{Unix -> Quotient(86400) -> Sum(719468) -> DatePart}T{Unix -> Remainder(86400) -> TimePart}Z`
 }
 
 Int => TimePart {
-    Int
-        -> Quotient(3600)
-        -> Padded(2)
-        -> Joined(":")
-        -> Joined(Int -> Quotient(60) -> Remainder(60) -> Padded(2))
-        -> Joined(":")
-        -> Joined(Int -> Remainder(60) -> Padded(2))
+    `{Int -> Quotient(3600) -> Padded(2)}:{Int -> Quotient(60) -> Remainder(60) -> Padded(2)}:{
+        Int
+            -> Remainder(60)
+            -> Padded(2)
+    }`
 }

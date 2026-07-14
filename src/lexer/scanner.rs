@@ -523,13 +523,7 @@ impl<'a> Scanner<'a> {
             self.column += 1;
         }
         let lex = self.source[start_pos..self.pos].to_string();
-        let kind = match lex.as_str() {
-            "mut" => TokenKind::KwMut,
-            "Self" => TokenKind::KwSelf,
-            "impl" => TokenKind::KwImpl,
-            _ => TokenKind::Ident,
-        };
-        (kind, lex)
+        (TokenKind::Ident, lex)
     }
 
     fn scan_number(&mut self, start_line: u32, start_col: u32) -> Result<(TokenKind, String)> {
@@ -543,17 +537,17 @@ impl<'a> Scanner<'a> {
                 self.pos += 1;
                 self.column += 1;
             }
-            if self.pos == hex_start {
-                return Err(self.err_at(
-                    start_line,
-                    start_col,
-                    "hex literal requires at least one digit after `0x`",
-                ));
-            }
-            return Ok((
-                TokenKind::HexLit,
-                self.source[start_pos..self.pos].to_string(),
-            ));
+            let message = match u64::from_str_radix(&self.source[hex_start..self.pos], 16) {
+                Ok(value) => format!(
+                    "there is no hex notation: an integer has one spelling, its decimal \
+                     digits — write `{}`",
+                    value
+                ),
+                Err(_) => "there is no hex notation: an integer has one spelling, its \
+                           decimal digits"
+                    .to_string(),
+            };
+            return Err(self.err_at(start_line, start_col, &message));
         }
 
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {

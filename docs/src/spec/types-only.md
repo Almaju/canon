@@ -26,15 +26,14 @@ named after its return type is checked by the compiler.
 
 ## The Unified Declaration
 
-Every declaration is `PascalName = rhs`, and the RHS shape decides the
-meaning: a type expression declares a type; a body-less signature
-declares a **shape** (a named function type others implement); a
-bodied signature named after a declared shape is a **shape
-implementation** (`ToJson = (Bool) => Json { ... }`).
+Every declaration is `PascalName = rhs`, and the RHS decides the
+meaning: a type expression declares a type; a body-less signature is a
+**shape** (a named function type others implement) -- rejected today,
+see below.
 
-A bodied declaration named after anything else is a compile error --
-except when the name is the type it constructs, in which case the name
-is redundant and the declaration is the **anonymous arrow**:
+A bodied declaration named after anything but the type it constructs
+is a compile error, and since that name is redundant, the declaration
+is the **anonymous arrow**:
 
 ```
 String => Result<Url, InvalidUrl> { ... }        # the Url constructor
@@ -46,11 +45,13 @@ The constructed type is the return type with `Result`/`Option`/`Future`
 peeled. Call sites are unchanged (`Url("...")?`). This is the
 language's **only** function form: top level it declares a constructor,
 in expression position it is a lambda, and every dispatch arm is one.
-Declaring a *new* body-less shape is itself a checker error until
+Declaring a body-less shape is itself a checker error until
 shapes can do something a result newtype cannot
 ([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype));
-the two standing shapes are the interpolation hooks `ToJson` and
-`ToHtml`, which programs implement but never re-declare.
+there are no exceptions -- even the literal-interpolation hooks are
+ordinary result-newtype families (`Encoded = Json`, `Escaped = Html`;
+a hole is a construction, exactly as a format-string hole is
+`-> String`).
 
 **Constructors form families.** A type may have any number of
 constructor implementations, distinguished by input product (`Json`

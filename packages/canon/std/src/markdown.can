@@ -85,10 +85,10 @@ Int * String => BodyCells {
         * False => BodyCells {
             String -> ByteAt(Int) -> Eq(10) -> (
                 * False => BodyCells {
-                    "<td>"
-                        -> Joined(1 -> Inline(String -> Substring(Int -> From * Int -> NextPipe(String) -> Difference(1) -> To)))
-                        -> Joined("</td>")
-                        -> Joined(Int -> NextPipe(String) -> Sum(1) -> BodyCells(String))
+                    `<td>{
+                        1
+                            -> Inline(String -> Substring(Int -> From * Int -> NextPipe(String) -> Difference(1) -> To))
+                    }</td>{Int -> NextPipe(String) -> Sum(1) -> BodyCells(String)}`
                 }
                 * True => BodyCells { "" }
             )
@@ -103,10 +103,12 @@ Int * String => BodyRows {
             String -> ByteAt(Int) -> Eq(124) -> (
                 * False => BodyRows { "" }
                 * True => BodyRows {
-                    "<tr>"
-                        -> Joined(Int -> Sum(1) -> BodyCells(String))
-                        -> Joined("</tr>")
-                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> BodyRows(String))
+                    `<tr>{Int -> Sum(1) -> BodyCells(String)}</tr>{
+                        Int
+                            -> LineEnd(String)
+                            -> Sum(1)
+                            -> BodyRows(String)
+                    }`
                 }
             )
         }
@@ -145,14 +147,14 @@ Int * String => FenceBody {
                 * False => FenceBody {
                     Int -> LineEnd(String) -> Gt(Int) -> (
                         * False => FenceBody {
-                            "\n" -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+                            `\n{Int -> LineEnd(String) -> Sum(1) -> FenceBody(String)}`
                         }
                         * True => FenceBody {
-                            String
-                                -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)
-                                -> Escaped
-                                -> Joined("\n")
-                                -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
+                            `{
+                                String
+                                    -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)
+                                    -> Escaped
+                            }\n{Int -> LineEnd(String) -> Sum(1) -> FenceBody(String)}`
                         }
                     )
                 }
@@ -203,10 +205,10 @@ Int * String => HeadCells {
         * False => HeadCells {
             String -> ByteAt(Int) -> Eq(10) -> (
                 * False => HeadCells {
-                    "<th>"
-                        -> Joined(1 -> Inline(String -> Substring(Int -> From * Int -> NextPipe(String) -> Difference(1) -> To)))
-                        -> Joined("</th>")
-                        -> Joined(Int -> NextPipe(String) -> Sum(1) -> HeadCells(String))
+                    `<th>{
+                        1
+                            -> Inline(String -> Substring(Int -> From * Int -> NextPipe(String) -> Difference(1) -> To))
+                    }</th>{Int -> NextPipe(String) -> Sum(1) -> HeadCells(String)}`
                 }
                 * True => HeadCells { "" }
             )
@@ -219,11 +221,11 @@ Int * String => HeadingHtml {
     Int -> Eq(1) -> (
         * False => HeadingHtml {
             Int -> Eq(2) -> (
-                * False => HeadingHtml { "<h3>" -> Joined(String) -> Joined("</h3>") }
-                * True => HeadingHtml { "<h2>" -> Joined(String) -> Joined("</h2>") }
+                * False => HeadingHtml { `<h3>{String}</h3>` }
+                * True => HeadingHtml { `<h2>{String}</h2>` }
             )
         }
-        * True => HeadingHtml { "<h1>" -> Joined(String) -> Joined("</h1>") }
+        * True => HeadingHtml { `<h1>{String}</h1>` }
     )
 }
 
@@ -258,21 +260,29 @@ Int * String => Inline {
                                                 -> ByteAt(Int -> Sum(1) -> BracketClose(String) -> Sum(1))
                                                 -> Eq(40) -> (
                                                 * False => Inline {
-                                                    "[" -> Joined(Int -> Sum(1) -> Inline(String))
+                                                    `[{Int -> Sum(1) -> Inline(String)}`
                                                 }
                                                 * True => Inline {
-                                                    "<a href=\""
-                                                        -> Joined(String -> Substring(Int -> Sum(1) -> BracketClose(String) -> Sum(2) -> From * Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Difference(1) -> To) -> Escaped)
-                                                        -> Joined("\">")
-                                                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> BracketClose(String) -> Difference(1) -> To)))
-                                                        -> Joined("</a>")
-                                                        -> Joined(Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Sum(1) -> Inline(String))
+                                                    `<a href="{
+                                                        String
+                                                            -> Substring(Int -> Sum(1) -> BracketClose(String) -> Sum(2) -> From * Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Difference(1) -> To)
+                                                            -> Escaped
+                                                    }">{
+                                                        1
+                                                            -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> BracketClose(String) -> Difference(1) -> To))
+                                                    }</a>{
+                                                        Int
+                                                            -> Sum(1)
+                                                            -> BracketClose(String)
+                                                            -> Sum(1)
+                                                            -> ParenClose(String)
+                                                            -> Sum(1)
+                                                            -> Inline(String)
+                                                    }`
                                                 }
                                             )
                                         }
-                                        * True => Inline {
-                                            "[" -> Joined(Int -> Sum(1) -> Inline(String))
-                                        }
+                                        * True => Inline { `[{Int -> Sum(1) -> Inline(String)}` }
                                     )
                                 }
                             )
@@ -287,21 +297,33 @@ Int * String => Inline {
                                                 -> StarOneClose(String)
                                                 -> Gt(String -> Length) -> (
                                                 * False => Inline {
-                                                    "<em>"
-                                                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> StarOneClose(String) -> Difference(1) -> To)))
-                                                        -> Joined("</em>")
-                                                        -> Joined(Int -> Sum(1) -> StarOneClose(String) -> Sum(1) -> Inline(String))
+                                                    `<em>{
+                                                        1
+                                                            -> Inline(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> StarOneClose(String) -> Difference(1) -> To))
+                                                    }</em>{
+                                                        Int
+                                                            -> Sum(1)
+                                                            -> StarOneClose(String)
+                                                            -> Sum(1)
+                                                            -> Inline(String)
+                                                    }`
                                                 }
                                                 * True => Inline {
-                                                    "*" -> Joined(Int -> Sum(1) -> Inline(String))
+                                                    `*{Int -> Sum(1) -> Inline(String)}`
                                                 }
                                             )
                                         }
                                         * True => Inline {
-                                            "<strong>"
-                                                -> Joined(1 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> Sum(2) -> StarClose(String) -> Difference(1) -> To)))
-                                                -> Joined("</strong>")
-                                                -> Joined(Int -> Sum(2) -> StarClose(String) -> Sum(2) -> Inline(String))
+                                            `<strong>{
+                                                1
+                                                    -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> Sum(2) -> StarClose(String) -> Difference(1) -> To))
+                                            }</strong>{
+                                                Int
+                                                    -> Sum(2)
+                                                    -> StarClose(String)
+                                                    -> Sum(2)
+                                                    -> Inline(String)
+                                            }`
                                         }
                                     )
                                 }
@@ -311,10 +333,11 @@ Int * String => Inline {
                     )
                 }
                 * True => Inline {
-                    "<code>"
-                        -> Joined(String -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> TickClose(String) -> Difference(1) -> To) -> Escaped)
-                        -> Joined("</code>")
-                        -> Joined(Int -> Sum(1) -> TickClose(String) -> Sum(1) -> Inline(String))
+                    `<code>{
+                        String
+                            -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> TickClose(String) -> Difference(1) -> To)
+                            -> Escaped
+                    }</code>{Int -> Sum(1) -> TickClose(String) -> Sum(1) -> Inline(String)}`
                 }
             )
         }
@@ -506,14 +529,36 @@ Int * String => ListItems {
         * True => ListItems {
             Int -> Sum(2) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
                 * False => ListItems {
-                    "<li>"
-                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
-                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsSubItem(String) -> ( * False => Frag { "" } * True => Frag { "<ul>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> SubItems(String)) -> Joined("</ul>") }))
-                        -> Joined("</li>")
-                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsSubItem(String) -> ( * False => Frag { Int -> LineEnd(String) -> Sum(1) -> ListItems(String) } * True => Frag { Int -> LineEnd(String) -> Sum(1) -> SubEnd(String) -> ListItems(String) }))
+                    `<li>{
+                        1
+                            -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+                    }{
+                        Int -> LineEnd(String) -> Sum(1) -> IsSubItem(String) -> (
+                            * False => Frag { "" }
+                            * True => Frag {
+                                `<ul>{Int -> LineEnd(String) -> Sum(1) -> SubItems(String)}</ul>`
+                            }
+                        )
+                    }</li>{
+                        Int -> LineEnd(String) -> Sum(1) -> IsSubItem(String) -> (
+                            * False => Frag {
+                                Int
+                                    -> LineEnd(String)
+                                    -> Sum(1)
+                                    -> ListItems(String)
+                            }
+                            * True => Frag {
+                                Int
+                                    -> LineEnd(String)
+                                    -> Sum(1)
+                                    -> SubEnd(String)
+                                    -> ListItems(String)
+                            }
+                        )
+                    }`
                 }
                 * True => ListItems {
-                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> ListItems(String))
+                    `<li></li>{Int -> LineEnd(String) -> Sum(1) -> ListItems(String)}`
                 }
             )
         }
@@ -553,13 +598,13 @@ Int * String => OrderedItems {
                 -> Sum(2)
                 -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
                 * False => OrderedItems {
-                    "<li>"
-                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(Int -> DigitRun(String)) -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
-                        -> Joined("</li>")
-                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String))
+                    `<li>{
+                        1
+                            -> Inline(String -> Substring(Int -> Sum(Int -> DigitRun(String)) -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+                    }</li>{Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String)}`
                 }
                 * True => OrderedItems {
-                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String))
+                    `<li></li>{Int -> LineEnd(String) -> Sum(1) -> OrderedItems(String)}`
                 }
             )
         }
@@ -569,7 +614,7 @@ Int * String => OrderedItems {
 Int * String => ParaBody {
     1
         -> Inline(String -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To))
-        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsPara(String) -> ( * False => Frag { "" } * True => Frag { " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> ParaBody(String)) }))
+        -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsPara(String) -> ( * False => Frag { "" } * True => Frag { ` {Int -> LineEnd(String) -> Sum(1) -> ParaBody(String)}` }))
 }
 
 Int * String => ParaEnd {
@@ -596,14 +641,12 @@ Int * String => QuoteBody {
         * False => QuoteBody {
             1
                 -> Inline(String -> Substring(Int -> Sum(2) -> From * Int -> LineEnd(String) -> Difference(1) -> To))
-                -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> ( * False => Frag { "" } * True => Frag { " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String)) }))
+                -> Joined(Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> ( * False => Frag { "" } * True => Frag { ` {Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String)}` }))
         }
         * True => QuoteBody {
             Int -> LineEnd(String) -> Sum(1) -> IsQuote(String) -> (
                 * False => QuoteBody { "" }
-                * True => QuoteBody {
-                    " " -> Joined(Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String))
-                }
+                * True => QuoteBody { ` {Int -> LineEnd(String) -> Sum(1) -> QuoteBody(String)}` }
             )
         }
     )
@@ -660,12 +703,12 @@ Int * String => RenderedBlocks {
 }
 
 Int * String => RenderedFence {
-    "<pre data-info=\""
-        -> Joined(Int -> FenceInfo(String))
-        -> Joined("\"><code>")
-        -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceBody(String))
-        -> Joined("</code></pre>")
-        -> Joined(Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) -> RenderedBlocks(String))
+    `<pre data-info="{Int -> FenceInfo(String)}"><code>{
+        Int
+            -> LineEnd(String)
+            -> Sum(1)
+            -> FenceBody(String)
+    }</code></pre>{Int -> LineEnd(String) -> Sum(1) -> FenceEnd(String) -> RenderedBlocks(String)}`
 }
 
 Int * String => RenderedHeading {
@@ -686,10 +729,7 @@ Int * String => RenderedHeading {
 }
 
 Int * String => RenderedList {
-    "<ul>"
-        -> Joined(Int -> ListItems(String))
-        -> Joined("</ul>")
-        -> Joined(Int -> ListEnd(String) -> RenderedBlocks(String))
+    `<ul>{Int -> ListItems(String)}</ul>{Int -> ListEnd(String) -> RenderedBlocks(String)}`
 }
 
 Int * String => RenderedNonList {
@@ -710,17 +750,11 @@ Int * String => RenderedNonList {
 }
 
 Int * String => RenderedOrdered {
-    "<ol>"
-        -> Joined(Int -> OrderedItems(String))
-        -> Joined("</ol>")
-        -> Joined(Int -> OrderedEnd(String) -> RenderedBlocks(String))
+    `<ol>{Int -> OrderedItems(String)}</ol>{Int -> OrderedEnd(String) -> RenderedBlocks(String)}`
 }
 
 Int * String => RenderedParagraph {
-    "<p>"
-        -> Joined(Int -> ParaBody(String))
-        -> Joined("</p>")
-        -> Joined(Int -> ParaEnd(String) -> RenderedBlocks(String))
+    `<p>{Int -> ParaBody(String)}</p>{Int -> ParaEnd(String) -> RenderedBlocks(String)}`
 }
 
 RenderedQuote = Frag
@@ -740,19 +774,30 @@ TableEnd = Int
 TickClose = Int
 
 Int * String => RenderedQuote {
-    "<blockquote>"
-        -> Joined(Int -> QuoteBody(String))
-        -> Joined("</blockquote>")
-        -> Joined(Int -> QuoteEnd(String) -> RenderedBlocks(String))
+    `<blockquote>{Int -> QuoteBody(String)}</blockquote>{
+        Int
+            -> QuoteEnd(String)
+            -> RenderedBlocks(String)
+    }`
 }
 
 Int * String => RenderedTable {
-    "<table><thead><tr>"
-        -> Joined(Int -> Sum(1) -> HeadCells(String))
-        -> Joined("</tr></thead><tbody>")
-        -> Joined(Int -> LineEnd(String) -> Sum(1) -> LineEnd(String) -> Sum(1) -> BodyRows(String))
-        -> Joined("</tbody></table>")
-        -> Joined(Int -> LineEnd(String) -> Sum(1) -> LineEnd(String) -> Sum(1) -> TableEnd(String) -> RenderedBlocks(String))
+    `<table><thead><tr>{Int -> Sum(1) -> HeadCells(String)}</tr></thead><tbody>{
+        Int
+            -> LineEnd(String)
+            -> Sum(1)
+            -> LineEnd(String)
+            -> Sum(1)
+            -> BodyRows(String)
+    }</tbody></table>{
+        Int
+            -> LineEnd(String)
+            -> Sum(1)
+            -> LineEnd(String)
+            -> Sum(1)
+            -> TableEnd(String)
+            -> RenderedBlocks(String)
+    }`
 }
 
 Int * String => StarClose {
@@ -813,13 +858,13 @@ Int * String => SubItems {
         * True => SubItems {
             Int -> Sum(4) -> Gt(Int -> LineEnd(String) -> Difference(1)) -> (
                 * False => SubItems {
-                    "<li>"
-                        -> Joined(1 -> Inline(String -> Substring(Int -> Sum(4) -> From * Int -> LineEnd(String) -> Difference(1) -> To)))
-                        -> Joined("</li>")
-                        -> Joined(Int -> LineEnd(String) -> Sum(1) -> SubItems(String))
+                    `<li>{
+                        1
+                            -> Inline(String -> Substring(Int -> Sum(4) -> From * Int -> LineEnd(String) -> Difference(1) -> To))
+                    }</li>{Int -> LineEnd(String) -> Sum(1) -> SubItems(String)}`
                 }
                 * True => SubItems {
-                    "<li></li>" -> Joined(Int -> LineEnd(String) -> Sum(1) -> SubItems(String))
+                    `<li></li>{Int -> LineEnd(String) -> Sum(1) -> SubItems(String)}`
                 }
             )
         }

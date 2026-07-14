@@ -47,7 +47,7 @@ alphabetical ordering.
 **Values flow through pipes; literals are born in the parens.**
 
 The pipe carries a value that already exists -- a parameter reference, a
-prior result. A scalar literal (string, int, float, hex, backtick)
+prior result. A scalar literal (string, int, float, backtick)
 springs into existence at the call site, so it rides inside the call
 instead of pretending to flow:
 
@@ -69,7 +69,7 @@ The full rule, case by case:
   `Show(42)`. A chain then *starts* with that construction and
   *continues* with `->`: `Path("./data.json") -> File? -> Read?`.
 - **Wrapping a literal in its own primitive constructor is ceremony** --
-  `Int(3)`, `String("foo")`, `Float(1.5)`, `Hex(0xFF)` unwrap to the
+  `Int(3)`, `String("foo")`, `Float(1.5)` unwrap to the
   bare literal (which already desugars to exactly that construction),
   the same way a hole-less backtick string collapses to a plain one.
   Cross-kind construction (`String(42)` decimal rendering, `Int("42")`
@@ -245,10 +245,12 @@ JSON object and array literals are first-class expressions producing
 support is part of the prelude. The compiler knows `Json = String`
 intrinsically, and the loader pulls in `canon/std/Json` automatically
 the moment a program uses its machinery (interpolation, the validating
-`Json(...)` constructor, or `.ToJson()`):
+`Json(...)` constructor, or the `Encoded` family):
 
 ```canon
-Label = (Int) => Json {
+Label = Json
+
+Int => Label {
     {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
 }
 ```
@@ -259,10 +261,12 @@ Label = (Int) => Json {
   requirements, so it works in every world (including
   `wasi:http/service` handlers).
 - **Interpolated** members are ordinary Canon expressions converted at
-  runtime via their `ToJson` instance. The instances are host-backed
-  (`canon:builtins/json`), which the HTTP world can't satisfy yet; a
-  handler program using interpolation fails at build with an error
-  naming the unsatisfiable imports.
+  runtime through the stdlib's `Encoded` family (`Encoded = Json`, one
+  anonymous arrow per source type) -- a hole is exactly `-> Encoded`,
+  the way a format-string hole is `-> String`. The `Float` member is
+  host-backed (`canon:builtins/json`), which the HTTP world can't
+  satisfy yet; a handler program using interpolation fails at build
+  with an error naming the unsatisfiable imports.
 - Literal layout is canonical like all Canon code: no spaces after `:`
   or `,` (`{"k":v}`, not `{"k": v}`). `canon check --fix` enforces it.
 - **The literal is the only spelling of a static document.** Feeding the
@@ -293,9 +297,11 @@ Model => Html {
 }
 ```
 
-Interpolated values convert through the `ToHtml` trait: a `String` or
-`Int` is HTML-escaped (via the stdlib's `Escaped`), while an `Html` value
-passes through unchanged, so composing literals never double-escapes:
+Interpolated values convert through the stdlib's `Escaped` family
+(`Escaped = Html`): a hole is exactly `-> Escaped`, and the family
+member selected by the hole's type escapes a `String` or `Int` while
+passing an `Html` value through unchanged, so composing literals never
+double-escapes:
 
 ```canon
 Listing = Html
@@ -327,7 +333,8 @@ String => Row {
 
 Like `Json`, `Html` is a prelude type (`Html = String` intrinsically);
 the loader pulls in `canon/std/web/Html` the moment a literal carries a
-hole or `.ToHtml()` is called. HTML literals power the
+hole (an explicit `-> Escaped` loads it by ordinary reference
+discovery). HTML literals power the
 [web target](../reference/web-target.md)'s `view`.
 
 ## Format Strings
@@ -351,8 +358,13 @@ Int => Report {
 - A hole holds an arbitrary Canon expression whose value is converted
   through `String` construction and concatenated into the surrounding
   text: an `Int` renders as its decimal digits, a `String` passes
-  through unchanged. This replaces hand-written `-> Joined(...)` chains
-  (`` `<{x}>` `` instead of `"<" -> Joined(x) -> Joined(">")`).
+  through unchanged. This replaces hand-written `-> Joined(...)` chains,
+  and the replacement is enforced: `canon check --fix` folds a `Joined`
+  chain that contains literal text into the format string
+  (`"<" -> Joined(x) -> Joined(">")` becomes `` `<{x}>` ``, and an
+  all-literal chain constant-folds to the plain string). An all-computed
+  chain keeps the pipe — `Joined` is also list concatenation, and only
+  literal text proves the chain builds a string.
 - `{{` and `}}` escape literal braces; ``\` `` escapes a backtick, and
   the usual `\n` / `\t` / `\\` / `\u….` escapes work as in a
   double-quoted string. A format string may span multiple source lines.
@@ -361,6 +373,20 @@ Int => Report {
   exactly like an all-static JSON or HTML literal. A backtick string
   with no holes is just a string constant: `canon check --fix` rewrites it to
   the plain-quoted form (`` `hi` `` → `"hi"`).
+- **Holes break like code.** A hole whose expression would push its
+  line past the width limit opens onto its own indented lines — the
+  braces stay glued to the surrounding text, which is content and never
+  moves. The same rule formats JSON and HTML holes:
+
+  ```canon
+  `<td>{
+      1 -> Inline(String)
+  }</td>`
+  ```
+
+  A bare reference (`{Model}`, `{Node.Rest}`) never breaks, and a
+  hole inside an indented HTML literal indents from the markup around
+  it, not from the code margin.
 
 Unlike `Json` and `Html`, a format string needs no prelude -- `String`
 construction (including the built-in int-to-string) is intrinsic -- so

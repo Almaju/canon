@@ -31,7 +31,6 @@ pub struct GenericParam {
 #[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub receiver: Option<Ident>,
-    pub receiver_mut: bool,
     pub name: Ident,
     pub generic_params: Vec<GenericParam>,
     pub params: Vec<Param>,
@@ -57,7 +56,6 @@ pub struct ExternWasm {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub ty: TypeExpr,
-    pub mutable: bool,
     pub span: Span,
 }
 
@@ -128,7 +126,7 @@ pub enum JsonLitPart {
     /// Inlined verbatim into the output.
     Static(String),
     /// An interpolated Canon expression. Its runtime value is converted
-    /// to JSON via `.ToJson()` and concatenated into the surrounding
+    /// to JSON via `-> Encoded` and concatenated into the surrounding
     /// JSON text.
     Interp(Box<Expr>),
 }
@@ -153,7 +151,7 @@ pub enum HtmlLitPart {
     /// Inlined verbatim into the output.
     Static(String),
     /// An interpolated Canon expression (`{expr}` in the literal). Its
-    /// runtime value is converted to HTML via `.ToHtml()` — escaping
+    /// runtime value is converted to HTML via `-> Escaped` — escaping
     /// for `String`/`Int`, identity for `Html` — and concatenated into
     /// the surrounding HTML text.
     Interp(Box<Expr>),
@@ -172,10 +170,6 @@ pub enum Expr {
     },
     FloatLit {
         value: f64,
-        span: Span,
-    },
-    HexLit {
-        value: u64,
         span: Span,
     },
     Constructor {
@@ -224,7 +218,7 @@ pub enum Expr {
     ///
     /// Compiled-out at parse time into an alternating list of `Static`
     /// (pre-encoded JSON text fragments) and `Interp` (arbitrary Canon
-    /// expressions whose runtime values are `.ToJson()`-converted and
+    /// expressions whose runtime values are `-> Encoded`-converted and
     /// concatenated into the surrounding scaffolding). When `parts`
     /// contains a single `Static`, the literal is fully constant and
     /// codegen lowers it to a single string-literal load; otherwise it
@@ -240,7 +234,7 @@ pub enum Expr {
     /// valid Canon) and compiled-out at parse time into an alternating
     /// list of `Static` (raw HTML text fragments) and `Interp`
     /// (arbitrary Canon expressions in `{…}` holes whose runtime values
-    /// are `.ToHtml()`-converted and concatenated into the surrounding
+    /// are `-> Escaped`-converted and concatenated into the surrounding
     /// markup). When `parts` is a single `Static`, the literal is fully
     /// constant and codegen lowers it to one string-literal load;
     /// otherwise it emits a `String.concat` chain over the parts.
@@ -277,7 +271,6 @@ impl Expr {
             Expr::StringLit { span, .. } => *span,
             Expr::IntLit { span, .. } => *span,
             Expr::FloatLit { span, .. } => *span,
-            Expr::HexLit { span, .. } => *span,
             Expr::Constructor { span, .. } => *span,
             Expr::MethodCall { span, .. } => *span,
             Expr::Match { span, .. } => *span,
@@ -410,7 +403,7 @@ pub struct WebEntry {
 
 /// Detects the web-app entry triple among `items` by *shape*, not name.
 /// The anchor is `view` — the sole `Model => Html` whose receiver is a
-/// user type (excluding primitive receivers filters out stdlib `ToHtml`,
+/// user type (excluding primitive receivers filters out stdlib `Escaped`,
 /// which converts `Html`/`Int`/`String` to `Html`). From the model,
 /// `init` is the unique nullary constructor whose result aliases the
 /// model, and `update` the unique two-input constructor whose first
@@ -439,11 +432,11 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
         .collect();
 
     // Primitive receivers can't be the model, so they mark stdlib
-    // conversions (`ToHtml`) rather than the user's `view`.
+    // conversions (`Escaped`) rather than the user's `view`.
     let is_primitive = |n: &str| {
         matches!(
             n,
-            "Html" | "String" | "Int" | "Float" | "Bool" | "Hex" | "Unit" | "Byte"
+            "Html" | "String" | "Int" | "Float" | "Bool" | "Unit" | "Byte"
         )
     };
     // Every `_ => Html` with a non-primitive receiver is a *candidate*
@@ -542,21 +535,18 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
 /// Extract the receiver type from the first component of a parameter list.
 /// In the new syntax `name = (A * B * C) -> ...`, A is the receiver and B, C are params.
 /// For a single param `name = (A) -> ...`, A is the receiver with no extra params.
-/// Returns `(receiver_name, receiver_mut, remaining_params)`.
-pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool, Vec<Param>) {
+/// Returns `(receiver_name, remaining_params)`.
+pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, Vec<Param>) {
     if params.is_empty() {
-        return (None, false, params);
+        return (None, params);
     }
 
     let mut param_iter = params.into_iter();
     let first_param = param_iter.next().unwrap();
-    let outer_mut = first_param.mutable;
     let remaining_original: Vec<Param> = param_iter.collect();
 
     match first_param.ty {
         TypeExpr::Product { fields, .. } => {
-            // `mut` written outside the parens of a product param marks the
-            // first component (the receiver) as mutable.
             if let Some(first_field) = fields.first() {
                 let recv = match first_field {
                     TypeExpr::Named { name, span, .. } => Some(Ident {
@@ -569,14 +559,13 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
                     .iter()
                     .map(|f| Param {
                         ty: f.clone(),
-                        mutable: false,
                         span: f.span(),
                     })
                     .collect();
                 remaining.extend(remaining_original);
-                (recv, outer_mut, remaining)
+                (recv, remaining)
             } else {
-                (None, false, remaining_original)
+                (None, remaining_original)
             }
         }
         TypeExpr::Named { ref name, span, .. } => {
@@ -584,12 +573,12 @@ pub fn extract_receiver_from_params(params: Vec<Param>) -> (Option<Ident>, bool,
                 name: name.clone(),
                 span,
             });
-            (recv, outer_mut, remaining_original)
+            (recv, remaining_original)
         }
         _ => {
             let mut result = vec![first_param];
             result.extend(remaining_original);
-            (None, false, result)
+            (None, result)
         }
     }
 }
@@ -815,7 +804,6 @@ pub fn resolve_new_syntax(module: &mut Module) {
                                     .iter()
                                     .map(|f| Param {
                                         ty: f.clone(),
-                                        mutable: false,
                                         span: f.span(),
                                     })
                                     .collect();
@@ -850,10 +838,8 @@ pub fn resolve_new_syntax(module: &mut Module) {
                     } else if !func.params.is_empty() {
                         // Trait impl: extract first component as receiver
                         let old_params = std::mem::take(&mut func.params);
-                        let (receiver, recv_mut, new_params) =
-                            extract_receiver_from_params(old_params);
+                        let (receiver, new_params) = extract_receiver_from_params(old_params);
                         func.receiver = receiver;
-                        func.receiver_mut = recv_mut;
                         func.params = new_params;
                     }
                 }

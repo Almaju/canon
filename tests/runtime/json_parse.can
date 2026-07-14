@@ -1,6 +1,7 @@
+Doc = String
+
 Unit => Result<Program, MalformedJson> {
-    "{\"hello\":\"world\","
-        -> Joined("\"answer\":42}")
+    Doc("{\"hello\":\"world\",\"answer\":42}")
         -> Json?
         -> Print
     Unit() -> Ok

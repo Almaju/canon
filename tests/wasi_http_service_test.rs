@@ -35,10 +35,7 @@ fn wasi_http_service_smoke() {
     std::fs::write(
         &src_path,
         r#"Request => Response {
-    "created: "
-        -> Joined("ok")
-        -> Body
-        -> Response(Status(201) * Headers())
+    Body("created: ok") -> Response(Headers() * Status(201))
 }
 "#,
     )
@@ -205,12 +202,7 @@ fn wasi_http_service_method_dispatch() {
     Request.method() -> (
         * "GET" => Response { Body("got GET") -> Response(Status(200) * Headers()) }
         * "POST" => Response { Body("got POST") -> Response(Status(201) * Headers()) }
-        * String => Response {
-            "no "
-                -> Joined(String)
-                -> Body
-                -> Response(Status(405) * Headers())
-        }
+        * String => Response { Body(`no {String}`) -> Response(Headers() * Status(405)) }
     )
 }
 "#,

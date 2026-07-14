@@ -9,29 +9,20 @@ SchemeEnd * String => Result<HostChecked, InvalidUrl> {
         * False => Result<HostChecked, InvalidUrl> {
             String -> Length -> Gt(SchemeEnd) -> (
                 * False => Result<HostChecked, InvalidUrl> {
-                    "invalid URL: empty host in "
-                        -> Joined(String)
-                        -> InvalidUrl
-                        -> Err
+                    InvalidUrl(`invalid URL: empty host in {String}`) -> Err
                 }
                 * True => Result<HostChecked, InvalidUrl> {
                     String -> ByteAt(SchemeEnd -> Sum(1)) -> Eq(47) -> (
                         * False => Result<HostChecked, InvalidUrl> { String -> Ok }
                         * True => Result<HostChecked, InvalidUrl> {
-                            "invalid URL: empty host in "
-                                -> Joined(String)
-                                -> InvalidUrl
-                                -> Err
+                            InvalidUrl(`invalid URL: empty host in {String}`) -> Err
                         }
                     )
                 }
             )
         }
         * True => Result<HostChecked, InvalidUrl> {
-            "invalid URL: expected http:// or https:// prefix, got "
-                -> Joined(String)
-                -> InvalidUrl
-                -> Err
+            InvalidUrl(`invalid URL: expected http:// or https:// prefix, got {String}`) -> Err
         }
     )
 }

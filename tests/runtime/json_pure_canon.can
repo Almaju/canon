@@ -1,3 +1,5 @@
+Doc = String
+
 Shown = Unit
 
 Result => Shown {
@@ -14,31 +16,25 @@ Unit => Program {
     Json("42") -> Shown
     Json("-3.14e2") -> Shown
     Json("\"hello\"") -> Shown
-    "[1, 2,"
-        -> Joined(" 3]")
+    Doc("[1, 2, 3]")
         -> Json
         -> Shown
-    "["
-        -> Joined("]")
+    Doc("[]")
         -> Json
         -> Shown
-    "{"
-        -> Joined("}")
+    Doc("{}")
         -> Json
         -> Shown
-    "{\"a\": 1,"
-        -> Joined(" \"b\": [true, false, null]}")
+    Doc("{\"a\": 1, \"b\": [true, false, null]}")
         -> Json
         -> Shown
-    "{\"nested\": {\"deep\":"
-        -> Joined(" [1, [2, [3]]]}}")
+    Doc("{\"nested\": {\"deep\": [1, [2, [3]]]}}")
         -> Json
         -> Shown
     Json("  true  ") -> Shown
     Json("garbage") -> Shown
     Json("{bad}") -> Shown
-    "[1, 2,"
-        -> Joined("]")
+    Doc("[1, 2,]")
         -> Json
         -> Shown
     Json("true junk") -> Shown

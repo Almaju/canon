@@ -117,8 +117,8 @@ fn canonicalize_module(m: &Module) -> Module {
 /// the name twice — the signature already carries it. The anonymous
 /// arrow is the one declaration form for constructors, so `canon check --fix`
 /// drops the redundant name (`String => Result<Url, InvalidUrl> { … }`).
-/// Named declarations remain for exactly one thing: shape
-/// implementations, where the name differs from the constructed type.
+/// A name that differs from the constructed type is a checker error, so
+/// the arrow is the only bodied form that survives canonical format.
 fn is_redundantly_named(f: &FunctionDef) -> bool {
     !f.anonymous
         && f.receiver.is_none()
@@ -209,12 +209,11 @@ fn is_scalar_literal(e: &Expr) -> bool {
         Expr::StringLit { .. }
             | Expr::IntLit { .. }
             | Expr::FloatLit { .. }
-            | Expr::HexLit { .. }
             | Expr::FormatLit { .. }
     )
 }
 
-/// `String("s")`, `Int(3)`, `Float(1.5)`, `Hex(0xFF)` wrap a literal in
+/// `String("s")`, `Int(3)`, `Float(1.5)` wrap a literal in
 /// the constructor that literal already desugars to — the wrap is pure
 /// ceremony, so `canon check --fix` unwraps it to the bare literal. Cross-kind
 /// construction (`String(42)` decimal rendering, `Int("42")` parsing)
@@ -225,17 +224,90 @@ fn primitive_literal_wrap(name: &str, input: &Expr) -> bool {
         ("String", Expr::StringLit { .. })
             | ("Int", Expr::IntLit { .. })
             | ("Float", Expr::FloatLit { .. })
-            | ("Hex", Expr::HexLit { .. })
     )
+}
+
+/// Fold a `Joined` chain into a format string when literal text anchors
+/// it. Returns `None` when no direct segment is a string literal or
+/// format string (the chain may be list concatenation — only literal
+/// text proves strings) or when a bare numeric literal appears as a
+/// segment (ill-typed as concatenation; folding would change the
+/// failure mode). An all-static fold collapses to the plain string, the
+/// same constant-folding the parser applies to literal holes.
+fn fold_joined_chain(chain: &Expr, span: crate::error::Span) -> Option<Expr> {
+    let mut parts: Vec<FormatLitPart> = Vec::new();
+    let mut saw_text = false;
+    if !joined_parts(chain, &mut parts, &mut saw_text) || !saw_text {
+        return None;
+    }
+    // Merge adjacent statics so the parts alternate the way the parser
+    // produces them (round-trip stability).
+    let mut merged: Vec<FormatLitPart> = Vec::with_capacity(parts.len());
+    for p in parts {
+        match (&p, merged.last_mut()) {
+            (FormatLitPart::Static(s), Some(FormatLitPart::Static(last))) => last.push_str(s),
+            _ => merged.push(p),
+        }
+    }
+    if merged.iter().all(|p| matches!(p, FormatLitPart::Static(_))) {
+        let value = merged
+            .iter()
+            .map(|p| match p {
+                FormatLitPart::Static(s) => s.as_str(),
+                FormatLitPart::Interp(_) => unreachable!(),
+            })
+            .collect::<String>();
+        return Some(Expr::StringLit { value, span });
+    }
+    Some(Expr::FormatLit {
+        parts: merged,
+        span,
+    })
+}
+
+/// Flatten a `Joined` tree (receiver chains and `Joined` arguments —
+/// concatenation is associative) into format-string parts. `Static`
+/// parts come only from direct string-literal / format-string segments;
+/// every other segment becomes an interpolation hole. Returns `false`
+/// (abort the fold) on a bare numeric-literal segment.
+fn joined_parts(expr: &Expr, parts: &mut Vec<FormatLitPart>, saw_text: &mut bool) -> bool {
+    match expr {
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } if crate::ast::builtin_pipe_name(&method.name) == "Joined" && args.len() == 1 => {
+            joined_parts(receiver, parts, saw_text) && joined_parts(&args[0], parts, saw_text)
+        }
+        Expr::StringLit { value, .. } => {
+            *saw_text = true;
+            parts.push(FormatLitPart::Static(value.clone()));
+            true
+        }
+        Expr::FormatLit { parts: inner, .. } => {
+            *saw_text = true;
+            for p in inner {
+                parts.push(match p {
+                    FormatLitPart::Static(s) => FormatLitPart::Static(s.clone()),
+                    FormatLitPart::Interp(e) => FormatLitPart::Interp(Box::new(canon_expr(e))),
+                });
+            }
+            true
+        }
+        Expr::IntLit { .. } | Expr::FloatLit { .. } => false,
+        other => {
+            parts.push(FormatLitPart::Interp(Box::new(canon_expr(other))));
+            true
+        }
+    }
 }
 
 fn canon_expr(e: &Expr) -> Expr {
     match e {
-        Expr::Ident(_)
-        | Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => e.clone(),
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {
+            e.clone()
+        }
 
         Expr::FieldAccess {
             receiver,
@@ -376,6 +448,18 @@ fn canon_expr(e: &Expr) -> Expr {
             piped,
             span,
         } => {
+            // A `Joined` chain anchored by literal text is a hand-written
+            // format string — fold it into the backtick literal, the one
+            // spelling of building a string around text (`"<" -> Joined(x)
+            // -> Joined(">")` becomes `` `<{x}>` ``). A chain with no
+            // direct string-literal segment stays a pipe: `Joined` is also
+            // list concatenation, and only literal text proves the chain
+            // builds a string.
+            if crate::ast::builtin_pipe_name(&method.name) == "Joined" && args.len() == 1 {
+                if let Some(folded) = fold_joined_chain(e, *span) {
+                    return folded;
+                }
+            }
             // camelCase methods are FFI binding calls at the boundary
             // (`.now()`, `.set()`); `->` only pipes into PascalCase
             // constructors, so leave these as dot-calls.
@@ -609,7 +693,7 @@ fn emit_function(func: &FunctionDef) -> String {
 
 /// The paren-free input rendering of an anonymous constructor, or `None`
 /// when it must keep its parentheses. Zero params render as `Unit` (the
-/// single-value "no input" type). A single non-mutable param renders bare
+/// single-value "no input" type). A single param renders bare
 /// — `Request`, or the product `Todos * String` — as long as its first
 /// atom is a generics-free named type, since only then does the parser's
 /// paren-free path (a leading bare ident, then `=>`/`*`/`+`) round-trip.
@@ -618,7 +702,7 @@ fn emit_function(func: &FunctionDef) -> String {
 fn anon_input_paren_free(params: &[Param]) -> Option<String> {
     match params {
         [] => Some("Unit".to_string()),
-        [p] if !p.mutable && first_atom_is_bare_named(&p.ty) => Some(emit_type_expr(&p.ty)),
+        [p] if first_atom_is_bare_named(&p.ty) => Some(emit_type_expr(&p.ty)),
         _ => None,
     }
 }
@@ -650,7 +734,7 @@ fn emit_fn_params(func: &FunctionDef) -> String {
         } else {
             let mut parts = vec![recv.name.clone()];
             for p in &func.params {
-                parts.push(emit_param(p));
+                parts.push(emit_type_expr(&p.ty));
             }
             parts.join(" * ")
         }
@@ -660,16 +744,11 @@ fn emit_fn_params(func: &FunctionDef) -> String {
 }
 
 fn emit_param_list(params: &[Param]) -> String {
-    params.iter().map(emit_param).collect::<Vec<_>>().join(", ")
-}
-
-fn emit_param(p: &Param) -> String {
-    let ty = emit_type_expr(&p.ty);
-    if p.mutable {
-        format!("mut {}", ty)
-    } else {
-        ty
-    }
+    params
+        .iter()
+        .map(|p| emit_type_expr(&p.ty))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn emit_generic_params(params: &[GenericParam]) -> String {
@@ -834,8 +913,11 @@ fn emit_expr(expr: &Expr, indent: usize) -> String {
     // Multi-line needed.
     if chain.len() > 1 || has_dispatch {
         emit_chain_multi(&chain, indent)
+    } else if let [ChainPart::Base(e)] = chain.as_slice() {
+        // A single expression with no `->` to break at — a literal can
+        // still break inside its interpolation holes.
+        emit_base_at(e, indent)
     } else {
-        // A single expression with no chain to break — emit as-is.
         emit_chain_inline(&chain)
     }
 }
@@ -924,6 +1006,10 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
             out.push_str(&before_str);
         } else if before.len() > 1 {
             out.push_str(&emit_chain_broken(before, indent));
+        } else if let [ChainPart::Base(e)] = before {
+            // A lone base with no `->` to break at — a literal can
+            // still break inside its interpolation holes.
+            out.push_str(&emit_base_at(e, indent));
         } else {
             out.push_str(&before_str);
         }
@@ -970,7 +1056,7 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
     for part in chain {
         match part {
             ChainPart::Base(e) => {
-                out.push_str(&emit_base_inline(e));
+                out.push_str(&emit_base_at(e, indent));
             }
             ChainPart::Method { method, args, .. } => {
                 out.push('\n');
@@ -1004,13 +1090,141 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
 
 // ── Base Expression (inline) ────────────────────────────────────────────────
 
+/// Indent-aware base rendering: a literal breaks an interpolation hole
+/// onto its own indented lines when the hole would push its line past
+/// [`MAX_WIDTH`] — the one place a single expression can grow without a
+/// `->` to break at. Static text is content and never moves (an HTML
+/// literal's own newlines and indentation stay verbatim; each hole is
+/// judged against the column it actually sits at), and the braces stay
+/// glued to the surrounding text:
+///
+/// ```text
+/// `<td>{
+///     1 -> Inline(String)
+/// }</td>`
+/// ```
+///
+/// A constructor wrapping a lone literal argument (the `Html(...)`
+/// shape the `Joined`-chain fold produces) breaks through the parens.
+/// Everything else falls back to the inline renderer.
+fn emit_base_at(expr: &Expr, indent: usize) -> String {
+    match expr {
+        Expr::FormatLit { .. } | Expr::HtmlLit { .. } | Expr::JsonLit { .. } => {
+            emit_literal_at(expr, indent, indent * 4)
+        }
+        Expr::Constructor { name, args, .. } => match args.as_slice() {
+            [lit @ (Expr::FormatLit { .. } | Expr::HtmlLit { .. } | Expr::JsonLit { .. })] => {
+                // The wrapper shifts the literal right by `Name(`.
+                let inner = emit_literal_at(lit, indent, indent * 4 + name.name.len() + 1);
+                format!("{}({})", name.name, inner)
+            }
+            _ => emit_base_inline(expr),
+        },
+        _ => emit_base_inline(expr),
+    }
+}
+
+/// Render a literal starting at column `col`, breaking holes as needed.
+fn emit_literal_at(lit: &Expr, indent: usize, col: usize) -> String {
+    let mut w = LitWriter {
+        out: String::new(),
+        indent,
+        col,
+        line_indent: indent * 4,
+    };
+    match lit {
+        Expr::FormatLit { parts, .. } => {
+            w.out.push('`');
+            w.col += 1;
+            for p in parts {
+                match p {
+                    FormatLitPart::Static(s) => w.push_static(&escape_fmt_static(s)),
+                    FormatLitPart::Interp(e) => w.push_hole(e),
+                }
+            }
+            w.out.push('`');
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                match p {
+                    HtmlLitPart::Static(s) => {
+                        w.push_static(&s.replace('{', "{{").replace('}', "}}"))
+                    }
+                    HtmlLitPart::Interp(e) => w.push_hole(e),
+                }
+            }
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                match p {
+                    JsonLitPart::Static(s) => w.push_static(s),
+                    JsonLitPart::Interp(e) => w.push_hole(e),
+                }
+            }
+        }
+        _ => unreachable!("emit_literal_at is only called on literal exprs"),
+    }
+    w.out
+}
+
+/// Column-tracking writer for literal bodies. Static text advances the
+/// column (resetting at its own newlines — they are content); a hole
+/// breaks onto indented lines exactly when its inline form would push
+/// the current line past [`MAX_WIDTH`]. Bare references (`{Model}`,
+/// `{Node.Rest}`) never break — there is nothing to break them at.
+/// A broken hole indents from the current line's leading whitespace,
+/// so a hole deep inside an HTML literal's own indentation stays
+/// visually nested in the markup around it.
+struct LitWriter {
+    out: String,
+    indent: usize,
+    col: usize,
+    /// Leading whitespace of the current visual line, in spaces — the
+    /// code pad on the literal's first line, the static text's own
+    /// indentation after each of its newlines.
+    line_indent: usize,
+}
+
+impl LitWriter {
+    fn push_static(&mut self, s: &str) {
+        self.out.push_str(s);
+        if let Some(i) = s.rfind('\n') {
+            let tail = &s[i + 1..];
+            self.col = tail.len();
+            self.line_indent = tail.len() - tail.trim_start_matches(' ').len();
+        } else {
+            self.col += s.len();
+        }
+    }
+
+    fn push_hole(&mut self, e: &Expr) {
+        let inline = emit_inline(e);
+        let atomic = matches!(e, Expr::Ident(_) | Expr::FieldAccess { .. });
+        if atomic || self.col + inline.len() + 2 <= MAX_WIDTH {
+            self.out.push('{');
+            self.out.push_str(&inline);
+            self.out.push('}');
+            self.col += inline.len() + 2;
+        } else {
+            let base = self.indent.max(self.line_indent / 4);
+            self.out.push_str("{\n");
+            self.out.push_str(&"    ".repeat(base + 1));
+            self.out.push_str(&emit_expr(e, base + 1));
+            self.out.push('\n');
+            self.out.push_str(&"    ".repeat(base));
+            self.out.push('}');
+            self.col = base * 4 + 1;
+            self.line_indent = base * 4;
+        }
+    }
+}
+
 fn emit_base_inline(expr: &Expr) -> String {
     match expr {
         Expr::Ident(id) => id.name.clone(),
         Expr::StringLit { value, .. } => format!("\"{}\"", escape_string(value)),
         Expr::IntLit { value, .. } => value.to_string(),
         Expr::FloatLit { value, .. } => format_float(*value),
-        Expr::HexLit { value, .. } => format!("0x{:X}", value),
         Expr::Constructor { name, args, .. } => {
             if args.is_empty() {
                 format!("{}()", name.name)

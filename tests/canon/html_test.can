@@ -33,6 +33,31 @@ Unit => ElWrapsInTag {
         -> TestResult
 }
 
+EscapedEscapesString = TestResult
+
+Unit => EscapedEscapesString {
+    Escaped("<b>")
+        -> Eq("&lt;b&gt;")
+        -> TestResult
+}
+
+EscapedPassesThroughHtml = TestResult
+
+Unit => EscapedPassesThroughHtml {
+    Div("hi")
+        -> Escaped
+        -> Eq("<div>hi</div>")
+        -> TestResult
+}
+
+EscapedRendersInt = TestResult
+
+Unit => EscapedRendersInt {
+    Escaped(7)
+        -> Eq("7")
+        -> TestResult
+}
+
 EscapedReplacesMetachars = TestResult
 
 Unit => EscapedReplacesMetachars {
@@ -62,31 +87,6 @@ SpanWrapsContent = TestResult
 Unit => SpanWrapsContent {
     Span("hi")
         -> Eq("<span>hi</span>")
-        -> TestResult
-}
-
-ToHtmlEscapesString = TestResult
-
-Unit => ToHtmlEscapesString {
-    ToHtml("<b>")
-        -> Eq("&lt;b&gt;")
-        -> TestResult
-}
-
-ToHtmlPassesThroughHtml = TestResult
-
-Unit => ToHtmlPassesThroughHtml {
-    Div("hi")
-        -> ToHtml
-        -> Eq("<div>hi</div>")
-        -> TestResult
-}
-
-ToHtmlRendersInt = TestResult
-
-Unit => ToHtmlRendersInt {
-    ToHtml(7)
-        -> Eq("7")
         -> TestResult
 }
 

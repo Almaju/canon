@@ -10,10 +10,7 @@ Int => Result<Classified, String> {
 }
 
 Int => Result<Described, String> {
-    Int
-        -> Classified?
-        -> Joined(" indeed")
-        -> Ok
+    Ok(`{Int -> Classified?} indeed`)
 }
 
 Unit => Program {

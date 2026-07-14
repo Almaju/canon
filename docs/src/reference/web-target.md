@@ -28,8 +28,9 @@ markers give each a distinct type. `Html` resolves to
 `canon/std/web/Html` automatically.
 
 Detection is **by shape**: the `view` is the sole `Model => Html` whose
-receiver is a user type (a primitive receiver marks a stdlib `ToHtml`
-conversion instead); from its model, `init` is the unique nullary
+receiver is a user type (a primitive receiver marks a stdlib
+conversion like `Escaped` instead); from its model, `init` is the
+unique nullary
 constructor whose result aliases the model and `update` the unique
 two-input constructor whose first input is the model. When the triple is
 present -- and no CLI or HTTP entry competes, which the checker rejects as

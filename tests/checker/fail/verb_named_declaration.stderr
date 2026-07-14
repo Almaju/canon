@@ -1,1 +1,1 @@
-error[tests/checker/fail/verb_named_declaration.can:1:1]: `Frobnicated` is neither a declared shape nor the type this declaration constructs: mint a result newtype (`Frobnicated = Int`) and construct it, or declare the shape (`Frobnicated = (…) => …`, body-less) this implements — a name carries no information the types don't
+error[tests/checker/fail/verb_named_declaration.can:1:1]: `Frobnicated` is not the type this declaration constructs: mint a result newtype (`Frobnicated = Int`) and construct it with an anonymous arrow — a name carries no information the types don't

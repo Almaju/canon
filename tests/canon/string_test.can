@@ -1,8 +1,7 @@
 JoinedConcatenates = TestResult
 
 Unit => JoinedConcatenates {
-    "hello"
-        -> Joined(" world")
+    "hello world"
         -> Eq("hello world")
         -> TestResult
 }

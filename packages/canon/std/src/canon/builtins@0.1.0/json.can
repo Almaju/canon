@@ -1,4 +1,4 @@
-Number = Json
+Number = Encoded
 
 Float => Number {
     "from-float"

@@ -16,11 +16,9 @@ atoms are newtype aliases of `Unit`, and everything scales up from
 there:
 
 ```canon
-Bit = False + True
-
 Bool = False + True
 
-Byte = Bit^8
+Byte = Bool^8
 
 Bytes = Byte^*
 
@@ -29,7 +27,9 @@ False = Unit
 True = Unit
 ```
 
-The higher-level primitives (`Int`, `Float`, `Hex`, `String`) are
+(There is no separate `Bit`: structurally identical types are one type,
+so a two-variant union of `Unit`s *is* `Bool`, and a byte is eight of
+them.) The higher-level primitives (`Int`, `Float`, `String`) are
 defined from `Byte`/`Bytes`. The compiler supplies a small set of
 built-in operations on them (e.g. integer arithmetic), but their shape
 is still described by the algebra.
@@ -90,9 +90,9 @@ Greeting("hi").String
 
 Rules:
 
-- **Method inheritance.** Methods declared on `B` are callable on `A`
-  through the alias chain (`Greeting("hi").print()`). Methods declared
-  on `A` shadow inherited ones.
+- **Operation inheritance.** Functions whose input product mentions `B`
+  accept an `A` through the alias chain (`Greeting("hi") -> Print`).
+  A family member declared on `A` shadows the inherited one.
 - **Substitutability.** A value of `A` may be passed where `B` is
   expected, without unwrapping. The reverse also holds at construction:
   `A(b)` wraps a `B`.
@@ -118,17 +118,14 @@ matching positional product access `.1`.
 ## Generics
 
 Types may be parameterized with angle brackets: `List<T>`,
-`Option<T>`, `Result<T, E>`. Constraints name a trait after `:`:
-
-```canon
-ShowAll = <T: Show>(List<T>) => Unit {
-    ...
-}
-```
-
-Type parameters are inferred from the call site's argument types (`List(1
-* 2) -> ShowAll` infers `T = Int`). See
-[Functions and Traits](./functions.md).
+`Option<T>`, `Result<T, E>`. Type arguments are the one thing the
+compiler fills in from a call site's declared argument types
+(`List(1 * 2) -> Mapped(f)` instantiates `T = Int`) — signatures
+themselves are always written in full ([No Type
+Inference](#no-type-inference) is about signatures, not type
+arguments). Constraint syntax (`<T: Show>`) is part of the shape
+mechanism and returns with it ([Functions § Shape or Result
+Newtype](./functions.md#shape-or-result-newtype)).
 
 ## Recursive Types
 
@@ -209,10 +206,10 @@ List("1" * "2") -> Json # [1,2] -- a list of JSON values as a JSON array
   digits, `String(Byte(42))` is the one-byte string `"*"` -- wrapping
   to mean the other thing is what newtypes are for.
 
-User types opt in the same way the stdlib does: declare a function
-named after the target type taking the source type.
-`Celsius = (Fahrenheit) => Celsius { ... }` enables both `Celsius(f)`
-and `f.Celsius()`.
+User types opt in the same way the stdlib does: declare the anonymous
+constructor arrow from the source type.
+`Fahrenheit => Celsius { ... }` enables both `Celsius(f)` and
+`f -> Celsius`.
 
 ## Zero-Data Types
 
@@ -225,10 +222,10 @@ arguments (`String()`, `User()`) is a compile error: absence belongs in
 Two escape hatches exist, both deliberate:
 
 - `List()` is the **empty list** -- the type's zero value, and the base
-  case that recursive builders grow from via `.concat(...)` /
-  `.append(...)`.
-- A type may declare its own zero-arg [validated
-  constructor](#validated-constructors): `Map = () => Map { Empty() }`
+  case that recursive builders grow from via `-> Joined(...)` /
+  `-> Appended(...)`.
+- A type may declare its own nullary [validated
+  constructor](#validated-constructors): `Unit => Map { Empty() }`
   in `canon/std/Map` makes `Map()` the empty map.
 
 ## No Type Inference
@@ -240,15 +237,14 @@ match exactly.
 ## Dead Code
 
 A **program's** declarations must be reachable from its entry point.
-`canon check` walks the reference graph from `main` (or the HTTP
-handler) and warns on every unreachable type and function:
+`canon check` walks the reference graph from the entry and reports
+every unreachable type and function as a hard error:
 
 ```
-warning: `unused` is never used: dead code is not allowed to
+error: `unused` is never used: dead code is not allowed to
 accumulate; delete it or wire it into the program
 ```
 
-The warning is promoted to a failure in CI. Libraries are exempt: with
-no private visibility, every declaration in a library *is* exported
-surface, so its dead code shows up downstream, in the programs that
-stopped calling it.
+Libraries are exempt: with no private visibility, every declaration in
+a library *is* exported surface, so its dead code shows up downstream,
+in the programs that stopped calling it.

@@ -16,48 +16,22 @@ Li = Html
 
 Span = Html
 
-ToHtml = () => Html
-
 Ul = Html
 
 Msg * String => Button {
-    "<button data-msg=\""
-        -> Joined(Msg)
-        -> Joined("\">")
-        -> Joined(String)
-        -> Joined("</button>")
-        -> Html
+    Html(`<button data-msg="{Msg}">{String}</button>`)
 }
 
 String => Div {
-    "<div>"
-        -> Joined(String)
-        -> Joined("</div>")
-        -> Html
+    Html(`<div>{String}</div>`)
 }
 
 String * Tag => El {
-    "<"
-        -> Joined(Tag)
-        -> Joined(">")
-        -> Joined(String)
-        -> Joined("</")
-        -> Joined(Tag)
-        -> Joined(">")
-        -> Html
+    Html(`<{Tag}>{String}</{Tag}>`)
 }
 
 Attr * String * Tag => ElAttr {
-    "<"
-        -> Joined(Tag)
-        -> Joined(" ")
-        -> Joined(Attr)
-        -> Joined(">")
-        -> Joined(String)
-        -> Joined("</")
-        -> Joined(Tag)
-        -> Joined(">")
-        -> Html
+    Html(`<{Tag} {Attr}>{String}</{Tag}>`)
 }
 
 String => Escaped {
@@ -65,24 +39,16 @@ String => Escaped {
         * False => Escaped {
             String -> ByteAt(1) -> (
                 * 34 => Escaped {
-                    "&quot;"
-                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
-                        -> Html
+                    Html(`&quot;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
                 * 38 => Escaped {
-                    "&amp;"
-                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
-                        -> Html
+                    Html(`&amp;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
                 * 60 => Escaped {
-                    "&lt;"
-                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
-                        -> Html
+                    Html(`&lt;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
                 * 62 => Escaped {
-                    "&gt;"
-                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
-                        -> Html
+                    Html(`&gt;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
                 * Int => Escaped {
                     String
@@ -96,44 +62,28 @@ String => Escaped {
     )
 }
 
-String => H1 {
-    "<h1>"
-        -> Joined(String)
-        -> Joined("</h1>")
-        -> Html
-}
-
-String => Li {
-    "<li>"
-        -> Joined(String)
-        -> Joined("</li>")
-        -> Html
-}
-
-String => Span {
-    "<span>"
-        -> Joined(String)
-        -> Joined("</span>")
-        -> Html
-}
-
-ToHtml = (Html) => Html {
+Html => Escaped {
     Html
 }
 
-ToHtml = (Int) => Html {
+Int => Escaped {
     Int
         -> String
         -> Escaped
 }
 
-ToHtml = (String) => Html {
-    String -> Escaped
+String => H1 {
+    Html(`<h1>{String}</h1>`)
+}
+
+String => Li {
+    Html(`<li>{String}</li>`)
+}
+
+String => Span {
+    Html(`<span>{String}</span>`)
 }
 
 String => Ul {
-    "<ul>"
-        -> Joined(String)
-        -> Joined("</ul>")
-        -> Html
+    Html(`<ul>{String}</ul>`)
 }

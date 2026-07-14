@@ -54,7 +54,7 @@ A format string, or `Joined` for two pieces:
 
 ```canon
 `{Count} items, total {Total}`
-"hello, " -> Joined(Name)
+`hello, {Name}`
 ```
 
 ## …parse a number?
@@ -109,7 +109,7 @@ read back with `Field` and `Decoded` ([stdlib](../reference/stdlib.md)):
 ```canon
 {"id":1,"title":"ship canon v1"}
 Json("[1, 2, 3]")?
-ToJson(42)
+Encoded(42)
 ```
 
 ## …render HTML, or build a web page?

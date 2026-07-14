@@ -30,7 +30,7 @@ Unit => Result<Program, MalformedInt> {
         -> Sum(8)
         -> Print
     Int("4x") -> (
-        * Err<MalformedInt> => Unit { "not a number: " -> Joined(MalformedInt) -> Print }
+        * Err<MalformedInt> => Unit { `not a number: {MalformedInt}` -> Print }
         * Ok<Int> => Unit { Int -> Print }
     )
     Unit() -> Ok

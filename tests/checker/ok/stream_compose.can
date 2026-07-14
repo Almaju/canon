@@ -1,7 +1,7 @@
 Unit => Program {
     List("a" * "b" * "c")
         .streamOf()
-        -> Mapped((String) => String { String -> Joined("!") })
+        -> Mapped((String) => String { `{String}!` })
         .filter((String) => Bool { True() })
         .take(2)
         -> Joined(List("d").streamOf())

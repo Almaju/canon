@@ -24,16 +24,17 @@ Greeting * Name => Line {
 }
 ```
 
-A named form exists for exactly one thing: **shape implementations**,
-where the name carries information the types cannot (`ToJson = (Bool)
-=> Json { ... }` implements the declared shape `ToJson`). A named
-declaration whose name is just the constructed type spells the name
-twice, so `canon check --fix` rewrites it to the anonymous arrow (`Url =
-(String) => Result<Url, InvalidUrl>` becomes `String => Result<Url,
-InvalidUrl>`). The checker enforces the boundary from both sides:
+The anonymous arrow is the **only** bodied declaration form in
+canonical Canon. A named declaration whose name is just the constructed
+type spells the name twice, so `canon check --fix` rewrites it to the
+anonymous arrow (`Url = (String) => Result<Url, InvalidUrl>` becomes
+`String => Result<Url, InvalidUrl>`); a named declaration whose name is
+anything else is a checker error. (The named spelling once also carried
+shape implementations, but the last shapes — the interpolation hooks —
+are ordinary result-newtype families now.) The checker enforces the
+boundary from both sides:
 
-- A bodied declaration's name must be a **declared shape** (a body-less
-  function-type alias, visible in scope) or the **type it constructs**
+- A bodied declaration's name must be the **type it constructs**
   (modulo `Result`/`Option`/`Future` peeling and newtype chains).
   Anything else -- an arbitrary verb wearing PascalCase, like
   `Frobnicated = (Int) => Int` with no `Frobnicated` shape or newtype
@@ -122,16 +123,16 @@ top-level name: the same `=>` arrow that declares every constructor.
 
 ## Traits
 
-> **Status: user-declared shapes are currently rejected.** Everything a
+> **Status: shapes do not exist in the current language.** Everything a
 > shape can do today, a result newtype does with a checked name, so a
 > body-less shape declaration is a checker error (`… operations take
 > result newtypes`) — see [Shape or Result Newtype](#shape-or-result-newtype)
-> below. The two exceptions are the compiler's interpolation hooks,
-> `ToJson` and `ToHtml`, which programs *implement* (a bodied
-> declaration named after them) but never re-declare. This section
-> describes the shape mechanism those implementations use, and the
-> design that returns once a shape can do something a newtype cannot
-> (generic constraints, bare-parameter returns, defaults).
+> below. There are no exceptions: even the literal-interpolation hooks
+> are ordinary result-newtype families (`Encoded = Json`,
+> `Escaped = Html` — a hole is a construction, exactly as a
+> format-string hole is `-> String`). This section describes the design
+> that returns once a shape can do something a newtype cannot (generic
+> constraints, bare-parameter returns, defaults).
 
 A trait is a **callable type signature**, declared like a body-less
 function type and named in PascalCase (traits are types):
@@ -160,8 +161,9 @@ input's type. Call sites use the ordinary pipe:
 - **Traits as components**: a trait may appear directly in a parameter
   list; the component binds the implementation, which is invocable:
   `Show => Unit { Show() -> Print }`.
-- **Defaults**: a trait declaration may carry a default body marked
-  `{ impl }`; implementing types may override or inherit it.
+- **Defaults**: a trait declaration may carry a default body
+  implementing types override or inherit (the marker syntax lands with
+  the feature — the grammar reserves no keyword for it).
 - **Constraints**: `<T: Show>` bounds a generic parameter by a trait.
 
 ## Shape or Result Newtype?
@@ -169,8 +171,8 @@ input's type. Call sites use the ordinary pipe:
 Shapes and constructor families overlap: both give one name per-type
 implementations selected by the receiver (`Length` spans `Map`, `Set`,
 `String`, and `List` as a merged result newtype with a family of
-arrows; `ToJson` spans `Bool`, `Float`, `Int`, and `String` as a
-shape). To keep the choice out of the writer's hands, the rule is
+arrows; `Encoded` spans `Bool`, `Float`, `Int`, and `String` the same
+way). To keep the choice out of the writer's hands, the rule is
 **checked, not advisory**: a body-less shape declaration is a checker
 error, and the operation is a result newtype plus a family of anonymous
 arrows.
@@ -185,11 +187,11 @@ A shape is justified only by something a newtype cannot do:
    inherit.
 
 None of these is implemented yet, so today the checker rejects every
-user shape; as each justification lands, the rejection relaxes for
-exactly that case. The compiler's interpolation hooks (`ToJson`,
-`ToHtml`) are the standing exceptions -- they sit at the literal
-boundary the way builtins sit at the host boundary, and programs
-implement them without re-declaring them.
+shape; as each justification lands, the rejection relaxes for exactly
+that case. Even the literal boundary needs none: a JSON hole converts
+through the `Encoded = Json` family, an HTML hole through
+`Escaped = Html`, and a format-string hole through `String` itself --
+interpolation is construction all the way down.
 
 ## The Entry Point
 

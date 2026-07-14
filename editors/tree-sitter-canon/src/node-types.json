@@ -1,18 +1,69 @@
 [
   {
-    "type": "bindings_decl",
+    "type": "arguments",
     "named": true,
-    "fields": {
-      "urn": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "string_literal",
-            "named": true
-          }
-        ]
-      }
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "float_literal",
+          "named": true
+        },
+        {
+          "type": "format_string",
+          "named": true
+        },
+        {
+          "type": "html_element",
+          "named": true
+        },
+        {
+          "type": "identifier_expr",
+          "named": true
+        },
+        {
+          "type": "integer_literal",
+          "named": true
+        },
+        {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
+          "named": true
+        },
+        {
+          "type": "lambda",
+          "named": true
+        },
+        {
+          "type": "method_call",
+          "named": true
+        },
+        {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "try_expression",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -24,11 +75,11 @@
       "required": false,
       "types": [
         {
-          "type": "constructor",
+          "type": "call",
           "named": true
         },
         {
-          "type": "dispatch",
+          "type": "field_access",
           "named": true
         },
         {
@@ -36,7 +87,11 @@
           "named": true
         },
         {
-          "type": "hex_literal",
+          "type": "format_string",
+          "named": true
+        },
+        {
+          "type": "html_element",
           "named": true
         },
         {
@@ -64,6 +119,10 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -75,9 +134,19 @@
     }
   },
   {
-    "type": "constructor",
+    "type": "call",
     "named": true,
     "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arguments",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -88,86 +157,168 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "constructor",
-          "named": true
-        },
-        {
-          "type": "dispatch",
-          "named": true
-        },
-        {
-          "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "hex_literal",
-          "named": true
-        },
-        {
-          "type": "identifier_expr",
-          "named": true
-        },
-        {
-          "type": "integer_literal",
-          "named": true
-        },
-        {
-          "type": "json_array",
-          "named": true
-        },
-        {
-          "type": "json_object",
-          "named": true
-        },
-        {
-          "type": "lambda",
-          "named": true
-        },
-        {
-          "type": "method_call",
-          "named": true
-        },
-        {
-          "type": "string_literal",
-          "named": true
-        },
-        {
-          "type": "try_expression",
-          "named": true
-        }
-      ]
+    }
+  },
+  {
+    "type": "constructor_def",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "input": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "input_product",
+            "named": true
+          },
+          {
+            "type": "param_list",
+            "named": true
+          }
+        ]
+      },
+      "return_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          },
+          {
+            "type": "param_list",
+            "named": true
+          },
+          {
+            "type": "product_type",
+            "named": true
+          },
+          {
+            "type": "repeat_type",
+            "named": true
+          },
+          {
+            "type": "union_type",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "dispatch",
     "named": true,
     "fields": {
-      "arms": {
+      "arm": {
         "multiple": true,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "dispatch_arm",
             "named": true
           }
         ]
-      },
-      "scrutinee": {
+      }
+    }
+  },
+  {
+    "type": "dispatch_arm",
+    "named": true,
+    "fields": {
+      "body": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "constructor",
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "integer_literal",
             "named": true
           },
           {
-            "type": "dispatch",
+            "type": "named_type",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          }
+        ]
+      },
+      "return_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          },
+          {
+            "type": "param_list",
+            "named": true
+          },
+          {
+            "type": "product_type",
+            "named": true
+          },
+          {
+            "type": "repeat_type",
+            "named": true
+          },
+          {
+            "type": "union_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "field_access",
+    "named": true,
+    "fields": {
+      "field": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          }
+        ]
+      },
+      "receiver": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "field_access",
             "named": true
           },
           {
@@ -175,7 +326,11 @@
             "named": true
           },
           {
-            "type": "hex_literal",
+            "type": "format_string",
+            "named": true
+          },
+          {
+            "type": "html_element",
             "named": true
           },
           {
@@ -215,173 +370,28 @@
     }
   },
   {
-    "type": "dispatch_arm",
+    "type": "format_string",
     "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "param_type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "named_type",
-            "named": true
-          }
-        ]
-      },
-      "return_type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "named_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "repeat_type",
-            "named": true
-          },
-          {
-            "type": "spread_type",
-            "named": true
-          },
-          {
-            "type": "union_type",
-            "named": true
-          }
-        ]
-      }
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "format_text",
+          "named": true
+        },
+        {
+          "type": "interpolation",
+          "named": true
+        }
+      ]
     }
   },
   {
-    "type": "extern_clause",
+    "type": "function_type",
     "named": true,
     "fields": {
-      "language": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "path": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "string_literal",
-            "named": true
-          }
-        ]
-      },
-      "qualifier": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "extern_type_decl",
-    "named": true,
-    "fields": {
-      "extern": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "extern_clause",
-            "named": true
-          }
-        ]
-      },
-      "generics": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_params",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "function_def",
-    "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "extern": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "extern_clause",
-            "named": true
-          }
-        ]
-      },
-      "generics": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_params",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
       "params": {
         "multiple": false,
         "required": true,
@@ -392,16 +402,6 @@
           }
         ]
       },
-      "receiver": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
       "return_type": {
         "multiple": false,
         "required": true,
@@ -411,15 +411,15 @@
             "named": true
           },
           {
+            "type": "param_list",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
           {
             "type": "repeat_type",
-            "named": true
-          },
-          {
-            "type": "spread_type",
             "named": true
           },
           {
@@ -433,43 +433,16 @@
   {
     "type": "generic_param",
     "named": true,
-    "fields": {
-      "bound": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "named_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "repeat_type",
-            "named": true
-          },
-          {
-            "type": "spread_type",
-            "named": true
-          },
-          {
-            "type": "union_type",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -482,6 +455,175 @@
       "types": [
         {
           "type": "generic_param",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "html_attr_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "html_attribute",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "html_attr_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string_literal",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "html_close_tag",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "html_tag_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "html_element",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "html_close_tag",
+          "named": true
+        },
+        {
+          "type": "html_element",
+          "named": true
+        },
+        {
+          "type": "html_open_tag",
+          "named": true
+        },
+        {
+          "type": "html_self_closing_tag",
+          "named": true
+        },
+        {
+          "type": "html_text",
+          "named": true
+        },
+        {
+          "type": "html_void_tag",
+          "named": true
+        },
+        {
+          "type": "interpolation",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "html_open_tag",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "html_tag_name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "html_attribute",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "html_self_closing_tag",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "html_tag_name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "html_attribute",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "html_tag_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "html_void_tag",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "html_tag_name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "html_attribute",
           "named": true
         }
       ]
@@ -503,6 +645,88 @@
     }
   },
   {
+    "type": "input_product",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "named_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "interpolation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "float_literal",
+          "named": true
+        },
+        {
+          "type": "format_string",
+          "named": true
+        },
+        {
+          "type": "html_element",
+          "named": true
+        },
+        {
+          "type": "identifier_expr",
+          "named": true
+        },
+        {
+          "type": "integer_literal",
+          "named": true
+        },
+        {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
+          "named": true
+        },
+        {
+          "type": "lambda",
+          "named": true
+        },
+        {
+          "type": "method_call",
+          "named": true
+        },
+        {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "try_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "json_array",
     "named": true,
     "fields": {},
@@ -511,7 +735,59 @@
       "required": false,
       "types": [
         {
-          "type": "json_value",
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "float_literal",
+          "named": true
+        },
+        {
+          "type": "format_string",
+          "named": true
+        },
+        {
+          "type": "html_element",
+          "named": true
+        },
+        {
+          "type": "identifier_expr",
+          "named": true
+        },
+        {
+          "type": "integer_literal",
+          "named": true
+        },
+        {
+          "type": "json_array",
+          "named": true
+        },
+        {
+          "type": "json_object",
+          "named": true
+        },
+        {
+          "type": "lambda",
+          "named": true
+        },
+        {
+          "type": "method_call",
+          "named": true
+        },
+        {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "try_expression",
           "named": true
         }
       ]
@@ -551,46 +827,63 @@
         "required": true,
         "types": [
           {
-            "type": "json_value",
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "field_access",
+            "named": true
+          },
+          {
+            "type": "float_literal",
+            "named": true
+          },
+          {
+            "type": "format_string",
+            "named": true
+          },
+          {
+            "type": "html_element",
+            "named": true
+          },
+          {
+            "type": "identifier_expr",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "json_array",
+            "named": true
+          },
+          {
+            "type": "json_object",
+            "named": true
+          },
+          {
+            "type": "lambda",
+            "named": true
+          },
+          {
+            "type": "method_call",
+            "named": true
+          },
+          {
+            "type": "pipe_expression",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "try_expression",
             "named": true
           }
         ]
       }
-    }
-  },
-  {
-    "type": "json_value",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
-          "named": true
-        },
-        {
-          "type": "integer_literal",
-          "named": true
-        },
-        {
-          "type": "json_array",
-          "named": true
-        },
-        {
-          "type": "json_object",
-          "named": true
-        },
-        {
-          "type": "string_literal",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -626,15 +919,15 @@
             "named": true
           },
           {
+            "type": "param_list",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
           {
             "type": "repeat_type",
-            "named": true
-          },
-          {
-            "type": "spread_type",
             "named": true
           },
           {
@@ -649,6 +942,16 @@
     "type": "method_call",
     "named": true,
     "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arguments",
+            "named": true
+          }
+        ]
+      },
       "method": {
         "multiple": false,
         "required": true,
@@ -664,11 +967,11 @@
         "required": true,
         "types": [
           {
-            "type": "constructor",
+            "type": "call",
             "named": true
           },
           {
-            "type": "dispatch",
+            "type": "field_access",
             "named": true
           },
           {
@@ -676,7 +979,11 @@
             "named": true
           },
           {
-            "type": "hex_literal",
+            "type": "format_string",
+            "named": true
+          },
+          {
+            "type": "html_element",
             "named": true
           },
           {
@@ -712,17 +1019,63 @@
             "named": true
           }
         ]
-      },
-      "type_args": {
-        "multiple": true,
+      }
+    }
+  },
+  {
+    "type": "named_def",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
         "required": false,
         "types": [
           {
-            "type": ",",
-            "named": false
-          },
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "generics": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_params",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "param_list",
+            "named": true
+          }
+        ]
+      },
+      "return_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
           {
             "type": "named_type",
+            "named": true
+          },
+          {
+            "type": "param_list",
             "named": true
           },
           {
@@ -734,26 +1087,299 @@
             "named": true
           },
           {
-            "type": "spread_type",
+            "type": "union_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "named_type",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type_args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_args",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "param_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "function_type",
+          "named": true
+        },
+        {
+          "type": "named_type",
+          "named": true
+        },
+        {
+          "type": "param_list",
+          "named": true
+        },
+        {
+          "type": "product_type",
+          "named": true
+        },
+        {
+          "type": "repeat_type",
+          "named": true
+        },
+        {
+          "type": "union_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pipe_expression",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "call",
             "named": true
           },
           {
-            "type": "union_type",
+            "type": "field_access",
+            "named": true
+          },
+          {
+            "type": "float_literal",
+            "named": true
+          },
+          {
+            "type": "format_string",
+            "named": true
+          },
+          {
+            "type": "html_element",
+            "named": true
+          },
+          {
+            "type": "identifier_expr",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "json_array",
+            "named": true
+          },
+          {
+            "type": "json_object",
+            "named": true
+          },
+          {
+            "type": "lambda",
+            "named": true
+          },
+          {
+            "type": "method_call",
+            "named": true
+          },
+          {
+            "type": "pipe_expression",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "try_expression",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "dispatch",
+            "named": true
+          },
+          {
+            "type": "field_access",
+            "named": true
+          },
+          {
+            "type": "float_literal",
+            "named": true
+          },
+          {
+            "type": "format_string",
+            "named": true
+          },
+          {
+            "type": "html_element",
+            "named": true
+          },
+          {
+            "type": "identifier_expr",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "json_array",
+            "named": true
+          },
+          {
+            "type": "json_object",
+            "named": true
+          },
+          {
+            "type": "lambda",
+            "named": true
+          },
+          {
+            "type": "method_call",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "try_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "product_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "named_type",
+          "named": true
+        },
+        {
+          "type": "param_list",
+          "named": true
+        },
+        {
+          "type": "repeat_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "repeat_type",
+    "named": true,
+    "fields": {
+      "count": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "integer_literal",
             "named": true
           }
         ]
       }
     },
     "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "named_type",
+          "named": true
+        },
+        {
+          "type": "param_list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
       "multiple": true,
       "required": false,
       "types": [
         {
-          "type": "constructor",
+          "type": "constructor_def",
           "named": true
         },
         {
-          "type": "dispatch",
+          "type": "named_def",
+          "named": true
+        },
+        {
+          "type": "type_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "try_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "field_access",
           "named": true
         },
         {
@@ -761,7 +1387,11 @@
           "named": true
         },
         {
-          "type": "hex_literal",
+          "type": "format_string",
+          "named": true
+        },
+        {
+          "type": "html_element",
           "named": true
         },
         {
@@ -800,116 +1430,7 @@
     }
   },
   {
-    "type": "named_type",
-    "named": true,
-    "fields": {
-      "generics": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": ",",
-            "named": false
-          },
-          {
-            "type": "named_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "repeat_type",
-            "named": true
-          },
-          {
-            "type": "spread_type",
-            "named": true
-          },
-          {
-            "type": "union_type",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "package_decl",
-    "named": true,
-    "fields": {
-      "coordinate": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "string_literal",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "param",
-    "named": true,
-    "fields": {
-      "type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "named_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "repeat_type",
-            "named": true
-          },
-          {
-            "type": "spread_type",
-            "named": true
-          },
-          {
-            "type": "union_type",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "param_list",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "param",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "product_type",
+    "type": "type_args",
     "named": true,
     "fields": {},
     "children": {
@@ -917,7 +1438,19 @@
       "required": true,
       "types": [
         {
+          "type": "function_type",
+          "named": true
+        },
+        {
           "type": "named_type",
+          "named": true
+        },
+        {
+          "type": "param_list",
+          "named": true
+        },
+        {
+          "type": "product_type",
           "named": true
         },
         {
@@ -925,143 +1458,10 @@
           "named": true
         },
         {
-          "type": "spread_type",
+          "type": "union_type",
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "repeat_type",
-    "named": true,
-    "fields": {
-      "count": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "integer_literal",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "named_type",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "source_file",
-    "named": true,
-    "root": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "bindings_decl",
-          "named": true
-        },
-        {
-          "type": "extern_type_decl",
-          "named": true
-        },
-        {
-          "type": "function_def",
-          "named": true
-        },
-        {
-          "type": "package_decl",
-          "named": true
-        },
-        {
-          "type": "type_def",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "spread_type",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "named_type",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "try_expression",
-    "named": true,
-    "fields": {
-      "inner": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "constructor",
-            "named": true
-          },
-          {
-            "type": "dispatch",
-            "named": true
-          },
-          {
-            "type": "float_literal",
-            "named": true
-          },
-          {
-            "type": "hex_literal",
-            "named": true
-          },
-          {
-            "type": "identifier_expr",
-            "named": true
-          },
-          {
-            "type": "integer_literal",
-            "named": true
-          },
-          {
-            "type": "json_array",
-            "named": true
-          },
-          {
-            "type": "json_object",
-            "named": true
-          },
-          {
-            "type": "lambda",
-            "named": true
-          },
-          {
-            "type": "method_call",
-            "named": true
-          },
-          {
-            "type": "string_literal",
-            "named": true
-          },
-          {
-            "type": "try_expression",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -1077,6 +1477,10 @@
             "named": true
           },
           {
+            "type": "param_list",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
@@ -1085,21 +1489,7 @@
             "named": true
           },
           {
-            "type": "spread_type",
-            "named": true
-          },
-          {
             "type": "union_type",
-            "named": true
-          }
-        ]
-      },
-      "extern": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "extern_clause",
             "named": true
           }
         ]
@@ -1139,15 +1529,15 @@
           "named": true
         },
         {
+          "type": "param_list",
+          "named": true
+        },
+        {
           "type": "product_type",
           "named": true
         },
         {
           "type": "repeat_type",
-          "named": true
-        },
-        {
-          "type": "spread_type",
           "named": true
         }
       ]
@@ -1174,10 +1564,6 @@
     "named": false
   },
   {
-    "type": "-",
-    "named": false
-  },
-  {
     "type": "->",
     "named": false
   },
@@ -1186,11 +1572,11 @@
     "named": false
   },
   {
-    "type": ":",
+    "type": "/>",
     "named": false
   },
   {
-    "type": "::",
+    "type": ":",
     "named": false
   },
   {
@@ -1198,7 +1584,15 @@
     "named": false
   },
   {
+    "type": "</",
+    "named": false
+  },
+  {
     "type": "=",
+    "named": false
+  },
+  {
+    "type": "=>",
     "named": false
   },
   {
@@ -1222,11 +1616,7 @@
     "named": false
   },
   {
-    "type": "bindings",
-    "named": false
-  },
-  {
-    "type": "extern",
+    "type": "`",
     "named": false
   },
   {
@@ -1234,7 +1624,11 @@
     "named": true
   },
   {
-    "type": "hex_literal",
+    "type": "format_text",
+    "named": true
+  },
+  {
+    "type": "html_text",
     "named": true
   },
   {
@@ -1244,14 +1638,6 @@
   {
     "type": "integer_literal",
     "named": true
-  },
-  {
-    "type": "mut",
-    "named": false
-  },
-  {
-    "type": "package",
-    "named": false
   },
   {
     "type": "string_literal",

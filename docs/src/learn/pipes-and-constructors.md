@@ -36,9 +36,7 @@ Loud = String
 Whisper = String
 
 Whisper => Loud {
-    Whisper
-        -> Uppercased
-        -> Joined("!")
+    `{Whisper -> Uppercased}!`
 }
 
 Unit => Program {

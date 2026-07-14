@@ -1,0 +1,1 @@
+error[tests/checker/fail/self_type_name.can:1:1]: the name `Self` is reserved for the compiler's constructor normalization — pick another type name

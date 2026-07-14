@@ -1,0 +1,5 @@
+Self = Int
+
+Unit => Program {
+    "hello" -> Print
+}

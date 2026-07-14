@@ -18,7 +18,6 @@ const BUILTIN_TYPES: &[&str] = &[
     // the canonical-ABI lowering reads it from the WIT signature, the
     // source-level type is just `Foo`.
     "Handle",
-    "Hex",
     "Int",
     "Network",
     "Never",
@@ -90,11 +89,6 @@ pub struct SymbolTable {
     /// on `Path` (which is `Path = String`) resolves through to `String`'s
     /// `print` method without anyone having to redeclare it for `Path`.
     pub aliases: HashMap<String, String>,
-    /// Declared shapes — body-less function-type aliases (`Show = () =>
-    /// String`). A bodied declaration may carry a name that is not the
-    /// type it constructs only when that name is one of these: the shape
-    /// is the one place a name carries information the types cannot.
-    pub shapes: HashSet<String>,
 }
 
 pub struct MethodSig {
@@ -602,10 +596,7 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
                 }
             }
         }
-        Expr::StringLit { .. }
-        | Expr::IntLit { .. }
-        | Expr::FloatLit { .. }
-        | Expr::HexLit { .. } => {}
+        Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
     }
 }
 
@@ -1227,7 +1218,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
 
     // JSON prelude: a JSON literal types as `Json` even when the module
     // never mentions `canon/std/Json` (the loader auto-injects the stdlib
-    // module only when interpolation / the `Json` validator / `ToJson` is
+    // module only when interpolation / the `Json` validator / `Encoded` is
     // actually used — a fully static literal is a plain constant). For the
     // static case the checker still needs `Json` to be a known type whose
     // alias chain reaches `String`, so `{"k":"v"}.print()` and a `-> Json`
@@ -1272,17 +1263,6 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         }
     }
 
-    let shapes: HashSet<String> = module
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            Item::TypeDef(td) if matches!(td.body, TypeExpr::Function { .. }) => {
-                Some(td.name.name.clone())
-            }
-            _ => None,
-        })
-        .collect();
-
     SymbolTable {
         types,
         generic_types,
@@ -1292,7 +1272,6 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         standalone_types,
         free_funcs,
         aliases,
-        shapes,
     }
 }
 
@@ -1375,18 +1354,6 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
     }
 }
 
-/// The compiler-known interpolation hooks — the two shapes the JSON and
-/// HTML literal machinery dispatches through when a hole converts a
-/// value. They sit at the literal boundary the way builtins sit at the
-/// host boundary, and they are the only body-less shapes a program may
-/// declare: every other operation takes a result newtype (`X = T` plus
-/// anonymous arrows). Shapes as a user-facing feature return when their
-/// justifications exist — generic constraints (`<T: Show>`),
-/// bare-type-parameter returns (`Fold`), trait components — none of
-/// which the compiler implements yet, so declaring one today would only
-/// open a second spelling of a constructor family.
-const INTERPOLATION_SHAPES: &[&str] = &["ToHtml", "ToJson"];
-
 /// `Json("…")` / `Html("…")` fed a **static string literal** that the
 /// corresponding literal form can already express is ceremony around a
 /// literal — the parse can never fail, so the validating-constructor
@@ -1458,12 +1425,12 @@ fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonErr
     }
     // A body-less shape declaration opens a second spelling of a
     // constructor family with none of a shape's justifications
-    // implemented yet — only the interpolation hooks are allowed. See
-    // `INTERPOLATION_SHAPES` and the spec (functions.md § Shape or
+    // implemented yet (generic constraints, bare-type-parameter returns,
+    // default bodies). Even the literal-interpolation hooks are ordinary
+    // result-newtype families now (`Encoded = Json`, `Escaped = Html`),
+    // so no shape survives. See the spec (functions.md § Shape or
     // Result Newtype).
-    if matches!(td.body, TypeExpr::Function { .. })
-        && !INTERPOLATION_SHAPES.contains(&td.name.name.as_str())
-    {
+    if matches!(td.body, TypeExpr::Function { .. }) {
         errors.push(CanonError::CheckError {
             message: format!(
                 "`{name}` declares a shape, and operations take result newtypes: replace it \
@@ -1575,35 +1542,29 @@ fn check_function(
         // its file into a method on its first component — which would
         // otherwise let an arbitrary verb wear PascalCase (`Frobnicated =
         // (Int) => Int` is not a Frobnicated constructor; the name lies).
-        // The name must carry information the types cannot, and the only
-        // such name is a declared shape (a body-less function type).
-        // Failing that, it must construct the type it names (modulo
+        // The name must construct the type it names (modulo
         // `Result`/`Option`/`Future` peeling and newtype chains) — the
         // cross-file result-newtype case, where the newtype's TypeDef
         // lives in another loaded file.
-        if !symbols.shapes.contains(&func.name.name) {
-            let constructs_name = constructed_type_name(&func.return_ty)
-                .map(|constructed| {
-                    func.name.name == constructed
-                        || symbols.resolve_alias(&func.name.name)
-                            == symbols.resolve_alias(&constructed)
-                })
-                .unwrap_or(false);
-            if !constructs_name {
-                let constructed =
-                    constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
-                errors.push(CanonError::CheckError {
-                    message: format!(
-                        "`{name}` is neither a declared shape nor the type this declaration \
-                         constructs: mint a result newtype (`{name} = {constructed}`) and \
-                         construct it, or declare the shape (`{name} = (…) => …`, body-less) \
-                         this implements — a name carries no information the types don't",
-                        name = func.name.name,
-                        constructed = constructed,
-                    ),
-                    span: func.name.span,
-                });
-            }
+        let constructs_name = constructed_type_name(&func.return_ty)
+            .map(|constructed| {
+                func.name.name == constructed
+                    || symbols.resolve_alias(&func.name.name) == symbols.resolve_alias(&constructed)
+            })
+            .unwrap_or(false);
+        if !constructs_name {
+            let constructed =
+                constructed_type_name(&func.return_ty).unwrap_or_else(|| "…".to_string());
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "`{name}` is not the type this declaration constructs: mint a result \
+                     newtype (`{name} = {constructed}`) and construct it with an anonymous \
+                     arrow — a name carries no information the types don't",
+                    name = func.name.name,
+                    constructed = constructed,
+                ),
+                span: func.name.span,
+            });
         }
     }
 
@@ -2146,7 +2107,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             }
         }
         Expr::StringLit { .. } => {}
-        Expr::IntLit { .. } | Expr::FloatLit { .. } | Expr::HexLit { .. } => {}
+        Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
         Expr::JsonLit { .. } => {}
         Expr::HtmlLit { .. } => {}
         Expr::FormatLit { .. } => {}
@@ -2735,18 +2696,14 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     // checker-accepts-runs-wrong hole.
     if matches!(
         (receiver_ty, method, arg_count),
-        ("String", "print", 0)
-            | ("Int", "print", 0)
-            | ("Float", "print", 0)
-            | ("Hex", "print", 0)
-            | ("Bool", "print", 0)
+        ("String", "print", 0) | ("Int", "print", 0) | ("Float", "print", 0) | ("Bool", "print", 0)
     ) {
         return true;
     }
     // Only the base comparisons (`eq`/`lt`) are builtins; the derived
     // `ne`/`le`/`gt`/`ge` are stdlib constructor families
     // (`canon/std/{int,float,string}.can`) found via `symbols.methods`.
-    if matches!(receiver_ty, "Int" | "Float" | "Hex")
+    if matches!(receiver_ty, "Int" | "Float")
         && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
     {
@@ -2920,7 +2877,6 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
         Expr::StringLit { .. } => "String".to_string(),
         Expr::IntLit { .. } => "Int".to_string(),
         Expr::FloatLit { .. } => "Float".to_string(),
-        Expr::HexLit { .. } => "Hex".to_string(),
         Expr::Constructor { name, args, .. } => {
             // Variants widen to their parent union (e.g. `Some(x)` typed as
             // `Option`); free-function constructors take their declared
@@ -3185,17 +3141,13 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
 pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
     let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
     match (receiver_ty, method) {
-        ("String", "print")
-        | ("Int", "print")
-        | ("Float", "print")
-        | ("Hex", "print")
-        | ("Bool", "print") => "Unit".to_string(),
+        ("String", "print") | ("Int", "print") | ("Float", "print") | ("Bool", "print") => {
+            "Unit".to_string()
+        }
         ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
-        ("Hex", "add" | "sub" | "mul" | "div" | "rem") => "Hex".to_string(),
         ("Int", "eq" | "lt") => "Bool".to_string(),
         ("Float", "eq" | "lt") => "Bool".to_string(),
-        ("Hex", "eq" | "lt") => "Bool".to_string(),
         ("String", "concat" | "substring") => "String".to_string(),
         ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "lt") => "Bool".to_string(),

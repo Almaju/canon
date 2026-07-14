@@ -10,10 +10,7 @@ Int => Option<First> {
 }
 
 Int => Option<Second> {
-    Int
-        -> First?
-        -> Joined(" and used")
-        -> Some
+    Some(`{Int -> First?} and used`)
 }
 
 Unit => Program {

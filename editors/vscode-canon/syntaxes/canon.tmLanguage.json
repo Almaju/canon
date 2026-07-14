@@ -5,9 +5,8 @@
   "fileTypes": ["can"],
   "patterns": [
     { "include": "#strings" },
+    { "include": "#format-strings" },
     { "include": "#numbers" },
-    { "include": "#bindings-decl" },
-    { "include": "#keywords" },
     { "include": "#function-def" },
     { "include": "#type-def" },
     { "include": "#builtin-types" },
@@ -40,12 +39,37 @@
         }
       ]
     },
-    "numbers": {
+    "format-strings": {
+      "name": "string.interpolated.canon",
+      "begin": "`",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.canon" }
+      },
+      "end": "`",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.canon" }
+      },
       "patterns": [
         {
-          "name": "constant.numeric.hex.canon",
-          "match": "\\b0x[0-9A-Fa-f]+\\b"
+          "name": "constant.character.escape.canon",
+          "match": "\\\\(\\\\|`|n|r|t|0|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})|\\{\\{|\\}\\}"
         },
+        {
+          "name": "meta.embedded.line.canon",
+          "begin": "\\{",
+          "beginCaptures": {
+            "0": { "name": "punctuation.section.interpolation.begin.canon" }
+          },
+          "end": "\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.interpolation.end.canon" }
+          },
+          "patterns": [{ "include": "source.canon" }]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
         {
           "name": "constant.numeric.float.canon",
           "match": "(?<![A-Za-z0-9_])-?[0-9]+\\.[0-9]+\\b"
@@ -55,24 +79,6 @@
           "match": "(?<![A-Za-z0-9_])-?[0-9]+\\b"
         }
       ]
-    },
-    "keywords": {
-      "patterns": [
-        {
-          "name": "keyword.control.canon",
-          "match": "\\b(mut|impl|extern|bindings|package)\\b"
-        },
-        {
-          "name": "support.type.builtin.self.canon",
-          "match": "\\bSelf\\b"
-        }
-      ]
-    },
-    "bindings-decl": {
-      "match": "^\\s*(bindings|package)\\b",
-      "captures": {
-        "1": { "name": "keyword.control.import.canon" }
-      }
     },
     "function-def": {
       "match": "^\\s*(?:([A-Z][A-Za-z0-9_]*)\\s*\\.\\s*)?([a-z_][A-Za-z0-9_]*)\\s*(=)\\s*(?=\\()",
@@ -91,7 +97,7 @@
     },
     "builtin-types": {
       "name": "support.type.builtin.canon",
-      "match": "\\b(Bit|Byte|Bytes|Off|On|Int|Float|Hex|String|Bool|False|True|Ord|Equal|Greater|Less|Option|Some|None|Result|Ok|Err|Unit|Never|List|Map|Set|Clock|Filesystem|Network|Random|Stderr|Stdin|Stdout)\\b"
+      "match": "\\b(Bool|Byte|Bytes|Err|False|Float|Future|Handle|Html|Int|Json|List|Network|Never|None|Ok|Option|Result|Some|Stderr|Stdin|Stdout|Stream|String|True|Unit)\\b"
     },
     "method-call": {
       "match": "(?<=\\.)([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
@@ -113,11 +119,11 @@
       "patterns": [
         {
           "name": "keyword.operator.arrow.canon",
-          "match": "->"
+          "match": "=>|->"
         },
         {
           "name": "keyword.operator.canon",
-          "match": "::|[=+*?^]"
+          "match": "[=+*?^]"
         }
       ]
     },

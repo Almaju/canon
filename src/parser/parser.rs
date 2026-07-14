@@ -114,6 +114,19 @@ impl Parser {
         }
 
         let first = self.expect(TokenKind::Ident, "expected a top-level definition")?;
+        // `Self` is the internal name every constructor is normalized to
+        // (`resolve_new_syntax`), so a user declaration under that name
+        // would masquerade as a constructor of its own receiver — reject
+        // it here, where user-written source is still distinguishable
+        // from the sentinel, like the literal-`main` rejection.
+        if first.lexeme == "Self" {
+            return Err(CanonError::ParseError {
+                message: "the name `Self` is reserved for the compiler's constructor \
+                          normalization — pick another type name"
+                    .to_string(),
+                span: first.span,
+            });
+        }
         let first_ident = Ident {
             name: first.lexeme.clone(),
             span: first.span,
@@ -139,7 +152,6 @@ impl Parser {
             let input = self.parse_type_expr()?;
             let param = Param {
                 ty: input,
-                mutable: false,
                 span: start_span,
             };
             return self.finish_anonymous_ctor(Vec::new(), vec![param], start_span);
@@ -211,7 +223,6 @@ impl Parser {
                 generics: Vec::new(),
                 span: input.span,
             },
-            mutable: false,
             span: input.span,
         };
         self.finish_anonymous_ctor(Vec::new(), vec![param], start_span)
@@ -247,7 +258,6 @@ impl Parser {
         let end_span = self.previous_span();
         Ok(Item::Function(FunctionDef {
             receiver: None,
-            receiver_mut: false,
             name: Ident {
                 name: ctor_name,
                 span: start_span,
@@ -286,32 +296,30 @@ impl Parser {
             let end_span = self.previous_span();
 
             // Extract receiver from first param component
-            let (final_receiver, recv_mut, final_params) =
-                if name.name == "main" || params.is_empty() {
-                    // main or no-param function: no receiver
-                    (None, false, params)
-                } else if matches!(
-                    crate::ast::entry_world_of(&return_ty),
-                    Some(crate::ast::EntryWorld::Http)
-                ) {
-                    // World-shape return (`Response` / `Result<Response, _>`):
-                    // this is an HTTP entry, not a method. Suppress receiver
-                    // extraction so `home = (Request) -> Response { … }` stays
-                    // a free function with `Request` as its parameter (not
-                    // a method on `Request`). See the entry-point rule
-                    // (docs/src/spec/functions.md).
-                    (None, false, params)
-                } else if Self::is_pascal_case_str(&name.name) {
-                    // PascalCase: defer to post-parse resolve_new_syntax
-                    (None, false, params)
-                } else {
-                    // camelCase with params: extract first component as receiver
-                    extract_receiver_from_params(params)
-                };
+            let (final_receiver, final_params) = if name.name == "main" || params.is_empty() {
+                // main or no-param function: no receiver
+                (None, params)
+            } else if matches!(
+                crate::ast::entry_world_of(&return_ty),
+                Some(crate::ast::EntryWorld::Http)
+            ) {
+                // World-shape return (`Response` / `Result<Response, _>`):
+                // this is an HTTP entry, not a method. Suppress receiver
+                // extraction so `home = (Request) -> Response { … }` stays
+                // a free function with `Request` as its parameter (not
+                // a method on `Request`). See the entry-point rule
+                // (docs/src/spec/functions.md).
+                (None, params)
+            } else if Self::is_pascal_case_str(&name.name) {
+                // PascalCase: defer to post-parse resolve_new_syntax
+                (None, params)
+            } else {
+                // camelCase with params: extract first component as receiver
+                extract_receiver_from_params(params)
+            };
 
             return Ok(Item::Function(FunctionDef {
                 receiver: final_receiver,
-                receiver_mut: recv_mut,
                 name,
                 generic_params,
                 params: final_params,
@@ -375,17 +383,10 @@ impl Parser {
 
     fn parse_param(&mut self) -> Result<Param> {
         let start = self.current_span();
-        let mutable = if self.check(TokenKind::KwMut) {
-            self.advance();
-            true
-        } else {
-            false
-        };
         let ty = self.parse_type_expr()?;
         let end = self.previous_span();
         Ok(Param {
             ty,
-            mutable,
             span: span_join(start, end),
         })
     }
@@ -512,11 +513,7 @@ impl Parser {
             });
         }
 
-        let name_tok = if self.check(TokenKind::KwSelf) {
-            self.advance().clone()
-        } else {
-            self.expect(TokenKind::Ident, "expected a type name")?
-        };
+        let name_tok = self.expect(TokenKind::Ident, "expected a type name")?;
         let name = name_tok.lexeme.clone();
 
         let mut generics = Vec::new();
@@ -734,7 +731,7 @@ impl Parser {
         let tok = self.peek().clone();
         match tok.kind {
             TokenKind::LParen => self.parse_lambda(),
-            TokenKind::Ident | TokenKind::KwSelf => {
+            TokenKind::Ident => {
                 self.advance();
                 // Optional generic type arguments after a PascalCase
                 // identifier: `Option<Content>`, `List<Choice>`, etc.
@@ -799,19 +796,6 @@ impl Parser {
                     span: tok.span,
                 })
             }
-            TokenKind::HexLit => {
-                self.advance();
-                let stripped = tok.lexeme.trim_start_matches("0x");
-                let value =
-                    u64::from_str_radix(stripped, 16).map_err(|_| CanonError::ParseError {
-                        message: format!("invalid hex literal `{}`", tok.lexeme),
-                        span: tok.span,
-                    })?;
-                Ok(Expr::HexLit {
-                    value,
-                    span: tok.span,
-                })
-            }
             TokenKind::LBrace => {
                 let open = tok.span;
                 self.advance();
@@ -857,7 +841,7 @@ impl Parser {
     /// HTML-escaped at parse time, ints/floats render as digits, and a
     /// nested HTML literal splices its parts verbatim (it is already
     /// HTML). Anything with runtime content becomes an `Interp` part,
-    /// which the codegen `.ToHtml()`-converts and concats into the
+    /// which the codegen `-> Escaped`-converts and concats into the
     /// surrounding markup.
     fn parse_html_literal(&mut self) -> Result<Expr> {
         let start = self.peek().span;
@@ -1068,7 +1052,7 @@ impl Parser {
     ///    emitted as Static — so `{"k": 42}` stays fully constant. Any
     ///    expression with runtime content (`Ident`, `MethodCall`, etc.)
     ///    becomes an `Interp` part, which the codegen later
-    ///    `.ToJson()`-converts and concats into the surrounding
+    ///    `-> Encoded`-converts and concats into the surrounding
     ///    scaffolding.
     ///
     /// This two-tier approach lets `{"x": foo.bar()}` parse as a JSON

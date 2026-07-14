@@ -15,15 +15,6 @@ Unit => EqIsReflexive {
         -> TestResult
 }
 
-HexLiteralArithmetic = TestResult
-
-Unit => HexLiteralArithmetic {
-    0xFF
-        -> Sum(1)
-        -> Eq(256)
-        -> TestResult
-}
-
 MaximumPicksLarger = TestResult
 
 Unit => MaximumPicksLarger {

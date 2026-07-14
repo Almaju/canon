@@ -5,9 +5,7 @@ Unit => Program {
         -> Difference(7)
         -> String
         -> Print
-    String(123)
-        -> Joined("!")
-        -> Print
+    `{String(123)}!` -> Print
     String(9)
         -> Joined(String(10))
         -> Print

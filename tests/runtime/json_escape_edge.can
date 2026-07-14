@@ -1,4 +1,4 @@
 Unit => Program {
-    ToJson("ctrl:\u0001\u001F\ttab") -> Print
-    ToJson("back\\slash") -> Print
+    Encoded("ctrl:\u0001\u001F\ttab") -> Print
+    Encoded("back\\slash") -> Print
 }
