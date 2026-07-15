@@ -1,0 +1,19 @@
+Age = Int
+
+AgeText = String
+
+Wrapped = String
+
+Age => AgeText {
+    `age {Age -> String}`
+}
+
+Age => Wrapped {
+    `{Age -> AgeText}!`
+}
+
+Unit => Program {
+    Age(7)
+        -> Wrapped
+        -> Print
+}

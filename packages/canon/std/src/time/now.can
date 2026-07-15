@@ -1,87 +1,11 @@
 DatePart = String
 
-Day = Int
-
-Doe = Int
-
-Doy = Int
-
-Era = Int
-
-Month = Int
-
-Mp = Int
-
 Now = String
 
 TimePart = String
 
-Year = Int
-
-Yoe = Int
-
-Int => DatePart {
-    Int
-        -> Remainder(146097)
-        -> Doe
-        -> DatePart(Int -> Quotient(146097) -> Era)
-}
-
-Doe * Era => DatePart {
-    Doe
-        -> Difference(Doe -> Quotient(1460))
-        -> Sum(Doe -> Quotient(36524))
-        -> Difference(Doe -> Quotient(146096))
-        -> Quotient(365)
-        -> Yoe
-        -> DatePart(Doe * Era)
-}
-
-Yoe * Doe * Era => DatePart {
-    Doe
-        -> Difference(Yoe -> Product(365))
-        -> Difference(Yoe -> Quotient(4))
-        -> Sum(Yoe -> Quotient(100))
-        -> Doy
-        -> DatePart(Era * Yoe)
-}
-
-Doy * Era * Yoe => DatePart {
-    Doy
-        -> Product(5)
-        -> Sum(2)
-        -> Quotient(153)
-        -> Mp
-        -> DatePart(Doy * Era * Yoe)
-}
-
-Mp * Doy * Era * Yoe => DatePart {
-    Mp -> Lt(10) -> (
-        * False => DatePart { Mp -> Difference(9) -> Month -> DatePart(Doy * Era * Mp * Yoe) }
-        * True => DatePart { Mp -> Sum(3) -> Month -> DatePart(Doy * Era * Mp * Yoe) }
-    )
-}
-
-Month * Doy * Era * Mp * Yoe => DatePart {
-    Month -> Le(2) -> (
-        * False => DatePart {
-            Yoe
-                -> Sum(Era -> Product(400))
-                -> Year
-                -> DatePart(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
-        }
-        * True => DatePart {
-            Yoe
-                -> Sum(Era -> Product(400))
-                -> Sum(1)
-                -> Year
-                -> DatePart(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
-        }
-    )
-}
-
-Year * Month * Day => DatePart {
-    `{Year -> Padded(4)}-{Month -> Padded(2)}-{Day -> Padded(2)}`
+Civil => DatePart {
+    `{Civil.Year -> Padded(4)}-{Civil.Month -> Padded(2)}-{Civil.Day -> Padded(2)}`
 }
 
 Unit => Now {
@@ -89,13 +13,9 @@ Unit => Now {
 }
 
 Unix => Now {
-    `{Unix -> Quotient(86400) -> Sum(719468) -> DatePart}T{Unix -> Remainder(86400) -> TimePart}Z`
+    `{Unix -> Date -> DatePart}T{Unix -> TimePart}Z`
 }
 
-Int => TimePart {
-    `{Int -> Quotient(3600) -> Padded(2)}:{Int -> Quotient(60) -> Remainder(60) -> Padded(2)}:{
-        Int
-            -> Remainder(60)
-            -> Padded(2)
-    }`
+Unix => TimePart {
+    `{Unix -> Hour -> Padded(2)}:{Unix -> Minute -> Padded(2)}:{Unix -> Second -> Padded(2)}`
 }

@@ -1,3 +1,30 @@
+ClockFamiliesCoexist = TestResult
+
+Unit => ClockFamiliesCoexist {
+    Mark()
+        -> Ge(0)
+        -> And(Unix() -> Ge(0))
+        -> TestResult
+}
+
+DateDecodesLeapDay = TestResult
+
+LeapDayDate = Bool
+
+Unit => DateDecodesLeapDay {
+    Unix(951782400)
+        -> Date
+        -> LeapDayDate
+        -> TestResult
+}
+
+Civil => LeapDayDate {
+    Civil.Day
+        -> Eq(29)
+        -> And(Civil.Month -> Eq(2))
+        -> And(Civil.Year -> Eq(2000))
+}
+
 NowDecodesEpoch = TestResult
 
 Unit => NowDecodesEpoch {
@@ -70,10 +97,46 @@ Unit => PaddedZeroFills {
         -> TestResult
 }
 
+TimeOfDayParts = Bool
+
+Unix => TimeOfDayParts {
+    Unix
+        -> Hour
+        -> Eq(12)
+        -> And(Unix -> Minute -> Eq(34))
+        -> And(Unix -> Second -> Eq(56))
+}
+
+UnixDecodesTimeOfDay = TestResult
+
+Unit => UnixDecodesTimeOfDay {
+    Unix(1720096496)
+        -> TimeOfDayParts
+        -> TestResult
+}
+
 UnixReadsAfter2001 = TestResult
 
 Unit => UnixReadsAfter2001 {
     Unix()
         -> Ge(1000000000)
+        -> TestResult
+}
+
+WeekdayOfEpochIsThursday = TestResult
+
+Unit => WeekdayOfEpochIsThursday {
+    Unix(0)
+        -> Weekday
+        -> Eq(4)
+        -> TestResult
+}
+
+WeekdayOfLeapDayIsTuesday = TestResult
+
+Unit => WeekdayOfLeapDayIsTuesday {
+    Unix(951782400)
+        -> Weekday
+        -> Eq(2)
         -> TestResult
 }

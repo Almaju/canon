@@ -1,0 +1,5 @@
+Mark = Int
+
+Unit => Mark {
+    MonotonicClock -> MonotonicClockNow
+}

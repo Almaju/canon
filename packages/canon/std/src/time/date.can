@@ -1,0 +1,118 @@
+Civil = Day * Month * Year
+
+Date = Civil
+
+Day = Int
+
+Doe = Int
+
+Doy = Int
+
+Era = Int
+
+Hour = Int
+
+Minute = Int
+
+Month = Int
+
+Mp = Int
+
+Second = Int
+
+Weekday = Int
+
+Year = Int
+
+Yoe = Int
+
+Unix => Date {
+    Unix
+        -> Quotient(86400)
+        -> Sum(719468)
+        -> Date
+}
+
+Int => Date {
+    Int
+        -> Remainder(146097)
+        -> Doe
+        -> Date(Int -> Quotient(146097) -> Era)
+}
+
+Doe * Era => Date {
+    Doe
+        -> Difference(Doe -> Quotient(1460))
+        -> Sum(Doe -> Quotient(36524))
+        -> Difference(Doe -> Quotient(146096))
+        -> Quotient(365)
+        -> Yoe
+        -> Date(Doe * Era)
+}
+
+Yoe * Doe * Era => Date {
+    Doe
+        -> Difference(Yoe -> Product(365))
+        -> Difference(Yoe -> Quotient(4))
+        -> Sum(Yoe -> Quotient(100))
+        -> Doy
+        -> Date(Era * Yoe)
+}
+
+Doy * Era * Yoe => Date {
+    Doy
+        -> Product(5)
+        -> Sum(2)
+        -> Quotient(153)
+        -> Mp
+        -> Date(Doy * Era * Yoe)
+}
+
+Mp * Doy * Era * Yoe => Date {
+    Mp -> Lt(10) -> (
+        * False => Date { Mp -> Difference(9) -> Month -> Date(Doy * Era * Mp * Yoe) }
+        * True => Date { Mp -> Sum(3) -> Month -> Date(Doy * Era * Mp * Yoe) }
+    )
+}
+
+Month * Doy * Era * Mp * Yoe => Date {
+    Month -> Le(2) -> (
+        * False => Date {
+            Yoe
+                -> Sum(Era -> Product(400))
+                -> Year
+                -> Civil(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
+        }
+        * True => Date {
+            Yoe
+                -> Sum(Era -> Product(400))
+                -> Sum(1)
+                -> Year
+                -> Civil(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
+        }
+    )
+}
+
+Unix => Hour {
+    Unix
+        -> Remainder(86400)
+        -> Quotient(3600)
+}
+
+Unix => Minute {
+    Unix
+        -> Quotient(60)
+        -> Remainder(60)
+}
+
+Unix => Second {
+    Unix -> Remainder(60)
+}
+
+Unix => Weekday {
+    Unix
+        -> Quotient(86400)
+        -> Sum(3)
+        -> Remainder(7)
+        -> Sum(1)
+}
