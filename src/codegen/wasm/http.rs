@@ -589,9 +589,11 @@ impl<'m> WasmGen<'m> {
         m.section(&funcs);
 
         // ── Memory / globals: self-contained ─────────────────────────
+        // Sized to fit the static string pool — see `heap_layout`.
+        let (heap_start, min_pages) = heap_layout(self.strings.data.len());
         let mut memories = MemorySection::new();
         memories.memory(MemoryType {
-            minimum: 2,
+            minimum: min_pages as u64,
             maximum: None,
             memory64: false,
             shared: false,
@@ -605,7 +607,7 @@ impl<'m> WasmGen<'m> {
                 mutable: true,
                 shared: false,
             },
-            &ConstExpr::i32_const(MEM_HEAP_START as i32),
+            &ConstExpr::i32_const(heap_start as i32),
         );
         m.section(&globals);
 

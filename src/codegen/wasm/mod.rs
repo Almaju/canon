@@ -54,7 +54,19 @@ use web::generate_web_core_module;
 // ── Memory constants ──────────────────────────────────────────────────────────
 const MEM_NEWLINE: u32 = 32; // the shared '\n' byte `.print` appends
 const MEM_STR_START: u32 = 64;
-pub(super) const MEM_HEAP_START: u32 = 65536; // bump heap begins at second page
+
+/// Given the number of bytes packed into the static string pool, returns the
+/// page-aligned address where the bump heap begins (just past the packed
+/// data) and the number of 64 KiB pages memory needs: enough to hold the
+/// string data plus one page of heap headroom. A data-heavy program — the
+/// docs site bakes every `.md` page in, ~160 KB — would otherwise overrun a
+/// fixed page count (instantiation traps) or let the heap grow into its own
+/// string constants.
+pub(super) fn heap_layout(data_len: usize) -> (u32, u32) {
+    let data_end = MEM_STR_START + data_len as u32;
+    let heap_start = (data_end + 0xFFFF) & !0xFFFF;
+    (heap_start, heap_start / 0x1_0000 + 1)
+}
 
 // ── Function index constants ──────────────────────────────────────────────
 // The imports section starts with the five `wasi:cli/stdout` canonical
@@ -779,9 +791,12 @@ pub(super) fn validate(bytes: &[u8]) {
 }
 
 /// Emits the raw core WASM module — used by the Component Model wrapper.
-fn generate_core_module(module: &OModule) -> Vec<u8> {
+/// The second element is the static string pool's byte length, which the
+/// wrapper needs to size the shared memory-provider module (`heap_layout`).
+fn generate_core_module(module: &OModule) -> (Vec<u8>, usize) {
     let mut gen = WasmGen::new(module);
-    gen.compile()
+    let core = gen.compile();
+    (core, gen.strings.data.len())
 }
 
 /// Returns whether the program has a free function returning `Response`
@@ -829,13 +844,13 @@ pub fn generate(module: &OModule) -> Vec<u8> {
         return bytes;
     }
 
-    let core = generate_core_module(module);
+    let (core, str_data_len) = generate_core_module(module);
     let externs = collect_extern_imports(module);
     // Run the async-inference fixpoint so the component wrapper can
     // surface async metadata in the emitted WIT and — once async lowering
     // lands — attach `CanonicalOption::Async` to the right lifts/lowers.
     let async_set = crate::codegen::async_analysis::analyse(module);
-    let bytes = component::wrap(&core, &externs, &async_set);
+    let bytes = component::wrap(&core, &externs, &async_set, str_data_len);
     validate(&bytes);
     bytes
 }
