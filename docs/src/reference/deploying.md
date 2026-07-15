@@ -8,8 +8,8 @@ Canon has no runtime of its own to ship.
 
 ```sh
 $ canon build my-app
-Compiled to: my-app/build/my-app/my-app.wasm
-WIT world : my-app/build/my-app/my-app.wit
+Compiled to: my-app/build/my-app.wasm
+WIT world : my-app/build/my-app.wit
 ```
 
 The `.wit` sidecar documents the component's world. Feed it to
