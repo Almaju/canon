@@ -1,13 +1,13 @@
-//! Tests for the checker's *codegen-gap warnings* — the non-fatal
-//! heads-up it emits when a program type-checks but reaches a feature
-//! the code generator doesn't implement yet (see the module comment in
-//! `src/checker/mod.rs` and `docs/src/reference/codegen-gaps.md`).
+//! Tests for the checker's *codegen-gap errors* — the hard rejections it
+//! emits when a program reaches a feature the code generator doesn't
+//! implement yet, keeping the accepted language and the implemented
+//! language the same set (see the module comment in `src/checker/mod.rs`
+//! and `docs/src/reference/codegen-gaps.md`).
 //!
-//! These live here rather than in the `.can` fixture layers because the
-//! warnings are a separate return channel from the fatal `CheckError`
-//! stream: the fixture harness only observes errors, and a couple of the
-//! cases need a synthetic `extern` binding the loader wouldn't produce
-//! from plain source.
+//! These live here rather than in the `.can` fixture layers because a
+//! couple of the cases need a synthetic `extern` binding the loader
+//! wouldn't produce from plain source, and the reachability boundary
+//! (`entry_items_start`) needs direct control.
 
 use canon::ast::{ExternWasm, Item, Module};
 use canon::checker::{self, CODEGEN_GAPS};
@@ -27,12 +27,12 @@ fn parse(source: &str) -> Module {
 /// it as a binding declaration. Real binding files are recognised by path
 /// and shape; a hand-authored fixture can't sit under a versioned package
 /// dir, so we synthesize the flag directly.
-fn mark_extern(module: &mut Module, fn_name: &str) {
+fn mark_extern(module: &mut Module, fn_name: &str, path: &str) {
     for item in &mut module.items {
         if let Item::Function(f) = item {
             if f.name.name == fn_name {
                 f.extern_wasm = Some(ExternWasm {
-                    path: "wasi:example/x#read".to_string(),
+                    path: path.to_string(),
                     is_async: false,
                 });
             }
@@ -40,11 +40,35 @@ fn mark_extern(module: &mut Module, fn_name: &str) {
     }
 }
 
+fn gap_errors(module: &Module, entry_items_start: usize) -> Vec<String> {
+    checker::codegen_gap_errors(module, entry_items_start, None)
+        .iter()
+        .map(|e| e.message().to_string())
+        .collect()
+}
+
+/// The dispatch-ready HTTP entry of a parsed fixture, plus the gap errors
+/// computed with it — the http-world variant of `gap_errors`.
+fn http_gap_errors(module: &Module) -> Vec<String> {
+    let entry = module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Function(f) if f.name.name == "handler" => Some(f.clone()),
+            _ => None,
+        })
+        .expect("handler should parse");
+    checker::codegen_gap_errors(module, 0, Some(&entry))
+        .iter()
+        .map(|e| e.message().to_string())
+        .collect()
+}
+
 #[test]
-fn warns_on_reachable_compound_list_binding() {
+fn rejects_reachable_compound_list_binding() {
     // `readPairs` is a binding returning `List<Pair>` where `Pair` is a
-    // product — a compound element type — and `main` reaches it, so
-    // codegen would fail.
+    // product — a compound payload — and `main` reaches it, so codegen
+    // would fail.
     let source = r#"
 Pair = Left * Right
 
@@ -61,27 +85,27 @@ main = () => Unit {
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readPairs");
+    mark_extern(&mut module, "readPairs", "wasi:example/x#read");
 
-    let warnings = checker::codegen_gap_warnings(&module, 0);
+    let errors = gap_errors(&module, 0);
     assert_eq!(
-        warnings.len(),
+        errors.len(),
         1,
-        "expected exactly one gap warning, got: {:?}",
-        warnings
+        "expected exactly one gap error, got: {:?}",
+        errors
     );
-    let msg = &warnings[0].message;
     assert!(
-        msg.contains("list<T>") && msg.contains("codegen-gaps.md"),
-        "warning should name the gap and point to the doc page: {msg}"
+        errors[0].contains("`List<Pair>`") && errors[0].contains("codegen-gaps.md"),
+        "error should name the payload and point to the doc page: {}",
+        errors[0]
     );
 }
 
 #[test]
 fn scalar_list_binding_is_fine() {
-    // `List<Int>` returns decode now (per-width read-back) — no warning.
-    // The alias hop (`Duration = Int`) exercises the payload check's
-    // alias chase.
+    // `List<Int>` returns decode (per-width read-back) — no error. The
+    // alias hop (`Duration = Int`) exercises the payload check's alias
+    // chase.
     let source = r#"
 Duration = Int
 
@@ -94,18 +118,18 @@ main = () => Unit {
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readBytes");
+    mark_extern(&mut module, "readBytes", "wasi:example/x#read");
 
-    let warnings = checker::codegen_gap_warnings(&module, 0);
+    let errors = gap_errors(&module, 0);
     assert!(
-        warnings.is_empty(),
-        "a scalar list return should not warn, got: {:?}",
-        warnings
+        errors.is_empty(),
+        "a scalar list return should not error, got: {:?}",
+        errors
     );
 }
 
 #[test]
-fn warns_on_reachable_compound_option_binding() {
+fn rejects_reachable_compound_option_binding() {
     let source = r#"
 Pair = Left * Right
 
@@ -122,19 +146,53 @@ main = () => Unit {
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readPair");
+    mark_extern(&mut module, "readPair", "wasi:example/x#read");
 
-    let warnings = checker::codegen_gap_warnings(&module, 0);
+    let errors = gap_errors(&module, 0);
     assert_eq!(
-        warnings.len(),
+        errors.len(),
         1,
-        "expected exactly one option gap warning, got: {:?}",
-        warnings
+        "expected exactly one option gap error, got: {:?}",
+        errors
     );
     assert!(
-        warnings[0].message.contains("option<T>"),
-        "warning should name the option gap: {}",
-        warnings[0].message
+        errors[0].contains("`Option<Pair>`"),
+        "error should name the option payload: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn compound_payload_behind_return_alias_is_rejected() {
+    // Bindings minted by `canon install` return a named result newtype
+    // (`ReadPairs = List<Pair>`), not a literal `List<…>` — the payload
+    // check must chase the alias to see the compound element.
+    let source = r#"
+Pair = Left * Right
+
+Left = Int
+
+Right = Int
+
+ReadPairs = List<Pair>
+
+readPairs = () => ReadPairs {
+    List()
+}
+
+main = () => Unit {
+    readPairs()
+}
+"#;
+    let mut module = parse(source);
+    mark_extern(&mut module, "readPairs", "wasi:example/x#read");
+
+    let errors = gap_errors(&module, 0);
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected one gap error through the alias, got: {:?}",
+        errors
     );
 }
 
@@ -150,23 +208,30 @@ main = () => Unit {
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readMaybe");
+    mark_extern(&mut module, "readMaybe", "wasi:example/x#read");
 
-    let warnings = checker::codegen_gap_warnings(&module, 0);
+    let errors = gap_errors(&module, 0);
     assert!(
-        warnings.is_empty(),
-        "a scalar option return should not warn, got: {:?}",
-        warnings
+        errors.is_empty(),
+        "a scalar option return should not error, got: {:?}",
+        errors
     );
 }
 
 #[test]
-fn no_warning_for_unreachable_binding() {
+fn no_error_for_unreachable_binding() {
     // Same binding, but it's an *imported* item (index < entry_items_start)
     // that `main` never references — the file-granular loader pulls such
-    // siblings in wholesale, and they must not warn.
+    // siblings in wholesale, and they must not error: a build compiles
+    // only the reachable set.
     let source = r#"
-readBytes = () => List<Int> {
+Pair = Left * Right
+
+Left = Int
+
+Right = Int
+
+readPairs = () => List<Pair> {
     List()
 }
 
@@ -175,20 +240,21 @@ main = () => Unit {
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readBytes");
+    mark_extern(&mut module, "readPairs", "wasi:example/x#read");
 
-    // Treat `readBytes` (items[0]) as imported; only `main` is entry.
-    let warnings = checker::codegen_gap_warnings(&module, 1);
+    // Treat everything before `main` as imported; only `main` is entry.
+    let entry_start = module.items.len() - 1;
+    let errors = gap_errors(&module, entry_start);
     assert!(
-        warnings.is_empty(),
-        "an unreachable binding must not warn, got: {:?}",
-        warnings
+        errors.is_empty(),
+        "an unreachable binding must not error, got: {:?}",
+        errors
     );
 }
 
 #[test]
 fn string_list_binding_is_fine() {
-    // `List<String>` returns already work — no warning.
+    // `List<String>` returns work — no error.
     let source = r#"
 readLines = () => List<String> {
     List()
@@ -199,18 +265,18 @@ main = () => Unit {
 }
 "#;
     let mut module = parse(source);
-    mark_extern(&mut module, "readLines");
+    mark_extern(&mut module, "readLines", "wasi:example/x#read");
 
-    let warnings = checker::codegen_gap_warnings(&module, 0);
+    let errors = gap_errors(&module, 0);
     assert!(
-        warnings.is_empty(),
-        "a `List<String>` return should not warn, got: {:?}",
-        warnings
+        errors.is_empty(),
+        "a `List<String>` return should not error, got: {:?}",
+        errors
     );
 }
 
 #[test]
-fn warns_on_reachable_stream_signature() {
+fn rejects_reachable_stream_signature() {
     // A plain (non-extern) helper whose signature mentions `Stream<T>`:
     // codegen drops such imports, so reaching it fails to link.
     let source = r#"
@@ -223,17 +289,82 @@ main = () => Unit {
 }
 "#;
     let module = parse(source);
-    let warnings = checker::codegen_gap_warnings(&module, 0);
+    let errors = gap_errors(&module, 0);
     assert_eq!(
-        warnings.len(),
+        errors.len(),
         1,
-        "expected one Stream gap warning, got: {:?}",
-        warnings
+        "expected one Stream gap error, got: {:?}",
+        errors
     );
     assert!(
-        warnings[0].message.contains("Stream<T>"),
-        "warning should name the Stream gap: {}",
-        warnings[0].message
+        errors[0].contains("Stream<T>"),
+        "error should name the Stream gap: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn http_world_rejects_loaded_non_http_externs() {
+    // The `wasi:http/service` world links every *loaded* extern into the
+    // fixed import block — `WasmGen::new_http` exits on anything beyond
+    // `wasi:http/types` / `canon:builtins/concurrent`, reachable or not,
+    // so the checker rejects at the same granularity. `now` is loaded but
+    // never called; it must still be named.
+    let source = r#"
+now = () => Int {
+    0
+}
+
+handler = (Request) => Response {
+    Response()
+}
+"#;
+    let mut module = parse(source);
+    mark_extern(&mut module, "now", "wasi:clocks/system-clock@0.3.0#now");
+
+    let errors = http_gap_errors(&module);
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected one http-world import error, got: {:?}",
+        errors
+    );
+    assert!(
+        errors[0].contains("wasi:clocks/system-clock@0.3.0#now")
+            && errors[0].contains("wasi:http/types"),
+        "error should name the offending import: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn http_world_allows_http_types_and_concurrent() {
+    let source = r#"
+path = () => String {
+    ""
+}
+
+race = () => String {
+    ""
+}
+
+handler = (Request) => Response {
+    Response()
+}
+"#;
+    let mut module = parse(source);
+    mark_extern(
+        &mut module,
+        "path",
+        "wasi:http/types@0.3.0#[method]request.get-path-with-query",
+    );
+    mark_extern(&mut module, "race", "canon:builtins/concurrent@0.1.0#race");
+
+    let errors = http_gap_errors(&module);
+    assert!(
+        errors.is_empty(),
+        "http-world-satisfiable imports must not error, got: {:?}",
+        errors
     );
 }
 
@@ -249,6 +380,28 @@ fn every_gap_is_documented() {
             doc.contains(gap.title),
             "gap `{}` is missing from docs/src/reference/codegen-gaps.md",
             gap.title
+        );
+    }
+}
+
+/// The WIT shapes `canon install` refuses to bind never enter the accepted
+/// language, so the checker has nothing to reject — but the skip reasons
+/// are part of the same contract. Pin that each one is documented on the
+/// gaps page alongside the checker-rejected features.
+#[test]
+fn every_install_skip_is_documented() {
+    let doc = std::fs::read_to_string("docs/src/reference/codegen-gaps.md")
+        .expect("codegen-gaps.md should exist");
+    for skip in [
+        "resource method",
+        "handle in signature",
+        "bare `result` parameter",
+        "sub-u64 integer inside a compound shape",
+    ] {
+        assert!(
+            doc.contains(skip),
+            "`canon install` skip reason `{skip}` is missing from \
+             docs/src/reference/codegen-gaps.md"
         );
     }
 }

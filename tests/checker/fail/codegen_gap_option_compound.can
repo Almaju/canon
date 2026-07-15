@@ -1,0 +1,18 @@
+Age = Int
+
+Found = Option<User>
+
+Name = String
+
+User = Age * Name
+
+Unit => Found {
+    User(Age(7) * Name("zoe")) -> Some
+}
+
+Unit => Program {
+    Found() -> (
+        * None => Unit { "none" -> Print }
+        * Some<User> => Unit { User -> Name -> Print }
+    )
+}

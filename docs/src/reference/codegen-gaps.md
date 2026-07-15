@@ -1,89 +1,82 @@
 # Known Codegen Gaps
 
-The checker deliberately accepts more than the code generator implements.
-A handful of features parse and type-check but do not run yet: a program
-using one passes `canon check`, then fails at `canon build` when it reaches
-code generation. Each gap is a self-contained future PR, and each is pinned
-where it can be — some by `tests/checker/ok/` fixtures that prove the feature
-type-checks today.
-
-To keep that acceptance honest as *feedback*, the checker emits a non-fatal
-**warning** when a program reaches, from its entry point, a declaration that
-relies on one of the statically-detectable gaps below. The program still
-type-checks; the warning is a heads-up that the build will fail, delivered
-before the build step instead of as a bare codegen error afterward. The
-warning names the gap and points back to this page.
-
-Not every gap can be spotted from Canon source alone — several depend on WIT
-type detail the checker never sees (Canon has only `Int`, not `u8`/`u16`/…),
-or on runtime-value types it doesn't track. Those are listed here for tracking
-but do not warn. Each entry notes whether it warns.
+A few features parse and type-check structurally but are not implemented by
+the code generator yet. Accepting them would be a silent trap — the program
+passes `canon check`, then fails (or miscompiles) at `canon build`. So the
+checker rejects them: reaching one of these features from the entry point is
+a hard error, the accepted language and the implemented language stay the
+same set, and a clean check guarantees the build won't fail in code
+generation. Each gap below is a self-contained future PR; closing one
+deletes its error.
 
 This page is the canonical list. The checker's `CODEGEN_GAPS` table
-(`src/checker/mod.rs`) mirrors it, and a test pins the two together, so the
-list stays in one place.
+(`src/checker/mod.rs`) mirrors the rejected features, `canon install`'s skip
+reasons (`src/bindgen/emit.rs`) mirror the unbindable WIT shapes, and tests
+pin both to this page, so the list stays in one place.
 
-## binding declarations returning `list<T>` for compound `T`
+## compound `List<T>` / `Option<T>` payloads
 
-*Warns.* String and scalar elements decode: `List<String>` shares the
-canonical layout directly, 64-bit scalars (`u64`/`s64`/`f64`) share
-Canon's 8-byte list stride, and narrower scalars (`list<u8>` from
-`wasi:random`'s `get-random-bytes`, for example) are read back per-width
-using the vendored WIT and widened into a fresh Canon list. Lists of
-*compound* elements (records, variants, nested lists) are the remaining
-gap — and outside the `wasi:` namespace, narrow element widths are
-unknowable at codegen time, so `canon install` skips those bindings.
+Scalar and `String` payloads lower fully: `List<String>` shares the
+canonical layout, 64-bit scalars share Canon's 8-byte list stride, narrower
+scalars from `wasi:` bindings (`list<u8>` from `wasi:random`, for example)
+are read back per-width using the vendored WIT, and `At(i)` / `First` /
+`Mapped` chains work on all of them. Compound payloads — products, unions
+(other than `Bool`, which erases to a scalar), and nested containers — do
+not fit the 8-byte element slot, so declaring, constructing, or dispatching
+on a `List` / `Option` of one is rejected wherever it appears: binding
+returns, plain signatures, `List(…)` literals, `-> Some`, `Mapped` lambdas,
+and `Some<T>` dispatch arms. Outside the `wasi:` namespace, narrow element
+widths are unknowable at codegen time, so `canon install` also skips those
+bindings.
 
-## sub-`u64` integers inside a compound WIT shape
+## extern imports in the `wasi:http/service` world
 
-*Not detected* (Canon source has only `Int`). A `u8`/`u16`/`u32`/`s8`/`s16`/`s32`
-nested inside a `variant` / record parameter isn't lowered yet. Top-level
-scalar returns, record-of-scalars returns, and (for `wasi:*` imports,
-where the vendored WIT supplies the width) scalar `list` / `option`
-returns are handled.
-
-## WIT `result` with no payloads as a binding parameter
-
-*Not detected.* A bare `result;` *return* now decodes into an ordinary Canon
-`Result` (the discriminant flips into Canon's alphabetical Err/Ok tags), but
-the same shape as a *parameter* (see `wasi:cli/exit#exit`) has no Canon-value
-lowering yet; `canon install` skips such functions.
-
-## binding declarations returning `option<T>` for compound `T`
-
-*Warns.* String and scalar payloads decode into an ordinary Canon
-`Option` value, so `(None, Some<Int>)` dispatch and `?` work on the
-result. Compound payloads (`option<instant>`, option-of-variant) are the
-remaining gap, and narrow scalar widths outside `wasi:` are skipped by
-`canon install` for the same width-unknowable reason as lists.
-
-## WIT `resource` / `own<T>` / `borrow<T>` in binding signatures
-
-*Not detected.* Bindgen emits the resource *types* as `Foo = Handle` newtypes
-but skips every method / constructor / static — and any function whose
-signature transitively mentions a handle. Because the offending functions are
-skipped, they rarely survive as declarations to warn about, and hand-written
-wrappers that supersede them (as in `wasi:http`'s `types.can`) do compile, so
-the checker stays quiet here to avoid flagging working code.
-
-## `At(i)` / `First` on `List<String>` and nested `Mapped`
-
-*Not detected* (a runtime-value concern). `Ty::List` erases the element type at
-codegen, so indexing into a `List<String>` or nesting `Mapped` doesn't lower.
-Threading the element type through codegen is the enabling refactor.
-
-## HTTP handler request headers and body
-
-*Not detected.* The handler body compiles fully — dynamic status, dispatch,
-string bodies — and `method()` / `path()` land, but reading the request
-*headers* and *body* is not wired up. HTTP programs also can't use
-non-`wasi:http` extern imports: the `wasi:http/service` world can't satisfy the
-`canon:builtins/*` bridges.
+An HTTP handler program (`Request => Response`) may import only
+`wasi:http/types` (plus the synthetic `canon:builtins/concurrent`, so
+`Parallel` / `Race` still work); the `wasi:http/service` world has no host
+for anything else. The restriction applies to every *loaded* extern, not
+just called ones — codegen links the whole import block — and a JSON
+literal with interpolation holes loads the `canon:builtins/json` bridge, so
+it trips this too. HTML and format-string interpolation lower without a
+bridge and work in handlers.
 
 ## `Stream<T>` lowering and streaming response bodies
 
-*Warns.* The stdlib combinator surface and the checker support `Stream<T>`, but
-codegen drops imports whose signatures mention it, so such programs fail to
-link. The enabling move is routing Stream-using programs through
+The stdlib combinator surface and the checker support `Stream<T>` as a type
+expression, but codegen drops imports whose signatures mention it, so any
+program reaching a `Stream`-shaped declaration is rejected. The enabling
+move is routing Stream-using programs through
 `wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder`
 type section.
+
+## HTTP handler request headers and body
+
+Not rejected — not expressible. `method()` and `path()` land, but the
+stdlib exposes no accessor for the request headers or body, so no accepted
+program can reach the missing lowering. The vendored WIT and the embedded
+runtime already carry both (`get-headers`, `consume-body`); wiring them into
+codegen and restoring a `body` binding in `canon/std`'s `wasi:http` wrapper
+is the future PR.
+
+## WIT shapes `canon install` skips
+
+Some WIT shapes can't be spotted from Canon source at all — they depend on
+type detail the checker never sees (Canon has only `Int`, not `u8`/`u16`/…)
+or on handle types with no Canon-value lowering. These never enter the
+accepted language: `canon install` refuses to bind them, reporting the
+skip on stderr, so no generated declaration exists to reach. Each skip
+reason is a gap in the WIT→Canon emitter:
+
+- **resource method / handle in signature** — WIT `resource` methods,
+  constructors, and statics, and any function whose signature transitively
+  mentions an `own<T>` / `borrow<T>` handle. Bindgen still emits the
+  resource *types* as `Foo = Handle` newtypes, and hand-written wrappers
+  over them (as in `wasi:http`'s `types.can`) do compile.
+- **bare `result` parameter** — a payloadless `result` as a *parameter*
+  (see `wasi:cli/exit#exit`). A bare-`result` *return* decodes into an
+  ordinary Canon `Result`.
+- **sub-u64 integer inside a compound shape** — a `u8`/`u16`/`u32`/`s8`/
+  `s16`/`s32` nested inside a `variant` or record parameter. Top-level
+  scalar returns, record-of-scalars returns, and (for `wasi:*` imports,
+  where the vendored WIT supplies the width) scalar `list` / `option`
+  payloads are handled.

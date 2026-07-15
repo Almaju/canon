@@ -1,0 +1,9 @@
+Age = Int
+
+Name = String
+
+User = Age * Name
+
+Unit => Program {
+    List(User(Age(1) * Name("ann")) * User(Age(2) * Name("bob"))) -> Length -> Print
+}
