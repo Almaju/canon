@@ -1,7 +1,6 @@
 Unit => Program {
-    "hello"
-        .slowEcho()
-        -> Parallel("world".slowEcho())
+    SlowEcho("hello")
+        -> Parallel(SlowEcho("world"))
         -> Json
         -> Print
 }

@@ -460,9 +460,9 @@ fn canon_expr(e: &Expr) -> Expr {
                     return folded;
                 }
             }
-            // camelCase methods are FFI binding calls at the boundary
-            // (`.now()`, `.set()`); `->` only pipes into PascalCase
-            // constructors, so leave these as dot-calls.
+            // camelCase methods are FFI resource-method calls at the
+            // boundary (`.path()`, `.set()`); `->` only pipes into
+            // PascalCase constructors, so leave these as dot-calls.
             if !method.name.chars().next().is_some_and(char::is_uppercase) {
                 return Expr::MethodCall {
                     receiver: Box::new(canon_expr(receiver)),
@@ -931,8 +931,8 @@ fn emit_inline(expr: &Expr) -> String {
 /// dot-call. A method pipes when its name is a PascalCase
 /// user/stdlib constructor or a builtin with a PascalCase vocabulary
 /// spelling (`concat` → `Joined`, `add` → `Sum`, `print` → `Print`). A
-/// *camelCase* method with no builtin mapping is an FFI binding call
-/// (`.now()`, `.fetch()`, `.getRandomU64()`) — camelCase is legal at
+/// *camelCase* method with no builtin mapping is an FFI resource-method
+/// call (`.method()`, `.path()`, `.set(…)`) — camelCase is legal at
 /// the binding boundary, so those keep the dot.
 fn method_pipe_name(name: &str) -> Option<&str> {
     let piped = builtin_pipe_name(name);

@@ -24,12 +24,15 @@ use std::sync::{Mutex, OnceLock};
 ///   * A camelCase alias whose first parameter is a resource declared
 ///     in the same file (`X = Handle`) is that resource's method —
 ///     `set = (Headers * String * String) -> Headers` derives
-///     `#[method]headers.set`.
+///     `#[method]headers.set`. This is the one surviving camelCase
+///     form: a resource method's receiver has no constructed-type
+///     identity, so the string-anchored spelling can't express it yet.
 ///   * A PascalCase alias named exactly like an in-file resource is
 ///     its constructor — `Headers = () -> Headers` derives
 ///     `#[constructor]headers`.
-///   * Any other camelCase alias is a plain interface function
-///     (`#<kebab(name)>`).
+///   * Any other camelCase alias is left alone, so the checker rejects
+///     it (camelCase names are not allowed): plain interface functions
+///     are written as string-anchored constructors.
 ///   * Any other PascalCase function-type alias stays an ordinary
 ///     callback type (`Handler = (Request) -> Response`) — hijacking
 ///     it into an extern would corrupt vendored Canon-source packages.
@@ -158,19 +161,32 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
         let starts_lower = td.name.name.chars().next().is_some_and(char::is_lowercase);
 
         let path = if starts_lower {
-            // A resource-typed first parameter marks a resource method;
-            // anything else is a plain interface function.
-            let receiver_resource = params.first().and_then(|p| match p {
-                TypeExpr::Named { name, .. } if resources.contains(name) => Some(name),
-                _ => None,
+            // A resource-typed first input (bare, or leading a product)
+            // marks a resource method. Any other camelCase alias stays
+            // a TypeDef, which the checker rejects — plain interface
+            // functions are written as string-anchored constructors,
+            // never camelCase aliases.
+            let first_input = params.first().map(|p| match p {
+                TypeExpr::Product { fields, .. } => &fields[0],
+                other => other,
             });
-            let fragment = match receiver_resource {
-                Some(res) => format!(
+            let Some(TypeExpr::Named { name: res, .. }) = first_input else {
+                continue;
+            };
+            if !resources.contains(res) {
+                continue;
+            }
+            // A bare resource parameter spells the `[method]` fragment;
+            // a product-led method keeps the plain fragment (the http
+            // handler intrinsics are compiled natively by method name,
+            // so only the `wasi:http/types` namespace is load-bearing).
+            let fragment = match params.first() {
+                Some(TypeExpr::Named { .. }) => format!(
                     "[method]{}.{}",
                     bindgen::camel_to_kebab(res),
                     bindgen::camel_to_kebab(&td.name.name),
                 ),
-                None => bindgen::camel_to_kebab(&td.name.name),
+                _ => bindgen::camel_to_kebab(&td.name.name),
             };
             format!("{base}#{fragment}")
         } else if resources.contains(&td.name.name) {

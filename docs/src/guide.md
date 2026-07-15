@@ -338,14 +338,17 @@ Canon compiles to a WebAssembly Component, so foreign functions bind to
 **Component Model imports** by path -- there is no FFI keyword. A
 *binding file* is recognized by shape and path: an ordinary `.can` file
 in a versioned package directory
-(`<ns>/<name>@<version>/<iface>.can`) whose declarations are body-less.
-The path spells the interface; the declaration's kebab-case form names
-the WIT function. **Binding files are the one place `camelCase` is
-legal** -- camelCase in a Canon program means exactly "this identifier is
-foreign".
+(`<ns>/<name>@<version>/<iface>.can`) whose declarations are
+string-anchored constructors. The path spells the interface; the
+constructor's single string body names the WIT function, and each
+binding mints a result newtype discovered by the type it constructs.
 
 ```canon
-getRandomU64 = () => Int
+GetRandomU64 = Int
+
+Unit => GetRandomU64 {
+    "get-random-u64"
+}
 ```
 
 You rarely write these by hand -- `canon bindgen <file.wit>` emits one

@@ -1,0 +1,9 @@
+Description = String
+
+(Stream<Int>) => Description {
+    "a stream"
+}
+
+Unit => Program {
+    Description("x") -> Print
+}

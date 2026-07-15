@@ -1,0 +1,3 @@
+error[tests/checker/fail/legacy_binding_alias.can:1:1]: camelCase names are not allowed: types are PascalCase — rename `twice`
+error[tests/checker/fail/legacy_binding_alias.can:1:1]: `twice` declares a shape, and operations take result newtypes: replace it with `twice = <ReturnType>` and anonymous arrows (`(Receiver) => twice`) — shapes return when generic constraints land
+error[tests/checker/fail/legacy_binding_alias.can:2:5]: no method `Print` on type `twice` with 0 argument(s)

@@ -92,15 +92,15 @@ returns `Result<Mint, Err>`, so a wrapper's `?` still sees a `Result`.
 The extern lowering resolves the alias chain to decode the return, and
 call sites are ordinary construction (`GetArguments() -> Args`).
 
-One boundary remainder: a **camelCase body-less alias**
-(`method = (Request) => String`) survives in
-*hand-written* binding files for the two shapes the string-anchored
-lowering doesn't cover yet -- resource methods (pending resource
-lowering) and generic combinators (pending generic externs). The loader
-rewrites those to `<urn>#<kebab-case-name>`. Body-less camelCase
-declarations are only meaningful inside a binding file -- anywhere else
-camelCase is a checker error. Bound functions are first-class values
-like any other function.
+One boundary remainder: a **camelCase body-less alias** whose first
+input is a resource declared in the same file
+(`method = (Request) => String`) survives in *hand-written* binding
+files for the one shape the string-anchored lowering doesn't cover yet
+-- resource methods (pending resource lowering), whose receiver has no
+constructed-type identity to anchor on. The loader rewrites those to
+`<urn>#[method]<resource>.<kebab-case-name>`. Any other camelCase
+declaration -- in a binding file or anywhere else -- is a checker
+error. Bound functions are first-class values like any other function.
 
 Bindings are produced mechanically:
 

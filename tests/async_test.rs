@@ -17,13 +17,14 @@ fn parse(source: &str) -> Module {
     let tokens = scanner.scan_tokens().expect("lexer failed");
     let mut parser = Parser::new(tokens);
     let mut module = parser.parse().expect("parser failed");
-    resolve_new_syntax(&mut module);
     // Mirror the loader pipeline for a vendored binding file: seed the
-    // rewrite with a synthetic path-derived URN so the body-less
-    // camelCase declarations in the test source produce FunctionDefs
-    // with `extern_wasm` populated — the rest of the test
-    // infrastructure (async_analysis, auto_await) expects that shape.
+    // rewrite with a synthetic path-derived URN so the string-anchored
+    // constructors in the test source produce FunctionDefs with
+    // `extern_wasm` populated — the rest of the test infrastructure
+    // (async_analysis, auto_await) expects that shape. As in the loader,
+    // the rewrite runs before `resolve_new_syntax`.
     canon::loader::apply_bindings(&mut module.items, Some("canon:builtins/x@0.1.0"));
+    resolve_new_syntax(&mut module);
     module
 }
 
@@ -43,10 +44,14 @@ fn future_is_a_known_generic_type_in_extern_decl() {
     // type-alias). This test asserts that recognising the name no longer
     // produces an "unknown type" error.
     let source = r#"
-futureString = () => Future<String>
+FutureString = String
+
+Unit => Future<FutureString> {
+    "future-string"
+}
 
 Unit => Unit {
-    futureString().print()
+    FutureString().print()
 }
 "#;
     let m = parse_and_transform(source);
@@ -64,13 +69,14 @@ fn stream_is_a_known_generic_type_in_extern_decl() {
     // acceptable diagnostic is the codegen-gap rejection (`Stream<T>`
     // lowering is unimplemented), never an "unknown type" error.
     let source = r#"
-tick = () => Stream<Int>
+Ticked = String
 
-Ticked = Stream<Int>
+(Stream<Int>) => Ticked {
+    "ticked"
+}
 
 Unit => Unit {
-    tick() -> Ticked
-    "done".print()
+    Ticked("done").print()
 }
 "#;
     let m = parse_and_transform(source);
@@ -97,10 +103,14 @@ fn auto_await_wraps_future_receiver_in_method_call() {
     // call, the auto-await transform should wrap the receiver in
     // `Expr::Await`.
     let source = r#"
-wait = (Network) => Future<String>
+Waited = String
+
+Network => Future<Waited> {
+    "wait"
+}
 
 main = (Network) => Unit {
-    wait(Network).print()
+    Waited(Network).print()
 }
 "#;
     let module = parse_and_transform(source);
@@ -174,10 +184,14 @@ fn auto_await_wraps_future_operand_of_try() {
     // `?` position (mirroring how it already fires at method-receiver
     // positions).
     let source = r#"
-slowRead = (Filesystem) => Future<Result<String, String>>
+SlowRead = String
+
+Filesystem => Future<Result<SlowRead, String>> {
+    "slow-read"
+}
 
 main = (Filesystem) => Unit {
-    slowRead(Filesystem)?.print()
+    SlowRead(Filesystem)?.print()
 }
 "#;
     let module = parse_and_transform(source);
@@ -255,18 +269,23 @@ fn auto_await_wraps_future_argument_at_method_call() {
     // The user wrote `target.method(slowFetch())` and the language
     // semantics say `method` expects `T`, so we await first.
     //
-    // We use a method on String that takes a String, so the param type is
-    // exact. `slowFetch()` returns `Future<String>` (after the loader's
-    // wrap rule), the param is `String`, so the arg gets wrapped.
+    // We use a method on String whose parameter type is exactly the
+    // extern's minted result type. `Fetched()` returns `Future<Fetched>`
+    // (after the loader's wrap rule), the param is `Fetched`, so the arg
+    // gets wrapped.
     let source = r#"
-slowFetch = () => Future<String>
+Fetched = String
 
-append = (String * String) => String {
+Unit => Future<Fetched> {
+    "fetched"
+}
+
+append = (String * Fetched) => String {
     String
 }
 
 main = () => Unit {
-    "prefix:".append(slowFetch()).print()
+    "prefix:".append(Fetched()).print()
 }
 "#;
     let module = parse_and_transform(source);
@@ -279,7 +298,7 @@ main = () => Unit {
         })
         .expect("main not found");
 
-    // Find the `.append(slowFetch())` MethodCall and check its args[0]
+    // Find the `.append(Fetched())` MethodCall and check its args[0]
     // is wrapped in Await.
     fn find_method_call<'a>(e: &'a Expr, name: &str) -> Option<&'a Expr> {
         match e {
@@ -316,19 +335,23 @@ fn auto_await_does_not_wrap_arg_when_param_expects_future() {
     // When the callee's parameter is declared as `Future<T>` (not `T`),
     // the auto-await rule must NOT fire — the parameter is asking for
     // the future directly. This is the conservative-match property.
-    // `noAwait` declares its parameter as `Future<String>` (not `String`),
-    // so passing `slowFetch()` — also `Future<String>` — should NOT trigger
+    // `noAwait` declares its parameter as `Future<Fetched>` (not `Fetched`),
+    // so passing `Fetched()` — also `Future<Fetched>` — should NOT trigger
     // auto-await: the callee is asking for the unforced future. This is the
     // conservative-match property of `future_inner_matches`.
     let source = r#"
-slowFetch = () => Future<String>
+Fetched = String
 
-noAwait = (Future<String>) => Unit {
+Unit => Future<Fetched> {
+    "fetched"
+}
+
+noAwait = (Future<Fetched>) => Unit {
     "side".print()
 }
 
 main = () => Unit {
-    noAwait(slowFetch())
+    noAwait(Fetched())
 }
 "#;
     let module = parse_and_transform(source);
@@ -363,39 +386,47 @@ fn async_analysis_seeds_extern_async_functions() {
     // A function whose return is `Future<T>` is a direct async trigger
     // — its caller must become suspending too.
     let source = r#"
-slowRead = (Filesystem) => Future<String>
+SlowRead = String
+
+Filesystem => Future<SlowRead> {
+    "slow-read"
+}
 
 main = (Filesystem) => Unit {
-    slowRead(Filesystem).print()
+    SlowRead(Filesystem).print()
 }
 "#;
     let m = parse(source);
     let set = async_analysis::analyse(&m);
-    // `slowRead = (Filesystem) => Future<String>` is normalised by the
-    // loader's bindings rewrite so that `Filesystem` becomes the
-    // receiver; the function-table key is therefore
-    // `(Some("Filesystem"), "slowRead")`. `main` is special-cased by
+    // The string-anchored binding is normalised into a `Self`-constructor
+    // on its minted result type, so the function-table key is
+    // `(Some("SlowRead"), "Self")`. `main` is special-cased by
     // the parser and keeps `(None, "main")` regardless of its params.
     assert!(
-        set.contains(&(Some("Filesystem".to_string()), "slowRead".to_string())),
-        "slowRead (returning Future) should be in the async set; got: {:?}",
+        set.contains(&(Some("SlowRead".to_string()), "Self".to_string())),
+        "SlowRead (returning Future) should be in the async set; got: {:?}",
         set.iter().collect::<Vec<_>>()
     );
     assert!(
         set.contains(&(None, "main".to_string())),
-        "main should be in the async set (transitively calls slowRead); got: {:?}",
+        "main should be in the async set (transitively calls SlowRead); got: {:?}",
         set.iter().collect::<Vec<_>>()
     );
 }
 
 #[test]
 fn async_analysis_propagates_through_call_graph() {
-    // a → b → c, where c is extern async. All three should be suspending.
+    // a → b → Fetched, where Fetched is extern async. All three should be
+    // suspending.
     let source = r#"
-c = (Filesystem) => Future<String>
+Fetched = String
+
+Filesystem => Future<Fetched> {
+    "fetched"
+}
 
 b = (Filesystem) => String {
-    c(Filesystem)
+    Fetched(Filesystem)
 }
 
 a = (Filesystem) => String {
@@ -408,9 +439,16 @@ main = (Filesystem) => Unit {
 "#;
     let m = parse(source);
     let set = async_analysis::analyse(&m);
-    // Each non-`main` function takes `Filesystem` as its first param, so
-    // its key is `(Some("Filesystem"), <name>)`. `main` keeps `(None, ...)`.
-    for name in &["a", "b", "c"] {
+    // The extern's key is its `Self`-constructor `(Some("Fetched"), "Self")`;
+    // each bodied non-`main` function takes `Filesystem` as its first
+    // param, so its key is `(Some("Filesystem"), <name>)`. `main` keeps
+    // `(None, ...)`.
+    assert!(
+        set.contains(&(Some("Fetched".to_string()), "Self".to_string())),
+        "Fetched (returning Future) should be in the async set; got set: {:?}",
+        set.iter().collect::<Vec<_>>()
+    );
+    for name in &["a", "b"] {
         let key = (Some("Filesystem".to_string()), name.to_string());
         assert!(
             set.contains(&key),
@@ -451,10 +489,14 @@ main = (Stdout) => Unit {
 fn async_analysis_with_no_extern_async_returns_empty_for_sync_extern() {
     // A non-`.async` extern (synchronous) should not poison the async set.
     let source = r#"
-syncRead = (Filesystem) => String
+SyncRead = String
+
+Filesystem => SyncRead {
+    "sync-read"
+}
 
 main = (Filesystem) => Unit {
-    syncRead(Filesystem).print()
+    SyncRead(Filesystem).print()
 }
 "#;
     let m = parse(source);

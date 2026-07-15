@@ -1058,8 +1058,8 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     // is synthesised as source too and inserted into the *import
     // region* of the module (before `entry_items_start`), where the
     // alphabetical-ordering rule doesn't apply to it.
-    let exit_binding = "exitWithCode = (Int) => Unit\n";
-    let mut exit_items = match parse_synthesised(exit_binding) {
+    let exit_binding = "ExitWithCode = Unit\n\nInt => ExitWithCode {\n    \"exit-with-code\"\n}\n";
+    let mut exit_items = match parse_binding(exit_binding) {
         Ok(items) => items,
         Err(err) => {
             eprintln!(
@@ -1164,8 +1164,8 @@ fn synthesise_test_main(tests: &[String]) -> String {
         }
     }
     src.push_str(".eq(0) -> (\n");
-    src.push_str("        * False => Unit { 1.exitWithCode() }\n");
-    src.push_str("        * True => Unit { 0.exitWithCode() }\n");
+    src.push_str("        * False => Unit { ExitWithCode(1) }\n");
+    src.push_str("        * True => Unit { ExitWithCode(0) }\n");
     src.push_str("    )\n");
     src.push_str("}\n");
     src
@@ -1178,6 +1178,17 @@ fn parse_synthesised(source: &str) -> Result<Vec<Item>, CanonError> {
     let mut module = parser.parse()?;
     resolve_new_syntax(&mut module);
     Ok(module.items)
+}
+
+/// Parse a synthesised *binding* source without `resolve_new_syntax`:
+/// as in the loader pipeline, `apply_bindings` must see the raw
+/// anonymous constructor to lift its string-anchored WIT fragment (and
+/// leaves it fully normalised, so no later resolution pass is needed).
+fn parse_binding(source: &str) -> Result<Vec<Item>, CanonError> {
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens()?;
+    let mut parser = Parser::new(tokens);
+    Ok(parser.parse()?.items)
 }
 
 /// `canon run [target] [-p name] [--addr <ip:port>] [args...]`

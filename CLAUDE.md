@@ -380,10 +380,10 @@ treatment in `docs/src/spec/types-only.md`.
   `canon install` mints a result newtype per function (`Now = Instant`), interface-
   qualified on WIT leaf-name collisions (`MonotonicClockNow`/`SystemClockNow`); a
   no-result function mints a `Unit` newtype. The camelCase alias form survives only
-  in hand-written binding files for shapes the string form can't cover yet:
-  resource methods (`wasi/http`'s `types.can`) and generic combinators
-  (`canon:builtins`' `concurrent.can`/`stream.can`). Scalar-newtype receivers are
-  declared as bare `Int`.
+  in hand-written binding files for the one shape the string form can't cover
+  yet: resource methods (`wasi/http`'s `types.can`), whose first input is a
+  resource declared in the same file. Any other camelCase alias is a checker
+  error. Scalar-newtype receivers are declared as bare `Int`.
 - **No package manifest** — file structure is the whole declaration. A **package**
   is a dir with `src/main.can` (name = dir name; artifacts in its `build/`); a
   **workspace** is a dir whose immediate subdirs include packages. **External

@@ -11,7 +11,7 @@
 //! `deps/<ns>/<name>@<version>/`, the directory name is the pin, and
 //! the files are pure source — no `package` directive exists (the
 //! keyword left the language with slice 7). Binding files are
-//! recognized by shape: body-less camelCase declarations in a file
+//! recognized by shape: string-anchored constructors in a file
 //! directly under the package directory bind to the WIT interface the
 //! path spells (`ok_bindings` pins that end-to-end).
 //!
@@ -63,20 +63,25 @@ fn vendored_package_loads_checks_and_runs() {
 
 #[test]
 fn path_derived_bindings_load_and_run() {
-    // `deps/canon/builtins@0.1.0/math.can` holds a body-less camelCase
-    // declaration and nothing else — no `bindings` directive. The
-    // loader derives `canon:builtins/math@0.1.0#min` from the path
-    // alone and the host builtin satisfies it at run time.
+    // `deps/canon/builtins@0.1.0/math.can` holds a string-anchored
+    // constructor and nothing else — no `bindings` directive. The
+    // loader derives the `canon:builtins/math@0.1.0` URN from the path
+    // alone, reads the `min` fragment from the constructor's string
+    // body, and the host builtin satisfies it at run time.
     let loaded = loader::load_module(&entry("ok_bindings")).expect("ok_bindings should load");
     let min = loaded
         .module
         .items
         .iter()
         .find_map(|item| match item {
-            canon::ast::Item::Function(f) if f.name.name == "min" => f.extern_wasm.as_ref(),
+            canon::ast::Item::Function(f)
+                if f.receiver.as_ref().is_some_and(|r| r.name == "Min") =>
+            {
+                f.extern_wasm.as_ref()
+            }
             _ => None,
         })
-        .expect("`min` should load as an extern binding");
+        .expect("`Min` should load as an extern binding");
     assert_eq!(
         min.path, "canon:builtins/math@0.1.0#min",
         "the binding URN must be derived from the vendored path"

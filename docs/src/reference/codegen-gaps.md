@@ -32,9 +32,9 @@ bindings.
 ## extern imports in the `wasi:http/service` world
 
 An HTTP handler program (`Request => Response`) may import only
-`wasi:http/types` (plus the synthetic `canon:builtins/concurrent`, so
-`Parallel` / `Race` still work); the `wasi:http/service` world has no host
-for anything else. The restriction applies to every *loaded* extern, not
+`wasi:http/types`; the `wasi:http/service` world has no host for anything
+else (`Parallel` / `Race` still work — they are compiler builtins emitted
+inline, not imports). The restriction applies to every *loaded* extern, not
 just called ones — codegen links the whole import block — and a JSON
 literal with interpolation holes loads the `canon:builtins/json` bridge, so
 it trips this too. HTML and format-string interpolation lower without a
@@ -42,10 +42,10 @@ bridge and work in handlers.
 
 ## `Stream<T>` lowering and streaming response bodies
 
-The stdlib combinator surface and the checker support `Stream<T>` as a type
-expression, but codegen drops imports whose signatures mention it, so any
-program reaching a `Stream`-shaped declaration is rejected. The enabling
-move is routing Stream-using programs through
+The checker supports `Stream<T>` as a type expression, but codegen drops
+imports whose signatures mention it, so any program reaching a
+`Stream`-shaped declaration is rejected (and the stdlib ships no `Stream`
+bindings). The enabling move is routing Stream-using programs through
 `wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder`
 type section.
 

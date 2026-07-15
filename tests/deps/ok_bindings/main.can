@@ -1,5 +1,5 @@
 Unit => Program {
     5
-        .min(3)
+        -> Min(3)
         -> Print
 }
