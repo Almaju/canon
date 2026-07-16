@@ -1,7 +1,0 @@
-InstantIsNonNegative = TestResult
-
-Unit => InstantIsNonNegative {
-    Instant()
-        -> Ge(0)
-        -> TestResult
-}

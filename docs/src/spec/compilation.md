@@ -93,7 +93,7 @@ The extern lowering resolves the alias chain to decode the return, and
 call sites are ordinary construction (`GetArguments() -> Args`).
 
 One boundary remainder: a **camelCase body-less alias**
-(`body = (Request) => Future<Result<String, HttpError>>`) survives in
+(`method = (Request) => String`) survives in
 *hand-written* binding files for the two shapes the string-anchored
 lowering doesn't cover yet -- resource methods (pending resource
 lowering) and generic combinators (pending generic externs). The loader

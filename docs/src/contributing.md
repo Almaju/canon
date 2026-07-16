@@ -36,7 +36,7 @@ Three kinds of files live under `docs/src/`:
 2. In `main.can`, add a dispatch arm to the `Page => Content` function:
    `* "<your-page>" => Content { YourPage() -> Html }` (arms are sorted
    alphabetically — `canon check --fix` enforces it).
-3. Add a `{Page -> NavItem(Slug("<your-page>") * Label("…"))}` line to
+3. Add a `{Model.Page -> NavItem(Slug("<your-page>") * Label("…"))}` line to
    the sidebar under the appropriate `<div class="sec">` section.
 4. Wire the page into the reading order: add a `Page => Pager` arm for
    it, and update the `Next`/`Prev` targets of its new neighbours.

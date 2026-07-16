@@ -259,6 +259,14 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
     // `lint_dead_code`.)
     errors.extend(lint_dead_code(module, entry_items_start));
 
+    // Features the code generator doesn't implement yet are errors too, so
+    // the accepted language and the implemented language stay the same set.
+    let http_entry = match http_entries.as_slice() {
+        [entry] if !main_found && web_entry.is_none() => Some(*entry),
+        _ => None,
+    };
+    errors.extend(codegen_gap_errors(module, entry_items_start, http_entry));
+
     errors
 }
 
@@ -603,76 +611,43 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
 // ---------------------------------------------------------------------------
 // Known codegen gaps
 //
-// The checker deliberately accepts more than the code generator implements:
-// a handful of features parse and type-check but fail later, at codegen. That
-// is a silent trap for users — a program passes `canon check`, then blows up
-// at `canon build`. To close the gap in *feedback* (not the gap in codegen),
-// the checker emits a non-fatal **warning** when a program reaches, from its
-// entry, a declaration that relies on one of these features. The warning
-// points at `docs/src/reference/codegen-gaps.md`, the tracking page.
+// A few features parse and type-check structurally but are not implemented
+// by the code generator yet. Accepting them would be a silent trap — the
+// program passes `canon check`, then fails (or miscompiles) at `canon build`.
+// So reaching one of these features is a hard checker error: the accepted
+// language and the implemented language stay the same set, and a clean check
+// guarantees the build won't fail in code generation.
 //
 // `CODEGEN_GAPS` below is the single source of truth for the list; the doc
-// page mirrors it in prose and `tests/codegen_gaps.rs` pins that every gap
-// here is documented there.
+// page (docs/src/reference/codegen-gaps.md) mirrors it in prose and
+// `tests/codegen_gaps.rs` pins that every gap here is documented there.
 // ---------------------------------------------------------------------------
 
-/// One feature the checker accepts but the code generator does not implement
-/// yet. See the module-level comment above and the doc page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One feature the checker rejects because the code generator does not
+/// implement it yet. See the module-level comment above and the doc page.
+#[derive(Debug)]
 pub struct CodegenGap {
-    /// Short description, phrased to read both inside the warning sentence
+    /// Short description, phrased to read both inside the error sentence
     /// and as the heading for this gap in `codegen-gaps.md`. The doc-mirror
     /// test matches on this string verbatim, so the two stay in lockstep.
     pub title: &'static str,
 }
 
-/// Binding declarations returning `list<T>` for compound `T`. String and
-/// scalar elements (including narrow widths, whose stride the codegen
-/// reads back from the vendored WIT) decode; lists of records/variants
-/// don't.
-pub const GAP_LIST_COMPOUND_RETURN: CodegenGap = CodegenGap {
-    title: "binding declarations returning `list<T>` for compound `T`",
+/// Compound payloads (products, unions, nested containers) inside `List<T>`
+/// / `Option<T>`. Scalar and `String` payloads lower — as binding returns
+/// and as Canon values — but the 8-byte element slot can't carry a compound
+/// value, so declaring or constructing one is rejected.
+pub const GAP_COMPOUND_PAYLOAD: CodegenGap = CodegenGap {
+    title: "compound `List<T>` / `Option<T>` payloads",
 };
 
-/// Sub-`u64` integers (`u8`/`u16`/`u32`/`s8`/`s16`/`s32`) inside a compound
-/// WIT shape. Not statically detectable from Canon source (Canon has only
-/// `Int`), so documented but not warned about.
-pub const GAP_SUB_U64_COMPOUND: CodegenGap = CodegenGap {
-    title: "sub-`u64` integers inside a compound WIT shape",
-};
-
-/// WIT `result` with no payloads as a binding *parameter*. (Bare-result
-/// returns decode into an ordinary Canon `Result` now.) Not statically
-/// detectable from Canon source, so documented but not warned about.
-pub const GAP_RESULT_NO_PAYLOAD: CodegenGap = CodegenGap {
-    title: "WIT `result` with no payloads as a binding parameter",
-};
-
-/// Binding declarations returning `option<T>` for compound `T`. String
-/// and scalar payloads decode; option-of-record/variant payloads don't.
-pub const GAP_OPTION_COMPOUND_RETURN: CodegenGap = CodegenGap {
-    title: "binding declarations returning `option<T>` for compound `T`",
-};
-
-/// WIT `resource` / `own<T>` / `borrow<T>` in binding signatures. Bindgen
-/// skips the offending functions, so they rarely survive as declarations;
-/// documented but not warned about to avoid flagging the hand-written
-/// wrappers that supersede them.
-pub const GAP_RESOURCES: CodegenGap = CodegenGap {
-    title: "WIT `resource` / `own<T>` / `borrow<T>` in binding signatures",
-};
-
-/// `At(i)` / `First` on `List<String>` and nested `Mapped` — codegen erases
-/// the element type. A runtime-value concern, documented but not warned about.
-pub const GAP_LIST_STRING_INDEXING: CodegenGap = CodegenGap {
-    title: "`At(i)` / `First` on `List<String>` and nested `Mapped`",
-};
-
-/// HTTP handler request headers and body. The handler body compiles, but
-/// reading request headers/body is not wired up. Documented but not warned
-/// about (not statically distinguishable from a working handler).
-pub const GAP_HTTP_REQUEST_HEADERS_BODY: CodegenGap = CodegenGap {
-    title: "HTTP handler request headers and body",
+/// Extern imports the `wasi:http/service` world can't satisfy. A handler
+/// program may import only `wasi:http/types` (plus the synthetic
+/// `canon:builtins/concurrent`); any other loaded binding — reached by a
+/// call or pulled in by a JSON-interpolation bridge — has no host to link
+/// against.
+pub const GAP_HTTP_WORLD_IMPORTS: CodegenGap = CodegenGap {
+    title: "extern imports in the `wasi:http/service` world",
 };
 
 /// `Stream<T>` lowering and streaming response bodies. Codegen drops imports
@@ -681,117 +656,366 @@ pub const GAP_STREAM: CodegenGap = CodegenGap {
     title: "`Stream<T>` lowering and streaming response bodies",
 };
 
-/// Every known codegen gap, in the same order as the doc page. Single source
-/// of truth for the list.
-pub const CODEGEN_GAPS: &[CodegenGap] = &[
-    GAP_LIST_COMPOUND_RETURN,
-    GAP_SUB_U64_COMPOUND,
-    GAP_RESULT_NO_PAYLOAD,
-    GAP_OPTION_COMPOUND_RETURN,
-    GAP_RESOURCES,
-    GAP_LIST_STRING_INDEXING,
-    GAP_HTTP_REQUEST_HEADERS_BODY,
-    GAP_STREAM,
-];
+/// Every codegen gap the checker rejects, in the same order as the doc page.
+/// Single source of truth for the list.
+pub const CODEGEN_GAPS: &[CodegenGap] = &[GAP_COMPOUND_PAYLOAD, GAP_HTTP_WORLD_IMPORTS, GAP_STREAM];
 
-/// A non-fatal codegen-gap diagnostic. The program type-checks; this warns
-/// that code generation will reject it. Kept separate from the fatal
-/// `CanonError` stream so callers never treat it as a build failure.
-#[derive(Debug, Clone)]
-pub struct GapWarning {
-    pub message: String,
-    pub span: crate::error::Span,
+fn gap_error(gap: &CodegenGap, detail: &str, span: crate::error::Span) -> CanonError {
+    CanonError::CheckError {
+        message: format!(
+            "{detail}: the code generator does not implement {} yet, so this program \
+             cannot build. Tracked in docs/src/reference/codegen-gaps.md",
+            gap.title
+        ),
+        span,
+    }
 }
 
-/// Scan a fully-loaded module for *reachable* use of features the code
-/// generator doesn't implement yet, returning one warning per offending
-/// declaration. Intended to run after `check` succeeds (only clean programs
-/// reach codegen).
-///
-/// Reachability is computed from the entry file: the loader is file-granular,
-/// so referencing one binding pulls in every sibling binding in the same
-/// file. Warning on all of them would be noise; we warn only on declarations
-/// actually reachable from the entry, which are exactly the ones a build will
-/// try to compile.
-pub fn codegen_gap_warnings(module: &Module, entry_items_start: usize) -> Vec<GapWarning> {
+/// Scan a fully-loaded module for use of features the code generator doesn't
+/// implement yet — see the module-level comment above. Signatures and bodies
+/// are scanned only for declarations *reachable* from the entry (the loader
+/// is file-granular, so unreachable sibling bindings would be noise — and a
+/// build compiles exactly the reachable set). The `wasi:http/service` import
+/// restriction is the exception: codegen links every *loaded* extern into
+/// the import block, reachable or not, so it is checked module-wide.
+pub fn codegen_gap_errors(
+    module: &Module,
+    entry_items_start: usize,
+    http_entry: Option<&FunctionDef>,
+) -> Vec<CanonError> {
     let reachable = reachable_decl_names(module, entry_items_start);
 
     // Alias map so payload checks can chase user newtypes (`Duration =
-    // Int`) to the scalar they erase to.
-    let mut type_defs: HashMap<String, TypeExpr> = HashMap::new();
+    // Int`) to the scalar they erase to. Borrows only — every consumer
+    // reads.
+    let mut type_defs: HashMap<&str, &TypeExpr> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
-            type_defs.insert(td.name.name.clone(), td.body.clone());
+            type_defs.insert(td.name.name.as_str(), &td.body);
         }
     }
 
-    let mut warnings = Vec::new();
-    let mut seen: HashSet<(usize, usize, &'static str)> = HashSet::new();
+    let mut errors = Vec::new();
     for item in &module.items {
         let Item::Function(func) = item else { continue };
         if !reachable.contains(&decl_key(func)) {
             continue;
         }
-        for gap in detect_fn_gaps(func, &type_defs) {
-            let span = func.name.span;
-            if seen.insert((span.start, span.end, gap.title)) {
-                warnings.push(GapWarning {
-                    message: gap_warning_message(&gap),
-                    span,
-                });
+        if sig_mentions(func, "Stream") {
+            errors.push(gap_error(
+                &GAP_STREAM,
+                "`Stream<T>` in this signature",
+                func.name.span,
+            ));
+        }
+        for ty in func.params.iter().map(|p| &p.ty).chain([&func.return_ty]) {
+            if let Some(offender) = compound_payload_in_type(ty, &type_defs) {
+                errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, func.name.span));
+                break;
             }
         }
+        for expr in &func.body.exprs {
+            scan_expr_gaps(expr, &type_defs, &mut errors);
+        }
     }
-    warnings
+
+    // `wasi:http/service` world: mirror `WasmGen::new_http`, which links the
+    // whole loaded import block and rejects anything it can't satisfy.
+    if let Some(entry) = http_entry {
+        let allowed = |path: &str| {
+            crate::ast::HTTP_WORLD_IMPORT_PREFIXES
+                .iter()
+                .any(|p| path.starts_with(p))
+        };
+        let mut offending: Vec<&str> = module
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Function(f) => f
+                    .extern_wasm
+                    .as_ref()
+                    .map(|e| e.path.as_str())
+                    .filter(|p| !allowed(p)),
+                _ => None,
+            })
+            .collect();
+        offending.sort_unstable();
+        offending.dedup();
+        if !offending.is_empty() {
+            errors.push(gap_error(
+                &GAP_HTTP_WORLD_IMPORTS,
+                &format!(
+                    "HTTP handler programs can only import `wasi:http/types` for now, but \
+                     this program loads {}",
+                    offending.join(", ")
+                ),
+                entry.name.span,
+            ));
+        }
+    }
+    errors
 }
 
-fn gap_warning_message(gap: &CodegenGap) -> String {
-    format!(
-        "this program reaches a feature the code generator hasn't implemented yet — {} — \
-         so it type-checks but `canon build` will fail during code generation. \
-         Tracked in docs/src/reference/codegen-gaps.md.",
-        gap.title
+/// The first `List<T>` / `Option<T>` with a compound payload nested anywhere
+/// in `ty` (chasing named aliases through `type_defs`), rendered for the
+/// error message. `Some<T>` counts as `Option<T>` — dispatch arms carry it.
+fn compound_payload_in_type(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
+    let mut visited = HashSet::new();
+    compound_payload_walk(ty, type_defs, &mut visited)
+}
+
+fn compound_payload_walk<'a>(
+    ty: &'a TypeExpr,
+    type_defs: &HashMap<&str, &'a TypeExpr>,
+    visited: &mut HashSet<&'a str>,
+) -> Option<String> {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            if matches!(name.as_str(), "List" | "Option" | "Some") && generics.len() == 1 {
+                if !is_scalar_or_string_payload(&generics[0], type_defs) {
+                    let container = if name == "Some" { "Option" } else { name };
+                    return Some(format!(
+                        "`{}<{}>` has a compound payload",
+                        container,
+                        crate::ast::type_expr_canonical(&generics[0])
+                    ));
+                }
+                return None;
+            }
+            for g in generics {
+                if let Some(hit) = compound_payload_walk(g, type_defs, visited) {
+                    return Some(hit);
+                }
+            }
+            if generics.is_empty() && visited.insert(name.as_str()) {
+                if let Some(body) = type_defs.get(name.as_str()) {
+                    return compound_payload_walk(body, type_defs, visited);
+                }
+            }
+            None
+        }
+        TypeExpr::Union { variants: tys, .. } | TypeExpr::Product { fields: tys, .. } => tys
+            .iter()
+            .find_map(|t| compound_payload_walk(t, type_defs, visited)),
+        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
+            compound_payload_walk(ty, type_defs, visited)
+        }
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => params
+            .iter()
+            .chain([return_ty.as_ref()])
+            .find_map(|t| compound_payload_walk(t, type_defs, visited)),
+    }
+}
+
+fn compound_payload_gap(container: &str, payload: &str, span: crate::error::Span) -> CanonError {
+    gap_error(
+        &GAP_COMPOUND_PAYLOAD,
+        &format!("`{container}<{payload}>` has a compound payload"),
+        span,
     )
 }
 
-/// The codegen gaps a single declaration triggers. Only the gaps that are
-/// statically detectable from Canon source are matched here; the rest live in
-/// `CODEGEN_GAPS` (and the doc page) for tracking but never warn.
-fn detect_fn_gaps(func: &FunctionDef, type_defs: &HashMap<String, TypeExpr>) -> Vec<CodegenGap> {
-    let mut gaps = Vec::new();
-
-    // `Stream<T>` anywhere in the signature: codegen drops imports whose
-    // signatures mention it, and can't lower a `Stream` return. Applies to
-    // any function, not just externs — a plain helper returning `Stream<T>`
-    // fails to link the same way.
-    if sig_mentions(func, "Stream") {
-        gaps.push(GAP_STREAM);
-    }
-
-    // The remaining detectable gaps are properties of *binding* declarations.
-    if func.extern_wasm.is_some() {
-        let ret = unwrap_binding_return(&func.return_ty);
-        if let Some(elem) = generic_arg(ret, "List") {
-            if !is_scalar_or_string_payload(elem, type_defs) {
-                gaps.push(GAP_LIST_COMPOUND_RETURN);
+/// Walk a function body for expressions that *construct* a compound
+/// `List` / `Option` payload — the construction sites a signature scan
+/// can't see: `List(…)` literals, `-> Some`, `Mapped` lambdas producing
+/// compound elements, `Appended` elements, and `Some<T>` dispatch arms.
+fn scan_expr_gaps(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>, errors: &mut Vec<CanonError>) {
+    match expr {
+        Expr::Constructor { name, args, span } => {
+            if name.name == "List" {
+                // `List(a * b * c)` carries its elements as one product.
+                let elements: &[Expr] = match args.as_slice() {
+                    [Expr::ProductValue { fields, .. }] => fields,
+                    other => other,
+                };
+                for el in elements {
+                    if let Some(tn) = compound_expr_type(el, type_defs) {
+                        errors.push(compound_payload_gap("List", &tn, *span));
+                        break;
+                    }
+                }
+            }
+            if name.name == "Some" {
+                if let Some(tn) = args.first().and_then(|a| compound_expr_type(a, type_defs)) {
+                    errors.push(compound_payload_gap("Option", &tn, *span));
+                }
+            }
+            for a in args {
+                scan_expr_gaps(a, type_defs, errors);
             }
         }
-        if let Some(elem) = generic_arg(ret, "Option") {
-            if !is_scalar_or_string_payload(elem, type_defs) {
-                gaps.push(GAP_OPTION_COMPOUND_RETURN);
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            span,
+            ..
+        } => {
+            if method.name == "Some" {
+                if let Some(tn) = compound_expr_type(receiver, type_defs) {
+                    errors.push(compound_payload_gap("Option", &tn, *span));
+                }
+            }
+            if method.name == "Mapped" {
+                if let Some(Expr::Lambda { return_ty, .. }) = args.first() {
+                    if !is_scalar_or_string_payload(return_ty, type_defs) {
+                        errors.push(gap_error(
+                            &GAP_COMPOUND_PAYLOAD,
+                            &format!(
+                                "`Mapped` here produces `List<{}>`, which has a compound payload",
+                                crate::ast::type_expr_canonical(return_ty)
+                            ),
+                            *span,
+                        ));
+                    }
+                }
+            }
+            if method.name == "Appended" {
+                if let Some(tn) = args.first().and_then(|a| compound_expr_type(a, type_defs)) {
+                    errors.push(compound_payload_gap("List", &tn, *span));
+                }
+            }
+            scan_expr_gaps(receiver, type_defs, errors);
+            for a in args {
+                scan_expr_gaps(a, type_defs, errors);
             }
         }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            scan_expr_gaps(scrutinee, type_defs, errors);
+            for arm in arms {
+                if let Some(offender) = compound_payload_in_type(&arm.param_ty, type_defs) {
+                    errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, arm.span));
+                }
+                for e in &arm.body.exprs {
+                    scan_expr_gaps(e, type_defs, errors);
+                }
+            }
+        }
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            span,
+        } => {
+            for ty in params.iter().map(|p| &p.ty).chain([return_ty]) {
+                if let Some(offender) = compound_payload_in_type(ty, type_defs) {
+                    errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, *span));
+                    break;
+                }
+            }
+            for e in &body.exprs {
+                scan_expr_gaps(e, type_defs, errors);
+            }
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                scan_expr_gaps(f, type_defs, errors);
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => {
+            scan_expr_gaps(inner, type_defs, errors)
+        }
+        Expr::FieldAccess { receiver, .. } => scan_expr_gaps(receiver, type_defs, errors),
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    scan_expr_gaps(e, type_defs, errors);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
+                    scan_expr_gaps(e, type_defs, errors);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
+                    scan_expr_gaps(e, type_defs, errors);
+                }
+            }
+        }
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
     }
-
-    gaps
 }
 
-/// True when a `List<T>` / `Option<T>` binding-return payload is a shape
-/// the extern decode implements: `String`, a scalar (`Int` / `Float` /
-/// `Bool` and the stdlib `Int`-alias `Byte`), or a user alias chain ending
-/// in one of those. Compound payloads (products, unions, nested generics)
-/// are the remaining gap.
-fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> bool {
+/// The compound type an expression *provably* constructs, rendered for the
+/// error message — `None` when the static type is scalar, string, or not
+/// syntactically recoverable. Names are recovered from the syntax (every
+/// value flows through a type-named constructor in Canon) and chased
+/// through the alias chain; only a name that lands on a product, union, or
+/// generic container counts, so unknown names never flag. Deliberately
+/// conservative: the checker's richer `expr_type_name_in_scope` guesses
+/// through method/field ambiguity, which is fine for dispatch hints but
+/// too loose to make fatal.
+fn compound_expr_type(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
+    let name = static_expr_type_name(expr)?;
+    // Builtin containers, and the container-producing slice of the builtin
+    // pipe vocabulary (`ast::BUILTIN_ALIASES`), never appear in
+    // `type_defs`, so name them here. A future container-producing builtin
+    // must be added here too.
+    match name {
+        "List" | "Mapped" | "Appended" => return Some("List".to_string()),
+        "Option" | "Some" | "None" | "At" | "First" => return Some("Option".to_string()),
+        "Result" | "Ok" | "Err" => return Some("Result".to_string()),
+        "Future" | "Stream" => return Some(name.to_string()),
+        _ => {}
+    }
+    let mut current = name;
+    for _ in 0..20 {
+        if matches!(
+            current,
+            "String" | "Int" | "Float" | "Bool" | "Byte" | "Hex" | "Json" | "Html"
+        ) {
+            return None;
+        }
+        match type_defs.get(current).copied() {
+            Some(TypeExpr::Named {
+                name: next,
+                generics,
+                ..
+            }) if generics.is_empty() => current = next,
+            Some(_) => return Some(name.to_string()), // container generic or structural body
+            None => return None,
+        }
+    }
+    None
+}
+
+/// The type name an expression's value carries, recovered syntactically —
+/// the checker-side mirror of codegen's `static_recv_type` trick: in
+/// types-only Canon every name in value position is a type name.
+fn static_expr_type_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::StringLit { .. } | Expr::FormatLit { .. } => Some("String"),
+        Expr::IntLit { .. } => Some("Int"),
+        Expr::FloatLit { .. } => Some("Float"),
+        Expr::JsonLit { .. } => Some("Json"),
+        Expr::HtmlLit { .. } => Some("Html"),
+        Expr::Ident(id) => Some(&id.name),
+        Expr::Constructor { name, .. } => Some(&name.name),
+        Expr::MethodCall { method, .. } => Some(&method.name),
+        Expr::FieldAccess { field, .. } => Some(&field.name),
+        Expr::Await { inner, .. } => static_expr_type_name(inner),
+        Expr::Match { arms, .. } => arms.first().and_then(|a| match &a.return_ty {
+            TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name.as_str()),
+            _ => None,
+        }),
+        Expr::Try { .. } | Expr::Lambda { .. } | Expr::ProductValue { .. } => None,
+    }
+}
+
+/// True when a `List<T>` / `Option<T>` payload is a shape the codegen
+/// lowering implements: `String`, a scalar (`Int` / `Float` / `Bool` and
+/// the prelude aliases), or a user alias chain ending in one of those.
+/// Compound payloads (products, unions, nested generics) are the gap.
+fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExpr>) -> bool {
     let mut cur = ty;
     for _ in 0..20 {
         let TypeExpr::Named { name, generics, .. } = cur else {
@@ -800,38 +1024,18 @@ fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<String, TypeEx
         if !generics.is_empty() {
             return false;
         }
-        if matches!(name.as_str(), "String" | "Int" | "Float" | "Bool" | "Byte") {
+        if matches!(
+            name.as_str(),
+            "String" | "Int" | "Float" | "Bool" | "Byte" | "Hex" | "Json" | "Html"
+        ) {
             return true;
         }
-        match type_defs.get(name) {
+        match type_defs.get(name.as_str()) {
             Some(body) => cur = body,
             None => return false,
         }
     }
     false
-}
-
-/// Peel the wrappers `apply_bindings` may leave on an extern's return so the
-/// list/option element check sees the underlying shape: `Future<T>` (async
-/// unwrap) and `Result<T, _>` (the success arm carries the decoded value).
-fn unwrap_binding_return(ty: &TypeExpr) -> &TypeExpr {
-    let mut cur = ty;
-    loop {
-        match generic_arg(cur, "Future").or_else(|| generic_arg(cur, "Result")) {
-            Some(inner) => cur = inner,
-            None => return cur,
-        }
-    }
-}
-
-/// The sole generic argument of `Ctor<Arg>`, if `ty` is exactly that.
-fn generic_arg<'a>(ty: &'a TypeExpr, ctor: &str) -> Option<&'a TypeExpr> {
-    match ty {
-        TypeExpr::Named { name, generics, .. } if name == ctor && generics.len() == 1 => {
-            Some(&generics[0])
-        }
-        _ => None,
-    }
 }
 
 /// Whether any type in the function's signature (parameters or return)

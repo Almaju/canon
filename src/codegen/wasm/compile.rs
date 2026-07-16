@@ -1346,21 +1346,8 @@ impl<'m> WasmGen<'m> {
     /// wrap to mean the other thing is exactly why the newtype
     /// exists.
     pub(super) fn expr_is_byte(&self, e: &Expr) -> bool {
-        let name = match e {
-            Expr::Constructor { name, .. } => &name.name,
-            Expr::Ident(id) => &id.name,
-            Expr::FieldAccess { field, .. } => &field.name,
-            // Piped construction: `65 -> Byte` builds a `Byte` just like
-            // `Byte(65)`, but scalar-newtype erasure drops the name from
-            // the value, so recover it from the constructor's spelling.
-            Expr::MethodCall {
-                method,
-                piped: true,
-                ..
-            } => &method.name,
-            _ => return false,
-        };
-        self.collect_alias_chain(name).iter().any(|n| n == "Byte")
+        syntactic_type_name(e)
+            .is_some_and(|name| self.collect_alias_chain(name).iter().any(|n| n == "Byte"))
     }
 
     /// Converts the i64 byte value on the stack into a fresh one-byte
@@ -2706,20 +2693,12 @@ impl<'m> WasmGen<'m> {
         // construction like `3000 -> Port` leaves `Ty::I64` on the stack
         // and `type_name` recovers only "Int" — losing "Port", which the
         // next step (`Port -> HttpServer`) dispatches on. Recover the
-        // *static* type from the receiver's syntactic shape: `Foo(x)` or
-        // `x -> Foo` constructs a `Foo` when `Foo` names a type. Tried
-        // first so newtype-typed shapes still resolve.
-        let static_recv_type: Option<String> = match receiver {
-            Expr::Constructor { name, .. } if self.type_defs.contains_key(&name.name) => {
-                Some(name.name.clone())
-            }
-            Expr::MethodCall {
-                method: m,
-                piped: true,
-                ..
-            } if self.type_defs.contains_key(&m.name) => Some(m.name.clone()),
-            _ => None,
-        };
+        // *static* type from the receiver's syntactic shape (see
+        // `syntactic_type_name`). Tried first so newtype-typed shapes
+        // still resolve.
+        let static_recv_type: Option<String> = syntactic_type_name(receiver)
+            .filter(|name| self.type_defs.contains_key(*name))
+            .map(str::to_string);
         let mut candidate_types: Vec<String> = Vec::new();
         if let Some(st) = &static_recv_type {
             candidate_types.extend(self.collect_alias_chain(st));
@@ -5943,5 +5922,26 @@ impl<'m> WasmGen<'m> {
         m.section(&data);
 
         m.finish()
+    }
+}
+
+/// The declared type name an expression carries on its face: a `Foo(x)`
+/// constructor, a `Foo`-named identifier or product field (values are
+/// named after their types — there are no other value names), or a
+/// piped construction `x -> Foo`. Scalar-newtype erasure drops the name
+/// from the compiled value, so this is how a receiver's static type
+/// survives to method lookup (`static_recv_type`) and the
+/// `String(Byte)` conversion (`expr_is_byte`).
+fn syntactic_type_name(e: &Expr) -> Option<&str> {
+    match e {
+        Expr::Constructor { name, .. } => Some(&name.name),
+        Expr::Ident(id) => Some(&id.name),
+        Expr::FieldAccess { field, .. } => Some(&field.name),
+        Expr::MethodCall {
+            method,
+            piped: true,
+            ..
+        } => Some(&method.name),
+        _ => None,
     }
 }

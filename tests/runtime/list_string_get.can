@@ -1,0 +1,14 @@
+Unit => Program {
+    List("alpha" * "beta" * "gamma") -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    List("alpha" * "beta") -> Mapped((String) => String { `{String}!` }) -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    List("aa" * "bbb") -> At(9) -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+}

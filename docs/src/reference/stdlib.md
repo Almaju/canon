@@ -16,9 +16,10 @@ only ever reaches the wrappers below.
 
 | Module (`canon/std/...`) | Type | Backing binding | Notes |
 |---|---|---|---|
-| `time/Instant` | `Instant = Int` | `wasi/clocks/monotonic_clock` | `Instant()` reads the monotonic clock (nanoseconds) |
+| `time/Mark` | `Mark = Int` | `wasi/clocks/monotonic_clock` | `Mark()` reads the monotonic clock (nanoseconds) |
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
 | `time/Now` | `Now = String` | pure Canon over `time/Unix` | RFC 3339 wall-clock time |
+| `time/Date` | `Date`, `Weekday`, `Hour`, `Minute`, `Second` | pure Canon over `time/Unix` | calendar components: `Unix() -> Date` is a `Day * Month * Year` product |
 | `fs/Path` | `Path = String` | none | filesystem path newtype |
 | `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `Read`, `Written` |
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
@@ -30,6 +31,8 @@ only ever reaches the wrappers below.
 | `Byte` | `Byte = Int` | none | picks the byte->character reading of `String(...)`: `String(Byte(65))` is `"A"` |
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
+| `Base64` | `Base64 = String`, `Base64Encoded`, `Base64Decoded` | pure Canon | RFC 4648 base64: `Base64Encoded("hi")`, `Base64("aGk=") -> Base64Decoded?` |
+| `Hex` | `Hex = String`, `HexEncoded`, `HexDecoded` | pure Canon | lowercase hex octets: `HexEncoded("hi")`, `Hex("6869") -> HexDecoded?` |
 | `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
 | `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), the `Encoded` family, `Field`, `Decoded` |
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
@@ -50,22 +53,41 @@ published, or future stdlib work.
 
 ```canon
 Unit => Program {
-    Instant() -> Print
+    Mark() -> Print
     Random() -> Print
     Now() -> Print
 }
 ```
 
-`Instant()` reads the monotonic clock (nanoseconds, an `Int` newtype,
-so arithmetic and comparison work directly). `Random()` draws from the
-WASI CSPRNG. `Now()` is the RFC 3339 wall-clock time, formatted by a
-calendar conversion written in pure Canon — the host provides only the
-`Unix()` clock reading.
+`Mark()` reads the monotonic clock (nanoseconds, an `Int` newtype, so
+arithmetic and comparison work directly — the name is the WASI
+interface's own `mark` type). `Random()` draws from the WASI CSPRNG.
+`Now()` is the RFC 3339 wall-clock time, formatted by a calendar
+conversion written in pure Canon — the host provides only the `Unix()`
+clock reading.
 
-> **Known limitation.** The monotonic and wall-clock modules both
-> surface a type named `Instant` with differing bodies, so one program
-> cannot yet use both `Instant()` and `Now()`/`Unix()`. Use one clock
-> family per program until per-referrer resolution lands.
+## Dates: `Date`, `Weekday`, `Hour`, `Minute`, `Second`
+
+```canon
+Ymd = String
+
+Civil => Ymd {
+    `{Civil.Year -> String}/{Civil.Month -> String}/{Civil.Day -> String}`
+}
+
+Unit => Program {
+    Unix() -> Date -> Ymd -> Print
+    Unix() -> Weekday -> Print
+    Unix() -> Hour -> Print
+}
+```
+
+`unix -> Date` converts a Unix reading to a `Civil = Day * Month * Year`
+product (proleptic Gregorian, the same pure-Canon conversion `Now()`
+formats with); declare a `Civil` receiver to read the parts back as
+fields. `Weekday` is ISO — Monday is `1`, Sunday is `7`. `Hour` /
+`Minute` / `Second` are the wall-clock time of day, in UTC like
+everything else here.
 
 ## Files: `File`, `Path`, `Contents`, `IoError`
 
@@ -145,6 +167,25 @@ Int = (String) => Result<Int, MalformedInt>
 `String(42)` is `"42"`, `String(Byte(42))` is `"*"` — wrapping to mean
 the other thing is what newtypes are for. `Uppercased` / `Lowercased`
 map ASCII case.
+
+## Encodings: `Base64`, `Hex`
+
+```canon
+Unit => Result<Program, MalformedBase64> {
+    Base64Encoded("Canon") -> Print
+    Base64("Q2Fub24=") -> Base64Decoded? -> Print
+    HexEncoded("Canon") -> Print
+    Unit() -> Ok
+}
+```
+
+`Base64Encoded` / `HexEncoded` encode a string's bytes — RFC 4648
+base64 with padding, lowercase hex octets — in pure Canon. Decoding is
+the validating direction: tag the received text (`Base64(s)` /
+`Hex(s)`) and pipe `-> Base64Decoded?` / `-> HexDecoded?`; bad length,
+characters outside the alphabet, or padding before the end are the
+module's `MalformedBase64` / `MalformedHex` error. Uppercase hex
+digits decode fine; encoding always emits lowercase.
 
 ## HTTP Client: `Url`, `Fetched`
 

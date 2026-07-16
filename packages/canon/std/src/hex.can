@@ -1,0 +1,105 @@
+DecodedPairs = HexDecoded
+
+Hex = String
+
+HexByte = HexEncoded
+
+HexChar = String
+
+HexDecoded = String
+
+HexEncoded = Hex
+
+HexTail = HexEncoded
+
+MalformedHex = String
+
+Nibble = Int
+
+Int * Hex => Result<DecodedPairs, MalformedHex> {
+    Int -> Gt(Hex -> Length) -> (
+        * False => Result<DecodedPairs, MalformedHex> {
+            Hex
+                -> ByteAt(Int)
+                -> Nibble?
+                -> Product(16)
+                -> Sum(Hex -> ByteAt(Int -> Sum(1)) -> Nibble?)
+                -> Byte
+                -> String
+                -> Joined(Int -> Sum(2) -> DecodedPairs(Hex)?)
+                -> Ok
+        }
+        * True => Result<DecodedPairs, MalformedHex> { Ok("") }
+    )
+}
+
+Int => HexByte {
+    Int
+        -> Quotient(16)
+        -> HexChar
+        -> Joined(Int -> Remainder(16) -> HexChar)
+}
+
+Int => HexChar {
+    "0123456789abcdef" -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> To)
+}
+
+Hex => Result<HexDecoded, MalformedHex> {
+    Hex -> Length -> Remainder(2) -> (
+        * 0 => Result<HexDecoded, MalformedHex> { 1 -> DecodedPairs(Hex) }
+        * Int => Result<HexDecoded, MalformedHex> {
+            MalformedHex("odd number of hex digits") -> Err
+        }
+    )
+}
+
+String => HexEncoded {
+    1 -> HexTail(String)
+}
+
+Int * String => HexTail {
+    Int -> Gt(String -> Length) -> (
+        * False => HexTail {
+            String
+                -> ByteAt(Int)
+                -> HexByte
+                -> Joined(Int -> Sum(1) -> HexTail(String))
+        }
+        * True => HexTail { "" }
+    )
+}
+
+Int => Result<Nibble, MalformedHex> {
+    Int -> IsIntDigit -> (
+        * False => Result<Nibble, MalformedHex> {
+            Int -> Ge(65) -> (
+                * False => Result<Nibble, MalformedHex> { MalformedHex("not a hex digit") -> Err }
+                * True => Result<Nibble, MalformedHex> {
+                    Int -> Le(70) -> (
+                        * False => Result<Nibble, MalformedHex> {
+                            Int -> Ge(97) -> (
+                                * False => Result<Nibble, MalformedHex> {
+                                    MalformedHex("not a hex digit") -> Err
+                                }
+                                * True => Result<Nibble, MalformedHex> {
+                                    Int -> Le(102) -> (
+                                        * False => Result<Nibble, MalformedHex> {
+                                            MalformedHex("not a hex digit") -> Err
+                                        }
+                                        * True => Result<Nibble, MalformedHex> {
+                                            Int
+                                                -> Difference(87)
+                                                -> Ok
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                        * True => Result<Nibble, MalformedHex> { Int -> Difference(55) -> Ok }
+                    )
+                }
+            )
+        }
+        * True => Result<Nibble, MalformedHex> { Int -> Difference(48) -> Ok }
+    )
+}

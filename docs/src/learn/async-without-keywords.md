@@ -46,7 +46,7 @@ cancels its losing branch; to abandon a future, stop using it.
 `Stream<T>` is to `List<T>` what `Future<T>` is to `T`: a stream used
 in an iterating position becomes a poll loop, with no `for await`.
 (Stream lowering is still a [known gap](../reference/codegen-gaps.md)
-in codegen.)
+in codegen, so the checker rejects programs that reach a stream.)
 
 **Precise rules:** [Effects and the Async Model](../spec/effects-and-async.md).
 

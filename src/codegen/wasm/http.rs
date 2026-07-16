@@ -17,15 +17,16 @@ impl<'m> WasmGen<'m> {
     /// mode's own constructor special-cases, not the generic extern
     /// machinery, so they're filtered out here. Any *other* extern
     /// import can't be satisfied by the `wasi:http/service` world and
-    /// is a hard error at this stage of the migration.
+    /// is a hard error at this stage of the migration — the checker
+    /// mirrors this rejection (`GAP_HTTP_WORLD_IMPORTS`), so a checked
+    /// program never reaches it; this exit backstops unchecked callers.
     pub(super) fn new_http(ast: &'m OModule) -> Self {
         let mut gen = Self::new(ast);
         gen.http_mode = true;
         gen.extern_imports.retain(|ext| {
-            !ext.component_namespace.starts_with("wasi:http/types")
-                && !ext
-                    .component_namespace
-                    .starts_with("canon:builtins/concurrent")
+            !crate::ast::HTTP_WORLD_IMPORT_PREFIXES
+                .iter()
+                .any(|p| ext.component_namespace.starts_with(p))
         });
         if !gen.extern_imports.is_empty() {
             let names: Vec<String> = gen

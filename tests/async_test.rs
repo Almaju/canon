@@ -60,6 +60,9 @@ Unit => Unit {
 
 #[test]
 fn stream_is_a_known_generic_type_in_extern_decl() {
+    // `Stream<Int>` must be *recognised* as a type expression — the only
+    // acceptable diagnostic is the codegen-gap rejection (`Stream<T>`
+    // lowering is unimplemented), never an "unknown type" error.
     let source = r#"
 tick = () => Stream<Int>
 
@@ -73,8 +76,16 @@ Unit => Unit {
     let m = parse_and_transform(source);
     let errors = checker::check(&m);
     assert!(
-        errors.is_empty(),
-        "Stream<Int> should be accepted as a type expression; got errors: {:?}",
+        errors
+            .iter()
+            .all(|e| e.message().contains("codegen-gaps.md")),
+        "Stream<Int> should be recognised as a type expression (only the \
+         codegen-gap rejection may fire); got errors: {:?}",
+        errors
+    );
+    assert!(
+        errors.iter().any(|e| e.message().contains("Stream<T>")),
+        "reachable Stream use should be rejected as a codegen gap; got: {:?}",
         errors
     );
 }
