@@ -25,8 +25,8 @@ only ever reaches the wrappers below.
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
-| `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set.List()` = members, alphabetically |
-| `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `"42".Int()?` |
+| `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set -> List` = members, alphabetically |
+| `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `Int("42")?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
 | `Byte` | `Byte = Int` | none | picks the byte->character reading of `String(...)`: `String(Byte(65))` is `"A"` |
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
