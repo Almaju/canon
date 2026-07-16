@@ -1,0 +1,24 @@
+Chain = Link + Stop
+
+Len = Int
+
+Link = Next
+
+Next = Chain
+
+Chain => Len {
+    Chain -> (
+        * Link => Len { Link.Next -> Len -> Sum(1) }
+        * Stop => Len { 0 }
+    )
+}
+
+Unit => Program {
+    Stop()
+        -> Next
+        -> Link
+        -> Next
+        -> Link
+        -> Len
+        -> Print
+}

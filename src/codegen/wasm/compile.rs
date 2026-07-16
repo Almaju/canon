@@ -1113,6 +1113,26 @@ impl<'m> WasmGen<'m> {
                 if let Some(unwrapped) = newtype_unwrap_ty(&recv_ty, &field.name) {
                     return unwrapped;
                 }
+                // Newtype-alias field access: `x.Inner` where `x`'s static
+                // type is a pointer-repr newtype `Name = Inner` (union,
+                // product, or alias chain). Both erase to the same wasm
+                // value, so selecting the wrapped component is a pure
+                // retype — no instructions. Without this a recursive
+                // newtype like `Link = Next` (`Link.Next`) fell through to
+                // `drop_value` below, dropping the pointer and desyncing
+                // the stack.
+                if let Ty::NamedPtr(name) = &recv_ty {
+                    if let Some(TypeExpr::Named {
+                        name: inner,
+                        generics,
+                        ..
+                    }) = self.type_defs.get(name)
+                    {
+                        if generics.is_empty() && *inner == field.name {
+                            return self.resolve_repr(inner);
+                        }
+                    }
+                }
                 // Product field access: the receiver is a heap pointer
                 // to a struct laid out by `build_product_value`. Read
                 // back from the matching byte offset.
