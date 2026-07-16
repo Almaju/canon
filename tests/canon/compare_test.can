@@ -6,11 +6,28 @@ Unit => FloatGeOfEqualIsTrue {
         -> TestResult
 }
 
+FloatGeOfGreaterReceiverIsTrue = TestResult
+
+Unit => FloatGeOfGreaterReceiverIsTrue {
+    4.5
+        -> Ge(3.5)
+        -> TestResult
+}
+
 FloatGeOfLesserReceiverIsFalse = TestResult
 
 Unit => FloatGeOfLesserReceiverIsFalse {
     2.5
         -> Ge(3.5)
+        -> Not
+        -> TestResult
+}
+
+FloatGtOfEqualIsFalse = TestResult
+
+Unit => FloatGtOfEqualIsFalse {
+    3.5
+        -> Gt(3.5)
         -> Not
         -> TestResult
 }
@@ -176,11 +193,28 @@ Unit => StringGeOfEarlierReceiverIsFalse {
         -> TestResult
 }
 
+StringGeOfEqualIsTrue = TestResult
+
+Unit => StringGeOfEqualIsTrue {
+    "apple"
+        -> Ge("apple")
+        -> TestResult
+}
+
 StringGeOfLaterReceiverIsTrue = TestResult
 
 Unit => StringGeOfLaterReceiverIsTrue {
     "banana"
         -> Ge("apple")
+        -> TestResult
+}
+
+StringGtOfEarlierReceiverIsFalse = TestResult
+
+Unit => StringGtOfEarlierReceiverIsFalse {
+    "apple"
+        -> Gt("banana")
+        -> Not
         -> TestResult
 }
 
