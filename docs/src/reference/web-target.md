@@ -4,7 +4,9 @@ Canon programs can be browser frontends. A program that defines the
 **Elm-architecture triple** compiles to a self-contained wasm core module
 plus a tiny generated JS host -- no bundler, no npm, no framework. Combined
 with the `wasi:http/service` world for the backend, a fullstack app is two
-Canon programs sharing one types package (see `examples/todo-fullstack`).
+Canon programs sharing one `src/` tree, compiled and served by one
+`canon run` (see [Fullstack packages](#fullstack-packages) below and
+`examples/todo-fullstack`).
 
 Canon has no local variables, no mutation, and no capturing closures, so
 React's component-local state is unexpressible. The architecture React
@@ -64,6 +66,7 @@ declarative attributes:
 | `data-msg="X"` | click | `X` |
 | `data-msg-form="X:"` | form submit | `X:` + first input's value (then clears it) |
 | `data-msg-input="X:"` | change | `X:` + the control's value |
+| `data-fetch="URL"` + `data-fetch-msg="X:"` | click | `X:` + the fetched response body -- the host-mediated effect that lets a pure app talk to a backend |
 
 Payload-carrying messages are plain string composition
 (`"Toggle:" -> Joined(Id -> String)`) decoded by the reducer with
@@ -89,6 +92,26 @@ message ever fails to fold -- a stale or corrupt log can't brick the app. The
 generated `index.html` keys persistence by the app's stem, so `canon run` /
 `canon build` apps persist by default. `examples/todolist-web` is the worked
 example.
+
+## Fullstack packages
+
+A package with `src/web.can` + `src/server.can` in place of
+`src/main.can` is a **fullstack package** ([Modules &
+Packages](../spec/modules.md#no-manifest)): the web triple in
+`web.can`, the `Request => Response` handler in `server.can`, shared
+sibling files as the contract between them. Each entry still compiles
+to its own artifact -- a component exports exactly one world -- but
+`canon run` serves both from one process on one address:
+
+```sh
+canon run examples/todo-fullstack     # http://127.0.0.1:8080
+```
+
+The bundle owns `/`, `/index.html`, `/canon-web.js`, and the app's
+`.wasm`; every other request dispatches to the server component.
+Frontend and backend share an origin, so a `data-fetch` URL is
+relative (`data-fetch="/todos"`) and CORS never comes up. `canon
+build` writes the bundle and `server.{wasm,wit}` into one `build/`.
 
 ## Current limits
 

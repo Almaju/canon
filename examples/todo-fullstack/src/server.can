@@ -1,0 +1,26 @@
+PlainText = Headers
+
+Unit => PlainText {
+    Headers().set("content-type" * "text/plain")
+}
+
+Request => Response {
+    Request.method() -> (
+        * "GET" => Response {
+            Request.path() -> (
+                * None => Response { Body("bad request") -> Response(Status(400) * PlainText()) }
+                * Some<String> => Response {
+                    String -> (
+                        * "/todos" => Response {
+                            Status(200) -> Response(PlainText() * Seeded() -> String -> Body)
+                        }
+                        * String => Response {
+                            Body("not found") -> Response(Status(404) * PlainText())
+                        }
+                    )
+                }
+            )
+        }
+        * String => Response { Body("method not allowed") -> Response(Status(405) * PlainText()) }
+    )
+}

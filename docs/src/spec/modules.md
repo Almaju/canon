@@ -68,6 +68,7 @@ entirely by its layout:
 | Path | Meaning |
 |---|---|
 | `src/main.can` | the package's entry point — its presence makes the directory a package; the directory's name is the package's name |
+| `src/web.can` + `src/server.can` | a **fullstack package**, in place of `src/main.can`: a browser app and an HTTP service compiled from one `src/` tree — the sibling files both entries reference are the shared contract. `canon run` serves both on one address; `canon build` writes both artifacts into `build/`. One of the pair alone is an error |
 | `wit/` | external imports: every immediate entry is a WIT source — a `.wit` file, a directory of them, or a `.wasm` component |
 | `bindgen/` | bindings `canon install` materialized from `wit/` (derived; conventionally gitignored) |
 | `deps/` | vendored Canon-package dependencies, `deps/<ns>/<name>@<version>/` — the directory name is the pin |

@@ -189,7 +189,8 @@ pub fn install(project_root: &Path) -> Result<InstallOutcome, InstallError> {
 
 /// Walk up from `start` looking for the nearest project root — a
 /// directory carrying any of the structural project markers: a
-/// `src/main.can` entry point, or a `wit/`, `bindgen/`, or `deps/`
+/// `src/main.can` entry point (or the fullstack pair `src/web.can` +
+/// `src/server.can`), or a `wit/`, `bindgen/`, or `deps/`
 /// tree. Returns `None` if the walk reaches the filesystem root
 /// without finding one. `start` may be a file or a directory.
 ///
@@ -211,11 +212,14 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
 }
 
 /// The structural project-root test: a directory is a project root when
-/// it contains a `src/main.can` entry point or any of the conventional
+/// it contains an entry point (`src/main.can`, or the fullstack pair
+/// `src/web.can` + `src/server.can`) or any of the conventional
 /// project trees (`wit/`, `bindgen/`, `deps/`). Structure is the only
 /// marker — there is no manifest file.
 pub fn is_project_root(dir: &Path) -> bool {
     dir.join("src").join("main.can").is_file()
+        || (dir.join("src").join("web.can").is_file()
+            && dir.join("src").join("server.can").is_file())
         || dir.join("wit").is_dir()
         || dir.join("bindgen").is_dir()
         || dir.join("deps").is_dir()

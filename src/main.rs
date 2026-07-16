@@ -61,17 +61,17 @@ fn print_help() {
     println!();
     println!("Usage: canon <command> [args]");
     println!();
-    println!("A target is either a package directory (containing `src/main.can`),");
-    println!("a workspace directory (one whose immediate subdirectories are");
+    println!("A target is either a package directory (containing `src/main.can`,");
+    println!("or `src/web.can` + `src/server.can` for a fullstack app), a");
+    println!("workspace directory (one whose immediate subdirectories are");
     println!("packages), or a single `.can` file. When omitted, defaults");
     println!("to the current directory.");
     println!();
     println!("Commands:");
     println!("  run [target] [-p name] [--addr <ip:port>] [args...]");
-    println!("                            Compile and run a Canon program.");
-    println!(
-        "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
-    );
+    println!("                            Compile and run a Canon program. HTTP handlers,");
+    println!("                            web apps, and fullstack packages are served on");
+    println!("                            `--addr` (default 127.0.0.1:8080).");
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name] [--fix]");
     println!("                            Check canonical form, sort order, and types.");
@@ -153,11 +153,23 @@ impl BuildSpec {
     }
 }
 
+/// A fullstack package: a browser frontend (`src/web.can`, the Elm
+/// triple) and an HTTP backend (`src/server.can`, `Request => Response`)
+/// in place of `src/main.can`. The two entries share the package's
+/// `src/` tree, so the sibling files they both reference are the
+/// contract between them. `canon run` serves both on one address;
+/// `canon build` writes both artifacts into the package's `build/`.
+struct FullstackSpec {
+    web: BuildSpec,
+    server: BuildSpec,
+}
+
 /// A resolved compile target.
 ///
 /// `canon run|build|check` accept any of:
 ///
-/// - a **package directory** (containing `src/main.can`),
+/// - a **package directory** (containing `src/main.can`, or the
+///   fullstack pair `src/web.can` + `src/server.can`),
 /// - a **single `.can` file** (anonymous single-file package), or
 /// - a **workspace directory** (one that is not itself a package but
 ///   whose immediate subdirectories include packages). Structure is the
@@ -165,6 +177,8 @@ impl BuildSpec {
 enum Target {
     /// One package or one loose file.
     Build(BuildSpec),
+    /// One fullstack package (web + server entries).
+    Fullstack(FullstackSpec),
     /// A workspace and its already-resolved member specs (sorted
     /// alphabetically by label).
     Workspace {
@@ -241,7 +255,7 @@ fn apply_package_filter(target: Target, filter: Option<&str>) -> Target {
         return target;
     };
     match target {
-        Target::Build(_) => {
+        Target::Build(_) | Target::Fullstack(_) => {
             eprintln!("error: `-p {}` is only valid with a workspace target", want);
             process::exit(1);
         }
@@ -286,6 +300,9 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
     if path.join("src").join("main.can").is_file() {
         return Target::Build(resolve_package_spec(path, arg));
     }
+    if let Some(spec) = resolve_fullstack_spec(path, arg) {
+        return Target::Fullstack(spec);
+    }
 
     // Not a package itself: a directory whose immediate subdirectories
     // include packages is a workspace over them.
@@ -297,7 +314,8 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
             arg
         );
         eprintln!(
-            "hint: a package is a directory containing `src/main.can`; \
+            "hint: a package is a directory containing `src/main.can` (or the \
+             fullstack pair `src/web.can` + `src/server.can`); \
              pass a `.can` file directly to compile in single-file mode"
         );
         process::exit(1);
@@ -306,6 +324,51 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
         members,
         label: arg.to_string(),
     }
+}
+
+/// Recognizes a fullstack package: `src/web.can` and `src/server.can`
+/// together, with no `src/main.can` (which takes precedence — inside a
+/// regular package those names are ordinary module files). One of the
+/// pair alone is a hard error rather than a silent fall-through: the
+/// structure is half-declared and the fix is one file away.
+fn resolve_fullstack_spec(pkg_root: &Path, label: &str) -> Option<FullstackSpec> {
+    let web_entry = pkg_root.join("src").join("web.can");
+    let server_entry = pkg_root.join("src").join("server.can");
+    match (web_entry.is_file(), server_entry.is_file()) {
+        (true, true) => {}
+        (false, false) => return None,
+        (has_web, _) => {
+            let (found, missing) = if has_web {
+                ("src/web.can", "src/server.can")
+            } else {
+                ("src/server.can", "src/web.can")
+            };
+            eprintln!(
+                "error: `{}` has `{}` but no `{}`: a fullstack package declares both \
+                 (or a single entry in `src/main.can`)",
+                label, found, missing
+            );
+            process::exit(1);
+        }
+    }
+    // The web bundle carries the package's name (it *is* the app the
+    // browser loads); the server component is `server.wasm` beside it.
+    let pkg = resolve_package_spec(pkg_root, label);
+    let web = BuildSpec {
+        entry: web_entry,
+        output_dir: pkg.output_dir.clone(),
+        output_stem: pkg.name.clone(),
+        label: format!("{} (web)", label),
+        name: pkg.name.clone(),
+    };
+    let server = BuildSpec {
+        entry: server_entry,
+        output_dir: pkg.output_dir,
+        output_stem: "server".to_string(),
+        label: format!("{} (server)", label),
+        name: pkg.name,
+    };
+    Some(FullstackSpec { web, server })
 }
 
 /// Build a `BuildSpec` for a package directory. The package's name is
@@ -746,6 +809,14 @@ fn cmd_check(args: &[String]) {
                 process::exit(1);
             }
         }
+        Target::Fullstack(fs) => {
+            let web_ok = load_fullstack_entry(&fs.web, true, fix).is_some();
+            let server_ok = load_fullstack_entry(&fs.server, false, fix).is_some();
+            if !(web_ok && server_ok) {
+                process::exit(1);
+            }
+            println!("All checks passed.");
+        }
         Target::Workspace { members, label, .. } => {
             println!(
                 "checking workspace `{}` ({} member(s))",
@@ -798,6 +869,58 @@ fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
     true
 }
 
+/// Load + check one fullstack entry, then confirm it declares the world
+/// its filename promises: the web triple for `src/web.can`, the HTTP
+/// entry for `src/server.can`. The per-module checker has already
+/// guaranteed the file holds exactly one world — this pins *which*.
+fn load_fullstack_entry(spec: &BuildSpec, want_web: bool, fix: bool) -> Option<LoadResult> {
+    let mut loaded = load_or_print(spec.entry_str())?;
+    if fix && apply_fixes(&loaded) {
+        loaded = load_or_print(spec.entry_str())?;
+    }
+    let errors = checker::check_loaded(&loaded);
+    if !errors.is_empty() {
+        for err in &errors {
+            print_error(spec.entry_str(), err);
+        }
+        eprintln!("{} error(s) found.", errors.len());
+        return None;
+    }
+    let ok = if want_web {
+        canon::ast::find_web_entry(&loaded.module.items).is_some()
+    } else {
+        has_http_entry(&loaded.module)
+    };
+    if !ok {
+        let want = if want_web {
+            "the web-app triple (a `Model => Html` view with its `Unit => Init` and \
+             `Model * Msg => Update` constructors)"
+        } else {
+            "the HTTP entry (`Request => Response`)"
+        };
+        eprintln!(
+            "error: `{}` must define {} — that is what makes this directory a \
+             fullstack package",
+            spec.entry_str(),
+            want
+        );
+        return None;
+    }
+    Some(loaded)
+}
+
+/// Whether the loaded module's entry is the HTTP one (a free function
+/// returning `Response`, per the entry-point rule in docs/src/spec/functions.md).
+fn has_http_entry(module: &canon::ast::Module) -> bool {
+    module.items.iter().any(|item| match item {
+        Item::Function(func) => {
+            func.receiver.is_none()
+                && canon::ast::entry_world_of(&func.return_ty) == Some(canon::ast::EntryWorld::Http)
+        }
+        _ => false,
+    })
+}
+
 fn cmd_build(args: &[String]) {
     let parsed = parse_target_args(args, false);
     let target = resolve_target(parsed.target_path.as_deref());
@@ -805,6 +928,15 @@ fn cmd_build(args: &[String]) {
     match target {
         Target::Build(spec) => {
             if !build_spec(&spec) {
+                process::exit(1);
+            }
+        }
+        Target::Fullstack(fs) => {
+            let ok = load_fullstack_entry(&fs.web, true, false)
+                .is_some_and(|web| build_loaded(&fs.web, &web))
+                && load_fullstack_entry(&fs.server, false, false)
+                    .is_some_and(|server| build_loaded(&fs.server, &server));
+            if !ok {
                 process::exit(1);
             }
         }
@@ -844,6 +976,13 @@ fn build_spec(spec: &BuildSpec) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
+    build_loaded(spec, &loaded)
+}
+
+/// Writes an already-checked target's artifacts — the tail of
+/// `build_spec`, shared with the fullstack build (which checks entry
+/// shapes itself before writing).
+fn build_loaded(spec: &BuildSpec, loaded: &LoadResult) -> bool {
     let component_bytes = codegen::generate(&loaded.module);
 
     // Web apps get the three-file bundle instead of a `.wasm` + `.wit`
@@ -1196,16 +1335,11 @@ fn parse_binding(source: &str) -> Result<Vec<Item>, CanonError> {
 /// Compiles the target Canon package or file, then either:
 ///
 ///   * runs it as a `wasi:cli/command` (the default), forwarding any
-///     trailing arguments as program arguments; or
-///   * serves it as a `wasi:http/handler` over HTTP when `--addr` is
-///     given. The runtime opens a TCP listener at the given `ip:port`
-///     and dispatches each incoming HTTP/1.1 request to the guest's
-///     `handle` export through `wasmtime-wasi-http`.
-///
-/// Until the codegen learns to emit a `wasi:http/service` world (see
-/// the compilation spec, docs/src/spec/compilation.md), the `--addr` mode will
-/// fail at component-instantiation time — the diagnostic surfaces the
-/// expected exports so users know what's missing.
+///     trailing arguments as program arguments;
+///   * serves it over HTTP when the entry is served rather than run —
+///     a `wasi:http/service` handler, a web-app bundle, or a fullstack
+///     package (both at once, on one address). `--addr` overrides the
+///     default `127.0.0.1:8080`.
 fn cmd_run(args: &[String]) {
     // Peel off `--addr <ip:port>` (or `--addr=<ip:port>`) before the
     // rest of the arg parser, which expects `-p name`, a target path,
@@ -1245,6 +1379,7 @@ fn cmd_run(args: &[String]) {
     let program_args: Vec<&str> = parsed.program_args.iter().map(|s| s.as_str()).collect();
     let spec = match target {
         Target::Build(spec) => spec,
+        Target::Fullstack(fs) => run_fullstack(&fs, addr.as_deref(), &parsed.program_args),
         Target::Workspace { label, members, .. } => {
             eprintln!(
                 "error: `canon run` on workspace `{}` is ambiguous: pick a member",
@@ -1293,13 +1428,7 @@ fn cmd_run(args: &[String]) {
     // `wasi:cli/run` to invoke. Serve them instead: on `--addr` when
     // given, else on a default local address so plain `canon run`
     // does the obvious thing.
-    let is_http = loaded.module.items.iter().any(|item| match item {
-        Item::Function(func) => {
-            func.receiver.is_none()
-                && canon::ast::entry_world_of(&func.return_ty) == Some(canon::ast::EntryWorld::Http)
-        }
-        _ => false,
-    });
+    let is_http = has_http_entry(&loaded.module);
 
     match addr {
         Some(raw) => {
@@ -1307,17 +1436,53 @@ fn cmd_run(args: &[String]) {
                 eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
                 process::exit(1);
             });
-            canon::runtime::serve_component(&component_bytes, bind_addr);
+            canon::runtime::serve_component(&component_bytes, bind_addr, None);
         }
         None if is_http => {
             let bind_addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("static addr");
             eprintln!("HTTP handler detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
-            canon::runtime::serve_component(&component_bytes, bind_addr);
+            canon::runtime::serve_component(&component_bytes, bind_addr, None);
         }
         None => {
             canon::runtime::run_component(&component_bytes, &program_args);
         }
     }
+}
+
+/// `canon run` on a fullstack package: compile both entries, then serve
+/// them from one process on one address. The web bundle answers its own
+/// four paths from memory; every other request dispatches to the server
+/// component — frontend and backend share an origin, so the frontend's
+/// `data-fetch` URLs are relative and no CORS headers are needed.
+fn run_fullstack(fs: &FullstackSpec, addr: Option<&str>, program_args: &[String]) -> ! {
+    if let Some(arg) = program_args.first() {
+        eprintln!(
+            "error: unexpected argument `{}`: a fullstack app takes no program arguments",
+            arg
+        );
+        process::exit(1);
+    }
+    let Some(web) = load_fullstack_entry(&fs.web, true, false) else {
+        process::exit(1);
+    };
+    let Some(server) = load_fullstack_entry(&fs.server, false, false) else {
+        process::exit(1);
+    };
+    let web_bytes = codegen::generate(&web.module);
+    let server_bytes = codegen::generate(&server.module);
+    let bind_addr: std::net::SocketAddr = match addr {
+        Some(raw) => raw.parse().unwrap_or_else(|e| {
+            eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
+            process::exit(1);
+        }),
+        None => "127.0.0.1:8080".parse().expect("static addr"),
+    };
+    if addr.is_none() {
+        eprintln!("fullstack app detected: serving web + server on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+    }
+    let assets = canon::webhost::WebAssets::new(&fs.web.output_stem, web_bytes);
+    canon::runtime::serve_component(&server_bytes, bind_addr, Some(assets));
+    process::exit(0);
 }
 
 fn load_or_exit(file_path: &str) -> LoadResult {

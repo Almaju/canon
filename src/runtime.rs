@@ -361,12 +361,21 @@ fn build_state(args: &[&str]) -> State {
 /// request to the guest's `handle` function via
 /// `wasmtime-wasi-http`'s P3 bridge.
 ///
+/// `web` is the fullstack mode: when a web bundle is given, GET requests
+/// for the paths it owns (`/`, `/index.html`, `/canon-web.js`,
+/// `/<stem>.wasm`) are answered from memory and every other request
+/// dispatches to the guest — frontend and backend on one origin.
+///
 /// This blocks the calling thread until the listener is shut down
 /// (currently never — there's no graceful-shutdown wiring yet; killing
 /// the process is the supported way to stop). Errors during accept /
 /// dispatch are logged to stderr but don't terminate the server; a
 /// fatal bind error is fatal.
-pub fn serve_component(bytes: &[u8], addr: std::net::SocketAddr) {
+pub fn serve_component(
+    bytes: &[u8],
+    addr: std::net::SocketAddr,
+    web: Option<crate::webhost::WebAssets>,
+) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -376,14 +385,18 @@ pub fn serve_component(bytes: &[u8], addr: std::net::SocketAddr) {
         });
 
     runtime.block_on(async move {
-        if let Err(err) = serve_component_async(bytes, addr).await {
+        if let Err(err) = serve_component_async(bytes, addr, web).await {
             eprintln!("error: {err:?}");
             std::process::exit(1);
         }
     });
 }
 
-async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasmtime::Result<()> {
+async fn serve_component_async(
+    bytes: &[u8],
+    addr: std::net::SocketAddr,
+    web: Option<crate::webhost::WebAssets>,
+) -> wasmtime::Result<()> {
     use std::sync::Arc;
     use wasmtime_wasi_http::p3::bindings::ServicePre;
 
@@ -402,6 +415,7 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
         .await
         .map_err(|e| wasmtime::Error::msg(format!("bind {addr}: {e}")))?;
     eprintln!("canon run --addr {addr}: listening on http://{addr}");
+    let web = web.map(Arc::new);
 
     // Accept loop. Each connection gets its own task with its own
     // wasmtime `Store` so guest state is connection-scoped — a panic /
@@ -417,8 +431,9 @@ async fn serve_component_async(bytes: &[u8], addr: std::net::SocketAddr) -> wasm
         };
         let engine = engine.clone();
         let service_pre = service_pre.clone();
+        let web = web.clone();
         tokio::spawn(async move {
-            if let Err(e) = serve_connection(engine, service_pre, socket).await {
+            if let Err(e) = serve_connection(engine, service_pre, socket, web).await {
                 eprintln!("canon run --addr: {peer}: {e:?}");
             }
         });
@@ -432,6 +447,7 @@ async fn serve_connection(
     engine: Engine,
     service_pre: std::sync::Arc<wasmtime_wasi_http::p3::bindings::ServicePre<State>>,
     socket: tokio::net::TcpStream,
+    web: Option<std::sync::Arc<crate::webhost::WebAssets>>,
 ) -> wasmtime::Result<()> {
     use hyper::service::service_fn;
     use std::sync::Arc;
@@ -452,7 +468,19 @@ async fn serve_connection(
     let conn_service = service_fn(move |req: http::Request<hyper::body::Incoming>| {
         let service = service.clone();
         let store = store.clone();
-        async move { dispatch_request(service, store, req).await }
+        let web = web.clone();
+        async move {
+            // Fullstack mode: the web bundle owns its four paths; the
+            // guest never sees them. Everything else is the backend's.
+            if let Some(assets) = &web {
+                if req.method() == http::Method::GET {
+                    if let Some((mime, body)) = assets.get(req.uri().path()) {
+                        return Ok(asset_response(mime, body));
+                    }
+                }
+            }
+            dispatch_request(service, store, req).await
+        }
     });
 
     if let Err(e) = hyper::server::conn::http1::Builder::new()
@@ -541,6 +569,23 @@ async fn dispatch_request(
     let _ = io_fut.await;
 
     Ok(response)
+}
+
+/// A static-asset response for fullstack mode — the web bundle's answer
+/// shaped like the guest's, so hyper serves both through one service.
+fn asset_response(
+    mime: &'static str,
+    body: &[u8],
+) -> http::Response<UnsyncBoxBody<Bytes, ErrorCode>> {
+    use http_body_util::{BodyExt, Full};
+    let body = Full::new(Bytes::copy_from_slice(body))
+        .map_err(|never| match never {})
+        .boxed_unsync();
+    http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_TYPE, mime)
+        .body(body)
+        .expect("static response builder shape is valid")
 }
 
 /// Renders an `error-code` returned by the guest as a `500` response so

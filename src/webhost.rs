@@ -255,6 +255,40 @@ pub fn write_bundle(dir: &Path, stem: &str, wasm: &[u8]) -> std::io::Result<()> 
     Ok(())
 }
 
+/// The in-memory web bundle keyed by request path — the four paths the
+/// frontend owns (`/`, `/index.html`, `/canon-web.js`, `/<stem>.wasm`).
+/// `serve_bundle` answers everything else with a 404; the fullstack
+/// server in `runtime::serve_component` dispatches everything else to
+/// the backend component.
+pub struct WebAssets {
+    html: String,
+    wasm_path: String,
+    wasm: Vec<u8>,
+}
+
+impl WebAssets {
+    pub fn new(stem: &str, wasm: Vec<u8>) -> Self {
+        WebAssets {
+            html: index_html(stem),
+            wasm_path: format!("/{stem}.wasm"),
+            wasm,
+        }
+    }
+
+    /// Resolves a request path to `(mime, body)` when the bundle owns it.
+    pub fn get(&self, path: &str) -> Option<(&'static str, &[u8])> {
+        match path {
+            "/" | "/index.html" => Some(("text/html; charset=utf-8", self.html.as_bytes())),
+            "/canon-web.js" => Some((
+                "application/javascript; charset=utf-8",
+                CANON_WEB_JS.as_bytes(),
+            )),
+            p if p == self.wasm_path => Some(("application/wasm", &self.wasm)),
+            _ => None,
+        }
+    }
+}
+
 /// Serves the in-memory bundle over HTTP/1.1 until the process exits.
 /// Deliberately plain `std::net` + threads — three static files need
 /// neither tokio nor hyper, and keeping this synchronous means `canon
@@ -265,27 +299,18 @@ pub fn serve_bundle(addr: std::net::SocketAddr, stem: &str, wasm: Vec<u8>) -> ! 
         std::process::exit(1);
     });
     eprintln!("canon run: serving web app on http://{addr}");
-    let html = index_html(stem);
-    let wasm_path = format!("/{stem}.wasm");
-    let wasm = std::sync::Arc::new(wasm);
+    let assets = std::sync::Arc::new(WebAssets::new(stem, wasm));
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
-        let html = html.clone();
-        let wasm_path = wasm_path.clone();
-        let wasm = wasm.clone();
+        let assets = assets.clone();
         std::thread::spawn(move || {
-            let _ = serve_one(stream, &html, &wasm_path, &wasm);
+            let _ = serve_one(stream, &assets);
         });
     }
     unreachable!("TcpListener::incoming never returns None")
 }
 
-fn serve_one(
-    mut stream: TcpStream,
-    html: &str,
-    wasm_path: &str,
-    wasm: &[u8],
-) -> std::io::Result<()> {
+fn serve_one(mut stream: TcpStream, assets: &WebAssets) -> std::io::Result<()> {
     // Read up to the end of the request head; the request body (none
     // expected for GETs) is ignored.
     let mut buf = Vec::new();
@@ -308,18 +333,9 @@ fn serve_one(
         .unwrap_or("/");
     let path = path.split('?').next().unwrap_or(path);
 
-    let (status, mime, body): (&str, &str, &[u8]) = if path == "/" || path == "/index.html" {
-        ("200 OK", "text/html; charset=utf-8", html.as_bytes())
-    } else if path == "/canon-web.js" {
-        (
-            "200 OK",
-            "application/javascript; charset=utf-8",
-            CANON_WEB_JS.as_bytes(),
-        )
-    } else if path == wasm_path {
-        ("200 OK", "application/wasm", wasm)
-    } else {
-        ("404 Not Found", "text/plain; charset=utf-8", b"not found")
+    let (status, mime, body): (&str, &str, &[u8]) = match assets.get(path) {
+        Some((mime, body)) => ("200 OK", mime, body),
+        None => ("404 Not Found", "text/plain; charset=utf-8", b"not found"),
     };
     stream.write_all(
         format!(

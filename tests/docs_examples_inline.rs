@@ -45,10 +45,10 @@ fn example_sources_are_inlined_verbatim() {
     );
     assert_inlined(
         "docs/src/examples/fullstack.md",
-        "examples/todo-fullstack/web.can",
+        "examples/todo-fullstack/src/web.can",
     );
     assert_inlined(
         "docs/src/examples/fullstack.md",
-        "examples/todo-fullstack/server.can",
+        "examples/todo-fullstack/src/server.can",
     );
 }

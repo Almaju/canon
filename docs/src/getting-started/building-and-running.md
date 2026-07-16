@@ -1,10 +1,12 @@
 # The canon CLI
 
 Canon commands operate on a **target**: a package directory (one
-containing `src/main.can`), a workspace directory (one whose immediate
-subdirectories are packages), or a single `.can` file. When omitted,
-the target is the current directory. There is no manifest — the
-directory structure is the whole declaration:
+containing `src/main.can` — or `src/web.can` + `src/server.can` for a
+[fullstack app](../reference/web-target.md#fullstack-packages)), a
+workspace directory (one whose immediate subdirectories are packages),
+or a single `.can` file. When omitted, the target is the current
+directory. There is no manifest — the directory structure is the whole
+declaration:
 
 ```text
 my-app/
@@ -31,7 +33,9 @@ canon build                     # compile only: build/<name>.wasm + .wit
 
 `canon run` compiles to a WebAssembly component and executes it on the
 embedded wasmtime. A program whose entry is `Request => Response` is
-**served** instead of run once:
+**served** instead of run once, as are web apps (the Elm triple) and
+fullstack packages — the latter serve frontend and backend from one
+process on one address:
 
 ```sh
 canon run                       # serves on 127.0.0.1:8080

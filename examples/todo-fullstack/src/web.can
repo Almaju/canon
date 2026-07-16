@@ -25,7 +25,7 @@ Unit => Init {
 }
 
 Unit => LoadButton {
-    Attr("data-fetch=\"http://127.0.0.1:8090/todos\" data-fetch-msg=\"Load:\"")
+    Attr("data-fetch=\"/todos\" data-fetch-msg=\"Load:\"")
         -> ElAttr("Load todos from the server" * Tag("button"))
 }
 

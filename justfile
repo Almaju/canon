@@ -62,7 +62,8 @@ test-can: build
 # timeouts are expected and pass.
 #
 # `examples/` is a workspace whose members are individual packages under
-# `examples/<name>/` (a package is any directory with `src/main.can`).
+# `examples/<name>/` (a package is any directory with `src/main.can`,
+# or `src/web.can` + `src/server.can` for a fullstack app).
 # Each member is built and run with a 5-second timeout
 # so long-running examples (servers, fetch loops) don't block the smoke
 # check. Members that fail the checker are reported as skipped — they're
@@ -72,7 +73,7 @@ examples: build
     #!/usr/bin/env sh
     pass=0; fail=0; skip=0
     for d in examples/*/; do
-        [ -f "$d/src/main.can" ] || continue
+        [ -f "$d/src/main.can" ] || [ -f "$d/src/server.can" ] || continue
         label=$(basename "$d")
         printf "%-20s" "$label"
         # Skip examples that do not pass the checker (stdlib gap, etc.)
@@ -121,8 +122,8 @@ examples: build
 example name:
     #!/usr/bin/env sh
     set -e
-    if [ ! -f "examples/{{ name }}/src/main.can" ]; then
-        echo "No example package at examples/{{ name }}/ (need a src/main.can there)" >&2
+    if [ ! -f "examples/{{ name }}/src/main.can" ] && [ ! -f "examples/{{ name }}/src/server.can" ]; then
+        echo "No example package at examples/{{ name }}/ (need a src/main.can or the fullstack pair there)" >&2
         exit 1
     fi
     exec cargo run --quiet -- run "examples/{{ name }}"
