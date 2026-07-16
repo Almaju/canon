@@ -1,12 +1,14 @@
 //! End-to-end integration test for fullstack packages.
 //!
-//! A directory with `src/web.can` (the Elm triple) and `src/server.can`
-//! (`Request => Response`) in place of `src/main.can` is a fullstack
-//! package: `canon run <dir> --addr` compiles both entries and serves
-//! them from one process on one address — the web bundle owns `/`,
-//! `/index.html`, `/canon-web.js`, and `/<name>.wasm`; every other
-//! request dispatches to the server component. This test drives the
-//! whole pipeline over real TCP and pins that routing split.
+//! A package whose `src/` declares the Elm triple in one file and a
+//! `Request => Response` handler in another is a fullstack package —
+//! entry files are discovered by *shape*, so the fixtures here use
+//! arbitrary filenames on purpose. `canon run <dir> --addr` compiles
+//! both entries and serves them from one process on one address: the
+//! web bundle owns `/`, `/index.html`, `/canon-web.js`, and
+//! `/<name>.wasm`; every other request dispatches to the server
+//! component. This test drives the whole pipeline over real TCP and
+//! pins that routing split.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -24,7 +26,7 @@ fn fullstack_serves_bundle_and_backend_on_one_address() {
     let src = workdir.join("src");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(
-        src.join("web.can"),
+        src.join("browser-side.can"),
         r#"Init = Model
 
 Model = String
@@ -48,7 +50,7 @@ Model * String => Update {
     )
     .unwrap();
     std::fs::write(
-        src.join("server.can"),
+        src.join("http-side.can"),
         r#"Request => Response {
     Body("api: ok") -> Response(Headers() * Status(200))
 }
@@ -134,6 +136,43 @@ Model * String => Update {
 
     let _ = child.kill();
     let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
+/// Two files declaring the same world is not a package shape — the
+/// resolver must refuse with the file list rather than pick one.
+#[test]
+fn conflicting_entries_are_an_error() {
+    let workdir =
+        std::env::temp_dir().join(format!("canon_fullstack_conflict_{}", std::process::id()));
+    let src = workdir.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    for name in ["first.can", "second.can"] {
+        std::fs::write(
+            src.join(name),
+            "Unit => Program {\n    \"hi\" -> Print\n}\n",
+        )
+        .unwrap();
+    }
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let out = Command::new(&canon_bin)
+        .arg("check")
+        .arg(&workdir)
+        .output()
+        .expect("failed to spawn `canon check`");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "conflicting entries should fail, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("conflicting entries")
+            && stderr.contains("first.can")
+            && stderr.contains("second.can"),
+        "expected both files named in the error, got:\n{stderr}"
+    );
+
     let _ = std::fs::remove_dir_all(&workdir);
 }
 

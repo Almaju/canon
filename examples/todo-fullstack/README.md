@@ -14,12 +14,14 @@ remove them, then press **“Load todos from the server”** — the button
 fetches `/todos` from the Canon backend *on the same origin* and the
 frontend decodes it with the same shared code that produced it.
 
-The directory is a **fullstack package**: `src/web.can` +
-`src/server.can` in place of `src/main.can`. `canon run` compiles both
-and serves them from one process — the web bundle owns `/`,
-`/index.html`, `/canon-web.js`, and the app's `.wasm`; every other
-request dispatches to the server component. `canon build` writes both
-artifacts into `build/`.
+The directory is a **fullstack package** by shape: `src/web.can`
+declares the Elm triple and `src/server.can` declares
+`Request => Response` — the names are just descriptive, entry files
+are discovered by the world-shaped declarations they contain. `canon
+run` compiles both and serves them from one process — the web bundle
+owns `/`, `/index.html`, `/canon-web.js`, and the app's `.wasm`; every
+other request dispatches to the server component. `canon build` writes
+both artifacts into `build/`.
 
 ## Layout
 

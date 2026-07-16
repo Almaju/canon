@@ -95,13 +95,14 @@ example.
 
 ## Fullstack packages
 
-A package with `src/web.can` + `src/server.can` in place of
-`src/main.can` is a **fullstack package** ([Modules &
-Packages](../spec/modules.md#no-manifest)): the web triple in
-`web.can`, the `Request => Response` handler in `server.can`, shared
-sibling files as the contract between them. Each entry still compiles
-to its own artifact -- a component exports exactly one world -- but
-`canon run` serves both from one process on one address:
+A package whose `src/` declares the web triple in one file and a
+`Request => Response` handler in another is a **fullstack package**
+([Modules & Packages](../spec/modules.md#no-manifest)). Like the
+entries themselves, the entry *files* are anonymous -- discovered by
+shape, no reserved filename -- and the shared sibling files are the
+contract between the two sides. Each entry still compiles to its own
+artifact -- a component exports exactly one world -- but `canon run`
+serves both from one process on one address:
 
 ```sh
 canon run examples/todo-fullstack     # http://127.0.0.1:8080
@@ -111,7 +112,8 @@ The bundle owns `/`, `/index.html`, `/canon-web.js`, and the app's
 `.wasm`; every other request dispatches to the server component.
 Frontend and backend share an origin, so a `data-fetch` URL is
 relative (`data-fetch="/todos"`) and CORS never comes up. `canon
-build` writes the bundle and `server.{wasm,wit}` into one `build/`.
+build` writes the bundle (named after the package) and the server's
+`.wasm`/`.wit` (named after its entry file) into one `build/`.
 
 ## Current limits
 

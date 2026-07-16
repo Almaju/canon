@@ -17,15 +17,17 @@ frontend decodes it with the *same shared code* that produced it.
 
 ## A fullstack package
 
-The directory declares itself, structurally: `src/web.can` +
-`src/server.can` in place of `src/main.can` make it a **fullstack
-package**. Each entry is still one program exporting one world -- the
-frontend a browser bundle, the backend a `wasi:http/service`
-component -- but `canon run` compiles both and serves them from one
-process: the web bundle owns `/`, `/index.html`, `/canon-web.js`, and
-the app's `.wasm`; every other request dispatches to the server. One
-origin, so the frontend's fetch URL is relative and there is no CORS
-to configure. `canon build` writes both artifacts into `build/`.
+The directory declares itself by shape: one `src/` file declares the
+Elm triple, another declares `Request => Response`, and that makes it
+a **fullstack package** -- no reserved filenames (`web.can` and
+`server.can` here are just descriptive), no flags, no config. Each
+entry is still one program exporting one world -- the frontend a
+browser bundle, the backend a `wasi:http/service` component -- but
+`canon run` compiles both and serves them from one process: the web
+bundle owns `/`, `/index.html`, `/canon-web.js`, and the app's
+`.wasm`; every other request dispatches to the server. One origin, so
+the frontend's fetch URL is relative and there is no CORS to
+configure. `canon build` writes both artifacts into `build/`.
 
 The **frontend** is the Elm triple over `Todos`:
 

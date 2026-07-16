@@ -428,7 +428,8 @@ struct LoadCtx {
     local_sources: Vec<LoadedSource>,
     /// Root of the project that contains the entry file, identified by
     /// the nearest ancestor directory carrying a structural project
-    /// marker (`src/main.can`, `wit/`, `bindgen/`, or `deps/`). `None`
+    /// marker (a `src/` tree of `.can` files, `wit/`, `bindgen/`, or
+    /// `deps/`). `None`
     /// when the entry is a loose `.can` file outside any project (in that
     /// case references resolve via the local tree and bundled packages
     /// only).
@@ -457,8 +458,8 @@ struct LoadCtx {
 }
 
 /// Walk up from `start` looking for the nearest project root — a
-/// directory carrying one of the structural markers: a `src/main.can`
-/// entry point, or a `wit/`, `bindgen/`, or `deps/` tree (see
+/// directory carrying one of the structural markers: a `src/` tree of
+/// `.can` files, or a `wit/`, `bindgen/`, or `deps/` tree (see
 /// `install::is_project_root`; there is no manifest file). Returns
 /// that directory, or `None` if the walk reaches the filesystem root
 /// without finding one. Used to anchor the `bindgen/` lookup so a

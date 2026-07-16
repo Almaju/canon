@@ -48,11 +48,13 @@ entry:
 | `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app (wasm + generated JS host) |
 
 Exactly one arrow may return a world type — helpers return ordinary
-values, so good layering is compiler-enforced. The
+values, so good layering is compiler-enforced. Entry *files* are found
+the same way: no filename is special — `canon` scans `src/` for the
+world-shaped declaration. The
 [fullstack example](../examples/fullstack.md) runs one shared codebase
-on both sides of the wire this way: `src/web.can` + `src/server.can`
-in place of `src/main.can` make a fullstack package, and one
-`canon run` serves both entries on one address. Two details worth knowing early:
+on both sides of the wire this way: one file declares the web triple,
+another the HTTP entry, and one `canon run` serves both on one
+address. Two details worth knowing early:
 `Args` (`= List<String>`) is your argv, handed to the CLI entry the way
 `Request` is handed to the HTTP handler; and a fallible entry is just a
 `Result` return, so `?` works at the top level too.
