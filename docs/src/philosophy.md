@@ -29,7 +29,10 @@ mean anything. Canon deletes the noise at the root:
 - **Every call has one spelling.** `B(a)`, `a.B()`, and `a -> B` would
   be three ways to write one call, so the formatter rewrites them all to
   the canonical form: values flow through pipes, literals are born in
-  the parens.
+  the parens — except an FFI binding call (`request.path()`), whose
+  camelCase name has no PascalCase constructor to pipe through, so the
+  dot survives as the one spelling for *that* call. See
+  [Expressions and Dispatch](./spec/expressions.md).
 - **One construct per job.** There is no `if`/`else` *and* `match` —
   there is dispatch. No `while` *and* `for` *and* recursion — there are
   collection operations and recursion.
