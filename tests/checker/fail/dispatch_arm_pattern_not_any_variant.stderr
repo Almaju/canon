@@ -1,0 +1,1 @@
+error[tests/checker/fail/dispatch_arm_pattern_not_any_variant.can:3:11]: pattern `Int` is not a variant of `Bool`
