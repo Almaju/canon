@@ -650,10 +650,13 @@ pub const GAP_HTTP_WORLD_IMPORTS: CodegenGap = CodegenGap {
     title: "extern imports in the `wasi:http/service` world",
 };
 
-/// `Stream<T>` lowering and streaming response bodies. Codegen drops imports
-/// whose signatures mention `Stream<T>`, so such programs fail to link.
+/// `Stream<T>` outside the stdlib combinators. The `canon:builtins/stream`
+/// surface compiles guest-side (eager, list-backed); any *other* signature
+/// mentioning `Stream<T>` — a binding to a real WIT `stream<T>`, or a user
+/// function taking or returning one — has no lowering, and streaming HTTP
+/// response bodies stay buffered.
 pub const GAP_STREAM: CodegenGap = CodegenGap {
-    title: "`Stream<T>` lowering and streaming response bodies",
+    title: "`Stream<T>` outside the stdlib combinators, and streaming response bodies",
 };
 
 /// Every codegen gap the checker rejects, in the same order as the doc page.
@@ -699,6 +702,20 @@ pub fn codegen_gap_errors(
     for item in &module.items {
         let Item::Function(func) = item else { continue };
         if !reachable.contains(&decl_key(func)) {
+            continue;
+        }
+        // Synthetic builtin interfaces (the concurrency and stream
+        // combinators) compile inline, guest-side — `compile_parallel` /
+        // `compile_race` and `compile_builtin_method`'s stream arms. Their
+        // generic signatures (`Stream<T>`, `Future<List<T>>`, `List<T>`)
+        // never reach a real lowering, so the per-declaration gap scans
+        // below don't apply. A `Stream<T>` reaching some *other* lowering
+        // is still caught — that declaration isn't a synthetic builtin.
+        if func
+            .extern_wasm
+            .as_ref()
+            .is_some_and(|e| crate::ast::is_synthetic_builtin(&e.path))
+        {
             continue;
         }
         if sig_mentions(func, "Stream") {
@@ -2786,9 +2803,7 @@ fn effective_call_arity(args: &[Expr]) -> usize {
 ///
 /// `Stream<T>` is **not** peeled. A function returning `Stream<T>` is
 /// producing a stream value that downstream combinators (`map`, `take`,
-/// `concat`, …) operate on directly. Stream consumption (auto-iteration)
-/// is handled at call sites via `.each` / `.next` recognition in
-/// `async_analysis::expr_has_async_trigger`, not by type-peel here.
+/// `concat`, …) operate on directly.
 fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
     match ty {
         TypeExpr::Named { name, generics, .. } => {

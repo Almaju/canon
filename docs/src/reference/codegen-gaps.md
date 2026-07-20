@@ -40,14 +40,17 @@ literal with interpolation holes loads the `canon:builtins/json` bridge, so
 it trips this too. HTML and format-string interpolation lower without a
 bridge and work in handlers.
 
-## `Stream<T>` lowering and streaming response bodies
+## `Stream<T>` outside the stdlib combinators, and streaming response bodies
 
-The stdlib combinator surface and the checker support `Stream<T>` as a type
-expression, but codegen drops imports whose signatures mention it, so any
-program reaching a `Stream`-shaped declaration is rejected. The enabling
-move is routing Stream-using programs through
-`wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder`
-type section.
+The stdlib combinator surface (`streamOf`, `Mapped`, `filter`, `take`,
+`Joined`, `toList`, `toString`) compiles and runs: a `Stream<T>` is an eager,
+list-backed value, so those chains lower to list loops guest-side. `Stream<T>`
+reaching any *other* lowering is still rejected — a hand-written binding to a
+real WIT `stream<T>` import, or a user function taking or returning one — and
+streaming HTTP response bodies stay buffered (the runtime reads the whole
+body). The enabling move for both is routing stream-carrying interfaces
+through `wit_component::ComponentEncoder` instead of the hand-rolled
+`wasm-encoder` type section.
 
 ## HTTP handler request headers and body
 

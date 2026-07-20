@@ -923,7 +923,6 @@ const UNDISCOVERABLE_METHODS: &[&str] = &[
     "concat",
     "contains",
     "div",
-    "empty",
     "eq",
     "first",
     "get",

@@ -35,13 +35,12 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         let Some((component_ns, core_ns, fn_name)) = parse_extern_path(&ext.path) else {
             continue;
         };
-        // `canon:builtins/concurrent` is a *synthetic* interface — the
-        // codegen recognises `parallel(…)` and `race(…)` as built-in
-        // combinators and emits the multi-subtask wait sequence inline
-        // (see `compile_parallel` / `compile_race`). It has no host
-        // implementation; skipping it from the import collection prevents
-        // the linker from looking for one.
-        if component_ns.starts_with("canon:builtins/concurrent") {
+        // Synthetic interfaces (concurrency and stream combinators) are
+        // compiled inline, guest-side — see `compile_parallel` /
+        // `compile_race` and `compile_builtin_method`'s stream arms.
+        // They have no host implementation; skipping them from the
+        // import collection prevents the linker from looking for one.
+        if crate::ast::is_synthetic_builtin(&component_ns) {
             continue;
         }
 

@@ -6,34 +6,18 @@
 //!   1. It is declared `extern Wasm.async("…")`.
 //!   2. Its body uses an `Expr::Await` (inserted by `auto_await::transform`
 //!      whenever a `Future<T>` is consumed where `T` is expected).
-//!   3. Its body iterates a `Stream<T>` via `.each(…)` or `.next()`.
-//!   4. It transitively calls a function that is suspending.
+//!   3. It transitively calls a function that is suspending.
 //!
 //! The set is computed bottom-up by a textbook worklist fixpoint: seed with
-//! the direct triggers (1–3), then propagate to callers until stable.
+//! the direct triggers (1–2), then propagate to callers until stable.
 //!
-//! The output is keyed by `(receiver_type, function_name)` — the same key
-//! the codegen uses to look up `FuncInfo` — so the WASM emitter can ask
-//! "is this function async?" in O(1) when deciding whether to lift it as
-//! `async` in the component world.
-//!
-//! This module is **target-agnostic**: it only walks the AST. The codegen
-//! consumes the resulting `AsyncSet` and acts on it.
-//!
-//! # Status
-//!
-//! The fixpoint and propagation are wired up. The `AsyncSet` is plumbed
-//! through to `component::wrap` and surfaced in the emitted WIT (via
-//! `generate_wit`). The component wrapper now also lowers each
-//! `extern Wasm.async` import with `CanonicalOption::Async` and declares
-//! the corresponding WIT-level function type as `async func(…)`.
-//!
-//! What's *not* yet done: emitting the async **call** sequence inside
-//! compiled function bodies (`Expr::Await` lowering — the guest-side
-//! subtask handle and `task.wait`). For now async externs are skipped
-//! from the func-table so call sites fall through to the no-op path,
-//! which keeps the emitted core wasm well-typed against the async-lower
-//! core signature.
+//! This module is **target-agnostic**: it only walks the AST. The binary
+//! itself doesn't need the set — `component::wrap` keys every per-import
+//! async decision on `ExternImport::is_async`, and `run` is always lifted
+//! async-stackful (see `emit_async_call` / `compile_parallel` /
+//! `compile_race` for the guest-side call sequences). The set's one
+//! consumer is `generate_wit`, which surfaces it as the async-inference
+//! summary in the emitted `.wit`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -135,7 +119,7 @@ fn is_direct_trigger(func: &FunctionDef) -> bool {
             return true;
         }
     }
-    // (2) body contains Expr::Await, or (3) body iterates a Stream.
+    // (2) body contains Expr::Await.
     body_has_async_trigger(&func.body)
 }
 
@@ -146,28 +130,7 @@ fn body_has_async_trigger(block: &Block) -> bool {
 fn expr_has_async_trigger(expr: &Expr) -> bool {
     match expr {
         Expr::Await { .. } => true,
-        // `.each(lambda)` and `.next()` on a `Stream<T>` are async by
-        // construction. We don't yet have a typed receiver here at this
-        // analysis layer, so we only treat them as async when the method
-        // name matches and there's at least one arg (for `.each`) or none
-        // (for `.next`). This is conservative — a same-named method on a
-        // non-Stream type would also be flagged — but at the AST level
-        // it's the cleanest cut. The checker is responsible for ensuring
-        // the receiver really is a `Stream<T>`; if it isn't, this flag is
-        // harmless: the function is still correctly typed and the only
-        // consequence is that it gets lifted as `async` in the WIT world.
-        Expr::MethodCall {
-            receiver,
-            method,
-            args,
-            ..
-        } => {
-            if ((method.name == "each" && args.len() == 1)
-                || (method.name == "next" && args.is_empty()))
-                && receiver_is_stream(receiver)
-            {
-                return true;
-            }
+        Expr::MethodCall { receiver, args, .. } => {
             expr_has_async_trigger(receiver) || args.iter().any(expr_has_async_trigger)
         }
         Expr::Constructor { args, .. } => args.iter().any(expr_has_async_trigger),
@@ -188,20 +151,6 @@ fn expr_has_async_trigger(expr: &Expr) -> bool {
         | Expr::JsonLit { .. }
         | Expr::HtmlLit { .. }
         | Expr::FormatLit { .. } => false,
-    }
-}
-
-/// Tentative AST-level guess at whether a receiver expression is a
-/// `Stream<T>`. Without full type inference we can only spot the obvious
-/// cases (an identifier whose name is literally `Stream`, or a constructor
-/// `Stream(…)`). This is sufficient as a *trigger* — anything that
-/// transitively calls such a function will be caught by the call-graph
-/// propagation step.
-fn receiver_is_stream(expr: &Expr) -> bool {
-    match expr {
-        Expr::Ident(id) => id.name == "Stream",
-        Expr::Constructor { name, .. } => name.name == "Stream",
-        _ => false,
     }
 }
 

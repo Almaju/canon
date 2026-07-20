@@ -1,0 +1,9 @@
+Unit => Program {
+    List(1 * 2 * 3 * 4)
+        .streamOf()
+        .take(3)
+        .filter((Int) => Bool { Int -> Le(2) })
+        .toList()
+        -> Length
+        -> Print
+}
