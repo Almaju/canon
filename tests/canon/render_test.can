@@ -6,6 +6,10 @@ FloatCarriesRoundingIntoWhole = TestResult
 
 FloatKeepsLeadingFractionZeros = TestResult
 
+FloatMagnitudeClampsAboveI64Max = TestResult
+
+FloatMagnitudeClampsBelowNegI64Max = TestResult
+
 FloatRendersFraction = TestResult
 
 FloatRendersInf = TestResult
@@ -53,6 +57,20 @@ Unit => FloatCarriesRoundingIntoWhole {
 Unit => FloatKeepsLeadingFractionZeros {
     String(0.05)
         -> Eq("0.05")
+        -> TestResult
+}
+
+Unit => FloatMagnitudeClampsAboveI64Max {
+    String(100000000000000000000.0)
+        -> Eq("9223372036854775807")
+        -> TestResult
+}
+
+Unit => FloatMagnitudeClampsBelowNegI64Max {
+    0.0
+        -> Difference(100000000000000000000.0)
+        -> String
+        -> Eq("-9223372036854775807")
         -> TestResult
 }
 
