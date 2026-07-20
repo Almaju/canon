@@ -48,6 +48,47 @@ is the only root doc, alongside `README.md` and the standard community-health
 files. Add new documentation as a page under `docs/src/` (and a route in
 `docs/src/main.can`) — never a new root `*.md`.
 
+## Direction
+
+What Canon is becoming — the test every change must pass. When work drifts
+from this section, say so; when this section itself seems wrong, challenge it
+in an issue rather than route around it.
+
+- **One shape per program.** Wherever a choice is discretionary, remove the
+  concept or let the compiler decide. Two programs that do the same thing look
+  the same; diffs are purely semantic.
+- **Built for the agent era.** Most Canon code will be written by machines and
+  reviewed by humans. Canonical form is what makes that review about meaning
+  instead of style — the language optimizes for the reader who didn't write it.
+- **The component model is the platform.** Canon emits WebAssembly components
+  directly; WIT is the FFI, packaging, and deployment story. No bespoke
+  runtime, no second target.
+- **Accepted = implemented.** A program the checker accepts always compiles
+  and runs. Gaps are checker errors, never surprises downstream.
+- **Small enough to hold in your head.** The spec stays readable in one
+  sitting. A feature that can be stdlib Canon never becomes a primitive.
+
+Non-goals — reject work that pulls toward these, whoever proposes it:
+
+- Ergonomics by accretion: sugar, options, a second spelling for anything.
+- Configurability: no flags, no styles, no dialects, no project config files.
+- Ecosystem sprawl: one stdlib, one compiler, one canonical form.
+
+## Merge lanes
+
+CI (`just ci`: fmt + clippy + the full test suite and goldens) is the
+correctness gate; human review is only for what CI can't see — design.
+
+- **Auto-merge** — the PR executes a plan the user approved in-session, adds
+  no new language concept, dependency, or doc page, and touches neither
+  `docs/src/spec/` nor this file. Open it with auto-merge enabled; green CI
+  lands it.
+- **Review** — anything crossing one of those lines. Request review and state
+  in the PR body which line was crossed and why it earns its place.
+
+Docs are part of a change's definition of done: update affected pages in the
+same PR; never open standalone docs-sync PRs.
+
 ## Repository layout
 
 | Path | Description |
