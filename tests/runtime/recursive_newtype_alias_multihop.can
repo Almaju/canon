@@ -1,0 +1,26 @@
+A = B
+
+B = C
+
+C = D + E
+
+D = Unit
+
+E = Unit
+
+A => Reported {
+    A.C -> (
+        * D => Reported { "got D" -> Print }
+        * E => Reported { "got E" -> Print }
+    )
+}
+
+Reported = Unit
+
+Unit => Program {
+    D()
+        -> C
+        -> B
+        -> A
+        -> Reported
+}

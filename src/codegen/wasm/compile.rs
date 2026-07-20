@@ -1121,15 +1121,29 @@ impl<'m> WasmGen<'m> {
                 // newtype like `Link = Next` (`Link.Next`) fell through to
                 // `drop_value` below, dropping the pointer and desyncing
                 // the stack.
+                //
+                // The checker accepts this projection through the *whole*
+                // alias chain, not just one hop (`method_known_via_aliases`:
+                // `Cleared = Todos = String` makes `Cleared.String` valid),
+                // so codegen has to walk it the same way rather than only
+                // matching the receiver's immediate alias target.
                 if let Ty::NamedPtr(name) = &recv_ty {
-                    if let Some(TypeExpr::Named {
-                        name: inner,
-                        generics,
-                        ..
-                    }) = self.type_defs.get(name)
-                    {
-                        if generics.is_empty() && *inner == field.name {
-                            return self.resolve_repr(inner);
+                    let mut current = name.as_str();
+                    let mut depth = 0;
+                    while depth < 20 {
+                        match self.type_defs.get(current) {
+                            Some(TypeExpr::Named {
+                                name: inner,
+                                generics,
+                                ..
+                            }) if generics.is_empty() => {
+                                if *inner == field.name {
+                                    return self.resolve_repr(inner);
+                                }
+                                current = inner.as_str();
+                                depth += 1;
+                            }
+                            _ => break,
                         }
                     }
                 }
