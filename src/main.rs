@@ -61,17 +61,17 @@ fn print_help() {
     println!();
     println!("Usage: canon <command> [args]");
     println!();
-    println!("A target is either a package directory (containing `src/main.can`),");
+    println!("A target is either a package directory (a `src/` tree of `.can`");
+    println!("files; entry files are found by shape, no filename is special),");
     println!("a workspace directory (one whose immediate subdirectories are");
     println!("packages), or a single `.can` file. When omitted, defaults");
     println!("to the current directory.");
     println!();
     println!("Commands:");
     println!("  run [target] [-p name] [--addr <ip:port>] [args...]");
-    println!("                            Compile and run a Canon program.");
-    println!(
-        "                            With `--addr`, serves a `wasi:http/handler` program over HTTP."
-    );
+    println!("                            Compile and run a Canon program. HTTP handlers,");
+    println!("                            web apps, and fullstack packages are served on");
+    println!("                            `--addr` (default 127.0.0.1:8080).");
     println!("  build [target] [-p name]  Compile to a WASM component (.wasm)");
     println!("  check [target] [-p name] [--fix]");
     println!("                            Check canonical form, sort order, and types.");
@@ -126,8 +126,9 @@ fn read_source(file_path: &str) -> String {
     }
 }
 
-/// A single buildable compilation target: a package (a directory with
-/// `src/main.can`) or a loose `.can` file in single-file mode.
+/// A single buildable compilation target: a package (a directory whose
+/// `src/` tree holds the entry file the shape scan selected) or a loose
+/// `.can` file in single-file mode.
 struct BuildSpec {
     /// Entry `.can` file the loader will read.
     entry: PathBuf,
@@ -153,11 +154,23 @@ impl BuildSpec {
     }
 }
 
+/// A fullstack package: a browser frontend (the Elm triple) and an HTTP
+/// backend (`Request => Response`) declared in two entry files of one
+/// `src/` tree, so the sibling files both reference are the contract
+/// between them. `canon run` serves both on one address; `canon build`
+/// writes both artifacts into the package's `build/`.
+struct FullstackSpec {
+    web: BuildSpec,
+    server: BuildSpec,
+    label: String,
+}
+
 /// A resolved compile target.
 ///
 /// `canon run|build|check` accept any of:
 ///
-/// - a **package directory** (containing `src/main.can`),
+/// - a **package directory** (one with a `src/` tree of `.can` files;
+///   its entry files are discovered by shape, see `scan_src_entries`),
 /// - a **single `.can` file** (anonymous single-file package), or
 /// - a **workspace directory** (one that is not itself a package but
 ///   whose immediate subdirectories include packages). Structure is the
@@ -165,12 +178,33 @@ impl BuildSpec {
 enum Target {
     /// One package or one loose file.
     Build(BuildSpec),
-    /// A workspace and its already-resolved member specs (sorted
-    /// alphabetically by label).
-    Workspace {
-        members: Vec<BuildSpec>,
-        label: String,
-    },
+    /// One fullstack package (web + server entries).
+    Fullstack(FullstackSpec),
+    /// A workspace and its already-resolved members (sorted
+    /// alphabetically by label; never nested workspaces).
+    Workspace { members: Vec<Target>, label: String },
+}
+
+impl Target {
+    /// The package name `-p` matches against. Empty for file-mode
+    /// targets and workspaces.
+    fn name(&self) -> &str {
+        match self {
+            Target::Build(spec) => &spec.name,
+            Target::Fullstack(fs) => &fs.web.name,
+            Target::Workspace { .. } => "",
+        }
+    }
+
+    /// The display label (the path the user typed, or the member's
+    /// path within a workspace).
+    fn label(&self) -> &str {
+        match self {
+            Target::Build(spec) => &spec.label,
+            Target::Fullstack(fs) => &fs.label,
+            Target::Workspace { label, .. } => label,
+        }
+    }
 }
 
 /// Parsed command-line args for the package-aware commands
@@ -241,19 +275,20 @@ fn apply_package_filter(target: Target, filter: Option<&str>) -> Target {
         return target;
     };
     match target {
-        Target::Build(_) => {
+        Target::Build(_) | Target::Fullstack(_) => {
             eprintln!("error: `-p {}` is only valid with a workspace target", want);
             process::exit(1);
         }
         Target::Workspace { members, label } => {
             // A member's name is its directory name.
-            let matched: Vec<BuildSpec> = members.into_iter().filter(|s| s.name == want).collect();
+            let mut matched: Vec<Target> =
+                members.into_iter().filter(|m| m.name() == want).collect();
             match matched.len() {
                 0 => {
                     eprintln!("error: no member `{}` in workspace `{}`", want, label);
                     process::exit(1);
                 }
-                1 => Target::Build(matched.into_iter().next().unwrap()),
+                1 => matched.remove(0),
                 n => {
                     eprintln!(
                         "error: package name `{}` matched {} members of workspace `{}`",
@@ -283,8 +318,8 @@ fn resolve_target(path_arg: Option<&str>) -> Target {
 }
 
 fn resolve_dir_target(path: &Path, arg: &str) -> Target {
-    if path.join("src").join("main.can").is_file() {
-        return Target::Build(resolve_package_spec(path, arg));
+    if canon::install::has_can_file(&path.join("src")) {
+        return resolve_src_target(path, arg);
     }
 
     // Not a package itself: a directory whose immediate subdirectories
@@ -292,12 +327,12 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
     let members = resolve_workspace_members(path, arg);
     if members.is_empty() {
         eprintln!(
-            "error: `{}` is not a Canon package (no `src/main.can`) and none of \
-             its subdirectories is one",
+            "error: `{}` is not a Canon package (no `src/` tree of `.can` files) \
+             and none of its subdirectories is one",
             arg
         );
         eprintln!(
-            "hint: a package is a directory containing `src/main.can`; \
+            "hint: a package is a directory with `.can` files under `src/`; \
              pass a `.can` file directly to compile in single-file mode"
         );
         process::exit(1);
@@ -308,10 +343,202 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
     }
 }
 
-/// Build a `BuildSpec` for a package directory. The package's name is
-/// its directory name and its artifacts land in its own `build/`.
-fn resolve_package_spec(pkg_root: &Path, label: &str) -> BuildSpec {
-    let entry = pkg_root.join("src").join("main.can");
+/// The entry files a shape scan found under a package's `src/`, one
+/// list per world. See `scan_src_entries`.
+struct SrcEntries {
+    /// Files declaring a CLI entry (`Args => Exit` / `Unit => Program`).
+    cli: Vec<PathBuf>,
+    /// Files declaring an HTTP entry (a free `Request => Response`).
+    http: Vec<PathBuf>,
+    /// Files declaring the web-app triple (view / init / update).
+    web: Vec<PathBuf>,
+}
+
+/// Discover a package's entry files by **shape** — the filesystem half
+/// of the language's entry rule (docs/src/spec/functions.md): nothing is
+/// named, so no filename is reserved. Each top-level `src/*.can` is
+/// parsed and normalized exactly as the loader would (`resolve_new_syntax`
+/// renames a world-shaped CLI entry to `main`, keeps an HTTP entry a free
+/// function) and classified by the entry it declares, if any. Web-triple
+/// detection unions type aliases across the scanned files first, because
+/// the triple's marker newtypes (`Init`/`Update`) may alias to the model
+/// through a sibling. A file that fails to parse is a hard error — entry
+/// discovery cannot be trusted around it.
+fn scan_src_entries(src_dir: &Path, label: &str) -> SrcEntries {
+    let mut paths: Vec<PathBuf> = match fs::read_dir(src_dir) {
+        Ok(read) => read
+            .flatten()
+            .map(|d| d.path())
+            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "can"))
+            .collect(),
+        Err(e) => {
+            eprintln!("error: could not list `{}/src`: {}", label, e);
+            process::exit(1);
+        }
+    };
+    paths.sort();
+
+    let mut parsed: Vec<(PathBuf, Vec<Item>)> = Vec::new();
+    for path in paths {
+        let path_str = path.to_string_lossy().into_owned();
+        let source = read_source(&path_str);
+        let items = (|| -> Result<Vec<Item>, CanonError> {
+            let tokens = Scanner::new(&source).scan_tokens()?;
+            let mut module = Parser::new(tokens).parse()?;
+            canon::ast::resolve_new_syntax(&mut module);
+            Ok(module.items)
+        })()
+        .unwrap_or_else(|err| {
+            print_error(&path_str, &err);
+            process::exit(1);
+        });
+        parsed.push((path, items));
+    }
+
+    // Cross-file alias context for web-triple detection.
+    let type_defs: Vec<Item> = parsed
+        .iter()
+        .flat_map(|(_, items)| items.iter().filter(|i| matches!(i, Item::TypeDef(_))))
+        .cloned()
+        .collect();
+
+    let mut entries = SrcEntries {
+        cli: Vec::new(),
+        http: Vec::new(),
+        web: Vec::new(),
+    };
+    for (path, items) in &parsed {
+        let is_cli = items.iter().any(|item| {
+            matches!(item, Item::Function(f) if f.receiver.is_none() && f.name.name == "main")
+        });
+        if is_cli {
+            entries.cli.push(path.clone());
+        }
+        if has_http_entry(items) {
+            entries.http.push(path.clone());
+        }
+        // The triple must live in one file (its members are entries, not
+        // references — nothing would pull them in from a sibling), so
+        // probe this file's functions against the unioned aliases.
+        let mut probe = type_defs.clone();
+        probe.extend(
+            items
+                .iter()
+                .filter(|i| matches!(i, Item::Function(_)))
+                .cloned(),
+        );
+        if canon::ast::find_web_entry(&probe).is_some() {
+            entries.web.push(path.clone());
+        }
+    }
+    entries
+}
+
+/// Resolve a package directory (a `src/` tree of `.can` files) to its
+/// target by the entry shapes the scan found: one entry of any world is
+/// a plain build; an HTTP entry beside the web triple is a fullstack
+/// package; anything else is an error naming the offending files.
+fn resolve_src_target(pkg_root: &Path, arg: &str) -> Target {
+    match classify_src_entries(pkg_root, arg) {
+        Some(target) => target,
+        None => {
+            eprintln!(
+                "error: no entry point in `{}/src`: expected a CLI entry (`Args => Exit`), \
+                 an HTTP handler (`Request => Response`), or a web-app triple (a \
+                 `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
+                 constructors) in one of its files",
+                arg
+            );
+            process::exit(1);
+        }
+    }
+}
+
+/// The classification half of `resolve_src_target`: `None` means the
+/// scan found no entry at all — a library directory, which direct
+/// targets report as an error and workspace discovery skips. Anything
+/// contradictory (two entries of one world, entries of clashing worlds
+/// across files) errors here, loudly, with the file list.
+fn classify_src_entries(pkg_root: &Path, arg: &str) -> Option<Target> {
+    let entries = scan_src_entries(&pkg_root.join("src"), arg);
+
+    // One file wearing two hats (e.g. a CLI entry next to an HTTP
+    // handler) is the checker's mixed-worlds error — root the compile
+    // there and let the checker say it precisely.
+    for (a, b) in [
+        (&entries.cli, &entries.http),
+        (&entries.cli, &entries.web),
+        (&entries.http, &entries.web),
+    ] {
+        if let Some(path) = a.iter().find(|p| b.contains(p)) {
+            return Some(Target::Build(package_spec(pkg_root, path.clone(), arg)));
+        }
+    }
+
+    match (&entries.cli[..], &entries.http[..], &entries.web[..]) {
+        ([entry], [], []) | ([], [entry], []) | ([], [], [entry]) => {
+            Some(Target::Build(package_spec(pkg_root, entry.clone(), arg)))
+        }
+        ([], [server], [web]) => {
+            // The web bundle carries the package's name (it *is* the app
+            // the browser loads); the server component is named after its
+            // own entry file, beside it in `build/`.
+            let pkg = package_spec(pkg_root, web.clone(), arg);
+            let server_stem = server
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("server")
+                .to_string();
+            if server_stem == pkg.output_stem {
+                eprintln!(
+                    "error: the server entry `{}` is named after the package, which is \
+                     the web bundle's artifact name — rename the file",
+                    server.display()
+                );
+                process::exit(1);
+            }
+            let web = BuildSpec {
+                label: format!("{} (web)", arg),
+                ..pkg
+            };
+            let server = BuildSpec {
+                entry: server.clone(),
+                output_dir: web.output_dir.clone(),
+                output_stem: server_stem,
+                label: format!("{} (server)", arg),
+                name: web.name.clone(),
+            };
+            Some(Target::Fullstack(FullstackSpec {
+                web,
+                server,
+                label: arg.to_string(),
+            }))
+        }
+        ([], [], []) => None,
+        _ => {
+            eprintln!("error: `{}` declares conflicting entries:", arg);
+            for (world, files) in [
+                ("CLI", &entries.cli),
+                ("HTTP", &entries.http),
+                ("web", &entries.web),
+            ] {
+                for f in files {
+                    eprintln!("  {} entry in {}", world, f.display());
+                }
+            }
+            eprintln!(
+                "hint: a package declares one entry — or one HTTP entry beside one \
+                 web triple for a fullstack app"
+            );
+            process::exit(1);
+        }
+    }
+}
+
+/// Build a `BuildSpec` for a package directory and the entry file the
+/// shape scan selected. The package's name is its directory name and
+/// its artifacts land in its own `build/`.
+fn package_spec(pkg_root: &Path, entry: PathBuf, label: &str) -> BuildSpec {
     // `.` and `..` have no usable `file_name`; canonicalize to recover
     // the real directory name.
     let name = pkg_root
@@ -354,11 +581,12 @@ fn resolve_file_spec(path: &Path, arg: &str) -> BuildSpec {
 }
 
 /// Discover a workspace's members: every immediate subdirectory of
-/// `ws_root` that is a package (contains `src/main.can`). There is no
-/// member list to declare — the directory structure is the workspace.
-/// Members are returned sorted alphabetically by path; each builds into
-/// its own `build/`.
-fn resolve_workspace_members(ws_root: &Path, ws_label: &str) -> Vec<BuildSpec> {
+/// `ws_root` that is a package (has a `src/` tree of `.can` files),
+/// resolved to its entry-shaped target. There is no member list to
+/// declare — the directory structure is the workspace. Members are
+/// returned sorted alphabetically by path; each builds into its own
+/// `build/`.
+fn resolve_workspace_members(ws_root: &Path, ws_label: &str) -> Vec<Target> {
     let read = match fs::read_dir(ws_root) {
         Ok(r) => r,
         Err(e) => {
@@ -374,15 +602,18 @@ fn resolve_workspace_members(ws_root: &Path, ws_label: &str) -> Vec<BuildSpec> {
     let mut paths: Vec<PathBuf> = read
         .flatten()
         .map(|d| d.path())
-        .filter(|p| p.join("src").join("main.can").is_file())
+        .filter(|p| canon::install::has_can_file(&p.join("src")))
         .collect();
     paths.sort();
 
     paths
         .into_iter()
-        .map(|p| {
+        .filter_map(|p| {
             let label = p.to_string_lossy().into_owned();
-            resolve_package_spec(&p, &label)
+            // `None` is a library directory (a `src/` tree with no
+            // entry) — not a workspace member, same as before entry
+            // discovery went shape-based.
+            classify_src_entries(&p, &label)
         })
         .collect()
 }
@@ -741,21 +972,16 @@ fn cmd_check(args: &[String]) {
     let target = resolve_target(parsed.target_path.as_deref());
     let target = apply_package_filter(target, parsed.package.as_deref());
     match target {
-        Target::Build(spec) => {
-            if !check_spec(&spec, fix) {
-                process::exit(1);
-            }
-        }
-        Target::Workspace { members, label, .. } => {
+        Target::Workspace { members, label } => {
             println!(
                 "checking workspace `{}` ({} member(s))",
                 label,
                 members.len()
             );
             let mut failures = 0usize;
-            for spec in &members {
-                println!("\n-- {} --", spec.label);
-                if !check_spec(spec, fix) {
+            for member in &members {
+                println!("\n-- {} --", member.label());
+                if !check_target(member, fix) {
                     failures += 1;
                 }
             }
@@ -765,6 +991,30 @@ fn cmd_check(args: &[String]) {
             }
             println!("\nAll {} member(s) checked clean.", members.len());
         }
+        target => {
+            if !check_target(&target, fix) {
+                process::exit(1);
+            }
+        }
+    }
+}
+
+/// Run the checker on one non-workspace target. Returns `true` on
+/// success, `false` if any errors were printed.
+fn check_target(target: &Target, fix: bool) -> bool {
+    match target {
+        Target::Build(spec) => check_spec(spec, fix),
+        Target::Fullstack(fs) => {
+            let web_ok = load_fullstack_entry(&fs.web, true, fix).is_some();
+            let server_ok = load_fullstack_entry(&fs.server, false, fix).is_some();
+            if web_ok && server_ok {
+                println!("All checks passed.");
+                true
+            } else {
+                false
+            }
+        }
+        Target::Workspace { .. } => unreachable!("workspace members are never workspaces"),
     }
 }
 
@@ -798,26 +1048,73 @@ fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
     true
 }
 
+/// Load + check one fullstack entry, then confirm the *loaded* module
+/// still declares the world the shape scan saw in the file — the full
+/// load pulls in references and the stdlib, and codegen dispatches on
+/// the loaded module's shape, so this re-check is what guarantees the
+/// two artifacts really are one web bundle and one HTTP component.
+fn load_fullstack_entry(spec: &BuildSpec, want_web: bool, fix: bool) -> Option<LoadResult> {
+    let mut loaded = load_or_print(spec.entry_str())?;
+    if fix && apply_fixes(&loaded) {
+        loaded = load_or_print(spec.entry_str())?;
+    }
+    let errors = checker::check_loaded(&loaded);
+    if !errors.is_empty() {
+        for err in &errors {
+            print_error(spec.entry_str(), err);
+        }
+        eprintln!("{} error(s) found.", errors.len());
+        return None;
+    }
+    let ok = if want_web {
+        canon::ast::find_web_entry(&loaded.module.items).is_some()
+    } else {
+        has_http_entry(&loaded.module.items)
+    };
+    if !ok {
+        let want = if want_web {
+            "the web-app triple (a `Model => Html` view with its `Unit => Init` and \
+             `Model * Msg => Update` constructors)"
+        } else {
+            "the HTTP entry (`Request => Response`)"
+        };
+        eprintln!(
+            "error: `{}` must define {} — the fullstack pair is one of each",
+            spec.entry_str(),
+            want
+        );
+        return None;
+    }
+    Some(loaded)
+}
+
+/// Whether the items declare an HTTP entry (a free function returning
+/// `Response`, per the entry-point rule in docs/src/spec/functions.md).
+fn has_http_entry(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Function(func) => {
+            func.receiver.is_none()
+                && canon::ast::entry_world_of(&func.return_ty) == Some(canon::ast::EntryWorld::Http)
+        }
+        _ => false,
+    })
+}
+
 fn cmd_build(args: &[String]) {
     let parsed = parse_target_args(args, false);
     let target = resolve_target(parsed.target_path.as_deref());
     let target = apply_package_filter(target, parsed.package.as_deref());
     match target {
-        Target::Build(spec) => {
-            if !build_spec(&spec) {
-                process::exit(1);
-            }
-        }
-        Target::Workspace { members, label, .. } => {
+        Target::Workspace { members, label } => {
             println!(
                 "building workspace `{}` ({} member(s))",
                 label,
                 members.len()
             );
             let mut failures = 0usize;
-            for spec in &members {
-                println!("\n-- {} --", spec.label);
-                if !build_spec(spec) {
+            for member in &members {
+                println!("\n-- {} --", member.label());
+                if !build_target(member) {
                     failures += 1;
                 }
             }
@@ -827,6 +1124,26 @@ fn cmd_build(args: &[String]) {
             }
             println!("\nAll {} member(s) built successfully.", members.len());
         }
+        target => {
+            if !build_target(&target) {
+                process::exit(1);
+            }
+        }
+    }
+}
+
+/// Compile one non-workspace target to its artifacts. Returns `true` on
+/// success, `false` if the checker or filesystem errored.
+fn build_target(target: &Target) -> bool {
+    match target {
+        Target::Build(spec) => build_spec(spec),
+        Target::Fullstack(fs) => {
+            load_fullstack_entry(&fs.web, true, false)
+                .is_some_and(|web| build_loaded(&fs.web, &web))
+                && load_fullstack_entry(&fs.server, false, false)
+                    .is_some_and(|server| build_loaded(&fs.server, &server))
+        }
+        Target::Workspace { .. } => unreachable!("workspace members are never workspaces"),
     }
 }
 
@@ -844,6 +1161,13 @@ fn build_spec(spec: &BuildSpec) -> bool {
         eprintln!("{} error(s) found.", errors.len());
         return false;
     }
+    build_loaded(spec, &loaded)
+}
+
+/// Writes an already-checked target's artifacts — the tail of
+/// `build_spec`, shared with the fullstack build (which checks entry
+/// shapes itself before writing).
+fn build_loaded(spec: &BuildSpec, loaded: &LoadResult) -> bool {
     let component_bytes = codegen::generate(&loaded.module);
 
     // Web apps get the three-file bundle instead of a `.wasm` + `.wit`
@@ -1196,16 +1520,11 @@ fn parse_binding(source: &str) -> Result<Vec<Item>, CanonError> {
 /// Compiles the target Canon package or file, then either:
 ///
 ///   * runs it as a `wasi:cli/command` (the default), forwarding any
-///     trailing arguments as program arguments; or
-///   * serves it as a `wasi:http/handler` over HTTP when `--addr` is
-///     given. The runtime opens a TCP listener at the given `ip:port`
-///     and dispatches each incoming HTTP/1.1 request to the guest's
-///     `handle` export through `wasmtime-wasi-http`.
-///
-/// Until the codegen learns to emit a `wasi:http/service` world (see
-/// the compilation spec, docs/src/spec/compilation.md), the `--addr` mode will
-/// fail at component-instantiation time — the diagnostic surfaces the
-/// expected exports so users know what's missing.
+///     trailing arguments as program arguments;
+///   * serves it over HTTP when the entry is served rather than run —
+///     a `wasi:http/service` handler, a web-app bundle, or a fullstack
+///     package (both at once, on one address). `--addr` overrides the
+///     default `127.0.0.1:8080`.
 fn cmd_run(args: &[String]) {
     // Peel off `--addr <ip:port>` (or `--addr=<ip:port>`) before the
     // rest of the arg parser, which expects `-p name`, a target path,
@@ -1245,6 +1564,7 @@ fn cmd_run(args: &[String]) {
     let program_args: Vec<&str> = parsed.program_args.iter().map(|s| s.as_str()).collect();
     let spec = match target {
         Target::Build(spec) => spec,
+        Target::Fullstack(fs) => run_fullstack(&fs, addr.as_deref(), &parsed.program_args),
         Target::Workspace { label, members, .. } => {
             eprintln!(
                 "error: `canon run` on workspace `{}` is ambiguous: pick a member",
@@ -1253,7 +1573,7 @@ fn cmd_run(args: &[String]) {
             if !members.is_empty() {
                 eprintln!("hint: try one of:");
                 for m in &members {
-                    eprintln!("  canon run {}", m.label);
+                    eprintln!("  canon run {}", m.label());
                 }
             }
             process::exit(1);
@@ -1293,13 +1613,7 @@ fn cmd_run(args: &[String]) {
     // `wasi:cli/run` to invoke. Serve them instead: on `--addr` when
     // given, else on a default local address so plain `canon run`
     // does the obvious thing.
-    let is_http = loaded.module.items.iter().any(|item| match item {
-        Item::Function(func) => {
-            func.receiver.is_none()
-                && canon::ast::entry_world_of(&func.return_ty) == Some(canon::ast::EntryWorld::Http)
-        }
-        _ => false,
-    });
+    let is_http = has_http_entry(&loaded.module.items);
 
     match addr {
         Some(raw) => {
@@ -1307,17 +1621,53 @@ fn cmd_run(args: &[String]) {
                 eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
                 process::exit(1);
             });
-            canon::runtime::serve_component(&component_bytes, bind_addr);
+            canon::runtime::serve_component(&component_bytes, bind_addr, None);
         }
         None if is_http => {
             let bind_addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("static addr");
             eprintln!("HTTP handler detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
-            canon::runtime::serve_component(&component_bytes, bind_addr);
+            canon::runtime::serve_component(&component_bytes, bind_addr, None);
         }
         None => {
             canon::runtime::run_component(&component_bytes, &program_args);
         }
     }
+}
+
+/// `canon run` on a fullstack package: compile both entries, then serve
+/// them from one process on one address. The web bundle answers its own
+/// four paths from memory; every other request dispatches to the server
+/// component — frontend and backend share an origin, so the frontend's
+/// `data-fetch` URLs are relative and no CORS headers are needed.
+fn run_fullstack(fs: &FullstackSpec, addr: Option<&str>, program_args: &[String]) -> ! {
+    if let Some(arg) = program_args.first() {
+        eprintln!(
+            "error: unexpected argument `{}`: a fullstack app takes no program arguments",
+            arg
+        );
+        process::exit(1);
+    }
+    let Some(web) = load_fullstack_entry(&fs.web, true, false) else {
+        process::exit(1);
+    };
+    let Some(server) = load_fullstack_entry(&fs.server, false, false) else {
+        process::exit(1);
+    };
+    let web_bytes = codegen::generate(&web.module);
+    let server_bytes = codegen::generate(&server.module);
+    let bind_addr: std::net::SocketAddr = match addr {
+        Some(raw) => raw.parse().unwrap_or_else(|e| {
+            eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);
+            process::exit(1);
+        }),
+        None => "127.0.0.1:8080".parse().expect("static addr"),
+    };
+    if addr.is_none() {
+        eprintln!("fullstack app detected: serving web + server on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
+    }
+    let assets = canon::webhost::WebAssets::new(&fs.web.output_stem, web_bytes);
+    canon::runtime::serve_component(&server_bytes, bind_addr, Some(assets));
+    process::exit(0);
 }
 
 fn load_or_exit(file_path: &str) -> LoadResult {

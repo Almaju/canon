@@ -384,14 +384,20 @@ treatment in `docs/src/spec/types-only.md`.
   yet: resource methods (`wasi/http`'s `types.can`), whose first input is a
   resource declared in the same file. Any other camelCase alias is a checker
   error. Scalar-newtype receivers are declared as bare `Int`.
-- **No package manifest** — file structure is the whole declaration. A **package**
-  is a dir with `src/main.can` (name = dir name; artifacts in its `build/`); a
+- **No package manifest, no reserved filenames** — file structure is the whole
+  declaration. A **package** is a dir with `.can` files under `src/` (name = dir
+  name; artifacts in its `build/`); its **entry file is found by shape**
+  (`scan_src_entries` in `src/main.rs` parses each top-level `src/*.can` and
+  classifies the world-shaped declaration), mirroring the language's anonymous
+  entries — `main.can` is a convention, not a rule. An HTTP entry beside a web
+  triple (two files) is a **fullstack package**: `canon run` serves bundle +
+  handler from one process/origin, `canon build` writes both into `build/`. A
   **workspace** is a dir whose immediate subdirs include packages. **External
   imports** = the `wit/` dir; **dependencies** = `deps/<ns>/<name>@<ver>/`. The
-  **project root** is the nearest ancestor with a structural marker (`src/main.can`,
-  `wit/`, `bindgen/`, `deps/`) — `src/install.rs`. Each `bindgen/` has an
-  `_install.toml` sidecar (staleness detection only; committed for `canon/std`,
-  gitignored for user projects).
+  **project root** is the nearest ancestor with a structural marker (`src/` with
+  `.can` files, `wit/`, `bindgen/`, `deps/`) — `src/install.rs`. Each `bindgen/`
+  has an `_install.toml` sidecar (staleness detection only; committed for
+  `canon/std`, gitignored for user projects).
 - `build.rs` walks `packages/` at build time into a bundled-package registry; drop
   a file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up.
 - Examples must compile and run after changes — `just examples` to verify.

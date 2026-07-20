@@ -9,8 +9,11 @@
   conversion of the PascalCase type name.
 - A **module is a folder**. There is no `mod` declaration; directory
   structure is the module structure.
-- A package's entry point is `src/main.can`; a library's root is
-  `lib.can`.
+- A package's entry point is found by **shape, not filename**: the
+  `src/` file that declares a world-shaped entry
+  ([Functions](./functions.md)) is the entry file, whatever it is
+  called. No filename is reserved — entry declarations are anonymous
+  in the language, and the filesystem follows the same rule.
 
 ## Imports
 
@@ -67,7 +70,7 @@ entirely by its layout:
 
 | Path | Meaning |
 |---|---|
-| `src/main.can` | the package's entry point — its presence makes the directory a package; the directory's name is the package's name |
+| `src/` | the package's sources — a `src/` tree of `.can` files makes the directory a package; the directory's name is the package's name. Entry files are discovered by shape: one file declaring a world-shaped entry is the program; a file declaring an HTTP entry beside a file declaring the web triple is a **fullstack package** (`canon run` serves both on one address, `canon build` writes both artifacts into `build/`); zero entries, or two of the same world, is an error |
 | `wit/` | external imports: every immediate entry is a WIT source — a `.wit` file, a directory of them, or a `.wasm` component |
 | `bindgen/` | bindings `canon install` materialized from `wit/` (derived; conventionally gitignored) |
 | `deps/` | vendored Canon-package dependencies, `deps/<ns>/<name>@<version>/` — the directory name is the pin |

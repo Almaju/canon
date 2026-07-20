@@ -185,4 +185,4 @@ and publishes the tarballs.
 
 ## Status
 
-Experimental: programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); browser frontends compile from the `init`/`update`/`view` triple (see [the web target](docs/src/reference/web-target.md) and [`examples/todo-fullstack`](examples/todo-fullstack) — one language, both sides of the stack, shared types); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly.
+Experimental: programs the checker accepts run correctly; HTTP handlers compile to standard `wasi:http/service` components (see [`examples/notes-api`](examples/notes-api)); browser frontends compile from the `init`/`update`/`view` triple (see [the web target](docs/src/reference/web-target.md) and [`examples/todo-fullstack`](examples/todo-fullstack) — one language, both sides of the stack, shared types, one `canon run` serving frontend and backend together); the stdlib rides real `wasi:cli` / `wasi:clocks` / `wasi:random` interfaces; `canon test` reports honestly.

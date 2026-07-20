@@ -14,7 +14,7 @@ instead.
 | `notes-api` | a JSON API as a `wasi:http/service` component | [notes-api](./notes-api.md) |
 | `todolist-web` | an interactive browser frontend (the Elm triple) with `localStorage` persistence, live preview | [A Todo List in the Browser](./todolist.md) |
 | `markdown-web` | a docs site compiled to wasm -- Markdown rendered to HTML by Canon, running in the browser | [A Docs Site in the Browser](./markdown-web.md) |
-| `todo-fullstack` | one language on both sides -- a frontend and a backend sharing types | [Fullstack](./fullstack.md) |
+| `todo-fullstack` | one language on both sides -- a frontend and a backend sharing types, served by one `canon run` | [Fullstack](./fullstack.md) |
 
 ## Running Them
 

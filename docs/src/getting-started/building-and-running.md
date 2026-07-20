@@ -1,20 +1,28 @@
 # The canon CLI
 
-Canon commands operate on a **target**: a package directory (one
-containing `src/main.can`), a workspace directory (one whose immediate
+Canon commands operate on a **target**: a package directory (one with
+`.can` files under `src/`), a workspace directory (one whose immediate
 subdirectories are packages), or a single `.can` file. When omitted,
 the target is the current directory. There is no manifest — the
-directory structure is the whole declaration:
+directory structure is the whole declaration — and no filename is
+reserved: the entry file is whichever `src/` file declares a
+world-shaped entry, found the same way the entry declaration itself is
+(by shape, anonymously):
 
 ```text
 my-app/
   src/
-    main.can        # entry point — this file makes the directory a package
+    my-app.can      # declares `Args => Exit` — that shape makes it the entry
     helpers.can
   build/           # compiler output (gitignored)
     my-app.wasm
     my-app.wit
 ```
+
+A package declaring an HTTP entry in one `src/` file and the web-app
+triple in another is a [fullstack
+app](../reference/web-target.md#fullstack-packages) — one `canon run`
+serves both.
 
 A workspace is nothing but a directory of packages — no member list;
 adding a package subdirectory adds it to the workspace, and each
@@ -31,7 +39,9 @@ canon build                     # compile only: build/<name>.wasm + .wit
 
 `canon run` compiles to a WebAssembly component and executes it on the
 embedded wasmtime. A program whose entry is `Request => Response` is
-**served** instead of run once:
+**served** instead of run once, as are web apps (the Elm triple) and
+fullstack packages — the latter serve frontend and backend from one
+process on one address:
 
 ```sh
 canon run                       # serves on 127.0.0.1:8080
