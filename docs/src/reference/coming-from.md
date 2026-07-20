@@ -14,8 +14,8 @@ Square = Side
 
 Shape => Area {
     Shape -> (
-        * Circle => Area { Circle -> Squared -> Product(3.14) }
-        * Square => Area { Square -> Squared }
+        * Circle => Area { Circle -> Product(Circle) -> Product(3.14) }
+        * Square => Area { Square -> Product(Square) }
     )
 }
 ```
