@@ -65,8 +65,6 @@ use wasm_encoder::{
     TypeSection, ValType,
 };
 
-use super::MEM_HEAP_START;
-
 /// Embeds an already-encoded core WASM module (as raw bytes) into a component
 /// as a `CoreModule` section. `wasm-encoder` only exposes `ModuleSection`
 /// taking `&Module`, but we need to wrap pre-encoded bytes coming out of the
@@ -343,7 +341,12 @@ pub(super) fn wrap_http_service(module: &OModule) -> Vec<u8> {
 /// sync lifts/lowers across the board, so the value is read but unused at
 /// the binary level. Once async lowering is implemented, this is where
 /// per-import and per-export decisions will be made.
-pub(super) fn wrap(core_module: &[u8], externs: &[ExternImport], _async_set: &AsyncSet) -> Vec<u8> {
+pub(super) fn wrap(
+    core_module: &[u8],
+    externs: &[ExternImport],
+    _async_set: &AsyncSet,
+    str_data_len: usize,
+) -> Vec<u8> {
     // Group externs by core namespace so we build one instance per interface.
     // BTreeMap keeps the iteration order deterministic (alphabetical).
     let mut by_iface: BTreeMap<&str, Vec<&ExternImport>> = BTreeMap::new();
@@ -669,7 +672,7 @@ pub(super) fn wrap(core_module: &[u8], externs: &[ExternImport], _async_set: &As
     }
 
     // ── 4. Inline memory-provider core module ────────────────────────────────
-    let memory_module = build_memory_module();
+    let memory_module = build_memory_module(str_data_len);
     c.section(&ModuleSection(&memory_module));
     // → core module 0
     c.section(&RawModuleSection(core_module));
@@ -1068,7 +1071,10 @@ fn extern_uses_strings(ext: &ExternImport) -> bool {
 ///
 /// The user core module imports `env.memory` and `env.bump_ptr` from this
 /// module, so its `$alloc` and the host's `cabi_realloc` share one heap.
-fn build_memory_module() -> Module {
+/// `str_data_len` is the user module's static string pool size — the memory
+/// and the bump pointer's initial value both grow to fit it
+/// (`super::heap_layout`).
+fn build_memory_module(str_data_len: usize) -> Module {
     let mut m = Module::new();
 
     // Type 0: cabi_realloc signature.
@@ -1085,9 +1091,10 @@ fn build_memory_module() -> Module {
     m.section(&funcs);
 
     // Memory.
+    let (heap_start, min_pages) = super::heap_layout(str_data_len);
     let mut mems = MemorySection::new();
     mems.memory(MemoryType {
-        minimum: 2,
+        minimum: min_pages as u64,
         maximum: None,
         memory64: false,
         shared: false,
@@ -1103,7 +1110,7 @@ fn build_memory_module() -> Module {
             mutable: true,
             shared: false,
         },
-        &ConstExpr::i32_const(MEM_HEAP_START as i32),
+        &ConstExpr::i32_const(heap_start as i32),
     );
     m.section(&globals);
 

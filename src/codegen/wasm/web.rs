@@ -254,15 +254,8 @@ impl<'m> WasmGen<'m> {
         m.section(&funcs);
 
         // ── Memory / globals: self-contained ─────────────────────────
-        // The bump heap begins on the page *after* the packed string
-        // data, and the initial memory covers both. A data-heavy web app
-        // — the docs site bakes every `.md` page in, ~160 KB — would
-        // otherwise overrun the fixed two pages (instantiation fails) or
-        // let the heap grow into its own string constants. Small apps
-        // keep the original layout: heap at 64 KB, two pages.
-        let data_end = MEM_STR_START + self.strings.data.len() as u32;
-        let heap_start = (data_end + 0xFFFF) & !0xFFFF;
-        let min_pages = heap_start / 0x1_0000 + 1;
+        // Sized to fit the static string pool — see `heap_layout`.
+        let (heap_start, min_pages) = heap_layout(self.strings.data.len());
         let mut memories = MemorySection::new();
         memories.memory(MemoryType {
             minimum: min_pages as u64,
