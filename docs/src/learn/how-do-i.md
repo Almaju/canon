@@ -109,7 +109,8 @@ read back with `Field` and `Decoded` ([stdlib](../reference/stdlib.md)):
 
 ```canon
 {"id":1,"title":"ship canon v1"}
-Json("[1, 2, 3]")?
+    -> Field("title")?
+    -> Decoded?
 Encoded(42)
 ```
 
