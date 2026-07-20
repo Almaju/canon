@@ -1,8 +1,8 @@
 # Types
 
-Every Canon type is built by composing a small algebra over a minimal
-core. The algebra has three operators, `+` (union), `*` (product), and
-`^` (repetition), and two identities.
+Every user-declared Canon type is built by composing a small algebra
+over a minimal core. The algebra has three operators, `+` (union), `*`
+(product), and `^` (repetition), and two identities.
 
 ## The Core
 
@@ -11,28 +11,12 @@ core. The algebra has three operators, `+` (union), `*` (product), and
 - **`Never`**: the type with zero values; the additive identity
   (`T + Never == T`).
 
-Together with `+` and `*` these form a type **semiring**. The boolean
-atoms are newtype aliases of `Unit`, and everything scales up from
-there:
-
-```canon
-Bool = False + True
-
-Byte = Bool^8
-
-Bytes = Byte^*
-
-False = Unit
-
-True = Unit
-```
-
-(There is no separate `Bit`: structurally identical types are one type,
-so a two-variant union of `Unit`s *is* `Bool`, and a byte is eight of
-them.) The higher-level primitives (`Int`, `Float`, `String`) are
-defined from `Byte`/`Bytes`. The compiler supplies a small set of
-built-in operations on them (e.g. integer arithmetic), but their shape
-is still described by the algebra.
+Together with `+` and `*` these form a type **semiring**, but the
+algebra doesn't reach every primitive: `Bool`, `Int`, `Float`, and
+`String` are opaque, compiler-supplied types, not composed from `Unit`.
+`False` and `True` are `Bool`'s two built-in variants. `Byte` is an
+ordinary stdlib newtype of `Int` (`Byte = Int`), used where a value
+should read as a one-character `String` (`String(Byte(65))` is `"A"`).
 
 ## Unions (`+`)
 
@@ -103,17 +87,15 @@ Rules:
 
 ## Repetition (`^N`, `^*`)
 
-`T^N` is the N-fold product `T * T * ... * T`; `T^*` is the Kleene star,
-zero or more `T`s. Both share the `^` operator and complete the
-semiring reading: sums, products, exponents.
+`T^N` is the N-fold product `T * T * ... * T`, accessed positionally
+(`byte.1`, `byte.2`); `T^*` is the Kleene star, zero or more `T`s,
+completing the semiring reading: sums, products, exponents.
 
-`List<T>` is not a separate concept. Core defines **`List<T> = T^*`**;
-the nominal name and the algebraic form are the same type. `Bytes =
-Byte^*` therefore has every `List` method (`Mapped`, `First`, `At`, ...)
-with nothing to declare, and `List(...)` is the value-level constructor
-for the star. Indexing is **1-based** everywhere (`list -> At(1)` is the
-first element, `string -> ByteAt(1)` the first byte): one origin,
-matching positional product access `.1`.
+`List<T>` is itself compiler-supplied, not derived from `T^*` --
+`List(...)` is its value-level constructor, with methods like
+`Mapped`, `First`, and `At`. Indexing is **1-based** everywhere
+(`list -> At(1)` is the first element, `string -> ByteAt(1)` the first
+byte): one origin, matching positional product access `.1`.
 
 ## Generics
 
