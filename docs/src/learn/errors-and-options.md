@@ -48,16 +48,16 @@ The error slot is a regular type, so it can be a union written right in
 the signature — no error enum to declare per call site:
 
 ```canon
-File * Path => Result<Bytes, IoError + NotFound + PermissionDenied> {
+File => Result<Json, IoError + MalformedJson> {
     File
-        -> Read(Path)?
-        -> Decoded
+        -> Read?
+        -> Json
 }
 ```
 
 Unions widen along `?`: a callee returning `Result<T, IoError>`
 propagates cleanly out of a caller declaring
-`Result<U, IoError + ParseError>`, because its errors are a subset.
+`Result<U, IoError + MalformedJson>`, because its errors are a subset.
 
 Name errors after **what failed** (`InvalidUrl`, `MalformedJson`), not
 after who raised them. And since
