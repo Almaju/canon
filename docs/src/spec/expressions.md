@@ -104,7 +104,7 @@ local variables, the way a value threads through several operations is a
 method chain:
 
 ```canon
-ReadConfig = (File * Path) => Result<Config, IoError + ParseError> {
+File * Path => Result<Config, IoError + ParseError> {
     File
         -> Read(Path)?
         -> Parse?
@@ -186,11 +186,11 @@ scrutinees: arms are literals, and the final arm is a **mandatory
 catch-all** naming the scrutinee's type:
 
 ```canon
-Route = (String) => String {
+String => String {
     String -> (
         * "/notes" => String { "index" }
         * "/notes/1" => String { "note one" }
-        * String => String { "not found: " -> Joined(String) }
+        * String => String { `not found: {String}` }
     )
 }
 ```
