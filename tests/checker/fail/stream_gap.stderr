@@ -1,0 +1,1 @@
+error[tests/checker/fail/stream_gap.can:3:1]: `Stream<T>` in this signature: the code generator does not implement `Stream<T>` lowering and streaming response bodies yet, so this program cannot build. Tracked in docs/src/reference/codegen-gaps.md

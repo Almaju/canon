@@ -1,5 +1,3 @@
 Unit => Program {
-    "hello slow"
-        .slowEcho()
-        -> Print
+    SlowEcho("hello slow") -> Print
 }

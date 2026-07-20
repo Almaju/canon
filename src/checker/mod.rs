@@ -53,14 +53,13 @@ const BUILTIN_GENERIC_TYPES: &[&str] = &["Future", "List", "Option", "Result", "
 /// `List`) build up from via `concat`.
 const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 
-/// Synthetic concurrency combinators recognised by the codegen as built-in
-/// `compile_parallel` / `compile_race` paths. They appear in source as if
-/// they were ordinary calls (`parallel(a, b)`, `race(a, b)`) but the
-/// checker accepts them without resolving the bindings declaration in
-/// `packages/canon/std/src/canon/builtins@0.1.0/concurrent.can` — the declaration's PascalCase
-/// first parameter (`Future<T>`) would otherwise force the checker to
-/// look them up as methods on `Future`, which the `Constructor(…)` call
-/// shape doesn't support. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
+/// Concurrency combinators recognised by the codegen as built-in
+/// `compile_parallel` / `compile_race` paths — pure compiler builtins
+/// with no bindings declaration anywhere (the multi-subtask wait
+/// sequence is emitted inline, no host implementation exists). The
+/// checker types them directly: the receiver's static type is a
+/// `Future<T>` produced by an async call, which ordinary method lookup
+/// can't see. See `compile_parallel` in `src/codegen/wasm/mod.rs`.
 const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race", "Parallel", "Race"];
 
 pub struct SymbolTable {
@@ -642,10 +641,9 @@ pub const GAP_COMPOUND_PAYLOAD: CodegenGap = CodegenGap {
 };
 
 /// Extern imports the `wasi:http/service` world can't satisfy. A handler
-/// program may import only `wasi:http/types` (plus the synthetic
-/// `canon:builtins/concurrent`); any other loaded binding — reached by a
-/// call or pulled in by a JSON-interpolation bridge — has no host to link
-/// against.
+/// program may import only `wasi:http/types`; any other loaded binding —
+/// reached by a call or pulled in by a JSON-interpolation bridge — has no
+/// host to link against.
 pub const GAP_HTTP_WORLD_IMPORTS: CodegenGap = CodegenGap {
     title: "extern imports in the `wasi:http/service` world",
 };
@@ -2833,10 +2831,6 @@ fn method_known_via_aliases(
     arg_count: usize,
     symbols: &SymbolTable,
 ) -> bool {
-    // A types-only vocabulary method (`Mapped`, `Joined`, …) also
-    // matches a camelCase stdlib/binding function of its aliased name —
-    // `stream -> Mapped(f)` binds the `map` FFI function on `Stream`.
-    let alias = crate::ast::builtin_method_alias(method);
     let mut current = receiver_ty;
     let mut depth = 0;
     loop {
@@ -2856,15 +2850,6 @@ fn method_known_via_aliases(
             .is_some_and(|m| m.arity == arg_count)
         {
             return true;
-        }
-        if let Some(canonical) = alias {
-            if symbols
-                .methods
-                .get(&(current.to_string(), canonical.to_string()))
-                .is_some_and(|m| m.arity == arg_count)
-            {
-                return true;
-            }
         }
         if depth >= 20 {
             return false;

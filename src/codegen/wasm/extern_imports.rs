@@ -35,16 +35,6 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         let Some((component_ns, core_ns, fn_name)) = parse_extern_path(&ext.path) else {
             continue;
         };
-        // `canon:builtins/concurrent` is a *synthetic* interface — the
-        // codegen recognises `parallel(…)` and `race(…)` as built-in
-        // combinators and emits the multi-subtask wait sequence inline
-        // (see `compile_parallel` / `compile_race`). It has no host
-        // implementation; skipping it from the import collection prevents
-        // the linker from looking for one.
-        if component_ns.starts_with("canon:builtins/concurrent") {
-            continue;
-        }
-
         // Validate the signature: flat-scalar or string params + (flat-scalar
         // OR string) return. Anything more exotic (lists, records, Result,
         // futures) is silently skipped — those externs won't appear in the

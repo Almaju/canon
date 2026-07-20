@@ -307,9 +307,9 @@ main = () => Unit {
 fn http_world_rejects_loaded_non_http_externs() {
     // The `wasi:http/service` world links every *loaded* extern into the
     // fixed import block — `WasmGen::new_http` exits on anything beyond
-    // `wasi:http/types` / `canon:builtins/concurrent`, reachable or not,
-    // so the checker rejects at the same granularity. `now` is loaded but
-    // never called; it must still be named.
+    // `wasi:http/types`, reachable or not, so the checker rejects at the
+    // same granularity. `now` is loaded but never called; it must still
+    // be named.
     let source = r#"
 now = () => Int {
     0
@@ -338,13 +338,9 @@ handler = (Request) => Response {
 }
 
 #[test]
-fn http_world_allows_http_types_and_concurrent() {
+fn http_world_allows_http_types() {
     let source = r#"
 path = () => String {
-    ""
-}
-
-race = () => String {
     ""
 }
 
@@ -358,7 +354,6 @@ handler = (Request) => Response {
         "path",
         "wasi:http/types@0.3.0#[method]request.get-path-with-query",
     );
-    mark_extern(&mut module, "race", "canon:builtins/concurrent@0.1.0#race");
 
     let errors = http_gap_errors(&module);
     assert!(

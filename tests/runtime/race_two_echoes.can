@@ -1,6 +1,5 @@
 Unit => Program {
-    "first"
-        .slowEcho()
-        -> Race("second".slowEcho())
+    SlowEcho("first")
+        -> Race(SlowEcho("second"))
         -> Print
 }

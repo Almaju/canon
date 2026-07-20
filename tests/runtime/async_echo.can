@@ -1,5 +1,3 @@
 Unit => Program {
-    "hello async"
-        .echo()
-        -> Print
+    Echo("hello async") -> Print
 }

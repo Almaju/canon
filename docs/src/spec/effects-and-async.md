@@ -115,8 +115,8 @@ order; `a -> Race(b)` returns the first and cancels the loser. There is no
 bare call form: `Parallel(a * b)` is a compile error. The auto-await
 rule fires when the composed future is consumed, still with no keyword.
 
-(The runtime fixtures exercise these through `slowEcho`, a camelCase
-foreign binding to the async test bridge — camelCase means foreign;
+(The runtime fixtures exercise these through `SlowEcho`, a
+string-anchored foreign binding to the async test bridge;
 `Parallel`/`Race` themselves are the language surface.)
 
 **Cancellation** has no primitive. It is a consequence of composition:

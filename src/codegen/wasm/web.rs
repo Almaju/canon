@@ -33,10 +33,6 @@ impl<'m> WasmGen<'m> {
     /// import is a hard error at this stage.
     pub(super) fn new_web(ast: &'m OModule) -> Self {
         let mut gen = Self::new(ast);
-        gen.extern_imports.retain(|ext| {
-            !ext.component_namespace
-                .starts_with("canon:builtins/concurrent")
-        });
         if !gen.extern_imports.is_empty() {
             let names: Vec<String> = gen
                 .extern_imports

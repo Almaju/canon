@@ -2712,17 +2712,9 @@ impl<'m> WasmGen<'m> {
             });
         // Try the receiver's own type name first, then every name in
         // its newtype alias chain — `Foo("x") -> Encoded` with `Foo =
-        // String` must find the `(String)` family member.
-        // A method resolves to a user/stdlib function under its written
-        // name or — for the types-only vocabulary — under its camelCase
-        // alias. `stream -> Mapped(f)` finds the `map` binding on
-        // `Stream` (a camelCase FFI function) before the `List` builtin
-        // `Mapped` claims it; `list -> Mapped(f)` misses both bindings
-        // and falls through to the builtin below.
-        let method_names: Vec<String> = match crate::ast::builtin_method_alias(method) {
-            Some(canonical) => vec![method.to_string(), canonical.to_string()],
-            None => vec![method.to_string()],
-        };
+        // String` must find the `(String)` family member. A method
+        // resolves to a user/stdlib function under its written name; a
+        // miss falls through to the builtin below.
         // A scalar newtype erases to its underlying primitive, so a piped
         // construction like `3000 -> Port` leaves `Ty::I64` on the stack
         // and `type_name` recovers only "Int" — losing "Port", which the
@@ -2745,18 +2737,14 @@ impl<'m> WasmGen<'m> {
             }
         }
         for alias in candidate_types {
-            for m in &method_names {
-                let key = (Some(alias.clone()), m.clone());
-                if let Some(info) = self.func_table.get(&key).cloned() {
-                    return self.emit_func_table_call(&info, args, scope, f);
-                }
+            let key = (Some(alias), method.to_string());
+            if let Some(info) = self.func_table.get(&key).cloned() {
+                return self.emit_func_table_call(&info, args, scope, f);
             }
         }
         if type_name.is_none() {
-            for m in &method_names {
-                if let Some(info) = self.func_table.get(&(None, m.clone())).cloned() {
-                    return self.emit_func_table_call(&info, args, scope, f);
-                }
+            if let Some(info) = self.func_table.get(&(None, method.to_string())).cloned() {
+                return self.emit_func_table_call(&info, args, scope, f);
             }
         }
 
