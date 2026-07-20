@@ -1815,6 +1815,23 @@ fn starts_lowercase(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_lowercase)
 }
 
+/// Resolves a scrutinee's static type down to the union it dispatches on,
+/// walking the alias chain (`MessageContent = Option<Content>` dispatches
+/// on `Option`'s variants). `None` when the type never reaches a union —
+/// an unknown scrutinee, or one that isn't a union at all. The bound keeps
+/// a malformed alias cycle finite.
+fn resolve_dispatch_union<'a>(scrutinee_ty: &'a str, symbols: &'a SymbolTable) -> Option<&'a str> {
+    let is_union = |name: &str| symbols.variant_of.values().any(|u| u == name);
+    let mut current = scrutinee_ty;
+    for _ in 0..20 {
+        if is_union(current) {
+            return Some(current);
+        }
+        current = symbols.aliases.get(current)?.as_str();
+    }
+    None
+}
+
 /// Union-dispatch shape rules (the ordering spec, "Dispatch arms follow
 /// the union's variant order", and "every variant must be handled;
 /// there is no wildcard arm"):
@@ -1836,23 +1853,9 @@ fn check_union_dispatch_shape(
     if scrutinee_ty.is_empty() || scrutinee_ty == "<unknown>" || arms.is_empty() {
         return;
     }
-    // Resolve the scrutinee to a union by walking the alias chain
-    // (`MessageContent = Option<Content>` dispatches on `Option`'s
-    // variants). The bound keeps a malformed alias cycle finite.
-    let is_union = |name: &str| symbols.variant_of.values().any(|u| u == name);
-    let mut union_name = scrutinee_ty;
-    for _ in 0..20 {
-        if is_union(union_name) {
-            break;
-        }
-        match symbols.aliases.get(union_name) {
-            Some(next) => union_name = next.as_str(),
-            None => return,
-        }
-    }
-    if !is_union(union_name) {
+    let Some(union_name) = resolve_dispatch_union(scrutinee_ty, symbols) else {
         return;
-    }
+    };
 
     let arm_names: Vec<(&str, crate::error::Span)> = arms
         .iter()
@@ -2555,10 +2558,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // Verify the variant belongs to the scrutinee's type.
                 //
                 // The scrutinee may be a newtype wrapper around a union
-                // (e.g. `MessageContent = Option<Content>`). We walk the
-                // alias chain so dispatching `MessageContent.(None, Some)`
-                // matches `Option`'s variants. See `aliases` in
-                // `collect_symbols` for how the chain is built.
+                // (e.g. `MessageContent = Option<Content>`). We resolve
+                // through the alias chain so dispatching
+                // `MessageContent.(None, Some)` matches `Option`'s
+                // variants. See `aliases` in `collect_symbols` for how the
+                // chain is built.
+                //
+                // This must fire even when the arm's pattern isn't a variant
+                // of *any* union (an arbitrary type name like `Int`) —
+                // otherwise such an arm silently skips membership,
+                // exhaustiveness, and ordering checks alike, letting a
+                // dispatch that matches nothing compile and drop its arms at
+                // runtime.
                 if let TypeExpr::Named {
                     name: variant_name,
                     span: vspan,
@@ -2566,31 +2577,16 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 } = &arm.param_ty
                 {
                     if !scrutinee_ty.is_empty() && scrutinee_ty != "<unknown>" {
-                        if let Some(pattern_enum) = symbols.variant_of.get(variant_name.as_str()) {
-                            let mut current = scrutinee_ty.as_str();
-                            let mut matched = current == pattern_enum.as_str();
-                            // Walk aliases until we hit the target or run
-                            // out of links. The bound keeps a malformed
-                            // alias cycle from spinning forever.
-                            for _ in 0..20 {
-                                if matched {
-                                    break;
-                                }
-                                match symbols.aliases.get(current) {
-                                    Some(next) => {
-                                        current = next.as_str();
-                                        if current == pattern_enum.as_str() {
-                                            matched = true;
-                                        }
-                                    }
-                                    None => break,
-                                }
-                            }
+                        if let Some(union_name) = resolve_dispatch_union(&scrutinee_ty, symbols) {
+                            let matched = symbols
+                                .variant_of
+                                .get(variant_name.as_str())
+                                .is_some_and(|u| u == union_name);
                             if !matched {
                                 errors.push(CanonError::CheckError {
                                     message: format!(
                                         "pattern `{}` is not a variant of `{}`",
-                                        variant_name, scrutinee_ty
+                                        variant_name, union_name
                                     ),
                                     span: *vspan,
                                 });
