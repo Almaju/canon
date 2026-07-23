@@ -1,0 +1,24 @@
+Unit => Program {
+    List(1 * 2 * 3 * 4 * 5)
+        -> Filtered((Int) => Bool { Int -> Le(2) })
+        -> Length
+        -> Print
+    List(1 * 2 * 3 * 4 * 5) -> Filtered((Int) => Bool { Int -> Le(2) }) -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
+    )
+    List(1 * 2 * 3 * 4 * 5)
+        -> Filtered((Int) => Bool { Int -> Le(0) })
+        -> Length
+        -> Print
+    List("a" * "bb" * "c" * "dd")
+        -> Filtered((String) => Bool { String -> Length -> Le(1) })
+        -> Length
+        -> Print
+    List("a" * "bb" * "c" * "dd")
+        -> Filtered((String) => Bool { String -> Length -> Le(1) })
+        -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+}

@@ -93,7 +93,7 @@ completing the semiring reading: sums, products, exponents.
 
 `List<T>` is itself compiler-supplied, not derived from `T^*` --
 `List(...)` is its value-level constructor, with methods like
-`Mapped`, `First`, and `At`. Indexing is **1-based** everywhere
+`Mapped`, `Filtered`, `Taken`, `First`, and `At`. Indexing is **1-based** everywhere
 (`list -> At(1)` is the first element, `string -> ByteAt(1)` the first
 byte): one origin, matching positional product access `.1`.
 

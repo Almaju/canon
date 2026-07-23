@@ -20,7 +20,7 @@ Scalar and `String` payloads lower fully: `List<String>` shares the
 canonical layout, 64-bit scalars share Canon's 8-byte list stride, narrower
 scalars from `wasi:` bindings (`list<u8>` from `wasi:random`, for example)
 are read back per-width using the vendored WIT, and `At(i)` / `First` /
-`Mapped` chains work on all of them. Compound payloads — products, unions
+`Mapped` / `Filtered` / `Taken` chains work on all of them. Compound payloads — products, unions
 (other than `Bool`, which erases to a scalar), and nested containers — do
 not fit the 8-byte element slot, so declaring, constructing, or dispatching
 on a `List` / `Option` of one is rejected wherever it appears: binding
