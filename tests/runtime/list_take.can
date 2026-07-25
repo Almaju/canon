@@ -1,0 +1,18 @@
+Unit => Program {
+    List(1 * 2 * 3)
+        -> Taken(2)
+        -> Length
+        -> Print
+    List(1 * 2 * 3)
+        -> Taken(9)
+        -> Length
+        -> Print
+    List(1 * 2 * 3)
+        -> Taken(0)
+        -> Length
+        -> Print
+    List(1 * 2 * 3) -> Taken(2) -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
+    )
+}

@@ -157,7 +157,7 @@ do one thing.
 ## Loops and recursion
 
 There are no loop keywords. Iteration is operations on collections
-(`Mapped`, `At`, `Length`, `First`, `Joined`) or plain recursion with
+(`Mapped`, `Filtered`, `Taken`, `At`, `Length`, `First`, `Joined`) or plain recursion with
 dispatch supplying the base case. `Map` and `Set` in the stdlib are
 built this way -- recursive unions walked by recursive constructors.
 

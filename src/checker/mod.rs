@@ -2913,6 +2913,8 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("first", 0)
                 | ("get", 1)
                 | ("map", 1)
+                | ("filter", 1)
+                | ("take", 1)
                 | ("append", 1)
                 | ("concat", 1)
                 | ("Json", 0)
@@ -3334,7 +3336,7 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "lt") => "Bool".to_string(),
         ("List", "length") => "Int".to_string(),
-        ("List", "map") => "List".to_string(),
+        ("List", "map" | "filter" | "take") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
         ("List", "get") => "Option".to_string(),
         ("List", "append" | "concat") => "List".to_string(),

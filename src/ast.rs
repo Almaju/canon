@@ -680,6 +680,8 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Substring", "substring"),
     // List
     ("Mapped", "map"),
+    ("Filtered", "filter"),
+    ("Taken", "take"),
     ("First", "first"),
     ("At", "get"),
     ("Appended", "append"),

@@ -1,3 +1,13 @@
+FilteredKeepsMatching = TestResult
+
+Unit => FilteredKeepsMatching {
+    List(1 * 2 * 3 * 4)
+        -> Filtered((Int) => Bool { Int -> Le(2) })
+        -> Length
+        -> Eq(2)
+        -> TestResult
+}
+
 ListConstructionCountsElements = TestResult
 
 Unit => ListConstructionCountsElements {
@@ -14,5 +24,25 @@ Unit => MappedPreservesLength {
         -> Mapped((Int) => Int { Int -> Product(2) })
         -> Length
         -> Eq(3)
+        -> TestResult
+}
+
+TakenClampsPastEnd = TestResult
+
+Unit => TakenClampsPastEnd {
+    List(1 * 2 * 3)
+        -> Taken(9)
+        -> Length
+        -> Eq(3)
+        -> TestResult
+}
+
+TakenTruncatesPrefix = TestResult
+
+Unit => TakenTruncatesPrefix {
+    List(1 * 2 * 3)
+        -> Taken(2)
+        -> Length
+        -> Eq(2)
         -> TestResult
 }
