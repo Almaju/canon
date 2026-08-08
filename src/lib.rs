@@ -12,7 +12,5 @@ pub mod parser;
 #[cfg(target_arch = "wasm32")]
 pub mod playground;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod registry;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod runtime;
 pub mod webhost;

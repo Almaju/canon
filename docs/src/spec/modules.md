@@ -92,11 +92,9 @@ as deferred until build-time composition lands.
 
 ## Dependencies (`deps/`)
 
-`canon install <ns>:<name>[@ver]` fetches a package from its registry
-and vendors it under `deps/<ns>/<name>@<version>/`. **The directory
-tree is the lockfile**: the version pin is the directory name, and the
-recorded dependency list of a published package is read off its
-`deps/` directory names. There is no `canon.lock`.
+A dependency is a Canon package vendored under
+`deps/<ns>/<name>@<version>/`. **The directory tree is the lockfile**:
+the version pin is the directory name. There is no `canon.lock`.
 
 ## Workspaces
 
