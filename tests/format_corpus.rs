@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 
 const CANONICAL_TREES: &[&str] = &[
+    "docs/src",
     "packages",
     "examples",
     "tests/canon",
