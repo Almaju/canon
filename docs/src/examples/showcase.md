@@ -12,7 +12,6 @@ instead.
 |---|---|---|
 | `multifile` | modules: one type per file, imports by reference | [A Multi-File Project](./multifile.md) |
 | `notes-api` | a JSON API as a `wasi:http/service` component | [notes-api](./notes-api.md) |
-| `todolist-web` | an interactive browser frontend (the Elm triple) with `localStorage` persistence, live preview | [A Todo List in the Browser](./todolist.md) |
 | `markdown-web` | a docs site compiled to wasm -- Markdown rendered to HTML by Canon, running in the browser | [A Docs Site in the Browser](./markdown-web.md) |
 | `todo-fullstack` | one language on both sides -- a frontend and a backend sharing types, served by one `canon run` | [Fullstack](./fullstack.md) |
 
@@ -25,5 +24,6 @@ canon run examples/notes-api        # any single example
 just examples                       # compile + run all, report pass/fail
 ```
 
-Each packaged example is an ordinary directory with a `src/main.can`,
-so it doubles as a template for starting your own project.
+Each packaged example is an ordinary directory of `.can` files under
+`src/` -- entry files are discovered by shape, not name -- so it
+doubles as a template for starting your own project.

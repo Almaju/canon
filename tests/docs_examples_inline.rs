@@ -40,10 +40,6 @@ fn example_sources_are_inlined_verbatim() {
         "examples/notes-api/src/main.can",
     );
     assert_inlined(
-        "docs/src/examples/todolist.md",
-        "examples/todolist-web/src/main.can",
-    );
-    assert_inlined(
         "docs/src/examples/fullstack.md",
         "examples/todo-fullstack/src/web.can",
     );

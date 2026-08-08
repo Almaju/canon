@@ -102,10 +102,6 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("todolist") * Label("Todo List in the Browser") * Todolist() -> String -> Text)
-            -> String
-    }{
-        Query
             -> Hit(Slug("markdown-web") * Label("Docs Site in the Browser") * MarkdownWeb() -> String -> Text)
             -> String
     }{
