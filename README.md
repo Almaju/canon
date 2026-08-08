@@ -76,7 +76,7 @@ The script downloads a prebuilt `canon` binary for your platform (macOS arm64/x8
 Pin to a specific version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s vX.Y.Z
 ```
 
 ### Toolchains: stable and nightly
@@ -102,7 +102,7 @@ Update the active toolchain in place, or pin a version:
 ```sh
 canon upgrade            # update the active toolchain to its channel's latest
 canon upgrade --check    # only check whether a newer stable release exists
-curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.2.0
+curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s vX.Y.Z
 ```
 
 > **Note:** no external toolchain is required — the compiler produces the final `.wasm` in-process and `canon run` executes it on the embedded wasmtime runtime.
@@ -173,7 +173,8 @@ Two channels, both driven by GitHub Actions — no manual version bumps, and
 nothing is ever pushed to `main`:
 
 - **nightly** — every push to `main` publishes a rolling `nightly` prerelease
-  (the `nightly` workflow). Install it with `CANON_CHANNEL=nightly`.
+  (the `nightly` workflow). Install it with
+  `curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | CANON_CHANNEL=nightly sh`.
 - **stable** — cut on demand: `Actions → promote → Run workflow` turns the
   current nightly into the next `vX.Y.Z` release (pick a patch/minor/major
   bump). This becomes the default install channel.
