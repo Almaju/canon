@@ -13,17 +13,29 @@ can only be constructed from a `Path`; a `Path` from a `String`. Holding
 the value *is* the permission:
 
 ```canon
-Path("./data.json")
-    -> File?
-    -> Read?
-    -> Print
+Unit => Program {
+    Path("./data.json")
+        -> File?
+        -> Read?
+        -> Print
+}
 ```
 
 When a function performs an effect, the value carrying that effect
 appears in its signature:
 
 ```canon
-Saved = (Database * User) => Result<Unit, DbError>
+Database = Int
+
+DbError = String
+
+Saved = Unit
+
+User = String
+
+Database * User => Result<Saved, DbError> {
+    Unit() -> Ok
+}
 ```
 
 There is no other way to reach the effect. No globals, no singletons,
@@ -37,12 +49,18 @@ A value carrying an effect appears in the signature of every function
 that touches it, **and at every call site that passes it on**:
 
 ```canon
+Main = Query
+
+Query = String
+
+SqliteConnection = Int
+
 SqliteConnection => Main {
     SqliteConnection -> Query
 }
 
 SqliteConnection => Query {
-    …
+    "SELECT 1"
 }
 ```
 

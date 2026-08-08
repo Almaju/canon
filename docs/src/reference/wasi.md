@@ -114,7 +114,7 @@ String => Result<Get, Error> {
 
 Referencing `Get` resolves to the vendored file automatically:
 
-```canon
+```text
 Unit => Program {
     Get("greeting") -> (
         * Err<Error> => Unit { "config unavailable" -> Print }

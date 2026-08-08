@@ -12,7 +12,7 @@ Canon has no local variables, no mutation, and no capturing closures, so
 React's component-local state is unexpressible. The architecture React
 approximates, Canon states natively:
 
-```canon
+```text
 Init = Model                     # marker: the initial model
 Update = Model                   # marker: the model after one message
 
