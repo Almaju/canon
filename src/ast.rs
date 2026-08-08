@@ -364,7 +364,7 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 }
 
 /// Whether an entry's parameter list is the single `Args` input of the
-/// canonical CLI entry `Args => Exit`. `Args` (`= List<String>`, from
+/// arg-reading CLI entry `Args => Exit`. `Args` (`= List<String>`, from
 /// `canon/std`) is the command's argument vector; codegen's `build_start`
 /// binds it to the argv read from `wasi:cli/environment#get-arguments`.
 pub fn is_args_entry_param(params: &[Param]) -> bool {

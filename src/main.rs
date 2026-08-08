@@ -443,7 +443,7 @@ fn resolve_src_target(pkg_root: &Path, arg: &str) -> Target {
         Some(target) => target,
         None => {
             eprintln!(
-                "error: no entry point in `{}/src`: expected a CLI entry (`Args => Exit`), \
+                "error: no entry point in `{}/src`: expected a CLI entry (`Unit => Program`), \
                  an HTTP handler (`Request => Response`), or a web-app triple (a \
                  `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
                  constructors) in one of its files",

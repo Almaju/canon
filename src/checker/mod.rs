@@ -202,7 +202,8 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         (true, 0, false) => {}
         // Library or malformed: no entry shape is present.
         (false, 0, false) => errors.push(CanonError::CheckError {
-            message: "no entry point defined: expected a CLI entry (`Args => Exit`), an \
+            message: "no entry point defined: expected a CLI entry (`Unit => Program`, or \
+                     `Args => Exit` to read the argument vector), an \
                       HTTP handler (`Request => Response`), or a web-app triple (a \
                       `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
                       constructors)."
@@ -212,7 +213,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         // Mixed worlds: a component exports exactly one world.
         (true, n, _) if n > 0 => errors.push(CanonError::CheckError {
             message: format!(
-                "mixed worlds: this module defines a CLI entry (`Args => Exit`) and also `{}` \
+                "mixed worlds: this module defines a CLI entry (`Unit => Program`) and also `{}` \
                   returning `Response` (HTTP entry). A component exports exactly one world. \
                   Remove one.",
                 http_entries[0].name.name
@@ -220,7 +221,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             span: http_entries[0].span,
         }),
         (true, 0, true) => errors.push(CanonError::CheckError {
-            message: "mixed worlds: this module defines a CLI entry (`Args => Exit`) and also \
+            message: "mixed worlds: this module defines a CLI entry (`Unit => Program`) and also \
                       the `init`/`update`/`view` triple (web app). A component exports \
                       exactly one world. Remove one."
                 .to_string(),
@@ -1663,7 +1664,7 @@ fn check_function(
     if func.name.name == "main" {
         if *main_found {
             errors.push(CanonError::CheckError {
-                message: "duplicate entry point: only one CLI entry (`Args => Exit { … }`) \
+                message: "duplicate entry point: only one CLI entry (`Unit => Program { … }`) \
                           may be defined"
                     .to_string(),
                 span: func.span,
@@ -1679,14 +1680,14 @@ fn check_function(
         }
 
         // Entries are anonymous, selected by their world-shaped return
-        // (`Args => Exit`). A literal `main` name is a leftover of
+        // (`Unit => Program`). A literal `main` name is a leftover of
         // the pre-types-only surface. Anonymous entries reach here
         // already renamed to the internal `main` by
         // `resolve_new_syntax`, distinguished by the `anonymous` flag.
         if !func.anonymous {
             errors.push(CanonError::CheckError {
                 message: "`main` is not a name: entries are anonymous and selected by their \
-                          world-shaped return — write `Args => Exit { … }`"
+                          world-shaped return — write `Unit => Program { … }`"
                     .to_string(),
                 span: func.name.span,
             });
