@@ -73,7 +73,6 @@ Page => Content {
         * "showcase" => Content { Showcase() -> Html }
         * "stdlib" => Content { Stdlib() -> Html }
         * "testing" => Content { Testing() -> Html }
-        * "todolist" => Content { Todolist() -> Html }
         * "types" => Content { Types() -> Html }
         * "types-and-values" => Content { TypesAndValues() -> Html }
         * "types-only" => Content { TypesOnly() -> Html }
@@ -113,7 +112,6 @@ Model => Html {
             {Model.Page -> NavItem(Slug("showcase") * Label("Overview"))}
             {Model.Page -> NavItem(Slug("multifile") * Label("Multi-File Project"))}
             {Model.Page -> NavItem(Slug("notes-api") * Label("notes-api: JSON Service"))}
-            {Model.Page -> NavItem(Slug("todolist") * Label("Todo List in the Browser"))}
             {Model.Page -> NavItem(Slug("markdown-web") * Label("Docs Site in the Browser"))}
             {Model.Page -> NavItem(Slug("fullstack") * Label("Fullstack"))}
             <div class="sec">Reference</div>
@@ -303,8 +301,8 @@ Page => Pager {
         }
         * "markdown-web" => Pager {
             Html(`<nav class="pager">{
-                Slug("todolist")
-                    -> Prev(Label("Todo List in the Browser"))
+                Slug("notes-api")
+                    -> Prev(Label("notes-api: JSON Service"))
                     -> String
             }{Slug("fullstack") -> Next(Label("Fullstack")) -> String}</nav>`)
         }
@@ -327,7 +325,7 @@ Page => Pager {
                 Slug("multifile")
                     -> Prev(Label("Multi-File Project"))
                     -> String
-            }{Slug("todolist") -> Next(Label("Todo List in the Browser")) -> String}</nav>`)
+            }{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
         }
         * "ordering" => Pager {
             Html(`<nav class="pager">{
@@ -384,13 +382,6 @@ Page => Pager {
                     -> Prev(Label("Programs &amp; Modules"))
                     -> String
             }{Slug("how-do-i") -> Next(Label("How Do I&#8230;?")) -> String}</nav>`)
-        }
-        * "todolist" => Pager {
-            Html(`<nav class="pager">{
-                Slug("notes-api")
-                    -> Prev(Label("notes-api: JSON Service"))
-                    -> String
-            }{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
         }
         * "types" => Pager {
             Html(`<nav class="pager">{

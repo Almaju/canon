@@ -119,7 +119,7 @@ Encoded(42)
 HTML literals produce `Html` (holes escape strings, pass `Html`
 through). A whole browser app is three arrows — view, init, update.
 ([The Web Target](../reference/web-target.md); worked example:
-[todo list](../examples/todolist.md))
+[fullstack todo list](../examples/fullstack.md))
 
 ## …render Markdown?
 

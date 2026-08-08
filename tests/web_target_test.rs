@@ -226,16 +226,16 @@ fn count(haystack: &str, needle: &str) -> usize {
     haystack.matches(needle).count()
 }
 
-/// The shipped `examples/todolist-web` app: build the real package,
-/// drive the full add/toggle/delete/clear loop, and prove the
+/// The shipped `examples/todo-fullstack` frontend: build the real
+/// package, drive the full add/toggle/delete/clear loop, and prove the
 /// localStorage story — replaying the message log on a fresh instance
 /// reproduces the exact same view (that is *how* the host persists,
 /// since the model is a fold over messages).
 #[test]
-fn web_todolist_example_loop_and_replay() {
+fn web_fullstack_example_loop_and_replay() {
     let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
-        .join("todolist-web");
+        .join("todo-fullstack");
 
     let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
     let out = Command::new(&canon_bin)
@@ -246,15 +246,15 @@ fn web_todolist_example_loop_and_replay() {
         .expect("canon build must spawn");
     assert!(
         out.status.success(),
-        "canon build examples/todolist-web failed:\nstdout:\n{}\nstderr:\n{}",
+        "canon build examples/todo-fullstack failed:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // A package builds into its own `build/<stem>.wasm` plus the
-    // three-file web bundle.
+    // A fullstack package builds its web bundle (named after the
+    // package) and its server component side by side in `build/`.
     let build = example.join("build");
-    let wasm_path = build.join("todolist-web.wasm");
+    let wasm_path = build.join("todo-fullstack.wasm");
     assert!(
         wasm_path.exists(),
         "expected {} after canon build",
@@ -265,8 +265,8 @@ fn web_todolist_example_loop_and_replay() {
     // by the app's stem.
     let index = std::fs::read_to_string(build.join("index.html")).unwrap();
     assert!(
-        index.contains("canonWebStart(\"todolist-web.wasm\"")
-            && index.contains("\"canon:todolist-web\""),
+        index.contains("canonWebStart(\"todo-fullstack.wasm\"")
+            && index.contains("\"canon:todo-fullstack\""),
         "index.html must boot the app with a persistence key: {index}"
     );
 
