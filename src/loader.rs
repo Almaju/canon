@@ -469,6 +469,44 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     crate::install::find_project_root(start)
 }
 
+/// Loads a single-file program held in memory rather than on disk.
+///
+/// Reference discovery still runs, but with no directory to walk every
+/// name must resolve in the bundled packages — which is exactly the
+/// surface a one-file program has. `path` is the name errors are
+/// reported against; nothing reads it.
+pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
+    let mut ctx = LoadCtx {
+        seen: HashSet::new(),
+        seen_bundled: HashSet::new(),
+        items: Vec::new(),
+        defined: HashSet::new(),
+        defined_bundled: HashSet::new(),
+        defined_types: HashSet::new(),
+        local_stems: HashMap::new(),
+        bindgen_decls: None,
+        deps_decls: None,
+        local_sources: vec![LoadedSource {
+            path: path.to_path_buf(),
+            source: source.to_string(),
+        }],
+        project_root: None,
+        deps_dir: None,
+        bindgen_dir: None,
+    };
+    let entry_items_start = load_entry_source(source, path, &mut ctx)?;
+    let mut module = Module {
+        items: ctx.items,
+        span: Span::default(),
+    };
+    crate::checker::auto_await::transform(&mut module);
+    Ok(LoadResult {
+        module,
+        entry_items_start,
+        local_sources: ctx.local_sources,
+    })
+}
+
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
     let canonical = entry.canonicalize().map_err(|err| CanonError::CheckError {
         message: format!("could not resolve `{}`: {}", entry.display(), err),

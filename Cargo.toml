@@ -31,6 +31,7 @@ wit-parser    = "0.250"
 wit-component = "0.250"
 wasmparser    = "0.250"
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Embedded runtime. We target WASI Preview 3 + the async Component Model.
 # `component-model-async` enables the async canonical ABI; `p3` exposes the
 # experimental WASI 0.3 implementation in wasmtime-wasi.
