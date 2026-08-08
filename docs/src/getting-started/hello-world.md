@@ -2,7 +2,7 @@
 
 Create a file named `hello.can`:
 
-```canon,run=hello-world
+```canon,run
 Args => Exit {
     "hello" -> Print
     Exit(0)

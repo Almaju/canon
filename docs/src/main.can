@@ -18,6 +18,8 @@ Page = String
 
 Pager = Html
 
+Play = Html
+
 Prev = Html
 
 Query = String
@@ -69,6 +71,7 @@ Page => Content {
         * "overview" => Content { Overview() -> Html }
         * "philosophy" => Content { Philosophy() -> Html }
         * "pipes-and-constructors" => Content { PipesAndConstructors() -> Html }
+        * "play" => Content { Play() }
         * "programs-and-modules" => Content { ProgramsAndModules() -> Html }
         * "showcase" => Content { Showcase() -> Html }
         * "stdlib" => Content { Stdlib() -> Html }
@@ -96,6 +99,7 @@ Model => Html {
             {Model.Page -> NavItem(Slug("canon-for-ai") * Label("Canon for AI"))}
             {Model.Page -> NavItem(Slug("installation") * Label("Installation"))}
             {Model.Page -> NavItem(Slug("hello-world") * Label("Hello, World"))}
+            {Model.Page -> NavItem(Slug("play") * Label("Playground"))}
             <div class="sec">Learn</div>
             {Model.Page -> NavItem(Slug("types-and-values") * Label("Types &amp; Values"))}
             {
@@ -268,8 +272,8 @@ Page => Pager {
         }
         * "hello-world" => Pager {
             Html(`<nav class="pager">{Slug("installation") -> Prev(Label("Installation")) -> String}{
-                Slug("types-and-values")
-                    -> Next(Label("Types &amp; Values"))
+                Slug("play")
+                    -> Next(Label("Playground"))
                     -> String
             }</nav>`)
         }
@@ -357,6 +361,13 @@ Page => Pager {
                     -> String
             }{Slug("branching-and-loops") -> Next(Label("Branching &amp; Loops")) -> String}</nav>`)
         }
+        * "play" => Pager {
+            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{
+                Slug("types-and-values")
+                    -> Next(Label("Types &amp; Values"))
+                    -> String
+            }</nav>`)
+        }
         * "programs-and-modules" => Pager {
             Html(`<nav class="pager">{
                 Slug("async-without-keywords")
@@ -400,7 +411,7 @@ Page => Pager {
             }{Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String}</nav>`)
         }
         * "types-and-values" => Pager {
-            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{
+            Html(`<nav class="pager">{Slug("play") -> Prev(Label("Playground")) -> String}{
                 Slug("pipes-and-constructors")
                     -> Next(Label("Pipes &amp; Constructors"))
                     -> String
@@ -431,6 +442,25 @@ Page => Pager {
             Html(`<nav class="pager">{Slug("philosophy") -> Next(Label("The Philosophy")) -> String}</nav>`)
         }
     )
+}
+
+Unit => Play {
+    <div class="pg">
+        <h1>Playground</h1>
+        <p>The Canon compiler is a WebAssembly module running in this tab. Your program is compiled to a component and executed here — nothing is sent to a server.</p>
+        <div class="pg-bar">
+            <button class="pg-run"><span class="canon-run-glyph">&#9654;</span> run</button>
+            <span class="pg-hint">&#8984;/Ctrl + Enter</span>
+            <button class="pg-share">share</button>
+            <button class="pg-reset">reset</button>
+            <span class="pg-status"></span>
+        </div>
+        <textarea class="pg-editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Canon source"></textarea>
+        <div class="pg-panel">
+            <div class="pg-panel-bar"><span class="dot"></span><span>output</span></div>
+            <pre class="pg-out"><code></code></pre>
+        </div>
+    </div>
 }
 
 Slug * Label => Prev {

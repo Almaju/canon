@@ -7,13 +7,11 @@
 //
 //   1. Syntax-highlight `<pre data-info="canon...">` code blocks. The
 //      Markdown renderer emits the fence info string as `data-info`, so
-//      "```canon" and "```canon,run=hello" both arrive tagged.
-//   2. Put a Run button on "```canon,run=<name>" blocks. Each such block
-//      was compiled to a WASI P3 component and transpiled to JS by
-//      docs/runner/build.mjs at docs-build time; the button imports it and
-//      streams the program's stdout into a panel. Canon components are
-//      async-lifted, so this needs JSPI (WebAssembly.Suspending) - stable
-//      in Chromium; without it the button explains instead of running.
+//      "```canon" and "```canon,run" both arrive tagged.
+//   2. Put a Run button on "```canon,run" blocks, and mount the
+//      playground page. Both compile and run the source in the page
+//      through canon-play.js - the block's own text is the program, so
+//      what the reader runs is exactly what the reader sees.
 //
 // Loaded as a plain classic script (injected after canon-web.js), so it
 // touches only globals - no bundler, no modules on the page itself.
@@ -78,76 +76,31 @@
     return /(?:^|,)(canon|ow)(?:,|$)/.test(info || "");
   }
   function infoRun(info) {
-    var m = /(?:^|,)run=([a-z0-9-]+)(?:,|$)/.exec(info || "");
-    return m ? m[1] : null;
+    return /(?:^|,)run(?:,|$)/.test(info || "");
   }
 
   // ── click-to-run ──────────────────────────────────────────────────
-  var hasJspi =
-    typeof WebAssembly !== "undefined" &&
-    typeof WebAssembly.Suspending === "function";
-  var JSPI_MSG =
-    "Live examples need JSPI (WebAssembly.Suspending), which this browser " +
-    "does not ship yet. Try Chrome or Edge.";
-
-  var manifestReady = null; // Promise<Set<string>> of runnable names
-  function runnable() {
-    if (!manifestReady) {
-      manifestReady = fetch("runner/manifest.json")
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (m) {
-          var s = new Set();
-          if (m && m.examples) m.examples.forEach(function (e) { s.add(e.name); });
-          return s;
-        })
-        .catch(function () { return new Set(); });
-    }
-    return manifestReady;
-  }
-
-  var runCounter = 0;
-  var queue = Promise.resolve(); // runs are serialised (shared stdout sink)
-
-  function execute(name, outEl, statusEl) {
+  function execute(source, outEl, statusEl) {
     outEl.textContent = "";
-    if (!hasJspi) {
-      outEl.innerHTML = '<span class="canon-runner-err">' + esc(JSPI_MSG) + "</span>";
-      return Promise.resolve();
-    }
-    statusEl.textContent = "running...";
-    var url = new URL(
-      "runner/" + name + "/" + name + ".js?i=" + runCounter++,
-      document.baseURI
-    ).href;
-    var produced = false;
-    globalThis.__canonSink = function (line, isErr) {
-      produced = true;
-      var span = document.createElement("span");
-      if (isErr) span.className = "canon-runner-err";
-      span.textContent = line + "\n";
-      outEl.appendChild(span);
-    };
-    return import(url)
-      .then(function (mod) { return mod.run.run(); })
-      .then(function () { return new Promise(function (r) { setTimeout(r, 200); }); })
-      .then(function () {
-        if (!produced) outEl.textContent = "(no output)";
-        statusEl.textContent = "ok";
-      })
-      .catch(function (e) {
+    statusEl.textContent = "compiling...";
+    return canonPlay
+      .compileAndRun(source, function (text, isErr) {
         var span = document.createElement("span");
-        span.className = "canon-runner-err";
-        span.textContent = String(e) + "\n";
+        if (isErr) span.className = "canon-runner-err";
+        span.textContent = text;
         outEl.appendChild(span);
-        statusEl.textContent = "trap";
+      })
+      .then(function (result) {
+        if (result.status === "ok" && !outEl.textContent) outEl.textContent = "(no output)";
+        statusEl.textContent = result.status;
       });
   }
 
-  function addRunButton(pre, name) {
+  function addRunButton(pre) {
     var bar = ensureBar(pre);
     var btn = document.createElement("button");
     btn.className = "canon-run-button";
-    btn.title = hasJspi ? "Run this program in your browser" : JSPI_MSG;
+    btn.title = "Run this program in your browser";
     btn.innerHTML = '<span class="canon-run-glyph">&#9654;</span> run';
     bar.appendChild(btn);
 
@@ -165,7 +118,7 @@
       }
       var out = panel.querySelector(".canon-runner-out code");
       var status = panel.querySelector(".canon-runner-status");
-      queue = queue.then(function () { return execute(name, out, status); });
+      execute(pre.querySelector("code").textContent, out, status);
     });
   }
 
@@ -219,8 +172,8 @@
 
   // ── the hook ──────────────────────────────────────────────────────
   function enhance(root) {
-    var pres = (root || document).querySelectorAll("pre[data-info]");
-    var wantsRun = false;
+    var scope = root || document;
+    var pres = scope.querySelectorAll("pre[data-info]");
     Array.prototype.forEach.call(pres, function (pre) {
       var info = pre.getAttribute("data-info") || "";
       var code = pre.querySelector("code");
@@ -233,18 +186,13 @@
         pre.dataset.copy = "1";
         addCopyButton(pre);
       }
-      if (infoRun(info)) wantsRun = true;
+      if (code && infoRun(info) && !pre.dataset.run) {
+        pre.dataset.run = "1";
+        addRunButton(pre);
+      }
     });
-    if (!wantsRun) return;
-    runnable().then(function (names) {
-      Array.prototype.forEach.call(pres, function (pre) {
-        var name = infoRun(pre.getAttribute("data-info") || "");
-        if (name && names.has(name) && !pre.dataset.run) {
-          pre.dataset.run = name;
-          addRunButton(pre, name);
-        }
-      });
-    });
+    var pg = scope.querySelector(".pg");
+    if (pg) canonPlay.mount(pg);
   }
 
   globalThis.canonAfterRender = enhance;

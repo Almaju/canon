@@ -50,7 +50,7 @@ recursive union plus a recursive constructor replaces the loop, the
 counter, and the exit condition. Here is a linked chain measuring its
 own length; run it:
 
-```canon,run=learn-branching
+```canon,run
 Chain = Link + Stop
 
 Len = Int

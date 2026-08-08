@@ -30,7 +30,7 @@ Greeting * Name => Line {
 
 At the call site, a value flows left to right through `->`:
 
-```canon,run=learn-pipes
+```canon,run
 Loud = String
 
 Whisper = String

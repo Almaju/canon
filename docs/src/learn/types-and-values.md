@@ -38,7 +38,7 @@ empty parens: `True()`, `None()`, `Unit()`.
 
 Here is a product being built, read, and printed — press run:
 
-```canon,run=learn-types
+```canon,run
 Birthday = String
 
 Greeting = String
