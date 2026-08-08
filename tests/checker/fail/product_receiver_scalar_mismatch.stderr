@@ -1,0 +1,1 @@
+error[tests/checker/fail/product_receiver_scalar_mismatch.can:10:5]: `Serial` expects a `String`, found `Config`

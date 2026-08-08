@@ -1,0 +1,14 @@
+Config = Host * Port
+
+Host = String
+
+Port = Int
+
+Serial = String
+
+Unit => Program {
+    "example.com"
+        -> Config(3000)
+        -> Serial
+        -> Print
+}

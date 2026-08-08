@@ -1,0 +1,12 @@
+Left = String
+
+Pair = Left * Right
+
+Right = String
+
+Unit => Program {
+    "a"
+        -> Pair("b")
+        -> Left
+        -> Print
+}

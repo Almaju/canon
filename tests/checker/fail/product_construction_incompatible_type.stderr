@@ -1,1 +1,2 @@
 error[tests/checker/fail/product_construction_incompatible_type.can:8:5]: cannot construct `User`: no argument's type is compatible with field `Username`
+error[tests/checker/fail/product_construction_incompatible_type.can:8:5]: `Username` is a field of `User` — read it with `.Username`; `-> Username` is construction, and no `User => Username` constructor exists
