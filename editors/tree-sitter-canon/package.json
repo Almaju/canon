@@ -3,31 +3,13 @@
   "version": "0.2.0",
   "description": "Tree-sitter grammar for Canon",
   "devDependencies": {
-    "tree-sitter-cli": "^0.22.0",
-    "prebuildify": "^6.0.0"
+    "tree-sitter-cli": "^0.22.0"
   },
   "scripts": {
-    "generate": "tree-sitter generate",
-    "install": "node-gyp-build",
-    "prebuildify": "prebuildify --napi --strip"
+    "generate": "tree-sitter generate"
   },
-  "dependencies": {
-    "node-gyp-build": "^4.8.0"
-  },
-  "peerDependencies": {
-    "tree-sitter": "^0.21.0"
-  },
-  "peerDependenciesMeta": {
-    "tree_sitter": {
-      "optional": true
-    }
-  },
-  "types": "bindings/node",
   "files": [
     "grammar.js",
-    "binding.gyp",
-    "prebuilds/**",
-    "bindings/node/*",
     "queries/*",
     "src/**"
   ],
