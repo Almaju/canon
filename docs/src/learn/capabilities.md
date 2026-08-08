@@ -25,7 +25,7 @@ touches the filesystem, so it has no run button — try it locally with
 A function that performs an effect takes the effectful value as an
 input, so its signature *is* its effect declaration:
 
-```canon
+```text
 Database * User => Result<Saved, DbError> {
     …
 }
@@ -42,7 +42,7 @@ token.
 Effects can also *produce* values — receipts that downstream code can
 demand:
 
-```canon
+```text
 Written = Path
 
 Contents * Path => Result<Written, IoError> {

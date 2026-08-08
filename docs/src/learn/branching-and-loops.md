@@ -10,10 +10,12 @@ variant, every variant covered, in the union's (alphabetical) order,
 with no wildcard:
 
 ```canon
-True() -> (
-    * False => Unit { "no" -> Print }
-    * True => Unit { "yes" -> Print }
-)
+Unit => Program {
+    True() -> (
+        * False => Unit { "no" -> Print }
+        * True => Unit { "yes" -> Print }
+    )
+}
 ```
 
 Each arm is a lambda for one variant; the whole dispatch is an
@@ -31,10 +33,16 @@ scrutinee's type — this is Canon's route table, switch statement, and
 parser all at once:
 
 ```canon
-Route -> (
-    * "/notes" => Body { Index() }
-    * String => Body { NotFound() }
-)
+Body = String
+
+Route = String
+
+Route => Body {
+    Route -> (
+        * "/notes" => Body { Body("index") }
+        * String => Body { Body("not found") }
+    )
+}
 ```
 
 ## Loops Without Loops
@@ -42,7 +50,11 @@ Route -> (
 Iteration is either an operation on a collection —
 
 ```canon
-List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })
+Doubled = List<Int>
+
+Unit => Doubled {
+    List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })
+}
 ```
 
 — or plain recursion, with dispatch supplying the base case. A

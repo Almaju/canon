@@ -41,7 +41,7 @@ This program ignores its arguments, but the shape is always there -- the
 same way an HTTP handler names `Request` even when it ignores it. (More
 on entry points in [Programs & Modules](../learn/programs-and-modules.md).)
 
-```canon
+```text
     "hello" -> Print
     Exit(0)
 }
@@ -57,7 +57,7 @@ needs no explicit exit.)
 `"hello" -> Print` is a pipe call. `Print` takes a single `String`
 component and writes it to stdout:
 
-```canon
+```text
 (String) => Unit
 ```
 
