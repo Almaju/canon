@@ -28,6 +28,7 @@ const HOSTED: &[&str] = &[
     "canon:async/waitable.subtask-cancel",
     "canon:async/waitable.subtask-drop",
     "canon:async/waitable.task-return",
+    "canon:builtins/json.from-float",
     "wasi:cli/environment.get-arguments",
     "wasi:cli/environment.get-initial-cwd",
     "wasi:cli/exit.exit-with-code",
@@ -131,11 +132,12 @@ fn program_imports_stay_within_the_browser_host() {
     let hosted: BTreeSet<&str> = HOSTED.iter().copied().collect();
     // Both CLI entry shapes: `Unit => Program` prints and nothing else,
     // while `Args => Exit` also reaches for arguments, the working
-    // directory and the exit code. Between them they cover what the
-    // runnable docs snippets do.
+    // directory and the exit code. The third encodes a float, the one
+    // thing JSON still needs a host for.
     let sources = [
         "Unit => Program {\n    \"hi\" -> Print\n}\n",
         "Args => Exit {\n    1 -> Sum(2) -> String -> Print\n    Exit(0)\n}\n",
+        "Unit => Program {\n    1.5 -> Encoded -> String -> Print\n}\n",
     ];
     for source in sources {
         let component = compile(source);

@@ -104,8 +104,22 @@
   // because a program that genuinely blocks is reaching for a WASI
   // interface the browser has none of — and that lands on the stub below
   // with its name in the message.
-  function hostImports(memory, sink, state) {
+  function hostImports(provider, sink, state) {
+    var memory = provider.exports.memory;
     var dec = new TextDecoder();
+
+    // Hand a string back through a canonical-ABI return area: the bytes
+    // go in guest memory via its own allocator, and the (ptr, len) pair
+    // goes where the caller asked for it.
+    function returnString(text, retptr) {
+      var bytes = new TextEncoder().encode(text);
+      var ptr = provider.exports.cabi_realloc(0, 0, 1, bytes.length);
+      new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
+      var view = new DataView(memory.buffer);
+      view.setInt32(retptr, ptr, true);
+      view.setInt32(retptr + 4, bytes.length, true);
+    }
+
     function stream(isErr) {
       return {
         "write-via-stream": function () { return 1; },
@@ -139,7 +153,31 @@
         "task-return": function () { return 0; },
         "subtask-cancel": function () { return 0; },
       },
+      // The one thing Canon can't express in Canon: shortest-round-trip
+      // decimal for an f64 (`host_builtin_json` in src/runtime.rs).
+      "canon:builtins/json": {
+        "from-float": function (value, retptr) {
+          returnString(jsonFloat(value), retptr);
+        },
+      },
     };
+  }
+
+  // Matches the native host byte for byte, which JS does not do on its
+  // own: `String(v)` switches to exponent notation outside 1e-6..1e21,
+  // where Rust's f64 Display never does, and it renders -0 as "0". So
+  // take JS's shortest-round-trip digits and place the point by hand.
+  function jsonFloat(value) {
+    // JSON has no spelling for these; the native host emits null too.
+    if (!isFinite(value)) return "null";
+    if (Object.is(value, -0)) return "-0";
+    var sign = value < 0 ? "-" : "";
+    var parts = Math.abs(value).toExponential().split("e");
+    var digits = parts[0].replace(".", "");
+    var point = Number(parts[1]) + 1; // digits before the decimal point
+    if (point <= 0) return sign + "0." + "0".repeat(-point) + digits;
+    if (point >= digits.length) return sign + digits + "0".repeat(point - digits.length);
+    return sign + digits.slice(0, point) + "." + digits.slice(point);
   }
 
   function run(component, sink) {
@@ -163,9 +201,8 @@
           throw new Error("unexpected component shape: " + compiled.length + " core modules");
 
         var providerInst = new WebAssembly.Instance(provider, {});
-        var memory = providerInst.exports.memory;
         var state = { exitCode: null };
-        var known = hostImports(memory, sink, state);
+        var known = hostImports(providerInst, sink, state);
         var imports = {};
         WebAssembly.Module.imports(program).forEach(function (im) {
           imports[im.module] = imports[im.module] || {};
