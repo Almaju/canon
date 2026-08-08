@@ -1,0 +1,1 @@
+error[tests/checker/fail/product_receiver_scalar_construction.can:8:5]: `Left` is a field of `Pair` — read it with `.Left`; `-> Left` is construction, and no `Pair => Left` constructor exists

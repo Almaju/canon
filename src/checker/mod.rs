@@ -2485,28 +2485,63 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // an `i64` where the callee expects a string's `i32`
                 // pointer/length pair, for instance — and wasmtime rejects
                 // it as invalid. Catch the mismatch here instead.
-                if let (Some(target_scalar), Some(recv_scalar)) = (
-                    scalar_primitive_root(symbols, &method.name),
-                    scalar_primitive_root(symbols, &recv_ty),
-                ) {
-                    // The Int ↔ Float pair is the one cross-primitive
-                    // conversion codegen owns (wasm numerics:
-                    // `i64.trunc_f64_s` / `f64.convert_i64_s`), so
-                    // `x -> Int` on a Float truncates rather than
-                    // mismatching. Every other conversion is a stdlib
-                    // constructor (`has_alias_method` above).
-                    let is_numeric_conversion = matches!(
-                        (target_scalar, recv_scalar),
-                        ("Int", "Float") | ("Float", "Int")
-                    );
-                    if target_scalar != recv_scalar && !is_numeric_conversion {
-                        errors.push(CanonError::CheckError {
-                            message: format!(
-                                "`{}` expects a `{}`, found `{}`",
-                                method.name, target_scalar, recv_scalar
-                            ),
-                            span: *span,
-                        });
+                if let Some(target_scalar) = scalar_primitive_root(symbols, &method.name) {
+                    if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty) {
+                        // The Int ↔ Float pair is the one cross-primitive
+                        // conversion codegen owns (wasm numerics:
+                        // `i64.trunc_f64_s` / `f64.convert_i64_s`), so
+                        // `x -> Int` on a Float truncates rather than
+                        // mismatching. Every other conversion is a stdlib
+                        // constructor (`has_alias_method` above).
+                        let is_numeric_conversion = matches!(
+                            (target_scalar, recv_scalar),
+                            ("Int", "Float") | ("Float", "Int")
+                        );
+                        if target_scalar != recv_scalar && !is_numeric_conversion {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`",
+                                    method.name, target_scalar, recv_scalar
+                                ),
+                                span: *span,
+                            });
+                        }
+                    } else {
+                        // Same stack-shape hole from the other side: a
+                        // receiver whose alias chain terminates in a
+                        // multi-field product (one pointer at the value
+                        // level) piped into a scalar constructor. The
+                        // erasure fallback would leave the product's
+                        // pointer where the primitive's representation
+                        // belongs. Only a *known* multi-field product
+                        // fires — unknown, generic, union, and
+                        // single-field receivers keep the conservative
+                        // pass-through above.
+                        let recv_terminal = symbols.resolve_alias(&recv_ty);
+                        if let Some(recv_fields) = symbols
+                            .product_fields
+                            .get(recv_terminal)
+                            .filter(|fields| fields.len() >= 2)
+                        {
+                            let message = if recv_fields.contains(&method.name) {
+                                // The likely intent was field projection,
+                                // so teach that spelling.
+                                format!(
+                                    "`{m}` is a field of `{r}` — read it with `.{m}`; `-> {m}` is construction, and no `{r} => {m}` constructor exists",
+                                    m = method.name,
+                                    r = recv_terminal
+                                )
+                            } else {
+                                format!(
+                                    "`{}` expects a `{}`, found `{}`",
+                                    method.name, target_scalar, recv_ty
+                                )
+                            };
+                            errors.push(CanonError::CheckError {
+                                message,
+                                span: *span,
+                            });
+                        }
                     }
                 }
             }
