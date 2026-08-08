@@ -51,8 +51,13 @@
     var bytes = new TextEncoder().encode(source);
     var ptr = ex.canon_alloc(bytes.length);
     new Uint8Array(ex.memory.buffer, ptr, bytes.length).set(bytes);
-    var len = ex[fn](ptr, bytes.length);
-    var out = new Uint8Array(ex.memory.buffer, ex.canon_result(), len);
+    // A panic aborts rather than returning, but the hook has already
+    // left its message in the result buffer and memory survives the
+    // trap — so the result is read the same way either way.
+    try { ex[fn](ptr, bytes.length); } catch (e) {}
+    var out = new Uint8Array(ex.memory.buffer, ex.canon_result_ptr(), ex.canon_result_len());
+    if (out.length === 0)
+      return { ok: false, diagnostics: "the compiler crashed on this program" };
     if (out[0] === TAG_DIAGNOSTICS)
       return { ok: false, diagnostics: new TextDecoder().decode(out.subarray(1)) };
     return { ok: true, payload: out.slice(1) };
@@ -180,7 +185,12 @@
   }
 
   function compileAndRun(source, sink) {
-    return formatAndCompile(source).then(function (result) {
+    // Anything before the program even starts — the compiler failing to
+    // download, a browser refusing the module — is reported in the same
+    // panel rather than left as a rejected promise and a stuck button.
+    return formatAndCompile(source).catch(function (err) {
+      return { ok: false, diagnostics: "could not load the compiler: " + (err.message || err) };
+    }).then(function (result) {
       if (!result.ok) {
         sink(result.diagnostics + "\n", true);
         return { status: "error", exitCode: null, canonical: result.canonical };
