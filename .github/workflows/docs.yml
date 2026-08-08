@@ -78,6 +78,10 @@ jobs:
           sed -i \
             's#<script src="canon-web.js"></script>#<script src="canon-web.js"></script>\n<script src="docs-enhance.js"></script>#' \
             docs/build/index.html
+          # sed -i exits 0 on no match; without this check a drift in
+          # webhost.rs's index template ships a site with no highlighting
+          # or run buttons and CI stays green.
+          grep -q 'docs-enhance.js' docs/build/index.html
 
       - name: Assemble site (landing at /, docs app under /doc/)
         run: |
