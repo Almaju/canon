@@ -4,8 +4,8 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s v0.1.0
-#   CANON_CHANNEL=nightly curl -fsSL .../install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/almaju/canon/main/install.sh | sh -s vX.Y.Z
+#   curl -fsSL .../install.sh | CANON_CHANNEL=nightly sh
 #
 # Env vars:
 #   CANON_INSTALL  override install prefix (default: $HOME/.canon)
@@ -111,9 +111,9 @@ else
        The repository may not have cut a stable release yet — see
        https://github.com/${REPO}/releases
        Try the nightly channel instead:
-       CANON_CHANNEL=nightly curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh
+       curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | CANON_CHANNEL=nightly sh
        Or pin a specific version:
-       CANON_VERSION=vX.Y.Z curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh"
+       curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | CANON_VERSION=vX.Y.Z sh"
     case "$version" in v*) ;; *) version="v${version}" ;; esac
 fi
 
@@ -200,6 +200,3 @@ case ":${PATH:-}:" in
         ;;
 esac
 
-echo
-info "Note: \`canon run\` and \`canon build\` require \`rustc\` to be installed."
-info "      Install Rust from https://rustup.rs if you don't have it."
