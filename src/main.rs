@@ -1121,11 +1121,19 @@ fn build_spec(spec: &BuildSpec) -> bool {
     build_loaded(spec, &loaded)
 }
 
+/// The module codegen compiles: the loaded program narrowed to what the
+/// entry can reach, so the import block is the program's real
+/// dependencies rather than every binding its files happened to declare.
+fn codegen_module(loaded: &LoadResult) -> canon::ast::Module {
+    checker::prune_to_reachable(&loaded.module, loaded.entry_items_start)
+}
+
 /// Writes an already-checked target's artifacts — the tail of
 /// `build_spec`, shared with the fullstack build (which checks entry
 /// shapes itself before writing).
 fn build_loaded(spec: &BuildSpec, loaded: &LoadResult) -> bool {
-    let component_bytes = codegen::generate(&loaded.module);
+    let module = codegen_module(loaded);
+    let component_bytes = codegen::generate(&module);
 
     // Web apps get the three-file bundle instead of a `.wasm` + `.wit`
     // pair — the output is a directory you can serve as-is (or open
@@ -1150,7 +1158,7 @@ fn build_loaded(spec: &BuildSpec, loaded: &LoadResult) -> bool {
         return true;
     }
 
-    let wit_text = codegen::generate_wit(&loaded.module);
+    let wit_text = codegen::generate_wit(&module);
     let wasm_path = spec.output_dir.join(format!("{}.wasm", spec.output_stem));
     let wit_path = spec.output_dir.join(format!("{}.wit", spec.output_stem));
     if let Err(e) = fs::create_dir_all(&spec.output_dir) {
@@ -1389,7 +1397,7 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
         return None;
     }
 
-    Some((tests.len(), codegen::generate(&loaded.module)))
+    Some((tests.len(), codegen::generate(&codegen_module(&loaded))))
 }
 
 /// A test's identity is a result newtype of `TestResult` — a plain,
@@ -1545,7 +1553,7 @@ fn cmd_run(args: &[String]) {
         eprintln!("\n{} error(s) found.", errors.len());
         process::exit(1);
     }
-    let component_bytes = codegen::generate(&loaded.module);
+    let component_bytes = codegen::generate(&codegen_module(&loaded));
 
     // Web-app programs (the `init`/`update`/`view` triple, see
     // the web target, docs/src/reference/web-target.md) compile to a browser-run core module — nothing
@@ -1610,8 +1618,8 @@ fn run_fullstack(fs: &FullstackSpec, addr: Option<&str>, program_args: &[String]
     let Some(server) = load_fullstack_entry(&fs.server, false, false) else {
         process::exit(1);
     };
-    let web_bytes = codegen::generate(&web.module);
-    let server_bytes = codegen::generate(&server.module);
+    let web_bytes = codegen::generate(&codegen_module(&web));
+    let server_bytes = codegen::generate(&codegen_module(&server));
     let bind_addr: std::net::SocketAddr = match addr {
         Some(raw) => raw.parse().unwrap_or_else(|e| {
             eprintln!("error: invalid `--addr` value `{}`: {}", raw, e);

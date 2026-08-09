@@ -561,6 +561,11 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
             ..
         } => {
             out.insert(method.name.clone());
+            // `Print` renders its receiver through the `String` family
+            // (`emit_render_to_str`) without naming it.
+            if method.name == "Print" || method.name == "print" {
+                out.insert("String".to_string());
+            }
             collect_expr_names(receiver, out);
             for a in args {
                 collect_expr_names(a, out);
@@ -607,6 +612,10 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
         Expr::JsonLit { parts, .. } => {
             for p in parts {
                 if let JsonLitPart::Interp(e) = p {
+                    // The hole lowers to `-> Encoded`; nothing in the
+                    // source names that family, so record it here or
+                    // reachability loses the JSON encoders.
+                    out.insert("Encoded".to_string());
                     collect_expr_names(e, out);
                 }
             }
@@ -614,6 +623,7 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
         Expr::HtmlLit { parts, .. } => {
             for p in parts {
                 if let HtmlLitPart::Interp(e) = p {
+                    out.insert("Escaped".to_string());
                     collect_expr_names(e, out);
                 }
             }
@@ -621,6 +631,7 @@ fn collect_expr_names(expr: &Expr, out: &mut HashSet<String>) {
         Expr::FormatLit { parts, .. } => {
             for p in parts {
                 if let FormatLitPart::Interp(e) = p {
+                    out.insert("String".to_string());
                     collect_expr_names(e, out);
                 }
             }
@@ -692,12 +703,11 @@ fn gap_error(gap: &CodegenGap, detail: &str, span: crate::error::Span) -> CanonE
 }
 
 /// Scan a fully-loaded module for use of features the code generator doesn't
-/// implement yet — see the module-level comment above. Signatures and bodies
-/// are scanned only for declarations *reachable* from the entry (the loader
-/// is file-granular, so unreachable sibling bindings would be noise — and a
-/// build compiles exactly the reachable set). The `wasi:http/service` import
-/// restriction is the exception: codegen links every *loaded* extern into
-/// the import block, reachable or not, so it is checked module-wide.
+/// implement yet — see the module-level comment above. Everything is scanned
+/// only for declarations *reachable* from the entry: the loader is
+/// file-granular, so unreachable sibling bindings would be noise, and
+/// `prune_to_reachable` drops them before codegen sees the module. What the
+/// checker judges and what the build compiles are the same set.
 pub fn codegen_gap_errors(
     module: &Module,
     entry_items_start: usize,
@@ -740,7 +750,11 @@ pub fn codegen_gap_errors(
     }
 
     // `wasi:http/service` world: mirror `WasmGen::new_http`, which links the
-    // whole loaded import block and rejects anything it can't satisfy.
+    // import block and rejects anything the world can't satisfy. Codegen is
+    // handed the pruned module (`prune_to_reachable`), so an unreached
+    // sibling binding is not in that block and must not be reported here —
+    // a handler that encodes strings as JSON never reaches the float
+    // bridge, and rejecting it would fail a program that builds.
     if let Some(entry) = http_entry {
         let allowed = |path: &str| {
             crate::ast::HTTP_WORLD_IMPORT_PREFIXES
@@ -751,7 +765,7 @@ pub fn codegen_gap_errors(
             .items
             .iter()
             .filter_map(|item| match item {
-                Item::Function(f) => f
+                Item::Function(f) if reachable.contains(&decl_key(f)) => f
                     .extern_wasm
                     .as_ref()
                     .map(|e| e.path.as_str())
@@ -1130,6 +1144,32 @@ fn reachable_decl_names(module: &Module, entry_items_start: usize) -> HashSet<St
         }
     }
     reached
+}
+
+/// The module reduced to what the entry file can actually reach.
+///
+/// The loader is file-granular: referencing one declaration pulls in its
+/// whole file, and a binding file's siblings come along with it. Codegen
+/// links *every* `extern Wasm` it is handed, so an unreached sibling
+/// binding would put a host import in the component that no call site can
+/// reach. Pruning here is what makes a program's import block its actual
+/// dependencies.
+///
+/// Entry-file items are kept unconditionally: they are reachable by
+/// definition, and `lint_dead_code` has already rejected any that aren't.
+pub fn prune_to_reachable(module: &Module, entry_items_start: usize) -> Module {
+    let reachable = reachable_decl_names(module, entry_items_start);
+    let items = module
+        .items
+        .iter()
+        .enumerate()
+        .filter(|(i, item)| *i >= entry_items_start || reachable.contains(&item_refs(item).0))
+        .map(|(_, item)| item.clone())
+        .collect();
+    Module {
+        items,
+        span: module.span,
+    }
 }
 
 /// The reachability key of an item and the set of names it references.

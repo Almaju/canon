@@ -89,7 +89,8 @@ pub extern "C" fn canon_compile(ptr: *const u8, len: usize) {
     if !errors.is_empty() {
         return set_result(TAG_DIAGNOSTICS, render(&errors).as_bytes());
     }
-    set_result(TAG_PAYLOAD, &codegen::generate(&loaded.module))
+    let module = checker::prune_to_reachable(&loaded.module, loaded.entry_items_start);
+    set_result(TAG_PAYLOAD, &codegen::generate(&module))
 }
 
 /// Borrows the host-written source, installing the panic hook on the way
