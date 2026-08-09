@@ -58,6 +58,28 @@ table mark them) run only under `canon run` until their `wasi:*`
 replacements land. Programs that stick to `canon/std` cli, clocks,
 random, and the HTTP handler surface are fully portable.
 
+## Publishing a library
+
+A Canon library other languages consume is just its component, and
+the component ecosystem already has a publisher: `wkg`, from
+[wasm-pkg-tools](https://github.com/bytecodealliance/wasm-pkg-tools).
+`canon publish` builds the target and hands the artifact to `wkg oci
+push` — the compiler carries no registry client of its own:
+
+```sh
+canon publish ghcr.io/you/my-lib:1.0.0 my-lib
+```
+
+Any OCI registry works (ghcr.io, Docker Hub, …); credentials are
+`wkg`'s business (`wkg config`, or your existing `docker login`). If
+`wkg` is not on `PATH`, `canon publish` says so and points at the
+install (`cargo install wkg`, or a release binary).
+
+Canon-to-Canon source libraries need none of this: a library is a
+directory of `.can` files. Vendor it under
+`deps/<ns>/<name>@<version>/` and references resolve automatically —
+the directory is the whole declaration.
+
 ## Version pinning
 
 The WASI rc version is embedded in every interface name, so a
