@@ -1,0 +1,44 @@
+Entry<K, V> = Key<K> * Rest<K, V> * Value<V>
+
+Inserted<K, V> = Store<K, V>
+
+Key<K> = K
+
+Rest<K, V> = Store<K, V>
+
+Size<K, V> = Int
+
+Store<K, V> = Absent + Entry<K, V>
+
+Value<V> = V
+
+<K, V>(Store<K, V> * K * V) => Inserted<K, V> {
+    K
+        -> Key<K>
+        -> Entry<K, V>(Store -> Rest<K, V> * V -> Value<V>)
+}
+
+<K, V>(Store<K, V>) => Size<K, V> {
+    Store -> (
+        * Absent => Size<K, V> { 0 }
+        * Entry => Size<K, V> { Entry.Rest -> Size -> Sum(1) }
+    )
+}
+
+<K, V>(Unit) => Store<K, V> {
+    Absent()
+}
+
+Unit => Program {
+    Store<String, Int>()
+        -> Inserted<String, Int>("a" * 1)
+        -> Inserted<String, Int>("b" * 2)
+        -> Size<String, Int>
+        -> String
+        -> Print
+    Store<Int, String>()
+        -> Inserted<Int, String>(1 * "one")
+        -> Size<Int, String>
+        -> String
+        -> Print
+}

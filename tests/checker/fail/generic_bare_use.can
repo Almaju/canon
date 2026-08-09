@@ -1,7 +1,5 @@
 Box<T> = T
 
-Boxed = Box<Int>
-
 Holder = Box
 
 Unit => Program {

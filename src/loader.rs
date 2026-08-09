@@ -374,6 +374,9 @@ pub struct LoadResult {
     /// they ship with the compiler and aren't the user's responsibility
     /// to format. The entry file is always the first element.
     pub local_sources: Vec<LoadedSource>,
+    /// Errors from the generic-instantiation pass (`monomorph::expand`),
+    /// reported through `check_loaded` alongside the checker's own.
+    pub expand_errors: Vec<CanonError>,
 }
 
 /// A user-authored Canon source file as the loader saw it on disk.
@@ -503,11 +506,13 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         items: ctx.items,
         span: Span::default(),
     };
+    let expand_errors = crate::monomorph::expand(&mut module);
     crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
         module,
         entry_items_start,
         local_sources: ctx.local_sources,
+        expand_errors,
     })
 }
 
@@ -558,14 +563,17 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         items: ctx.items,
         span,
     };
-    // Auto-await: insert implicit `Expr::Await` nodes wherever a `Future<T>`
-    // value is used in a position that expects `T`. Runs before the checker
-    // so type comparisons see the post-rewrite tree.
+    // Generic instantiation, then auto-await: insert implicit
+    // `Expr::Await` nodes wherever a `Future<T>` value is used in a
+    // position that expects `T`. Both run before the checker so type
+    // comparisons see the post-rewrite tree.
+    let expand_errors = crate::monomorph::expand(&mut module);
     crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
         module,
         entry_items_start,
         local_sources: ctx.local_sources,
+        expand_errors,
     })
 }
 

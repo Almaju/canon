@@ -75,10 +75,11 @@ const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race", "Parallel", "Race"
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
-    /// Generic type names → declared parameter count (`Map<K, V>` → 2).
-    /// Builtins are pre-seeded; user entries come from parameterized
+    /// Generic type names → declared parameter names (`Map<K, V>` →
+    /// `["K", "V"]`; arity is the length). Builtins are pre-seeded with
+    /// placeholder names; user entries come from parameterized
     /// `TypeDef`s.
-    pub generic_types: HashMap<String, usize>,
+    pub generic_types: HashMap<String, Vec<String>>,
     pub variant_of: HashMap<String, String>,
     pub methods: HashMap<(String, String), MethodSig>,
     /// For each product TypeDef `T = A * B * ...`, the names of its
@@ -162,6 +163,7 @@ pub fn check_loaded(loaded: &crate::loader::LoadResult) -> Vec<CanonError> {
             crate::formatter::format_error(&src.source, &src.path.display().to_string())
         })
         .collect();
+    errors.extend(loaded.expand_errors.iter().cloned());
     errors.extend(check_with_entry(&loaded.module, loaded.entry_items_start));
     errors
 }
@@ -323,6 +325,13 @@ fn check_ordering(
                 } else {
                     func.name.name.as_str()
                 };
+                // Minted instantiations (`Inserted<String, Int>` — a `<`
+                // can't appear in a source-declared name) are compiler
+                // output appended after the source items, not part of
+                // the file's ordering.
+                if surface.contains('<') {
+                    return None;
+                }
                 return Some((surface, func.name.span));
             }
             None
@@ -335,6 +344,9 @@ fn check_ordering(
         .iter()
         .filter_map(|item| {
             if let Item::TypeDef(td) = item {
+                if td.name.name.contains('<') {
+                    return None;
+                }
                 Some((td.name.name.as_str(), td.name.span))
             } else {
                 None
@@ -451,6 +463,16 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonErr
                 (td.name.name.clone(), out)
             }
         };
+        // A minted instantiation keeps its schema alive: `Box<Int>`
+        // reaches the `Box` declaration it was expanded from, so a
+        // schema is dead exactly when no instantiation of it is used.
+        if let Some(head) = name.split('<').next() {
+            if head != name {
+                refs.entry(name.clone())
+                    .or_default()
+                    .insert(head.to_string());
+            }
+        }
         if declared.insert(name.clone()) {
             declared_order.push(name.clone());
         }
@@ -1164,9 +1186,12 @@ pub(crate) fn symbols_for_tooling(module: &Module) -> SymbolTable {
 
 fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
-    let mut generic_types: HashMap<String, usize> = BUILTIN_GENERIC_TYPES
+    let mut generic_types: HashMap<String, Vec<String>> = BUILTIN_GENERIC_TYPES
         .iter()
-        .map(|(s, arity)| (s.to_string(), *arity))
+        .map(|(s, arity)| {
+            let params = (0..*arity).map(|i| format!("${}", i + 1)).collect();
+            (s.to_string(), params)
+        })
         .collect();
     let mut variant_of: HashMap<String, String> = HashMap::new();
 
@@ -1206,7 +1231,12 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 types.insert(name.clone());
                 type_canon.insert(name, canon);
             } else {
-                generic_types.insert(name.clone(), td.generic_params.len());
+                let params = td
+                    .generic_params
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect();
+                generic_types.insert(name.clone(), params);
                 type_canon.insert(name, canon);
             }
         }
@@ -1875,6 +1905,15 @@ fn check_function(
         return;
     }
 
+    // A generic schema's body is checked through its instantiations —
+    // the expansion pass mints a concrete copy per use and each copy
+    // runs the full body check below. The flat name-typed model here
+    // has nothing sound to say about a body whose value types are
+    // parameters.
+    if !func.generic_params.is_empty() {
+        return;
+    }
+
     let scope = ExprScope::from_function(func);
     check_block(&func.body, &func.return_ty, &scope, symbols, errors);
 }
@@ -2031,45 +2070,37 @@ fn check_type_expr(
                     message: format!("unknown type `{}`", name),
                     span: *span,
                 });
-            } else if let Some(&arity) = symbols.generic_types.get(name.as_str()) {
-                if !generics.is_empty() && generics.len() != arity {
+            } else if let Some(params) = symbols.generic_types.get(name.as_str()) {
+                if !generics.is_empty() && generics.len() != params.len() {
                     errors.push(CanonError::CheckError {
                         message: format!(
                             "wrong number of type arguments for `{}`: expected {}, found {}",
                             name,
-                            arity,
+                            params.len(),
                             generics.len()
                         ),
                         span: *span,
                     });
-                } else if !is_builtin_generic(name) {
-                    // A user generic type is referable only from inside a
-                    // generic declaration, applied to that declaration's
-                    // own parameters (`Rest<K, V> = Map<K, V>`). Every
-                    // other reference needs an instantiation, which is
-                    // not implemented yet.
-                    let all_params = !generics.is_empty()
-                        && generics.iter().all(|g| {
-                            matches!(g, TypeExpr::Named { name: n, generics: gs, .. }
-                                if gs.is_empty() && generic_scope.contains(n))
-                        });
-                    if generics.is_empty() {
-                        errors.push(CanonError::CheckError {
-                            message: format!(
-                                "generic type `{}` requires {} type argument(s)",
-                                name, arity
-                            ),
-                            span: *span,
-                        });
-                    } else if !all_params {
-                        errors.push(CanonError::CheckError {
-                            message: format!(
-                                "generic type instantiation is not implemented yet: `{}` cannot be applied to concrete types",
-                                name
-                            ),
-                            span: *span,
-                        });
-                    }
+                } else if !is_builtin_generic(name)
+                    && generics.is_empty()
+                    && !params.iter().all(|p| generic_scope.contains(p))
+                {
+                    // A bare reference to a user generic type is legal
+                    // only inside a generic declaration that binds the
+                    // referenced declaration's parameters name-for-name
+                    // (a family shares its parameter names); anywhere
+                    // else the reference needs its arguments. Concrete
+                    // applications never reach here — the expansion
+                    // pass collapses them into instantiated flat names
+                    // before checking.
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "generic type `{}` requires {} type argument(s)",
+                            name,
+                            params.len()
+                        ),
+                        span: *span,
+                    });
                 }
             }
             for g in generics {
