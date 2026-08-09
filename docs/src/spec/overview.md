@@ -9,7 +9,7 @@ defines.
 
 The chapters (in the sidebar, in reading order) are self-contained and
 cross-referenced: lexical structure, the type algebra, expressions and
-dispatch, functions and traits, ordering, modules, effects and async,
+dispatch, functions, ordering, modules, effects and async,
 compilation and the ABI, and the Types-Only naming model.
 
 ## Status and Authority

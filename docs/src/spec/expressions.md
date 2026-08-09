@@ -85,11 +85,13 @@ The full rule, case by case:
   a subject-bearing call, so `List(1 * 2 * 3)` is left as written.
 - **Operand order is positional and never reordered.** The pipe receiver
   is always the first operand (`0 -> Difference(5)` is -5), and literal
-  operands keep their written order -- untagged same-typed components
-  bind by declaration order, so reshuffling them would change which
-  field gets which value. Only an all-computed input list (where every
-  operand carries its type syntactically) is sorted for determinism
-  before the first pipes.
+  operands keep their written order. Where written order would decide a
+  product-field binding -- two untagged values competing for fields
+  that share an underlying type -- the construction is a compile error
+  requiring the field tags ([Types § Products](./types.md#products)),
+  so reshuffling accepted operands never changes meaning. Only an
+  all-computed input list (where every operand carries its type
+  syntactically) is sorted for determinism before the first pipes.
 
 Because the spellings denote the same call, every rewrite is
 semantics-preserving: the compiler treats a piped call to a type
@@ -111,6 +113,25 @@ File * Path => Result<Config, IoError + ParseError> {
         -> Validate
 }
 ```
+
+## Evaluation Order
+
+**Pipes sequence; operands don't.** The constructs whose order the
+writer controls are the sequencing constructs:
+
+- **Body lines** evaluate top to bottom.
+- **Pipeline stages** evaluate strictly left to right: in
+  `a -> F(b) -> G`, each stage runs only after its input completes.
+
+Evaluation order *among sibling operands* of a single call or product
+construction is the **canonical order** -- deterministic, chosen by
+the compiler, never by the writer. This is the ordering rule applied
+to time: operand order is not discretionary spelling (`canon check --fix`
+may sort an all-computed operand list), so it cannot carry sequencing
+intent either, and a `--fix` rewrite can never change what a program
+does. Effects that must happen in a specific order belong in a
+pipeline or on separate lines, never side by side in one argument
+list.
 
 ## Dispatch
 
@@ -211,6 +232,34 @@ Rules:
 Nested dispatch composes: dispatch on a union, then literal-dispatch
 the payload inside an arm. This is the shape of every HTTP route table
 (see the [notes-api example](../examples/notes-api.md)).
+
+### Binding Dispatch
+
+A dispatch with a **single arm naming the scrutinee's own type** always
+matches: nothing is compared, and the arm binds the scrutinee under
+that name for the body. With no local variables, this is the one way
+to use a computed value twice -- the value gets a name the same way
+every dispatch arm binds one, and the name is its type:
+
+```canon
+"ab" -> Joined("cd") -> (
+    * String => Unit {
+        String -> Print
+        String -> Print
+    }
+)
+```
+
+- Works on **any** scrutinee type: primitives, newtypes, products, and
+  unions (`map -> ( * Map => Report { ... } )` binds the whole union
+  value without dispatching its variants).
+- The arm must name the scrutinee's type, directly or through its
+  newtype alias chain; any other single-arm pattern is a checker
+  error. A single *variant* arm is not a binding dispatch -- it falls
+  under the union rules and fails exhaustiveness.
+- The scrutinee is evaluated exactly once, before the body runs; inside
+  the body it is in scope under the arm's pattern name, exactly like a
+  literal dispatch's catch-all binding.
 
 ## The `?` Operator
 
@@ -402,7 +451,6 @@ handlers.
 | `T^N` | fixed repetition |
 | `T^*` | unbounded repetition (Kleene star) |
 | `<T>` | generic parameter |
-| `<T: Tr>` | generic with trait constraint |
 | `.` | field access — reads a component (dot-*calls* survive only for camelCase FFI bindings) |
 | `-> ( )` | dispatch: pipe the scrutinee into an arm group |
 | `?` | propagate `Result` / `Option` failure |

@@ -5096,6 +5096,16 @@ impl<'m> WasmGen<'m> {
             return self.emit_literal_dispatch(scrut_ty, arms, &arm_result_ty, scope, f);
         }
 
+        // Binding dispatch: a single no-literal, non-variant arm always
+        // runs — no comparison, pure binding of the scrutinee under the
+        // arm's pattern name (the checker guarantees the pattern names
+        // the scrutinee's type).
+        if let [arm] = arms {
+            if arm.literal.is_none() && !self.arm_is_variant_arm(arm, &scrut_ty) {
+                return self.emit_binding_dispatch(scrut_ty, arm, &arm_result_ty, scope, f);
+            }
+        }
+
         // Bool dispatch (i32 on stack, 0=False, 1=True)
         if scrut_ty == Ty::I32 {
             let true_arm = arms.iter().find(|a| arm_tag(a) == Some(1));
@@ -5136,6 +5146,90 @@ impl<'m> WasmGen<'m> {
         // Fallback: drop scrutinee
         self.drop_value(scrut_ty, f);
         Ty::Unit
+    }
+
+    /// Whether a dispatch arm's pattern is a *variant* of the scrutinee
+    /// (so the union/Bool machinery owns it) rather than the scrutinee's
+    /// own type (the binding-dispatch shape). A pattern naming the union
+    /// itself is not a variant arm.
+    fn arm_is_variant_arm(&self, arm: &MatchArm, scrut_ty: &Ty) -> bool {
+        let Some(name) = arm_type_name(arm) else {
+            return false;
+        };
+        match scrut_ty {
+            Ty::I32 => arm_tag(arm).is_some(),
+            Ty::NamedPtr(n) | Ty::NamedPtrStr(n, _, _) => {
+                if name == n {
+                    return false;
+                }
+                matches!(name, "Some" | "None" | "Ok" | "Err")
+                    || self
+                        .union_variants
+                        .get(n)
+                        .is_some_and(|vs| vs.iter().any(|v| v == name))
+            }
+            _ => false,
+        }
+    }
+
+    /// Compile a binding dispatch: the single arm always runs, so no
+    /// comparison is emitted — the scrutinee is stashed in the dedicated
+    /// `bind_scrut_*` locals and bound inside the arm body under the
+    /// arm's pattern name, the scrutinee's own type name, and (for a
+    /// bare primitive) the primitive's name, mirroring the
+    /// literal-dispatch catch-all. Same single-slot nesting caveat as
+    /// `lit_scrut_ptr`: a binding dispatch nested inside another binding
+    /// dispatch's arm body reuses the slots.
+    pub(super) fn emit_binding_dispatch(
+        &mut self,
+        scrut_ty: Ty,
+        arm: &MatchArm,
+        result_ty: &Ty,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let mut bound_names: Vec<String> = Vec::new();
+        if let Some(n) = arm_type_name(arm) {
+            bound_names.push(n.to_string());
+        }
+        if let Some(n) = scrut_ty.canon_name() {
+            bound_names.push(n.to_string());
+        }
+        match &scrut_ty {
+            Ty::Str => bound_names.push("String".to_string()),
+            Ty::I64 => bound_names.push("Int".to_string()),
+            Ty::F64 => bound_names.push("Float".to_string()),
+            Ty::I32 => bound_names.push("Bool".to_string()),
+            _ => {}
+        }
+        let slot = match &scrut_ty {
+            Ty::Unit => None,
+            Ty::I64 => {
+                f.instruction(&Instruction::LocalSet(scope.bind_scrut_i64()));
+                Some(scope.bind_scrut_i64())
+            }
+            Ty::F64 => {
+                f.instruction(&Instruction::LocalSet(scope.bind_scrut_f64()));
+                Some(scope.bind_scrut_f64())
+            }
+            Ty::Str | Ty::NamedStr(_) | Ty::List => {
+                f.instruction(&Instruction::LocalSet(scope.bind_scrut_ptr() + 1));
+                f.instruction(&Instruction::LocalSet(scope.bind_scrut_ptr()));
+                Some(scope.bind_scrut_ptr())
+            }
+            Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) => {
+                f.instruction(&Instruction::LocalSet(scope.bind_scrut_ptr()));
+                Some(scope.bind_scrut_ptr())
+            }
+        };
+        let mut arm_scope = scope.clone();
+        if let Some(idx) = slot {
+            for n in &bound_names {
+                arm_scope.vars.insert(n.clone(), (idx, scrut_ty.clone()));
+            }
+        }
+        self.compile_arm_body_prebound(arm, result_ty, &arm_scope, f);
+        self.load_result(result_ty, scope, f)
     }
 
     pub(super) fn emit_bool_dispatch(

@@ -60,7 +60,7 @@ address. Two details worth knowing early:
 `Result` return, so `?` works at the top level too.
 
 **Precise rules:** [Modules & Packages](../spec/modules.md) and
-[Functions & Traits](../spec/functions.md); commands in
+[Functions](../spec/functions.md); commands in
 [The canon CLI](../getting-started/building-and-running.md).
 
 **Next:** [Testing](./testing.md) — a test framework with no

@@ -1,4 +1,4 @@
-# Functions and Traits
+# Functions
 
 ## Declaration
 
@@ -29,15 +29,13 @@ canonical Canon. A named declaration whose name is just the constructed
 type spells the name twice, so `canon check --fix` rewrites it to the
 anonymous arrow (`Url = (String) => Result<Url, InvalidUrl>` becomes
 `String => Result<Url, InvalidUrl>`); a named declaration whose name is
-anything else is a checker error. (The named spelling once also carried
-shape implementations, but the last shapes — the interpolation hooks —
-are ordinary result-newtype families now.) The checker enforces the
+anything else is a checker error. The checker enforces the
 boundary from both sides:
 
 - A bodied declaration's name must be the **type it constructs**
   (modulo `Result`/`Option`/`Future` peeling and newtype chains).
   Anything else -- an arbitrary verb wearing PascalCase, like
-  `Frobnicated = (Int) => Int` with no `Frobnicated` shape or newtype
+  `Frobnicated = (Int) => Int` with no `Frobnicated` newtype
   anywhere -- is a checker error: *a name carries no information the
   types don't*.
 - An arrow may not construct a type that is also one of its inputs. An
@@ -121,77 +119,22 @@ Numbers -> Mapped((Int) => Int { Int -> Product(3) })
 Lambda syntax is declaration syntax with the parentheses kept and no
 top-level name: the same `=>` arrow that declares every constructor.
 
-## Traits
+## No Traits
 
-> **Status: shapes do not exist in the current language.** Everything a
-> shape can do today, a result newtype does with a checked name, so a
-> body-less shape declaration is a checker error (`… operations take
-> result newtypes`) — see [Shape or Result Newtype](#shape-or-result-newtype)
-> below. There are no exceptions: even the literal-interpolation hooks
-> are ordinary result-newtype families (`Encoded = Json`,
-> `Escaped = Html` — a hole is a construction, exactly as a
-> format-string hole is `-> String`). This section describes the design
-> that returns once a shape can do something a newtype cannot (generic
-> constraints, bare-parameter returns, defaults).
-
-A trait is a **callable type signature**, declared like a body-less
-function type and named in PascalCase (traits are types):
-
-```canon
-Show = () => String
-```
-
-**Implementation** declares a function with the trait's name, prepending
-the implementing type to the parameter list:
-
-```canon
-Show = (Greeting) => String {
-    "HELLO!"
-}
-```
-
-The bodied declaration and the body-less signature share one name and
-one namespace: a trait is a family of implementations selected by the
-input's type. Call sites use the ordinary pipe:
-`Greeting("hi") -> Show`.
-
-- **Multi-method traits** are products of single-method traits:
-  `Presentable = Debug * PrintString`. Implementing the product means
-  implementing every factor.
-- **Traits as components**: a trait may appear directly in a parameter
-  list; the component binds the implementation, which is invocable:
-  `Show => Unit { Show() -> Print }`.
-- **Defaults**: a trait declaration may carry a default body
-  implementing types override or inherit (the marker syntax lands with
-  the feature — the grammar reserves no keyword for it).
-- **Constraints**: `<T: Show>` bounds a generic parameter by a trait.
-
-## Shape or Result Newtype?
-
-Shapes and constructor families overlap: both give one name per-type
-implementations selected by the receiver (`Length` spans `Map`, `Set`,
-`String`, and `List` as a merged result newtype with a family of
-arrows; `Encoded` spans `Bool`, `Float`, `Int`, and `String` the same
-way). To keep the choice out of the writer's hands, the rule is
-**checked, not advisory**: a body-less shape declaration is a checker
-error, and the operation is a result newtype plus a family of anonymous
-arrows.
-
-A shape is justified only by something a newtype cannot do:
-
-1. the return type is a **bare type parameter** (`Fold` -- there is no
-   type to name the result after);
-2. the name is used as a **generic constraint** (`<T: Show>`) or as a
-   **trait component** in a parameter list;
-3. the declaration carries a **default body** implementing types
-   inherit.
-
-None of these is implemented yet, so today the checker rejects every
-shape; as each justification lands, the rejection relaxes for exactly
-that case. Even the literal boundary needs none: a JSON hole converts
-through the `Encoded = Json` family, an HTML hole through
-`Escaped = Html`, and a format-string hole through `String` itself --
-interpolation is construction all the way down.
+Canon has no traits, and a body-less function-type declaration (a
+"shape", `Show = () => String`) is a **checker error** -- there are no
+exceptions. What a trait provides elsewhere, a **result newtype with a
+constructor family** provides here with a checked name: `Length` spans
+`Map`, `Set`, `String`, and `List` as a merged `Length = Int` plus one
+anonymous arrow per receiver; `Encoded` spans `Bool`, `Float`, `Int`,
+and `String` the same way. One name, per-type implementations selected
+by the input's type, call sites on the ordinary pipe -- and the
+compiler checks that every implementation constructs the declared
+type, which no trait system does. Even the literal-interpolation
+boundary needs nothing more: a JSON hole converts through the
+`Encoded = Json` family, an HTML hole through `Escaped = Html`, and a
+format-string hole through `String` itself -- interpolation is
+construction all the way down.
 
 ## The Entry Point
 

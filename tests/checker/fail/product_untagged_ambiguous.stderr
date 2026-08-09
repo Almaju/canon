@@ -1,0 +1,1 @@
+error[tests/checker/fail/product_untagged_ambiguous.can:8:5]: cannot construct `Pair`: fields `Key` and `Value` share an underlying type, so untagged values would bind by written order; tag each value with its field's newtype (`Key(…)`, `Value(…)`)

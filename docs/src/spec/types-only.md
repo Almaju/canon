@@ -27,9 +27,9 @@ named after its return type is checked by the compiler.
 ## The Unified Declaration
 
 Every declaration is `PascalName = rhs`, and the RHS decides the
-meaning: a type expression declares a type; a body-less signature is a
-**shape** (a named function type others implement) -- rejected today,
-see below.
+meaning: a type expression declares a type; a body-less function-type
+signature (a "shape") is a checker error --
+[Canon has no traits](./functions.md#no-traits).
 
 A bodied declaration named after anything but the type it constructs
 is a compile error, and since that name is redundant, the declaration
@@ -45,13 +45,11 @@ The constructed type is the return type with `Result`/`Option`/`Future`
 peeled. Call sites are unchanged (`Url("...")?`). This is the
 language's **only** function form: top level it declares a constructor,
 in expression position it is a lambda, and every dispatch arm is one.
-Declaring a body-less shape is itself a checker error until
-shapes can do something a result newtype cannot
-([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype));
-there are no exceptions -- even the literal-interpolation hooks are
-ordinary result-newtype families (`Encoded = Json`, `Escaped = Html`;
-a hole is a construction, exactly as a format-string hole is
-`-> String`).
+Declaring a body-less shape is itself a checker error
+([Functions § No Traits](./functions.md#no-traits)); there are no
+exceptions -- even the literal-interpolation hooks are ordinary
+result-newtype families (`Encoded = Json`, `Escaped = Html`; a hole is
+a construction, exactly as a format-string hole is `-> String`).
 
 **Constructors form families.** A type may have any number of
 constructor implementations, distinguished by input product (`Json`
@@ -66,7 +64,7 @@ name is a family of implementations selected by input product*.
 |---|---|---|
 | `->` | **execute** -- the only call / pipe / construct / dispatch form | functions whose input product contains the left value's type |
 | `.` | **read** -- field access only | the value's fields/components |
-| `=>` | **declare** -- every constructor / shape / lambda / dispatch-arm definition | -- |
+| `=>` | **declare** -- every constructor / lambda / dispatch-arm definition | -- |
 
 `.` and `->` do not compete to mean "call", so `.` completion offers
 fields and `->` completion offers every operation reachable from the

@@ -102,7 +102,7 @@ There is exactly one function form in the language — top level it
 declares a constructor, in expression position it is a lambda, and (as
 the next chapter shows) every dispatch arm is one too.
 
-**Precise rules:** [Functions & Traits](../spec/functions.md) and
+**Precise rules:** [Functions](../spec/functions.md) and
 [Expressions & Dispatch](../spec/expressions.md).
 
 **Next:** [Branching & Loops](./branching-and-loops.md) — the one way

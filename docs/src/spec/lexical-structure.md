@@ -11,7 +11,7 @@ Two identifier classes, distinguished by their first character:
 
 | Class | Form | Used for |
 |---|---|---|
-| **PascalCase** | `[A-Z][A-Za-z0-9_]*` | types, shapes, constructors, variants -- every name in a Canon program |
+| **PascalCase** | `[A-Z][A-Za-z0-9_]*` | types, constructors, variants -- every name in a Canon program |
 | **camelCase** | `[a-z][A-Za-z0-9_]*` | foreign imports in [binding files](./compilation.md) |
 
 The case split is load-bearing: in Canon, **the only names are type

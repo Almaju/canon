@@ -56,9 +56,14 @@ User = Birthday * Username
   underlying type (`Key = String` and `Value = String` in
   `Node = Key * Rest * Value`), tag the values with the newtype --
   `Node(Key("k") * Value("v") * ...)` -- so each still selects its field.
-  A bare, untagged `String` carries no such tag and falls back to
-  declaration order -- which is why `canon check --fix` never reorders literal
-  operands: their position is their identity.
+  When types alone cannot decide -- two untagged values competing for
+  fields that share an underlying type -- the construction is a
+  **compile error** naming the fields to tag: written order never
+  silently carries the meaning. A single untagged value stays legal
+  when its field is forced (every other same-base field is already
+  bound by an exact match), which is the shape recursive builders use
+  (`Node(String * Value)` inside `map.can`, where the piped `Key` and
+  the exact `Value` leave one slot).
 
 ## Newtypes
 
@@ -103,11 +108,10 @@ Types may be parameterized with angle brackets: `List<T>`,
 `Option<T>`, `Result<T, E>`. Type arguments are the one thing the
 compiler fills in from a call site's declared argument types
 (`List(1 * 2) -> Mapped(f)` instantiates `T = Int`) — signatures
-themselves are always written in full ([No Type
-Inference](#no-type-inference) is about signatures, not type
-arguments). Constraint syntax (`<T: Show>`) is part of the shape
-mechanism and returns with it ([Functions § Shape or Result
-Newtype](./functions.md#shape-or-result-newtype)).
+themselves are always written in full ([No Signature
+Inference](#no-signature-inference) is about signatures, not type
+arguments). There is no constraint syntax: Canon has
+[no traits](./functions.md#no-traits) to constrain by.
 
 ## Recursive Types
 
@@ -210,11 +214,15 @@ Two escape hatches exist, both deliberate:
   constructor](#validated-constructors): `Unit => Map { Empty() }`
   in `canon/std/Map` makes `Map()` the empty map.
 
-## No Type Inference
+## No Signature Inference
 
-Every type is written explicitly: function signatures, lambda
-signatures, dispatch arm types. Declared shape and checked shape must
-match exactly.
+Every signature is written explicitly: function signatures, lambda
+signatures, dispatch arm types. Declared signature and checked
+signature must match exactly. The rule is about *signatures*, not
+about inference generally -- the compiler infers plenty below the
+signature line (generic instantiation, suspension and await points,
+boxing, argument-to-component binding, imports), but never a type the
+writer should have declared.
 
 ## Dead Code
 

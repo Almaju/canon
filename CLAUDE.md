@@ -265,7 +265,10 @@ These are the non-obvious rules the code won't spell out. Together with
   them — **but only when every input carries its type syntactically**. Literal
   operands are NEVER reordered (`Padded(5 * 4)` ≠ `Padded(4 * 5)`). Consequences:
   same-underlying-type fields (map's `Key`/`Value`, both `String`) must be
-  distinct newtypes with tagged values; the formatter never reorders `List(…)` or
+  distinct newtypes with tagged values — the checker rejects a product
+  construction where written order would decide an untagged value's field
+  (`check_product_construction_types` runs the assignment forward and reversed;
+  divergence is the error); the formatter never reorders `List(…)` or
   method/pipe args.
 - **Canonical call form: values flow through pipes, literals are born in the
   parens.** `canon check --fix` (`canon_expr` in `src/formatter.rs`) rewrites

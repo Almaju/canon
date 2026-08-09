@@ -2549,6 +2549,60 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 check_literal_dispatch(arms, &scrutinee_ty, scope, symbols, errors, *span);
                 return;
             }
+            // Binding dispatch: a single no-literal arm whose pattern
+            // names the scrutinee's own type (never one of its
+            // variants) binds the scrutinee under that name for the arm
+            // body — the one way to use a computed value twice (the
+            // language spec § Binding Dispatch). Works on any scrutinee
+            // type, unions included (`map -> ( * Map => R { … } )`);
+            // a single *variant* arm falls through to the union
+            // machinery and fails its exhaustiveness rule.
+            if let [arm] = arms.as_slice() {
+                if let TypeExpr::Named {
+                    name: pattern_name,
+                    span: pspan,
+                    ..
+                } = &arm.param_ty
+                {
+                    if arm.literal.is_none()
+                        && !symbols.variant_of.contains_key(pattern_name.as_str())
+                    {
+                        let generic_scope: HashSet<String> = HashSet::new();
+                        check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);
+                        check_type_expr(&arm.return_ty, symbols, &generic_scope, errors);
+                        let scrut_known = !scrutinee_ty.is_empty() && scrutinee_ty != "<unknown>";
+                        if scrut_known
+                            && *pattern_name != scrutinee_ty
+                            && symbols.resolve_alias(pattern_name.as_str())
+                                != symbols.resolve_alias(&scrutinee_ty)
+                        {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "a single-arm dispatch binds the scrutinee, so its arm \
+                                     must name the scrutinee's type `{}`, found `{}`",
+                                    scrutinee_ty, pattern_name
+                                ),
+                                span: *pspan,
+                            });
+                        }
+                        let mut inner_scope = ExprScope {
+                            names: scope.names.clone(),
+                        };
+                        inner_scope.names.push(pattern_name.clone());
+                        if scrut_known {
+                            inner_scope.names.push(scrutinee_ty.clone());
+                            let base = symbols.resolve_alias(&scrutinee_ty);
+                            if base != scrutinee_ty {
+                                inner_scope.names.push(base.to_string());
+                            }
+                        }
+                        for expr in &arm.body.exprs {
+                            check_expr(expr, &inner_scope, symbols, errors);
+                        }
+                        return;
+                    }
+                }
+            }
             for arm in arms {
                 // Validate param_ty and return_ty as type expressions
                 check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);
@@ -3017,21 +3071,60 @@ fn check_product_construction_types(
     if arg_types.iter().any(|t| t == "<unknown>") {
         return;
     }
-    let mut used = vec![false; arg_types.len()];
-    let mut slot_val: Vec<Option<usize>> = vec![None; field_types.len()];
-    for threshold in [2u8, 1u8] {
-        for (si, field_ty) in field_types.iter().enumerate() {
-            if slot_val[si].is_some() {
-                continue;
-            }
-            if let Some(vi) = (0..arg_types.len()).find(|&vi| {
-                !used[vi]
-                    && product_field_match_score(symbols, &arg_types[vi], field_ty) == threshold
-            }) {
-                slot_val[si] = Some(vi);
-                used[vi] = true;
+    // The by-type assignment, parameterised by the order arguments are
+    // tried in. Running it over the written order and its reverse tells
+    // us whether written order decided any binding: types alone must
+    // select each field, so a divergence means two untagged values are
+    // competing for fields that share an underlying type — position
+    // would silently carry the meaning, which construction-by-type
+    // forbids. (Codegen's positional floor survives only for values the
+    // checker can't type at all; those returned `<unknown>` above.)
+    let assign = |order: &[usize]| -> Vec<Option<usize>> {
+        let mut used = vec![false; arg_types.len()];
+        let mut slot_val: Vec<Option<usize>> = vec![None; field_types.len()];
+        for threshold in [2u8, 1u8] {
+            for (si, field_ty) in field_types.iter().enumerate() {
+                if slot_val[si].is_some() {
+                    continue;
+                }
+                if let Some(&vi) = order.iter().find(|&&vi| {
+                    !used[vi]
+                        && product_field_match_score(symbols, &arg_types[vi], field_ty) == threshold
+                }) {
+                    slot_val[si] = Some(vi);
+                    used[vi] = true;
+                }
             }
         }
+        slot_val
+    };
+    let forward: Vec<usize> = (0..arg_types.len()).collect();
+    let reversed: Vec<usize> = forward.iter().rev().copied().collect();
+    let slot_val = assign(&forward);
+    let slot_val_rev = assign(&reversed);
+    let complete = slot_val.iter().all(Option::is_some) && slot_val_rev.iter().all(Option::is_some);
+    if complete && slot_val != slot_val_rev {
+        let contested: Vec<&str> = field_types
+            .iter()
+            .zip(slot_val.iter().zip(slot_val_rev.iter()))
+            .filter(|(_, (a, b))| a != b)
+            .map(|(f, _)| f.as_str())
+            .collect();
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "cannot construct `{type_name}`: fields `{}` share an underlying type, \
+                 so untagged values would bind by written order; tag each value with \
+                 its field's newtype ({})",
+                contested.join("` and `"),
+                contested
+                    .iter()
+                    .map(|f| format!("`{f}(…)`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            span,
+        });
+        return;
     }
     for (si, field_ty) in field_types.iter().enumerate() {
         if slot_val[si].is_none() {

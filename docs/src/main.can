@@ -129,7 +129,7 @@ Model => Html {
             {Model.Page -> NavItem(Slug("lexical-structure") * Label("Lexical Structure"))}
             {Model.Page -> NavItem(Slug("types") * Label("Types"))}
             {Model.Page -> NavItem(Slug("expressions") * Label("Expressions &amp; Dispatch"))}
-            {Model.Page -> NavItem(Slug("functions") * Label("Functions &amp; Traits"))}
+            {Model.Page -> NavItem(Slug("functions") * Label("Functions"))}
             {Model.Page -> NavItem(Slug("ordering") * Label("Ordering Rules"))}
             {Model.Page -> NavItem(Slug("modules") * Label("Modules &amp; Packages"))}
             {Model.Page -> NavItem(Slug("effects-and-async") * Label("Effects &amp; Async"))}
@@ -248,7 +248,7 @@ Page => Pager {
         * "expressions" => Pager {
             Html(`<nav class="pager">{Slug("types") -> Prev(Label("Types")) -> String}{
                 Slug("functions")
-                    -> Next(Label("Functions &amp; Traits"))
+                    -> Next(Label("Functions"))
                     -> String
             }</nav>`)
         }
@@ -330,11 +330,11 @@ Page => Pager {
             }{Slug("todolist") -> Next(Label("Todo List in the Browser")) -> String}</nav>`)
         }
         * "ordering" => Pager {
-            Html(`<nav class="pager">{
-                Slug("functions")
-                    -> Prev(Label("Functions &amp; Traits"))
+            Html(`<nav class="pager">{Slug("functions") -> Prev(Label("Functions")) -> String}{
+                Slug("modules")
+                    -> Next(Label("Modules &amp; Packages"))
                     -> String
-            }{Slug("modules") -> Next(Label("Modules &amp; Packages")) -> String}</nav>`)
+            }</nav>`)
         }
         * "overview" => Pager {
             Html(`<nav class="pager">{
