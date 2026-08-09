@@ -56,24 +56,21 @@ resulting `.wasm` runs on any Component Model host.
 
 ## Reading Arguments
 
-A program that reads its argument vector declares the variant entry
-`Args => Exit` -- the command's **argument vector flows in as `Args`,
-an exit status flows out as `Exit`**, mirroring the HTTP entry:
+The entry takes no arguments -- at the ABI level `wasi:cli/run.run`
+passes none. The argument vector is **fetched, not received**:
+`Args()` (`= List<String>`, from `canon/std`) reads the program's
+`argv` from any body:
 
 ```canon
-Args => Exit {
-    Args
+Unit => Program {
+    Args()
         -> Length
-        -> String
         -> Print
-    Exit(0)
 }
 ```
 
-`Args` (`= List<String>`, from `canon/std`) is the program's `argv`,
-handed to the entry the way an HTTP handler is handed its `Request`.
-`Exit` (`= Int`) is the exit status: `Exit(0)` is success (process
-exit 0); any nonzero `Exit` reports failure.
+Reaching the end of the body is success (process exit 0); an exact
+exit code is `Exited(n)`, which terminates with that status.
 
 ## Try Breaking Things
 
@@ -81,9 +78,6 @@ exit 0); any nonzero `Exit` reports failure.
   by a newline.
 - **Add a comment** (`// hi`). The lexer rejects it; comments are not
   allowed.
-- **Drop the `Exit(0)` line** from the arg-reading variant. The body's
-  last expression must match the declared return type (`Exit`), so ending
-  on a `Print` (which yields `Unit`) is a checker error.
 - **Inspect the compiled component.** `canon build hello.can` writes
   `build/hello/hello.wasm` and a sibling `.wit` describing the
   component's world.

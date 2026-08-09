@@ -1,6 +1,5 @@
-Args => Exit {
+Unit => Program {
     SampleDoc()
         -> Html
         -> Print
-    Exit(0)
 }

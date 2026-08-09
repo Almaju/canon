@@ -217,21 +217,14 @@ the HTTP entry's `Request => Response { ... }` in anonymity:
 
 | Signature | World | Export |
 |---|---|---|
-| `Unit => Program` (also `Args => Exit` and `... => Result<Exit, _>`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Unit => Program`, `Unit => Result<Program, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
-(The legacy `ExitCode` return is retired -- `Exit` is the one
-exit-status type.)
-
-A program that reads its argument vector or reports a status declares
-the variant `Args => Exit { ... }`. `Args` (`= List<String>`, from
-`canon/std`) is the program's `argv`, bound from
-`wasi:cli/environment#get-arguments`: receive it as the entry's input,
-exactly as the HTTP world hands the handler its `Request`, or construct
-it with the stdlib's `Args()` from any body. `Exit` (`= Int`) is the
-exit status. Because `wasi:cli/run` returns a bare `result`, `Exit(0)`
-maps to success (process exit 0) and any nonzero `Exit` to failure
-(exit 1); an exact nonzero code uses the hard `Exited(n)`
+The CLI entry's shape is the ABI's: `wasi:cli/run.run` takes nothing
+and reports only success/failure. The argument vector is fetched, not
+passed -- `Args()` (`= List<String>`, from `canon/std`, bound from
+`wasi:cli/environment#get-arguments`) reads `argv` from any body -- and
+an exact exit code is the hard `Exited(n)`
 (`wasi:cli/exit#exit-with-code`) escape hatch.
 
 A third world -- the browser [web target](../reference/web-target.md) -- is

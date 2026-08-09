@@ -143,7 +143,7 @@ Canon has none:
   and its name is the version pin. There is no `canon.toml` and no
   lockfile, because the file tree already says everything they would.
 - **No entry-point registration.** A program is whatever its types say
-  it is: an arrow returning `Exit` is a CLI command, an arrow returning
+  it is: an arrow returning `Program` is a CLI command, an arrow returning
   `Response` is an HTTP service, a `Model => Html` view (with its init
   and update) is a browser app. Signatures select the world; nothing is
   named `main`.

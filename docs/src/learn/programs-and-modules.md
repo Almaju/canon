@@ -43,7 +43,7 @@ entry:
 
 | You write | You get |
 |---|---|
-| `Unit => Program` (or `Args => Exit`) | a CLI command (`wasi:cli/command`) |
+| `Unit => Program` | a CLI command (`wasi:cli/command`) |
 | `Request => Response` | an HTTP service (`wasi:http/service`) |
 | `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app (wasm + generated JS host) |
 
@@ -55,9 +55,9 @@ world-shaped declaration. The
 on both sides of the wire this way: one file declares the web triple,
 another the HTTP entry, and one `canon run` serves both on one
 address. Two details worth knowing early:
-`Args` (`= List<String>`) is your argv, handed to the CLI entry the way
-`Request` is handed to the HTTP handler; and a fallible entry is just a
-`Result` return, so `?` works at the top level too.
+`Args()` (`= List<String>`) fetches your argv from any body; and a
+fallible entry is just a `Result` return, so `?` works at the top
+level too.
 
 **Precise rules:** [Modules & Packages](../spec/modules.md) and
 [Functions & Traits](../spec/functions.md); commands in
