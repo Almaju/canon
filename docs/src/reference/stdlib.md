@@ -26,8 +26,12 @@ only ever reaches the wrappers below.
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set -> List` = members, alphabetically |
-| `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `Int("42")?` |
+| `Bool` | `And`, `Not`, `Or` | pure Canon | boolean algebra by dispatch — the only builtin comparisons are `Eq`/`Lt` |
+| `Int` | `Int = (String) => Result<Int, MalformedInt>`, `Ge`, `Gt`, `Le`, `Ne`, `Maximum`, `Minimum` | pure Canon | the fallible parse constructor (`Int("42")?`) plus derived comparisons |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
+| `Float` | `Ge`, `Gt`, `Le`, `Ne` | pure Canon | derived comparisons over the builtin `Lt`/`Eq` |
+| `String` | the `String(...)` family, `Ge`, `Gt`, `Le`, `Ne`, `Padded`, `Width` | pure Canon | rendering (`String(42)` is `"42"`), comparisons, zero-padding: `7 -> Padded(Width(3))` is `"007"` |
+| `From`, `To` | `From = Int`, `To = Int` | none | `Substring`'s 1-based, inclusive bounds — see below |
 | `Byte` | `Byte = Int` | none | picks the byte->character reading of `String(...)`: `String(Byte(65))` is `"A"` |
 | `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
 | `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
@@ -37,7 +41,9 @@ only ever reaches the wrappers below.
 | `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), the `Encoded` family, `Field`, `Decoded` |
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
 | `web/Html` | `Html = String`, `Escaped` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
+| `web/Attr`, `web/Msg`, `web/Tag` | `Attr = String`, `Msg = String`, `Tag = String` | none | element-builder inputs: `El`/`ElAttr` take a `Tag`, `Button` a `Msg` |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../learn/testing.md) |
+| `Program` | `Program = Unit` | none | the CLI entry's declared return: `Unit => Program` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
 | `cli/Cwd` | `Cwd = String`, `Unit => Option<Cwd>` | `wasi/cli/environment` | initial working directory, when the host provides one |
@@ -45,7 +51,9 @@ only ever reaches the wrappers below.
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world |
 
 Anything not listed is third-party territory: a library to be
-published, or future stdlib work.
+published, or future stdlib work. The complete set of names the stdlib
+claims — including its internal helper types — is the
+[Reserved Names](#reserved-names) appendix at the end of this page.
 
 ---
 
@@ -175,6 +183,20 @@ Int = (String) => Result<Int, MalformedInt>
 the other thing is what newtypes are for. `Uppercased` / `Lowercased`
 map ASCII case.
 
+## Slicing: `From`, `To`
+
+```canon
+Unit => Program {
+    "canonical"
+        -> Substring(From(1) * To(5))
+        -> Print
+}
+```
+
+`Substring`'s bounds are the `From` / `To` newtypes (both `= Int` —
+same underlying type, so the values must be tagged), 1-based and
+inclusive at both ends: this prints `canon`.
+
 ## Encodings: `Base64`, `Hex`
 
 ```canon
@@ -247,3 +269,52 @@ Unit => Result<Program, MalformedJson> {
 - Read back with `json -> Field("key")` (the raw text of an object
   field) and `json -> Decoded` (a JSON string's contents, escapes
   handled).
+
+---
+
+## Reserved Names
+
+Every type name `canon/std` declares is global — a type of the same
+name in your own project is a compile error. Check this list before
+naming a type (internal helpers included):
+
+Added, AfterDigits, AfterSign, AfterWs, And, Args, Attr, Base64,
+Base64Char, Base64Decoded, Base64Encoded, Base64Tail, Body, BodyCells,
+BodyRows, BracketClose, Button, Byte, CheckedTrailing, Civil,
+ClosedOrKey, ColonChecked, ConsumedArrayTail, ConsumedColonValue,
+ConsumedObjectTail, Contains, Contents, Cwd, Date, DatePart, Day,
+DecimalDigit, Decimals, Decoded, DecodedBlocks, DecodedOne,
+DecodedPairs, DecodedThree, DecodedTwo, DigitRun, Digits,
+DispatchedValue, Div, Doe, Doy, Dropped, El, ElAttr, Encoded,
+EncodedOne, EncodedThree, EncodedTwo, Entry, Era, EscapeChar,
+EscapeOther, EscapePlain, EscapeUnicode, Escaped, EscapedByte,
+EscapedMeaning, EscapedTail, Exit, Exited, Fail, FenceBody, FenceEnd,
+FenceInfo, Fetched, Field, File, Fraction, Frag, From, Ge, Gt, H1,
+HashCount, HeadCells, Headers, HeadingHtml, Hex, HexByte, HexChar,
+HexDecoded, HexDigit, HexEncoded, HexTail, HexVal, HostChecked, Hour,
+Html, HttpError, Inline, Inserted, Int, InvalidUrl, IoError,
+IsBlockStart, IsDigit, IsExpMarker, IsFence, IsHeading, IsHex,
+IsIntDigit, IsItem, IsOrdered, IsPara, IsQuote, IsSepLine, IsSign,
+IsSubItem, IsTable, IsWs, Item, Json, Key, KeyEq, KeyExpected,
+KeyParsed, KeyStart, Keys, Le, Length, Li, LineEnd, List, ListEnd,
+ListItems, Lowercased, LowercasedByte, LowercasedTail, Magnitude,
+MalformedBase64, MalformedHex, MalformedInt, MalformedJson, Map, Mark,
+Markdown, Maximum, Minimum, Minute, Month, Mp, Msg, Ne, Negated,
+NextPipe, Nibble, Node, Not, Now, Number, Opened, OpenedObject, Or,
+OrderedEnd, OrderedItems, OtherBool, OtherFloat, OtherInt, OtherString,
+Padded, ParaBody, ParaEnd, ParenClose, ParseFail, ParsePos, ParseStep,
+ParsedArray, ParsedArrayItems, ParsedArrayTail, ParsedExp,
+ParsedExpAfter, ParsedFalse, ParsedFrac, ParsedFracExp, ParsedIntPart,
+ParsedNull, ParsedNumber, ParsedObject, ParsedObjectColon,
+ParsedObjectItems, ParsedObjectTail, ParsedString, ParsedStringBody,
+ParsedTrue, ParsedValue, Pass, Path, Pos, Prefix, Prefixed, Program,
+QuoteBody, QuoteChecked, QuoteEnd, Random, Read, Remaining, Removed,
+RenderedBlocks, RenderedFence, RenderedHeading, RenderedList,
+RenderedNonList, RenderedOrdered, RenderedParagraph, RenderedQuote,
+RenderedTable, Request, RequiredDigits, Response, Rest, Scaled,
+SchemeEnd, Second, Set, Sextet, Span, StarClose, StarOneClose, Status,
+String, SubEnd, SubItems, TableEnd, Tag, TailChecked, TestResult,
+TickClose, TimePart, To, Ul, UnescapedEscape, UnescapedTail,
+UnescapedUnicode, Unix, Uppercased, UppercasedByte, UppercasedTail, Url,
+Utf8, Utf8Three, Validated, Value, ValueEnded, ValueParsed, ValueStart,
+Values, Weekday, Width, Written, Year, Yoe
