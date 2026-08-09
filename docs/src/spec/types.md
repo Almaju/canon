@@ -111,9 +111,8 @@ compiler fills in from a call site's declared argument types
 (`List(1 * 2) -> Mapped(f)` instantiates `T = Int`) — signatures
 themselves are always written in full ([No Type
 Inference](#no-type-inference) is about signatures, not type
-arguments). Constraint syntax (`<T: Show>`) is part of the shape
-mechanism and returns with it ([Functions § Shape or Result
-Newtype](./functions.md#shape-or-result-newtype)).
+arguments). There is no constraint syntax: a parameter is bounded by
+the operations its uses require.
 
 ## Recursive Types
 

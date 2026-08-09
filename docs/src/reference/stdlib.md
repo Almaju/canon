@@ -42,7 +42,7 @@ only ever reaches the wrappers below.
 | `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
 | `web/Html` | `Html = String`, `Escaped` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
 | `web/Attr`, `web/Msg`, `web/Tag` | `Attr = String`, `Msg = String`, `Tag = String` | none | element-builder inputs: `El`/`ElAttr` take a `Tag`, `Button` a `Msg` |
-| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../learn/testing.md) |
+| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../tour/testing.md) |
 | `Program` | `Program = Unit` | none | the CLI entry's declared return: `Unit => Program` |
 | `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
 | `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |

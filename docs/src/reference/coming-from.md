@@ -82,8 +82,7 @@ states are unrepresentable" is a goal, not a slogan. You'll fight it
 if you love a REPL, reach for `any`/`nil`/reflection, want comments,
 or need a mature package ecosystem today.
 
-Either way the next step is the same: walk the **Learn** chapters
-(start at [Types & Values](../learn/types-and-values.md) — they run in
-the browser) and poke at the
-[examples](https://github.com/Almaju/canon/tree/main/examples). An
-afternoon is enough to know whether it's your kind of strange.
+Either way the next step is the same: take the
+[Tour](../tour/hello.md) — sixteen steps, each one running in your
+browser. An afternoon is enough to know whether it's your kind of
+strange.

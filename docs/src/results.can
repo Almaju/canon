@@ -54,45 +54,69 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("hello-world") * Label("Hello, World") * HelloWorld() -> String -> Text)
+            -> Hit(Slug("hello") * Label("Tour: Hello, Canon") * Hello() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("types-and-values") * Label("Types & Values") * TypesAndValues() -> String -> Text)
+            -> Hit(Slug("pipes") * Label("Tour: Three Symbols") * Pipes() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("pipes-and-constructors") * Label("Pipes & Constructors") * PipesAndConstructors() -> String -> Text)
+            -> Hit(Slug("newtypes") * Label("Tour: Types Are the Vocabulary") * Newtypes() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("branching-and-loops") * Label("Branching & Loops") * BranchingAndLoops() -> String -> Text)
+            -> Hit(Slug("format-strings") * Label("Tour: Strings With Holes") * FormatStrings() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("errors-and-options") * Label("Errors & Options") * ErrorsAndOptions() -> String -> Text)
+            -> Hit(Slug("constructors") * Label("Tour: Conversion Is Construction") * Constructors() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("capabilities") * Label("Capabilities") * Capabilities() -> String -> Text)
+            -> Hit(Slug("calls") * Label("Tour: Calls With More Than One Input") * Calls() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("async-without-keywords") * Label("Async") * AsyncWithoutKeywords() -> String -> Text)
+            -> Hit(Slug("dispatch") * Label("Tour: Branching Is Dispatch") * Dispatch() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("programs-and-modules") * Label("Programs & Modules") * ProgramsAndModules() -> String -> Text)
-            -> String
-    }{Query -> Hit(Slug("testing") * Label("Testing") * Testing() -> String -> Text) -> String}{
-        Query
-            -> Hit(Slug("how-do-i") * Label("How Do I…?") * HowDoI() -> String -> Text)
+            -> Hit(Slug("literal-dispatch") * Label("Tour: Dispatch on Literals") * LiteralDispatch() -> String -> Text)
             -> String
     }{
         Query
-            -> Hit(Slug("showcase") * Label("Examples Overview") * Showcase() -> String -> Text)
+            -> Hit(Slug("recursion") * Label("Tour: Loops Without Loops") * Recursion() -> String -> Text)
             -> String
     }{
+        Query
+            -> Hit(Slug("result-newtypes") * Label("Tour: Naming What Happened") * ResultNewtypes() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("errors") * Label("Tour: Failure Is a Value") * Errors() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("validated-constructors") * Label("Tour: Constructors That Check") * ValidatedConstructors() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("capabilities") * Label("Tour: Effects Are Values") * Capabilities() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("async") * Label("Tour: Async Without a Keyword") * Async() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("testing") * Label("Tour: Tests Are Types") * Testing() -> String -> Text)
+            -> String
+    }{
+        Query
+            -> Hit(Slug("worlds") * Label("Tour: One Arrow, Three Worlds") * Worlds() -> String -> Text)
+            -> String
+    }{Query -> Hit(Slug("how-do-i") * Label("How Do I…?") * HowDoI() -> String -> Text) -> String}{
         Query
             -> Hit(Slug("multifile") * Label("Multi-File Project") * Multifile() -> String -> Text)
             -> String
@@ -146,7 +170,7 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("functions") * Label("Functions & Traits") * Functions() -> String -> Text)
+            -> Hit(Slug("functions") * Label("Functions") * Functions() -> String -> Text)
             -> String
     }{
         Query

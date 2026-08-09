@@ -72,7 +72,7 @@ canon test tests/               # every *_test.can under a directory
 ```
 
 Discovers every test by shape and prints a `[ ok ]` / `[FAIL]` line
-per test; exits `1` on any failure. See [Testing](../learn/testing.md).
+per test; exits `1` on any failure. See [Testing](../tour/testing.md).
 
 ## Everything Else
 

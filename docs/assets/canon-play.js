@@ -19,12 +19,71 @@
 // Exposes `globalThis.canonPlay`:
 //
 //   compileAndRun(source, sink) -> Promise<{status, exitCode, canonical}>
-//   mount(el)                   -> hydrate the playground page
+//   highlight(source)           -> Canon source as coloured HTML
+//   mount(el, seed)             -> hydrate an editor pane
 //
 // Loaded as a plain classic script, so it touches only globals.
 
 (function () {
   "use strict";
+
+  // ── Canon syntax highlighter ──────────────────────────────────────
+  // A tiny standalone tokenizer (no highlight.js). Almost every name in
+  // Canon is PascalCase, so painting all of them one colour would make a
+  // wall; instead colour falls on what carries a program's shape -
+  // constructors (`Name(`), calls (`name(`), definitions (`name =`), the
+  // core vocabulary, literals, operators, strings, numbers - and bare
+  // PascalCase stays plain, mirroring the language's own rule.
+  //
+  // It lives here rather than in docs-enhance.js because the editor
+  // needs it too: one tokenizer paints the read-only code blocks and the
+  // live buffer, so a snippet cannot look different from the same text
+  // typed into the playground.
+  var KW = new Set(["extern", "impl", "bindings", "use"]);
+  var LIT = new Set(["True", "False", "None", "Some", "Ok", "Err", "Pass", "Fail"]);
+  var TYPE = new Set([
+    "Bool", "Byte", "Bytes", "Float", "Future", "Handle", "Hex", "Html", "Int",
+    "Json", "List", "Map", "Markdown", "Never", "Option", "Ord", "Result",
+    "Set", "Stream", "String", "TestResult", "Unit",
+  ]);
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  var TOKEN =
+    /("(?:\\.|[^"\\])*")|(\b0x[0-9a-fA-F_]+\b|\b\d+\.\d+\b|\b\d+\b)|([A-Za-z_][A-Za-z0-9_]*)|(->|=>|::<|[?^*+=|.])|(\s+)|([\s\S])/g;
+
+  function highlight(code) {
+    var out = "";
+    var m;
+    TOKEN.lastIndex = 0;
+    while ((m = TOKEN.exec(code))) {
+      if (m[1]) {
+        out += '<span class="tk-str">' + esc(m[1]) + "</span>";
+      } else if (m[2]) {
+        out += '<span class="tk-num">' + esc(m[2]) + "</span>";
+      } else if (m[3]) {
+        var id = m[3];
+        var rest = code.slice(TOKEN.lastIndex);
+        var parens = /^\s*\(/.test(rest);
+        var assign = /^\s*=(?![=>])/.test(rest);
+        var cls = null;
+        if (KW.has(id)) cls = "tk-kw";
+        else if (LIT.has(id)) cls = "tk-lit";
+        else if (TYPE.has(id)) cls = "tk-type";
+        else if (/^[A-Z]/.test(id) && parens) cls = "tk-ctor";
+        else if (/^[a-z]/.test(id) && parens) cls = "tk-call";
+        else if (/^[a-z]/.test(id) && assign) cls = "tk-def";
+        out += cls ? '<span class="' + cls + '">' + esc(id) + "</span>" : esc(id);
+      } else if (m[4]) {
+        out += '<span class="tk-op">' + esc(m[4]) + "</span>";
+      } else {
+        out += esc(m[0]);
+      }
+    }
+    return out;
+  }
 
   var COMPILER_URL = "canon-compiler.wasm";
   var TAG_DIAGNOSTICS = 0;
@@ -279,7 +338,11 @@
     try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
   }
 
-  function mount(el) {
+  // `seed` is a tour step's program: it owns the editor instead of the
+  // shared draft, so walking the tour never overwrites what the reader
+  // left on the playground page (and `reset` goes back to the step, not
+  // to hello-world).
+  function mount(el, seed) {
     if (el.dataset.mounted) return;
     el.dataset.mounted = "1";
 
@@ -289,12 +352,31 @@
     var runBtn = el.querySelector(".pg-run");
     var shareBtn = el.querySelector(".pg-share");
     var resetBtn = el.querySelector(".pg-reset");
+    var start = seed || HELLO;
 
-    editor.value = sourceFromUrl() || stored() || HELLO;
+    editor.value = seed || sourceFromUrl() || stored() || HELLO;
+
+    // A textarea cannot colour its own text, so the colour lives in a
+    // <pre> pinned underneath it, painted from the same buffer: the
+    // textarea keeps its caret, selection, and undo stack, and renders
+    // its text transparent over the top. The two boxes share every
+    // metric that decides where a glyph lands (font, padding, tab size,
+    // wrapping), so they cannot drift.
+    var paint = function () {
+      if (!layer) return;
+      layer.innerHTML = highlight(editor.value);
+      layer.parentNode.scrollTop = editor.scrollTop;
+      layer.parentNode.scrollLeft = editor.scrollLeft;
+    };
+    var layer = el.querySelector(".pg-hl code");
+    paint();
 
     editor.addEventListener("input", function () {
+      paint();
+      if (seed) return;
       try { localStorage.setItem(STORAGE_KEY, editor.value); } catch (e) {}
     });
+    editor.addEventListener("scroll", paint);
 
     function write(text, isErr) {
       var span = document.createElement("span");
@@ -314,7 +396,10 @@
         // reader what their program actually is.
         if (result.canonical && result.canonical !== editor.value) {
           editor.value = result.canonical;
-          try { localStorage.setItem(STORAGE_KEY, result.canonical); } catch (e) {}
+          paint();
+          if (!seed) {
+            try { localStorage.setItem(STORAGE_KEY, result.canonical); } catch (e) {}
+          }
         }
         var ms = Math.round(performance.now() - started);
         if (result.status === "ok") {
@@ -345,12 +430,19 @@
     });
 
     resetBtn.addEventListener("click", function () {
-      editor.value = HELLO;
-      try { localStorage.setItem(STORAGE_KEY, HELLO); } catch (e) {}
+      editor.value = start;
+      paint();
+      if (!seed) {
+        try { localStorage.setItem(STORAGE_KEY, start); } catch (e) {}
+      }
       out.textContent = "";
       status.textContent = "";
     });
   }
 
-  globalThis.canonPlay = { compileAndRun: compileAndRun, mount: mount };
+  globalThis.canonPlay = {
+    compileAndRun: compileAndRun,
+    highlight: highlight,
+    mount: mount,
+  };
 })();

@@ -16,12 +16,12 @@ Unit => Program {
 There are no variables — give the value a type. Declare a newtype
 (`Subtotal = Int`) and construct it mid-pipe:
 `price -> Product(quantity) -> Subtotal`.
-([Types & Values](./types-and-values.md))
+([Types Are the Vocabulary](../tour/newtypes.md))
 
 ## …branch on a condition?
 
 Dispatch — on the `Bool`, or better, on your own union so the cases
-have names ([Branching & Loops](./branching-and-loops.md)):
+have names ([Branching Is Dispatch](../tour/dispatch.md)):
 
 ```canon
 Count = Int
@@ -62,7 +62,7 @@ Unit => Doubled {
 ```
 
 For everything else: recursion, with dispatch as the base case
-([Branching & Loops](./branching-and-loops.md)).
+([Branching Is Dispatch](../tour/dispatch.md)).
 
 ## …build a string from pieces?
 
@@ -99,7 +99,7 @@ Conversion is construction; the fallible direction returns a `Result`.
 ## …handle an error / an absent value?
 
 Propagate with `?`, or dispatch on the `Result` / `Option`
-([Errors & Options](./errors-and-options.md)).
+([Failure Is a Value](../tour/errors.md)).
 
 ## …compare two values?
 
@@ -118,7 +118,7 @@ Unit => Program {
 }
 ```
 
-([Capabilities](./capabilities.md); [stdlib](../reference/stdlib.md))
+([Capabilities](../tour/capabilities.md); [stdlib](./stdlib.md))
 
 ## …get the time, or a random number?
 
@@ -139,13 +139,13 @@ Unit => Program {
 ## …serve HTTP?
 
 Declare one arrow returning `Response`; routing is literal dispatch on
-the path. ([Programs & Modules](./programs-and-modules.md); worked
+the path. ([One Arrow, Three Worlds](../tour/worlds.md); worked
 example: [notes-api](../examples/notes-api.md))
 
 ## …produce or consume JSON?
 
 Literals are first-class expressions with `{…}` interpolation holes;
-read back with `Field` and `Decoded` ([stdlib](../reference/stdlib.md)):
+read back with `Field` and `Decoded` ([stdlib](./stdlib.md)):
 
 ```canon
 Unit => Program {
@@ -161,7 +161,7 @@ Unit => Program {
 
 HTML literals produce `Html` (holes escape strings, pass `Html`
 through). A whole browser app is three arrows — view, init, update.
-([The Web Target](../reference/web-target.md); worked example:
+([The Web Target](./web-target.md); worked example:
 [fullstack todo list](../examples/fullstack.md))
 
 ## …render Markdown?
@@ -175,7 +175,7 @@ Unit => Program {
 ```
 
 Referencing `Intro` loads a sibling `intro.md` as a `Markdown` value at
-compile time. ([Markdown](../reference/markdown-renderer.md))
+compile time. ([Markdown](./markdown-renderer.md))
 
 ## …keep a key-value store or a set?
 
@@ -197,13 +197,13 @@ Unit => Program {
 ## …write a test?
 
 A newtype of `TestResult` plus its nullary constructor; run with
-`canon test`. ([Testing](./testing.md))
+`canon test`. ([Testing](../tour/testing.md))
 
 ## …call a host / WASI API?
 
 Drop the WIT file under `wit/`, run `canon install`, reference the
 generated constructor by the type it produces.
-([Using WASI Interfaces](../reference/wasi.md))
+([Using WASI Interfaces](./wasi.md))
 
 ## …format my code?
 
