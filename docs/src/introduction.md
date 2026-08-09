@@ -31,7 +31,7 @@ host can serve.
 Canon also compiles to the browser — which is why the next program has
 a **run** button. Press it.
 
-```canon,run=intro
+```canon,run
 Unit => Program {
     List(1 * 2 * 3)
         -> Mapped((Int) => Int { Int -> Product(2) })

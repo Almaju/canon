@@ -469,6 +469,48 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     crate::install::find_project_root(start)
 }
 
+/// Loads a single-file program held in memory rather than on disk —
+/// the docs playground, where the source is a text area and there is no
+/// filesystem to resolve against (`src/playground.rs`).
+///
+/// Reference discovery still runs, but rooted at `path`'s parent, which
+/// for a bare file name is the empty path: no local file resolves, so
+/// every name must come from the bundled packages. That is exactly the
+/// surface a one-file program has. Nothing reads `path` — it is the name
+/// diagnostics are reported against.
+pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
+    let mut ctx = LoadCtx {
+        seen: HashSet::new(),
+        seen_bundled: HashSet::new(),
+        items: Vec::new(),
+        defined: HashSet::new(),
+        defined_bundled: HashSet::new(),
+        defined_types: HashSet::new(),
+        local_stems: HashMap::new(),
+        bindgen_decls: None,
+        deps_decls: None,
+        local_sources: vec![LoadedSource {
+            path: path.to_path_buf(),
+            source: source.to_string(),
+        }],
+        project_root: None,
+        deps_dir: None,
+        bindgen_dir: None,
+    };
+    let dir = path.parent().unwrap_or_else(|| Path::new(""));
+    let entry_items_start = load_entry_source(source, dir, &mut ctx)?;
+    let mut module = Module {
+        items: ctx.items,
+        span: Span::default(),
+    };
+    crate::checker::auto_await::transform(&mut module);
+    Ok(LoadResult {
+        module,
+        entry_items_start,
+        local_sources: ctx.local_sources,
+    })
+}
+
 pub fn load_module(entry: &Path) -> Result<LoadResult> {
     let canonical = entry.canonicalize().map_err(|err| CanonError::CheckError {
         message: format!("could not resolve `{}`: {}", entry.display(), err),

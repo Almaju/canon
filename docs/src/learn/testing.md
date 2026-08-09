@@ -30,7 +30,7 @@ helps, construct `Fail("why")` directly in a dispatch arm.
 Because `TestResult` is an ordinary union, you can watch the mechanism
 work right here:
 
-```canon,run=learn-testing
+```canon,run
 DoublingWorks = TestResult
 
 Unit => DoublingWorks {

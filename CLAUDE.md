@@ -94,7 +94,7 @@ same PR; never open standalone docs-sync PRs.
 | Path | Description |
 |---|---|
 | `.github/` | CI workflows (docs deploy, release pipeline) |
-| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (Elm triple) rendering `src/*.md` via the stdlib Markdown renderer; `canon build docs` → `docs/build/` (wasm + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` is injected by the deploy for progressive enhancement (highlighting, click-to-run). `runner/build.mjs` compiles each ` ```canon,run=… ` snippet to a jco bundle at build time. `landing/index.html` is the marketing page. Deploy puts landing at root, app under `/doc/`. |
+| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (Elm triple) rendering `src/*.md` via the stdlib Markdown renderer; `canon build docs` → `docs/build/` (wasm + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` and `assets/canon-play.js` are injected by the deploy for progressive enhancement (highlighting, the playground page, click-to-run on ` ```canon,run ` snippets). `landing/index.html` is the marketing page. Deploy puts landing at root, app under `/doc/`. |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | AST construction (`parser.rs`) |
@@ -105,6 +105,7 @@ same PR; never open standalone docs-sync PRs.
 | `src/loader.rs` | File/module loading + reference resolution |
 | `src/bindgen/` | WIT → Canon source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
 | `src/main.rs` | CLI entry (`run`, `build`, `check` (`--fix`), `test`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
+| `src/playground.rs` | The compiler's own browser entry (`wasm32-unknown-unknown`, `[profile.playground]`) — `canon_format`/`canon_compile` over a byte buffer, driven by `docs/assets/canon-play.js`. No imports; the stdlib is already in the binary |
 | `src/webhost.rs` | Web target's browser side — generated JS host, `index.html` shell, static server for `canon run` |
 | `src/lib.rs` | Public crate modules |
 | `build.rs` | Walks `packages/` → bundled-package registry baked into the binary |
