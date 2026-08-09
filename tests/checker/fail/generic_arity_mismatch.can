@@ -1,0 +1,5 @@
+Wrong = Option<Int, String>
+
+Unit => Program {
+    "hi" -> Print
+}

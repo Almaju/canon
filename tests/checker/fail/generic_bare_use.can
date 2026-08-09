@@ -1,0 +1,7 @@
+Box<T> = T
+
+Holder = Box
+
+Unit => Program {
+    "hi" -> Print
+}

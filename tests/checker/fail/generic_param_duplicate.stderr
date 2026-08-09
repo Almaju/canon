@@ -1,0 +1,2 @@
+error[tests/checker/fail/generic_param_duplicate.can:1:9]: duplicate type parameter `T`
+error[tests/checker/fail/generic_param_duplicate.can:1:1]: `Pair` is never used: dead code is not allowed to accumulate; delete it or wire it into the program

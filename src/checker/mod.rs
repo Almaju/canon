@@ -19,8 +19,19 @@ const BUILTIN_TYPES: &[&str] = &[
 
 // `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
 // types (`canon/std/Map`, `canon/std/Set`), so their names arrive through
-// the imported typedefs like any other user type.
-const BUILTIN_GENERIC_TYPES: &[&str] = &["Future", "List", "Option", "Result", "Stream"];
+// the imported typedefs like any other user type. Each entry carries its
+// type-argument count.
+const BUILTIN_GENERIC_TYPES: &[(&str, usize)] = &[
+    ("Future", 1),
+    ("List", 1),
+    ("Option", 1),
+    ("Result", 2),
+    ("Stream", 1),
+];
+
+fn is_builtin_generic(name: &str) -> bool {
+    BUILTIN_GENERIC_TYPES.iter().any(|(n, _)| *n == name)
+}
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
@@ -40,7 +51,11 @@ const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race", "Parallel", "Race"
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
-    pub generic_types: HashSet<String>,
+    /// Generic type names → declared parameter names (`Map<K, V>` →
+    /// `["K", "V"]`; arity is the length). Builtins are pre-seeded with
+    /// placeholder names; user entries come from parameterized
+    /// `TypeDef`s.
+    pub generic_types: HashMap<String, Vec<String>>,
     pub variant_of: HashMap<String, String>,
     pub methods: HashMap<(String, String), MethodSig>,
     /// For each product TypeDef `T = A * B * ...`, the names of its
@@ -96,7 +111,7 @@ impl SymbolTable {
     }
 
     pub fn knows_type(&self, name: &str) -> bool {
-        self.types.contains(name) || self.generic_types.contains(name)
+        self.types.contains(name) || self.generic_types.contains_key(name)
     }
 }
 
@@ -124,6 +139,7 @@ pub fn check_loaded(loaded: &crate::loader::LoadResult) -> Vec<CanonError> {
             crate::formatter::format_error(&src.source, &src.path.display().to_string())
         })
         .collect();
+    errors.extend(loaded.expand_errors.iter().cloned());
     errors.extend(check_with_entry(&loaded.module, loaded.entry_items_start));
     errors
 }
@@ -330,6 +346,13 @@ fn check_ordering(
                 } else {
                     func.name.name.as_str()
                 };
+                // Minted instantiations (`Inserted<String, Int>` — a `<`
+                // can't appear in a source-declared name) are compiler
+                // output appended after the source items, not part of
+                // the file's ordering.
+                if crate::monomorph::instantiation_head(surface).is_some() {
+                    return None;
+                }
                 return Some((surface, func.name.span));
             }
             None
@@ -342,6 +365,9 @@ fn check_ordering(
         .iter()
         .filter_map(|item| {
             if let Item::TypeDef(td) = item {
+                if crate::monomorph::instantiation_head(&td.name.name).is_some() {
+                    return None;
+                }
                 Some((td.name.name.as_str(), td.name.span))
             } else {
                 None
@@ -458,6 +484,13 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonErr
                 (td.name.name.clone(), out)
             }
         };
+        // A minted instantiation keeps its schema alive: `Box<Int>`
+        // reaches the `Box` declaration it was expanded from, so a
+        // schema is dead exactly when no instantiation of it is used.
+        if let Some(head) = crate::monomorph::instantiation_head(&name) {
+            let head = head.to_string();
+            refs.entry(name.clone()).or_default().insert(head);
+        }
         if declared.insert(name.clone()) {
             declared_order.push(name.clone());
         }
@@ -843,7 +876,9 @@ fn compound_payload_gap(container: &str, payload: &str, span: crate::error::Span
 /// compound elements, `Appended` elements, and `Some<T>` dispatch arms.
 fn scan_expr_gaps(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>, errors: &mut Vec<CanonError>) {
     match expr {
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name, args, span, ..
+        } => {
             if name.name == "List" {
                 // `List(a * b * c)` carries its elements as one product.
                 let elements: &[Expr] = match args.as_slice() {
@@ -1072,7 +1107,7 @@ fn sig_mentions(func: &FunctionDef, ty_name: &str) -> bool {
 /// The name a function declaration is reached *by*: its own name, except a
 /// self-constructor (rewritten to `Self`) is reached through its receiver
 /// type name — mirrors the keying in `lint_dead_code`.
-fn decl_key(func: &FunctionDef) -> String {
+pub(crate) fn decl_key(func: &FunctionDef) -> String {
     if func.name.name == "Self" {
         func.receiver
             .as_ref()
@@ -1169,9 +1204,12 @@ pub(crate) fn symbols_for_tooling(module: &Module) -> SymbolTable {
 
 fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
-    let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES
+    let mut generic_types: HashMap<String, Vec<String>> = BUILTIN_GENERIC_TYPES
         .iter()
-        .map(|s| s.to_string())
+        .map(|(s, arity)| {
+            let params = (0..*arity).map(|i| format!("${}", i + 1)).collect();
+            (s.to_string(), params)
+        })
         .collect();
     let mut variant_of: HashMap<String, String> = HashMap::new();
 
@@ -1190,8 +1228,11 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             let name = td.name.name.clone();
-            let canon = crate::ast::type_expr_canonical(&td.body);
-            let already_known = types.contains(&name) || generic_types.contains(&name);
+            // Declaration-side parameters are part of the type's
+            // identity (positionally normalized), so `Map<K, V> = …`
+            // and a parameter-free `Map = …` never merge.
+            let canon = crate::ast::type_def_canonical(td);
+            let already_known = types.contains(&name) || generic_types.contains_key(&name);
             if already_known {
                 // Structurally identical duplicates merge — type
                 // equality is syntactic (one canonical spelling per
@@ -1208,7 +1249,12 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 types.insert(name.clone());
                 type_canon.insert(name, canon);
             } else {
-                generic_types.insert(name.clone());
+                let params = td
+                    .generic_params
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect();
+                generic_types.insert(name.clone(), params);
                 type_canon.insert(name, canon);
             }
         }
@@ -1218,14 +1264,20 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         if let Item::TypeDef(td) = item {
             if let TypeExpr::Union { variants, .. } = &td.body {
                 for variant in variants {
-                    if let Some(name) = variant.simple_name() {
-                        let name_s = name.to_string();
+                    if let TypeExpr::Named { name, generics, .. } = variant {
+                        let name_s = name.clone();
                         // A variant may also have its own TypeDef (carrying a
                         // payload). Register `types` only if it isn't already
                         // there, but always record the variant → union link
                         // so dispatch patterns and constructor-type lookups
-                        // resolve correctly.
-                        if !types.contains(&name_s) && !generic_types.contains(&name_s) {
+                        // resolve correctly. A generic-applied variant
+                        // (`Node<K, V>` inside `Map<K, V> = Empty + Node<K, V>`)
+                        // records the link under its head name; its own
+                        // parameterized TypeDef supplies the type entry.
+                        if generics.is_empty()
+                            && !types.contains(&name_s)
+                            && !generic_types.contains_key(&name_s)
+                        {
                             types.insert(name_s.clone());
                         }
                         variant_of
@@ -1252,6 +1304,13 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
+            // A parameterized typedef's fields only mean something per
+            // instantiation (its component spellings mention the type
+            // parameters); the field table gets the instantiated copies,
+            // never the schema.
+            if !td.generic_params.is_empty() {
+                continue;
+            }
             match &td.body {
                 TypeExpr::Product { fields, .. } => {
                     let names: Vec<String> = fields
@@ -1444,7 +1503,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // static case the checker still needs `Json` to be a known type whose
     // alias chain reaches `String`, so `{"k":"v"}.print()` and a `-> Json`
     // annotation work import-free. A user- or stdlib-defined `Json` wins.
-    if !types.contains("Json") && !generic_types.contains("Json") {
+    if !types.contains("Json") && !generic_types.contains_key("Json") {
         types.insert("Json".to_string());
         aliases.insert("Json".to_string(), "String".to_string());
     }
@@ -1454,7 +1513,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // `web/html.can` in scope, so the checker needs the alias chain to
     // reach `String` intrinsically. A user- or stdlib-defined `Html`
     // wins (the stdlib's is the same `Html = String`).
-    if !types.contains("Html") && !generic_types.contains("Html") {
+    if !types.contains("Html") && !generic_types.contains_key("Html") {
         types.insert("Html".to_string());
         aliases.insert("Html".to_string(), "String".to_string());
     }
@@ -1575,6 +1634,20 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
     }
 }
 
+/// Explicit call-site type arguments on a user generic are consumed by
+/// the expansion pass before checking, so any that survive to here sit
+/// on a name that takes none — reject them so an annotation is never
+/// silently inert.
+fn check_expr_type_args(name: &str, type_args: &[TypeExpr], errors: &mut Vec<CanonError>) {
+    if type_args.is_empty() {
+        return;
+    }
+    errors.push(CanonError::CheckError {
+        message: format!("`{}` does not take type arguments", name),
+        span: type_args[0].span(),
+    });
+}
+
 /// `Json("…")` / `Html("…")` fed a **static string literal** that the
 /// corresponding literal form can already express is ceremony around a
 /// literal — the parse can never fail, so the validating-constructor
@@ -1662,18 +1735,30 @@ fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonErr
             span: td.name.span,
         });
     }
-    let mut generic_scope: HashSet<String> = td
-        .generic_params
-        .iter()
-        .map(|g| g.name.name.clone())
-        .collect();
+    let mut generic_scope: HashSet<String> = HashSet::new();
+    for param in &td.generic_params {
+        if !generic_scope.insert(param.name.name.clone()) {
+            errors.push(CanonError::CheckError {
+                message: format!("duplicate type parameter `{}`", param.name.name),
+                span: param.span,
+            });
+        }
+        if symbols.knows_type(&param.name.name) {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "type parameter `{}` shadows a declared type",
+                    param.name.name
+                ),
+                span: param.span,
+            });
+        }
+    }
     for param in &td.generic_params {
         if let Some(bound) = &param.bound {
             check_type_expr(bound, symbols, &generic_scope, errors);
         }
     }
     check_type_expr(&td.body, symbols, &generic_scope, errors);
-    let _ = &mut generic_scope;
 }
 
 fn check_function(
@@ -1824,6 +1909,15 @@ fn check_function(
     }
 
     if func.extern_wasm.is_some() {
+        return;
+    }
+
+    // A generic schema's body is checked through its instantiations —
+    // the expansion pass mints a concrete copy per use and each copy
+    // runs the full body check below. The flat name-typed model here
+    // has nothing sound to say about a body whose value types are
+    // parameters.
+    if !func.generic_params.is_empty() {
         return;
     }
 
@@ -1983,6 +2077,38 @@ fn check_type_expr(
                     message: format!("unknown type `{}`", name),
                     span: *span,
                 });
+            } else if let Some(params) = symbols.generic_types.get(name.as_str()) {
+                if !generics.is_empty() && generics.len() != params.len() {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "wrong number of type arguments for `{}`: expected {}, found {}",
+                            name,
+                            params.len(),
+                            generics.len()
+                        ),
+                        span: *span,
+                    });
+                } else if !is_builtin_generic(name)
+                    && generics.is_empty()
+                    && !params.iter().all(|p| generic_scope.contains(p))
+                {
+                    // A bare reference to a user generic type is legal
+                    // only inside a generic declaration that binds the
+                    // referenced declaration's parameters name-for-name
+                    // (a family shares its parameter names); anywhere
+                    // else the reference needs its arguments. Concrete
+                    // applications never reach here — the expansion
+                    // pass collapses them into instantiated flat names
+                    // before checking.
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "generic type `{}` requires {} type argument(s)",
+                            name,
+                            params.len()
+                        ),
+                        span: *span,
+                    });
+                }
             }
             for g in generics {
                 check_type_expr(g, symbols, generic_scope, errors);
@@ -2323,7 +2449,13 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::JsonLit { .. } => {}
         Expr::HtmlLit { .. } => {}
         Expr::FormatLit { .. } => {}
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            span,
+        } => {
+            check_expr_type_args(&name.name, type_args, errors);
             let is_variant = symbols.variant_of.contains_key(&name.name);
             // A free function with this exact name (like `Now = () -> Now`
             // or `randomInt = () -> Int`) makes the "constructor" call legal
@@ -2398,10 +2530,12 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             span,
             ..
         } => {
+            check_expr_type_args(&method.name, type_args, errors);
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
                 check_expr(arg, scope, symbols, errors);

@@ -105,14 +105,61 @@ byte): one origin, matching positional product access `.1`.
 
 ## Generics
 
-Types may be parameterized with angle brackets: `List<T>`,
-`Option<T>`, `Result<T, E>`. Type arguments are the one thing the
+Types may be parameterized with angle brackets. For the
+compiler-supplied types (`List<T>`, `Option<T>`, `Result<T, E>`,
+`Future<T>`, `Stream<T>`), type arguments are the one thing the
 compiler fills in from a call site's declared argument types
 (`List(1 * 2) -> Mapped(f)` instantiates `T = Int`) — signatures
 themselves are always written in full ([No Type
 Inference](#no-type-inference) is about signatures, not type
-arguments). There is no constraint syntax: a parameter is bounded by
-the operations its uses require.
+arguments).
+
+User declarations take parameters the same way, on both typedefs and
+constructor arrows:
+
+```canon
+Box<T> = T
+
+Same<T> = T
+
+<T>(T) => Same<T> {
+    T
+}
+
+Unit => Program {
+    Box<Int>(42)
+        -> String
+        -> Print
+    Same<String>("echo") -> Print
+}
+```
+
+- Parameters are PascalCase (a `<` followed by a lowercase letter opens
+  an HTML literal), pairwise distinct, and may not shadow a declared
+  type.
+- **Uses spell their arguments.** Outside a generic declaration, a
+  generic name is applied in full — `Box<Int>(42)`,
+  `value -> Inserted<String, Int>(…)` — and the argument count must
+  match the declaration; a bare reference is an error. There is no
+  inference from argument types for user generics yet.
+- **A family shares its parameter names.** Inside a generic body, a
+  bare reference to a sibling declaration — the zero-data variant, a
+  result newtype, the recursive call — resolves each of the sibling's
+  parameters through the enclosing declaration's binding by name
+  (`Rest<K, V> = Store<K, V>`; an insertion body writes `Store`,
+  `Entry`, `Rest` bare). A sibling whose parameter the binding doesn't
+  cover must be applied explicitly.
+- **Instantiation is expansion.** Each distinct application mints a
+  concrete copy of the declaration (and, transitively, of everything
+  it references) with the parameters substituted; the copy is ordinary
+  Canon, checked in full — a generic body is checked through its
+  instantiations, and codegen only ever sees concrete types. Two
+  instantiations are two distinct types: `Store<String, Int>` and
+  `Store<Int, String>` coexist with separate variants and layouts.
+
+There is no constraint syntax: a parameter is bounded by the
+operations its uses require, and each instantiation checks them
+concretely.
 
 ## Recursive Types
 
