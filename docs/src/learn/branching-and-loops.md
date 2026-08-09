@@ -10,18 +10,24 @@ variant, every variant covered, in the union's (alphabetical) order,
 with no wildcard:
 
 ```canon
-True() -> (
-    * False => Unit { "no" -> Print }
-    * True => Unit { "yes" -> Print }
-)
+Unit => Program {
+    True() -> (
+        * False { "no" -> Print }
+        * True { "yes" -> Print }
+    )
+}
 ```
 
 Each arm is a lambda for one variant; the whole dispatch is an
-expression, so all arms produce the same type. When a variant carries
-data, the arm names the payload type and the body sees it under that
-name: `* Some<Int> => Unit { Int -> Print }`. Exhaustiveness is the
-point — add a variant to a union and every dispatch that forgot it
-stops compiling.
+expression, so all arms produce the same type — which is why the arms
+above don't spell it: in return position the type comes from the
+enclosing declaration, and spelling it again is a format error. A
+dispatch anywhere else (a non-final body line, mid-chain) writes its
+arm types: `* Some<Int> => Unit { Int -> Print }`
+([the spec § Arm Types](../spec/expressions.md#arm-types)). When a
+variant carries data, the arm names the payload type and the body sees
+it under that name. Exhaustiveness is the point — add a variant to a
+union and every dispatch that forgot it stops compiling.
 
 ## Literal Dispatch
 
@@ -61,8 +67,8 @@ Next = Chain
 
 Chain => Len {
     Chain -> (
-        * Link => Len { Link.Next -> Len -> Sum(1) }
-        * Stop => Len { 0 }
+        * Link { Link.Next -> Len -> Sum(1) }
+        * Stop { 0 }
     )
 }
 

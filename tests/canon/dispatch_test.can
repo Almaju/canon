@@ -8,8 +8,8 @@ Light = Unit
 
 Unit => DispatchSelectsDarkArm {
     Dark() -> (
-        * Dark => TestResult { Pass() }
-        * Light => TestResult { Fail() }
+        * Dark { Pass() }
+        * Light { Fail() }
     )
 }
 
@@ -17,7 +17,7 @@ Mode = Dark + Light
 
 Unit => DispatchSelectsLightArm {
     Light() -> (
-        * Dark => TestResult { Fail() }
-        * Light => TestResult { Pass() }
+        * Dark { Fail() }
+        * Light { Pass() }
     )
 }

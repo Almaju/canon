@@ -433,13 +433,13 @@ Unit => Program {                              # CLI entry (anonymous, returns t
 }
 
 True() -> (                                    # dispatch (branch on union); scrutinee pipes in with `->`
-    * False => Unit { "no" -> Print }
-    * True  => Unit { "yes" -> Print }
+    * False { "no" -> Print }                  # arms elide their type in return position (it is the
+    * True  { "yes" -> Print }                 # enclosing return type); elsewhere: `* False => Unit { … }`
 )
 
 path -> (                                      # literal dispatch (String/Int scrutinee);
-    * "/notes" => Body { Index() }             # the catch-all arm is required, always last
-    * String => Body { NotFound() }
+    * "/notes" { Index() }                     # the catch-all arm is required, always last
+    * String { NotFound() }
 )
 
 List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })  # lambda (keeps parens)

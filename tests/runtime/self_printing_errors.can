@@ -12,8 +12,8 @@ Reason = String
 
 Bool => Result<Lookup, Missing> {
     Bool -> (
-        * False => Result<Lookup, Missing> { Missing("user.name") -> Err }
-        * True => Result<Lookup, Missing> { Reason("ada") -> Ok }
+        * False { Missing("user.name") -> Err }
+        * True { Reason("ada") -> Ok }
     )
 }
 
@@ -34,7 +34,7 @@ Unit => Program {
         * Ok<Reason> => Unit { Reason -> Printed }
     )
     False() -> Lookup -> (
-        * Err<Missing> => Unit { Missing -> Printed }
-        * Ok<Reason> => Unit { Reason -> Printed }
+        * Err<Missing> { Missing -> Printed }
+        * Ok<Reason> { Reason -> Printed }
     )
 }

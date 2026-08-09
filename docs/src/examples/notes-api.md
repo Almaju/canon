@@ -50,13 +50,13 @@ Unit => NoteTwo {
 
 Request => Response {
     Request.path() -> (
-        * None => Response { Status(400) -> Response(Headers() * NotFound()) }
-        * Some<String> => Response {
+        * None { Status(400) -> Response(Headers() * NotFound()) }
+        * Some<String> {
             String -> (
-                * "/notes" => Response { Status(200) -> Response(Headers() * IndexBody()) }
-                * "/notes/1" => Response { Status(200) -> Response(Headers() * NoteOne()) }
-                * "/notes/2" => Response { Status(200) -> Response(Headers() * NoteTwo()) }
-                * String => Response { Status(404) -> Response(Headers() * NotFound()) }
+                * "/notes" { Status(200) -> Response(Headers() * IndexBody()) }
+                * "/notes/1" { Status(200) -> Response(Headers() * NoteOne()) }
+                * "/notes/2" { Status(200) -> Response(Headers() * NoteTwo()) }
+                * String { Status(404) -> Response(Headers() * NotFound()) }
             )
         }
     )

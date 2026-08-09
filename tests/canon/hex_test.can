@@ -2,8 +2,8 @@ HexDecodesLowercase = TestResult
 
 Unit => HexDecodesLowercase {
     Hex("666f6f626172") -> HexDecoded -> (
-        * Err<MalformedHex> => HexDecodesLowercase { MalformedHex -> Fail }
-        * Ok<HexDecoded> => HexDecodesLowercase { HexDecoded -> Eq("foobar") -> TestResult }
+        * Err<MalformedHex> { MalformedHex -> Fail }
+        * Ok<HexDecoded> { HexDecoded -> Eq("foobar") -> TestResult }
     )
 }
 
@@ -11,8 +11,8 @@ HexDecodesUppercase = TestResult
 
 Unit => HexDecodesUppercase {
     Hex("6A6B") -> HexDecoded -> (
-        * Err<MalformedHex> => HexDecodesUppercase { MalformedHex -> Fail }
-        * Ok<HexDecoded> => HexDecodesUppercase { HexDecoded -> Eq("jk") -> TestResult }
+        * Err<MalformedHex> { MalformedHex -> Fail }
+        * Ok<HexDecoded> { HexDecoded -> Eq("jk") -> TestResult }
     )
 }
 
@@ -36,8 +36,8 @@ HexRejectsInvalidDigit = TestResult
 
 Unit => HexRejectsInvalidDigit {
     Hex("6g") -> HexDecoded -> (
-        * Err<MalformedHex> => HexRejectsInvalidDigit { Pass() }
-        * Ok<HexDecoded> => HexRejectsInvalidDigit { Fail("accepted invalid digit") }
+        * Err<MalformedHex> { Pass() }
+        * Ok<HexDecoded> { Fail("accepted invalid digit") }
     )
 }
 
@@ -45,8 +45,8 @@ HexRejectsOddLength = TestResult
 
 Unit => HexRejectsOddLength {
     Hex("abc") -> HexDecoded -> (
-        * Err<MalformedHex> => HexRejectsOddLength { Pass() }
-        * Ok<HexDecoded> => HexRejectsOddLength { Fail("accepted odd length") }
+        * Err<MalformedHex> { Pass() }
+        * Ok<HexDecoded> { Fail("accepted odd length") }
     )
 }
 
@@ -54,7 +54,7 @@ HexRoundTripsText = TestResult
 
 Unit => HexRoundTripsText {
     HexEncoded("Canon!") -> HexDecoded -> (
-        * Err<MalformedHex> => HexRoundTripsText { MalformedHex -> Fail }
-        * Ok<HexDecoded> => HexRoundTripsText { HexDecoded -> Eq("Canon!") -> TestResult }
+        * Err<MalformedHex> { MalformedHex -> Fail }
+        * Ok<HexDecoded> { HexDecoded -> Eq("Canon!") -> TestResult }
     )
 }

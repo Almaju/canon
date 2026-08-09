@@ -8,21 +8,21 @@ OtherBool = Bool
 
 Bool * OtherBool => And {
     Bool -> (
-        * False => And { False() }
-        * True => And { OtherBool }
+        * False { False() }
+        * True { OtherBool }
     )
 }
 
 Bool => Not {
     Bool -> (
-        * False => Not { True() }
-        * True => Not { False() }
+        * False { True() }
+        * True { False() }
     )
 }
 
 Bool * OtherBool => Or {
     Bool -> (
-        * False => Or { OtherBool }
-        * True => Or { True() }
+        * False { OtherBool }
+        * True { True() }
     )
 }

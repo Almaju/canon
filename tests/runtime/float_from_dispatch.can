@@ -2,8 +2,8 @@ Halved = Float
 
 Bool => Halved {
     Bool -> (
-        * False => Halved { 1.5 }
-        * True => Halved { 2.5 }
+        * False { 1.5 }
+        * True { 2.5 }
     )
 }
 

@@ -854,4 +854,155 @@ pub fn resolve_new_syntax(module: &mut Module) {
             }
         }
     }
+
+    propagate_elided_arm_types(module);
+}
+
+/// Sentinel type name the parser records for a dispatch arm written
+/// without `=> Type`. An arm may elide its type exactly where context
+/// supplies it — the dispatch is the return value of the enclosing
+/// declaration (transitively: the last expression of a function, lambda,
+/// or arm body) — and `propagate_elided_arm_types` fills the sentinel
+/// with that context type. A sentinel nothing resolves is a checker
+/// error, never a codegen input.
+pub const ELIDED_RETURN: &str = "<elided>";
+
+pub fn elided_return_ty(span: Span) -> TypeExpr {
+    TypeExpr::Named {
+        name: ELIDED_RETURN.to_string(),
+        generics: Vec::new(),
+        span,
+    }
+}
+
+pub fn is_elided_return_ty(ty: &TypeExpr) -> bool {
+    matches!(ty, TypeExpr::Named { name, .. } if name == ELIDED_RETURN)
+}
+
+/// The two directions of the elided-arm-type walk. `Fill` (the loader,
+/// inside `resolve_new_syntax`) replaces each sentinel in return
+/// position with the context type, so everything downstream of the
+/// parser sees fully-typed arms. `Strip` (the formatter) is its exact
+/// inverse: an explicit annotation that merely restates the context
+/// type is ceremony, so it becomes the sentinel and the emitter drops
+/// it. Running Fill after Strip is the identity, which is what makes
+/// the elided form canonical and the rewrite semantics-preserving.
+#[derive(Clone, Copy, PartialEq)]
+enum ArmTyPass {
+    Fill,
+    Strip,
+}
+
+pub fn propagate_elided_arm_types(module: &mut Module) {
+    arm_ty_module(module, ArmTyPass::Fill);
+}
+
+pub fn strip_contextual_arm_types(module: &mut Module) {
+    arm_ty_module(module, ArmTyPass::Strip);
+}
+
+fn arm_ty_module(module: &mut Module, pass: ArmTyPass) {
+    for item in &mut module.items {
+        if let Item::Function(func) = item {
+            let expected = func.return_ty.clone();
+            arm_ty_block(&mut func.body, Some(&expected), pass);
+        }
+    }
+}
+
+fn arm_ty_block(block: &mut Block, expected: Option<&TypeExpr>, pass: ArmTyPass) {
+    let n = block.exprs.len();
+    for (i, expr) in block.exprs.iter_mut().enumerate() {
+        let exp = if i + 1 == n { expected } else { None };
+        arm_ty_expr(expr, exp, pass);
+    }
+}
+
+fn arm_ty_expr(expr: &mut Expr, expected: Option<&TypeExpr>, pass: ArmTyPass) {
+    match expr {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            arm_ty_expr(scrutinee, None, pass);
+            for arm in arms {
+                match pass {
+                    ArmTyPass::Fill => {
+                        if is_elided_return_ty(&arm.return_ty) {
+                            if let Some(t) = expected {
+                                arm.return_ty = t.clone();
+                            }
+                        }
+                    }
+                    ArmTyPass::Strip => {
+                        if let Some(t) = expected {
+                            if !is_elided_return_ty(&arm.return_ty)
+                                && type_expr_canonical(&arm.return_ty) == type_expr_canonical(t)
+                            {
+                                arm.return_ty = elided_return_ty(arm.return_ty.span());
+                            }
+                        }
+                    }
+                }
+                // The arm body's return position carries the arm's
+                // *semantic* type: the annotation when one survives, the
+                // context type when the arm is (or just became) elided.
+                let semantic = if is_elided_return_ty(&arm.return_ty) {
+                    expected.cloned()
+                } else {
+                    Some(arm.return_ty.clone())
+                };
+                arm_ty_block(&mut arm.body, semantic.as_ref(), pass);
+            }
+        }
+        Expr::Lambda {
+            return_ty, body, ..
+        } => {
+            let t = return_ty.clone();
+            arm_ty_block(body, Some(&t), pass);
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            arm_ty_expr(receiver, None, pass);
+            for a in args {
+                arm_ty_expr(a, None, pass);
+            }
+        }
+        Expr::Constructor { args, .. } => {
+            for a in args {
+                arm_ty_expr(a, None, pass);
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => {
+            arm_ty_expr(inner, None, pass);
+        }
+        Expr::FieldAccess { receiver, .. } => {
+            arm_ty_expr(receiver, None, pass);
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                arm_ty_expr(f, None, pass);
+            }
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    arm_ty_expr(e, None, pass);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
+                    arm_ty_expr(e, None, pass);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
+                    arm_ty_expr(e, None, pass);
+                }
+            }
+        }
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
+    }
 }

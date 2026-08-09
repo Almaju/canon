@@ -38,9 +38,9 @@ Unit => Init {
 
 Model * String => Update {
     String -> (
-        * "Decrement" => Model { Model -> Difference(1) -> Model }
-        * "Increment" => Model { Model -> Sum(1) -> Model }
-        * String => Model { Model }
+        * "Decrement" { Model -> Difference(1) -> Model }
+        * "Increment" { Model -> Sum(1) -> Model }
+        * String { Model }
     )
 }
 "#;

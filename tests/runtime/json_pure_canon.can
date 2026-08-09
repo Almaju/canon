@@ -4,8 +4,8 @@ Shown = Unit
 
 Result => Shown {
     Result -> (
-        * Err<MalformedJson> => Shown { "FAIL" -> Print }
-        * Ok<Json> => Shown { "OK" -> Print }
+        * Err<MalformedJson> { "FAIL" -> Print }
+        * Ok<Json> { "OK" -> Print }
     )
 }
 

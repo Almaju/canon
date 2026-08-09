@@ -1313,8 +1313,18 @@ impl Parser {
             // Err<String>, Ok<Int>, Branch
             _ => (self.parse_type_atom()?, None),
         };
-        self.expect_decl_arrow("expected `=>` in dispatch arm")?;
-        let return_ty = self.parse_type_expr()?;
+        // The arm type is elidable when context supplies it: an arm in
+        // return position whose type is the enclosing declaration's
+        // return type writes `* Pattern { … }`, and the loader fills
+        // the type by propagation (`propagate_elided_arm_types`). The
+        // parser records the elision as a sentinel; a sentinel no
+        // context resolves is a checker error.
+        let return_ty = if self.check(TokenKind::LBrace) {
+            elided_return_ty(param_ty.span())
+        } else {
+            self.expect_decl_arrow("expected `=>` or `{` in dispatch arm")?;
+            self.parse_type_expr()?
+        };
         let body = self.parse_block()?;
         let end = self.previous_span();
         Ok(MatchArm {

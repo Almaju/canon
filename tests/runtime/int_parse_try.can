@@ -13,7 +13,7 @@ Unit => Program {
         * Ok<Int> => Unit { Int -> Print }
     )
     Doubled("x") -> (
-        * Err<MalformedInt> => Unit { MalformedInt -> Print }
-        * Ok<Int> => Unit { Int -> Print }
+        * Err<MalformedInt> { MalformedInt -> Print }
+        * Ok<Int> { Int -> Print }
     )
 }

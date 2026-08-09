@@ -39,10 +39,10 @@ Unit => MadeRatio {
 
 Shape => Shown {
     Shape -> (
-        * Count => Unit { Count -> Print }
-        * Empty => Unit { "empty" -> Print }
-        * Name => Unit { Name -> Print }
-        * Ratio => Unit { Ratio -> Print }
+        * Count { Count -> Print }
+        * Empty { "empty" -> Print }
+        * Name { Name -> Print }
+        * Ratio { Ratio -> Print }
     )
 }
 

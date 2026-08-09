@@ -20,7 +20,7 @@ const UNFORMATTED: &str = "Unit => Program {\n    Print(\"hello\")\n}\n";
 /// Dispatch arms out of canonical order (`True` before `False`) — a
 /// checker error on its own, and mechanically fixable: the formatter
 /// sorts arms, so `--fix` repairs it before the checker runs.
-const UNSORTED_ARMS: &str = "Unit => Program {\n    True() -> (\n        * True => Unit {\n            \"yes\" -> Print\n        }\n        * False => Unit {\n            \"no\" -> Print\n        }\n    )\n}\n";
+const UNSORTED_ARMS: &str = "Unit => Program {\n    True() -> (\n        * True {\n            \"yes\" -> Print\n        }\n        * False {\n            \"no\" -> Print\n        }\n    )\n}\n";
 
 fn canon_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_canon"))

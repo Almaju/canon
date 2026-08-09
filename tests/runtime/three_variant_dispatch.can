@@ -20,8 +20,8 @@ Unit => Program {
         * Less => Unit { "less" -> Print }
     )
     Less() -> (
-        * Equal => Unit { "equal" -> Print }
-        * Greater => Unit { "greater" -> Print }
-        * Less => Unit { "less" -> Print }
+        * Equal { "equal" -> Print }
+        * Greater { "greater" -> Print }
+        * Less { "less" -> Print }
     )
 }

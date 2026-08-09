@@ -28,27 +28,27 @@ Int => DecimalDigit {
 
 Int => Decimals {
     Int -> Quotient(10) -> Eq(0) -> (
-        * False => Decimals {
+        * False {
             Int
                 -> Quotient(10)
                 -> Decimals
                 -> Joined(0 -> Difference(Int -> Remainder(10)) -> DecimalDigit)
         }
-        * True => Decimals { 0 -> Difference(Int) -> DecimalDigit }
+        * True { 0 -> Difference(Int) -> DecimalDigit }
     )
 }
 
 Int * Width => Fraction {
     Int -> Remainder(10) -> Eq(0) -> (
-        * False => Fraction { Int -> Padded(Width) }
-        * True => Fraction { Int -> Quotient(10) -> Fraction(Width -> Difference(1)) }
+        * False { Int -> Padded(Width) }
+        * True { Int -> Quotient(10) -> Fraction(Width -> Difference(1)) }
     )
 }
 
 String * OtherString => Ge {
     OtherString -> Lt(String) -> (
-        * False => Ge { String -> Eq(OtherString) }
-        * True => Ge { True() }
+        * False { String -> Eq(OtherString) }
+        * True { True() }
     )
 }
 
@@ -58,30 +58,30 @@ String * OtherString => Gt {
 
 String * OtherString => Le {
     String -> Lt(OtherString) -> (
-        * False => Le { String -> Eq(OtherString) }
-        * True => Le { True() }
+        * False { String -> Eq(OtherString) }
+        * True { True() }
     )
 }
 
 Float => Magnitude {
     Float -> Difference(Float) -> Eq(0.0) -> (
-        * False => Magnitude { "Inf" }
-        * True => Magnitude {
+        * False { "Inf" }
+        * True {
             Float -> Lt(9223372036854776000.0) -> (
-                * False => Magnitude { "9223372036854775807" }
-                * True => Magnitude {
+                * False { "9223372036854775807" }
+                * True {
                     Float -> Scaled -> Lt(1000000) -> (
-                        * False => Magnitude { Float -> Int -> Sum(1) -> String }
-                        * True => Magnitude {
+                        * False { Float -> Int -> Sum(1) -> String }
+                        * True {
                             Float -> Scaled -> Eq(0) -> (
-                                * False => Magnitude {
+                                * False {
                                     `{Float -> Int -> String}.{
                                         Float
                                             -> Scaled
                                             -> Fraction(Width(6))
                                     }`
                                 }
-                                * True => Magnitude { Float -> Int -> String }
+                                * True { Float -> Int -> String }
                             )
                         }
                     )
@@ -93,23 +93,23 @@ Float => Magnitude {
 
 String * OtherString => Ne {
     String -> Eq(OtherString) -> (
-        * False => Ne { True() }
-        * True => Ne { False() }
+        * False { True() }
+        * True { False() }
     )
 }
 
 Int * Width => Padded {
     Int -> Quotient(10) -> Eq(0) -> (
-        * False => Padded {
+        * False {
             Int
                 -> Quotient(10)
                 -> Padded(Width -> Difference(1))
                 -> Joined(Int -> Remainder(10) -> DecimalDigit)
         }
-        * True => Padded {
+        * True {
             Width -> Lt(2) -> (
-                * False => Padded { `0{Int -> Padded(Width -> Difference(1))}` }
-                * True => Padded { Int -> DecimalDigit }
+                * False { `0{Int -> Padded(Width -> Difference(1))}` }
+                * True { Int -> DecimalDigit }
             )
         }
     )
@@ -125,18 +125,18 @@ Float => Scaled {
 
 Bool => String {
     Bool -> (
-        * False => String { "False" }
-        * True => String { "True" }
+        * False { "False" }
+        * True { "True" }
     )
 }
 
 Float => String {
     Float -> Eq(Float) -> (
-        * False => String { "NaN" }
-        * True => String {
+        * False { "NaN" }
+        * True {
             Float -> Lt(0.0) -> (
-                * False => String { Float -> Magnitude }
-                * True => String { `-{0.0 -> Difference(Float) -> Magnitude}` }
+                * False { Float -> Magnitude }
+                * True { `-{0.0 -> Difference(Float) -> Magnitude}` }
             )
         }
     )
@@ -144,7 +144,7 @@ Float => String {
 
 Int => String {
     Int -> Lt(0) -> (
-        * False => String { 0 -> Difference(Int) -> Decimals }
-        * True => String { `-{Int -> Decimals}` }
+        * False { 0 -> Difference(Int) -> Decimals }
+        * True { `-{Int -> Decimals}` }
     )
 }

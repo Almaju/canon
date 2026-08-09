@@ -20,38 +20,38 @@ Title * Todos => AddedTodo {
 
 String => FirstLine {
     String -> Length -> Eq(0) -> (
-        * False => FirstLine {
+        * False {
             String -> ByteAt(1) -> Eq(10) -> (
-                * False => FirstLine {
+                * False {
                     String
                         -> Substring(From(1) * To(1))
                         -> Joined(String -> Substring(From(2) * String -> Length -> To) -> FirstLine)
                 }
-                * True => FirstLine { "" }
+                * True { "" }
             )
         }
-        * True => FirstLine { "" }
+        * True { "" }
     )
 }
 
 String => ParsedNum {
     String -> Length -> Eq(0) -> (
-        * False => ParsedNum {
+        * False {
             String
                 -> Substring(From(1) * String -> Length -> Difference(1) -> To)
                 -> ParsedNum
                 -> Product(10)
                 -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
         }
-        * True => ParsedNum { 0 }
+        * True { 0 }
     )
 }
 
 Int * Todos => RemovedAt {
     Todos.String -> Length -> Eq(0) -> (
-        * False => RemovedAt {
+        * False {
             Int -> Eq(1) -> (
-                * False => RemovedAt {
+                * False {
                     Todos(`{Todos.String -> FirstLine}\n{
                         Int
                             -> Difference(1)
@@ -59,47 +59,43 @@ Int * Todos => RemovedAt {
                             -> String
                     }`)
                 }
-                * True => RemovedAt { Todos.String -> RestLines -> Todos }
+                * True { Todos.String -> RestLines -> Todos }
             )
         }
-        * True => RemovedAt { Todos }
+        * True { Todos }
     )
 }
 
 Int * Todos => RenderedItems {
     Todos.String -> Length -> Eq(0) -> (
-        * False => RenderedItems {
+        * False {
             Int
                 -> RenderedItem(Todos.String -> FirstLine -> Line)
                 -> String
                 -> Joined(Int -> Sum(1) -> RenderedItems(Todos.String -> RestLines -> Todos) -> String)
                 -> Html
         }
-        * True => RenderedItems { Html("") }
+        * True { Html("") }
     )
 }
 
 String => RestLines {
     String -> Length -> Eq(0) -> (
-        * False => RestLines {
+        * False {
             String -> ByteAt(1) -> Eq(10) -> (
-                * False => RestLines {
-                    String
-                        -> Substring(From(2) * String -> Length -> To)
-                        -> RestLines
-                }
-                * True => RestLines { String -> Substring(From(2) * String -> Length -> To) }
+                * False { String -> Substring(From(2) * String -> Length -> To) -> RestLines }
+                * True { String -> Substring(From(2) * String -> Length -> To) }
             )
         }
-        * True => RestLines { "" }
+        * True { "" }
     )
 }
 
 Int * Todos => ToggledAt {
     Todos.String -> Length -> Eq(0) -> (
-        * False => ToggledAt {
+        * False {
             Int -> Eq(1) -> (
-                * False => ToggledAt {
+                * False {
                     Todos(`{Todos.String -> FirstLine}\n{
                         Int
                             -> Difference(1)
@@ -107,13 +103,13 @@ Int * Todos => ToggledAt {
                             -> String
                     }`)
                 }
-                * True => ToggledAt {
+                * True {
                     Todos(`{Todos.String -> FirstLine -> Line -> Flipped -> String}\n{
                         Todos.String -> RestLines
                     }`)
                 }
             )
         }
-        * True => ToggledAt { Todos }
+        * True { Todos }
     )
 }

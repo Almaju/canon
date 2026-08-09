@@ -8,8 +8,8 @@ Opened = Unit
 
 Mode => Described {
     Mode -> (
-        * Closed => Described { "closed" }
-        * Opened => Described { "opened" }
+        * Closed { "closed" }
+        * Opened { "opened" }
     )
 }
 

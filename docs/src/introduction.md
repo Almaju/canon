@@ -38,8 +38,8 @@ Unit => Program {
         -> Length
         -> Print
     True() -> (
-        * False => Unit { "no" -> Print }
-        * True => Unit { "yes" -> Print }
+        * False { "no" -> Print }
+        * True { "yes" -> Print }
     )
 }
 ```

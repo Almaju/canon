@@ -16,11 +16,11 @@ String => Lowercased {
 
 Int => LowercasedByte {
     Int -> Ge(65) -> (
-        * False => LowercasedByte { Int -> Byte -> String }
-        * True => LowercasedByte {
+        * False { Int -> Byte -> String }
+        * True {
             Int -> Le(90) -> (
-                * False => LowercasedByte { Int -> Byte -> String }
-                * True => LowercasedByte { Int -> Sum(32) -> Byte -> String }
+                * False { Int -> Byte -> String }
+                * True { Int -> Sum(32) -> Byte -> String }
             )
         }
     )
@@ -28,13 +28,13 @@ Int => LowercasedByte {
 
 Int * String => LowercasedTail {
     Int -> Gt(String -> Length) -> (
-        * False => LowercasedTail {
+        * False {
             String
                 -> ByteAt(Int)
                 -> LowercasedByte
                 -> Joined(Int -> Sum(1) -> LowercasedTail(String))
         }
-        * True => LowercasedTail { "" }
+        * True { "" }
     )
 }
 
@@ -44,11 +44,11 @@ String => Uppercased {
 
 Int => UppercasedByte {
     Int -> Ge(97) -> (
-        * False => UppercasedByte { Int -> Byte -> String }
-        * True => UppercasedByte {
+        * False { Int -> Byte -> String }
+        * True {
             Int -> Le(122) -> (
-                * False => UppercasedByte { Int -> Byte -> String }
-                * True => UppercasedByte { Int -> Difference(32) -> Byte -> String }
+                * False { Int -> Byte -> String }
+                * True { Int -> Difference(32) -> Byte -> String }
             )
         }
     )
@@ -56,12 +56,12 @@ Int => UppercasedByte {
 
 Int * String => UppercasedTail {
     Int -> Gt(String -> Length) -> (
-        * False => UppercasedTail {
+        * False {
             String
                 -> ByteAt(Int)
                 -> UppercasedByte
                 -> Joined(Int -> Sum(1) -> UppercasedTail(String))
         }
-        * True => UppercasedTail { "" }
+        * True { "" }
     )
 }

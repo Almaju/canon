@@ -14,7 +14,7 @@ Value = Int
 
 Unit => DispatchSelectsLeafArm {
     Leaf() -> (
-        * Branch => TestResult { Fail() }
-        * Leaf => TestResult { Pass() }
+        * Branch { Fail() }
+        * Leaf { Pass() }
     )
 }

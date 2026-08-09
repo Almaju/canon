@@ -4,24 +4,24 @@ Ord = Equal
 
 Int^2 => Ord {
     Int.1 -> Lt(Int.2) -> (
-        * False => Ord {
+        * False {
             Int.1 -> Eq(Int.2) -> (
-                * False => Ord { Greater() }
-                * True => Ord { Equal() }
+                * False { Greater() }
+                * True { Equal() }
             )
         }
-        * True => Ord { Less() }
+        * True { Less() }
     )
 }
 
 String^2 => Ord {
     String.1 -> Lt(String.2) -> (
-        * False => Ord {
+        * False {
             String.1 -> Eq(String.2) -> (
-                * False => Ord { Greater() }
-                * True => Ord { Equal() }
+                * False { Greater() }
+                * True { Equal() }
             )
         }
-        * True => Ord { Less() }
+        * True { Less() }
     )
 }

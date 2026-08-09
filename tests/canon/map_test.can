@@ -58,8 +58,8 @@ MapReinsertOverwrites = TestResult
 
 Unit => MapReinsertOverwrites {
     Map() -> Inserted("a" * "1") -> Inserted("a" * "2") -> Value("a") -> (
-        * None => TestResult { Fail("key a should be present") }
-        * Some<Value> => TestResult { Value -> Eq("2") -> TestResult }
+        * None { Fail("key a should be present") }
+        * Some<Value> { Value -> Eq("2") -> TestResult }
     )
 }
 
@@ -103,8 +103,8 @@ MapValueAbsent = TestResult
 
 Unit => MapValueAbsent {
     Map() -> Inserted("a" * "1") -> Value("z") -> (
-        * None => TestResult { Pass() }
-        * Some<Value> => TestResult { Fail("key z should be absent") }
+        * None { Pass() }
+        * Some<Value> { Fail("key z should be absent") }
     )
 }
 
@@ -112,8 +112,8 @@ MapValuePresent = TestResult
 
 Unit => MapValuePresent {
     Map() -> Inserted("a" * "1") -> Value("a") -> (
-        * None => TestResult { Fail("key a should be present") }
-        * Some<Value> => TestResult { Value -> Eq("1") -> TestResult }
+        * None { Fail("key a should be present") }
+        * Some<Value> { Value -> Eq("1") -> TestResult }
     )
 }
 
