@@ -944,32 +944,8 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 // `inject_int_prelude` instead — the same targeted mechanism as the
 // JSON prelude.
 const UNDISCOVERABLE_TYPES: &[&str] = &[
-    "Bool",
-    "Deserialize",
-    "Err",
-    "False",
-    "Float",
-    "Future",
-    "Handle",
-    "Int",
-    "Json",
-    "List",
-    "Network",
-    "Never",
-    "None",
-    "Ok",
-    "Option",
-    "Result",
-    "Self",
-    "Serialize",
-    "Some",
-    "Stderr",
-    "Stdin",
-    "Stdout",
-    "Stream",
-    "String",
-    "True",
-    "Unit",
+    "Bool", "Err", "False", "Float", "Future", "Handle", "Int", "Json", "List", "Never", "None",
+    "Ok", "Option", "Result", "Self", "Some", "Stream", "String", "True", "Unit",
 ];
 
 /// Builtin method names (mirrors the checker's `is_known_method` plus

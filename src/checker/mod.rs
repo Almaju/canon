@@ -5,10 +5,7 @@ use std::collections::{HashMap, HashSet};
 pub mod auto_await;
 
 const BUILTIN_TYPES: &[&str] = &[
-    "Bool",
-    "Deserialize",
-    "False",
-    "Float",
+    "Bool", "False", "Float",
     // Opaque, non-copyable, non-printable primitive that backs every WIT
     // `resource` type. Generated `canon/wasi/...` bindings declare each
     // resource as `Foo = Handle`. Users never write `Handle` directly —
@@ -17,29 +14,8 @@ const BUILTIN_TYPES: &[&str] = &[
     // intentionally invisible at the source level (see the language spec §Resources):
     // the canonical-ABI lowering reads it from the WIT signature, the
     // source-level type is just `Foo`.
-    "Handle",
-    "Int",
-    "Network",
-    "Never",
-    "Serialize",
-    "Stderr",
-    "Stdin",
-    "Stdout",
-    "String",
-    "True",
-    "Unit",
+    "Handle", "Int", "Never", "String", "True", "Unit",
 ];
-
-// `Random` used to live here as a capability marker, but the stdlib now
-// owns it as a data-carrying newtype (`Random = Int`, see `std/random.can`)
-// constructed via `Random()`. Random bytes aren't a capability in any
-// meaningful sense — they're just data — so this matches the new layering
-// where `std/` defines user-facing types and `wasi/` provides the FFI.
-const CAPABILITY_TYPES: &[&str] = &["Network", "Stderr", "Stdin", "Stdout"];
-
-fn is_capability_type(name: &str) -> bool {
-    CAPABILITY_TYPES.contains(&name)
-}
 
 // `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
 // types (`canon/std/Map`, `canon/std/Set`), so their names arrive through
@@ -2286,27 +2262,15 @@ fn check_literal_dispatch(
 fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     match expr {
         Expr::Ident(ident) => {
-            if is_capability_type(&ident.name) {
-                if !scope.contains(&ident.name) {
-                    errors.push(CanonError::CheckError {
-                        message: format!(
-                            "capability `{}` must be received as a parameter: capabilities cannot be conjured",
-                            ident.name
-                        ),
-                        span: ident.span,
-                    });
-                }
-            } else {
-                let known = symbols.knows_type(&ident.name)
-                    || symbols.variant_of.contains_key(&ident.name)
-                    || scope.contains(&ident.name)
-                    || ident.name == "Self";
-                if !known {
-                    errors.push(CanonError::CheckError {
-                        message: format!("unknown name `{}`", ident.name),
-                        span: ident.span,
-                    });
-                }
+            let known = symbols.knows_type(&ident.name)
+                || symbols.variant_of.contains_key(&ident.name)
+                || scope.contains(&ident.name)
+                || ident.name == "Self";
+            if !known {
+                errors.push(CanonError::CheckError {
+                    message: format!("unknown name `{}`", ident.name),
+                    span: ident.span,
+                });
             }
         }
         Expr::StringLit { .. } => {}
