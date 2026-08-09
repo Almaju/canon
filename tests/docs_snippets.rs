@@ -134,7 +134,11 @@ fn every_docs_canon_block_checks() {
     let mut pages = Vec::new();
     collect_md_files(&root.join("docs/src"), &mut pages);
     pages.sort();
-    assert!(pages.len() > 30, "docs walk looks broken: {} pages", pages.len());
+    assert!(
+        pages.len() > 30,
+        "docs walk looks broken: {} pages",
+        pages.len()
+    );
 
     let mut snippets = Vec::new();
     for page in &pages {
