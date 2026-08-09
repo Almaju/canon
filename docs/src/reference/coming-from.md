@@ -2,13 +2,19 @@
 
 Nobody learns Canon first. The fastest way in is to map the habits you
 arrive with onto Canon's handful of ideas — then notice which ones you
-have to put down at the door. First, a taste: a union, two products,
-and a function that branches by dispatch.
+have to put down at the door. First, a taste: a union, a handful of
+newtypes, and a function that branches by dispatch.
 
 ```canon
+Area = Float
+
 Circle = Radius
 
+Radius = Float
+
 Shape = Circle + Square
+
+Side = Float
 
 Square = Side
 

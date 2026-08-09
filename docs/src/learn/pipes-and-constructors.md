@@ -18,6 +18,12 @@ semicolons, no `return`, and no local variables: values thread through
 the pipe.
 
 ```canon
+Greeting = String
+
+Line = String
+
+Name = String
+
 Greeting * Name => Line {
     Greeting -> Joined(Name)
 }
@@ -30,7 +36,7 @@ Greeting * Name => Line {
 
 At the call site, a value flows left to right through `->`:
 
-```canon,run=learn-pipes
+```canon,run
 Loud = String
 
 Whisper = String
@@ -57,7 +63,7 @@ A multi-input call can be entered from *any* of its components — the
 piped value fills one slot of the input product, the rest ride in the
 parens:
 
-```canon
+```text
 Greeting("hi ") -> Line(Name("ada"))
 Name("ada") -> Line(Greeting("hi "))
 ```
@@ -75,7 +81,7 @@ What do you call an operation that takes a `Map` and returns a `Map`?
 In Canon, nothing — functions have no names. Instead the operation
 returns a **result newtype** named after what it did:
 
-```canon
+```text
 Inserted = Map
 
 Map * String * Value => Inserted {
@@ -95,7 +101,11 @@ A one-off operation is the same arrow, written inline with its full
 signature:
 
 ```canon
-List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })
+Doubled = List<Int>
+
+Unit => Doubled {
+    List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })
+}
 ```
 
 There is exactly one function form in the language — top level it

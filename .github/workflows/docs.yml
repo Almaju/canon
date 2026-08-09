@@ -36,12 +36,6 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-env:
-  # Pinned: docs/runner/build.mjs patches jco's output around a known
-  # emission bug (missing FutureReadableEnd/FutureWritableEnd classes).
-  # When bumping, check whether the polyfill in build.mjs is still needed.
-  JCO_VERSION: "1.24.6"
-
 jobs:
   build:
     name: build
@@ -51,6 +45,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -58,30 +54,26 @@ jobs:
       - name: Build the canon compiler
         run: cargo build --release
 
-      - name: Install jco
-        run: npm install -g "@bytecodealliance/jco@${JCO_VERSION}"
-
       - name: Build the docs app (Canon → WebAssembly)
         run: target/release/canon build docs
 
-      - name: Build the click-to-run bundles (```canon,run=… snippets)
+      - name: Build the compiler for the browser (the playground)
         run: |
-          node docs/runner/build.mjs \
-            --canon target/release/canon \
-            --src docs/src \
-            --out docs/build/runner \
-            --jco jco
+          cargo build --lib --profile playground --target wasm32-unknown-unknown
+          cp target/wasm32-unknown-unknown/playground/canon.wasm \
+            docs/build/canon-compiler.wasm
 
       - name: Wire in the progressive enhancement (highlight + run)
         run: |
-          cp docs/assets/docs-enhance.js docs/build/docs-enhance.js
+          cp docs/assets/canon-play.js docs/assets/docs-enhance.js docs/build/
           sed -i \
-            's#<script src="canon-web.js"></script>#<script src="canon-web.js"></script>\n<script src="docs-enhance.js"></script>#' \
+            's#<script src="canon-web.js"></script>#<script src="canon-web.js"></script>\n<script src="canon-play.js"></script>\n<script src="docs-enhance.js"></script>#' \
             docs/build/index.html
           # sed -i exits 0 on no match; without this check a drift in
           # webhost.rs's index template ships a site with no highlighting
           # or run buttons and CI stays green.
           grep -q 'docs-enhance.js' docs/build/index.html
+          grep -q 'canon-play.js' docs/build/index.html
 
       - name: Assemble site (landing at /, docs app under /doc/)
         run: |

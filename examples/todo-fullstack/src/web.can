@@ -1,5 +1,7 @@
 AddForm = ElAttr
 
+ClearButton = Button
+
 Init = AddedTodo
 
 LoadButton = ElAttr
@@ -13,10 +15,14 @@ Unit => AddForm {
         -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("" * Tag("input")) * Tag("form"))
 }
 
+Unit => ClearButton {
+    Msg("Clear") -> Button("Clear completed")
+}
+
 Todos => Html {
     Div(`<h1>Canon Todos</h1>{AddForm() -> String}{1 -> RenderedItems(Todos) -> Ul}{
-        LoadButton() -> String
-    }`)
+        ClearButton() -> String
+    }{LoadButton() -> String}`)
 }
 
 Unit => Init {
@@ -37,6 +43,7 @@ Todos * String => Update {
                 -> Title
                 -> AddedTodo(Todos)
         }
+        * "Clea" { Todos -> Cleared }
         * "Dele" {
             String
                 -> Substring(From(8) * String -> Length -> To)

@@ -1,1 +1,2 @@
 error[tests/checker/fail/product_construction_wrong_arity_excess.can:8:5]: cannot construct `User`: expected 2 argument(s) (`Birthday * Username`), found 3
+error[tests/checker/fail/product_construction_wrong_arity_excess.can:8:5]: `Username` is a field of `User` — read it with `.Username`; `-> Username` is construction, and no `User => Username` constructor exists

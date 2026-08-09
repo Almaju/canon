@@ -17,8 +17,8 @@ vocabulary needs no coordination: `map.can` and `set.can` both declare
 
 ## Projects Are Directories
 
-There is no manifest. A directory with `src/main.can` is a package
-(named after the directory); a directory of packages is a workspace;
+There is no manifest. A directory with `.can` files under `src/` is a
+package (named after the directory); a directory of packages is a workspace;
 WIT files under `wit/` are external imports; vendored packages under
 `deps/<ns>/<name>@<version>/` are dependencies, pinned by their
 directory name.
@@ -26,7 +26,7 @@ directory name.
 ```text
 my-app/
   src/
-    main.can       # entry point — this file makes the directory a package
+    main.can       # entry point — found by its shape, not its name
     invoice.can    # declares Invoice; referenced, never imported
   build/           # compiler output
 ```
@@ -43,7 +43,7 @@ entry:
 
 | You write | You get |
 |---|---|
-| `Args => Exit` (or `Unit => Program`) | a CLI command (`wasi:cli/command`) |
+| `Unit => Program` | a CLI command (`wasi:cli/command`) |
 | `Request => Response` | an HTTP service (`wasi:http/service`) |
 | `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app (wasm + generated JS host) |
 
@@ -55,9 +55,9 @@ world-shaped declaration. The
 on both sides of the wire this way: one file declares the web triple,
 another the HTTP entry, and one `canon run` serves both on one
 address. Two details worth knowing early:
-`Args` (`= List<String>`) is your argv, handed to the CLI entry the way
-`Request` is handed to the HTTP handler; and a fallible entry is just a
-`Result` return, so `?` works at the top level too.
+`Args()` (`= List<String>`) fetches your argv from any body; and a
+fallible entry is just a `Result` return, so `?` works at the top
+level too.
 
 **Precise rules:** [Modules & Packages](../spec/modules.md) and
 [Functions](../spec/functions.md); commands in

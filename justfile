@@ -145,11 +145,22 @@ bench:
 # bundle under `docs/build/`; `canon run docs` then serves that bundle
 # on 127.0.0.1:8080 with the compiler's built-in static server. Edit a
 # `.md` page (or `main.can` / `styles.can`), re-run, and refresh.
-# See docs/src/contributing.md.
+#
+# The playground and the click-to-run snippets compile Canon in the
+# browser, so the preview also needs the compiler built for wasm and the
+# two enhancement scripts beside the bundle — the same wiring docs.yml
+# does for the deployed site. See docs/src/contributing.md.
 docs: build
     #!/usr/bin/env sh
     set -e
     cargo run --quiet -- build docs
+    cargo build --lib --profile playground --target wasm32-unknown-unknown
+    cp target/wasm32-unknown-unknown/playground/canon.wasm docs/build/canon-compiler.wasm
+    cp docs/assets/canon-play.js docs/assets/docs-enhance.js docs/build/
+    sed -i.bak \
+        's#<script src="canon-web.js"></script>#<script src="canon-web.js"></script>\n<script src="canon-play.js"></script>\n<script src="docs-enhance.js"></script>#' \
+        docs/build/index.html
+    rm -f docs/build/index.html.bak
     echo "Serving docs on http://127.0.0.1:8080 (Ctrl-C to stop)"
     cargo run --quiet -- run docs --addr 127.0.0.1:8080
 

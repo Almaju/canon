@@ -36,7 +36,11 @@ no `enum` keyword. Branching on a union is [dispatch](./expressions.md#dispatch)
 `A * B` is a value with an `A` **and** a `B`:
 
 ```canon
+Birthday = String
+
 User = Birthday * Username
+
+Username = String
 ```
 
 - Components must be in alphabetical order.
@@ -74,7 +78,9 @@ the field-access rule applies uniformly:
 ```canon
 Greeting = String
 
-Greeting("hi").String
+Unit => Program {
+    Greeting("hi").String -> Print
+}
 ```
 
 Rules:
@@ -155,7 +161,10 @@ type:
 Url = String
 
 String => Result<Url, InvalidUrl> {
-    ...
+    String -> Length -> Gt(0) -> (
+        * False { String -> InvalidUrl -> Err }
+        * True { String -> Ok }
+    )
 }
 ```
 
@@ -181,13 +190,24 @@ signature already carries; `canon check --fix` rewrites it to the arrow.)
 constructing a `T`, because it is one:
 
 ```canon
-String(42)              # "42" -- decimal rendering; String(2.5) and
-                        # String(True()) render the same way
-Int("42")?              # Result<Int, MalformedInt> -- parsing can fail
-Int(2.9)                # 2 -- a Float truncates toward zero
-String(Byte(65))        # "A" -- a Byte renders as its character
-List("1" * "2") -> Json # [1,2] -- a list of JSON values as a JSON array
+Unit => Program {
+    String(42) -> Print
+    Int("42")? -> Print
+    Int(2.9) -> Print
+    Byte(65)
+        -> String
+        -> Print
+    List("1" * "2")
+        -> Json
+        -> Print
+}
 ```
+
+This prints `42` (decimal rendering; `String(2.5)` and `String(True())`
+render the same way), `42` (parsing returns `Result<Int, MalformedInt>`,
+unwrapped by `?`), `2` (a `Float` truncates toward zero), `A` (a `Byte`
+renders as its character), and `[1,2]` (a list of JSON values as a JSON
+array).
 
 - Infallible conversions return the target type; the function's name
   *is* its return type, so it cannot lie about what it produces.

@@ -5,10 +5,7 @@ use std::collections::{HashMap, HashSet};
 pub mod auto_await;
 
 const BUILTIN_TYPES: &[&str] = &[
-    "Bool",
-    "Deserialize",
-    "False",
-    "Float",
+    "Bool", "False", "Float",
     // Opaque, non-copyable, non-printable primitive that backs every WIT
     // `resource` type. Generated `canon/wasi/...` bindings declare each
     // resource as `Foo = Handle`. Users never write `Handle` directly —
@@ -17,29 +14,8 @@ const BUILTIN_TYPES: &[&str] = &[
     // intentionally invisible at the source level (see the language spec §Resources):
     // the canonical-ABI lowering reads it from the WIT signature, the
     // source-level type is just `Foo`.
-    "Handle",
-    "Int",
-    "Network",
-    "Never",
-    "Serialize",
-    "Stderr",
-    "Stdin",
-    "Stdout",
-    "String",
-    "True",
-    "Unit",
+    "Handle", "Int", "Never", "String", "True", "Unit",
 ];
-
-// `Random` used to live here as a capability marker, but the stdlib now
-// owns it as a data-carrying newtype (`Random = Int`, see `std/random.can`)
-// constructed via `Random()`. Random bytes aren't a capability in any
-// meaningful sense — they're just data — so this matches the new layering
-// where `std/` defines user-facing types and `wasi/` provides the FFI.
-const CAPABILITY_TYPES: &[&str] = &["Network", "Stderr", "Stdin", "Stdout"];
-
-fn is_capability_type(name: &str) -> bool {
-    CAPABILITY_TYPES.contains(&name)
-}
 
 // `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
 // types (`canon/Map`, `canon/Set`), so their names arrive through
@@ -201,18 +177,36 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         // CLI program: `main` exists, no other entry. Existing behaviour.
         (true, 0, false) => {}
         // Library or malformed: no entry shape is present.
-        (false, 0, false) => errors.push(CanonError::CheckError {
-            message: "no entry point defined: expected a CLI entry (`Args => Exit`), an \
-                      HTTP handler (`Request => Response`), or a web-app triple (a \
-                      `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
-                      constructors)."
-                .to_string(),
-            span: module.span,
-        }),
+        (false, 0, false) => {
+            errors.push(CanonError::CheckError {
+                message: "no entry point defined: expected a CLI entry (`Unit => Program`), an \
+                          HTTP handler (`Request => Response`), or a web-app triple (a \
+                          `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
+                          constructors)."
+                    .to_string(),
+                span: module.span,
+            });
+            // Migration: the retired `Args => Exit` entry shape. Teach
+            // the rewrite at the declaration that used it.
+            for item in &module.items[entry_items_start..] {
+                if let Item::Function(func) = item {
+                    if is_retired_args_entry(func) {
+                        errors.push(CanonError::CheckError {
+                            message: "`Args => Exit` is no longer an entry: write \
+                                      `Unit => Program` and fetch the argument vector with \
+                                      `Args()`. An exact exit code is `Exited(n)`; a fallible \
+                                      entry returns `Result<Program, _>`."
+                                .to_string(),
+                            span: func.span,
+                        });
+                    }
+                }
+            }
+        }
         // Mixed worlds: a component exports exactly one world.
         (true, n, _) if n > 0 => errors.push(CanonError::CheckError {
             message: format!(
-                "mixed worlds: this module defines a CLI entry (`Args => Exit`) and also `{}` \
+                "mixed worlds: this module defines a CLI entry (`Unit => Program`) and also `{}` \
                   returning `Response` (HTTP entry). A component exports exactly one world. \
                   Remove one.",
                 http_entries[0].name.name
@@ -220,7 +214,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             span: http_entries[0].span,
         }),
         (true, 0, true) => errors.push(CanonError::CheckError {
-            message: "mixed worlds: this module defines a CLI entry (`Args => Exit`) and also \
+            message: "mixed worlds: this module defines a CLI entry (`Unit => Program`) and also \
                       the `init`/`update`/`view` triple (web app). A component exports \
                       exactly one world. Remove one."
                 .to_string(),
@@ -267,6 +261,34 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
     errors.extend(codegen_gap_errors(module, entry_items_start, http_entry));
 
     errors
+}
+
+/// The retired arg-reading entry shape `Args => Exit`: a lone `Args`
+/// input (post-resolve it sits as the extracted receiver; pre-extraction
+/// it is still a parameter) returning `Exit`, bare or `Result`-wrapped.
+/// Recognized only to teach the rewrite in the missing-entry error.
+fn is_retired_args_entry(func: &FunctionDef) -> bool {
+    fn returns_exit(ty: &TypeExpr) -> bool {
+        match ty {
+            TypeExpr::Named { name, generics, .. } if generics.is_empty() => name == "Exit",
+            TypeExpr::Named { name, generics, .. } if name == "Result" && !generics.is_empty() => {
+                returns_exit(&generics[0])
+            }
+            _ => false,
+        }
+    }
+    let lone_args_input = match (&func.receiver, func.params.as_slice()) {
+        (Some(recv), []) => recv.name == "Args",
+        (
+            None,
+            [Param {
+                ty: TypeExpr::Named { name, generics, .. },
+                ..
+            }],
+        ) => name == "Args" && generics.is_empty(),
+        _ => false,
+    };
+    lone_args_input && returns_exit(&func.return_ty)
 }
 
 fn check_ordering(
@@ -1657,7 +1679,7 @@ fn check_function(
     if func.name.name == "main" {
         if *main_found {
             errors.push(CanonError::CheckError {
-                message: "duplicate entry point: only one CLI entry (`Args => Exit { … }`) \
+                message: "duplicate entry point: only one CLI entry (`Unit => Program { … }`) \
                           may be defined"
                     .to_string(),
                 span: func.span,
@@ -1673,14 +1695,14 @@ fn check_function(
         }
 
         // Entries are anonymous, selected by their world-shaped return
-        // (`Args => Exit`). A literal `main` name is a leftover of
+        // (`Unit => Program`). A literal `main` name is a leftover of
         // the pre-types-only surface. Anonymous entries reach here
         // already renamed to the internal `main` by
         // `resolve_new_syntax`, distinguished by the `anonymous` flag.
         if !func.anonymous {
             errors.push(CanonError::CheckError {
                 message: "`main` is not a name: entries are anonymous and selected by their \
-                          world-shaped return — write `Args => Exit { … }`"
+                          world-shaped return — write `Unit => Program { … }`"
                     .to_string(),
                 span: func.name.span,
             });
@@ -2490,27 +2512,15 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 });
                 return;
             }
-            if is_capability_type(&ident.name) {
-                if !scope.contains(&ident.name) {
-                    errors.push(CanonError::CheckError {
-                        message: format!(
-                            "capability `{}` must be received as a parameter: capabilities cannot be conjured",
-                            ident.name
-                        ),
-                        span: ident.span,
-                    });
-                }
-            } else {
-                let known = symbols.knows_type(&ident.name)
-                    || symbols.variant_of.contains_key(&ident.name)
-                    || scope.contains(&ident.name)
-                    || ident.name == "Self";
-                if !known {
-                    errors.push(CanonError::CheckError {
-                        message: format!("unknown name `{}`", ident.name),
-                        span: ident.span,
-                    });
-                }
+            let known = symbols.knows_type(&ident.name)
+                || symbols.variant_of.contains_key(&ident.name)
+                || scope.contains(&ident.name)
+                || ident.name == "Self";
+            if !known {
+                errors.push(CanonError::CheckError {
+                    message: format!("unknown name `{}`", ident.name),
+                    span: ident.span,
+                });
             }
         }
         Expr::StringLit { .. } => {}
@@ -2690,28 +2700,63 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // an `i64` where the callee expects a string's `i32`
                 // pointer/length pair, for instance — and wasmtime rejects
                 // it as invalid. Catch the mismatch here instead.
-                if let (Some(target_scalar), Some(recv_scalar)) = (
-                    scalar_primitive_root(symbols, &method.name),
-                    scalar_primitive_root(symbols, &recv_ty),
-                ) {
-                    // The Int ↔ Float pair is the one cross-primitive
-                    // conversion codegen owns (wasm numerics:
-                    // `i64.trunc_f64_s` / `f64.convert_i64_s`), so
-                    // `x -> Int` on a Float truncates rather than
-                    // mismatching. Every other conversion is a stdlib
-                    // constructor (`has_alias_method` above).
-                    let is_numeric_conversion = matches!(
-                        (target_scalar, recv_scalar),
-                        ("Int", "Float") | ("Float", "Int")
-                    );
-                    if target_scalar != recv_scalar && !is_numeric_conversion {
-                        errors.push(CanonError::CheckError {
-                            message: format!(
-                                "`{}` expects a `{}`, found `{}`",
-                                method.name, target_scalar, recv_scalar
-                            ),
-                            span: *span,
-                        });
+                if let Some(target_scalar) = scalar_primitive_root(symbols, &method.name) {
+                    if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty) {
+                        // The Int ↔ Float pair is the one cross-primitive
+                        // conversion codegen owns (wasm numerics:
+                        // `i64.trunc_f64_s` / `f64.convert_i64_s`), so
+                        // `x -> Int` on a Float truncates rather than
+                        // mismatching. Every other conversion is a stdlib
+                        // constructor (`has_alias_method` above).
+                        let is_numeric_conversion = matches!(
+                            (target_scalar, recv_scalar),
+                            ("Int", "Float") | ("Float", "Int")
+                        );
+                        if target_scalar != recv_scalar && !is_numeric_conversion {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`",
+                                    method.name, target_scalar, recv_scalar
+                                ),
+                                span: *span,
+                            });
+                        }
+                    } else {
+                        // Same stack-shape hole from the other side: a
+                        // receiver whose alias chain terminates in a
+                        // multi-field product (one pointer at the value
+                        // level) piped into a scalar constructor. The
+                        // erasure fallback would leave the product's
+                        // pointer where the primitive's representation
+                        // belongs. Only a *known* multi-field product
+                        // fires — unknown, generic, union, and
+                        // single-field receivers keep the conservative
+                        // pass-through above.
+                        let recv_terminal = symbols.resolve_alias(&recv_ty);
+                        if let Some(recv_fields) = symbols
+                            .product_fields
+                            .get(recv_terminal)
+                            .filter(|fields| fields.len() >= 2)
+                        {
+                            let message = if recv_fields.contains(&method.name) {
+                                // The likely intent was field projection,
+                                // so teach that spelling.
+                                format!(
+                                    "`{m}` is a field of `{r}` — read it with `.{m}`; `-> {m}` is construction, and no `{r} => {m}` constructor exists",
+                                    m = method.name,
+                                    r = recv_terminal
+                                )
+                            } else {
+                                format!(
+                                    "`{}` expects a `{}`, found `{}`",
+                                    method.name, target_scalar, recv_ty
+                                )
+                            };
+                            errors.push(CanonError::CheckError {
+                                message,
+                                span: *span,
+                            });
+                        }
                     }
                 }
             }

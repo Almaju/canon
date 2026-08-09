@@ -24,7 +24,7 @@ Unit => Program {
 To *handle* a failure instead of propagating it, dispatch — `Result`
 and `Option` are ordinary unions:
 
-```canon,run=learn-errors
+```canon,run
 Unit => Result<Program, MalformedInt> {
     Int("42")?
         -> Sum(8)

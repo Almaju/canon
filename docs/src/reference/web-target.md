@@ -12,7 +12,7 @@ Canon has no local variables, no mutation, and no capturing closures, so
 React's component-local state is unexpressible. The architecture React
 approximates, Canon states natively:
 
-```canon
+```text
 Init = Model                     # marker: the initial model
 Update = Model                   # marker: the model after one message
 
@@ -90,7 +90,7 @@ a non-empty string. It reads the saved log on boot (stdout muted during
 replay), appends every subsequent message, and discards the log if a saved
 message ever fails to fold -- a stale or corrupt log can't brick the app. The
 generated `index.html` keys persistence by the app's stem, so `canon run` /
-`canon build` apps persist by default. `examples/todolist-web` is the worked
+`canon build` apps persist by default. `examples/todo-fullstack` is the worked
 example.
 
 ## Fullstack packages

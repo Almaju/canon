@@ -11,9 +11,11 @@ canon run examples/todo-fullstack
 ```
 
 Open <http://127.0.0.1:8080>: add todos through the form, toggle and
-remove them, then press **"Load todos from the server"** -- the button
-fetches `/todos` from the Canon backend *on the same origin* and the
-frontend decodes it with the *same shared code* that produced it.
+remove them, clear the completed ones, then press **"Load todos from
+the server"** -- the button fetches `/todos` from the Canon backend
+*on the same origin* and the frontend decodes it with the *same shared
+code* that produced it. The list also survives a reload: the host
+persists it to `localStorage` with no effect in the guest.
 
 ## A fullstack package
 
@@ -34,6 +36,8 @@ The **frontend** is the Elm triple over `Todos`:
 ```canon
 AddForm = ElAttr
 
+ClearButton = Button
+
 Init = AddedTodo
 
 LoadButton = ElAttr
@@ -47,10 +51,14 @@ Unit => AddForm {
         -> ElAttr(Attr("placeholder=\"What needs doing?\"") -> ElAttr("" * Tag("input")) * Tag("form"))
 }
 
+Unit => ClearButton {
+    Msg("Clear") -> Button("Clear completed")
+}
+
 Todos => Html {
     Div(`<h1>Canon Todos</h1>{AddForm() -> String}{1 -> RenderedItems(Todos) -> Ul}{
-        LoadButton() -> String
-    }`)
+        ClearButton() -> String
+    }{LoadButton() -> String}`)
 }
 
 Unit => Init {
@@ -71,6 +79,7 @@ Todos * String => Update {
                 -> Title
                 -> AddedTodo(Todos)
         }
+        * "Clea" { Todos -> Cleared }
         * "Dele" {
             String
                 -> Substring(From(8) * String -> Length -> To)
@@ -88,6 +97,23 @@ Todos * String => Update {
     )
 }
 ```
+
+The `Update` constructor is a literal dispatch on the message's
+four-character `Prefix`. Each arm is a pure fold: `Add:` appends,
+`Toggle:N` flips one line, `Delete:N` drops one, `Clear` filters out
+the completed, `Load:payload` swaps the server's encoding straight
+into the model. The catch-all returns the model unchanged -- no
+mutation, no local state; the browser owns the event loop and the
+guest is pure constructors piped with `->`.
+
+### Persistence without a `localStorage` import
+
+The guest never touches `localStorage` -- it doesn't need to. The
+model is a fold over its message history, so the host persists the
+**message log** and replays it through `Update` on the next load,
+rebuilding the identical model. A log that stops folding is discarded
+rather than allowed to brick the app. See
+[The Web Target](../reference/web-target.md).
 
 The **backend** is a single `Request => Response` -- method dispatch,
 path routing, and `GET /todos` serving the seed list in the shared
@@ -127,8 +153,9 @@ and the loader pulls in the same sibling files for each compile:
 
 - [`src/todos.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/src/todos.can)
   -- the `Todos` wire/state encoding and its operations as result
-  newtypes (`AddedTodo`, `ToggledAt`, `RemovedAt`), the list renderer,
-  and the pure-Canon string helpers. Compiled into *both* wasm binaries.
+  newtypes (`AddedTodo`, `Cleared`, `RemovedAt`, `ToggledAt`), the list
+  renderer, and the pure-Canon string helpers. Compiled into *both*
+  wasm binaries.
 - [`src/line.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/src/line.can)
   -- one todo line: the `Flipped` toggle and the `<li>` renderer.
 - [`src/title.can`](https://github.com/Almaju/canon/tree/main/examples/todo-fullstack/src/title.can)

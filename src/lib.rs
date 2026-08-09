@@ -9,6 +9,8 @@ pub mod lexer;
 pub mod loader;
 pub mod lsp;
 pub mod parser;
-pub mod registry;
+#[cfg(target_arch = "wasm32")]
+pub mod playground;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod runtime;
 pub mod webhost;

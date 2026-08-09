@@ -8,7 +8,7 @@
 /editors/tree-sitter-canon/target
 *.rs.bk
 *.o
-examples/*.rs
-examples/*.cargo/
 # Build output dirs created by `canon build` / `canon run`
 build/
+# Per-session agent worktrees (the tracked .claude/ holds only hooks)
+/.claude/worktrees/

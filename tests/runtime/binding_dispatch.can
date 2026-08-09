@@ -2,7 +2,10 @@ Color = Blue + Red
 
 Unit => Program {
     "abcd" -> (
-        * String => Unit { String -> Print String -> Print }
+        * String => Unit {
+            String -> Print
+            String -> Print
+        }
     )
     3 -> Sum(4) -> (
         * Int => Unit { Int -> Product(Int) -> String -> Print }

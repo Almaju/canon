@@ -10,9 +10,11 @@ canon run examples/todo-fullstack
 ```
 
 Open <http://127.0.0.1:8080>: add todos through the form, toggle and
-remove them, then press **“Load todos from the server”** — the button
-fetches `/todos` from the Canon backend *on the same origin* and the
-frontend decodes it with the same shared code that produced it.
+remove them, clear the completed ones, then press **“Load todos from
+the server”** — the button fetches `/todos` from the Canon backend *on
+the same origin* and the frontend decodes it with the same shared code
+that produced it. The list persists across reloads via `localStorage`,
+with no `localStorage` import in the guest.
 
 The directory is a **fullstack package** by shape: `src/web.can`
 declares the Elm triple and `src/server.can` declares
@@ -27,11 +29,11 @@ both artifacts into `build/`.
 
 | File | Role |
 |---|---|
-| `src/todos.can` | **Shared.** The `Todos` wire/state encoding (newline-separated `flag\|title` lines), its operations as result newtypes (`AddedTodo`, `ToggledAt`, `RemovedAt`), the list renderer, and the pure-Canon string helpers they need. Compiled into *both* wasm binaries. |
+| `src/todos.can` | **Shared.** The `Todos` wire/state encoding (newline-separated `flag\|title` lines), its operations as result newtypes (`AddedTodo`, `Cleared`, `RemovedAt`, `ToggledAt`), the list renderer, and the pure-Canon string helpers they need. Compiled into *both* wasm binaries. |
 | `src/line.can` | **Shared.** One todo line: the `Flipped` toggle and the `<li>` renderer with its `Toggle:`/`Delete:` message buttons. |
 | `src/title.can` | **Shared.** The `Title` newtype. |
 | `src/seeded.can` | **Shared.** The seed list the server serves. |
-| `src/web.can` | **Frontend entry.** The Elm triple: `init`/`update`/`view` over `Todos` as the model. Messages are prefix-parsed strings (`Add:`, `Toggle:N`, `Delete:N`, `Load:payload`). |
+| `src/web.can` | **Frontend entry.** The Elm triple: `init`/`update`/`view` over `Todos` as the model. Messages are prefix-parsed strings (`Add:`, `Clear`, `Toggle:N`, `Delete:N`, `Load:payload`). |
 | `src/server.can` | **Backend entry.** `Request => Response`: method dispatch (GET-only), path routing, and `GET /todos` serving the seed list in the shared encoding. |
 
 ## What it demonstrates
@@ -48,7 +50,10 @@ both artifacts into `build/`.
 - **Host-mediated effects**: the frontend is pure; the fetch happens
   in the JS host via the declarative `data-fetch` attribute (a
   relative URL, resolved against the shared origin), and the response
-  arrives as an ordinary message through `update`.
+  arrives as an ordinary message through `update`. Persistence is the
+  same story: the model is a fold over the message history, so the
+  host saves the *message log* to `localStorage` and replays it on
+  load — see [The Web Target](../../docs/src/reference/web-target.md).
 - **Pure-Canon parsing**: message payloads (`Toggle:3`) and the wire
   encoding are decoded with recursive `Substring`/`ByteAt` functions —
   the same style as the stdlib JSON validator, no host help.

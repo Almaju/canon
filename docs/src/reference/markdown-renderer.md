@@ -11,11 +11,10 @@ site renders itself.
 `Markdown` is a `String` newtype. Piping it to `Html` runs the renderer:
 
 ```canon
-Args => Exit {
+Unit => Program {
     Markdown("# Canon Docs\nRendered by Canon itself.\n\n## Why\nThe docs compile through the same pipeline as programs.")
         -> Html
         -> Print
-    Exit(0)
 }
 ```
 
@@ -29,14 +28,14 @@ Because `File` reads a document as a `String` (see [Using WASI
 Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
-Args => Exit {
+Unit => Result<Program, IoError> {
     Path("notes.md")
         -> File?
         -> Read?
         -> Markdown
         -> Html
         -> Print
-    Exit(0)
+    Unit() -> Ok
 }
 ```
 
@@ -48,14 +47,15 @@ extends from `.can` to `.md`: **referencing the PascalCase name a
 markdown file kebab-cases to loads the document as a `Markdown` value**,
 baked in at compile time.
 
-Given `intro.md` beside your source, `Intro` names it:
+Given `intro.md` and `guide.md` beside your source, `Intro` and `Guide`
+name them — here in `examples/markdown-web`'s page picker:
 
 ```canon
-Args => Exit {
-    Intro()
-        -> Html
-        -> Print
-    Exit(0)
+Page => Content {
+    Page -> (
+        * "guide" { Guide() -> Html }
+        * String { Intro() -> Html }
+    )
 }
 ```
 
@@ -75,7 +75,11 @@ to WebAssembly:
 ```canon
 Page => Html {
     <div class="doc">
-        <nav>...</nav>
+        {Styles()}
+        <nav>
+            <button data-msg="Show:intro">Intro</button>
+            <button data-msg="Show:guide">Guide</button>
+        </nav>
         <hr>
         {Page -> Content}
     </div>

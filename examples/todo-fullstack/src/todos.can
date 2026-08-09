@@ -1,5 +1,7 @@
 AddedTodo = Todos
 
+Cleared = Todos
+
 FirstLine = String
 
 ParsedNum = Int
@@ -16,6 +18,26 @@ ToggledAt = Todos
 
 Title * Todos => AddedTodo {
     Todos(`{Todos.String}0|{Title.String}\n`)
+}
+
+Todos => Cleared {
+    Todos.String -> Length -> Eq(0) -> (
+        * False {
+            Todos.String -> ByteAt(1) -> Eq(49) -> (
+                * False {
+                    Todos(`{Todos.String -> FirstLine}\n{
+                        Todos.String
+                            -> RestLines
+                            -> Todos
+                            -> Cleared
+                            -> String
+                    }`)
+                }
+                * True { Todos.String -> RestLines -> Todos -> Cleared }
+            )
+        }
+        * True { Todos }
+    )
 }
 
 String => FirstLine {

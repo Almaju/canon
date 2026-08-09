@@ -51,7 +51,7 @@ prior result. A scalar literal (string, int, float, backtick)
 springs into existence at the call site, so it rides inside the call
 instead of pretending to flow:
 
-```canon
+```text
 Greeting("hi")                    # not  "hi" -> Greeting
 Name("toto") -> Display          # the construction flows into the next step
 value -> Person(30)              # a computed value pipes; the literal rides
@@ -106,11 +106,14 @@ local variables, the way a value threads through several operations is a
 method chain:
 
 ```canon
-File * Path => Result<Config, IoError + ParseError> {
+Config = Json
+
+File => Result<Config, IoError + MalformedJson> {
     File
-        -> Read(Path)?
-        -> Parse?
-        -> Validate
+        -> Read?
+        -> Json?
+        -> Config
+        -> Ok
 }
 ```
 
@@ -140,11 +143,19 @@ union value) **pipes into** the arm group with `->`; the arms are its
 handlers:
 
 ```canon
-Int => Sign {
-    0 -> Ord(Int) -> (
+Ord = Equal
+  + Greater
+  + Less
+
+Sign = Negative
+  + Positive
+  + Zero
+
+Ord => Sign {
+    Ord -> (
         * Equal { Zero() }
-        * Greater { Negative() }
-        * Less { Positive() }
+        * Greater { Positive() }
+        * Less { Negative() }
     )
 }
 ```
@@ -201,12 +212,18 @@ name determined by the pattern:
 - **Stdlib containers** (`Ok<T>`, `Err<E>`, `Some<T>`): write the type
   argument explicitly; it binds the *unwrapped* value.
 
-  ```canon
-  result -> (
-      * Err<IoError> => String { IoError -> Message }
-      * Ok<String> => String { String }
-  )
-  ```
+```canon
+Message = String
+
+Outcome = Result<String, IoError>
+
+Outcome => Message {
+    Outcome -> (
+        * Err<IoError> { IoError }
+        * Ok<String> { String }
+    )
+}
+```
 
 - **User-defined variants** with their own definition (`Branch = Left *
   Right * Value`): write just the variant name; the matched value is in
@@ -266,12 +283,19 @@ to use a computed value twice -- the value gets a name the same way
 every dispatch arm binds one, and the name is its type:
 
 ```canon
-"ab" -> Joined("cd") -> (
-    * String => Unit {
-        String -> Print
-        String -> Print
-    }
-)
+Unit => Program {
+    3 -> Sum(4) -> (
+        * Int {
+            Int
+                -> String
+                -> Print
+            Int
+                -> Product(Int)
+                -> String
+                -> Print
+        }
+    )
+}
 ```
 
 - Works on **any** scrutinee type: primitives, newtypes, products, and
@@ -361,6 +385,8 @@ arbitrary Canon expression; everything else (attributes, quotes, nested
 tags, comments, void elements like `<br>`) is raw markup:
 
 ```canon
+Model = Int
+
 Model => Html {
     <div>
         <h1>Counter</h1>
@@ -419,6 +445,10 @@ brace), so backticks are the opt-in: reach for them exactly when you
 want a hole.
 
 ```canon
+Greeting = String
+
+Report = String
+
 String => Greeting {
     `hello, {String}!`
 }
@@ -451,7 +481,7 @@ Int => Report {
   braces stay glued to the surrounding text, which is content and never
   moves. The same rule formats JSON and HTML holes:
 
-  ```canon
+  ```text
   `<td>{
       1 -> Inline(String)
   }</td>`

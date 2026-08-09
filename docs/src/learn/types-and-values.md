@@ -5,14 +5,16 @@ means **and**. That is the whole vocabulary — there is no `enum`, no
 `struct`, no `class`, no `interface`.
 
 ```canon
-Bool = False + True
+Birthday = String
+
+Plan = Free + Pro
 
 User = Birthday * Username
 
-Birthday = String
+Username = String
 ```
 
-- `Bool` is a **union**: a value is a `False` *or* a `True`.
+- `Plan` is a **union**: a value is a `Free` *or* a `Pro`.
 - `User` is a **product**: a value has a `Birthday` *and* a `Username`.
   Its fields must be *distinct types* — which is where the third form
   comes in.
@@ -38,7 +40,7 @@ empty parens: `True()`, `None()`, `Unit()`.
 
 Here is a product being built, read, and printed — press run:
 
-```canon,run=learn-types
+```canon,run
 Birthday = String
 
 Greeting = String
@@ -71,14 +73,20 @@ Converting a value to type `T` is spelled by constructing a `T`,
 because that is what it is:
 
 ```canon
-String(42)         # "42" — decimal rendering
-Int("42")?         # parsing can fail, so it returns a Result
-String(Byte(65))   # "A" — wrap in Byte to mean the character reading
+Unit => Program {
+    String(42) -> Print
+    Int("42")? -> Print
+    Byte(65)
+        -> String
+        -> Print
+}
 ```
 
-There is no `parse` / `toString` / `from` / `into` family. When a
-conversion is ambiguous, a newtype picks the meaning — `String(42)`
-renders digits, `String(Byte(42))` renders the byte as a character.
+This prints `42`, then `42` again, then `A`. There is no `parse` /
+`toString` / `from` / `into` family; the `?` after `Int("42")` is there
+because parsing can fail, so it returns a `Result`. When a conversion
+is ambiguous, a newtype picks the meaning — `String(42)` renders
+digits, wrapping in `Byte` renders the byte as a character.
 
 ## Validated Constructors
 
@@ -88,7 +96,10 @@ A type can replace its default constructor with one that checks:
 Url = String
 
 String => Result<Url, InvalidUrl> {
-    String -> Parsed
+    String -> Length -> Gt(0) -> (
+        * False { String -> InvalidUrl -> Err }
+        * True { String -> Ok }
+    )
 }
 ```
 

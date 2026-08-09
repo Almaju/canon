@@ -8,7 +8,7 @@ parse error (`->` is the value-level pipe -- see
 [Expressions](./expressions.md)). The anonymous form needs no name of
 its own, because the return type *is* the name:
 
-```canon
+```text
 Components => ReturnType {
     body
 }
@@ -19,6 +19,12 @@ with the same `*` used everywhere else. There are no commas, no
 parameter names, no defaults:
 
 ```canon
+Greeting = String
+
+Line = String
+
+Name = String
+
 Greeting * Name => Line {
     Greeting -> Joined(Name)
 }
@@ -67,7 +73,7 @@ everywhere except [binding files](./compilation.md).
 At the call site, **any component may pipe in on the left of `->`**;
 the rest ride in the parentheses:
 
-```canon
+```text
 Greeting("hi ") -> Line(Name("ada"))
 Name("ada") -> Line(Greeting("hi "))
 ```
@@ -113,7 +119,13 @@ One-off operations are lambda literals with a **full signature** (there
 is no inference), passed wherever a matching function type is expected:
 
 ```canon
-Numbers -> Mapped((Int) => Int { Int -> Product(3) })
+Numbers = List<Int>
+
+Tripled = List<Int>
+
+Numbers => Tripled {
+    Numbers -> Mapped((Int) => Int { Int -> Product(3) })
+}
 ```
 
 Lambda syntax is declaration syntax with the parentheses kept and no
@@ -142,13 +154,13 @@ A module becomes a runnable program when **exactly one** anonymous
 arrow returns a type matching a known WASI world's primary export.
 Entries have no name -- selection is by signature only, and giving the
 entry a name (a literal `main =` is the classic mistake) is a checker
-error. The CLI entry is `Args => Exit { ... }` -- the command's argument
-vector flows in, an exit status flows out, mirroring the HTTP entry's
-`Request => Response { ... }`:
+error. The CLI entry is `Unit => Program { ... }` (`Program = Unit`,
+from `canon`) -- no arguments in, no explicit exit out, mirroring
+the HTTP entry's `Request => Response { ... }` in anonymity:
 
 | Signature | World | Export |
 |---|---|---|
-| `Args => Exit` (also `Unit => Program` and `... => Result<Exit, _>`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Unit => Program`, `Unit => Result<Program, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
 (The legacy `ExitCode` return is retired -- `Exit` is the one

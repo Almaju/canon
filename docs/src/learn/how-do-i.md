@@ -6,7 +6,9 @@ explains it.
 ## …print something?
 
 ```canon
-"hello" -> Print
+Unit => Program {
+    "hello" -> Print
+}
 ```
 
 ## …name an intermediate value?
@@ -22,10 +24,14 @@ Dispatch — on the `Bool`, or better, on your own union so the cases
 have names ([Branching & Loops](./branching-and-loops.md)):
 
 ```canon
-count -> Gt(0) -> (
-    * False => Unit { "empty" -> Print }
-    * True => Unit { "has items" -> Print }
-)
+Count = Int
+
+Unit => Program {
+    Count(3) -> Gt(0) -> (
+        * False { "empty" -> Print }
+        * True { "has items" -> Print }
+    )
+}
 ```
 
 ## …match on a string or number?
@@ -33,16 +39,26 @@ count -> Gt(0) -> (
 Literal dispatch, catch-all last:
 
 ```canon
-Route -> (
-    * "/health" => Body { Ok() }
-    * String => Body { NotFound() }
-)
+Body = String
+
+Route = String
+
+Route => Body {
+    Route -> (
+        * "/health" { Body("ok") }
+        * String { Body("not found") }
+    )
+}
 ```
 
 ## …loop over a list?
 
 ```canon
-List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })
+Doubled = List<Int>
+
+Unit => Doubled {
+    List(1 * 2 * 3) -> Mapped((Int) => Int { Int -> Product(2) })
+}
 ```
 
 For everything else: recursion, with dispatch as the base case
@@ -53,14 +69,29 @@ For everything else: recursion, with dispatch as the base case
 A format string, or `Joined` for two pieces:
 
 ```canon
-`{Count} items, total {Total}`
-`hello, {Name}`
+Count = Int
+
+Greeting = String
+
+Name = String
+
+Total = Int
+
+Count * Total => Greeting {
+    `{Count} items, total {Total}`
+}
+
+Name => Greeting {
+    `hello, {Name}`
+}
 ```
 
 ## …parse a number?
 
 ```canon
-Int("42")?
+Unit => Program {
+    Int("42")? -> Print
+}
 ```
 
 Conversion is construction; the fallible direction returns a `Result`.
@@ -78,8 +109,13 @@ type: `price -> Le(limit)`. (There is no `lte`/`gte`.)
 ## …read or write a file?
 
 ```canon
-Path("./notes.txt") -> File? -> Read? -> Print
-Contents("hi") -> Written(Path("/tmp/out.txt"))?
+Unit => Program {
+    Contents("hi") -> Written(Path("/tmp/out.txt"))?
+    Path("./notes.txt")
+        -> File?
+        -> Read?
+        -> Print
+}
 ```
 
 ([Capabilities](./capabilities.md); [stdlib](../reference/stdlib.md))
@@ -93,7 +129,11 @@ Contents("hi") -> Written(Path("/tmp/out.txt"))?
 ## …make an HTTP request?
 
 ```canon
-Url("http://example.com")? -> Fetched? -> Print
+Unit => Program {
+    Url("http://example.com")?
+        -> Fetched?
+        -> Print
+}
 ```
 
 ## …serve HTTP?
@@ -108,10 +148,13 @@ Literals are first-class expressions with `{…}` interpolation holes;
 read back with `Field` and `Decoded` ([stdlib](../reference/stdlib.md)):
 
 ```canon
-{"id":1,"title":"ship canon v1"}
-    -> Field("title")?
-    -> Decoded?
-Encoded(42)
+Unit => Program {
+    {"id":1,"title":"ship canon v1"}
+        -> Field("title")?
+        -> Decoded?
+        -> Print
+    Encoded(42) -> Print
+}
 ```
 
 ## …render HTML, or build a web page?
@@ -119,12 +162,16 @@ Encoded(42)
 HTML literals produce `Html` (holes escape strings, pass `Html`
 through). A whole browser app is three arrows — view, init, update.
 ([The Web Target](../reference/web-target.md); worked example:
-[todo list](../examples/todolist.md))
+[fullstack todo list](../examples/fullstack.md))
 
 ## …render Markdown?
 
 ```canon
-Markdown("# hi") -> Html
+Unit => Program {
+    Markdown("# hi")
+        -> Html
+        -> Print
+}
 ```
 
 Referencing `Intro` loads a sibling `intro.md` as a `Markdown` value at
@@ -135,8 +182,16 @@ compile time. ([Markdown](../reference/markdown-renderer.md))
 `Map` and `Set` — sorted, immutable, pure Canon:
 
 ```canon
-Map() -> Inserted("a" * "1") -> Value("a")?
-Set() -> Added("x") -> Contains("x")
+Unit => Program {
+    Map()
+        -> Inserted("a" * "1")
+        -> Value("a")?
+        -> Print
+    Set()
+        -> Added("x")
+        -> Contains("x")
+        -> Print
+}
 ```
 
 ## …write a test?
@@ -162,5 +217,5 @@ fix ordering errors — never by hand.
 
 ## …start a project?
 
-A directory with `src/main.can` is a package; there is nothing else to
-set up.
+A directory with `.can` files under `src/` is a package — the entry
+file is found by its shape; there is nothing else to set up.

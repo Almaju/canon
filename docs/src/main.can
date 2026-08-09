@@ -18,6 +18,8 @@ Page = String
 
 Pager = Html
 
+Play = Html
+
 Prev = Html
 
 Query = String
@@ -63,11 +65,11 @@ Page => Content {
         * "overview" { Overview() -> Html }
         * "philosophy" { Philosophy() -> Html }
         * "pipes-and-constructors" { PipesAndConstructors() -> Html }
+        * "play" { Play() }
         * "programs-and-modules" { ProgramsAndModules() -> Html }
         * "showcase" { Showcase() -> Html }
         * "stdlib" { Stdlib() -> Html }
         * "testing" { Testing() -> Html }
-        * "todolist" { Todolist() -> Html }
         * "types" { Types() -> Html }
         * "types-and-values" { TypesAndValues() -> Html }
         * "types-only" { TypesOnly() -> Html }
@@ -90,6 +92,7 @@ Model => Html {
             {Model.Page -> NavItem(Slug("canon-for-ai") * Label("Canon for AI"))}
             {Model.Page -> NavItem(Slug("installation") * Label("Installation"))}
             {Model.Page -> NavItem(Slug("hello-world") * Label("Hello, World"))}
+            {Model.Page -> NavItem(Slug("play") * Label("Playground"))}
             <div class="sec">Learn</div>
             {Model.Page -> NavItem(Slug("types-and-values") * Label("Types &amp; Values"))}
             {
@@ -107,7 +110,6 @@ Model => Html {
             {Model.Page -> NavItem(Slug("showcase") * Label("Overview"))}
             {Model.Page -> NavItem(Slug("multifile") * Label("Multi-File Project"))}
             {Model.Page -> NavItem(Slug("notes-api") * Label("notes-api: JSON Service"))}
-            {Model.Page -> NavItem(Slug("todolist") * Label("Todo List in the Browser"))}
             {Model.Page -> NavItem(Slug("markdown-web") * Label("Docs Site in the Browser"))}
             {Model.Page -> NavItem(Slug("fullstack") * Label("Fullstack"))}
             <div class="sec">Reference</div>
@@ -262,8 +264,8 @@ Page => Pager {
         }
         * "hello-world" {
             Html(`<nav class="pager">{Slug("installation") -> Prev(Label("Installation")) -> String}{
-                Slug("types-and-values")
-                    -> Next(Label("Types &amp; Values"))
+                Slug("play")
+                    -> Next(Label("Playground"))
                     -> String
             }</nav>`)
         }
@@ -297,8 +299,8 @@ Page => Pager {
         }
         * "markdown-web" {
             Html(`<nav class="pager">{
-                Slug("todolist")
-                    -> Prev(Label("Todo List in the Browser"))
+                Slug("notes-api")
+                    -> Prev(Label("notes-api: JSON Service"))
                     -> String
             }{Slug("fullstack") -> Next(Label("Fullstack")) -> String}</nav>`)
         }
@@ -321,7 +323,7 @@ Page => Pager {
                 Slug("multifile")
                     -> Prev(Label("Multi-File Project"))
                     -> String
-            }{Slug("todolist") -> Next(Label("Todo List in the Browser")) -> String}</nav>`)
+            }{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
         }
         * "ordering" {
             Html(`<nav class="pager">{Slug("functions") -> Prev(Label("Functions")) -> String}{
@@ -351,6 +353,13 @@ Page => Pager {
                     -> String
             }{Slug("branching-and-loops") -> Next(Label("Branching &amp; Loops")) -> String}</nav>`)
         }
+        * "play" {
+            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{
+                Slug("types-and-values")
+                    -> Next(Label("Types &amp; Values"))
+                    -> String
+            }</nav>`)
+        }
         * "programs-and-modules" {
             Html(`<nav class="pager">{
                 Slug("async-without-keywords")
@@ -379,13 +388,6 @@ Page => Pager {
                     -> String
             }{Slug("how-do-i") -> Next(Label("How Do I&#8230;?")) -> String}</nav>`)
         }
-        * "todolist" {
-            Html(`<nav class="pager">{
-                Slug("notes-api")
-                    -> Prev(Label("notes-api: JSON Service"))
-                    -> String
-            }{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
-        }
         * "types" {
             Html(`<nav class="pager">{
                 Slug("lexical-structure")
@@ -394,7 +396,7 @@ Page => Pager {
             }{Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String}</nav>`)
         }
         * "types-and-values" {
-            Html(`<nav class="pager">{Slug("hello-world") -> Prev(Label("Hello, World")) -> String}{
+            Html(`<nav class="pager">{Slug("play") -> Prev(Label("Playground")) -> String}{
                 Slug("pipes-and-constructors")
                     -> Next(Label("Pipes &amp; Constructors"))
                     -> String
@@ -425,6 +427,25 @@ Page => Pager {
             Html(`<nav class="pager">{Slug("philosophy") -> Next(Label("The Philosophy")) -> String}</nav>`)
         }
     )
+}
+
+Unit => Play {
+    <div class="pg">
+        <h1>Playground</h1>
+        <p>The Canon compiler is a WebAssembly module running in this tab. Your program is compiled to a component and executed here — nothing is sent to a server.</p>
+        <div class="pg-bar">
+            <button class="pg-run"><span class="canon-run-glyph">&#9654;</span> run</button>
+            <span class="pg-hint">&#8984;/Ctrl + Enter</span>
+            <button class="pg-share">share</button>
+            <button class="pg-reset">reset</button>
+            <span class="pg-status"></span>
+        </div>
+        <textarea class="pg-editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Canon source"></textarea>
+        <div class="pg-panel">
+            <div class="pg-panel-bar"><span class="dot"></span><span>output</span></div>
+            <pre class="pg-out"><code></code></pre>
+        </div>
+    </div>
 }
 
 Slug * Label => Prev {

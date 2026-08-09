@@ -1,3 +1,0 @@
-Unit => Program {
-    "hi".print(Stdout)
-}

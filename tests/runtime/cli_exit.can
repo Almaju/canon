@@ -1,9 +1,8 @@
-Args => Exit {
-    Args
+Unit => Program {
+    Args()
         -> Length
         -> Print
-    Args
+    Args()
         -> Json
         -> Print
-    Exit(0)
 }

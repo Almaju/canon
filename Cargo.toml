@@ -3,11 +3,16 @@ name = "canon"
 version = "0.3.0"
 edition = "2021"
 description = "The Canon programming language compiler"
-default-run = "canon"
 
 [[bin]]
 name = "canon"
 path = "src/main.rs"
+
+# `cdylib` is the docs playground: the compiler built for
+# `wasm32-unknown-unknown` and driven from the page (`src/playground.rs`).
+# `rlib` is what the binary and the integration tests link against.
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 # Faster codegen runs during development; debug info is still intact at
 # opt-level 1, and iteration times drop noticeably on this compiler workload.
@@ -20,6 +25,15 @@ opt-level = 1
 lto = "thin"
 codegen-units = 1
 
+# The docs playground ships the compiler over the wire, so this artifact
+# is tuned for bytes rather than speed: ~770 KB gzipped against ~1.04 MB
+# from the plain release profile. Compile time in the page is unaffected —
+# playground programs are one file.
+[profile.playground]
+inherits = "release"
+opt-level = "z"
+strip = true
+
 [dependencies]
 # WASM encoding and Component Model (Bytecode Alliance — pin to same minor
 # version). 0.250 matches the wasmparser that wasmtime 45 bundles internally
@@ -31,6 +45,7 @@ wit-parser    = "0.250"
 wit-component = "0.250"
 wasmparser    = "0.250"
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Embedded runtime. We target WASI Preview 3 + the async Component Model.
 # `component-model-async` enables the async canonical ABI; `p3` exposes the
 # experimental WASI 0.3 implementation in wasmtime-wasi.
@@ -56,17 +71,3 @@ hyper-util    = { version = "0.1", default-features = false, features = ["tokio"
 http-body-util = { version = "0.1", default-features = false }
 http          = { version = "1", default-features = false }
 bytes         = { version = "1", default-features = false }
-# Package-registry client (Bytecode Alliance wasm-pkg-tools). Powers
-# `canon install <ns>:<pkg>` — fetching WIT packages / components from
-# OCI (or local/warg) registries, with the standard `wasm-pkg`
-# namespace→registry config. `futures-util` is only for draining the
-# client's ContentStream; it's already in the tree transitively.
-wasm-pkg-client = "0.15.1"
-futures-util    = { version = "0.3", default-features = false, features = ["std"] }
-
-[dev-dependencies]
-# Tests encode throwaway WIT packages into the wasm form registries
-# serve (`tests/registry_install_test.rs`). Same pins as the main
-# dependencies above, so no extra compilation.
-wit-component = "0.250"
-wit-parser    = "0.250"
