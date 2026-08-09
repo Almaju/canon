@@ -76,15 +76,22 @@ Non-goals — reject work that pulls toward these, whoever proposes it:
 
 ## Merge lanes
 
+Finished work ships as a pull request — never a direct push to `main`. Prefer
+several small PRs over one big one: one idea per PR, split as soon as a change
+grows a second theme. Keep the description short — what changed and why, no
+walkthrough.
+
 CI (`just ci`: fmt + clippy + the full test suite and goldens) is the
 correctness gate; human review is only for what CI can't see — design.
 
-- **Auto-merge** — the PR executes a plan the user approved in-session, adds
-  no new language concept, dependency, or doc page, and touches neither
-  `docs/src/spec/` nor this file. Open it with auto-merge enabled; green CI
-  lands it.
-- **Review** — anything crossing one of those lines. Request review and state
-  in the PR body which line was crossed and why it earns its place.
+- **Auto-merge** — bugfixes, docs, and other small changes: the PR executes a
+  plan the user approved in-session, adds no new language concept, dependency,
+  or doc page, and touches neither `docs/src/spec/` nor this file. Open it with
+  auto-merge enabled; green CI lands it.
+- **Review** — anything crossing one of those lines, and any change to the
+  language itself. Request review and state in the PR body which line was
+  crossed and why it earns its place. It lands on a GitHub approval or the
+  user's explicit go-ahead, never on green CI alone.
 
 Docs are part of a change's definition of done: update affected pages in the
 same PR; never open standalone docs-sync PRs.
