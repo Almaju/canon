@@ -44,8 +44,8 @@ only ever reaches the wrappers below.
 | `web/Attr`, `web/Msg`, `web/Tag` | `Attr = String`, `Msg = String`, `Tag = String` | none | element-builder inputs: `El`/`ElAttr` take a `Tag`, `Button` a `Msg` |
 | `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../tour/testing.md) |
 | `Program` | `Program = Unit` | none | the CLI entry's declared return: `Unit => Program` |
-| `cli/Exit` | `Exit = Int`, `Exited` | `wasi/cli/exit` | the CLI entry's return world; `3 -> Exited` hard-terminates with that code |
-| `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv -- the CLI entry's `Args` input, or `Args()` from any code |
+| `cli/Exit` | `Exited` | `wasi/cli/exit` | `3 -> Exited` hard-terminates with that code; reaching the entry's end is exit 0 |
+| `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv, fetched with `Args()` from any code |
 | `cli/Cwd` | `Cwd = String`, `Unit => Option<Cwd>` | `wasi/cli/environment` | initial working directory, when the host provides one |
 | `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds |
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world |
@@ -288,7 +288,7 @@ DecodedPairs, DecodedThree, DecodedTwo, DigitRun, Digits,
 DispatchedValue, Div, Doe, Doy, Dropped, El, ElAttr, Encoded,
 EncodedOne, EncodedThree, EncodedTwo, Entry, Era, EscapeChar,
 EscapeOther, EscapePlain, EscapeUnicode, Escaped, EscapedByte,
-EscapedMeaning, EscapedTail, Exit, Exited, Fail, FenceBody, FenceEnd,
+EscapedMeaning, EscapedTail, Exited, Fail, FenceBody, FenceEnd,
 FenceInfo, Fetched, Field, File, Fraction, Frag, From, Ge, Gt, H1,
 HashCount, HeadCells, Headers, HeadingHtml, Hex, HexByte, HexChar,
 HexDecoded, HexDigit, HexEncoded, HexTail, HexVal, HostChecked, Hour,

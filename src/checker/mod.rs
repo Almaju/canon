@@ -177,15 +177,32 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
         // CLI program: `main` exists, no other entry. Existing behaviour.
         (true, 0, false) => {}
         // Library or malformed: no entry shape is present.
-        (false, 0, false) => errors.push(CanonError::CheckError {
-            message: "no entry point defined: expected a CLI entry (`Unit => Program`, or \
-                     `Args => Exit` to read the argument vector), an \
-                      HTTP handler (`Request => Response`), or a web-app triple (a \
-                      `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
-                      constructors)."
-                .to_string(),
-            span: module.span,
-        }),
+        (false, 0, false) => {
+            errors.push(CanonError::CheckError {
+                message: "no entry point defined: expected a CLI entry (`Unit => Program`), an \
+                          HTTP handler (`Request => Response`), or a web-app triple (a \
+                          `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
+                          constructors)."
+                    .to_string(),
+                span: module.span,
+            });
+            // Migration: the retired `Args => Exit` entry shape. Teach
+            // the rewrite at the declaration that used it.
+            for item in &module.items[entry_items_start..] {
+                if let Item::Function(func) = item {
+                    if is_retired_args_entry(func) {
+                        errors.push(CanonError::CheckError {
+                            message: "`Args => Exit` is no longer an entry: write \
+                                      `Unit => Program` and fetch the argument vector with \
+                                      `Args()`. An exact exit code is `Exited(n)`; a fallible \
+                                      entry returns `Result<Program, _>`."
+                                .to_string(),
+                            span: func.span,
+                        });
+                    }
+                }
+            }
+        }
         // Mixed worlds: a component exports exactly one world.
         (true, n, _) if n > 0 => errors.push(CanonError::CheckError {
             message: format!(
@@ -244,6 +261,34 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
     errors.extend(codegen_gap_errors(module, entry_items_start, http_entry));
 
     errors
+}
+
+/// The retired arg-reading entry shape `Args => Exit`: a lone `Args`
+/// input (post-resolve it sits as the extracted receiver; pre-extraction
+/// it is still a parameter) returning `Exit`, bare or `Result`-wrapped.
+/// Recognized only to teach the rewrite in the missing-entry error.
+fn is_retired_args_entry(func: &FunctionDef) -> bool {
+    fn returns_exit(ty: &TypeExpr) -> bool {
+        match ty {
+            TypeExpr::Named { name, generics, .. } if generics.is_empty() => name == "Exit",
+            TypeExpr::Named { name, generics, .. } if name == "Result" && !generics.is_empty() => {
+                returns_exit(&generics[0])
+            }
+            _ => false,
+        }
+    }
+    let lone_args_input = match (&func.receiver, func.params.as_slice()) {
+        (Some(recv), []) => recv.name == "Args",
+        (
+            None,
+            [Param {
+                ty: TypeExpr::Named { name, generics, .. },
+                ..
+            }],
+        ) => name == "Args" && generics.is_empty(),
+        _ => false,
+    };
+    lone_args_input && returns_exit(&func.return_ty)
 }
 
 fn check_ordering(

@@ -344,7 +344,7 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
 /// The entry files a shape scan found under a package's `src/`, one
 /// list per world. See `scan_src_entries`.
 struct SrcEntries {
-    /// Files declaring a CLI entry (`Args => Exit` / `Unit => Program`).
+    /// Files declaring a CLI entry (`Unit => Program`).
     cli: Vec<PathBuf>,
     /// Files declaring an HTTP entry (a free `Request => Response`).
     http: Vec<PathBuf>,

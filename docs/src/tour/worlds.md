@@ -15,17 +15,18 @@ may return a world type:
 
 | You write | You get |
 |---|---|
-| `Unit => Program` or `Args => Exit` | a CLI command |
+| `Unit => Program` | a CLI command |
 | `Request => Response` | an HTTP service |
 | `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app |
 
-`Args` is your argv, handed to you the way `Request` is handed to a
-handler. Next: [install the compiler](../getting-started/installation.md),
-or read the [examples](../examples/multifile.md).
+The CLI entry takes nothing, because `wasi:cli/run.run` takes nothing:
+the argument vector is *fetched*, not passed, so `Args()` reads `argv`
+from any body that wants it. Next:
+[install the compiler](../getting-started/installation.md), or read the
+[examples](../examples/multifile.md).
 
 ```canon,run
-Args => Exit {
+Unit => Program {
     "one language, three worlds" -> Print
-    Exit(0)
 }
 ```

@@ -11,11 +11,10 @@ site renders itself.
 `Markdown` is a `String` newtype. Piping it to `Html` runs the renderer:
 
 ```canon
-Args => Exit {
+Unit => Program {
     Markdown("# Canon Docs\nRendered by Canon itself.\n\n## Why\nThe docs compile through the same pipeline as programs.")
         -> Html
         -> Print
-    Exit(0)
 }
 ```
 
@@ -29,14 +28,14 @@ Because `File` reads a document as a `String` (see [Using WASI
 Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
-Args => Exit {
+Unit => Result<Program, IoError> {
     Path("notes.md")
         -> File?
         -> Read?
         -> Markdown
         -> Html
         -> Print
-    Exit(0)
+    Unit() -> Ok
 }
 ```
 

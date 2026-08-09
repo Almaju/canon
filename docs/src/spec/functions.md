@@ -152,26 +152,21 @@ A module becomes a runnable program when **exactly one** anonymous
 arrow returns a type matching a known WASI world's primary export.
 Entries have no name -- selection is by signature only, and giving the
 entry a name (a literal `main =` is the classic mistake) is a checker
-error. The CLI entry is `Args => Exit { ... }` -- the command's argument
-vector flows in, an exit status flows out, mirroring the HTTP entry's
-`Request => Response { ... }`:
+error. The CLI entry is `Unit => Program { ... }` (`Program = Unit`,
+from `canon/std`) -- no arguments in, no explicit exit out, mirroring
+the HTTP entry's `Request => Response { ... }` in anonymity:
 
 | Signature | World | Export |
 |---|---|---|
-| `Args => Exit` (also `Unit => Program` and `... => Result<Exit, _>`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Unit => Program`, `Unit => Result<Program, _>` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
-`Args` (`= List<String>`, from `canon/std`) is the program's `argv`: the
-compiler binds it from `wasi:cli/environment#get-arguments` at the lifted
-`run` boundary and hands it to the entry, exactly as the HTTP world hands
-the handler its `Request` -- you never fetch it. `Exit` (`= Int`) is the
-exit status. Because `wasi:cli/run` returns a bare `result`, `Exit(0)`
-maps to success (process exit 0) and any nonzero `Exit` to failure
-(exit 1); an exact nonzero code uses the hard `Exited(n)`
-(`wasi:cli/exit#exit-with-code`) escape hatch. A program that reads no
-arguments and reports nothing may use the arg-less shorthand
-`Unit => Program { ... }` (`Program = Unit`), whose body needs no explicit
-exit.
+The CLI entry's shape is the ABI's: `wasi:cli/run.run` takes nothing
+and reports only success/failure. The argument vector is fetched, not
+passed -- `Args()` (`= List<String>`, from `canon/std`, bound from
+`wasi:cli/environment#get-arguments`) reads `argv` from any body -- and
+an exact exit code is the hard `Exited(n)`
+(`wasi:cli/exit#exit-with-code`) escape hatch.
 
 A third world -- the browser [web target](../reference/web-target.md) -- is
 selected by a **triple of anonymous, type-selected constructors**:
