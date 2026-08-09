@@ -1265,8 +1265,9 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
             if let Some(recv) = &func.receiver {
                 let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
                 let primary_key = (recv.name.clone(), func.name.name.clone());
+                let arity = params_arity(&func.params);
                 let primary_sig = MethodSig {
-                    arity: func.params.len(),
+                    arity,
                     return_ty: return_ty.clone(),
                     result_ok_ty: result_ok_ty.clone(),
                 };
@@ -1288,21 +1289,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 // `ctor_arity` is the number of remaining args when that component is the receiver.
                 let mut components: Vec<String> = Vec::new();
                 for param in &func.params {
-                    match &param.ty {
-                        TypeExpr::Named { .. } => {
-                            if let Some(n) = param.ty.simple_name() {
-                                components.push(n.to_string());
-                            }
-                        }
-                        TypeExpr::Product { fields, .. } => {
-                            for field in fields {
-                                if let Some(n) = field.simple_name() {
-                                    components.push(n.to_string());
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
+                    push_component_names(&param.ty, &mut components);
                 }
                 // When one component is the receiver, the caller passes
                 // the rest as arguments — the same count regardless of
@@ -1313,7 +1300,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                     methods
                         .entry((param_name.clone(), func.name.name.clone()))
                         .or_insert(MethodSig {
-                            arity: func.params.len(),
+                            arity,
                             return_ty: return_ty.clone(),
                             result_ok_ty: result_ok_ty.clone(),
                         });
@@ -1353,6 +1340,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 TypeExpr::Product { fields, .. } => fields
                     .first()
                     .and_then(|f| f.simple_name().map(|s| s.to_string())),
+                TypeExpr::Repeat { ty, .. } => ty.simple_name().map(|s| s.to_string()),
                 _ => None,
             });
             let key = (
@@ -1538,17 +1526,23 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
         return;
     }
     for param in &func.params {
-        if let TypeExpr::Named { name, generics, .. } = &param.ty {
-            if name == constructed && generics.is_empty() {
-                errors.push(CanonError::CheckError {
-                    message: format!(
-                        "an arrow that returns its own input type needs a name the types can't \
-                         supply: mint a result newtype (`X = {constructed}`) and construct that \
-                         (`… => X`) instead of `{constructed}` itself",
-                    ),
-                    span: param.span,
-                });
-            }
+        let input_name = match &param.ty {
+            TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name),
+            TypeExpr::Repeat { ty, .. } => match ty.as_ref() {
+                TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name),
+                _ => None,
+            },
+            _ => None,
+        };
+        if input_name.is_some_and(|name| name == constructed) {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "an arrow that returns its own input type needs a name the types can't \
+                     supply: mint a result newtype (`X = {constructed}`) and construct that \
+                     (`… => X`) instead of `{constructed}` itself",
+                ),
+                span: param.span,
+            });
         }
     }
 }
@@ -1781,6 +1775,7 @@ fn check_function(
     check_type_expr(&func.return_ty, symbols, &generic_scope, errors);
     for param in &func.params {
         check_type_expr(&param.ty, symbols, &generic_scope, errors);
+        check_repetition_param_shape(&param.ty, errors);
     }
 
     if let Some(recv) = &func.receiver {
@@ -2024,18 +2019,25 @@ fn check_type_expr(
 
 struct ExprScope {
     names: Vec<String>,
+    /// Repetition parameters in scope: element type name → count.
+    /// A `T^N` parameter binds no bare name — its components are
+    /// reached positionally (`T.1` … `T.N`), so the bare reference is
+    /// an error and positional access is valid only against this map.
+    repeated: HashMap<String, u64>,
 }
 
 impl ExprScope {
     fn from_function(func: &FunctionDef) -> Self {
         let mut names: Vec<String> = Vec::new();
+        let mut repeated: HashMap<String, u64> = HashMap::new();
         for p in &func.params {
             push_param_names(&p.ty, &mut names);
+            push_repeated_params(&p.ty, &mut repeated);
         }
         if let Some(recv) = &func.receiver {
             names.push(recv.name.clone());
         }
-        Self { names }
+        Self { names, repeated }
     }
 
     fn contains(&self, name: &str) -> bool {
@@ -2051,6 +2053,95 @@ fn push_param_names(ty: &TypeExpr, names: &mut Vec<String>) {
         TypeExpr::Product { fields, .. } => {
             for f in fields {
                 push_param_names(f, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Validate a repetition parameter's shape: the count must be at least
+/// 2 (`T^1` is ceremony around a plain `T`, `T^0` is `Unit`), and the
+/// Kleene star has no parameter lowering — `T^*` values arrive as
+/// `List<T>`.
+fn check_repetition_param_shape(ty: &TypeExpr, errors: &mut Vec<CanonError>) {
+    match ty {
+        TypeExpr::Repeat { count, span, .. } if *count < 2 => {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "repetition input `^{count}` needs a count of at least 2 — a single \
+                     component is a plain type"
+                ),
+                span: *span,
+            });
+        }
+        TypeExpr::Spread { span, .. } => {
+            errors.push(CanonError::CheckError {
+                message: "`T^*` is not a parameter shape: an unbounded sequence arrives as \
+                          `List<T>`"
+                    .to_string(),
+                span: *span,
+            });
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                check_repetition_param_shape(f, errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A parameter list's call-site arity: a `T^N` parameter counts as N
+/// values, everything else as one.
+fn params_arity(params: &[Param]) -> usize {
+    params
+        .iter()
+        .map(|p| match &p.ty {
+            TypeExpr::Repeat { count, .. } => *count as usize,
+            _ => 1,
+        })
+        .sum()
+}
+
+/// Flatten a parameter type into its component type names: a named type
+/// contributes itself, a product its fields, and a `T^N` repetition N
+/// copies of its element — one name per call-site value.
+fn push_component_names(ty: &TypeExpr, components: &mut Vec<String>) {
+    match ty {
+        TypeExpr::Named { .. } => {
+            if let Some(n) = ty.simple_name() {
+                components.push(n.to_string());
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for field in fields {
+                push_component_names(field, components);
+            }
+        }
+        TypeExpr::Repeat { ty, count, .. } => {
+            if let Some(n) = ty.simple_name() {
+                for _ in 0..*count {
+                    components.push(n.to_string());
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Collect `T^N` parameters (top-level or as product components) into
+/// the scope's repeated map. The element must be a bare named type —
+/// anything else never parses as a parameter.
+fn push_repeated_params(ty: &TypeExpr, repeated: &mut HashMap<String, u64>) {
+    match ty {
+        TypeExpr::Repeat { ty, count, .. } => {
+            if let TypeExpr::Named { name, .. } = ty.as_ref() {
+                repeated.insert(name.clone(), *count);
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                push_repeated_params(f, repeated);
             }
         }
         _ => {}
@@ -2219,6 +2310,7 @@ fn check_literal_dispatch(
         // receiver alias-chain rule in `build_local_scope`).
         let mut inner_scope = ExprScope {
             names: scope.names.clone(),
+            repeated: scope.repeated.clone(),
         };
         if scrutinee_known {
             inner_scope.names.push(scrutinee_ty.to_string());
@@ -2285,6 +2377,17 @@ fn check_literal_dispatch(
 fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     match expr {
         Expr::Ident(ident) => {
+            if let Some(count) = scope.repeated.get(&ident.name) {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{0}` is a repetition parameter (`{0}^{1}`): its components are \
+                         positional — use `{0}.1` … `{0}.{1}`",
+                        ident.name, count
+                    ),
+                    span: ident.span,
+                });
+                return;
+            }
             if is_capability_type(&ident.name) {
                 if !scope.contains(&ident.name) {
                     errors.push(CanonError::CheckError {
@@ -2587,6 +2690,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         }
                         let mut inner_scope = ExprScope {
                             names: scope.names.clone(),
+                            repeated: scope.repeated.clone(),
                         };
                         inner_scope.names.push(pattern_name.clone());
                         if scrut_known {
@@ -2649,6 +2753,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // Build inner scope: generic type args become accessible by their type name
                 let mut inner_scope = ExprScope {
                     names: scope.names.clone(),
+                    repeated: scope.repeated.clone(),
                 };
                 if let TypeExpr::Named {
                     name: variant_name,
@@ -2692,6 +2797,39 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             field,
             span,
         } => {
+            // Positional access into a repetition parameter: `Int.1`
+            // reads the first component of an `Int^2` input. Valid only
+            // against a repeated parameter in scope, with a 1-based
+            // index within its count. The receiver is the parameter
+            // *name*, not a value expression, so it skips the ordinary
+            // receiver check (a bare repeated name is otherwise an
+            // error).
+            if let Ok(idx) = field.name.parse::<u64>() {
+                if let Expr::Ident(recv_ident) = receiver.as_ref() {
+                    if let Some(&count) = scope.repeated.get(&recv_ident.name) {
+                        if idx < 1 || idx > count {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "positional access `.{idx}` is out of range: `{}^{count}` \
+                                     has components `.1` … `.{count}`",
+                                    recv_ident.name
+                                ),
+                                span: *span,
+                            });
+                        }
+                        return;
+                    }
+                }
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "positional access `.{}` applies only to repetition parameters \
+                         (`T^N` inputs)",
+                        field.name
+                    ),
+                    span: *span,
+                });
+                return;
+            }
             check_expr(receiver, scope, symbols, errors);
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             let recv_ty_for_lookup: String = match receiver.as_ref() {
@@ -2762,9 +2900,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             check_type_expr(return_ty, symbols, &generic_scope, errors);
             for param in params {
                 check_type_expr(&param.ty, symbols, &generic_scope, errors);
+                if let TypeExpr::Repeat { span, .. } = &param.ty {
+                    errors.push(CanonError::CheckError {
+                        message: "repetition inputs (`T^N`) are supported in top-level \
+                                  constructors, not lambdas"
+                            .to_string(),
+                        span: *span,
+                    });
+                }
             }
             let mut inner_scope = ExprScope {
                 names: scope.names.clone(),
+                repeated: scope.repeated.clone(),
             };
             for param in params {
                 push_param_names(&param.ty, &mut inner_scope.names);
@@ -3366,6 +3513,17 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
         Expr::FieldAccess {
             receiver, field, ..
         } => {
+            // Positional access into a repetition parameter (`Int.1`):
+            // every component has the element's type, which is the
+            // receiver's own name. Validity (the receiver really is a
+            // repeated parameter, the index is in range) is scope
+            // information checked in `check_expr`.
+            if field.name.parse::<u64>().is_ok() {
+                return match receiver.as_ref() {
+                    Expr::Ident(recv_ident) => recv_ident.name.clone(),
+                    _ => "<unknown>".to_string(),
+                };
+            }
             // If this is a zero-arg builtin method used without parens, return
             // its return type rather than the field name. We walk the alias
             // chain so `.print` on `Path` / `Now` / etc. resolves through to

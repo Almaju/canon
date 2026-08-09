@@ -1,0 +1,12 @@
+Unit => Program {
+    "b" -> Ord("a") -> (
+        * Equal => Unit { "eq" -> Print }
+        * Greater => Unit { "gt" -> Print }
+        * Less => Unit { "lt" -> Print }
+    )
+    1 -> Ord(2) -> (
+        * Equal => Unit { "eq" -> Print }
+        * Greater => Unit { "gt" -> Print }
+        * Less => Unit { "lt" -> Print }
+    )
+}

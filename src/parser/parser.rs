@@ -140,14 +140,18 @@ impl Parser {
             return self.parse_paren_free_ctor(first_ident, start_span);
         }
 
-        // Parens-free product/union input: `Todos * String => Update
-        // { … }`. The declaration arrow `=>` binds looser than the
-        // type operators `*` / `+`, so the leading ident starts a
-        // compound input type. Rewind to re-include it, parse the whole
-        // input type, then require the arrow. (Generic-arg inputs like
-        // `Foo<T> * Bar` still need parens — `<` steers to the
-        // generic-params path below.)
-        if self.check(TokenKind::Star) || self.check(TokenKind::Plus) {
+        // Parens-free product/union/repetition input: `Todos * String
+        // => Update { … }`, `Int^2 => Ord { … }`. The declaration
+        // arrow `=>` binds looser than the type operators `*` / `+` /
+        // `^`, so the leading ident starts a compound input type.
+        // Rewind to re-include it, parse the whole input type, then
+        // require the arrow. (Generic-arg inputs like `Foo<T> * Bar`
+        // still need parens — `<` steers to the generic-params path
+        // below.)
+        if self.check(TokenKind::Star)
+            || self.check(TokenKind::Plus)
+            || self.check(TokenKind::Caret)
+        {
             self.pos -= 1;
             let input = self.parse_type_expr()?;
             let param = Param {
@@ -609,6 +613,23 @@ impl Parser {
             }
             if self.check(TokenKind::Dot) {
                 self.advance();
+                // Positional access into a repetition parameter:
+                // `Int.1`, `Int.2` (the language spec § Repetition).
+                // The index is 1-based and rides in the field name; the
+                // checker validates it against the parameter's count.
+                if self.check(TokenKind::IntLit) {
+                    let idx_tok = self.advance().clone();
+                    let start_span = expr.span();
+                    expr = Expr::FieldAccess {
+                        receiver: Box::new(expr),
+                        field: Ident {
+                            name: idx_tok.lexeme.clone(),
+                            span: idx_tok.span,
+                        },
+                        span: span_join(start_span, idx_tok.span),
+                    };
+                    continue;
+                }
                 let name_tok =
                     self.expect(TokenKind::Ident, "expected method or field name after `.`")?;
                 let ident = Ident {

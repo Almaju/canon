@@ -184,6 +184,36 @@ Unit => IntNeOfEqualIsFalse {
         -> TestResult
 }
 
+IntOrdOfEqualIsEqual = TestResult
+
+Unit => IntOrdOfEqualIsEqual {
+    3 -> Ord(3) -> (
+        * Equal => TestResult { Pass() }
+        * Greater => TestResult { Fail("expected Equal, got Greater") }
+        * Less => TestResult { Fail("expected Equal, got Less") }
+    )
+}
+
+IntOrdOfGreaterReceiverIsGreater = TestResult
+
+Unit => IntOrdOfGreaterReceiverIsGreater {
+    5 -> Ord(3) -> (
+        * Equal => TestResult { Fail("expected Greater, got Equal") }
+        * Greater => TestResult { Pass() }
+        * Less => TestResult { Fail("expected Greater, got Less") }
+    )
+}
+
+IntOrdOfLesserReceiverIsLess = TestResult
+
+Unit => IntOrdOfLesserReceiverIsLess {
+    3 -> Ord(5) -> (
+        * Equal => TestResult { Fail("expected Less, got Equal") }
+        * Greater => TestResult { Fail("expected Less, got Greater") }
+        * Less => TestResult { Pass() }
+    )
+}
+
 StringGeOfEarlierReceiverIsFalse = TestResult
 
 Unit => StringGeOfEarlierReceiverIsFalse {
@@ -275,4 +305,24 @@ Unit => StringNeOfEqualIsFalse {
         -> Ne("apple")
         -> Not
         -> TestResult
+}
+
+StringOrdOfEqualIsEqual = TestResult
+
+Unit => StringOrdOfEqualIsEqual {
+    "apple" -> Ord("apple") -> (
+        * Equal => TestResult { Pass() }
+        * Greater => TestResult { Fail("expected Equal, got Greater") }
+        * Less => TestResult { Fail("expected Equal, got Less") }
+    )
+}
+
+StringOrdOfPrefixReceiverIsLess = TestResult
+
+Unit => StringOrdOfPrefixReceiverIsLess {
+    "app" -> Ord("apple") -> (
+        * Equal => TestResult { Fail("expected Less, got Equal") }
+        * Greater => TestResult { Fail("expected Less, got Greater") }
+        * Less => TestResult { Pass() }
+    )
 }

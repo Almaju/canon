@@ -25,6 +25,7 @@ only ever reaches the wrappers below.
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
+| `Ord` | `Ord = Equal + Greater + Less` | pure Canon | three-way comparison: `a -> Ord(b)` on `Int^2` / `String^2`, dispatched in one step |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set -> List` = members, alphabetically |
 | `Int` | `Int = (String) => Result<Int, MalformedInt>` | pure Canon | the fallible parse constructor: `Int("42")?` |
 | `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |

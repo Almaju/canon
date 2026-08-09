@@ -1003,6 +1003,23 @@ impl<'m> WasmGen<'m> {
             }
         }
         for param in &func.params {
+            // A `T^N` repetition input binds no bare name: each of its N
+            // components gets a positional entry (`T.1` … `T.N`) that
+            // `Expr::FieldAccess` with a numeric field reads back.
+            if let TypeExpr::Repeat { ty, count, .. } = &param.ty {
+                if let TypeExpr::Named { name, .. } = ty.as_ref() {
+                    let repr = self.resolve_repr(name);
+                    let vt = repr.val_types();
+                    for i in 1..=*count {
+                        scope
+                            .vars
+                            .insert(format!("{name}.{i}"), (local_idx, repr.clone()));
+                        local_idx += vt.len() as u32;
+                        params.extend(vt.iter().copied());
+                    }
+                }
+                continue;
+            }
             if let TypeExpr::Named { name, .. } = &param.ty {
                 let repr = self.resolve_repr(name);
                 let vt = repr.val_types();
@@ -1109,6 +1126,21 @@ impl<'m> WasmGen<'m> {
             Expr::FieldAccess {
                 receiver, field, ..
             } => {
+                // Positional access into a repetition parameter:
+                // `Int.1` reads the local `build_local_scope` registered
+                // under the composite key `Int.1`. The receiver is the
+                // parameter's name, not a compilable value — no bare
+                // binding exists for it — so this must run before the
+                // receiver compile below.
+                if field.name.parse::<u64>().is_ok() {
+                    if let Expr::Ident(recv_ident) = receiver.as_ref() {
+                        let key = format!("{}.{}", recv_ident.name, field.name);
+                        if let Some((idx, repr)) = scope.vars.get(&key).cloned() {
+                            self.push_local(idx, &repr, f);
+                            return repr;
+                        }
+                    }
+                }
                 let recv_ty = self.compile_expr(receiver, scope, f);
                 if let Some(unwrapped) = newtype_unwrap_ty(&recv_ty, &field.name) {
                     return unwrapped;

@@ -740,6 +740,17 @@ impl<'m> WasmGen<'m> {
                                     }
                                 }
                             }
+                            // A `T^N` input registers its element type
+                            // once — the commutative key is per *type*,
+                            // and every component shares it.
+                            TypeExpr::Repeat { ty, .. } => {
+                                if let TypeExpr::Named {
+                                    name: elem_name, ..
+                                } = ty.as_ref()
+                                {
+                                    components.push(elem_name.clone());
+                                }
+                            }
                             _ => {}
                         }
                     }

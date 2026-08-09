@@ -1,0 +1,27 @@
+Ord = Equal
+  + Greater
+  + Less
+
+Int^2 => Ord {
+    Int.1 -> Lt(Int.2) -> (
+        * False => Ord {
+            Int.1 -> Eq(Int.2) -> (
+                * False => Ord { Greater() }
+                * True => Ord { Equal() }
+            )
+        }
+        * True => Ord { Less() }
+    )
+}
+
+String^2 => Ord {
+    String.1 -> Lt(String.2) -> (
+        * False => Ord {
+            String.1 -> Eq(String.2) -> (
+                * False => Ord { Greater() }
+                * True => Ord { Equal() }
+            )
+        }
+        * True => Ord { Less() }
+    )
+}

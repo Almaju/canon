@@ -485,6 +485,15 @@ impl<'m> WasmGen<'m> {
             }
         }
         for param in &func.params {
+            if let TypeExpr::Repeat { ty, count, .. } = &param.ty {
+                // A `T^N` input is N positional values of the element
+                // type at the call boundary.
+                let repr = self.resolve_type_expr_repr(ty);
+                for _ in 0..*count {
+                    params.extend(repr.val_types());
+                }
+                continue;
+            }
             let repr = self.resolve_type_expr_repr(&param.ty);
             params.extend(repr.val_types());
         }

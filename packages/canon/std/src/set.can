@@ -18,14 +18,10 @@ Set * String => Added {
     Set -> (
         * Absent => Added { Absent() -> Entry(String) }
         * Entry => Added {
-            String -> Lt(Entry.Item) -> (
-                * False => Added {
-                    String -> Eq(Entry.Item) -> (
-                        * False => Added { Entry.Item -> Entry(Entry.Remaining -> Added(String)) }
-                        * True => Added { Set }
-                    )
-                }
-                * True => Added { Set -> Entry(String) }
+            String -> Ord(Entry.Item) -> (
+                * Equal => Added { Set }
+                * Greater => Added { Entry.Item -> Entry(Entry.Remaining -> Added(String)) }
+                * Less => Added { Set -> Entry(String) }
             )
         }
     )

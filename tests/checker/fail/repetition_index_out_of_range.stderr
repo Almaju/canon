@@ -1,0 +1,1 @@
+error[tests/checker/fail/repetition_index_out_of_range.can:4:18]: positional access `.3` is out of range: `Int^2` has components `.1` … `.2`

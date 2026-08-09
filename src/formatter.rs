@@ -714,6 +714,7 @@ fn first_atom_is_bare_named(ty: &TypeExpr) -> bool {
         TypeExpr::Named { generics, .. } => generics.is_empty(),
         TypeExpr::Product { fields, .. } => fields.first().is_some_and(first_atom_is_bare_named),
         TypeExpr::Union { variants, .. } => variants.first().is_some_and(first_atom_is_bare_named),
+        TypeExpr::Repeat { ty, .. } => first_atom_is_bare_named(ty),
         _ => false,
     }
 }
