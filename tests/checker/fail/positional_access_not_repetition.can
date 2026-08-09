@@ -1,0 +1,3 @@
+Unit => Program {
+    "hi".1 -> Print
+}

@@ -102,6 +102,15 @@ Rules:
 (`byte.1`, `byte.2`); `T^*` is the Kleene star, zero or more `T`s,
 completing the semiring reading: sums, products, exponents.
 
+Where `T^N` works today is **constructor inputs**: `Int^2 => Ord` binds
+two positional `Int` components, reached as `Int.1` / `Int.2` in the
+body (a bare `Int` reference is an error -- position is the identity),
+and bound positionally at call sites (`3 -> Ord(5)`: the receiver is
+`.1`). See [Functions § The Binding Rule](./functions.md#the-binding-rule)
+and the stdlib's `Ord` for the reference use. A `T^N` component inside
+a *type definition* is accepted structurally but has no value-level
+lowering yet.
+
 `List<T>` is itself compiler-supplied, not derived from `T^*` --
 `List(...)` is its value-level constructor, with methods like
 `Mapped`, `Filtered`, `Taken`, `First`, and `At`. Indexing is **1-based** everywhere

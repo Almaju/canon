@@ -1,0 +1,1 @@
+error[tests/checker/fail/positional_access_not_repetition.can:2:5]: positional access `.1` applies only to repetition parameters (`T^N` inputs)

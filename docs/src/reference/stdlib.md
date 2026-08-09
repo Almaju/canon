@@ -25,6 +25,7 @@ only ever reaches the wrappers below.
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
+| `Ord` | `Ord = Equal + Greater + Less` | pure Canon | three-way comparison: `a -> Ord(b)` on `Int^2` / `String^2`, dispatched in one step |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set -> List` = members, alphabetically |
 | `Bool` | `And`, `Not`, `Or` | pure Canon | boolean algebra by dispatch — the only builtin comparisons are `Eq`/`Lt` |
 | `Int` | `Int = (String) => Result<Int, MalformedInt>`, `Ge`, `Gt`, `Le`, `Ne`, `Maximum`, `Minimum` | pure Canon | the fallible parse constructor (`Int("42")?`) plus derived comparisons |
@@ -286,21 +287,21 @@ ConsumedObjectTail, Contains, Contents, Cwd, Date, DatePart, Day,
 DecimalDigit, Decimals, Decoded, DecodedBlocks, DecodedOne,
 DecodedPairs, DecodedThree, DecodedTwo, DigitRun, Digits,
 DispatchedValue, Div, Doe, Doy, Dropped, El, ElAttr, Encoded,
-EncodedOne, EncodedThree, EncodedTwo, Entry, Era, EscapeChar,
+EncodedOne, EncodedThree, EncodedTwo, Entry, Equal, Era, EscapeChar,
 EscapeOther, EscapePlain, EscapeUnicode, Escaped, EscapedByte,
 EscapedMeaning, EscapedTail, Exited, Fail, FenceBody, FenceEnd,
-FenceInfo, Fetched, Field, File, Fraction, Frag, From, Ge, Gt, H1,
+FenceInfo, Fetched, Field, File, Fraction, Frag, From, Ge, Greater, Gt, H1,
 HashCount, HeadCells, Headers, HeadingHtml, Hex, HexByte, HexChar,
 HexDecoded, HexDigit, HexEncoded, HexTail, HexVal, HostChecked, Hour,
 Html, HttpError, Inline, Inserted, Int, InvalidUrl, IoError,
 IsBlockStart, IsDigit, IsExpMarker, IsFence, IsHeading, IsHex,
 IsIntDigit, IsItem, IsOrdered, IsPara, IsQuote, IsSepLine, IsSign,
 IsSubItem, IsTable, IsWs, Item, ItemEnd, ItemText, Json, Key, KeyEq, KeyExpected,
-KeyParsed, KeyStart, Keys, Le, Length, Li, LineEnd, List, ListEnd,
+KeyParsed, KeyStart, Keys, Le, Length, Less, Li, LineEnd, List, ListEnd,
 ListItems, Lowercased, LowercasedByte, LowercasedTail, Magnitude,
 MalformedBase64, MalformedHex, MalformedInt, MalformedJson, Map, Mark,
 Markdown, Maximum, Minimum, Minute, Month, Mp, Msg, Ne, Negated,
-NextPipe, Nibble, Node, Not, Now, Number, Opened, OpenedObject, Or,
+NextPipe, Nibble, Node, Not, Now, Number, Opened, OpenedObject, Or, Ord,
 OrderedEnd, OrderedItems, OtherBool, OtherFloat, OtherInt, OtherString,
 Padded, ParaBody, ParaEnd, ParaText, ParenClose, ParseFail, ParsePos, ParseStep,
 ParsedArray, ParsedArrayItems, ParsedArrayTail, ParsedExp,
