@@ -41,7 +41,7 @@ fn main() {
         "install" => cmd_install(&rest),
         "publish" => cmd_publish(&rest),
         "lsp" => canon::lsp::run(),
-        "upgrade" | "update" => cmd_upgrade(&rest),
+        "upgrade" => cmd_upgrade(&rest),
         "use" => toolchain::cmd_use(&rest),
         "--version" | "-V" => {
             println!("canon {}", VERSION);
@@ -94,7 +94,7 @@ fn print_help() {
     println!("                            Build the target and push its component to an");
     println!("                            OCI registry (shells out to `wkg`)");
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  update [--check]          Update the active toolchain (alias: upgrade)");
+    println!("  upgrade [--check]         Update the active toolchain");
     println!("  use [stable|nightly]      Show the active toolchain, or make this");
     println!("                            directory (and below) use one — installing it");
     println!("                            if needed. Run in ~ to set it for everything.");
@@ -1724,7 +1724,7 @@ fn cmd_upgrade(args: &[String]) {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: canon update [--check]   (alias: upgrade)");
+                println!("Usage: canon upgrade [--check]");
                 println!();
                 println!("  Updates the active toolchain to the latest build on its channel.");
                 println!("  --check   Only check whether a newer stable release is available.");
