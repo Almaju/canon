@@ -40,7 +40,7 @@ fn main() {
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
         "lsp" => canon::lsp::run(),
-        "upgrade" | "update" => cmd_upgrade(&rest),
+        "upgrade" => cmd_upgrade(&rest),
         "use" => toolchain::cmd_use(&rest),
         "--version" | "-V" => {
             println!("canon {}", VERSION);
@@ -90,7 +90,7 @@ fn print_help() {
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  update [--check]          Update the active toolchain (alias: upgrade)");
+    println!("  upgrade [--check]         Update the active toolchain");
     println!("  use [stable|nightly]      Show the active toolchain, or make this");
     println!("                            directory (and below) use one — installing it");
     println!("                            if needed. Run in ~ to set it for everything.");
@@ -1658,7 +1658,7 @@ fn cmd_upgrade(args: &[String]) {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: canon update [--check]   (alias: upgrade)");
+                println!("Usage: canon upgrade [--check]");
                 println!();
                 println!("  Updates the active toolchain to the latest build on its channel.");
                 println!("  --check   Only check whether a newer stable release is available.");
