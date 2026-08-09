@@ -24,10 +24,8 @@ Text = String
 
 Query * Slug * Label * Text => Hit {
     Text.String -> Holds(Query.String -> Needle * Start(1)) -> (
-        * False => Hit { Html("") }
-        * True => Hit {
-            <button class="result" data-msg="Nav:{Slug -> String}">{Label -> String}</button>
-        }
+        * False { Html("") }
+        * True { <button class="result" data-msg="Nav:{Slug -> String}">{Label -> String}</button> }
     )
 }
 
@@ -201,39 +199,35 @@ Query => Hits {
 
 String * Needle * Start => Holds {
     Start -> Gt(String -> Length) -> (
-        * False => Holds {
+        * False {
             String -> LineHolds(Needle * Start * String -> Stop(Start)) -> (
-                * False => Holds {
-                    String -> Holds(Needle * String -> Stop(Start) -> Sum(1) -> Start)
-                }
-                * True => Holds { True() }
+                * False { String -> Holds(Needle * String -> Stop(Start) -> Sum(1) -> Start) }
+                * True { True() }
             )
         }
-        * True => Holds { False() }
+        * True { False() }
     )
 }
 
 String * Needle * Start * Stop => LineHolds {
     Start -> Sum(Needle -> Length -> Difference(1)) -> Gt(Stop -> Difference(1)) -> (
-        * False => LineHolds {
+        * False {
             String -> PrefixMatch(Needle * Start * Step(1)) -> (
-                * False => LineHolds {
-                    String -> LineHolds(Needle * Start -> Sum(1) -> Start * Stop)
-                }
-                * True => LineHolds { True() }
+                * False { String -> LineHolds(Needle * Start -> Sum(1) -> Start * Stop) }
+                * True { True() }
             )
         }
-        * True => LineHolds { False() }
+        * True { False() }
     )
 }
 
 Int => Lowered {
     Int -> Ge(65) -> (
-        * False => Lowered { Int }
-        * True => Lowered {
+        * False { Int }
+        * True {
             Int -> Le(90) -> (
-                * False => Lowered { Int }
-                * True => Lowered { Int -> Sum(32) }
+                * False { Int }
+                * True { Int -> Sum(32) }
             )
         }
     )
@@ -241,29 +235,27 @@ Int => Lowered {
 
 String * Needle * Start * Step => PrefixMatch {
     Step -> Gt(Needle -> Length) -> (
-        * False => PrefixMatch {
+        * False {
             String
                 -> ByteAt(Start -> Sum(Step) -> Difference(1))
                 -> Lowered
                 -> Eq(Needle -> ByteAt(Step) -> Lowered) -> (
-                * False => PrefixMatch { False() }
-                * True => PrefixMatch {
-                    String -> PrefixMatch(Needle * Start * Step -> Sum(1) -> Step)
-                }
+                * False { False() }
+                * True { String -> PrefixMatch(Needle * Start * Step -> Sum(1) -> Step) }
             )
         }
-        * True => PrefixMatch { True() }
+        * True { True() }
     )
 }
 
 Query => Results {
     Query -> Hits -> String -> Length -> Eq(0) -> (
-        * False => Results {
+        * False {
             <div class="results"><div class="results-head">Matches for “{Query -> String}”</div>{
                 Query -> Hits
             }</div>
         }
-        * True => Results {
+        * True {
             <div class="results"><div class="results-head">No matches for “{Query -> String}”</div></div>
         }
     )
@@ -271,12 +263,12 @@ Query => Results {
 
 String * Start => Stop {
     Start -> Gt(String -> Length) -> (
-        * False => Stop {
+        * False {
             String -> ByteAt(Start) -> Eq(10) -> (
-                * False => Stop { String -> Stop(Start -> Sum(1) -> Start) }
-                * True => Stop { Start }
+                * False { String -> Stop(Start -> Sum(1) -> Start) }
+                * True { Start }
             )
         }
-        * True => Stop { Start }
+        * True { Start }
     )
 }

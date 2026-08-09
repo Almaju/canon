@@ -153,9 +153,9 @@ Sign = Negative
 
 Ord => Sign {
     Ord -> (
-        * Equal => Sign { Zero() }
-        * Greater => Sign { Positive() }
-        * Less => Sign { Negative() }
+        * Equal { Zero() }
+        * Greater { Positive() }
+        * Less { Negative() }
     )
 }
 ```
@@ -182,6 +182,28 @@ Algebraically, dispatch is the isomorphism
 
 made literal: a sum value applied to a product of handlers.
 
+### Arm Types
+
+An arm's type is fully determined wherever the dispatch is a **return
+value** -- the last expression of a function, lambda, or arm body --
+so spelling it there is ceremony, and the elided form above
+(`* Equal { … }`) is canonical:
+
+- **In return position, arms elide their type**; each elided arm takes
+  the enclosing declaration's return type. An explicit annotation that
+  restates that type is a format error (`canon check --fix` strips it),
+  and one that restates it *through an alias chain* (`=> Unit` inside a
+  `Unit => Program` entry, `=> TestResult` inside a test newtype's
+  constructor) is a checker error directing to the elided spelling --
+  the same rule, backstopped where the purely syntactic formatter
+  cannot see aliases.
+- **Anywhere else** -- a dispatch on a non-final body line, or nested
+  mid-chain -- there is no context type to elide into, so the arm
+  spells its type: `* Pattern => Type { … }`. An elided arm outside
+  return position is a checker error.
+- An annotation that genuinely *differs* from the context type (an arm
+  producing a compatible newtype) survives in either position.
+
 ### Payload Binding
 
 When a variant carries data, the arm body sees the payload under a
@@ -197,8 +219,8 @@ Outcome = Result<String, IoError>
 
 Outcome => Message {
     Outcome -> (
-        * Err<IoError> => Message { IoError }
-        * Ok<String> => Message { String }
+        * Err<IoError> { IoError }
+        * Ok<String> { String }
     )
 }
 ```
@@ -228,9 +250,9 @@ catch-all** naming the scrutinee's type:
 ```canon
 String => String {
     String -> (
-        * "/notes" => String { "index" }
-        * "/notes/1" => String { "note one" }
-        * String => String { `not found: {String}` }
+        * "/notes" { "index" }
+        * "/notes/1" { "note one" }
+        * String { `not found: {String}` }
     )
 }
 ```
@@ -263,7 +285,7 @@ every dispatch arm binds one, and the name is its type:
 ```canon
 Unit => Program {
     3 -> Sum(4) -> (
-        * Int => Unit {
+        * Int {
             Int
                 -> String
                 -> Print

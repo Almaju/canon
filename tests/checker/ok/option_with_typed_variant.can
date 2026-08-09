@@ -1,6 +1,6 @@
 Unit => Program {
     Some("hello") -> (
-        * None => Unit { "none" -> Print }
-        * Some<String> => Unit { "some" -> Print }
+        * None { "none" -> Print }
+        * Some<String> { "some" -> Print }
     )
 }

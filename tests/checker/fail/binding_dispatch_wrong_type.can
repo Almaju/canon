@@ -1,5 +1,5 @@
 Unit => Program {
     3 -> Sum(4) -> (
-        * String => Unit { "x" -> Print }
+        * String { "x" -> Print }
     )
 }

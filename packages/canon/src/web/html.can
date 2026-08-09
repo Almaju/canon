@@ -36,21 +36,21 @@ Attr * String * Tag => ElAttr {
 
 String => Escaped {
     String -> Length -> Eq(0) -> (
-        * False => Escaped {
+        * False {
             String -> ByteAt(1) -> (
-                * 34 => Escaped {
+                * 34 {
                     Html(`&quot;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
-                * 38 => Escaped {
+                * 38 {
                     Html(`&amp;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
-                * 60 => Escaped {
+                * 60 {
                     Html(`&lt;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
-                * 62 => Escaped {
+                * 62 {
                     Html(`&gt;{String -> Substring(From(2) * String -> Length -> To) -> Escaped}`)
                 }
-                * Int => Escaped {
+                * Int {
                     String
                         -> Substring(From(1) * To(1))
                         -> Joined(String -> Substring(From(2) * String -> Length -> To) -> Escaped)
@@ -58,7 +58,7 @@ String => Escaped {
                 }
             )
         }
-        * True => Escaped { Html("") }
+        * True { Html("") }
     )
 }
 

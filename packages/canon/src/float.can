@@ -10,8 +10,8 @@ OtherFloat = Float
 
 Float * OtherFloat => Ge {
     OtherFloat -> Lt(Float) -> (
-        * False => Ge { Float -> Eq(OtherFloat) }
-        * True => Ge { True() }
+        * False { Float -> Eq(OtherFloat) }
+        * True { True() }
     )
 }
 
@@ -21,14 +21,14 @@ Float * OtherFloat => Gt {
 
 Float * OtherFloat => Le {
     Float -> Lt(OtherFloat) -> (
-        * False => Le { Float -> Eq(OtherFloat) }
-        * True => Le { True() }
+        * False { Float -> Eq(OtherFloat) }
+        * True { True() }
     )
 }
 
 Float * OtherFloat => Ne {
     Float -> Eq(OtherFloat) -> (
-        * False => Ne { True() }
-        * True => Ne { False() }
+        * False { True() }
+        * True { False() }
     )
 }

@@ -188,9 +188,9 @@ IntOrdOfEqualIsEqual = TestResult
 
 Unit => IntOrdOfEqualIsEqual {
     3 -> Ord(3) -> (
-        * Equal => TestResult { Pass() }
-        * Greater => TestResult { Fail("expected Equal, got Greater") }
-        * Less => TestResult { Fail("expected Equal, got Less") }
+        * Equal { Pass() }
+        * Greater { Fail("expected Equal, got Greater") }
+        * Less { Fail("expected Equal, got Less") }
     )
 }
 
@@ -198,9 +198,9 @@ IntOrdOfGreaterReceiverIsGreater = TestResult
 
 Unit => IntOrdOfGreaterReceiverIsGreater {
     5 -> Ord(3) -> (
-        * Equal => TestResult { Fail("expected Greater, got Equal") }
-        * Greater => TestResult { Pass() }
-        * Less => TestResult { Fail("expected Greater, got Less") }
+        * Equal { Fail("expected Greater, got Equal") }
+        * Greater { Pass() }
+        * Less { Fail("expected Greater, got Less") }
     )
 }
 
@@ -208,9 +208,9 @@ IntOrdOfLesserReceiverIsLess = TestResult
 
 Unit => IntOrdOfLesserReceiverIsLess {
     3 -> Ord(5) -> (
-        * Equal => TestResult { Fail("expected Less, got Equal") }
-        * Greater => TestResult { Fail("expected Less, got Greater") }
-        * Less => TestResult { Pass() }
+        * Equal { Fail("expected Less, got Equal") }
+        * Greater { Fail("expected Less, got Greater") }
+        * Less { Pass() }
     )
 }
 
@@ -311,9 +311,9 @@ StringOrdOfEqualIsEqual = TestResult
 
 Unit => StringOrdOfEqualIsEqual {
     "apple" -> Ord("apple") -> (
-        * Equal => TestResult { Pass() }
-        * Greater => TestResult { Fail("expected Equal, got Greater") }
-        * Less => TestResult { Fail("expected Equal, got Less") }
+        * Equal { Pass() }
+        * Greater { Fail("expected Equal, got Greater") }
+        * Less { Fail("expected Equal, got Less") }
     )
 }
 
@@ -321,8 +321,8 @@ StringOrdOfPrefixReceiverIsLess = TestResult
 
 Unit => StringOrdOfPrefixReceiverIsLess {
     "app" -> Ord("apple") -> (
-        * Equal => TestResult { Fail("expected Less, got Equal") }
-        * Greater => TestResult { Fail("expected Less, got Greater") }
-        * Less => TestResult { Pass() }
+        * Equal { Fail("expected Less, got Equal") }
+        * Greater { Fail("expected Less, got Greater") }
+        * Less { Pass() }
     )
 }

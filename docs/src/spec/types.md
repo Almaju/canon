@@ -209,8 +209,8 @@ Url = String
 
 String => Result<Url, InvalidUrl> {
     String -> Length -> Gt(0) -> (
-        * False => Result<Url, InvalidUrl> { String -> InvalidUrl -> Err }
-        * True => Result<Url, InvalidUrl> { String -> Ok }
+        * False { String -> InvalidUrl -> Err }
+        * True { String -> Ok }
     )
 }
 ```
@@ -293,12 +293,15 @@ Two escape hatches exist, both deliberate:
 ## No Signature Inference
 
 Every signature is written explicitly: function signatures, lambda
-signatures, dispatch arm types. Declared signature and checked
-signature must match exactly. The rule is about *signatures*, not
-about inference generally -- the compiler infers plenty below the
-signature line (generic instantiation, suspension and await points,
-boxing, argument-to-component binding, imports), but never a type the
-writer should have declared.
+signatures, and the dispatch arm types context doesn't already spell
+(an arm in return position takes the enclosing declaration's written
+return type -- [Expressions § Arm Types](./expressions.md#arm-types) --
+which is propagation from a declared signature, not inference).
+Declared signature and checked signature must match exactly. The rule
+is about *signatures*, not about inference generally -- the compiler
+infers plenty below the signature line (generic instantiation,
+suspension and await points, boxing, argument-to-component binding,
+imports), but never a type the writer should have declared.
 
 ## Dead Code
 

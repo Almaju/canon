@@ -12,20 +12,20 @@ Next = Chain
 
 Chain => LastLabel {
     Chain -> (
-        * Link => LastLabel {
+        * Link {
             Link.Next -> Length -> Eq(0) -> (
-                * False => LastLabel { Link.Next -> LastLabel }
-                * True => LastLabel { Link.Label }
+                * False { Link.Next -> LastLabel }
+                * True { Link.Label }
             )
         }
-        * Stop => LastLabel { "" }
+        * Stop { "" }
     )
 }
 
 Chain => Length {
     Chain -> (
-        * Link => Length { Link.Next -> Length -> Sum(1) }
-        * Stop => Length { 0 }
+        * Link { Link.Next -> Length -> Sum(1) }
+        * Stop { 0 }
     )
 }
 

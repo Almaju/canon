@@ -73,27 +73,27 @@ Unit => LoadButton {
 
 Todos * String => Update {
     String -> Substring(From(1) * To(4)) -> Prefix -> (
-        * "Add:" => Todos {
+        * "Add:" {
             String
                 -> Substring(From(5) * String -> Length -> To)
                 -> Title
                 -> AddedTodo(Todos)
         }
-        * "Clea" => Todos { Todos -> Cleared }
-        * "Dele" => Todos {
+        * "Clea" { Todos -> Cleared }
+        * "Dele" {
             String
                 -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> RemovedAt(Todos)
         }
-        * "Load" => Todos { String -> Substring(From(6) * String -> Length -> To) -> Todos }
-        * "Togg" => Todos {
+        * "Load" { String -> Substring(From(6) * String -> Length -> To) -> Todos }
+        * "Togg" {
             String
                 -> Substring(From(8) * String -> Length -> To)
                 -> ParsedNum
                 -> ToggledAt(Todos)
         }
-        * Prefix => Todos { Todos }
+        * Prefix { Todos }
     )
 }
 ```
@@ -128,22 +128,20 @@ Unit => PlainText {
 
 Request => Response {
     Request.method() -> (
-        * "GET" => Response {
+        * "GET" {
             Request.path() -> (
-                * None => Response { Body("bad request") -> Response(Status(400) * PlainText()) }
-                * Some<String> => Response {
+                * None { Body("bad request") -> Response(Status(400) * PlainText()) }
+                * Some<String> {
                     String -> (
-                        * "/todos" => Response {
+                        * "/todos" {
                             Status(200) -> Response(PlainText() * Seeded() -> String -> Body)
                         }
-                        * String => Response {
-                            Body("not found") -> Response(Status(404) * PlainText())
-                        }
+                        * String { Body("not found") -> Response(Status(404) * PlainText()) }
                     )
                 }
             )
         }
-        * String => Response { Body("method not allowed") -> Response(Status(405) * PlainText()) }
+        * String { Body("method not allowed") -> Response(Status(405) * PlainText()) }
     )
 }
 ```

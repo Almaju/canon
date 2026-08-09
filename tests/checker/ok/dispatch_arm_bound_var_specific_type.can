@@ -12,8 +12,8 @@ JsonValue = JsonMissing + JsonObject
 
 JsonValue => Described {
     JsonValue -> (
-        * JsonMissing => Described { "missing" -> Print }
-        * JsonObject => Described { JsonObject -> Extracted -> Print }
+        * JsonMissing { "missing" -> Print }
+        * JsonObject { JsonObject -> Extracted -> Print }
     )
 }
 

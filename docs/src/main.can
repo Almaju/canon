@@ -42,66 +42,58 @@ Update = Model
 
 Model => Body {
     Model.Query -> Eq("") -> (
-        * False => Body { Model.Query -> Results }
-        * True => Body {
-            Model.Page
-                -> Content
-                -> String
-                -> Joined(Model.Page -> Pager -> String)
-                -> Html
-        }
+        * False { Model.Query -> Results }
+        * True { Model.Page -> Content -> String -> Joined(Model.Page -> Pager -> String) -> Html }
     )
 }
 
 Page => Content {
     Page -> (
-        * "async" => Content { Page -> Tour(Async() -> Html -> Lesson) }
-        * "building-and-running" => Content { BuildingAndRunning() -> Html }
-        * "calls" => Content { Page -> Tour(Calls() -> Html -> Lesson) }
-        * "canon-for-ai" => Content { CanonForAi() -> Html }
-        * "capabilities" => Content { Page -> Tour(Capabilities() -> Html -> Lesson) }
-        * "codegen-gaps" => Content { CodegenGaps() -> Html }
-        * "coming-from" => Content { ComingFrom() -> Html }
-        * "compilation" => Content { Compilation() -> Html }
-        * "constructors" => Content { Page -> Tour(Constructors() -> Html -> Lesson) }
-        * "contributing" => Content { Contributing() -> Html }
-        * "deploying" => Content { Deploying() -> Html }
-        * "dispatch" => Content { Page -> Tour(Dispatch() -> Html -> Lesson) }
-        * "effects-and-async" => Content { EffectsAndAsync() -> Html }
-        * "errors" => Content { Page -> Tour(Errors() -> Html -> Lesson) }
-        * "expressions" => Content { Expressions() -> Html }
-        * "format-strings" => Content { Page -> Tour(FormatStrings() -> Html -> Lesson) }
-        * "fullstack" => Content { Fullstack() -> Html }
-        * "functions" => Content { Functions() -> Html }
-        * "hello" => Content { Page -> Tour(Hello() -> Html -> Lesson) }
-        * "how-do-i" => Content { HowDoI() -> Html }
-        * "installation" => Content { Installation() -> Html }
-        * "lexical-structure" => Content { LexicalStructure() -> Html }
-        * "literal-dispatch" => Content { Page -> Tour(LiteralDispatch() -> Html -> Lesson) }
-        * "markdown-renderer" => Content { MarkdownRenderer() -> Html }
-        * "markdown-web" => Content { MarkdownWeb() -> Html }
-        * "modules" => Content { Modules() -> Html }
-        * "multifile" => Content { Multifile() -> Html }
-        * "newtypes" => Content { Page -> Tour(Newtypes() -> Html -> Lesson) }
-        * "notes-api" => Content { NotesApi() -> Html }
-        * "ordering" => Content { Ordering() -> Html }
-        * "overview" => Content { Overview() -> Html }
-        * "philosophy" => Content { Philosophy() -> Html }
-        * "pipes" => Content { Page -> Tour(Pipes() -> Html -> Lesson) }
-        * "play" => Content { Play() }
-        * "recursion" => Content { Page -> Tour(Recursion() -> Html -> Lesson) }
-        * "result-newtypes" => Content { Page -> Tour(ResultNewtypes() -> Html -> Lesson) }
-        * "stdlib" => Content { Stdlib() -> Html }
-        * "testing" => Content { Page -> Tour(Testing() -> Html -> Lesson) }
-        * "types" => Content { Types() -> Html }
-        * "types-only" => Content { TypesOnly() -> Html }
-        * "validated-constructors" => Content {
-            Page -> Tour(ValidatedConstructors() -> Html -> Lesson)
-        }
-        * "wasi" => Content { Wasi() -> Html }
-        * "web-target" => Content { WebTarget() -> Html }
-        * "worlds" => Content { Page -> Tour(Worlds() -> Html -> Lesson) }
-        * String => Content { Introduction() -> Html }
+        * "async" { Page -> Tour(Async() -> Html -> Lesson) }
+        * "building-and-running" { BuildingAndRunning() -> Html }
+        * "calls" { Page -> Tour(Calls() -> Html -> Lesson) }
+        * "canon-for-ai" { CanonForAi() -> Html }
+        * "capabilities" { Page -> Tour(Capabilities() -> Html -> Lesson) }
+        * "codegen-gaps" { CodegenGaps() -> Html }
+        * "coming-from" { ComingFrom() -> Html }
+        * "compilation" { Compilation() -> Html }
+        * "constructors" { Page -> Tour(Constructors() -> Html -> Lesson) }
+        * "contributing" { Contributing() -> Html }
+        * "deploying" { Deploying() -> Html }
+        * "dispatch" { Page -> Tour(Dispatch() -> Html -> Lesson) }
+        * "effects-and-async" { EffectsAndAsync() -> Html }
+        * "errors" { Page -> Tour(Errors() -> Html -> Lesson) }
+        * "expressions" { Expressions() -> Html }
+        * "format-strings" { Page -> Tour(FormatStrings() -> Html -> Lesson) }
+        * "fullstack" { Fullstack() -> Html }
+        * "functions" { Functions() -> Html }
+        * "hello" { Page -> Tour(Hello() -> Html -> Lesson) }
+        * "how-do-i" { HowDoI() -> Html }
+        * "installation" { Installation() -> Html }
+        * "lexical-structure" { LexicalStructure() -> Html }
+        * "literal-dispatch" { Page -> Tour(LiteralDispatch() -> Html -> Lesson) }
+        * "markdown-renderer" { MarkdownRenderer() -> Html }
+        * "markdown-web" { MarkdownWeb() -> Html }
+        * "modules" { Modules() -> Html }
+        * "multifile" { Multifile() -> Html }
+        * "newtypes" { Page -> Tour(Newtypes() -> Html -> Lesson) }
+        * "notes-api" { NotesApi() -> Html }
+        * "ordering" { Ordering() -> Html }
+        * "overview" { Overview() -> Html }
+        * "philosophy" { Philosophy() -> Html }
+        * "pipes" { Page -> Tour(Pipes() -> Html -> Lesson) }
+        * "play" { Play() }
+        * "recursion" { Page -> Tour(Recursion() -> Html -> Lesson) }
+        * "result-newtypes" { Page -> Tour(ResultNewtypes() -> Html -> Lesson) }
+        * "stdlib" { Stdlib() -> Html }
+        * "testing" { Page -> Tour(Testing() -> Html -> Lesson) }
+        * "types" { Types() -> Html }
+        * "types-only" { TypesOnly() -> Html }
+        * "validated-constructors" { Page -> Tour(ValidatedConstructors() -> Html -> Lesson) }
+        * "wasi" { Wasi() -> Html }
+        * "web-target" { WebTarget() -> Html }
+        * "worlds" { Page -> Tour(Worlds() -> Html -> Lesson) }
+        * String { Introduction() -> Html }
     )
 }
 
@@ -158,8 +150,8 @@ Unit => Init {
 
 Page * Slug * Label => NavItem {
     Page.String -> Eq(Slug.String) -> (
-        * False => NavItem { Html(`<button data-msg="Nav:{Slug.String}">{Label.String}</button>`) }
-        * True => NavItem {
+        * False { Html(`<button data-msg="Nav:{Slug.String}">{Label.String}</button>`) }
+        * True {
             Html(`<button class="active" aria-current="page" data-msg="Nav:{Slug.String}">{Label.String}</button>`)
         }
     )
@@ -171,315 +163,315 @@ Slug * Label => Next {
 
 Page => Pager {
     Page -> (
-        * "async" => Pager {
+        * "async" {
             Html(`<nav class="pager">{
                 Slug("capabilities")
                     -> Prev(Label("Effects Are Values"))
                     -> String
             }{Slug("testing") -> Next(Label("Tests Are Types")) -> String}</nav>`)
         }
-        * "building-and-running" => Pager {
+        * "building-and-running" {
             Html(`<nav class="pager">{Slug("web-target") -> Prev(Label("The Web Target")) -> String}{
                 Slug("deploying")
                     -> Next(Label("Deploying"))
                     -> String
             }</nav>`)
         }
-        * "calls" => Pager {
+        * "calls" {
             Html(`<nav class="pager">{
                 Slug("constructors")
                     -> Prev(Label("Conversion Is Construction"))
                     -> String
             }{Slug("dispatch") -> Next(Label("Branching Is Dispatch")) -> String}</nav>`)
         }
-        * "canon-for-ai" => Pager {
+        * "canon-for-ai" {
             Html(`<nav class="pager">{
                 Slug("coming-from")
                     -> Prev(Label("Is Canon for You?"))
                     -> String
             }{Slug("installation") -> Next(Label("Installation")) -> String}</nav>`)
         }
-        * "capabilities" => Pager {
+        * "capabilities" {
             Html(`<nav class="pager">{
                 Slug("validated-constructors")
                     -> Prev(Label("Constructors That Check"))
                     -> String
             }{Slug("async") -> Next(Label("Async Without a Keyword")) -> String}</nav>`)
         }
-        * "codegen-gaps" => Pager {
+        * "codegen-gaps" {
             Html(`<nav class="pager">{Slug("deploying") -> Prev(Label("Deploying")) -> String}{
                 Slug("overview")
                     -> Next(Label("Overview"))
                     -> String
             }</nav>`)
         }
-        * "coming-from" => Pager {
+        * "coming-from" {
             Html(`<nav class="pager">{Slug("philosophy") -> Prev(Label("The Philosophy")) -> String}{
                 Slug("canon-for-ai")
                     -> Next(Label("Canon for AI"))
                     -> String
             }</nav>`)
         }
-        * "compilation" => Pager {
+        * "compilation" {
             Html(`<nav class="pager">{
                 Slug("effects-and-async")
                     -> Prev(Label("Effects &amp; Async"))
                     -> String
             }{Slug("types-only") -> Next(Label("Types-Only Canon")) -> String}</nav>`)
         }
-        * "constructors" => Pager {
+        * "constructors" {
             Html(`<nav class="pager">{
                 Slug("format-strings")
                     -> Prev(Label("Strings With Holes"))
                     -> String
             }{Slug("calls") -> Next(Label("Calls With More Than One Input")) -> String}</nav>`)
         }
-        * "contributing" => Pager {
+        * "contributing" {
             Html(`<nav class="pager">{
                 Slug("types-only")
                     -> Prev(Label("Types-Only Canon"))
                     -> String
             }</nav>`)
         }
-        * "deploying" => Pager {
+        * "deploying" {
             Html(`<nav class="pager">{
                 Slug("building-and-running")
                     -> Prev(Label("The canon CLI"))
                     -> String
             }{Slug("codegen-gaps") -> Next(Label("Known Codegen Gaps")) -> String}</nav>`)
         }
-        * "dispatch" => Pager {
+        * "dispatch" {
             Html(`<nav class="pager">{
                 Slug("calls")
                     -> Prev(Label("Calls With More Than One Input"))
                     -> String
             }{Slug("literal-dispatch") -> Next(Label("Dispatch on Literals")) -> String}</nav>`)
         }
-        * "effects-and-async" => Pager {
+        * "effects-and-async" {
             Html(`<nav class="pager">{
                 Slug("modules")
                     -> Prev(Label("Modules &amp; Packages"))
                     -> String
             }{Slug("compilation") -> Next(Label("Compilation &amp; ABI")) -> String}</nav>`)
         }
-        * "errors" => Pager {
+        * "errors" {
             Html(`<nav class="pager">{
                 Slug("result-newtypes")
                     -> Prev(Label("Naming What Happened"))
                     -> String
             }{Slug("validated-constructors") -> Next(Label("Constructors That Check")) -> String}</nav>`)
         }
-        * "expressions" => Pager {
+        * "expressions" {
             Html(`<nav class="pager">{Slug("types") -> Prev(Label("Types")) -> String}{
                 Slug("functions")
                     -> Next(Label("Functions"))
                     -> String
             }</nav>`)
         }
-        * "format-strings" => Pager {
+        * "format-strings" {
             Html(`<nav class="pager">{
                 Slug("newtypes")
                     -> Prev(Label("Types Are the Vocabulary"))
                     -> String
             }{Slug("constructors") -> Next(Label("Conversion Is Construction")) -> String}</nav>`)
         }
-        * "fullstack" => Pager {
+        * "fullstack" {
             Html(`<nav class="pager">{
                 Slug("markdown-web")
                     -> Prev(Label("Docs Site in the Browser"))
                     -> String
             }{Slug("how-do-i") -> Next(Label("How Do I&#8230;?")) -> String}</nav>`)
         }
-        * "functions" => Pager {
+        * "functions" {
             Html(`<nav class="pager">{
                 Slug("expressions")
                     -> Prev(Label("Expressions &amp; Dispatch"))
                     -> String
             }{Slug("ordering") -> Next(Label("Ordering Rules")) -> String}</nav>`)
         }
-        * "hello" => Pager {
+        * "hello" {
             Html(`<nav class="pager">{Slug("installation") -> Prev(Label("Installation")) -> String}{
                 Slug("pipes")
                     -> Next(Label("Three Symbols"))
                     -> String
             }</nav>`)
         }
-        * "how-do-i" => Pager {
+        * "how-do-i" {
             Html(`<nav class="pager">{Slug("fullstack") -> Prev(Label("Fullstack")) -> String}{
                 Slug("stdlib")
                     -> Next(Label("Standard Library"))
                     -> String
             }</nav>`)
         }
-        * "installation" => Pager {
+        * "installation" {
             Html(`<nav class="pager">{Slug("canon-for-ai") -> Prev(Label("Canon for AI")) -> String}{
                 Slug("hello")
                     -> Next(Label("Hello, Canon"))
                     -> String
             }</nav>`)
         }
-        * "lexical-structure" => Pager {
+        * "lexical-structure" {
             Html(`<nav class="pager">{Slug("overview") -> Prev(Label("Overview")) -> String}{
                 Slug("types")
                     -> Next(Label("Types"))
                     -> String
             }</nav>`)
         }
-        * "literal-dispatch" => Pager {
+        * "literal-dispatch" {
             Html(`<nav class="pager">{
                 Slug("dispatch")
                     -> Prev(Label("Branching Is Dispatch"))
                     -> String
             }{Slug("recursion") -> Next(Label("Loops Without Loops")) -> String}</nav>`)
         }
-        * "markdown-renderer" => Pager {
+        * "markdown-renderer" {
             Html(`<nav class="pager">{Slug("stdlib") -> Prev(Label("Standard Library")) -> String}{
                 Slug("wasi")
                     -> Next(Label("WASI Interfaces"))
                     -> String
             }</nav>`)
         }
-        * "markdown-web" => Pager {
+        * "markdown-web" {
             Html(`<nav class="pager">{
                 Slug("notes-api")
                     -> Prev(Label("notes-api: JSON Service"))
                     -> String
             }{Slug("fullstack") -> Next(Label("Fullstack")) -> String}</nav>`)
         }
-        * "modules" => Pager {
+        * "modules" {
             Html(`<nav class="pager">{Slug("ordering") -> Prev(Label("Ordering Rules")) -> String}{
                 Slug("effects-and-async")
                     -> Next(Label("Effects &amp; Async"))
                     -> String
             }</nav>`)
         }
-        * "multifile" => Pager {
+        * "multifile" {
             Html(`<nav class="pager">{Slug("play") -> Prev(Label("Playground")) -> String}{
                 Slug("notes-api")
                     -> Next(Label("notes-api: JSON Service"))
                     -> String
             }</nav>`)
         }
-        * "newtypes" => Pager {
+        * "newtypes" {
             Html(`<nav class="pager">{Slug("pipes") -> Prev(Label("Three Symbols")) -> String}{
                 Slug("format-strings")
                     -> Next(Label("Strings With Holes"))
                     -> String
             }</nav>`)
         }
-        * "notes-api" => Pager {
+        * "notes-api" {
             Html(`<nav class="pager">{
                 Slug("multifile")
                     -> Prev(Label("Multi-File Project"))
                     -> String
             }{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
         }
-        * "ordering" => Pager {
+        * "ordering" {
             Html(`<nav class="pager">{Slug("functions") -> Prev(Label("Functions")) -> String}{
                 Slug("modules")
                     -> Next(Label("Modules &amp; Packages"))
                     -> String
             }</nav>`)
         }
-        * "overview" => Pager {
+        * "overview" {
             Html(`<nav class="pager">{
                 Slug("codegen-gaps")
                     -> Prev(Label("Known Codegen Gaps"))
                     -> String
             }{Slug("lexical-structure") -> Next(Label("Lexical Structure")) -> String}</nav>`)
         }
-        * "philosophy" => Pager {
+        * "philosophy" {
             Html(`<nav class="pager">{Slug("introduction") -> Prev(Label("Why Canon")) -> String}{
                 Slug("coming-from")
                     -> Next(Label("Is Canon for You?"))
                     -> String
             }</nav>`)
         }
-        * "pipes" => Pager {
+        * "pipes" {
             Html(`<nav class="pager">{Slug("hello") -> Prev(Label("Hello, Canon")) -> String}{
                 Slug("newtypes")
                     -> Next(Label("Types Are the Vocabulary"))
                     -> String
             }</nav>`)
         }
-        * "play" => Pager {
+        * "play" {
             Html(`<nav class="pager">{
                 Slug("worlds")
                     -> Prev(Label("One Arrow, Three Worlds"))
                     -> String
             }{Slug("multifile") -> Next(Label("Multi-File Project")) -> String}</nav>`)
         }
-        * "recursion" => Pager {
+        * "recursion" {
             Html(`<nav class="pager">{
                 Slug("literal-dispatch")
                     -> Prev(Label("Dispatch on Literals"))
                     -> String
             }{Slug("result-newtypes") -> Next(Label("Naming What Happened")) -> String}</nav>`)
         }
-        * "result-newtypes" => Pager {
+        * "result-newtypes" {
             Html(`<nav class="pager">{
                 Slug("recursion")
                     -> Prev(Label("Loops Without Loops"))
                     -> String
             }{Slug("errors") -> Next(Label("Failure Is a Value")) -> String}</nav>`)
         }
-        * "stdlib" => Pager {
+        * "stdlib" {
             Html(`<nav class="pager">{Slug("how-do-i") -> Prev(Label("How Do I&#8230;?")) -> String}{
                 Slug("markdown-renderer")
                     -> Next(Label("Markdown"))
                     -> String
             }</nav>`)
         }
-        * "testing" => Pager {
+        * "testing" {
             Html(`<nav class="pager">{
                 Slug("async")
                     -> Prev(Label("Async Without a Keyword"))
                     -> String
             }{Slug("worlds") -> Next(Label("One Arrow, Three Worlds")) -> String}</nav>`)
         }
-        * "types" => Pager {
+        * "types" {
             Html(`<nav class="pager">{
                 Slug("lexical-structure")
                     -> Prev(Label("Lexical Structure"))
                     -> String
             }{Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String}</nav>`)
         }
-        * "types-only" => Pager {
+        * "types-only" {
             Html(`<nav class="pager">{
                 Slug("compilation")
                     -> Prev(Label("Compilation &amp; ABI"))
                     -> String
             }{Slug("contributing") -> Next(Label("Contributing")) -> String}</nav>`)
         }
-        * "validated-constructors" => Pager {
+        * "validated-constructors" {
             Html(`<nav class="pager">{Slug("errors") -> Prev(Label("Failure Is a Value")) -> String}{
                 Slug("capabilities")
                     -> Next(Label("Effects Are Values"))
                     -> String
             }</nav>`)
         }
-        * "wasi" => Pager {
+        * "wasi" {
             Html(`<nav class="pager">{
                 Slug("markdown-renderer")
                     -> Prev(Label("Markdown"))
                     -> String
             }{Slug("web-target") -> Next(Label("The Web Target")) -> String}</nav>`)
         }
-        * "web-target" => Pager {
+        * "web-target" {
             Html(`<nav class="pager">{Slug("wasi") -> Prev(Label("WASI Interfaces")) -> String}{
                 Slug("building-and-running")
                     -> Next(Label("The canon CLI"))
                     -> String
             }</nav>`)
         }
-        * "worlds" => Pager {
+        * "worlds" {
             Html(`<nav class="pager">{Slug("testing") -> Prev(Label("Tests Are Types")) -> String}{
                 Slug("play")
                     -> Next(Label("Playground"))
                     -> String
             }</nav>`)
         }
-        * String => Pager {
+        * String {
             Html(`<nav class="pager">{Slug("philosophy") -> Next(Label("The Philosophy")) -> String}</nav>`)
         }
     )
@@ -540,10 +532,10 @@ Page => Rail {
 
 Page * Slug * Index => RailDot {
     Page.String -> Eq(Slug.String) -> (
-        * False => RailDot {
+        * False {
             Html(`<button class="rail-dot" data-msg="Nav:{Slug.String}">{Index -> String}</button>`)
         }
-        * True => RailDot {
+        * True {
             Html(`<button class="rail-dot active" aria-current="step" data-msg="Nav:{Slug.String}">{
                 Index -> String
             }</button>`)
@@ -560,15 +552,8 @@ Page * Lesson => Tour {
 
 Model * Msg => Update {
     Msg -> Substring(From(1) * To(4)) -> (
-        * "Find" => Model {
-            Model.Page -> Model(Msg -> Substring(From(6) * Msg -> Length -> To) -> Query)
-        }
-        * "Nav:" => Model {
-            Msg
-                -> Substring(From(5) * Msg -> Length -> To)
-                -> Page
-                -> Model(Query(""))
-        }
-        * String => Model { Model }
+        * "Find" { Model.Page -> Model(Msg -> Substring(From(6) * Msg -> Length -> To) -> Query) }
+        * "Nav:" { Msg -> Substring(From(5) * Msg -> Length -> To) -> Page -> Model(Query("")) }
+        * String { Model }
     )
 }

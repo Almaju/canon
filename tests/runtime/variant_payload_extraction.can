@@ -22,7 +22,7 @@ Unit => Program {
         * Pass => Unit { "got pass" -> Print }
     )
     MakePass() -> (
-        * Fail => Unit { Fail -> Print }
-        * Pass => Unit { "got pass" -> Print }
+        * Fail { Fail -> Print }
+        * Pass { "got pass" -> Print }
     )
 }

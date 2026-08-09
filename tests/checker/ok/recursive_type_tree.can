@@ -14,8 +14,8 @@ Value = Int
 
 Tree => Described {
     Tree -> (
-        * Branch => Described { "branch" }
-        * Leaf => Described { "leaf" }
+        * Branch { "branch" }
+        * Leaf { "leaf" }
     )
 }
 

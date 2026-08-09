@@ -25,8 +25,8 @@ fn canon_test_exit_codes() {
 
 Unit => BrokenMath {
     1 -> Sum(2) -> Eq(7) -> (
-        * False => TestResult { Fail("math is broken") }
-        * True => TestResult { Pass() }
+        * False { Fail("math is broken") }
+        * True { Pass() }
     )
 }
 

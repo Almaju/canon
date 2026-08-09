@@ -20,8 +20,8 @@ Value<V> = V
 
 <K, V>(Store<K, V>) => Size<K, V> {
     Store -> (
-        * Absent => Size<K, V> { 0 }
-        * Entry => Size<K, V> { Entry.Rest -> Size -> Sum(1) }
+        * Absent { 0 }
+        * Entry { Entry.Rest -> Size -> Sum(1) }
     )
 }
 

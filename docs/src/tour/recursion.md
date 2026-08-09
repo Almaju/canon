@@ -23,8 +23,8 @@ Next = Chain
 
 Chain => Len {
     Chain -> (
-        * Link => Len { Link.Next -> Len -> Sum(1) }
-        * Stop => Len { 0 }
+        * Link { Link.Next -> Len -> Sum(1) }
+        * Stop { 0 }
     )
 }
 

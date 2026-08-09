@@ -8,7 +8,7 @@ Unit => Program {
         * Some<String> => Unit { String -> Print }
     )
     List("aa" * "bbb") -> At(9) -> (
-        * None => Unit { "none" -> Print }
-        * Some<String> => Unit { String -> Print }
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
     )
 }

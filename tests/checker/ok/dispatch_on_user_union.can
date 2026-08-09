@@ -12,9 +12,9 @@ Ord = Equal
 
 Ord => Described {
     Ord -> (
-        * Equal => Described { "equal" }
-        * Greater => Described { "greater" }
-        * Less => Described { "less" }
+        * Equal { "equal" }
+        * Greater { "greater" }
+        * Less { "less" }
     )
 }
 

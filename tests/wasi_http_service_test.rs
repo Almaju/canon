@@ -200,9 +200,9 @@ fn wasi_http_service_method_dispatch() {
         &src_path,
         r#"Request => Response {
     Request.method() -> (
-        * "GET" => Response { Body("got GET") -> Response(Status(200) * Headers()) }
-        * "POST" => Response { Body("got POST") -> Response(Status(201) * Headers()) }
-        * String => Response { Body(`no {String}`) -> Response(Headers() * Status(405)) }
+        * "GET" { Body("got GET") -> Response(Status(200) * Headers()) }
+        * "POST" { Body("got POST") -> Response(Status(201) * Headers()) }
+        * String { Body(`no {String}`) -> Response(Headers() * Status(405)) }
     )
 }
 "#,

@@ -1,6 +1,6 @@
 Unit => Program {
     True() -> (
-        * False => Unit { "f".print() }
-        * None => Unit { "wrong".print() }
+        * False { "f".print() }
+        * None { "wrong".print() }
     )
 }

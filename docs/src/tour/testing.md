@@ -26,8 +26,8 @@ Unit => DoublingWorks {
 
 Unit => Program {
     DoublingWorks() -> (
-        * Fail => Unit { "[FAIL] DoublingWorks" -> Print }
-        * Pass => Unit { "[ ok ] DoublingWorks" -> Print }
+        * Fail { "[FAIL] DoublingWorks" -> Print }
+        * Pass { "[ ok ] DoublingWorks" -> Print }
     )
 }
 ```
