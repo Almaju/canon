@@ -13,18 +13,21 @@ writing the same program produce the same bytes.
 | Variants of a union type | alphabetical |
 | Function components `(A * B)` | alphabetical |
 | Type definitions within a file | alphabetical |
-| Function declarations within a file | alphabetical by surface name — one sequence covering constructors (their type name), shape implementations (the shape's name), and free functions |
-| Trait composition (`Show = Debug * PrintString`) | alphabetical |
+| Function declarations within a file | alphabetical by surface name — one sequence of constructors, keyed by the type each constructs |
 | Error unions in `Result<T, A + B>` | alphabetical |
 | Dispatch arms | the union's variant order (itself alphabetical) |
 | Literal dispatch arms | alphabetical for strings, ascending for ints; catch-all last |
 
 One deliberate non-rule: **call operands are never reordered**. The
 piped value is the first operand and literal arguments keep their
-written order — operand position is meaning (untagged same-typed
-components bind by declaration order, `0 -> Difference(5)` is not
-`5 -> Difference(0)`), and where position carries meaning, order is not
-discretionary, so the alphabetical rule does not apply.
+written order — operand position is meaning (`0 -> Difference(5)` is
+not `5 -> Difference(0)`, and repeated components `T^N` bind
+positionally), and where position carries meaning, order is not
+discretionary, so the alphabetical rule does not apply. Where position
+would otherwise *silently* carry meaning — untagged values competing
+for product fields that share an underlying type — the construction is
+a compile error requiring the field tags
+([Types § Products](./types.md#products)).
 
 ## The Exact Comparison
 

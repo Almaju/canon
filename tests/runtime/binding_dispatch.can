@@ -1,0 +1,21 @@
+Color = Blue + Red
+
+Unit => Program {
+    "abcd" -> (
+        * String => Unit {
+            String -> Print
+            String -> Print
+        }
+    )
+    3 -> Sum(4) -> (
+        * Int => Unit { Int -> Product(Int) -> String -> Print }
+    )
+    Blue() -> (
+        * Color => Unit {
+            Color -> (
+                * Blue => Unit { "blue" -> Print }
+                * Red => Unit { "red" -> Print }
+            )
+        }
+    )
+}

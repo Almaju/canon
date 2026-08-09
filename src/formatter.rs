@@ -1460,15 +1460,16 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
     format!("{} => {} {{ {} }}", pat, ret, body)
 }
 
-/// Render a dispatch arm at the given indent level. Short arms whose
-/// bodies contain no nested dispatch stay on one line; an arm that
-/// nests another dispatch — or whose inline form would overflow
-/// `MAX_WIDTH` — breaks its body onto indented lines, so route-style
+/// Render a dispatch arm at the given indent level. Short single-line
+/// bodies stay on one line; an arm that nests another dispatch, holds
+/// more than one expression (body lines evaluate top to bottom — two
+/// statements never share a line), or whose inline form would overflow
+/// `MAX_WIDTH` breaks its body onto indented lines, so route-style
 /// nested dispatch reads as a tree instead of one opaque line.
 fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
     let inline = emit_arm_inline(arm);
     let nested = arm.body.exprs.iter().any(contains_dispatch);
-    if !nested && arm_indent * 4 + 2 + inline.len() <= MAX_WIDTH {
+    if !nested && arm.body.exprs.len() == 1 && arm_indent * 4 + 2 + inline.len() <= MAX_WIDTH {
         return inline;
     }
     let pat = emit_arm_pattern(arm);

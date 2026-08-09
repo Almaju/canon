@@ -1,0 +1,9 @@
+Key = String
+
+Pair = Key * Value
+
+Value = String
+
+Unit => Program {
+    "a" -> Pair("b").Key -> Print
+}
