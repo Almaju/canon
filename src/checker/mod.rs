@@ -329,7 +329,7 @@ fn check_ordering(
                 // can't appear in a source-declared name) are compiler
                 // output appended after the source items, not part of
                 // the file's ordering.
-                if surface.contains('<') {
+                if crate::monomorph::instantiation_head(surface).is_some() {
                     return None;
                 }
                 return Some((surface, func.name.span));
@@ -344,7 +344,7 @@ fn check_ordering(
         .iter()
         .filter_map(|item| {
             if let Item::TypeDef(td) = item {
-                if td.name.name.contains('<') {
+                if crate::monomorph::instantiation_head(&td.name.name).is_some() {
                     return None;
                 }
                 Some((td.name.name.as_str(), td.name.span))
@@ -466,12 +466,9 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonErr
         // A minted instantiation keeps its schema alive: `Box<Int>`
         // reaches the `Box` declaration it was expanded from, so a
         // schema is dead exactly when no instantiation of it is used.
-        if let Some(head) = name.split('<').next() {
-            if head != name {
-                refs.entry(name.clone())
-                    .or_default()
-                    .insert(head.to_string());
-            }
+        if let Some(head) = crate::monomorph::instantiation_head(&name) {
+            let head = head.to_string();
+            refs.entry(name.clone()).or_default().insert(head);
         }
         if declared.insert(name.clone()) {
             declared_order.push(name.clone());
@@ -1089,7 +1086,7 @@ fn sig_mentions(func: &FunctionDef, ty_name: &str) -> bool {
 /// The name a function declaration is reached *by*: its own name, except a
 /// self-constructor (rewritten to `Self`) is reached through its receiver
 /// type name — mirrors the keying in `lint_dead_code`.
-fn decl_key(func: &FunctionDef) -> String {
+pub(crate) fn decl_key(func: &FunctionDef) -> String {
     if func.name.name == "Self" {
         func.receiver
             .as_ref()
@@ -1616,32 +1613,21 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
     }
 }
 
-/// `Json("…")` / `Html("…")` fed a **static string literal** that the
-/// Explicit call-site type arguments (`Map<String, Int>()`) are only
-/// meaningful on a generic type, and generic instantiation is not
-/// implemented yet — reject them everywhere so an annotation is never
+/// Explicit call-site type arguments on a user generic are consumed by
+/// the expansion pass before checking, so any that survive to here sit
+/// on a name that takes none — reject them so an annotation is never
 /// silently inert.
-fn check_expr_type_args(
-    name: &str,
-    type_args: &[TypeExpr],
-    symbols: &SymbolTable,
-    errors: &mut Vec<CanonError>,
-) {
+fn check_expr_type_args(name: &str, type_args: &[TypeExpr], errors: &mut Vec<CanonError>) {
     if type_args.is_empty() {
         return;
     }
-    let message = if symbols.generic_types.contains_key(name) {
-        format!(
-            "explicit type arguments on `{}` are not supported yet: generic types cannot be instantiated",
-            name
-        )
-    } else {
-        format!("`{}` does not take type arguments", name)
-    };
-    let span = type_args[0].span();
-    errors.push(CanonError::CheckError { message, span });
+    errors.push(CanonError::CheckError {
+        message: format!("`{}` does not take type arguments", name),
+        span: type_args[0].span(),
+    });
 }
 
+/// `Json("…")` / `Html("…")` fed a **static string literal** that the
 /// corresponding literal form can already express is ceremony around a
 /// literal — the parse can never fail, so the validating-constructor
 /// spelling is a second way of writing the literal, and the language
@@ -2460,7 +2446,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             args,
             span,
         } => {
-            check_expr_type_args(&name.name, type_args, symbols, errors);
+            check_expr_type_args(&name.name, type_args, errors);
             let is_variant = symbols.variant_of.contains_key(&name.name);
             // A free function with this exact name (like `Now = () -> Now`
             // or `randomInt = () -> Int`) makes the "constructor" call legal
@@ -2540,7 +2526,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             span,
             ..
         } => {
-            check_expr_type_args(&method.name, type_args, symbols, errors);
+            check_expr_type_args(&method.name, type_args, errors);
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
                 check_expr(arg, scope, symbols, errors);

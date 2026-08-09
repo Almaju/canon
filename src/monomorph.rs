@@ -17,17 +17,29 @@
 //! the binding doesn't cover is an error.
 
 use crate::ast::{
-    substitute_type_params, type_expr_canonical, Block, Expr, FunctionDef, Ident, Item, MatchArm,
-    Module, TypeDef, TypeExpr,
+    type_expr_canonical, Block, Expr, FunctionDef, Ident, Item, MatchArm, Module, TypeDef, TypeExpr,
 };
 use crate::error::{CanonError, Span};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// The canonical flat name of an instantiation: `Box<Int>`,
-/// `Map<String, Int>`. Doubles as the worklist key.
+/// `Map<String, Int>` — exactly the canonical spelling of the applied
+/// type, so the instantiation key can never drift from the spelling
+/// the checker compares. Doubles as the worklist key.
 fn mangle(head: &str, args: &[TypeExpr]) -> String {
-    let rendered: Vec<String> = args.iter().map(type_expr_canonical).collect();
-    format!("{}<{}>", head, rendered.join(", "))
+    type_expr_canonical(&TypeExpr::Named {
+        name: head.to_string(),
+        generics: args.to_vec(),
+        span: Span::default(),
+    })
+}
+
+/// The schema head of a minted instantiation name (`Map<String, Int>` →
+/// `Map`), `None` for a source-declared name — `<` cannot appear in
+/// one. The single reader of `mangle`'s format; every "is this item
+/// compiler-minted?" question goes through here.
+pub fn instantiation_head(name: &str) -> Option<&str> {
+    name.split_once('<').map(|(head, _)| head)
 }
 
 struct Expander {
@@ -75,18 +87,10 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
                 type_schemas.insert(td.name.name.clone(), td.clone());
             }
             Item::Function(f) if !f.generic_params.is_empty() => {
-                // `resolve_new_syntax` normalizes a constructor to name
-                // `Self` with the constructed type as receiver; the
-                // call-site spelling — the name expansion must match —
-                // is the receiver's type name.
-                let surface = if f.name.name == "Self" {
-                    f.receiver
-                        .as_ref()
-                        .map(|r| r.name.clone())
-                        .unwrap_or_else(|| f.name.name.clone())
-                } else {
-                    f.name.name.clone()
-                };
+                // The call-site spelling a family is reached by — the
+                // receiver's type name for a `Self`-normalized
+                // constructor — shared with ordering and dead-code.
+                let surface = crate::checker::decl_key(f);
                 func_schemas.entry(surface).or_default().push(f.clone());
             }
             _ => {}
@@ -113,9 +117,7 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
     for item in &mut module.items {
         match item {
             Item::TypeDef(td) if td.generic_params.is_empty() => {
-                let mut body = td.body.clone();
-                ex.rewrite_type(&mut body, &empty_binding);
-                td.body = body;
+                ex.rewrite_type(&mut td.body, &empty_binding);
             }
             Item::Function(f) if f.generic_params.is_empty() => {
                 ex.rewrite_function(f, &empty_binding);
@@ -199,62 +201,77 @@ impl Expander {
         Some(self.enqueue(name, &args))
     }
 
-    /// Rewrite a type expression under `binding`: substitute bound
-    /// parameters, then collapse every concrete generic application
-    /// into its mangled flat name, enqueueing the instantiation. Bare
-    /// references to generic declarations resolve through the binding.
+    /// Rewrite a type expression under `binding` in place: a bound
+    /// parameter is replaced by its (already-concrete) argument, and
+    /// every concrete generic application collapses into its mangled
+    /// flat name, enqueueing the instantiation. Bare references to
+    /// generic declarations resolve through the binding.
     fn rewrite_type(&mut self, ty: &mut TypeExpr, binding: &HashMap<String, TypeExpr>) {
-        if !binding.is_empty() {
-            *ty = substitute_type_params(ty, binding);
-        }
-        self.mangle_type(ty, binding);
-    }
-
-    fn mangle_type(&mut self, ty: &mut TypeExpr, binding: &HashMap<String, TypeExpr>) {
         match ty {
             TypeExpr::Named {
                 name,
                 generics,
                 span,
             } => {
-                for g in generics.iter_mut() {
-                    self.mangle_type(g, binding);
-                }
-                if !generics.is_empty() && self.is_generic_decl(name) {
-                    let all_concrete = generics
-                        .iter()
-                        .all(|g| !type_mentions_names(g, &binding_domain(binding)));
-                    if all_concrete {
-                        let mangled = self.enqueue(&name.clone(), generics);
-                        *name = mangled;
-                        generics.clear();
+                if generics.is_empty() {
+                    if let Some(t) = binding.get(name.as_str()) {
+                        *ty = t.clone();
+                        return;
                     }
-                } else if generics.is_empty() && self.is_generic_decl(name) && !binding.is_empty() {
-                    if let Some(mangled) = self.resolve_bare(&name.clone(), binding, *span) {
-                        *name = mangled;
+                }
+                for g in generics.iter_mut() {
+                    self.rewrite_type(g, binding);
+                }
+                if self.is_generic_decl(name) {
+                    if !generics.is_empty() {
+                        let head = std::mem::take(name);
+                        *name = self.enqueue(&head, generics);
+                        generics.clear();
+                    } else if !binding.is_empty() {
+                        let head = std::mem::take(name);
+                        match self.resolve_bare(&head, binding, *span) {
+                            Some(mangled) => *name = mangled,
+                            None => *name = head,
+                        }
                     }
                 }
             }
             TypeExpr::Union { variants, .. } => {
                 for v in variants {
-                    self.mangle_type(v, binding);
+                    self.rewrite_type(v, binding);
                 }
             }
             TypeExpr::Product { fields, .. } => {
                 for f in fields {
-                    self.mangle_type(f, binding);
+                    self.rewrite_type(f, binding);
                 }
             }
             TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
-                self.mangle_type(ty, binding);
+                self.rewrite_type(ty, binding);
             }
             TypeExpr::Function {
-                params, return_ty, ..
+                generic_params,
+                params,
+                return_ty,
+                ..
             } => {
+                // A nested function type's own binders shadow the
+                // enclosing binding.
+                let narrowed;
+                let inner = if generic_params.is_empty() {
+                    binding
+                } else {
+                    let mut m = binding.clone();
+                    for g in generic_params.iter() {
+                        m.remove(&g.name.name);
+                    }
+                    narrowed = m;
+                    &narrowed
+                };
                 for p in params {
-                    self.mangle_type(p, binding);
+                    self.rewrite_type(p, inner);
                 }
-                self.mangle_type(return_ty, binding);
+                self.rewrite_type(return_ty, inner);
             }
         }
     }
@@ -275,10 +292,22 @@ impl Expander {
             return;
         }
         if !binding.is_empty() && self.is_generic_decl(name) {
-            if let Some(mangled) = self.resolve_bare(&name.clone(), binding, span) {
-                *name = mangled;
+            let head = std::mem::take(name);
+            match self.resolve_bare(&head, binding, span) {
+                Some(mangled) => *name = mangled,
+                None => *name = head,
             }
         }
+    }
+
+    fn arity_error(&mut self, head: &str, expected: usize, found: usize, span: Span) {
+        self.errors.push(CanonError::CheckError {
+            message: format!(
+                "wrong number of type arguments for `{}`: expected {}, found {}",
+                head, expected, found
+            ),
+            span,
+        });
     }
 
     /// Fold explicit call-site type arguments into the call's name.
@@ -299,14 +328,8 @@ impl Expander {
         for t in type_args.iter_mut() {
             self.rewrite_type(t, binding);
         }
-        if type_args
-            .iter()
-            .any(|t| type_mentions_names(t, &binding_domain(binding)))
-        {
-            return; // still parameterized — only reachable on malformed input
-        }
-        let mangled = self.enqueue(&name.clone(), type_args);
-        *name = mangled;
+        let head = std::mem::take(name);
+        *name = self.enqueue(&head, type_args);
         type_args.clear();
     }
 
@@ -315,13 +338,9 @@ impl Expander {
             self.rewrite_expr_name(&mut recv.name, binding, recv.span);
         }
         for p in &mut f.params {
-            let mut ty = p.ty.clone();
-            self.rewrite_type(&mut ty, binding);
-            p.ty = ty;
+            self.rewrite_type(&mut p.ty, binding);
         }
-        let mut ret = f.return_ty.clone();
-        self.rewrite_type(&mut ret, binding);
-        f.return_ty = ret;
+        self.rewrite_type(&mut f.return_ty, binding);
         self.rewrite_block(&mut f.body, binding);
     }
 
@@ -376,9 +395,7 @@ impl Expander {
                 ..
             } => {
                 for p in params {
-                    let mut ty = p.ty.clone();
-                    self.rewrite_type(&mut ty, binding);
-                    p.ty = ty;
+                    self.rewrite_type(&mut p.ty, binding);
                 }
                 self.rewrite_type(return_ty, binding);
                 self.rewrite_block(body, binding);
@@ -432,15 +449,12 @@ impl Expander {
         let mangled = mangle(head, args);
         if let Some(schema) = self.type_schemas.get(head).cloned() {
             if schema.generic_params.len() != args.len() {
-                self.errors.push(CanonError::CheckError {
-                    message: format!(
-                        "wrong number of type arguments for `{}`: expected {}, found {}",
-                        head,
-                        schema.generic_params.len(),
-                        args.len()
-                    ),
-                    span: schema.name.span,
-                });
+                self.arity_error(
+                    head,
+                    schema.generic_params.len(),
+                    args.len(),
+                    schema.name.span,
+                );
                 return;
             }
             let binding = make_binding(&schema.generic_params, args);
@@ -464,15 +478,12 @@ impl Expander {
         if let Some(members) = self.func_schemas.get(head).cloned() {
             for schema in members {
                 if schema.generic_params.len() != args.len() {
-                    self.errors.push(CanonError::CheckError {
-                        message: format!(
-                            "wrong number of type arguments for `{}`: expected {}, found {}",
-                            head,
-                            schema.generic_params.len(),
-                            args.len()
-                        ),
-                        span: schema.name.span,
-                    });
+                    self.arity_error(
+                        head,
+                        schema.generic_params.len(),
+                        args.len(),
+                        schema.name.span,
+                    );
                     continue;
                 }
                 let binding = make_binding(&schema.generic_params, args);
@@ -499,10 +510,10 @@ impl Expander {
 fn sort_canonical(ty: &mut TypeExpr) {
     match ty {
         TypeExpr::Union { variants, .. } => {
-            variants.sort_by_key(type_expr_canonical);
+            variants.sort_by_cached_key(type_expr_canonical);
         }
         TypeExpr::Product { fields, .. } => {
-            fields.sort_by_key(type_expr_canonical);
+            fields.sort_by_cached_key(type_expr_canonical);
         }
         _ => {}
     }
@@ -517,27 +528,4 @@ fn make_binding(
         .zip(args.iter())
         .map(|(p, a)| (p.name.name.clone(), a.clone()))
         .collect()
-}
-
-fn binding_domain(binding: &HashMap<String, TypeExpr>) -> HashSet<&str> {
-    binding.keys().map(|k| k.as_str()).collect()
-}
-
-/// Does `ty` mention any of `names` as a bare reference?
-fn type_mentions_names(ty: &TypeExpr, names: &HashSet<&str>) -> bool {
-    match ty {
-        TypeExpr::Named { name, generics, .. } => {
-            (generics.is_empty() && names.contains(name.as_str()))
-                || generics.iter().any(|g| type_mentions_names(g, names))
-        }
-        TypeExpr::Union { variants, .. } => variants.iter().any(|v| type_mentions_names(v, names)),
-        TypeExpr::Product { fields, .. } => fields.iter().any(|f| type_mentions_names(f, names)),
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => type_mentions_names(ty, names),
-        TypeExpr::Function {
-            params, return_ty, ..
-        } => {
-            params.iter().any(|p| type_mentions_names(p, names))
-                || type_mentions_names(return_ty, names)
-        }
-    }
 }

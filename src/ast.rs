@@ -701,17 +701,26 @@ pub fn substitute_type_params(
             return_ty,
             span,
         } => {
-            let mut inner = map.clone();
-            for g in generic_params {
-                inner.remove(&g.name.name);
-            }
+            // The nested function type's own binders shadow the map;
+            // clone it only when there is something to shadow.
+            let narrowed;
+            let inner = if generic_params.is_empty() {
+                map
+            } else {
+                let mut m = map.clone();
+                for g in generic_params {
+                    m.remove(&g.name.name);
+                }
+                narrowed = m;
+                &narrowed
+            };
             TypeExpr::Function {
                 generic_params: generic_params.clone(),
                 params: params
                     .iter()
-                    .map(|p| substitute_type_params(p, &inner))
+                    .map(|p| substitute_type_params(p, inner))
                     .collect(),
-                return_ty: Box::new(substitute_type_params(return_ty, &inner)),
+                return_ty: Box::new(substitute_type_params(return_ty, inner)),
                 span: *span,
             }
         }
