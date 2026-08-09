@@ -51,9 +51,15 @@ only ever reaches the wrappers below.
 | `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world |
 
 Anything not listed is third-party territory: a library to be
-published, or future stdlib work. The complete set of names the stdlib
-claims — including its internal helper types — is the
-[Reserved Names](#reserved-names) appendix at the end of this page.
+published, or future stdlib work.
+
+Every type name `canon/std` declares is global — a type of the same
+name in your own project is a compile error — so the complete set,
+internal helpers included, is worth checking before you name a type.
+That list is the index of the [generated API
+reference](std/index.html), which `canon doc` derives from the
+stdlib source itself and therefore cannot drift from it. This page is
+the prose the generator has no way to write.
 
 ---
 
@@ -269,52 +275,3 @@ Unit => Result<Program, MalformedJson> {
 - Read back with `json -> Field("key")` (the raw text of an object
   field) and `json -> Decoded` (a JSON string's contents, escapes
   handled).
-
----
-
-## Reserved Names
-
-Every type name `canon/std` declares is global — a type of the same
-name in your own project is a compile error. Check this list before
-naming a type (internal helpers included):
-
-Added, AfterDigits, AfterSign, AfterWs, And, Args, Attr, Base64,
-Base64Char, Base64Decoded, Base64Encoded, Base64Tail, Body, BodyCells,
-BodyRows, BracketClose, Button, Byte, CheckedTrailing, Civil,
-ClosedOrKey, ColonChecked, ConsumedArrayTail, ConsumedColonValue,
-ConsumedObjectTail, Contains, Contents, Cwd, Date, DatePart, Day,
-DecimalDigit, Decimals, Decoded, DecodedBlocks, DecodedOne,
-DecodedPairs, DecodedThree, DecodedTwo, DigitRun, Digits,
-DispatchedValue, Div, Doe, Doy, Dropped, El, ElAttr, Encoded,
-EncodedOne, EncodedThree, EncodedTwo, Entry, Era, EscapeChar,
-EscapeOther, EscapePlain, EscapeUnicode, Escaped, EscapedByte,
-EscapedMeaning, EscapedTail, Exited, Fail, FenceBody, FenceEnd,
-FenceInfo, Fetched, Field, File, Fraction, Frag, From, Ge, Gt, H1,
-HashCount, HeadCells, Headers, HeadingHtml, Hex, HexByte, HexChar,
-HexDecoded, HexDigit, HexEncoded, HexTail, HexVal, HostChecked, Hour,
-Html, HttpError, Inline, Inserted, Int, InvalidUrl, IoError,
-IsBlockStart, IsDigit, IsExpMarker, IsFence, IsHeading, IsHex,
-IsIntDigit, IsItem, IsOrdered, IsPara, IsQuote, IsSepLine, IsSign,
-IsSubItem, IsTable, IsWs, Item, Json, Key, KeyEq, KeyExpected,
-KeyParsed, KeyStart, Keys, Le, Length, Li, LineEnd, List, ListEnd,
-ListItems, Lowercased, LowercasedByte, LowercasedTail, Magnitude,
-MalformedBase64, MalformedHex, MalformedInt, MalformedJson, Map, Mark,
-Markdown, Maximum, Minimum, Minute, Month, Mp, Msg, Ne, Negated,
-NextPipe, Nibble, Node, Not, Now, Number, Opened, OpenedObject, Or,
-OrderedEnd, OrderedItems, OtherBool, OtherFloat, OtherInt, OtherString,
-Padded, ParaBody, ParaEnd, ParenClose, ParseFail, ParsePos, ParseStep,
-ParsedArray, ParsedArrayItems, ParsedArrayTail, ParsedExp,
-ParsedExpAfter, ParsedFalse, ParsedFrac, ParsedFracExp, ParsedIntPart,
-ParsedNull, ParsedNumber, ParsedObject, ParsedObjectColon,
-ParsedObjectItems, ParsedObjectTail, ParsedString, ParsedStringBody,
-ParsedTrue, ParsedValue, Pass, Path, Pos, Prefix, Prefixed, Program,
-QuoteBody, QuoteChecked, QuoteEnd, Random, Read, Remaining, Removed,
-RenderedBlocks, RenderedFence, RenderedHeading, RenderedList,
-RenderedNonList, RenderedOrdered, RenderedParagraph, RenderedQuote,
-RenderedTable, Request, RequiredDigits, Response, Rest, Scaled,
-SchemeEnd, Second, Set, Sextet, Span, StarClose, StarOneClose, Status,
-String, SubEnd, SubItems, TableEnd, Tag, TailChecked, TestResult,
-TickClose, TimePart, To, Ul, UnescapedEscape, UnescapedTail,
-UnescapedUnicode, Unix, Uppercased, UppercasedByte, UppercasedTail, Url,
-Utf8, Utf8Three, Validated, Value, ValueEnded, ValueParsed, ValueStart,
-Values, Weekday, Width, Written, Year, Yoe

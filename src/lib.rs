@@ -2,6 +2,7 @@ pub mod ast;
 pub mod bindgen;
 pub mod checker;
 pub mod codegen;
+pub mod doc;
 pub mod error;
 pub mod formatter;
 pub mod install;

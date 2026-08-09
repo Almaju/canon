@@ -128,6 +128,7 @@ Model => Html {
             <div class="sec">Reference</div>
             {Model.Page -> NavItem(Slug("how-do-i") * Label("How Do I&#8230;?"))}
             {Model.Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
+            <a class="ext" href="std/index.html">Standard Library API &#8599;</a>
             {Model.Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}
             {Model.Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}
             {Model.Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
