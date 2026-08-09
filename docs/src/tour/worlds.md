@@ -22,8 +22,7 @@ may return a world type:
 The CLI entry takes nothing, because `wasi:cli/run.run` takes nothing:
 the argument vector is *fetched*, not passed, so `Args()` reads `argv`
 from any body that wants it. Next:
-[install the compiler](../getting-started/installation.md), or read the
-[examples](../examples/multifile.md).
+[install the compiler](../getting-started/installation.md).
 
 ```canon,run
 Unit => Program {
