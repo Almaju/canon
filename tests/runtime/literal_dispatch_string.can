@@ -2,9 +2,9 @@ Routed = String
 
 String => Routed {
     String -> (
-        * "/notes" => Routed { "index" }
-        * "/notes/1" => Routed { "note one" }
-        * String => Routed { `not found: {String}` }
+        * "/notes" { "index" }
+        * "/notes/1" { "note one" }
+        * String { `not found: {String}` }
     )
 }
 

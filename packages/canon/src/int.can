@@ -20,10 +20,10 @@ OtherInt = Int
 
 Int * Pos * String => Result<Digits, MalformedInt> {
     Pos -> Gt(String -> Length) -> (
-        * False => Result<Digits, MalformedInt> {
+        * False {
             String -> ByteAt(Pos) -> IsIntDigit -> (
-                * False => Result<Digits, MalformedInt> { MalformedInt("invalid integer") -> Err }
-                * True => Result<Digits, MalformedInt> {
+                * False { MalformedInt("invalid integer") -> Err }
+                * True {
                     Int
                         -> Product(10)
                         -> Sum(String -> ByteAt(Pos) -> Difference(48))
@@ -31,14 +31,14 @@ Int * Pos * String => Result<Digits, MalformedInt> {
                 }
             )
         }
-        * True => Result<Digits, MalformedInt> { Int -> Ok }
+        * True { Int -> Ok }
     )
 }
 
 Int * OtherInt => Ge {
     OtherInt -> Lt(Int) -> (
-        * False => Ge { Int -> Eq(OtherInt) }
-        * True => Ge { True() }
+        * False { Int -> Eq(OtherInt) }
+        * True { True() }
     )
 }
 
@@ -48,48 +48,48 @@ Int * OtherInt => Gt {
 
 String => Result<Int, MalformedInt> {
     String -> Length -> Eq(0) -> (
-        * False => Result<Int, MalformedInt> {
+        * False {
             String -> ByteAt(1) -> Eq(45) -> (
-                * False => Result<Int, MalformedInt> { 0 -> Digits(Pos(1) * String) }
-                * True => Result<Int, MalformedInt> { String -> Negated }
+                * False { 0 -> Digits(Pos(1) * String) }
+                * True { String -> Negated }
             )
         }
-        * True => Result<Int, MalformedInt> { MalformedInt("empty string is not an Int") -> Err }
+        * True { MalformedInt("empty string is not an Int") -> Err }
     )
 }
 
 Int => IsIntDigit {
     Int -> Ge(48) -> (
-        * False => IsIntDigit { False() }
-        * True => IsIntDigit { Int -> Le(57) }
+        * False { False() }
+        * True { Int -> Le(57) }
     )
 }
 
 Int * OtherInt => Le {
     Int -> Lt(OtherInt) -> (
-        * False => Le { Int -> Eq(OtherInt) }
-        * True => Le { True() }
+        * False { Int -> Eq(OtherInt) }
+        * True { True() }
     )
 }
 
 Int * OtherInt => Maximum {
     Int -> Lt(OtherInt) -> (
-        * False => Maximum { Int }
-        * True => Maximum { OtherInt }
+        * False { Int }
+        * True { OtherInt }
     )
 }
 
 Int * OtherInt => Minimum {
     Int -> Lt(OtherInt) -> (
-        * False => Minimum { OtherInt }
-        * True => Minimum { Int }
+        * False { OtherInt }
+        * True { Int }
     )
 }
 
 Int * OtherInt => Ne {
     Int -> Eq(OtherInt) -> (
-        * False => Ne { True() }
-        * True => Ne { False() }
+        * False { True() }
+        * True { False() }
     )
 }
 
@@ -97,14 +97,14 @@ Pos = Int
 
 Result => Result<Negated, MalformedInt> {
     Result -> (
-        * Err<MalformedInt> => Result<Negated, MalformedInt> { MalformedInt -> Err }
-        * Ok<Int> => Result<Negated, MalformedInt> { 0 -> Difference(Int) -> Ok }
+        * Err<MalformedInt> { MalformedInt -> Err }
+        * Ok<Int> { 0 -> Difference(Int) -> Ok }
     )
 }
 
 String => Result<Negated, MalformedInt> {
     String -> Length -> Eq(1) -> (
-        * False => Result<Negated, MalformedInt> { 0 -> Digits(Pos(2) * String) -> Negated }
-        * True => Result<Negated, MalformedInt> { MalformedInt("lone minus is not an Int") -> Err }
+        * False { 0 -> Digits(Pos(2) * String) -> Negated }
+        * True { MalformedInt("lone minus is not an Int") -> Err }
     )
 }

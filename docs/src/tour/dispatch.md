@@ -22,9 +22,9 @@ Line = String
 
 Level => Line {
     Level -> (
-        * Debug => Line { Line("debug") }
-        * Error => Line { Line("error") }
-        * Warn => Line { Line("warn") }
+        * Debug { Line("debug") }
+        * Error { Line("error") }
+        * Warn { Line("warn") }
     )
 }
 

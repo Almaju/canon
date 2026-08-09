@@ -6,11 +6,11 @@ Sought = String
 
 String => DecodedShown {
     String -> Json -> (
-        * Err<MalformedJson> => DecodedShown { MalformedJson -> Print }
-        * Ok<Json> => DecodedShown {
+        * Err<MalformedJson> { MalformedJson -> Print }
+        * Ok<Json> {
             Json -> Decoded -> (
-                * Err<MalformedJson> => DecodedShown { MalformedJson -> Print }
-                * Ok<Decoded> => DecodedShown { Decoded -> Print }
+                * Err<MalformedJson> { MalformedJson -> Print }
+                * Ok<Decoded> { Decoded -> Print }
             )
         }
     )
@@ -18,11 +18,11 @@ String => DecodedShown {
 
 Sought * String => FieldShown {
     String -> Json -> (
-        * Err<MalformedJson> => FieldShown { MalformedJson -> Print }
-        * Ok<Json> => FieldShown {
+        * Err<MalformedJson> { MalformedJson -> Print }
+        * Ok<Json> {
             Json -> Field(Sought) -> (
-                * Err<MalformedJson> => FieldShown { MalformedJson -> Print }
-                * Ok<Json> => FieldShown { Json -> Print }
+                * Err<MalformedJson> { MalformedJson -> Print }
+                * Ok<Json> { Json -> Print }
             )
         }
     )

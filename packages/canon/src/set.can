@@ -16,12 +16,12 @@ Set = Absent + Entry
 
 Set * String => Added {
     Set -> (
-        * Absent => Added { Absent() -> Entry(String) }
-        * Entry => Added {
+        * Absent { Absent() -> Entry(String) }
+        * Entry {
             String -> Ord(Entry.Item) -> (
-                * Equal => Added { Set }
-                * Greater => Added { Entry.Item -> Entry(Entry.Remaining -> Added(String)) }
-                * Less => Added { Set -> Entry(String) }
+                * Equal { Set }
+                * Greater { Entry.Item -> Entry(Entry.Remaining -> Added(String)) }
+                * Less { Set -> Entry(String) }
             )
         }
     )
@@ -29,11 +29,11 @@ Set * String => Added {
 
 Set * String => Contains {
     Set -> (
-        * Absent => Contains { False() }
-        * Entry => Contains {
+        * Absent { False() }
+        * Entry {
             Entry.Item -> Eq(String) -> (
-                * False => Contains { Entry.Remaining -> Contains(String) }
-                * True => Contains { True() }
+                * False { Entry.Remaining -> Contains(String) }
+                * True { True() }
             )
         }
     )
@@ -41,11 +41,11 @@ Set * String => Contains {
 
 Set * String => Dropped {
     Set -> (
-        * Absent => Dropped { Absent() }
-        * Entry => Dropped {
+        * Absent { Absent() }
+        * Entry {
             Entry.Item -> Eq(String) -> (
-                * False => Dropped { Entry.Item -> Entry(Entry.Remaining -> Dropped(String)) }
-                * True => Dropped { Entry.Remaining }
+                * False { Entry.Item -> Entry(Entry.Remaining -> Dropped(String)) }
+                * True { Entry.Remaining }
             )
         }
     )
@@ -53,15 +53,15 @@ Set * String => Dropped {
 
 Set => Length {
     Set -> (
-        * Absent => Length { 0 }
-        * Entry => Length { Entry.Remaining -> Length -> Sum(1) }
+        * Absent { 0 }
+        * Entry { Entry.Remaining -> Length -> Sum(1) }
     )
 }
 
 Set => List<Item> {
     Set -> (
-        * Absent => List<Item> { List() }
-        * Entry => List<Item> { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
+        * Absent { List() }
+        * Entry { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
     )
 }
 

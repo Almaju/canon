@@ -1918,6 +1918,7 @@ fn check_function(
 
     let scope = ExprScope::from_function(func);
     check_block(&func.body, &func.return_ty, &scope, symbols, errors);
+    check_contextual_arm_annotations(&func.body, Some(&func.return_ty), symbols, errors);
 }
 
 fn starts_lowercase(name: &str) -> bool {
@@ -2055,6 +2056,10 @@ fn check_type_expr(
         } => {
             if name == "Self" {
                 // allowed in method bodies / trait declarations; not validated here
+            } else if name == crate::ast::ELIDED_RETURN {
+                // an elided arm type still awaiting (or denied) context
+                // propagation — reported by the dispatch check, not as
+                // an unknown type
             } else if name.starts_with("__extern__") {
                 // extern type alias body — the Rust path isn't a Canon type
             } else if generic_scope.contains(name) {
@@ -2201,6 +2206,103 @@ fn push_param_names(ty: &TypeExpr, names: &mut Vec<String>) {
         TypeExpr::Product { fields, .. } => {
             for f in fields {
                 push_param_names(f, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The canonicity backstop for elided arm types. The formatter strips
+/// an arm annotation that *syntactically* restates the context type;
+/// it cannot see alias chains, so an annotation that restates the
+/// context through an alias (`=> Unit` inside a `Unit => Program`
+/// entry, `=> TestResult` inside a test newtype's constructor) would
+/// survive as a second spelling of the elided form. The checker owns
+/// the alias table, so it closes the leak: such an annotation is an
+/// error directing to the elided spelling. Only bare `Named`-to-`Named`
+/// alias equivalence is flagged — generic annotations either match
+/// canonically (already stripped) or genuinely differ.
+fn check_contextual_arm_annotations(
+    block: &Block,
+    expected: Option<&TypeExpr>,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
+    let n = block.exprs.len();
+    for (i, expr) in block.exprs.iter().enumerate() {
+        let exp = if i + 1 == n { expected } else { None };
+        contextual_arm_annotations_expr(expr, exp, symbols, errors);
+    }
+}
+
+fn contextual_arm_annotations_expr(
+    expr: &Expr,
+    expected: Option<&TypeExpr>,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
+    match expr {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            contextual_arm_annotations_expr(scrutinee, None, symbols, errors);
+            for arm in arms {
+                if let (
+                    Some(TypeExpr::Named { name: ctx_name, .. }),
+                    TypeExpr::Named {
+                        name: arm_name,
+                        generics,
+                        span,
+                    },
+                ) = (expected, &arm.return_ty)
+                {
+                    if generics.is_empty()
+                        && arm_name != ctx_name
+                        && arm_name != crate::ast::ELIDED_RETURN
+                        && symbols.resolve_alias(arm_name) == symbols.resolve_alias(ctx_name)
+                    {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "arm type `{arm_name}` restates the context type `{ctx_name}` \
+                                 through its alias chain: elide it (`* Pattern {{ … }}`)"
+                            ),
+                            span: *span,
+                        });
+                    }
+                }
+                let semantic = if crate::ast::is_elided_return_ty(&arm.return_ty) {
+                    expected.cloned()
+                } else {
+                    Some(arm.return_ty.clone())
+                };
+                check_contextual_arm_annotations(&arm.body, semantic.as_ref(), symbols, errors);
+            }
+        }
+        Expr::Lambda {
+            return_ty, body, ..
+        } => {
+            check_contextual_arm_annotations(body, Some(return_ty), symbols, errors);
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            contextual_arm_annotations_expr(receiver, None, symbols, errors);
+            for a in args {
+                contextual_arm_annotations_expr(a, None, symbols, errors);
+            }
+        }
+        Expr::Constructor { args, .. } => {
+            for a in args {
+                contextual_arm_annotations_expr(a, None, symbols, errors);
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => {
+            contextual_arm_annotations_expr(inner, None, symbols, errors);
+        }
+        Expr::FieldAccess { receiver, .. } => {
+            contextual_arm_annotations_expr(receiver, None, symbols, errors);
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                contextual_arm_annotations_expr(f, None, symbols, errors);
             }
         }
         _ => {}
@@ -2821,6 +2923,22 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             span,
         } => {
             check_expr(scrutinee, scope, symbols, errors);
+            // An elided arm type survives `propagate_elided_arm_types`
+            // only when the dispatch is not in return position — there
+            // is no context type to fill it with, so the arm must spell
+            // its own.
+            if let Some(arm) = arms
+                .iter()
+                .find(|a| crate::ast::is_elided_return_ty(&a.return_ty))
+            {
+                errors.push(CanonError::CheckError {
+                    message: "a dispatch outside return position spells its arm types \
+                              (`* Pattern => Type { … }`): there is no context type to elide \
+                              into"
+                        .to_string(),
+                    span: arm.span,
+                });
+            }
             let scrutinee_ty = expr_type_name_in_scope(scrutinee, symbols);
             let generic_scope: HashSet<String> = HashSet::new();
             // Literal-pattern dispatch (`* ("/notes") -> …` on a String

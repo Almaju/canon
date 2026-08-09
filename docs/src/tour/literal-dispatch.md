@@ -16,9 +16,9 @@ Route = String
 
 Route => Body {
     Route -> (
-        * "/notes" => Body { Body("every note") }
-        * "/notes/1" => Body { Body("the first note") }
-        * String => Body { Body("not found") }
+        * "/notes" { Body("every note") }
+        * "/notes/1" { Body("the first note") }
+        * String { Body("not found") }
     )
 }
 

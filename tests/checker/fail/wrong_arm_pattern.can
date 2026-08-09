@@ -1,6 +1,6 @@
 Unit => Program {
     Some(7) -> (
-        * None => Unit { "none".print() }
-        * Ok<Int> => Unit { "wrong".print() }
+        * None { "none".print() }
+        * Ok<Int> { "wrong".print() }
     )
 }

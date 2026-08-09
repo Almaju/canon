@@ -2,8 +2,8 @@ IntParseParsesNegative = TestResult
 
 Unit => IntParseParsesNegative {
     Int("-7") -> (
-        * Err<MalformedInt> => TestResult { Fail("\"-7\" should parse") }
-        * Ok<Int> => TestResult { Int -> Eq(0 -> Difference(7)) -> TestResult }
+        * Err<MalformedInt> { Fail("\"-7\" should parse") }
+        * Ok<Int> { Int -> Eq(0 -> Difference(7)) -> TestResult }
     )
 }
 
@@ -11,8 +11,8 @@ IntParseParsesPositive = TestResult
 
 Unit => IntParseParsesPositive {
     Int("42") -> (
-        * Err<MalformedInt> => TestResult { Fail("\"42\" should parse") }
-        * Ok<Int> => TestResult { Int -> Eq(42) -> TestResult }
+        * Err<MalformedInt> { Fail("\"42\" should parse") }
+        * Ok<Int> { Int -> Eq(42) -> TestResult }
     )
 }
 
@@ -20,8 +20,8 @@ IntParseRejectsEmptyString = TestResult
 
 Unit => IntParseRejectsEmptyString {
     Int("") -> (
-        * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { Fail("\"\" should not parse") }
+        * Err<MalformedInt> { Pass() }
+        * Ok<Int> { Fail("\"\" should not parse") }
     )
 }
 
@@ -29,8 +29,8 @@ IntParseRejectsLetters = TestResult
 
 Unit => IntParseRejectsLetters {
     Int("abc") -> (
-        * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { Fail("\"abc\" should not parse") }
+        * Err<MalformedInt> { Pass() }
+        * Ok<Int> { Fail("\"abc\" should not parse") }
     )
 }
 
@@ -38,8 +38,8 @@ IntParseRejectsLoneMinus = TestResult
 
 Unit => IntParseRejectsLoneMinus {
     Int("-") -> (
-        * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { Fail("\"-\" should not parse") }
+        * Err<MalformedInt> { Pass() }
+        * Ok<Int> { Fail("\"-\" should not parse") }
     )
 }
 
@@ -47,7 +47,7 @@ IntParseRejectsNegativeGarbage = TestResult
 
 Unit => IntParseRejectsNegativeGarbage {
     Int("-x") -> (
-        * Err<MalformedInt> => TestResult { Pass() }
-        * Ok<Int> => TestResult { Fail("\"-x\" should not parse") }
+        * Err<MalformedInt> { Pass() }
+        * Ok<Int> { Fail("\"-x\" should not parse") }
     )
 }

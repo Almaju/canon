@@ -17,7 +17,11 @@ pub fn format(source: &str) -> Result<String> {
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let module = parser.parse()?;
-    let module = canonicalize_module(&module);
+    let mut module = canonicalize_module(&module);
+    // An arm annotation that merely restates the context type is
+    // ceremony; the elided form is canonical
+    // (spec § Dispatch, "Arm Types").
+    crate::ast::strip_contextual_arm_types(&mut module);
     Ok(emit_module(&module))
 }
 
@@ -1448,9 +1452,18 @@ fn emit_arm_pattern(arm: &MatchArm) -> String {
     }
 }
 
+/// The `=> Type ` head segment of an arm, or nothing when the type is
+/// elided (context supplies it — see `ast::strip_contextual_arm_types`).
+fn emit_arm_head(arm: &MatchArm) -> String {
+    if crate::ast::is_elided_return_ty(&arm.return_ty) {
+        String::new()
+    } else {
+        format!(" => {}", emit_type_expr(&arm.return_ty))
+    }
+}
+
 fn emit_arm_inline(arm: &MatchArm) -> String {
     let pat = emit_arm_pattern(arm);
-    let ret = emit_type_expr(&arm.return_ty);
     let body = arm
         .body
         .exprs
@@ -1458,7 +1471,7 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
         .map(emit_inline)
         .collect::<Vec<_>>()
         .join(" ");
-    format!("{} => {} {{ {} }}", pat, ret, body)
+    format!("{}{} {{ {} }}", pat, emit_arm_head(arm), body)
 }
 
 /// Render a dispatch arm at the given indent level. Short single-line
@@ -1474,7 +1487,6 @@ fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
         return inline;
     }
     let pat = emit_arm_pattern(arm);
-    let ret = emit_type_expr(&arm.return_ty);
     let body_pad = "    ".repeat(arm_indent + 1);
     let close_pad = "    ".repeat(arm_indent);
     let body = arm
@@ -1484,7 +1496,13 @@ fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
         .map(|e| format!("{}{}", body_pad, emit_expr(e, arm_indent + 1)))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{} => {} {{\n{}\n{}}}", pat, ret, body, close_pad)
+    format!(
+        "{}{} {{\n{}\n{}}}",
+        pat,
+        emit_arm_head(arm),
+        body,
+        close_pad
+    )
 }
 
 /// Does this expression (or any sub-expression) contain a dispatch?
@@ -1674,7 +1692,7 @@ mod tests {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
             "main = () => Unit {\n    True() -> (\n        * True => Unit { \"yes\".print() }\n        * False => Unit { \"no\".print() }\n    )\n}\n",
-            "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
+            "main = () => Unit {\n    True() -> (\n        * False { \"no\" -> Print }\n        * True { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 
@@ -1683,7 +1701,7 @@ mod tests {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
             "Route = (String) => String {\n    String -> (\n        * String => String { \"other\" }\n        * \"/b\" => String { \"b\" }\n        * \"/a\" => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
-            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    Route(\"/a\") -> Print\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * \"/a\" { \"a\" }\n        * \"/b\" { \"b\" }\n        * String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    Route(\"/a\") -> Print\n}\n",
         );
     }
 

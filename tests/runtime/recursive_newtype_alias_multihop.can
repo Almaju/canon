@@ -10,8 +10,8 @@ E = Unit
 
 A => Reported {
     A.C -> (
-        * D => Reported { "got D" -> Print }
-        * E => Reported { "got E" -> Print }
+        * D { "got D" -> Print }
+        * E { "got E" -> Print }
     )
 }
 

@@ -4,8 +4,8 @@ Described = String
 
 Int => Result<Classified, String> {
     Int -> Eq(0) -> (
-        * False => Result<Classified, String> { Ok("nonzero") }
-        * True => Result<Classified, String> { Err("was zero") }
+        * False { Ok("nonzero") }
+        * True { Err("was zero") }
     )
 }
 
@@ -19,7 +19,7 @@ Unit => Program {
         * Ok<String> => Unit { String -> Print }
     )
     Described(0) -> (
-        * Err<String> => Unit { String -> Print }
-        * Ok<String> => Unit { String -> Print }
+        * Err<String> { String -> Print }
+        * Ok<String> { String -> Print }
     )
 }

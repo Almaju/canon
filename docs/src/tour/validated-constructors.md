@@ -20,8 +20,8 @@ Url = String
 
 String => Result<Url, InvalidUrl> {
     String -> Length -> Gt(0) -> (
-        * False => Result<Url, InvalidUrl> { String -> InvalidUrl -> Err }
-        * True => Result<Url, InvalidUrl> { String -> Ok }
+        * False { String -> InvalidUrl -> Err }
+        * True { String -> Ok }
     )
 }
 
@@ -31,8 +31,8 @@ Unit => Program {
         * Ok<Url> => Unit { Url -> String -> Print }
     )
     Url("") -> (
-        * Err<InvalidUrl> => Unit { "rejected" -> Print }
-        * Ok<Url> => Unit { Url -> String -> Print }
+        * Err<InvalidUrl> { "rejected" -> Print }
+        * Ok<Url> { Url -> String -> Print }
     )
 }
 ```

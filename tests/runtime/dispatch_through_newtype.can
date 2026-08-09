@@ -6,8 +6,8 @@ MessageContent = Option<Content>
 
 MessageContent => Dispatched {
     MessageContent -> (
-        * None => Dispatched { "absent" -> Print }
-        * Some<Content> => Dispatched { "present" -> Print }
+        * None { "absent" -> Print }
+        * Some<Content> { "present" -> Print }
     )
 }
 

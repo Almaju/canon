@@ -11,10 +11,10 @@ Unit => Program {
         * Int => Unit { Int -> Product(Int) -> String -> Print }
     )
     Blue() -> (
-        * Color => Unit {
+        * Color {
             Color -> (
-                * Blue => Unit { "blue" -> Print }
-                * Red => Unit { "red" -> Print }
+                * Blue { "blue" -> Print }
+                * Red { "red" -> Print }
             )
         }
     )

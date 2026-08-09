@@ -4,8 +4,8 @@ DecodeRejectsMalformedUnicodeEscape = TestResult
 
 Unit => DecodeRejectsBadEscape {
     Json("\"\\q\"")? -> Decoded -> (
-        * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Decoded> => TestResult { Fail("unknown escape should be rejected") }
+        * Err<MalformedJson> { Pass() }
+        * Ok<Decoded> { Fail("unknown escape should be rejected") }
     )
 }
 
@@ -13,8 +13,8 @@ DecodeUnescapesAllControlEscapes = TestResult
 
 Unit => DecodeRejectsMalformedUnicodeEscape {
     Json("\"\\u00zz\"")? -> Decoded -> (
-        * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Decoded> => TestResult { Fail("non-hex \\u escape should be rejected") }
+        * Err<MalformedJson> { Pass() }
+        * Ok<Decoded> { Fail("non-hex \\u escape should be rejected") }
     )
 }
 
@@ -128,8 +128,8 @@ FieldRejectsMissingKeyEmptyObject = TestResult
 
 Unit => FieldRejectsMissingKeyEmptyObject {
     Doc("{}") -> Json? -> Field("missing") -> (
-        * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { Fail("\"missing\" should not resolve in {}") }
+        * Err<MalformedJson> { Pass() }
+        * Ok<Json> { Fail("\"missing\" should not resolve in {}") }
     )
 }
 
@@ -137,8 +137,8 @@ FieldRejectsMissingKeyNoMatch = TestResult
 
 Unit => FieldRejectsMissingKeyNoMatch {
     Doc("{\"model\":\"gpt-4\"}") -> Json? -> Field("missing") -> (
-        * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { Fail("\"missing\" should not resolve") }
+        * Err<MalformedJson> { Pass() }
+        * Ok<Json> { Fail("\"missing\" should not resolve") }
     )
 }
 
@@ -146,8 +146,8 @@ InvalidJsonRejected = TestResult
 
 Unit => InvalidJsonRejected {
     Json("{oops") -> (
-        * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { Fail("\"{oops\" should not validate") }
+        * Err<MalformedJson> { Pass() }
+        * Ok<Json> { Fail("\"{oops\" should not validate") }
     )
 }
 
@@ -155,8 +155,8 @@ JsonAcceptsArray = TestResult
 
 Unit => JsonAcceptsArray {
     Doc("[1,2,3]") -> Json -> (
-        * Err<MalformedJson> => TestResult { Fail("\"[1,2,3]\" should validate as JSON") }
-        * Ok<Json> => TestResult { Pass() }
+        * Err<MalformedJson> { Fail("\"[1,2,3]\" should validate as JSON") }
+        * Ok<Json> { Pass() }
     )
 }
 
@@ -164,8 +164,8 @@ JsonAcceptsNull = TestResult
 
 Unit => JsonAcceptsNull {
     Json("null") -> (
-        * Err<MalformedJson> => TestResult { Fail("\"null\" should validate as JSON") }
-        * Ok<Json> => TestResult { Pass() }
+        * Err<MalformedJson> { Fail("\"null\" should validate as JSON") }
+        * Ok<Json> { Pass() }
     )
 }
 
@@ -173,8 +173,8 @@ JsonAcceptsNumber = TestResult
 
 Unit => JsonAcceptsNumber {
     Json("-1.5e10") -> (
-        * Err<MalformedJson> => TestResult { Fail("\"-1.5e10\" should validate as JSON") }
-        * Ok<Json> => TestResult { Pass() }
+        * Err<MalformedJson> { Fail("\"-1.5e10\" should validate as JSON") }
+        * Ok<Json> { Pass() }
     )
 }
 
@@ -182,7 +182,7 @@ JsonRejectsMalformedNumber = TestResult
 
 Unit => JsonRejectsMalformedNumber {
     Json("1.") -> (
-        * Err<MalformedJson> => TestResult { Pass() }
-        * Ok<Json> => TestResult { Fail("\"1.\" should not validate (missing fractional digits)") }
+        * Err<MalformedJson> { Pass() }
+        * Ok<Json> { Fail("\"1.\" should not validate (missing fractional digits)") }
     )
 }

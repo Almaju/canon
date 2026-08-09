@@ -18,7 +18,7 @@ Unit => Program {
     List("a" * "bb" * "c" * "dd")
         -> Filtered((String) => Bool { String -> Length -> Le(1) })
         -> First -> (
-        * None => Unit { "none" -> Print }
-        * Some<String> => Unit { String -> Print }
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
     )
 }

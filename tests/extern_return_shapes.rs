@@ -73,7 +73,7 @@ fn option_scalar_return_builds() {
         &root,
         "bindgen/demo/opt@0.1.0/opt.can",
         "MaybeValue = Option<Int>\n\nUnit => MaybeValue {\n    \"maybe-value\"\n}\n",
-        "Unit => Program {\n    MaybeValue() -> (\n        * None => Unit { \"none\" -> Print }\n        * Some<Int> => Unit { Int -> Print }\n    )\n}\n",
+        "Unit => Program {\n    MaybeValue() -> (\n        * None { \"none\" -> Print }\n        * Some<Int> { Int -> Print }\n    )\n}\n",
     );
     assert_builds(&root);
 }
@@ -137,7 +137,7 @@ fn bare_result_return_builds() {
         &root,
         "bindgen/demo/sync@0.1.0/sync.can",
         "Synced = Unit\n\nUnit => Result<Synced, Unit> {\n    \"sync-all\"\n}\n",
-        "Unit => Program {\n    Synced() -> (\n        * Err => Unit { \"failed\" -> Print }\n        * Ok => Unit { \"synced\" -> Print }\n    )\n}\n",
+        "Unit => Program {\n    Synced() -> (\n        * Err { \"failed\" -> Print }\n        * Ok { \"synced\" -> Print }\n    )\n}\n",
     );
     assert_builds(&root);
 }

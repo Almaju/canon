@@ -26,8 +26,8 @@ lives in real markdown files, not string literals:
 ```canon
 Page => Content {
     Page -> (
-        * "guide" => Content { Guide() -> Html }
-        * String => Content { Intro() -> Html }
+        * "guide" { Guide() -> Html }
+        * String { Intro() -> Html }
     )
 }
 

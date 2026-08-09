@@ -12,7 +12,7 @@ Unit => Found {
 
 Unit => Program {
     Found() -> (
-        * None => Unit { "none" -> Print }
-        * Some<User> => Unit { User -> Name -> Print }
+        * None { "none" -> Print }
+        * Some<User> { User -> Name -> Print }
     )
 }

@@ -4,8 +4,8 @@ Second = String
 
 Int => Option<First> {
     Int -> Eq(0) -> (
-        * False => Option<First> { Some("found") }
-        * True => Option<First> { None() }
+        * False { Some("found") }
+        * True { None() }
     )
 }
 
@@ -19,7 +19,7 @@ Unit => Program {
         * Some<String> => Unit { String -> Print }
     )
     Second(0) -> (
-        * None => Unit { "none" -> Print }
-        * Some<String> => Unit { String -> Print }
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
     )
 }

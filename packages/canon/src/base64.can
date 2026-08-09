@@ -33,10 +33,8 @@ Int => Base64Char {
 
 Base64 => Result<Base64Decoded, MalformedBase64> {
     Base64 -> Length -> Remainder(4) -> (
-        * 0 => Result<Base64Decoded, MalformedBase64> { 1 -> DecodedBlocks(Base64) }
-        * Int => Result<Base64Decoded, MalformedBase64> {
-            MalformedBase64("length is not a multiple of 4") -> Err
-        }
+        * 0 { 1 -> DecodedBlocks(Base64) }
+        * Int { MalformedBase64("length is not a multiple of 4") -> Err }
     )
 }
 
@@ -46,11 +44,11 @@ String => Base64Encoded {
 
 Int * String => Base64Tail {
     Int -> Gt(String -> Length) -> (
-        * False => Base64Tail {
+        * False {
             Int -> Sum(1) -> Gt(String -> Length) -> (
-                * False => Base64Tail {
+                * False {
                     Int -> Sum(2) -> Gt(String -> Length) -> (
-                        * False => Base64Tail {
+                        * False {
                             String
                                 -> ByteAt(Int)
                                 -> Product(65536)
@@ -59,7 +57,7 @@ Int * String => Base64Tail {
                                 -> EncodedThree
                                 -> Joined(Int -> Sum(3) -> Base64Tail(String))
                         }
-                        * True => Base64Tail {
+                        * True {
                             String
                                 -> ByteAt(Int)
                                 -> Product(65536)
@@ -68,18 +66,18 @@ Int * String => Base64Tail {
                         }
                     )
                 }
-                * True => Base64Tail { String -> ByteAt(Int) -> Product(65536) -> EncodedOne }
+                * True { String -> ByteAt(Int) -> Product(65536) -> EncodedOne }
             )
         }
-        * True => Base64Tail { "" }
+        * True { "" }
     )
 }
 
 Int * Base64 => Result<DecodedBlocks, MalformedBase64> {
     Int -> Gt(Base64 -> Length) -> (
-        * False => Result<DecodedBlocks, MalformedBase64> {
+        * False {
             Base64 -> ByteAt(Int -> Sum(3)) -> Eq(61) -> (
-                * False => Result<DecodedBlocks, MalformedBase64> {
+                * False {
                     Base64
                         -> ByteAt(Int)
                         -> Sextet?
@@ -91,14 +89,12 @@ Int * Base64 => Result<DecodedBlocks, MalformedBase64> {
                         -> Joined(Int -> Sum(4) -> DecodedBlocks(Base64)?)
                         -> Ok
                 }
-                * True => Result<DecodedBlocks, MalformedBase64> {
+                * True {
                     Int -> Sum(3) -> Eq(Base64 -> Length) -> (
-                        * False => Result<DecodedBlocks, MalformedBase64> {
-                            MalformedBase64("padding before end of input") -> Err
-                        }
-                        * True => Result<DecodedBlocks, MalformedBase64> {
+                        * False { MalformedBase64("padding before end of input") -> Err }
+                        * True {
                             Base64 -> ByteAt(Int -> Sum(2)) -> Eq(61) -> (
-                                * False => Result<DecodedBlocks, MalformedBase64> {
+                                * False {
                                     Base64
                                         -> ByteAt(Int)
                                         -> Sextet?
@@ -108,7 +104,7 @@ Int * Base64 => Result<DecodedBlocks, MalformedBase64> {
                                         -> DecodedTwo
                                         -> Ok
                                 }
-                                * True => Result<DecodedBlocks, MalformedBase64> {
+                                * True {
                                     Base64
                                         -> ByteAt(Int)
                                         -> Sextet?
@@ -123,7 +119,7 @@ Int * Base64 => Result<DecodedBlocks, MalformedBase64> {
                 }
             )
         }
-        * True => Result<DecodedBlocks, MalformedBase64> { Ok("") }
+        * True { Ok("") }
     )
 }
 
@@ -170,47 +166,37 @@ Int => EncodedTwo {
 
 Int => Result<Sextet, MalformedBase64> {
     Int -> (
-        * 43 => Result<Sextet, MalformedBase64> { Ok(62) }
-        * 47 => Result<Sextet, MalformedBase64> { Ok(63) }
-        * Int => Result<Sextet, MalformedBase64> {
+        * 43 { Ok(62) }
+        * 47 { Ok(63) }
+        * Int {
             Int -> IsIntDigit -> (
-                * False => Result<Sextet, MalformedBase64> {
+                * False {
                     Int -> Ge(65) -> (
-                        * False => Result<Sextet, MalformedBase64> {
-                            MalformedBase64("invalid base64 character") -> Err
-                        }
-                        * True => Result<Sextet, MalformedBase64> {
+                        * False { MalformedBase64("invalid base64 character") -> Err }
+                        * True {
                             Int -> Le(90) -> (
-                                * False => Result<Sextet, MalformedBase64> {
+                                * False {
                                     Int -> Ge(97) -> (
-                                        * False => Result<Sextet, MalformedBase64> {
+                                        * False {
                                             MalformedBase64("invalid base64 character") -> Err
                                         }
-                                        * True => Result<Sextet, MalformedBase64> {
+                                        * True {
                                             Int -> Le(122) -> (
-                                                * False => Result<Sextet, MalformedBase64> {
+                                                * False {
                                                     MalformedBase64("invalid base64 character")
                                                         -> Err
                                                 }
-                                                * True => Result<Sextet, MalformedBase64> {
-                                                    Int
-                                                        -> Difference(71)
-                                                        -> Ok
-                                                }
+                                                * True { Int -> Difference(71) -> Ok }
                                             )
                                         }
                                     )
                                 }
-                                * True => Result<Sextet, MalformedBase64> {
-                                    Int
-                                        -> Difference(65)
-                                        -> Ok
-                                }
+                                * True { Int -> Difference(65) -> Ok }
                             )
                         }
                     )
                 }
-                * True => Result<Sextet, MalformedBase64> { Int -> Sum(4) -> Ok }
+                * True { Int -> Sum(4) -> Ok }
             )
         }
     )
