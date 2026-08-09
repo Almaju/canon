@@ -316,7 +316,7 @@ so `IoError + NotFound` *is* the same type everywhere it appears.
 JSON object and array literals are first-class expressions producing
 `Json` values. No import is required: like `Option` and `Result`, JSON
 support is part of the prelude. The compiler knows `Json = String`
-intrinsically, and the loader pulls in `canon/std/Json` automatically
+intrinsically, and the loader pulls in `canon/Json` automatically
 the moment a program uses its machinery (interpolation, the validating
 `Json(...)` constructor, or the `Encoded` family):
 
@@ -405,7 +405,7 @@ String => Row {
   constructors.
 
 Like `Json`, `Html` is a prelude type (`Html = String` intrinsically);
-the loader pulls in `canon/std/web/Html` the moment a literal carries a
+the loader pulls in `canon/web/Html` the moment a literal carries a
 hole (an explicit `-> Escaped` loads it by ordinary reference
 discovery). HTML literals power the
 [web target](../reference/web-target.md)'s `view`.

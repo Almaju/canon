@@ -33,7 +33,7 @@ arrow in Canon it has the shape `Input => ReturnType { body }`, and the
 CLI entry mirrors the HTTP one: the command's **argument vector flows in
 as `Args`, an exit status flows out as `Exit`**.
 
-`Args` (`= List<String>`, from `canon/std`) is the program's `argv` -- the
+`Args` (`= List<String>`, from `canon`) is the program's `argv` -- the
 compiler binds it from `wasi:cli/environment`, so you never fetch it, it
 is handed to you. `Exit` (`= Int`) is the exit status; the whole arrow is
 what the compiler lifts as the component's `wasi:cli/run.run` export.

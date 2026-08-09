@@ -851,7 +851,7 @@ impl<'m> WasmGen<'m> {
         if has_args {
             // Populate the `Args` local by invoking the `Args` nullary
             // constructor (`Unit => Args { getArguments() }` in
-            // `canon/std`), which reads argv via
+            // `canon`), which reads argv via
             // `wasi:cli/environment#get-arguments` and leaves the decoded
             // `List<String>` (ptr, len) on the stack. Compiled before
             // `Args` is registered in `scope` so the constructor call
@@ -1359,7 +1359,7 @@ impl<'m> WasmGen<'m> {
             // `String.concat` chain whose `Interp` links are
             // `-> Escaped` constructions (escaping for `String`/`Int` via the
             // stdlib's `text()`, identity for `Html` — see
-            // `packages/canon/std/src/web/html.can`).
+            // `packages/canon/src/web/html.can`).
             Expr::HtmlLit { parts, span } => {
                 let all_static = parts
                     .iter()
@@ -1440,7 +1440,7 @@ impl<'m> WasmGen<'m> {
 
     /// Emit a call to the stdlib `String` constructor family member for
     /// `recv` (`"Bool"` / `"Float"` / `"Int"`) — the pure-Canon decimal
-    /// renderers in `canon/std/string.can`. The receiver value is
+    /// renderers in `canon/string.can`. The receiver value is
     /// already on the stack. The loader's string prelude
     /// (`inject_string_prelude`) loads the module wherever a render
     /// site compiles, so a miss here is a compiler bug.
@@ -1455,9 +1455,7 @@ impl<'m> WasmGen<'m> {
             .get(&(Some(recv.to_string()), "String".to_string()))
             .cloned()
             .unwrap_or_else(|| {
-                panic!(
-                    "`canon/std/String` carries the `{recv} => String` renderer (string prelude)"
-                )
+                panic!("`canon/String` carries the `{recv} => String` renderer (string prelude)")
             });
         self.emit_func_table_call(&info, &[], scope, f)
     }
@@ -1530,7 +1528,7 @@ impl<'m> WasmGen<'m> {
                         ("String", Ty::I32) => self.emit_render_to_str("Bool", scope, f),
                         ("Int", ty) if ty.is_str_like() => {
                             // `Int("42")` — the fallible parse constructor
-                            // from `canon/std/Int`. The compiled string is
+                            // from `canon/Int`. The compiled string is
                             // already on the stack, exactly where
                             // `emit_func_table_call` expects the receiver.
                             if let Some(info) = self
@@ -1597,7 +1595,7 @@ impl<'m> WasmGen<'m> {
             // List constructor: List(e1, e2, e3, ...)
             "List" => self.build_list_literal(args, scope, f),
             // NOTE: `Map()` / `Set()` are NOT built in — they are the
-            // pure-Canon `canon/std/Map` / `canon/std/Set` recursive
+            // pure-Canon `canon/Map` / `canon/Set` recursive
             // unions, whose zero-arg `Self` constructors resolve
             // through the ordinary user-defined path below.
             // NOTE: the concurrency combinators (`parallel` / `race`) are
@@ -2798,7 +2796,7 @@ impl<'m> WasmGen<'m> {
         // identity conversion — the value already is one. The scalar
         // renderings (`Int.String()`, `Float.String()`, `Bool.String()`)
         // resolved through the func-table lookups above into the
-        // `canon/std/string.can` constructor family; `Byte.String()`
+        // `canon/string.can` constructor family; `Byte.String()`
         // took the one-byte-string primitive before them.
         if method == "String" && args.is_empty() && recv_ty.is_str_like() {
             return Ty::Str;
@@ -4312,7 +4310,7 @@ impl<'m> WasmGen<'m> {
             }
             // Only the two base comparisons are builtins (wasm numerics);
             // the derived comparisons (`ne`/`le`/`gt`/`ge`) are pure Canon
-            // dispatch over these in `canon/std/int.can`.
+            // dispatch over these in `canon/int.can`.
             ("lt", Ty::I64) => {
                 self.compile_i64_arg(args, scope, f);
                 f.instruction(&Instruction::I64LtS);
@@ -4369,7 +4367,7 @@ impl<'m> WasmGen<'m> {
                 Ty::F64
             }
             // Base comparisons only, as for Int — the derived comparisons
-            // live in `canon/std/float.can`. Their IEEE semantics survive
+            // live in `canon/float.can`. Their IEEE semantics survive
             // the port: `Gt` is `Lt` with swapped operands, `Le`/`Ge` are
             // `Lt`-or-`Eq`, and `Ne` is not-`Eq` — all exact under NaN
             // (every ordered comparison with a NaN operand is false).
@@ -4604,7 +4602,7 @@ impl<'m> WasmGen<'m> {
             // the same order the language enforces on declarations.
             // Like `Int`/`Float`, only `lt` (and `eq` above) is a
             // builtin; the derived comparisons dispatch over the two
-            // in `canon/std/string.can`.
+            // in `canon/string.can`.
             ("lt", _) if recv_ty.is_str_like() && args.len() == 1 => {
                 let arg_ty = self.compile_expr(&args[0], scope, f);
                 if !arg_ty.is_str_like() {
@@ -4758,7 +4756,7 @@ impl<'m> WasmGen<'m> {
                 Ty::NamedPtr("Option".to_string())
             }
             // NOTE: `Map` / `Set` methods are NOT built in — they are
-            // pure Canon (`canon/std/Map`, `canon/std/Set`) and resolve
+            // pure Canon (`canon/Map`, `canon/Set`) and resolve
             // through `func_table` in `compile_method_call` before the
             // builtin fallback ever fires.
             // ── List growth ──────────────────────────────────────────
@@ -4938,7 +4936,7 @@ impl<'m> WasmGen<'m> {
                     }));
                     f.instruction(&Instruction::LocalSet(local));
                 }
-                // WIT declaration order (packages/canon/std/wit/wasi/http.wit).
+                // WIT declaration order (packages/canon/wit/wasi/http.wit).
                 const METHOD_NAMES: [&str; 9] = [
                     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
                 ];
@@ -5971,7 +5969,7 @@ impl<'m> WasmGen<'m> {
 
     pub(super) fn emit_print(&mut self, ty: Ty, scope: &LocalScope, f: &mut Function) {
         // Scalars render through the stdlib `String` constructor family
-        // (`canon/std/string.can`) and then print as the string they
+        // (`canon/string.can`) and then print as the string they
         // became — one print path, one newline convention.
         let ty = match ty {
             Ty::I64 => self.emit_render_to_str("Int", scope, f),

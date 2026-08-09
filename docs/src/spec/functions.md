@@ -154,7 +154,7 @@ vector flows in, an exit status flows out, mirroring the HTTP entry's
 (The legacy `ExitCode` return is retired -- `Exit` is the one
 exit-status type.)
 
-`Args` (`= List<String>`, from `canon/std`) is the program's `argv`: the
+`Args` (`= List<String>`, from `canon`) is the program's `argv`: the
 compiler binds it from `wasi:cli/environment#get-arguments` at the lifted
 `run` boundary and hands it to the entry, exactly as the HTTP world hands
 the handler its `Request` -- you never fetch it. `Exit` (`= Int`) is the

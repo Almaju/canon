@@ -663,8 +663,8 @@ fn urn_for_bindgen_file(current_file: &str) -> Option<String> {
 /// `.wit` files (look for `<pkg>.wit` inside) or a single `.wit` file
 /// (match it by the `package <ns>:<pkg>` header it declares).
 ///
-/// For bundled bindgen files (the compiler's own `canon/std`), the
-/// project root we walk up to is `packages/canon/std/`, whose
+/// For bundled bindgen files (the compiler's own `canon`), the
+/// project root we walk up to is `packages/canon/`, whose
 /// `wit/wasi/` directory holds the vendored WASI WIT files.
 fn wit_file_for_urn(urn: &str, current_file: &str) -> Option<(PathBuf, String)> {
     // Parse `<ns>:<pkg>/<iface>@<ver>` (or without `@<ver>`).
@@ -903,7 +903,7 @@ fn collect_variant_defs(td: &TypeDef, defs: &mut Vec<DefInfo>) {
 mod tests {
     //! Tests for the slice-5 WIT-navigation helpers. These exercise the
     //! filesystem-level lookups end-to-end against the stdlib's own
-    //! `packages/canon/std/wit/wasi/` fixtures; the higher-level LSP
+    //! `packages/canon/wit/wasi/` fixtures; the higher-level LSP
     //! request/response plumbing is still tested by hand against editors.
     use super::*;
     use std::fs;
@@ -927,8 +927,8 @@ mod tests {
     fn find_wit_decl_locates_function() {
         // `wit/wasi/clocks.wit` declares `now: func() -> ...`
         // inside the `monotonic-clock` interface. Find it.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("packages/canon/std/wit/wasi/clocks.wit");
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/wit/wasi/clocks.wit");
         let (line, col) = find_wit_decl(&path, "now").expect("should find `now`");
         assert!(line > 0);
         assert!(col > 0);
@@ -946,8 +946,8 @@ mod tests {
     fn find_wit_decl_locates_kebab_function() {
         // `get-resolution: func()` is the kebab form `getResolution`
         // becomes in the bindgen. Verify the kebab scan finds it.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("packages/canon/std/wit/wasi/clocks.wit");
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/wit/wasi/clocks.wit");
         let (line, _) =
             find_wit_decl(&path, "get-resolution").expect("should find `get-resolution`");
         let src = fs::read_to_string(&path).unwrap();
@@ -961,8 +961,8 @@ mod tests {
     #[test]
     fn find_wit_decl_locates_type_alias() {
         // `type duration = u64` inside `wasi:clocks/types`.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("packages/canon/std/wit/wasi/clocks.wit");
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/wit/wasi/clocks.wit");
         let (line, _) = find_wit_decl(&path, "duration").expect("should find `duration`");
         let src = fs::read_to_string(&path).unwrap();
         let actual_line = src.lines().nth((line - 1) as usize).unwrap();
@@ -974,8 +974,8 @@ mod tests {
 
     #[test]
     fn find_wit_decl_locates_interface() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("packages/canon/std/wit/wasi/clocks.wit");
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/wit/wasi/clocks.wit");
         let (line, _) =
             find_wit_decl(&path, "monotonic-clock").expect("should find `monotonic-clock`");
         let src = fs::read_to_string(&path).unwrap();
@@ -991,8 +991,8 @@ mod tests {
         // `now` is a real function in clocks.wit; `no` is not, but we
         // need to make sure we don't half-match `now:` against the
         // kebab name `no`.
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("packages/canon/std/wit/wasi/clocks.wit");
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/wit/wasi/clocks.wit");
         let result = find_wit_decl(&path, "no");
         assert!(
             result.is_none(),

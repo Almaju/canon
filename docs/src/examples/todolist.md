@@ -121,7 +121,7 @@ encodings, no host help. The same folds reappear, shared, in the
 ## What it demonstrates
 
 A real frontend with no framework (the triple *is* the app, with
-`canon/std/web` supplying the HTML helpers and declarative event
+`canon/web` supplying the HTML helpers and declarative event
 attributes); state that persists with no effect in the guest; and
 dispatch as the only control flow — message routing and the done-flag
 branch are both literal dispatch.

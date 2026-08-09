@@ -154,11 +154,11 @@ docs: build
     cargo run --quiet -- run docs --addr 127.0.0.1:8080
 
 # Regenerate the embedded WASI bindings from the vendored WIT files
-# under packages/canon/std/wit/. Run after upgrading the WASI version
+# under packages/canon/wit/. Run after upgrading the WASI version
 # or after changing the bindgen emitter. Commit the resulting
-# packages/canon/std/bindgen/ tree.
+# packages/canon/bindgen/ tree.
 regen-bindings: build
-    cargo run --quiet -- install packages/canon/std
+    cargo run --quiet -- install packages/canon
 
 # Format compiler source
 fmt:

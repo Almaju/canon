@@ -22,7 +22,7 @@ jobs:
         with:
           filters: |
             relevant:
-              - "packages/canon/std/**"
+              - "packages/canon/**"
               - "tests/canon/**"
               - "src/**"
               - "justfile"

@@ -14,7 +14,7 @@ only ever reaches the wrappers below.
 
 ## At a Glance
 
-| Module (`canon/std/...`) | Type | Backing binding | Notes |
+| Module (`canon/...`) | Type | Backing binding | Notes |
 |---|---|---|---|
 | `time/Mark` | `Mark = Int` | `wasi/clocks/monotonic_clock` | `Mark()` reads the monotonic clock (nanoseconds) |
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |

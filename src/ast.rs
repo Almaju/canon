@@ -339,7 +339,7 @@ pub enum EntryWorld {
 /// | `Response`                                         | Http  |
 /// | `Result<Response, _>`                              | Http  |
 ///
-/// `Exit` (`= Int`, from `canon/std`) is the canonical CLI world type —
+/// `Exit` (`= Int`, from `canon`) is the canonical CLI world type —
 /// the entry is `Args => Exit`, mirroring the HTTP entry's
 /// `Request => Response`: the command's argument vector flows in, an
 /// exit status flows out. `Program` (`= Unit`) is the arg-less shape
@@ -365,7 +365,7 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 
 /// Whether an entry's parameter list is the single `Args` input of the
 /// canonical CLI entry `Args => Exit`. `Args` (`= List<String>`, from
-/// `canon/std`) is the command's argument vector; codegen's `build_start`
+/// `canon`) is the command's argument vector; codegen's `build_start`
 /// binds it to the argv read from `wasi:cli/environment#get-arguments`.
 pub fn is_args_entry_param(params: &[Param]) -> bool {
     matches!(
@@ -669,7 +669,7 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Quotient", "div"),
     ("Remainder", "rem"),
     // Comparison — the two base predicates (wasm numerics). The derived
-    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon/std`
+    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon`
     // (`int.can`/`float.can`/`string.can`), one dispatch over `Lt`/`Eq`.
     ("Eq", "eq"),
     ("Lt", "lt"),
