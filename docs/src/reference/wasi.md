@@ -98,7 +98,7 @@ The vendored `store.can` is ordinary binding source. The install
 reported one skip — `get-all` returns an inline `tuple`, a shape the
 compiler can't lower yet — and emitted everything else:
 
-```canon
+```text
 Error = ErrorIo + ErrorUpstream
 
 ErrorIo = String
@@ -114,7 +114,7 @@ String => Result<Get, Error> {
 
 Referencing `Get` resolves to the vendored file automatically:
 
-```canon
+```text
 Unit => Program {
     Get("greeting") -> (
         * Err<Error> => Unit { "config unavailable" -> Print }

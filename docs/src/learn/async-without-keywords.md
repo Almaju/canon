@@ -33,7 +33,7 @@ error; day-to-day code consumes the unwrapped `T`.
 Fan-out is expressed on the values, with the same commutative call
 shape as everything else:
 
-```canon
+```text
 first -> Parallel(second)     # await both, results in order
 first -> Race(second)         # first to finish wins; the loser is cancelled
 ```

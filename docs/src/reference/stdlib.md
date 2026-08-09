@@ -76,9 +76,16 @@ Civil => Ymd {
 }
 
 Unit => Program {
-    Unix() -> Date -> Ymd -> Print
-    Unix() -> Weekday -> Print
-    Unix() -> Hour -> Print
+    Unix()
+        -> Date
+        -> Ymd
+        -> Print
+    Unix()
+        -> Weekday
+        -> Print
+    Unix()
+        -> Hour
+        -> Print
 }
 ```
 
@@ -102,7 +109,7 @@ Unit => Program {
 }
 ```
 
-```canon
+```text
 File = (Path) => Result<File, IoError>
 
 Read = String
@@ -159,7 +166,7 @@ is `"42"` by digit recursion, and `String(2.5)` / `String(True())`
 render the same way (`Print` goes through the same constructors); the
 fallible direction is a validated constructor in pure Canon:
 
-```canon
+```text
 Int = (String) => Result<Int, MalformedInt>
 ```
 
@@ -173,7 +180,9 @@ map ASCII case.
 ```canon
 Unit => Result<Program, MalformedBase64> {
     Base64Encoded("Canon") -> Print
-    Base64("Q2Fub24=") -> Base64Decoded? -> Print
+    Base64("Q2Fub24=")
+        -> Base64Decoded?
+        -> Print
     HexEncoded("Canon") -> Print
     Unit() -> Ok
 }
@@ -216,7 +225,9 @@ Int => Labeled {
 }
 
 Unit => Result<Program, MalformedJson> {
-    Doc("[1, 2, 3]") -> Json? -> Print
+    Doc("[1, 2, 3]")
+        -> Json?
+        -> Print
     Encoded(42) -> Print
     {"a":1,"b":[true,false,null]} -> Print
     Labeled(42) -> Print
