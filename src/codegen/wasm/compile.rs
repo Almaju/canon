@@ -861,6 +861,7 @@ impl<'m> WasmGen<'m> {
                     name: "Args".to_string(),
                     span: crate::error::Span::default(),
                 },
+                type_args: Vec::new(),
                 args: Vec::new(),
                 span: crate::error::Span::default(),
             };

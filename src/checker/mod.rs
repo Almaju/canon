@@ -822,7 +822,9 @@ fn compound_payload_gap(container: &str, payload: &str, span: crate::error::Span
 /// compound elements, `Appended` elements, and `Some<T>` dispatch arms.
 fn scan_expr_gaps(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>, errors: &mut Vec<CanonError>) {
     match expr {
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name, args, span, ..
+        } => {
             if name.name == "List" {
                 // `List(a * b * c)` carries its elements as one product.
                 let elements: &[Expr] = match args.as_slice() {
@@ -1555,6 +1557,31 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
 }
 
 /// `Json("…")` / `Html("…")` fed a **static string literal** that the
+/// Explicit call-site type arguments (`Map<String, Int>()`) are only
+/// meaningful on a generic type, and generic instantiation is not
+/// implemented yet — reject them everywhere so an annotation is never
+/// silently inert.
+fn check_expr_type_args(
+    name: &str,
+    type_args: &[TypeExpr],
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
+    if type_args.is_empty() {
+        return;
+    }
+    let message = if symbols.generic_types.contains(name) {
+        format!(
+            "explicit type arguments on `{}` are not supported yet: generic types cannot be instantiated",
+            name
+        )
+    } else {
+        format!("`{}` does not take type arguments", name)
+    };
+    let span = type_args[0].span();
+    errors.push(CanonError::CheckError { message, span });
+}
+
 /// corresponding literal form can already express is ceremony around a
 /// literal — the parse can never fail, so the validating-constructor
 /// spelling is a second way of writing the literal, and the language
@@ -2314,7 +2341,13 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::JsonLit { .. } => {}
         Expr::HtmlLit { .. } => {}
         Expr::FormatLit { .. } => {}
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            span,
+        } => {
+            check_expr_type_args(&name.name, type_args, symbols, errors);
             let is_variant = symbols.variant_of.contains_key(&name.name);
             // A free function with this exact name (like `Now = () -> Now`
             // or `randomInt = () -> Int`) makes the "constructor" call legal
@@ -2389,10 +2422,12 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             span,
             ..
         } => {
+            check_expr_type_args(&method.name, type_args, symbols, errors);
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
                 check_expr(arg, scope, symbols, errors);

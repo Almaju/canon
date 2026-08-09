@@ -616,12 +616,19 @@ impl Parser {
                     span: name_tok.span,
                 };
                 // Optional generic type args after the field/method
-                // name (`value.Option<Content>`, etc.). See
-                // `consume_phantom_type_args` for the rationale.
-                let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
+                // name (`value.Inserted<String, Int>(…)`, etc.). See
+                // `parse_expr_type_args` for the rationale.
+                let type_args = self.parse_expr_type_args(&name_tok.lexeme)?;
                 // `value.X` with no `(` after is field access; with `(`
-                // it's a method call.
+                // it's a method call. A field access names a component,
+                // not a call, so type arguments have nothing to apply to.
                 if !self.check(TokenKind::LParen) {
+                    if !type_args.is_empty() {
+                        return Err(CanonError::ParseError {
+                            message: "type arguments are not allowed on field access".to_string(),
+                            span: name_tok.span,
+                        });
+                    }
                     let start_span = expr.span();
                     expr = Expr::FieldAccess {
                         receiver: Box::new(expr),
@@ -645,6 +652,7 @@ impl Parser {
                 expr = Expr::MethodCall {
                     receiver: Box::new(expr),
                     method: ident,
+                    type_args,
                     args,
                     piped: false,
                     span: span_join(start_span, rparen.span),
@@ -691,7 +699,7 @@ impl Parser {
                         span: name_tok.span,
                     });
                 }
-                let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
+                let type_args = self.parse_expr_type_args(&name_tok.lexeme)?;
                 let mut args = vec![expr];
                 let mut end_span = name_tok.span;
                 if self.check(TokenKind::LParen) {
@@ -716,6 +724,7 @@ impl Parser {
                         name: name_tok.lexeme.clone(),
                         span: name_tok.span,
                     },
+                    type_args,
                     args,
                     piped: true,
                     span: span_join(start_span, end_span),
@@ -734,12 +743,9 @@ impl Parser {
             TokenKind::Ident => {
                 self.advance();
                 // Optional generic type arguments after a PascalCase
-                // identifier: `Option<Content>`, `List<Choice>`, etc.
-                // Accepted and discarded (see `consume_phantom_type_args`).
-                // Skipped when followed by `(` to avoid swallowing the
-                // turbofish-like form `Foo<T>(arg)` mid-call — type args
-                // before a constructor call use `::<>` (turbofish) syntax.
-                let _consumed_generics = self.consume_phantom_type_args(&tok.lexeme)?;
+                // identifier (`Map<String, Int>()`). See
+                // `parse_expr_type_args` for the rationale.
+                let type_args = self.parse_expr_type_args(&tok.lexeme)?;
                 if self.check(TokenKind::LParen) {
                     self.advance();
                     self.skip_newlines();
@@ -758,8 +764,15 @@ impl Parser {
                             name: tok.lexeme,
                             span: tok.span,
                         },
+                        type_args,
                         args,
                         span: span_join(tok.span, rparen.span),
+                    });
+                }
+                if !type_args.is_empty() {
+                    return Err(CanonError::ParseError {
+                        message: "type arguments require a call: write `Name<Args>(…)`".to_string(),
+                        span: tok.span,
                     });
                 }
                 Ok(Expr::Ident(Ident {
@@ -1447,45 +1460,28 @@ impl Parser {
     }
 
     /// If the next token is `<` and the current identifier is PascalCase,
-    /// consume a `<T1, T2, ...>` type-argument list and discard it.
+    /// consume a `<T1, T2, ...>` type-argument list and return it.
     ///
-    /// Returns `true` iff a type-argument list was consumed.
+    /// Returns the empty vec when no list is present.
     ///
-    /// This exists so that parameterized type names (`Option<Content>`,
-    /// `List<Choice>`, `Result<T, E>`) can appear in expression position
-    /// where they would otherwise be a parse error. Examples:
-    ///
-    /// ```text
-    /// // Dispatch on a value whose static type carries generic args:
-    /// Option<Content>.(
-    ///     * (None)          -> Json { ... }
-    ///     * (Some<Content>) -> Json { ... }
-    /// )
-    ///
-    /// // Field access where the field's underlying type is generic:
-    /// wrapper.Option<Content>
-    /// ```
-    ///
-    /// The generic args are accepted but discarded — runtime values don't
-    /// carry generic parameters, only their unparameterized type names
-    /// reach codegen. The identifier (`Option`, `List`, `Result`, …) is
-    /// what the checker and codegen look up. `<` is not used as a binary
-    /// operator anywhere in expression position, so consuming it here is
-    /// unambiguous.
-    fn consume_phantom_type_args(&mut self, ident_lexeme: &str) -> Result<bool> {
+    /// This is how parameterized type names appear in expression position
+    /// (`Map<String, Int>()`, `value -> Inserted<String, Int>(…)`), where
+    /// a bare `<` would otherwise be a parse error. `<` is not used as a
+    /// binary operator anywhere in expression position, so consuming it
+    /// here is unambiguous. The checker decides where the arguments are
+    /// meaningful; the parser only carries them.
+    fn parse_expr_type_args(&mut self, ident_lexeme: &str) -> Result<Vec<TypeExpr>> {
         if !Self::is_pascal_case_str(ident_lexeme) {
-            return Ok(false);
+            return Ok(Vec::new());
         }
         if !self.check(TokenKind::Lt) {
-            return Ok(false);
+            return Ok(Vec::new());
         }
         self.advance();
+        let mut type_args = Vec::new();
         if !self.check(TokenKind::Gt) {
             loop {
-                // Parse the type arg purely for syntactic acceptance.
-                // The result is dropped — it doesn't affect runtime
-                // behaviour.
-                let _ = self.parse_type_expr()?;
+                type_args.push(self.parse_type_expr()?);
                 if self.check(TokenKind::Comma) {
                     self.advance();
                 } else {
@@ -1494,7 +1490,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::Gt, "expected `>` to close generic argument list")?;
-        Ok(true)
+        Ok(type_args)
     }
 }
 

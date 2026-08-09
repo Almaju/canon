@@ -174,12 +174,19 @@ pub enum Expr {
     },
     Constructor {
         name: Ident,
+        /// Explicit type arguments at the call site (`Map<String, Int>()`).
+        /// Empty for the ordinary un-annotated call. Only meaningful on
+        /// generic type names — the checker rejects them elsewhere.
+        type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
         span: Span,
     },
     MethodCall {
         receiver: Box<Expr>,
         method: Ident,
+        /// Explicit type arguments at the call site — see
+        /// `Constructor::type_args`; carried on both the dot and pipe forms.
+        type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
         /// Written in the pipe form `value -> Name(rest…)` — the third
         /// spelling of the commutative call (`Name(value, rest…)` /
