@@ -800,7 +800,7 @@ fn emit_generic_params(params: &[GenericParam]) -> String {
 
 // ── Type Expressions ────────────────────────────────────────────────────────
 
-fn emit_type_expr(ty: &TypeExpr) -> String {
+pub(crate) fn emit_type_expr(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Named { name, generics, .. } => {
             if generics.is_empty() {

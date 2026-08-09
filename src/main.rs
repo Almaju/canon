@@ -35,6 +35,7 @@ fn main() {
         "run" => cmd_run(&rest),
         "build" => cmd_build(&rest),
         "check" => cmd_check(&rest),
+        "doc" => cmd_doc(&rest),
         "test" => cmd_test(&rest),
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
@@ -77,6 +78,9 @@ fn print_help() {
     println!("                            Check canonical form, sort order, and types.");
     println!("                            With `--fix`, rewrites what is mechanically");
     println!("                            fixable (formatting, ordering) in place first.");
+    println!("  doc [package]             Render the package's API reference — every type,");
+    println!("                            what constructs it, and what it pipes into — as a");
+    println!("                            static site under `<package>/build/doc/`.");
     println!("  test <file.can | dir>     Run tests (`X = TestResult` + `Unit => X`). A");
     println!("                            directory runs every `*_test.can` file under it");
     println!("                            in one process, sharing setup across files.");
@@ -1027,6 +1031,101 @@ fn cmd_build(args: &[String]) {
     }
 }
 
+/// `canon doc [package]` — render a package's API reference to
+/// `<package>/build/doc/`.
+///
+/// Documentation is per *package*, so this resolves the target by
+/// package shape alone (a `src/` tree of `.can` files) instead of
+/// through the entry scan `build`/`run` use: a library has no entry,
+/// and a library is the main thing anyone documents. A directory whose
+/// immediate subdirectories are packages docs each of them.
+fn cmd_doc(args: &[String]) {
+    let mut target: Option<&str> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                println!("Usage: canon doc [package]");
+                println!();
+                println!("Renders every type in the package — its definition, the");
+                println!("constructors that produce it, and the constructors that accept");
+                println!("it — as a cross-linked static site in `<package>/build/doc/`.");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown doc flag '{}'", other);
+                process::exit(1);
+            }
+            other if target.is_none() => target = Some(other),
+            other => {
+                eprintln!("error: unexpected argument '{}'", other);
+                process::exit(1);
+            }
+        }
+    }
+
+    let arg = target.unwrap_or(".");
+    let path = Path::new(arg);
+    if !path.is_dir() {
+        eprintln!("error: `{}` is not a directory", arg);
+        eprintln!(
+            "hint: `canon doc` documents a package — a directory with `.can` files under `src/`"
+        );
+        process::exit(1);
+    }
+
+    let mut packages: Vec<PathBuf> = Vec::new();
+    if canon::install::has_can_file(&path.join("src")) {
+        packages.push(path.to_path_buf());
+    } else {
+        let mut members: Vec<PathBuf> = fs::read_dir(path)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| canon::install::has_can_file(&p.join("src")))
+            .collect();
+        members.sort();
+        packages = members;
+    }
+    if packages.is_empty() {
+        eprintln!(
+            "error: `{}` is not a Canon package (no `src/` tree of `.can` files) \
+             and none of its subdirectories is one",
+            arg
+        );
+        process::exit(1);
+    }
+
+    for pkg in &packages {
+        let name = pkg
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| arg.to_string());
+        let api = match canon::doc::build(&name, &pkg.join("src")) {
+            Ok(api) => api,
+            Err((file, err)) => {
+                print_error(&file.to_string_lossy(), &err);
+                process::exit(1);
+            }
+        };
+        let out_dir = pkg.join("build").join("doc");
+        match canon::doc::render(&api, &out_dir) {
+            Ok(pages) => println!(
+                "{}: {} pages ({} types, {} modules) -> {}",
+                name,
+                pages,
+                api.type_names().count(),
+                api.modules.len(),
+                out_dir.display()
+            ),
+            Err(e) => {
+                eprintln!("error: could not write `{}`: {}", out_dir.display(), e);
+                process::exit(1);
+            }
+        }
+    }
+}
+
 /// `canon publish <oci-ref> [target] [-p name]` — build the target, then
 /// hand its component to `wkg oci push`. The compiler owns no registry
 /// client: wkg (wasm-pkg-tools) is the ecosystem's publisher, and the
@@ -1562,7 +1661,12 @@ fn cmd_run(args: &[String]) {
         if addr.is_none() {
             eprintln!("web app detected: serving on http://{bind_addr} (override with `canon run … --addr <ip:port>`)");
         }
-        canon::webhost::serve_bundle(bind_addr, &spec.output_stem, component_bytes);
+        canon::webhost::serve_bundle(
+            bind_addr,
+            &spec.output_stem,
+            component_bytes,
+            &spec.output_dir,
+        );
     }
 
     // HTTP-entry programs (a free `(Request) -> Response` function)

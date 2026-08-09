@@ -257,13 +257,17 @@ pub fn write_bundle(dir: &Path, stem: &str, wasm: &[u8]) -> std::io::Result<()> 
 
 /// The in-memory web bundle keyed by request path — the four paths the
 /// frontend owns (`/`, `/index.html`, `/canon-web.js`, `/<stem>.wasm`).
-/// `serve_bundle` answers everything else with a 404; the fullstack
-/// server in `runtime::serve_component` dispatches everything else to
-/// the backend component.
+/// `serve_bundle` falls back to `dir` for anything else, so files
+/// written *beside* the bundle are reachable in a local preview the way
+/// they are on a static host: the docs site's enhancement scripts, the
+/// browser build of the compiler, the `canon doc` reference. The
+/// fullstack server in `runtime::serve_component` sets no `dir` — there,
+/// a miss belongs to the backend component.
 pub struct WebAssets {
     html: String,
     wasm_path: String,
     wasm: Vec<u8>,
+    dir: Option<std::path::PathBuf>,
 }
 
 impl WebAssets {
@@ -272,7 +276,39 @@ impl WebAssets {
             html: index_html(stem),
             wasm_path: format!("/{stem}.wasm"),
             wasm,
+            dir: None,
         }
+    }
+
+    /// Serve unmatched paths from `dir`.
+    pub fn with_dir(mut self, dir: &Path) -> Self {
+        self.dir = dir.canonicalize().ok();
+        self
+    }
+
+    /// A file under `dir` matching `path`, if the bundle didn't own it.
+    /// A directory resolves to its `index.html`. Escaping `dir` —
+    /// whether by `..` or through a symlink — resolves to nothing:
+    /// the canonicalized target has to stay inside.
+    fn file(&self, path: &str) -> Option<(&'static str, Vec<u8>)> {
+        let dir = self.dir.as_ref()?;
+        let mut target = dir.join(path.trim_start_matches('/')).canonicalize().ok()?;
+        if !target.starts_with(dir) {
+            return None;
+        }
+        if target.is_dir() {
+            target = target.join("index.html");
+        }
+        let mime = match target.extension().and_then(|e| e.to_str()) {
+            Some("html") => "text/html; charset=utf-8",
+            Some("js") => "application/javascript; charset=utf-8",
+            Some("css") => "text/css; charset=utf-8",
+            Some("json") => "application/json; charset=utf-8",
+            Some("svg") => "image/svg+xml",
+            Some("wasm") => "application/wasm",
+            _ => "application/octet-stream",
+        };
+        Some((mime, std::fs::read(target).ok()?))
     }
 
     /// Resolves a request path to `(mime, body)` when the bundle owns it.
@@ -293,13 +329,13 @@ impl WebAssets {
 /// Deliberately plain `std::net` + threads — three static files need
 /// neither tokio nor hyper, and keeping this synchronous means `canon
 /// run` for web apps has no runtime dependency at all.
-pub fn serve_bundle(addr: std::net::SocketAddr, stem: &str, wasm: Vec<u8>) -> ! {
+pub fn serve_bundle(addr: std::net::SocketAddr, stem: &str, wasm: Vec<u8>, dir: &Path) -> ! {
     let listener = TcpListener::bind(addr).unwrap_or_else(|e| {
         eprintln!("error: could not bind {addr}: {e}");
         std::process::exit(1);
     });
     eprintln!("canon run: serving web app on http://{addr}");
-    let assets = std::sync::Arc::new(WebAssets::new(stem, wasm));
+    let assets = std::sync::Arc::new(WebAssets::new(stem, wasm).with_dir(dir));
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
         let assets = assets.clone();
@@ -333,9 +369,16 @@ fn serve_one(mut stream: TcpStream, assets: &WebAssets) -> std::io::Result<()> {
         .unwrap_or("/");
     let path = path.split('?').next().unwrap_or(path);
 
-    let (status, mime, body): (&str, &str, &[u8]) = match assets.get(path) {
-        Some((mime, body)) => ("200 OK", mime, body),
-        None => ("404 Not Found", "text/plain; charset=utf-8", b"not found"),
+    let bundled = assets.get(path);
+    let from_dir = if bundled.is_none() {
+        assets.file(path)
+    } else {
+        None
+    };
+    let (status, mime, body): (&str, &str, &[u8]) = match (bundled, &from_dir) {
+        (Some((mime, body)), _) => ("200 OK", mime, body),
+        (None, Some((mime, body))) => ("200 OK", mime, body),
+        (None, None) => ("404 Not Found", "text/plain; charset=utf-8", b"not found"),
     };
     stream.write_all(
         format!(

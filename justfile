@@ -149,11 +149,14 @@ bench:
 # The playground and the click-to-run snippets compile Canon in the
 # browser, so the preview also needs the compiler built for wasm and the
 # two enhancement scripts beside the bundle — the same wiring docs.yml
-# does for the deployed site. See docs/src/contributing.md.
+# does for the deployed site. `canon doc` renders the standard library's
+# API reference into `/api/` alongside it. See docs/src/contributing.md.
 docs: build
     #!/usr/bin/env sh
     set -e
     cargo run --quiet -- build docs
+    cargo run --quiet -- doc packages/canon
+    rm -rf docs/build/api && cp -r packages/canon/build/doc docs/build/api
     cargo build --lib --profile playground --target wasm32-unknown-unknown
     cp target/wasm32-unknown-unknown/playground/canon.wasm docs/build/canon-compiler.wasm
     cp docs/assets/canon-play.js docs/assets/docs-enhance.js docs/build/
