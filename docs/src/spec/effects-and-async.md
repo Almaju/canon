@@ -153,5 +153,5 @@ Three places, all diagnostic:
    suspending.
 
 Day-to-day code sees none of it. See the [Async
-chapter](../learn/async-without-keywords.md) for the working
+chapter](../tour/async.md) for the working
 introduction.

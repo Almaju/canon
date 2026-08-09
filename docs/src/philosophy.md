@@ -7,9 +7,6 @@ it goes out. Every idea on this page is an application of one rule —
 > Wherever a choice is discretionary, the compiler removes the choice or
 > enforces one answer.
 
-Read this page as a voyage: each stop removes something you thought a
-language needed, and shows what grows in the space it leaves behind.
-
 ## One Way to Do Everything
 
 Give ten programmers a problem and most languages let them hand back
@@ -79,24 +76,20 @@ one handler per variant. The handlers must cover every variant, in the
 union's order, with no wildcard — adding a variant breaks every
 dispatch that forgot it, at compile time.
 
-This is not a pattern-matching feature bolted onto an expression
-language; it is the algebra taken literally. A union is a sum, a
-handler group is a product, and dispatch is the isomorphism between
-`(A + B) -> R` and `(A -> R) * (B -> R)`. Even `Bool` is an ordinary
-union (`False + True`), and `if` is just dispatch on it — which is why
-`if` does not exist.
-
-The same construct scales up: an HTTP route table is literal dispatch
-on the path string, a web app's reducer is dispatch on the message.
-There is no router DSL and no state-machine library, because the one
-branching construct already is both.
+This is not pattern matching bolted onto an expression language; it is
+the algebra taken literally. A union is a sum, a handler group is a
+product, and dispatch is the isomorphism between `(A + B) -> R` and
+`(A -> R) * (B -> R)`. Even `Bool` is an ordinary union
+(`False + True`), and `if` is just dispatch on it — which is why `if`
+does not exist. The construct scales without help: an HTTP route table
+is literal dispatch on the path, a web app's reducer is dispatch on the
+message, so there is no router DSL and no state-machine library.
 
 ## Having a Value Is Having the Capability
 
 Most languages answer "what can this function touch?" with nothing: any
-line of code can open a socket, read a file, or check the clock. Canon
-answers it with the signature. Effects are not annotations or
-permissions — they are **values**:
+line can open a socket, read a file, or check the clock. Canon answers
+with the signature, because effects are **values**:
 
 - Reading a file requires a `File`, which only a `Path` can produce,
   which only a `String` can produce. The construction chain *is* the
@@ -136,13 +129,14 @@ Canon has none:
   (`http-server.can` ⇄ `HttpServer`), so a reference *is* an import:
   mentioning a name loads its file, and the same rule reaches the
   standard library. Ambiguity is a hard error, not a shadowing rule.
-- **No manifest.** A directory with `src/main.can` is a package; a
+- **No manifest.** A directory with `.can` files under `src/` is a
+  package (its entry file found by shape, like the entry itself); a
   directory of packages is a workspace; a WIT file under `wit/` is an
   external import; a vendored directory under `deps/` is a dependency,
   and its name is the version pin. There is no `canon.toml` and no
   lockfile, because the file tree already says everything they would.
 - **No entry-point registration.** A program is whatever its types say
-  it is: an arrow returning `Exit` is a CLI command, an arrow returning
+  it is: an arrow returning `Program` is a CLI command, an arrow returning
   `Response` is an HTTP service, a `Model => Html` view (with its init
   and update) is a browser app. Signatures select the world; nothing is
   named `main`.
@@ -179,6 +173,6 @@ A few choices look wrong until the principle behind them is visible:
 | permission systems | capabilities as values |
 
 Nothing on the left was forgotten; each was weighed and found to be a
-choice the compiler could make better than a person. The **Learn**
-chapters teach what remains, with runnable examples; the
-**Specification** states the precise rules.
+choice the compiler could make better than a person. The
+[Tour](./tour/hello.md) teaches what remains, a step at a time, running
+in your browser.

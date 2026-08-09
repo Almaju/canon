@@ -115,31 +115,27 @@ fn exit_code_propagates() {
 }
 
 #[test]
-fn args_entry_exit_status() {
-    // The canonical CLI entry `Args => Exit`: the argument vector flows
-    // in (`Args`), and the returned `Exit` maps onto the wasi:cli/run
-    // `result` — `Exit(0)` is ok (process exit 0), any nonzero code is
-    // err (process exit 1). Here the exit status *is* the argument
-    // count, so the same program exits 0 with no args and 1 with some.
+fn args_reach_argv() {
+    // The entry takes no arguments — `wasi:cli/run.run` passes none.
+    // The argument vector is fetched instead: `Args()` reads argv via
+    // `wasi:cli/environment#get-arguments`, and `canon run` forwards
+    // everything after the target into it.
     let workdir = std::env::temp_dir().join(format!("canon_argc_{}", std::process::id()));
     std::fs::create_dir_all(&workdir).unwrap();
     let src_path = workdir.join("argc.can");
     std::fs::write(
         &src_path,
-        r#"Args => Exit {
-    Args
+        r#"Unit => Program {
+    Args()
         -> Length
         -> Print
-    Args
-        -> Length
-        -> Exit
 }
 "#,
     )
     .unwrap();
     let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
 
-    // No args: `Args -> Length` is 0, printed, and `Exit(0)` → exit 0.
+    // No args: `Args() -> Length` is 0, and reaching the end is exit 0.
     let out = Command::new(&canon_bin)
         .arg("run")
         .arg(&src_path)
@@ -150,10 +146,9 @@ fn args_entry_exit_status() {
         "0",
         "argv is empty with no forwarded args"
     );
-    assert_eq!(out.status.code(), Some(0), "Exit(0) → process exit 0");
+    assert_eq!(out.status.code(), Some(0), "reaching the end → exit 0");
 
-    // Two forwarded args: argv length 2, printed, and `Exit(2)` → err
-    // (a nonzero exit maps to the run result's err discriminant → 1).
+    // Two forwarded args: argv length 2.
     let out = Command::new(&canon_bin)
         .arg("run")
         .arg(&src_path)
@@ -164,14 +159,10 @@ fn args_entry_exit_status() {
     assert_eq!(
         String::from_utf8_lossy(&out.stdout).trim(),
         "2",
-        "forwarded args reach the program's argv"
-    );
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "a nonzero Exit maps to the run err discriminant; stderr:\n{}",
+        "forwarded args reach the program's argv; stderr:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    assert_eq!(out.status.code(), Some(0), "success is implicit");
 
     let _ = std::fs::remove_dir_all(&workdir);
 }

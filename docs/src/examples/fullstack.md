@@ -165,11 +165,10 @@ and the loader pulls in the same sibling files for each compile:
 
 ## What it demonstrates
 
-**Shared types across the stack** — `Todos` and its operations are
-written once, and the type file is the protocol (no JSON schema, no
-client codegen). **One language, two worlds, one command** — the
-entry-point shape selects component vs browser bundle; `canon run`
-serves both on one origin, so nothing is configured, not even CORS.
-The frontend stays pure (the fetch happens in the JS host via
-`data-fetch`, arriving as an ordinary `Update` message), and response
-headers are just values.
+`Todos` and its operations are written once and compiled into both
+binaries, so the type file *is* the protocol — no JSON schema, no
+client codegen. The entry-point shape picks component or browser bundle,
+and one `canon run` serves both on one origin, so nothing is
+configured, not even CORS. The frontend stays pure: the fetch happens in
+the JS host via `data-fetch` and arrives as an ordinary `Update`
+message.

@@ -39,8 +39,9 @@ fn main() {
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
+        "publish" => cmd_publish(&rest),
         "lsp" => canon::lsp::run(),
-        "upgrade" | "update" => cmd_upgrade(&rest),
+        "upgrade" => cmd_upgrade(&rest),
         "use" => toolchain::cmd_use(&rest),
         "--version" | "-V" => {
             println!("canon {}", VERSION);
@@ -89,8 +90,11 @@ fn print_help() {
     println!(
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
     );
+    println!("  publish <oci-ref> [target] [-p name]");
+    println!("                            Build the target and push its component to an");
+    println!("                            OCI registry (shells out to `wkg`)");
     println!("  lsp                       Start the Language Server Protocol server");
-    println!("  update [--check]          Update the active toolchain (alias: upgrade)");
+    println!("  upgrade [--check]         Update the active toolchain");
     println!("  use [stable|nightly]      Show the active toolchain, or make this");
     println!("                            directory (and below) use one — installing it");
     println!("                            if needed. Run in ~ to set it for everything.");
@@ -340,7 +344,7 @@ fn resolve_dir_target(path: &Path, arg: &str) -> Target {
 /// The entry files a shape scan found under a package's `src/`, one
 /// list per world. See `scan_src_entries`.
 struct SrcEntries {
-    /// Files declaring a CLI entry (`Args => Exit` / `Unit => Program`).
+    /// Files declaring a CLI entry (`Unit => Program`).
     cli: Vec<PathBuf>,
     /// Files declaring an HTTP entry (a free `Request => Response`).
     http: Vec<PathBuf>,
@@ -1023,6 +1027,68 @@ fn cmd_build(args: &[String]) {
     }
 }
 
+/// `canon publish <oci-ref> [target] [-p name]` — build the target, then
+/// hand its component to `wkg oci push`. The compiler owns no registry
+/// client: wkg (wasm-pkg-tools) is the ecosystem's publisher, and the
+/// shell-out keeps it that way.
+fn cmd_publish(args: &[String]) {
+    let Some(reference) = args.first().filter(|a| !a.starts_with('-')).cloned() else {
+        eprintln!("Usage: canon publish <oci-ref> [target] [-p name]");
+        eprintln!("       e.g. canon publish ghcr.io/you/my-lib:1.0.0 my-lib");
+        process::exit(1);
+    };
+    let Some(wkg) = which("wkg") else {
+        eprintln!(
+            "error: `canon publish` shells out to `wkg` (wasm-pkg-tools), which is not on PATH."
+        );
+        eprintln!("       Install it with `cargo install wkg`, or download a release binary:");
+        eprintln!("       https://github.com/bytecodealliance/wasm-pkg-tools/releases");
+        process::exit(1);
+    };
+    let parsed = parse_target_args(&args[1..], false);
+    let target = resolve_target(parsed.target_path.as_deref());
+    let target = apply_package_filter(target, parsed.package.as_deref());
+    let spec = match &target {
+        Target::Build(spec) => spec,
+        Target::Workspace { .. } => {
+            eprintln!("error: publish one package at a time — pass its directory, or `-p <name>`");
+            process::exit(1);
+        }
+        Target::Fullstack(_) => {
+            eprintln!(
+                "error: a fullstack package builds two components; publish is one component \
+                 per reference — build and push each entry separately"
+            );
+            process::exit(1);
+        }
+    };
+    if !build_target(&target) {
+        process::exit(1);
+    }
+    let wasm_path = spec.output_dir.join(format!("{}.wasm", spec.output_stem));
+    if !wasm_path.is_file() {
+        eprintln!(
+            "error: `{}` builds a browser bundle, not a lone component — nothing to publish",
+            spec.label
+        );
+        process::exit(1);
+    }
+    match process::Command::new(&wkg)
+        .args(["oci", "push", &reference])
+        .arg(&wasm_path)
+        .status()
+    {
+        Ok(status) if status.success() => {
+            println!("Published {} to {}", wasm_path.display(), reference);
+        }
+        Ok(status) => process::exit(status.code().unwrap_or(1)),
+        Err(e) => {
+            eprintln!("error: failed to run `wkg`: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 /// Compile one non-workspace target to its artifacts. Returns `true` on
 /// success, `false` if the checker or filesystem errored.
 fn build_target(target: &Target) -> bool {
@@ -1658,7 +1724,7 @@ fn cmd_upgrade(args: &[String]) {
         match a.as_str() {
             "--check" | "-c" => check_only = true,
             "--help" | "-h" => {
-                println!("Usage: canon update [--check]   (alias: upgrade)");
+                println!("Usage: canon upgrade [--check]");
                 println!();
                 println!("  Updates the active toolchain to the latest build on its channel.");
                 println!("  --check   Only check whether a newer stable release is available.");

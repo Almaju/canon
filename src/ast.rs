@@ -341,25 +341,22 @@ pub enum EntryWorld {
 ///
 /// | Return type                                        | World |
 /// |----------------------------------------------------|-------|
-/// | `Exit`, `Program`, `Unit`                          | Cli   |
-/// | `Result<Exit, _>` (and `Program`/`Unit`)           | Cli   |
-/// | `Response`                                         | Http  |
-/// | `Result<Response, _>`                              | Http  |
+/// | `Program`, `Unit` (and `Result<…, _>` of either)   | Cli   |
+/// | `Response` (and `Result<Response, _>`)             | Http  |
 ///
-/// `Exit` (`= Int`, from `canon/std`) is the canonical CLI world type —
-/// the entry is `Args => Exit`, mirroring the HTTP entry's
-/// `Request => Response`: the command's argument vector flows in, an
-/// exit status flows out. `Program` (`= Unit`) is the arg-less shape
-/// (`Unit => Program`), and `Unit` stays accepted so the
-/// `canon test`-synthesized entry still classifies. The legacy
-/// `ExitCode` return is retired — `Exit` is the one exit-status type.
+/// `Program` (`= Unit`, from `canon/std`) is the CLI world type — the
+/// one entry is `Unit => Program`, matching the ABI: `wasi:cli/run.run`
+/// takes nothing (argv is fetched with the stdlib's `Args()`) and
+/// reports only success/failure (an exact code is `Exited(n)`). `Unit`
+/// stays accepted so the `canon test`-synthesized entry still
+/// classifies.
 ///
 /// The unwrapping recurses through `Result` so wrapped and unwrapped
 /// shapes both classify.
 pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
     match ty {
         TypeExpr::Named { name, generics, .. } if generics.is_empty() => match name.as_str() {
-            "Exit" | "Program" | "Unit" => Some(EntryWorld::Cli),
+            "Program" | "Unit" => Some(EntryWorld::Cli),
             "Response" => Some(EntryWorld::Http),
             _ => None,
         },
@@ -368,20 +365,6 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
         }
         _ => None,
     }
-}
-
-/// Whether an entry's parameter list is the single `Args` input of the
-/// arg-reading CLI entry `Args => Exit`. `Args` (`= List<String>`, from
-/// `canon/std`) is the command's argument vector; codegen's `build_start`
-/// binds it to the argv read from `wasi:cli/environment#get-arguments`.
-pub fn is_args_entry_param(params: &[Param]) -> bool {
-    matches!(
-        params,
-        [Param {
-            ty: TypeExpr::Named { name, generics, .. },
-            ..
-        }] if name == "Args" && generics.is_empty()
-    )
 }
 
 /// The Elm-architecture entry triple that makes a program a web app
@@ -951,16 +934,11 @@ pub fn resolve_new_syntax(module: &mut Module) {
                         // instead of extracting `Request` as a receiver.
                     } else if func.anonymous
                         && entry_world_of(&func.return_ty) == Some(EntryWorld::Cli)
-                        && (func.params.is_empty() || is_args_entry_param(&func.params))
+                        && func.params.is_empty()
                     {
-                        // Anonymous CLI entry, selected by its world-shaped
-                        // return like the HTTP handler. Two shapes:
-                        //   `Args => Exit { … }` — the argument vector flows
-                        //     in, an exit status flows out (mirrors
-                        //     `Request => Response`); the `Args` param is
-                        //     kept and codegen's `$start` binds it to argv.
-                        //   `Unit => Program { … }` — the arg-less shape
-                        //     (the `Unit` param was already stripped above).
+                        // Anonymous CLI entry `Unit => Program { … }` (the
+                        // `Unit` param was already stripped above), selected
+                        // by its world-shaped return like the HTTP handler.
                         // Rename to the canonical `main` so entry selection,
                         // the ordering exemption, and codegen's `$start`
                         // inlining all recognize it with zero other changes.

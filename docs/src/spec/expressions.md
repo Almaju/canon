@@ -257,114 +257,43 @@ so `IoError + NotFound` *is* the same type everywhere it appears.
 `Option<T>` and `Result<T, E>` are deliberately distinct: `None` means
 *absent*, `Err` means *failed*.
 
-## JSON Literals
+## Literals With Holes
 
-JSON object and array literals are first-class expressions producing
-`Json` values. No import is required: like `Option` and `Result`, JSON
-support is part of the prelude. The compiler knows `Json = String`
-intrinsically, and the loader pulls in `canon/std/Json` automatically
-the moment a program uses its machinery (interpolation, the validating
-`Json(...)` constructor, or the `Encoded` family):
+Three literal forms carry interpolation — the backtick **format
+string**, the **JSON** literal, and the **HTML** literal. They share one
+rule set:
 
-```canon
-Label = Json
-
-Int => Label {
-    {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
-}
-```
-
-- **Static** members (strings, numbers, `true`/`false`/`null`, nested
-  static literals) are baked into a constant at parse time. A fully
-  static literal is a constant: it imposes no imports and no host
-  requirements, so it works in every world (including
-  `wasi:http/service` handlers).
-- **Interpolated** members are ordinary Canon expressions converted at
-  runtime through the stdlib's `Encoded` family (`Encoded = Json`, one
-  anonymous arrow per source type) -- a hole is exactly `-> Encoded`,
-  the way a format-string hole is `-> String`. The `Float` member is
-  host-backed (`canon:builtins/json`), which the HTTP world can't
-  satisfy yet; a handler program using interpolation fails at build
-  with an error naming the unsatisfiable imports.
-- Literal layout is canonical like all Canon code: no spaces after `:`
-  or `,` (`{"k":v}`, not `{"k": v}`). `canon check --fix` enforces it.
-- **The literal is the only spelling of a static document.** Feeding the
-  validating `Json("…")` constructor a static string literal the
-  literal form can already express is a checker error -- the parse can
-  never fail, so the constructor spelling would be a second way of
-  writing the literal. `Json(String)` exists for strings built at
-  runtime; scalar documents (`Json("42")` -- no literal form) and
-  runtime-computed strings pass through untouched.
-
-## HTML Literals
-
-HTML literals are first-class expressions producing `Html` values, the
-markup mirror of JSON literals. A literal starts at a `<` immediately
-followed by a lowercase tag name -- a position where `<` is never valid
-Canon, since generic arguments are PascalCase types -- and spans one root
-element, closing tag included. `{...}` is an interpolation hole holding an
-arbitrary Canon expression; everything else (attributes, quotes, nested
-tags, comments, void elements like `<br>`) is raw markup:
-
-```canon
-Model = Int
-
-Model => Html {
-    <div>
-        <h1>Counter</h1>
-        <button data-msg="Increment">+</button>
-        <span>{Model -> String}</span>
-    </div>
-}
-```
-
-Interpolated values convert through the stdlib's `Escaped` family
-(`Escaped = Html`): a hole is exactly `-> Escaped`, and the family
-member selected by the hole's type escapes a `String` or `Int` while
-passing an `Html` value through unchanged, so composing literals never
-double-escapes:
-
-```canon
-Listing = Html
-
-Row = Html
-
-String => Listing {
-    <ul>{String -> Row}</ul>
-}
-
-String => Row {
-    <li>{String}</li>
-}
-```
-
-- Holes work in attribute values too (`<button data-msg="{Msg}">`).
-- Literal interpolations (`{42}`, `{"a & b"}`) fold to static text at
-  parse time -- escaped where escaping applies -- so an all-constant
-  literal costs one string constant at runtime, exactly like an
-  all-static JSON literal.
+- A hole `{...}` holds an arbitrary Canon expression, converted through
+  the family named for the target: `-> String` in a format string,
+  `-> Encoded` (`Encoded = Json`) in JSON, `-> Escaped` (`Escaped = Html`)
+  in HTML. A hole is a piped construction; interpolation is construction
+  all the way down.
 - `{{` and `}}` escape literal braces.
-- **The literal is the only spelling of static markup.** `Html("…")`
-  fed a static string the literal form can already express is a checker
-  error, exactly like `Json` above -- write `<button>+</button>`, not
-  `Html("<button>+</button>")`. The stdlib's tag-newtype constructors
-  (`Button`, `Div`, … `= Html`) are for markup *computed* from values;
-  static structure belongs in the literal, dynamic composition in the
-  constructors.
+- Literal holes (`{42}`, `{"a"}`) fold to static text at parse time, so
+  an all-constant literal costs one string constant at runtime.
+- **The literal is the only spelling of a static document.** Feeding the
+  validating `Json("…")` or `Html("…")` constructor a static string the
+  literal form can already express is a checker error -- the parse can
+  never fail, so the constructor would be a second way to write the
+  literal. Those constructors are for strings built at runtime.
+- **Holes break like code.** A hole whose expression would push its line
+  past the width limit opens onto its own indented lines -- the braces
+  stay glued to the surrounding text, which is content and never moves:
 
-Like `Json`, `Html` is a prelude type (`Html = String` intrinsically);
-the loader pulls in `canon/std/web/Html` the moment a literal carries a
-hole (an explicit `-> Escaped` loads it by ordinary reference
-discovery). HTML literals power the
-[web target](../reference/web-target.md)'s `view`.
+  ```text
+  `<td>{
+      1 -> Inline(String)
+  }</td>`
+  ```
 
-## Format Strings
+  A bare reference (`{Model}`, `{Node.Rest}`) never breaks, and a hole
+  inside an indented HTML literal indents from the markup around it, not
+  from the code margin.
 
-A **format string** is a backtick-delimited string literal with `{...}`
-interpolation holes -- the plain-`String` mirror of the JSON and HTML
-literals above. Ordinary double-quoted strings stay inert (`{` is just a
-brace), so backticks are the opt-in: reach for them exactly when you
-want a hole.
+### Format Strings
+
+Backticks are the opt-in: an ordinary double-quoted string stays inert,
+where `{` is just a brace.
 
 ```canon
 Greeting = String
@@ -380,43 +309,87 @@ Int => Report {
 }
 ```
 
-- A hole holds an arbitrary Canon expression whose value is converted
-  through `String` construction and concatenated into the surrounding
-  text: an `Int` renders as its decimal digits, a `String` passes
-  through unchanged. This replaces hand-written `-> Joined(...)` chains,
-  and the replacement is enforced: `canon check --fix` folds a `Joined`
-  chain that contains literal text into the format string
-  (`"<" -> Joined(x) -> Joined(">")` becomes `` `<{x}>` ``, and an
-  all-literal chain constant-folds to the plain string). An all-computed
-  chain keeps the pipe — `Joined` is also list concatenation, and only
-  literal text proves the chain builds a string.
-- `{{` and `}}` escape literal braces; ``\` `` escapes a backtick, and
-  the usual `\n` / `\t` / `\\` / `\u….` escapes work as in a
-  double-quoted string. A format string may span multiple source lines.
-- Literal holes (`{42}`, `{"a"}`) fold to static text at parse time, so
-  a fully constant backtick string costs one string constant at runtime,
-  exactly like an all-static JSON or HTML literal. A backtick string
-  with no holes is just a string constant: `canon check --fix` rewrites it to
-  the plain-quoted form (`` `hi` `` → `"hi"`).
-- **Holes break like code.** A hole whose expression would push its
-  line past the width limit opens onto its own indented lines — the
-  braces stay glued to the surrounding text, which is content and never
-  moves. The same rule formats JSON and HTML holes:
-
-  ```text
-  `<td>{
-      1 -> Inline(String)
-  }</td>`
-  ```
-
-  A bare reference (`{Model}`, `{Node.Rest}`) never breaks, and a
-  hole inside an indented HTML literal indents from the markup around
-  it, not from the code margin.
+A hole converts through `String` construction -- an `Int` renders as
+decimal digits, a `String` passes through. This replaces hand-written
+`Joined` chains, and the replacement is enforced: `canon check --fix`
+folds a `Joined` chain containing literal text into a format string
+(`"<" -> Joined(x) -> Joined(">")` becomes `` `<{x}>` ``). An
+all-computed chain keeps the pipe -- `Joined` is also list
+concatenation, and only literal text proves the chain builds a string.
+A backtick string with no holes is rewritten to the plain-quoted form.
+``\` `` escapes a backtick; `\n` / `\t` / `\\` / `\u….` work as in a
+double-quoted string, and a format string may span source lines.
 
 Unlike `Json` and `Html`, a format string needs no prelude -- `String`
-construction (including the built-in int-to-string) is intrinsic -- so
-interpolation works in every world, including `wasi:http/service`
-handlers.
+construction is intrinsic -- so it works in every world, including
+`wasi:http/service` handlers.
+
+### JSON Literals
+
+Object and array literals produce `Json` values. The compiler knows
+`Json = String` intrinsically and the loader pulls in `canon/std/Json`
+the moment a program uses its machinery (interpolation, the validating
+constructor, or the `Encoded` family).
+
+```canon
+Label = Json
+
+Int => Label {
+    {"answer":Int,"doubled":Int -> Product(2),"ok":True()}
+}
+```
+
+Static members (strings, numbers, `true`/`false`/`null`, nested static
+literals) bake into a constant at parse time, so a fully static literal
+imposes no imports and works in every world. Layout is canonical like
+all Canon code: no spaces after `:` or `,`. The `Encoded` family's
+`Float` member is host-backed (`canon:builtins/json`), which the HTTP
+world cannot satisfy yet -- an interpolating handler fails at build with
+an error naming the unsatisfiable import.
+
+### HTML Literals
+
+An HTML literal starts at a `<` immediately followed by a lowercase tag
+name -- a position where `<` is never valid Canon, since generic
+arguments are PascalCase types -- and spans one root element, closing
+tag included. Everything that is not a hole (attributes, quotes, nested
+tags, comments, void elements) is raw markup.
+
+```canon
+Model = Int
+
+Model => Html {
+    <div>
+        <h1>Counter</h1>
+        <button data-msg="Increment">+</button>
+        <span>{Model -> String}</span>
+    </div>
+}
+```
+
+The `Escaped` member selected by a hole's type escapes a `String` or
+`Int` and passes an `Html` value through unchanged, so composing
+literals never double-escapes:
+
+```canon
+Listing = Html
+
+Row = Html
+
+String => Listing {
+    <ul>{String -> Row}</ul>
+}
+
+String => Row {
+    <li>{String}</li>
+}
+```
+
+Holes work in attribute values too (`<button data-msg="{Msg}">`). The
+stdlib's tag-newtype constructors (`Button`, `Div`, … `= Html`) are for
+markup *computed* from values; static structure belongs in the literal.
+`Html` is a prelude type (`Html = String` intrinsically), and HTML
+literals power the [web target](../reference/web-target.md)'s `view`.
 
 ## Operator and Sigil Glossary
 
@@ -427,7 +400,6 @@ handlers.
 | `T^N` | fixed repetition |
 | `T^*` | unbounded repetition (Kleene star) |
 | `<T>` | generic parameter |
-| `<T: Tr>` | generic with trait constraint |
 | `.` | field access — reads a component (dot-*calls* survive only for camelCase FFI bindings) |
 | `-> ( )` | dispatch: pipe the scrutinee into an arm group |
 | `?` | propagate `Result` / `Option` failure |

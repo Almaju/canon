@@ -157,9 +157,9 @@ Unit => Program {
   instantiations are two distinct types: `Store<String, Int>` and
   `Store<Int, String>` coexist with separate variants and layouts.
 
-Constraint syntax (`<T: Show>`) is part of the shape mechanism and
-returns with it ([Functions § Shape or Result
-Newtype](./functions.md#shape-or-result-newtype)).
+There is no constraint syntax: a parameter is bounded by the
+operations its uses require, and each instantiation checks them
+concretely.
 
 ## Recursive Types
 

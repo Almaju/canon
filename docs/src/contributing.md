@@ -31,7 +31,7 @@ Three kinds of files live under `docs/src/`:
 ### Adding a Page
 
 1. Write `docs/src/<your-page>.md` (pages live in a subdirectory per
-   sidebar section — `learn/`, `reference/`, `spec/`, … — but the slug
+   sidebar section — `tour/`, `reference/`, `spec/`, … — but the slug
    is just the file's basename).
 2. In `main.can`, add a dispatch arm to the `Page => Content` function:
    `* "<your-page>" => Content { YourPage() -> Html }` (arms are sorted
@@ -40,12 +40,25 @@ Three kinds of files live under `docs/src/`:
    the sidebar under the appropriate `<div class="sec">` section.
 4. Wire the page into the reading order: add a `Page => Pager` arm for
    it, and update the `Next`/`Prev` targets of its new neighbours.
+5. Add it to `results.can` so search can find it.
 
 To make a snippet runnable in the browser, fence it as ` ```canon,run `
 — it must be a complete program in canonical format that only prints,
 since printing is the whole of the browser's host surface. The reader's
 own browser compiles it on click (`docs/assets/canon-play.js`), so a
 snippet that stops compiling reports the error in the page.
+
+### Adding a Tour Step
+
+A step under `docs/src/tour/` is the same `.md` page with one extra
+rule: it holds **exactly one** Canon code block, and that block is the
+step's program. `docs-enhance.js` lifts it out of the prose into the
+editor on the right, so the reader runs the program the page is about.
+Fence it ` ```canon,run ` for a step the browser can run, or ` ```canon `
+for one that needs a real host — that variant loses its run button and
+says so. Its `Page => Content` arm ends `-> Lesson -> Tour(Page)`, and
+the step needs an entry in `Page => Rail` to take its place in the
+numbered rail.
 
 ## Previewing the Docs Locally
 

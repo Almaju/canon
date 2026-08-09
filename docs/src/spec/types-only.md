@@ -45,9 +45,8 @@ The constructed type is the return type with `Result`/`Option`/`Future`
 peeled. Call sites are unchanged (`Url("...")?`). This is the
 language's **only** function form: top level it declares a constructor,
 in expression position it is a lambda, and every dispatch arm is one.
-Declaring a body-less shape is itself a checker error until
-shapes can do something a result newtype cannot
-([Functions § Shape or Result Newtype](./functions.md#shape-or-result-newtype));
+A body-less signature naming a type family is a checker error
+([Functions § Operations Have No Names](./functions.md#operations-have-no-names));
 there are no exceptions -- even the literal-interpolation hooks are
 ordinary result-newtype families (`Encoded = Json`, `Escaped = Html`;
 a hole is a construction, exactly as a format-string hole is
@@ -57,8 +56,8 @@ a hole is a construction, exactly as a format-string hole is
 constructor implementations, distinguished by input product (`Json`
 has `(Bool)`, `(Float)`, `(Int)`, and `(String)` constructors), with
 at most one implementation per (name, input product) pair in the whole
-program. Traits and overloads collapse into one concept: *a PascalCase
-name is a family of implementations selected by input product*.
+program. Traits and overloads collapse into one concept: *a PascalCase name is
+a family of implementations selected by input product*.
 
 ## Three Operators
 
@@ -66,7 +65,7 @@ name is a family of implementations selected by input product*.
 |---|---|---|
 | `->` | **execute** -- the only call / pipe / construct / dispatch form | functions whose input product contains the left value's type |
 | `.` | **read** -- field access only | the value's fields/components |
-| `=>` | **declare** -- every constructor / shape / lambda / dispatch-arm definition | -- |
+| `=>` | **declare** -- every constructor / lambda / dispatch-arm definition | -- |
 
 `.` and `->` do not compete to mean "call", so `.` completion offers
 fields and `->` completion offers every operation reachable from the

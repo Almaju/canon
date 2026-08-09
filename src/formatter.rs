@@ -1740,8 +1740,8 @@ mod tests {
     #[test]
     fn test_generics() {
         assert_format(
-            "parse = <T: Deserialize>(Json * String) => Result<T, MalformedJson>\n",
-            "parse = <T: Deserialize>(Json * String) => Result<T, MalformedJson>\n",
+            "parse = <T: Show>(Json * String) => Result<T, MalformedJson>\n",
+            "parse = <T: Show>(Json * String) => Result<T, MalformedJson>\n",
         );
     }
 

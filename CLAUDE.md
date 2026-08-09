@@ -245,7 +245,7 @@ These are the non-obvious rules the code won't spell out. Together with
 
 - **Scalar newtypes erase to their underlying primitive.** A wrapper/binding
   declares the primitive receiver, not the newtype (the `exitWithCode` receiver
-  is `Int`, not `Exit`).
+  is bare `Int`).
 - **`Parallel` / `Race` are methods** (`a -> Parallel(b)`), never bare calls —
   Canon has no bare free-function call form.
 - **`Json` / `Html` are prelude types** (`= String`). A literal with an
