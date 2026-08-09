@@ -248,7 +248,7 @@ fn interface_use_path(resolve: &Resolve, iface_id: InterfaceId) -> Option<String
     // `<project>/bindgen/<ns>/<pkg>/<iface>.can`, the loader resolves
     // `use <ns>/<pkg>/<iface>` against that file (via the project's
     // `bindgen/` lookup for user code, or via the same-package bundled
-    // lookup for compiler-shipped `canon/std`). Before the manifest-
+    // lookup for compiler-shipped `canon`). Before the manifest-
     // driven flow landed, bindings lived inside the `canon/wasi`
     // bundled package and this function emitted an `canon/wasi/…`
     // prefix; that prefix is gone now.

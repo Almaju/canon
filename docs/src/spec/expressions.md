@@ -327,7 +327,7 @@ construction is intrinsic -- so it works in every world, including
 ### JSON Literals
 
 Object and array literals produce `Json` values. The compiler knows
-`Json = String` intrinsically and the loader pulls in `canon/std/Json`
+`Json = String` intrinsically and the loader pulls in `canon/Json`
 the moment a program uses its machinery (interpolation, the validating
 constructor, or the `Encoded` family).
 

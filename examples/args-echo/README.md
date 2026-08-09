@@ -2,7 +2,7 @@
 
 Reading the argument vector. The entry takes no input — at the ABI
 level `wasi:cli/run.run` passes none — so argv is fetched, not
-received: `Args()` (`= List<String>`, from `canon/std`) reads it via
+received: `Args()` (`= List<String>`, from `canon`) reads it via
 `wasi:cli/environment`.
 
 ```canon

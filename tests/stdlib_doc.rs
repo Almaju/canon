@@ -1,6 +1,6 @@
 //! Single-source-of-truth pin for the stdlib reference's Reserved Names
-//! appendix: every type name `canon/std` declares in
-//! `packages/canon/std/src/` must appear in
+//! appendix: every type name `canon` declares in
+//! `packages/canon/src/` must appear in
 //! `docs/src/reference/stdlib.md` — a stdlib name colliding with a user
 //! type is a hard error, so the appendix is the list a writer checks
 //! before naming a type. If the two drift, this fails and forces them
@@ -85,7 +85,7 @@ fn every_stdlib_type_is_in_the_reserved_names_appendix() {
         .expect("stdlib.md should end with a `## Reserved Names` appendix");
 
     let mut files = Vec::new();
-    collect_can_files(&root.join("packages/canon/std/src"), &mut files);
+    collect_can_files(&root.join("packages/canon/src"), &mut files);
     assert!(
         files.len() > 30,
         "stdlib walk looks broken: {} files",

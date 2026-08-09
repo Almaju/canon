@@ -50,7 +50,7 @@ pub fn canon_binary() -> PathBuf {
 /// formatted error output (one error per line) — or an empty string
 /// when the fixture checks cleanly.
 ///
-/// Uses the real `loader::load_module`, so fixtures may `use canon/std/...`
+/// Uses the real `loader::load_module`, so fixtures may `use canon/...`
 /// and exercise the same import machinery `canon check` does.
 pub fn run_check_fixture(fixture_path: &Path) -> String {
     let display_path = fixture_display_path(fixture_path);

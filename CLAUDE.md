@@ -109,9 +109,9 @@ same PR; never open standalone docs-sync PRs.
 | `src/webhost.rs` | Web target's browser side — generated JS host, `index.html` shell, static server for `canon run` |
 | `src/lib.rs` | Public crate modules |
 | `build.rs` | Walks `packages/` → bundled-package registry baked into the binary |
-| `packages/canon/std/` | The standard library — one shipped package. Hand-written wrappers under `src/`, WIT-derived bindings under `bindgen/` (committed), vendored upstream WIT under `wit/` (the import declaration — no manifest). |
-| `packages/canon/std/bindgen/` | Generated WASI bindings (`wasi/<pkg>@<ver>/<iface>.can`), from `just regen-bindings`. Derived — never hand-edit. A same-`rel_path` file under `src/` shadows its `bindgen/` twin. |
-| `packages/canon/std/wit/wasi/` | Vendored upstream WIT — source for the bindings. Bumped when WASI advances. |
+| `packages/canon/` | The standard library — one shipped package. Hand-written wrappers under `src/`, WIT-derived bindings under `bindgen/` (committed), vendored upstream WIT under `wit/` (the import declaration — no manifest). |
+| `packages/canon/bindgen/` | Generated WASI bindings (`wasi/<pkg>@<ver>/<iface>.can`), from `just regen-bindings`. Derived — never hand-edit. A same-`rel_path` file under `src/` shadows its `bindgen/` twin. |
+| `packages/canon/wit/wasi/` | Vendored upstream WIT — source for the bindings. Bumped when WASI advances. |
 | `examples/` | Example `.can` programs |
 | `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests (incl. `tests/fixtures/`, `tests/canon/`) |
@@ -132,7 +132,7 @@ just examples           # compile + run all examples
 just example <name>     # run a single example
 just bench              # benchmark codegen::generate()
 just docs               # build + serve docs on 127.0.0.1:8080
-just regen-bindings     # regenerate packages/canon/std/bindgen/ from wit/
+just regen-bindings     # regenerate packages/canon/bindgen/ from wit/
 just fmt / fmt-can      # rustfmt / canonicalize every corpus .can file
 just clippy             # cargo clippy -- -W warnings
 just ci                 # fmt + clippy + test (mirrors CI)
@@ -323,7 +323,7 @@ treatment in `docs/src/spec/types-only.md`.
   name of "no input". A lone `Unit` param normalizes to zero params; call sites
   stay `X()`. `()` is not a declaration form.
 - **Entries are anonymous, selected by world-shaped return.** CLI entry is
-  `Unit => Program` (`Program = Unit` from `canon/std`); HTTP handler is
+  `Unit => Program` (`Program = Unit` from `canon`); HTTP handler is
   `Request => Response`. `resolve_new_syntax` renames a Cli-world-returning entry
   back to `main` (so ordering exemption + `$start` inlining key on it); a literal
   `main` name is a checker error. All `Unit`-rooted types are interchangeable in
@@ -363,7 +363,7 @@ treatment in `docs/src/spec/types-only.md`.
   `CanonError::FormatError`) fused with the semantic checker. `wasm-encoder` /
   `wit-component` produce the `.wasm` in-process; `canon run` executes it on
   embedded wasmtime.
-- **Standard library** is layered but ships as one bundled package, `canon/std`.
+- **Standard library** is layered but ships as one bundled package, `canon`.
   It declares WIT deps by vendoring under `wit/`; `canon install` materializes
   bindings into `bindgen/<ns>/<pkg>@<ver>/<iface>.can`. Hand-written wrappers under
   `src/` pipe into binding constructors by the type each constructs
@@ -398,7 +398,7 @@ treatment in `docs/src/spec/types-only.md`.
   **project root** is the nearest ancestor with a structural marker (`src/` with
   `.can` files, `wit/`, `bindgen/`, `deps/`) — `src/install.rs`. Each `bindgen/`
   has an `_install.toml` sidecar (staleness detection only; committed for
-  `canon/std`, gitignored for user projects).
+  `canon`, gitignored for user projects).
 - `build.rs` walks `packages/` at build time into a bundled-package registry; drop
   a file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up.
 - Examples must compile and run after changes — `just examples` to verify.

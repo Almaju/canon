@@ -1,7 +1,7 @@
 # dice-roll
 
 Demonstrates `Random`, the standard library's cryptographically-secure
-random integer (`packages/canon/std/src/random.can`, backed by
+random integer (`packages/canon/src/random.can`, backed by
 `wasi:random/random#get-random-u64`). `Random` is a newtype over `Int`
 (`Random = Int`), so it erases to `Int` at the value level and takes
 ordinary arithmetic methods directly.

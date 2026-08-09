@@ -13,7 +13,7 @@ pub(super) fn generate_http_core_module(module: &OModule) -> Vec<u8> {
 
 impl<'m> WasmGen<'m> {
     /// Constructor for HTTP encoder mode. The `wasi:http/types`
-    /// binding declarations from `canon/std/http` are consumed by the
+    /// binding declarations from `canon/http` are consumed by the
     /// mode's own constructor special-cases, not the generic extern
     /// machinery, so they're filtered out here. Any *other* extern
     /// import can't be satisfied by the `wasi:http/service` world and

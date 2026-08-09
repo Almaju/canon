@@ -55,7 +55,7 @@ One caveat during the transition: programs using `canon:builtins/*`
 bridge interfaces (currently the legacy HTTP-client/filesystem/JSON
 host helpers; the skip list in `canon install` and the At-a-Glance
 table mark them) run only under `canon run` until their `wasi:*`
-replacements land. Programs that stick to `canon/std` cli, clocks,
+replacements land. Programs that stick to `canon` cli, clocks,
 random, and the HTTP handler surface are fully portable.
 
 ## Publishing a library
@@ -85,4 +85,4 @@ the directory is the whole declaration.
 The WASI rc version is embedded in every interface name, so a
 component either matches its host exactly or fails loudly at
 instantiation. No silent skew. When the vendored WIT is bumped
-(`packages/canon/std/wit/wasi/`), rebuild and redeploy.
+(`packages/canon/wit/wasi/`), rebuild and redeploy.

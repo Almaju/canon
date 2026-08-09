@@ -153,7 +153,7 @@ arrow returns a type matching a known WASI world's primary export.
 Entries have no name -- selection is by signature only, and giving the
 entry a name (a literal `main =` is the classic mistake) is a checker
 error. The CLI entry is `Unit => Program { ... }` (`Program = Unit`,
-from `canon/std`) -- no arguments in, no explicit exit out, mirroring
+from `canon`) -- no arguments in, no explicit exit out, mirroring
 the HTTP entry's `Request => Response { ... }` in anonymity:
 
 | Signature | World | Export |
@@ -163,7 +163,7 @@ the HTTP entry's `Request => Response { ... }` in anonymity:
 
 The CLI entry's shape is the ABI's: `wasi:cli/run.run` takes nothing
 and reports only success/failure. The argument vector is fetched, not
-passed -- `Args()` (`= List<String>`, from `canon/std`, bound from
+passed -- `Args()` (`= List<String>`, from `canon`, bound from
 `wasi:cli/environment#get-arguments`) reads `argv` from any body -- and
 an exact exit code is the hard `Exited(n)`
 (`wasi:cli/exit#exit-with-code`) escape hatch.

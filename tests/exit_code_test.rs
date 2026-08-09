@@ -1,5 +1,5 @@
 //! Exit-code threading: a Canon program calling
-//! `canon/std/cli`'s `exit` terminates the `canon run` process with
+//! `canon/cli`'s `exit` terminates the `canon run` process with
 //! that code. The stdlib wrapper rides the *real*
 //! `wasi:cli/exit@0.3.0-rc-2026-03-15#exit-with-code` import — the
 //! first narrow-int (u8) WASI binding emitted by the WIT-informed

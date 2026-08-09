@@ -18,7 +18,7 @@ const BUILTIN_TYPES: &[&str] = &[
 ];
 
 // `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
-// types (`canon/std/Map`, `canon/std/Set`), so their names arrive through
+// types (`canon/Map`, `canon/Set`), so their names arrive through
 // the imported typedefs like any other user type. Each entry carries its
 // type-argument count.
 const BUILTIN_GENERIC_TYPES: &[(&str, usize)] = &[
@@ -36,7 +36,7 @@ fn is_builtin_generic(name: &str) -> bool {
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
 /// `List()` is the empty list — the type's zero value, and the base case
-/// recursive std collections (`canon/std/Map`'s `keys`, `canon/std/Set`'s
+/// recursive std collections (`canon/Map`'s `keys`, `canon/Set`'s
 /// `List`) build up from via `concat`.
 const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 
@@ -1497,7 +1497,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     }
 
     // JSON prelude: a JSON literal types as `Json` even when the module
-    // never mentions `canon/std/Json` (the loader auto-injects the stdlib
+    // never mentions `canon/Json` (the loader auto-injects the stdlib
     // module only when interpolation / the `Json` validator / `Encoded` is
     // actually used — a fully static literal is a plain constant). For the
     // static case the checker still needs `Json` to be a known type whose
@@ -3063,7 +3063,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     }
     // Only the base comparisons (`eq`/`lt`) are builtins; the derived
     // `ne`/`le`/`gt`/`ge` are stdlib constructor families
-    // (`canon/std/{int,float,string}.can`) found via `symbols.methods`.
+    // (`canon/{int,float,string}.can`) found via `symbols.methods`.
     if matches!(receiver_ty, "Int" | "Float")
         && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
@@ -3102,7 +3102,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
         return true;
     }
     // NOTE: `Map` and `Set` have no builtin entries — they are pure
-    // Canon (`canon/std/Map`, `canon/std/Set`: sorted recursive
+    // Canon (`canon/Map`, `canon/Set`: sorted recursive
     // unions), so their methods arrive through `symbols.methods` like
     // any other stdlib declaration once the module is imported.
     false
@@ -3477,12 +3477,12 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             field.name.clone()
         }
         // A JSON literal expression has type `Json` (declared in
-        // `canon/std/json.can` as `Json = String`). The checker resolves
+        // `canon/json.can` as `Json = String`). The checker resolves
         // method dispatch on `Json` through the normal newtype-aliasing
         // path, so `.print` (on String), `.concat` (on String), and
         // `Json`-specific methods all line up.
         //
-        // Requires `use canon/std/Json` to be in scope at the call site
+        // Requires `use canon/Json` to be in scope at the call site
         // — same shape as any other stdlib type. JSON literal syntax
         // is first-class, but its *type name* is part of the stdlib.
         Expr::JsonLit { .. } => "Json".to_string(),

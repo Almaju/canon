@@ -55,7 +55,7 @@ Not rejected — not expressible. `method()` and `path()` land, but the
 stdlib exposes no accessor for the request headers or body, so no accepted
 program can reach the missing lowering. The vendored WIT and the embedded
 runtime already carry both (`get-headers`, `consume-body`); wiring them into
-codegen and restoring a `body` binding in `canon/std`'s `wasi:http` wrapper
+codegen and restoring a `body` binding in `canon`'s `wasi:http` wrapper
 is the future PR.
 
 ## WIT shapes `canon install` skips
