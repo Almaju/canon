@@ -512,18 +512,6 @@ fn install_wit_entry(wit_path: &Path, bindgen_root: &Path) -> Result<EntryResult
     })
 }
 
-/// Drop the `@<version>` suffix from every path segment:
-/// `wasi/clocks@0.3.0/monotonic_clock.can` →
-/// `wasi/clocks/monotonic_clock.can`. Used to compare version-carrying
-/// vendored paths against version-less package prefixes — source never
-/// states versions.
-pub(crate) fn strip_version_suffixes(rel: &str) -> String {
-    rel.split('/')
-        .map(|seg| seg.split_once('@').map(|(l, _)| l).unwrap_or(seg))
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 /// True when a generated file has no real Canon declarations — only
 /// blank lines and `use` directives. Same predicate `canon bindgen`
 /// uses when deciding whether to skip writing a file; duplicated here
@@ -535,21 +523,4 @@ pub(crate) fn has_no_decls(content: &str) -> bool {
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .all(|l| l.starts_with("use "))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strip_version_suffixes_drops_at_segments() {
-        assert_eq!(
-            strip_version_suffixes("wasi/clocks@0.3.0-rc-2026-03-15/monotonic_clock.can"),
-            "wasi/clocks/monotonic_clock.can",
-        );
-        assert_eq!(
-            strip_version_suffixes("wasi/clocks/monotonic_clock.can"),
-            "wasi/clocks/monotonic_clock.can",
-        );
-    }
 }
