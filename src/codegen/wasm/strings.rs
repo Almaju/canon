@@ -164,6 +164,26 @@ impl LocalScope {
     pub(super) fn tmp_f64_b(&self) -> u32 {
         self.param_count + 27
     }
+
+    /// Adjacent i32 pair holding a binding dispatch's scrutinee — a
+    /// heap pointer in the first slot, or a `(ptr, len)` string/list
+    /// pair across both. Dedicated (not shared with `lit_scrut_ptr`)
+    /// so a binding dispatch inside a literal-dispatch arm body can't
+    /// clobber the outer scrutinee. Same single-slot nesting caveat as
+    /// `lit_scrut_ptr` for binding-inside-binding.
+    pub(super) fn bind_scrut_ptr(&self) -> u32 {
+        self.param_count + 28
+    }
+
+    /// i64 sibling of `bind_scrut_ptr` for `Int` scrutinees.
+    pub(super) fn bind_scrut_i64(&self) -> u32 {
+        self.param_count + 30
+    }
+
+    /// f64 sibling of `bind_scrut_ptr` for `Float` scrutinees.
+    pub(super) fn bind_scrut_f64(&self) -> u32 {
+        self.param_count + 31
+    }
 }
 
 /// Local declarations appended after the function params.
@@ -183,6 +203,9 @@ pub(super) fn extra_locals_decl() -> Vec<(u32, ValType)> {
         (2, ValType::I32), // lit_scrut_ptr, lit_scrut_ptr + 1 (len)
         (1, ValType::I64), // lit_scrut_i64 (Int literal-dispatch scrutinee)
         (1, ValType::F64), // tmp_f64_b (Float.rem second operand)
+        (2, ValType::I32), // bind_scrut_ptr, bind_scrut_ptr + 1 (len)
+        (1, ValType::I64), // bind_scrut_i64 (Int binding-dispatch scrutinee)
+        (1, ValType::F64), // bind_scrut_f64 (Float binding-dispatch scrutinee)
     ]
 }
 

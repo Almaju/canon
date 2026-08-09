@@ -1,0 +1,1 @@
+error[tests/checker/fail/binding_dispatch_wrong_type.can:3:11]: a single-arm dispatch binds the scrutinee, so its arm must name the scrutinee's type `Int`, found `String`
