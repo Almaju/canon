@@ -52,6 +52,6 @@ HELLO from greeter
 - **Everything is public.** There is no visibility to configure; see
   [Modules and Packages](../spec/modules.md#visibility) for why.
 
-[Programs & Modules](../learn/programs-and-modules.md) states the rule;
+[One Arrow, Three Worlds](../tour/worlds.md) states the rule;
 [Modules and Packages](../spec/modules.md) has the full resolution
 algorithm.

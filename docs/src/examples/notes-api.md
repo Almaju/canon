@@ -65,29 +65,19 @@ Request => Response {
 
 ## What It Demonstrates
 
-- **The entry-point rule.** The one arrow returning `Response` is the
-  service -- an anonymous `Request => Response`, selected by signature.
-  No `main`, no port in the program; the host decides how to serve it.
 - **Constructors return values, not worlds.** Only the entry may return
   `Response`, so each note body is a constructor for its own `Body`
-  newtype (`IndexBody`, `NoteOne`, ...), built with `Unit => IndexBody`.
-  This is the layering the rule enforces.
-- **JSON literals.** The bodies are JSON object/array literals,
-  ordinary expressions that evaluate to the encoded text, so a static
-  body costs no imports and no serializer.
+  newtype (`IndexBody`, `NoteOne`, ...). That is the layering the
+  one-world rule enforces.
 - **Request introspection.** `Request.path()` returns
-  `Option<String>`; dispatch on `(None, Some<String>)` extracts the
-  live path.
-- **Routing as dispatch.** There is no router DSL. The route table is
-  **literal dispatch** on the path: one arm per route, alphabetical,
-  with the mandatory `String` catch-all as the 404. Nested dispatch
-  composes: union dispatch on the `Option`, literal dispatch on the
-  payload inside the `Some` arm.
-- **Per-route status codes.** `Status` is a value; each arm computes
-  its own, piped in with `404 -> Status`.
+  `Option<String>`, so union dispatch on the `Option` wraps literal
+  dispatch on the path inside the `Some` arm — nested dispatch composes.
+- **Per-route status codes.** `Status` is a value each arm computes for
+  itself, piped in with `404 -> Status`.
 
-See [Programs & Modules](../learn/programs-and-modules.md) for the
-entry-point rule in prose.
+The route table is [literal dispatch](../tour/literal-dispatch.md) and
+the entry is chosen by [its signature](../tour/worlds.md); neither is
+special-cased for HTTP.
 
 ## The Compiled Shape
 

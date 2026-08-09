@@ -5,7 +5,8 @@
 // `canonAfterRender(root)` if it exists. This script defines that hook to
 // do two things the pure-Canon renderer leaves to the browser:
 //
-//   1. Syntax-highlight `<pre data-info="canon...">` code blocks. The
+//   1. Syntax-highlight `<pre data-info="canon...">` code blocks with
+//      canon-play.js's tokenizer — the same one painting the editor. The
 //      Markdown renderer emits the fence info string as `data-info`, so
 //      "```canon" and "```canon,run" both arrive tagged.
 //   2. Put a Run button on "```canon,run" blocks, and mount the
@@ -18,59 +19,6 @@
 
 (function () {
   "use strict";
-
-  // ── Canon syntax highlighter ──────────────────────────────────────
-  // A tiny standalone tokenizer (no highlight.js). Almost every name in
-  // Canon is PascalCase, so painting all of them one colour would make a
-  // wall; instead colour falls on what carries a program's shape -
-  // constructors (`Name(`), calls (`name(`), definitions (`name =`), the
-  // core vocabulary, literals, operators, strings, numbers - and bare
-  // PascalCase stays plain, mirroring the language's own rule.
-  var KW = new Set(["extern", "impl", "bindings", "use"]);
-  var LIT = new Set(["True", "False", "None", "Some", "Ok", "Err", "Pass", "Fail"]);
-  var TYPE = new Set([
-    "Bool", "Byte", "Bytes", "Float", "Future", "Handle", "Hex", "Html", "Int",
-    "Json", "List", "Map", "Markdown", "Never", "Option", "Ord", "Result",
-    "Set", "Stream", "String", "TestResult", "Unit",
-  ]);
-
-  function esc(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-
-  var TOKEN =
-    /("(?:\\.|[^"\\])*")|(\b0x[0-9a-fA-F_]+\b|\b\d+\.\d+\b|\b\d+\b)|([A-Za-z_][A-Za-z0-9_]*)|(->|=>|::<|[?^*+=|.])|(\s+)|([\s\S])/g;
-
-  function highlight(code) {
-    var out = "";
-    var m;
-    TOKEN.lastIndex = 0;
-    while ((m = TOKEN.exec(code))) {
-      if (m[1]) {
-        out += '<span class="tk-str">' + esc(m[1]) + "</span>";
-      } else if (m[2]) {
-        out += '<span class="tk-num">' + esc(m[2]) + "</span>";
-      } else if (m[3]) {
-        var id = m[3];
-        var rest = code.slice(TOKEN.lastIndex);
-        var parens = /^\s*\(/.test(rest);
-        var assign = /^\s*=(?![=>])/.test(rest);
-        var cls = null;
-        if (KW.has(id)) cls = "tk-kw";
-        else if (LIT.has(id)) cls = "tk-lit";
-        else if (TYPE.has(id)) cls = "tk-type";
-        else if (/^[A-Z]/.test(id) && parens) cls = "tk-ctor";
-        else if (/^[a-z]/.test(id) && parens) cls = "tk-call";
-        else if (/^[a-z]/.test(id) && assign) cls = "tk-def";
-        out += cls ? '<span class="' + cls + '">' + esc(id) + "</span>" : esc(id);
-      } else if (m[4]) {
-        out += '<span class="tk-op">' + esc(m[4]) + "</span>";
-      } else {
-        out += esc(m[0]);
-      }
-    }
-    return out;
-  }
 
   function infoLang(info) {
     return /(?:^|,)(canon|ow)(?:,|$)/.test(info || "");
@@ -170,15 +118,57 @@
     });
   }
 
+  // ── the tour ──────────────────────────────────────────────────────
+  // A tour step is prose plus exactly one Canon block, and that block is
+  // the step's program — it belongs in the pane on the right, not in the
+  // middle of the prose. Hoisting it here rather than in the Canon view
+  // keeps a step a plain Markdown file with a plain fenced block, so
+  // `tests/docs_snippets.rs` still compile-checks all sixteen of them.
+  function hoistTourProgram(scope) {
+    var doc = scope.querySelector(".tour-doc");
+    var pane = scope.querySelector(".tour-pane .pg");
+    if (!doc || !pane) return;
+    // The step's program is its Canon block. A ` ```text ` block is
+    // illustration — annotated, or deliberately not a whole program —
+    // and stays where the prose put it.
+    var pre = null;
+    Array.prototype.some.call(doc.querySelectorAll("pre[data-info]"), function (el) {
+      if (!infoLang(el.getAttribute("data-info") || "")) return false;
+      pre = el;
+      return true;
+    });
+    var code = pre && pre.querySelector("code");
+    if (!code) return;
+    pre.parentNode.removeChild(pre);
+    canonPlay.mount(pane, code.textContent);
+    // Two steps reach for a file and for the network, and a browser tab
+    // hosts neither. Say so, rather than shipping a button whose only
+    // possible answer is a missing import.
+    if (!infoRun(pre.getAttribute("data-info") || "")) markHostOnly(pane);
+  }
+
+  function markHostOnly(pane) {
+    var bar = pane.querySelector(".pg-bar");
+    var run = bar.querySelector(".pg-run");
+    var hint = bar.querySelector(".pg-hint");
+    if (run) run.remove();
+    if (hint) hint.remove();
+    var note = document.createElement("div");
+    note.className = "pg-host";
+    note.textContent = "needs a real host — run this one with `canon run`";
+    pane.insertBefore(note, pane.querySelector(".pg-edit"));
+  }
+
   // ── the hook ──────────────────────────────────────────────────────
   function enhance(root) {
     var scope = root || document;
+    hoistTourProgram(scope);
     var pres = scope.querySelectorAll("pre[data-info]");
     Array.prototype.forEach.call(pres, function (pre) {
       var info = pre.getAttribute("data-info") || "";
       var code = pre.querySelector("code");
       if (code && infoLang(info) && !code.dataset.hl) {
-        code.innerHTML = highlight(code.textContent);
+        code.innerHTML = canonPlay.highlight(code.textContent);
         code.dataset.hl = "1";
         pre.classList.add("canon-code");
       }

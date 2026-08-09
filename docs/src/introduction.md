@@ -63,19 +63,8 @@ sentence here and a full chapter in [The Philosophy](./philosophy.md).
   own to ship — it runs on any Component Model host, sandboxed by
   construction.
 
-## Where to Go Next
-
-- **Skeptical?** [Is Canon for You?](./reference/coming-from.md) maps
-  Canon onto the language you already know.
-- **Want the ideas?** [The Philosophy](./philosophy.md) is the full
-  argument.
-- **Want to write code?** [Install](./getting-started/installation.md),
-  say [Hello, World](./getting-started/hello-world.md), then walk the
-  **Learn** chapters from [Types & Values](./learn/types-and-values.md)
-  on — they run in the browser.
-- **Looking for something specific?** [How Do I…?](./learn/how-do-i.md).
-- **Need the exact rules?** The [Specification](./spec/overview.md).
-- **Generating code with a model?** [Canon for AI](./canon-for-ai.md).
+Sixteen steps of the [Tour](./tour/hello.md) teach the rest, each one
+running in this tab.
 
 ## Status
 
