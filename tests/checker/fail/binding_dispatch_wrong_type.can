@@ -1,0 +1,5 @@
+Unit => Program {
+    3 -> Sum(4) -> (
+        * String { "x" -> Print }
+    )
+}

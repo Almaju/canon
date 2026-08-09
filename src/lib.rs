@@ -9,6 +9,7 @@ pub mod install;
 pub mod lexer;
 pub mod loader;
 pub mod lsp;
+pub mod monomorph;
 pub mod parser;
 #[cfg(target_arch = "wasm32")]
 pub mod playground;

@@ -6,7 +6,7 @@ Unit => Program {
         -> Json
         -> Print
     Cwd() -> (
-        * None => Unit { "no cwd" -> Print }
-        * Some<String> => Unit { `cwd: {String}` -> Print }
+        * None { "no cwd" -> Print }
+        * Some<String> { `cwd: {String}` -> Print }
     )
 }

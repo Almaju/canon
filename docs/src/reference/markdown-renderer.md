@@ -53,8 +53,8 @@ name them — here in `examples/markdown-web`'s page picker:
 ```canon
 Page => Content {
     Page -> (
-        * "guide" => Content { Guide() -> Html }
-        * String => Content { Intro() -> Html }
+        * "guide" { Guide() -> Html }
+        * String { Intro() -> Html }
     )
 }
 ```

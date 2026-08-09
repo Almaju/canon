@@ -2,9 +2,9 @@ Described = Unit
 
 Int => Described {
     Int -> (
-        * 0 => Described { "zero" -> Print }
-        * 1 => Described { "one" -> Print }
-        * Int => Described { Int -> Print }
+        * 0 { "zero" -> Print }
+        * 1 { "one" -> Print }
+        * Int { Int -> Print }
     )
 }
 

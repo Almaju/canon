@@ -27,9 +27,9 @@ named after its return type is checked by the compiler.
 ## The Unified Declaration
 
 Every declaration is `PascalName = rhs`, and the RHS decides the
-meaning: a type expression declares a type; a body-less signature is a
-**shape** (a named function type others implement) -- rejected today,
-see below.
+meaning: a type expression declares a type; a body-less function-type
+signature (a "shape") is a checker error --
+[Canon has no traits](./functions.md#no-traits).
 
 A bodied declaration named after anything but the type it constructs
 is a compile error, and since that name is redundant, the declaration

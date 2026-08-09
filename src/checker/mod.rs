@@ -18,14 +18,25 @@ const BUILTIN_TYPES: &[&str] = &[
 ];
 
 // `Map` and `Set` are NOT built in — they are ordinary pure-Canon stdlib
-// types (`canon/std/Map`, `canon/std/Set`), so their names arrive through
-// the imported typedefs like any other user type.
-const BUILTIN_GENERIC_TYPES: &[&str] = &["Future", "List", "Option", "Result", "Stream"];
+// types (`canon/Map`, `canon/Set`), so their names arrive through
+// the imported typedefs like any other user type. Each entry carries its
+// type-argument count.
+const BUILTIN_GENERIC_TYPES: &[(&str, usize)] = &[
+    ("Future", 1),
+    ("List", 1),
+    ("Option", 1),
+    ("Result", 2),
+    ("Stream", 1),
+];
+
+fn is_builtin_generic(name: &str) -> bool {
+    BUILTIN_GENERIC_TYPES.iter().any(|(n, _)| *n == name)
+}
 
 /// Zero-data builtin types that may be constructed with empty parens: `Unit()`.
 /// `True()` and `False()` are covered by `is_variant` (variants of `Bool`).
 /// `List()` is the empty list — the type's zero value, and the base case
-/// recursive std collections (`canon/std/Map`'s `keys`, `canon/std/Set`'s
+/// recursive std collections (`canon/Map`'s `keys`, `canon/Set`'s
 /// `List`) build up from via `concat`.
 const ZERO_DATA_BUILTINS: &[&str] = &["False", "List", "True", "Unit"];
 
@@ -40,7 +51,11 @@ const CONCURRENT_COMBINATORS: &[&str] = &["parallel", "race", "Parallel", "Race"
 
 pub struct SymbolTable {
     pub types: HashSet<String>,
-    pub generic_types: HashSet<String>,
+    /// Generic type names → declared parameter names (`Map<K, V>` →
+    /// `["K", "V"]`; arity is the length). Builtins are pre-seeded with
+    /// placeholder names; user entries come from parameterized
+    /// `TypeDef`s.
+    pub generic_types: HashMap<String, Vec<String>>,
     pub variant_of: HashMap<String, String>,
     pub methods: HashMap<(String, String), MethodSig>,
     /// For each product TypeDef `T = A * B * ...`, the names of its
@@ -96,7 +111,7 @@ impl SymbolTable {
     }
 
     pub fn knows_type(&self, name: &str) -> bool {
-        self.types.contains(name) || self.generic_types.contains(name)
+        self.types.contains(name) || self.generic_types.contains_key(name)
     }
 }
 
@@ -124,6 +139,7 @@ pub fn check_loaded(loaded: &crate::loader::LoadResult) -> Vec<CanonError> {
             crate::formatter::format_error(&src.source, &src.path.display().to_string())
         })
         .collect();
+    errors.extend(loaded.expand_errors.iter().cloned());
     errors.extend(check_with_entry(&loaded.module, loaded.entry_items_start));
     errors
 }
@@ -330,6 +346,13 @@ fn check_ordering(
                 } else {
                     func.name.name.as_str()
                 };
+                // Minted instantiations (`Inserted<String, Int>` — a `<`
+                // can't appear in a source-declared name) are compiler
+                // output appended after the source items, not part of
+                // the file's ordering.
+                if crate::monomorph::instantiation_head(surface).is_some() {
+                    return None;
+                }
                 return Some((surface, func.name.span));
             }
             None
@@ -342,6 +365,9 @@ fn check_ordering(
         .iter()
         .filter_map(|item| {
             if let Item::TypeDef(td) = item {
+                if crate::monomorph::instantiation_head(&td.name.name).is_some() {
+                    return None;
+                }
                 Some((td.name.name.as_str(), td.name.span))
             } else {
                 None
@@ -458,6 +484,13 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonErr
                 (td.name.name.clone(), out)
             }
         };
+        // A minted instantiation keeps its schema alive: `Box<Int>`
+        // reaches the `Box` declaration it was expanded from, so a
+        // schema is dead exactly when no instantiation of it is used.
+        if let Some(head) = crate::monomorph::instantiation_head(&name) {
+            let head = head.to_string();
+            refs.entry(name.clone()).or_default().insert(head);
+        }
         if declared.insert(name.clone()) {
             declared_order.push(name.clone());
         }
@@ -843,7 +876,9 @@ fn compound_payload_gap(container: &str, payload: &str, span: crate::error::Span
 /// compound elements, `Appended` elements, and `Some<T>` dispatch arms.
 fn scan_expr_gaps(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>, errors: &mut Vec<CanonError>) {
     match expr {
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name, args, span, ..
+        } => {
             if name.name == "List" {
                 // `List(a * b * c)` carries its elements as one product.
                 let elements: &[Expr] = match args.as_slice() {
@@ -1072,7 +1107,7 @@ fn sig_mentions(func: &FunctionDef, ty_name: &str) -> bool {
 /// The name a function declaration is reached *by*: its own name, except a
 /// self-constructor (rewritten to `Self`) is reached through its receiver
 /// type name — mirrors the keying in `lint_dead_code`.
-fn decl_key(func: &FunctionDef) -> String {
+pub(crate) fn decl_key(func: &FunctionDef) -> String {
     if func.name.name == "Self" {
         func.receiver
             .as_ref()
@@ -1169,9 +1204,12 @@ pub(crate) fn symbols_for_tooling(module: &Module) -> SymbolTable {
 
 fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable {
     let mut types: HashSet<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
-    let mut generic_types: HashSet<String> = BUILTIN_GENERIC_TYPES
+    let mut generic_types: HashMap<String, Vec<String>> = BUILTIN_GENERIC_TYPES
         .iter()
-        .map(|s| s.to_string())
+        .map(|(s, arity)| {
+            let params = (0..*arity).map(|i| format!("${}", i + 1)).collect();
+            (s.to_string(), params)
+        })
         .collect();
     let mut variant_of: HashMap<String, String> = HashMap::new();
 
@@ -1190,8 +1228,11 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             let name = td.name.name.clone();
-            let canon = crate::ast::type_expr_canonical(&td.body);
-            let already_known = types.contains(&name) || generic_types.contains(&name);
+            // Declaration-side parameters are part of the type's
+            // identity (positionally normalized), so `Map<K, V> = …`
+            // and a parameter-free `Map = …` never merge.
+            let canon = crate::ast::type_def_canonical(td);
+            let already_known = types.contains(&name) || generic_types.contains_key(&name);
             if already_known {
                 // Structurally identical duplicates merge — type
                 // equality is syntactic (one canonical spelling per
@@ -1208,7 +1249,12 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 types.insert(name.clone());
                 type_canon.insert(name, canon);
             } else {
-                generic_types.insert(name.clone());
+                let params = td
+                    .generic_params
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect();
+                generic_types.insert(name.clone(), params);
                 type_canon.insert(name, canon);
             }
         }
@@ -1218,14 +1264,20 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         if let Item::TypeDef(td) = item {
             if let TypeExpr::Union { variants, .. } = &td.body {
                 for variant in variants {
-                    if let Some(name) = variant.simple_name() {
-                        let name_s = name.to_string();
+                    if let TypeExpr::Named { name, generics, .. } = variant {
+                        let name_s = name.clone();
                         // A variant may also have its own TypeDef (carrying a
                         // payload). Register `types` only if it isn't already
                         // there, but always record the variant → union link
                         // so dispatch patterns and constructor-type lookups
-                        // resolve correctly.
-                        if !types.contains(&name_s) && !generic_types.contains(&name_s) {
+                        // resolve correctly. A generic-applied variant
+                        // (`Node<K, V>` inside `Map<K, V> = Empty + Node<K, V>`)
+                        // records the link under its head name; its own
+                        // parameterized TypeDef supplies the type entry.
+                        if generics.is_empty()
+                            && !types.contains(&name_s)
+                            && !generic_types.contains_key(&name_s)
+                        {
                             types.insert(name_s.clone());
                         }
                         variant_of
@@ -1252,6 +1304,13 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
+            // A parameterized typedef's fields only mean something per
+            // instantiation (its component spellings mention the type
+            // parameters); the field table gets the instantiated copies,
+            // never the schema.
+            if !td.generic_params.is_empty() {
+                continue;
+            }
             match &td.body {
                 TypeExpr::Product { fields, .. } => {
                     let names: Vec<String> = fields
@@ -1287,8 +1346,9 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
             if let Some(recv) = &func.receiver {
                 let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
                 let primary_key = (recv.name.clone(), func.name.name.clone());
+                let arity = params_arity(&func.params);
                 let primary_sig = MethodSig {
-                    arity: func.params.len(),
+                    arity,
                     return_ty: return_ty.clone(),
                     result_ok_ty: result_ok_ty.clone(),
                 };
@@ -1310,21 +1370,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 // `ctor_arity` is the number of remaining args when that component is the receiver.
                 let mut components: Vec<String> = Vec::new();
                 for param in &func.params {
-                    match &param.ty {
-                        TypeExpr::Named { .. } => {
-                            if let Some(n) = param.ty.simple_name() {
-                                components.push(n.to_string());
-                            }
-                        }
-                        TypeExpr::Product { fields, .. } => {
-                            for field in fields {
-                                if let Some(n) = field.simple_name() {
-                                    components.push(n.to_string());
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
+                    push_component_names(&param.ty, &mut components);
                 }
                 // When one component is the receiver, the caller passes
                 // the rest as arguments — the same count regardless of
@@ -1335,7 +1381,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                     methods
                         .entry((param_name.clone(), func.name.name.clone()))
                         .or_insert(MethodSig {
-                            arity: func.params.len(),
+                            arity,
                             return_ty: return_ty.clone(),
                             result_ok_ty: result_ok_ty.clone(),
                         });
@@ -1375,6 +1421,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 TypeExpr::Product { fields, .. } => fields
                     .first()
                     .and_then(|f| f.simple_name().map(|s| s.to_string())),
+                TypeExpr::Repeat { ty, .. } => ty.simple_name().map(|s| s.to_string()),
                 _ => None,
             });
             let key = (
@@ -1438,13 +1485,13 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     }
 
     // JSON prelude: a JSON literal types as `Json` even when the module
-    // never mentions `canon/std/Json` (the loader auto-injects the stdlib
+    // never mentions `canon/Json` (the loader auto-injects the stdlib
     // module only when interpolation / the `Json` validator / `Encoded` is
     // actually used — a fully static literal is a plain constant). For the
     // static case the checker still needs `Json` to be a known type whose
     // alias chain reaches `String`, so `{"k":"v"}.print()` and a `-> Json`
     // annotation work import-free. A user- or stdlib-defined `Json` wins.
-    if !types.contains("Json") && !generic_types.contains("Json") {
+    if !types.contains("Json") && !generic_types.contains_key("Json") {
         types.insert("Json".to_string());
         aliases.insert("Json".to_string(), "String".to_string());
     }
@@ -1454,7 +1501,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // `web/html.can` in scope, so the checker needs the alias chain to
     // reach `String` intrinsically. A user- or stdlib-defined `Html`
     // wins (the stdlib's is the same `Html = String`).
-    if !types.contains("Html") && !generic_types.contains("Html") {
+    if !types.contains("Html") && !generic_types.contains_key("Html") {
         types.insert("Html".to_string());
         aliases.insert("Html".to_string(), "String".to_string());
     }
@@ -1560,19 +1607,39 @@ fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut 
         return;
     }
     for param in &func.params {
-        if let TypeExpr::Named { name, generics, .. } = &param.ty {
-            if name == constructed && generics.is_empty() {
-                errors.push(CanonError::CheckError {
-                    message: format!(
-                        "an arrow that returns its own input type needs a name the types can't \
-                         supply: mint a result newtype (`X = {constructed}`) and construct that \
-                         (`… => X`) instead of `{constructed}` itself",
-                    ),
-                    span: param.span,
-                });
-            }
+        let input_name = match &param.ty {
+            TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name),
+            TypeExpr::Repeat { ty, .. } => match ty.as_ref() {
+                TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name),
+                _ => None,
+            },
+            _ => None,
+        };
+        if input_name.is_some_and(|name| name == constructed) {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "an arrow that returns its own input type needs a name the types can't \
+                     supply: mint a result newtype (`X = {constructed}`) and construct that \
+                     (`… => X`) instead of `{constructed}` itself",
+                ),
+                span: param.span,
+            });
         }
     }
+}
+
+/// Explicit call-site type arguments on a user generic are consumed by
+/// the expansion pass before checking, so any that survive to here sit
+/// on a name that takes none — reject them so an annotation is never
+/// silently inert.
+fn check_expr_type_args(name: &str, type_args: &[TypeExpr], errors: &mut Vec<CanonError>) {
+    if type_args.is_empty() {
+        return;
+    }
+    errors.push(CanonError::CheckError {
+        message: format!("`{}` does not take type arguments", name),
+        span: type_args[0].span(),
+    });
 }
 
 /// `Json("…")` / `Html("…")` fed a **static string literal** that the
@@ -1662,18 +1729,30 @@ fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonErr
             span: td.name.span,
         });
     }
-    let mut generic_scope: HashSet<String> = td
-        .generic_params
-        .iter()
-        .map(|g| g.name.name.clone())
-        .collect();
+    let mut generic_scope: HashSet<String> = HashSet::new();
+    for param in &td.generic_params {
+        if !generic_scope.insert(param.name.name.clone()) {
+            errors.push(CanonError::CheckError {
+                message: format!("duplicate type parameter `{}`", param.name.name),
+                span: param.span,
+            });
+        }
+        if symbols.knows_type(&param.name.name) {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "type parameter `{}` shadows a declared type",
+                    param.name.name
+                ),
+                span: param.span,
+            });
+        }
+    }
     for param in &td.generic_params {
         if let Some(bound) = &param.bound {
             check_type_expr(bound, symbols, &generic_scope, errors);
         }
     }
     check_type_expr(&td.body, symbols, &generic_scope, errors);
-    let _ = &mut generic_scope;
 }
 
 fn check_function(
@@ -1803,6 +1882,7 @@ fn check_function(
     check_type_expr(&func.return_ty, symbols, &generic_scope, errors);
     for param in &func.params {
         check_type_expr(&param.ty, symbols, &generic_scope, errors);
+        check_repetition_param_shape(&param.ty, errors);
     }
 
     if let Some(recv) = &func.receiver {
@@ -1827,8 +1907,18 @@ fn check_function(
         return;
     }
 
+    // A generic schema's body is checked through its instantiations —
+    // the expansion pass mints a concrete copy per use and each copy
+    // runs the full body check below. The flat name-typed model here
+    // has nothing sound to say about a body whose value types are
+    // parameters.
+    if !func.generic_params.is_empty() {
+        return;
+    }
+
     let scope = ExprScope::from_function(func);
     check_block(&func.body, &func.return_ty, &scope, symbols, errors);
+    check_contextual_arm_annotations(&func.body, Some(&func.return_ty), symbols, errors);
 }
 
 fn starts_lowercase(name: &str) -> bool {
@@ -1966,6 +2056,10 @@ fn check_type_expr(
         } => {
             if name == "Self" {
                 // allowed in method bodies / trait declarations; not validated here
+            } else if name == crate::ast::ELIDED_RETURN {
+                // an elided arm type still awaiting (or denied) context
+                // propagation — reported by the dispatch check, not as
+                // an unknown type
             } else if name.starts_with("__extern__") {
                 // extern type alias body — the Rust path isn't a Canon type
             } else if generic_scope.contains(name) {
@@ -1983,6 +2077,38 @@ fn check_type_expr(
                     message: format!("unknown type `{}`", name),
                     span: *span,
                 });
+            } else if let Some(params) = symbols.generic_types.get(name.as_str()) {
+                if !generics.is_empty() && generics.len() != params.len() {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "wrong number of type arguments for `{}`: expected {}, found {}",
+                            name,
+                            params.len(),
+                            generics.len()
+                        ),
+                        span: *span,
+                    });
+                } else if !is_builtin_generic(name)
+                    && generics.is_empty()
+                    && !params.iter().all(|p| generic_scope.contains(p))
+                {
+                    // A bare reference to a user generic type is legal
+                    // only inside a generic declaration that binds the
+                    // referenced declaration's parameters name-for-name
+                    // (a family shares its parameter names); anywhere
+                    // else the reference needs its arguments. Concrete
+                    // applications never reach here — the expansion
+                    // pass collapses them into instantiated flat names
+                    // before checking.
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "generic type `{}` requires {} type argument(s)",
+                            name,
+                            params.len()
+                        ),
+                        span: *span,
+                    });
+                }
             }
             for g in generics {
                 check_type_expr(g, symbols, generic_scope, errors);
@@ -2046,18 +2172,25 @@ fn check_type_expr(
 
 struct ExprScope {
     names: Vec<String>,
+    /// Repetition parameters in scope: element type name → count.
+    /// A `T^N` parameter binds no bare name — its components are
+    /// reached positionally (`T.1` … `T.N`), so the bare reference is
+    /// an error and positional access is valid only against this map.
+    repeated: HashMap<String, u64>,
 }
 
 impl ExprScope {
     fn from_function(func: &FunctionDef) -> Self {
         let mut names: Vec<String> = Vec::new();
+        let mut repeated: HashMap<String, u64> = HashMap::new();
         for p in &func.params {
             push_param_names(&p.ty, &mut names);
+            push_repeated_params(&p.ty, &mut repeated);
         }
         if let Some(recv) = &func.receiver {
             names.push(recv.name.clone());
         }
-        Self { names }
+        Self { names, repeated }
     }
 
     fn contains(&self, name: &str) -> bool {
@@ -2073,6 +2206,192 @@ fn push_param_names(ty: &TypeExpr, names: &mut Vec<String>) {
         TypeExpr::Product { fields, .. } => {
             for f in fields {
                 push_param_names(f, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The canonicity backstop for elided arm types. The formatter strips
+/// an arm annotation that *syntactically* restates the context type;
+/// it cannot see alias chains, so an annotation that restates the
+/// context through an alias (`=> Unit` inside a `Unit => Program`
+/// entry, `=> TestResult` inside a test newtype's constructor) would
+/// survive as a second spelling of the elided form. The checker owns
+/// the alias table, so it closes the leak: such an annotation is an
+/// error directing to the elided spelling. Only bare `Named`-to-`Named`
+/// alias equivalence is flagged — generic annotations either match
+/// canonically (already stripped) or genuinely differ.
+fn check_contextual_arm_annotations(
+    block: &Block,
+    expected: Option<&TypeExpr>,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
+    let n = block.exprs.len();
+    for (i, expr) in block.exprs.iter().enumerate() {
+        let exp = if i + 1 == n { expected } else { None };
+        contextual_arm_annotations_expr(expr, exp, symbols, errors);
+    }
+}
+
+fn contextual_arm_annotations_expr(
+    expr: &Expr,
+    expected: Option<&TypeExpr>,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
+    match expr {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            contextual_arm_annotations_expr(scrutinee, None, symbols, errors);
+            for arm in arms {
+                if let (
+                    Some(TypeExpr::Named { name: ctx_name, .. }),
+                    TypeExpr::Named {
+                        name: arm_name,
+                        generics,
+                        span,
+                    },
+                ) = (expected, &arm.return_ty)
+                {
+                    if generics.is_empty()
+                        && arm_name != ctx_name
+                        && arm_name != crate::ast::ELIDED_RETURN
+                        && symbols.resolve_alias(arm_name) == symbols.resolve_alias(ctx_name)
+                    {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "arm type `{arm_name}` restates the context type `{ctx_name}` \
+                                 through its alias chain: elide it (`* Pattern {{ … }}`)"
+                            ),
+                            span: *span,
+                        });
+                    }
+                }
+                let semantic = if crate::ast::is_elided_return_ty(&arm.return_ty) {
+                    expected.cloned()
+                } else {
+                    Some(arm.return_ty.clone())
+                };
+                check_contextual_arm_annotations(&arm.body, semantic.as_ref(), symbols, errors);
+            }
+        }
+        Expr::Lambda {
+            return_ty, body, ..
+        } => {
+            check_contextual_arm_annotations(body, Some(return_ty), symbols, errors);
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            contextual_arm_annotations_expr(receiver, None, symbols, errors);
+            for a in args {
+                contextual_arm_annotations_expr(a, None, symbols, errors);
+            }
+        }
+        Expr::Constructor { args, .. } => {
+            for a in args {
+                contextual_arm_annotations_expr(a, None, symbols, errors);
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => {
+            contextual_arm_annotations_expr(inner, None, symbols, errors);
+        }
+        Expr::FieldAccess { receiver, .. } => {
+            contextual_arm_annotations_expr(receiver, None, symbols, errors);
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                contextual_arm_annotations_expr(f, None, symbols, errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Validate a repetition parameter's shape: the count must be at least
+/// 2 (`T^1` is ceremony around a plain `T`, `T^0` is `Unit`), and the
+/// Kleene star has no parameter lowering — `T^*` values arrive as
+/// `List<T>`.
+fn check_repetition_param_shape(ty: &TypeExpr, errors: &mut Vec<CanonError>) {
+    match ty {
+        TypeExpr::Repeat { count, span, .. } if *count < 2 => {
+            errors.push(CanonError::CheckError {
+                message: format!(
+                    "repetition input `^{count}` needs a count of at least 2 — a single \
+                     component is a plain type"
+                ),
+                span: *span,
+            });
+        }
+        TypeExpr::Spread { span, .. } => {
+            errors.push(CanonError::CheckError {
+                message: "`T^*` is not a parameter shape: an unbounded sequence arrives as \
+                          `List<T>`"
+                    .to_string(),
+                span: *span,
+            });
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                check_repetition_param_shape(f, errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A parameter list's call-site arity: a `T^N` parameter counts as N
+/// values, everything else as one.
+fn params_arity(params: &[Param]) -> usize {
+    params
+        .iter()
+        .map(|p| match &p.ty {
+            TypeExpr::Repeat { count, .. } => *count as usize,
+            _ => 1,
+        })
+        .sum()
+}
+
+/// Flatten a parameter type into its component type names: a named type
+/// contributes itself, a product its fields, and a `T^N` repetition N
+/// copies of its element — one name per call-site value.
+fn push_component_names(ty: &TypeExpr, components: &mut Vec<String>) {
+    match ty {
+        TypeExpr::Named { .. } => {
+            if let Some(n) = ty.simple_name() {
+                components.push(n.to_string());
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for field in fields {
+                push_component_names(field, components);
+            }
+        }
+        TypeExpr::Repeat { ty, count, .. } => {
+            if let Some(n) = ty.simple_name() {
+                for _ in 0..*count {
+                    components.push(n.to_string());
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Collect `T^N` parameters (top-level or as product components) into
+/// the scope's repeated map. The element must be a bare named type —
+/// anything else never parses as a parameter.
+fn push_repeated_params(ty: &TypeExpr, repeated: &mut HashMap<String, u64>) {
+    match ty {
+        TypeExpr::Repeat { ty, count, .. } => {
+            if let TypeExpr::Named { name, .. } = ty.as_ref() {
+                repeated.insert(name.clone(), *count);
+            }
+        }
+        TypeExpr::Product { fields, .. } => {
+            for f in fields {
+                push_repeated_params(f, repeated);
             }
         }
         _ => {}
@@ -2241,6 +2560,7 @@ fn check_literal_dispatch(
         // receiver alias-chain rule in `build_local_scope`).
         let mut inner_scope = ExprScope {
             names: scope.names.clone(),
+            repeated: scope.repeated.clone(),
         };
         if scrutinee_known {
             inner_scope.names.push(scrutinee_ty.to_string());
@@ -2307,6 +2627,17 @@ fn check_literal_dispatch(
 fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
     match expr {
         Expr::Ident(ident) => {
+            if let Some(count) = scope.repeated.get(&ident.name) {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{0}` is a repetition parameter (`{0}^{1}`): its components are \
+                         positional — use `{0}.1` … `{0}.{1}`",
+                        ident.name, count
+                    ),
+                    span: ident.span,
+                });
+                return;
+            }
             let known = symbols.knows_type(&ident.name)
                 || symbols.variant_of.contains_key(&ident.name)
                 || scope.contains(&ident.name)
@@ -2323,7 +2654,13 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::JsonLit { .. } => {}
         Expr::HtmlLit { .. } => {}
         Expr::FormatLit { .. } => {}
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            span,
+        } => {
+            check_expr_type_args(&name.name, type_args, errors);
             let is_variant = symbols.variant_of.contains_key(&name.name);
             // A free function with this exact name (like `Now = () -> Now`
             // or `randomInt = () -> Int`) makes the "constructor" call legal
@@ -2398,10 +2735,12 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             span,
             ..
         } => {
+            check_expr_type_args(&method.name, type_args, errors);
             check_expr(receiver, scope, symbols, errors);
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
@@ -2584,6 +2923,22 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             span,
         } => {
             check_expr(scrutinee, scope, symbols, errors);
+            // An elided arm type survives `propagate_elided_arm_types`
+            // only when the dispatch is not in return position — there
+            // is no context type to fill it with, so the arm must spell
+            // its own.
+            if let Some(arm) = arms
+                .iter()
+                .find(|a| crate::ast::is_elided_return_ty(&a.return_ty))
+            {
+                errors.push(CanonError::CheckError {
+                    message: "a dispatch outside return position spells its arm types \
+                              (`* Pattern => Type { … }`): there is no context type to elide \
+                              into"
+                        .to_string(),
+                    span: arm.span,
+                });
+            }
             let scrutinee_ty = expr_type_name_in_scope(scrutinee, symbols);
             let generic_scope: HashSet<String> = HashSet::new();
             // Literal-pattern dispatch (`* ("/notes") -> …` on a String
@@ -2593,6 +2948,61 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             if arms.iter().any(|a| a.literal.is_some()) {
                 check_literal_dispatch(arms, &scrutinee_ty, scope, symbols, errors, *span);
                 return;
+            }
+            // Binding dispatch: a single no-literal arm whose pattern
+            // names the scrutinee's own type (never one of its
+            // variants) binds the scrutinee under that name for the arm
+            // body — the one way to use a computed value twice (the
+            // language spec § Binding Dispatch). Works on any scrutinee
+            // type, unions included (`map -> ( * Map => R { … } )`);
+            // a single *variant* arm falls through to the union
+            // machinery and fails its exhaustiveness rule.
+            if let [arm] = arms.as_slice() {
+                if let TypeExpr::Named {
+                    name: pattern_name,
+                    span: pspan,
+                    ..
+                } = &arm.param_ty
+                {
+                    if arm.literal.is_none()
+                        && !symbols.variant_of.contains_key(pattern_name.as_str())
+                    {
+                        let generic_scope: HashSet<String> = HashSet::new();
+                        check_type_expr(&arm.param_ty, symbols, &generic_scope, errors);
+                        check_type_expr(&arm.return_ty, symbols, &generic_scope, errors);
+                        let scrut_known = !scrutinee_ty.is_empty() && scrutinee_ty != "<unknown>";
+                        if scrut_known
+                            && *pattern_name != scrutinee_ty
+                            && symbols.resolve_alias(pattern_name.as_str())
+                                != symbols.resolve_alias(&scrutinee_ty)
+                        {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "a single-arm dispatch binds the scrutinee, so its arm \
+                                     must name the scrutinee's type `{}`, found `{}`",
+                                    scrutinee_ty, pattern_name
+                                ),
+                                span: *pspan,
+                            });
+                        }
+                        let mut inner_scope = ExprScope {
+                            names: scope.names.clone(),
+                            repeated: scope.repeated.clone(),
+                        };
+                        inner_scope.names.push(pattern_name.clone());
+                        if scrut_known {
+                            inner_scope.names.push(scrutinee_ty.clone());
+                            let base = symbols.resolve_alias(&scrutinee_ty);
+                            if base != scrutinee_ty {
+                                inner_scope.names.push(base.to_string());
+                            }
+                        }
+                        for expr in &arm.body.exprs {
+                            check_expr(expr, &inner_scope, symbols, errors);
+                        }
+                        return;
+                    }
+                }
             }
             for arm in arms {
                 // Validate param_ty and return_ty as type expressions
@@ -2640,6 +3050,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // Build inner scope: generic type args become accessible by their type name
                 let mut inner_scope = ExprScope {
                     names: scope.names.clone(),
+                    repeated: scope.repeated.clone(),
                 };
                 if let TypeExpr::Named {
                     name: variant_name,
@@ -2683,6 +3094,39 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             field,
             span,
         } => {
+            // Positional access into a repetition parameter: `Int.1`
+            // reads the first component of an `Int^2` input. Valid only
+            // against a repeated parameter in scope, with a 1-based
+            // index within its count. The receiver is the parameter
+            // *name*, not a value expression, so it skips the ordinary
+            // receiver check (a bare repeated name is otherwise an
+            // error).
+            if let Ok(idx) = field.name.parse::<u64>() {
+                if let Expr::Ident(recv_ident) = receiver.as_ref() {
+                    if let Some(&count) = scope.repeated.get(&recv_ident.name) {
+                        if idx < 1 || idx > count {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "positional access `.{idx}` is out of range: `{}^{count}` \
+                                     has components `.1` … `.{count}`",
+                                    recv_ident.name
+                                ),
+                                span: *span,
+                            });
+                        }
+                        return;
+                    }
+                }
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "positional access `.{}` applies only to repetition parameters \
+                         (`T^N` inputs)",
+                        field.name
+                    ),
+                    span: *span,
+                });
+                return;
+            }
             check_expr(receiver, scope, symbols, errors);
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             let recv_ty_for_lookup: String = match receiver.as_ref() {
@@ -2753,9 +3197,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             check_type_expr(return_ty, symbols, &generic_scope, errors);
             for param in params {
                 check_type_expr(&param.ty, symbols, &generic_scope, errors);
+                if let TypeExpr::Repeat { span, .. } = &param.ty {
+                    errors.push(CanonError::CheckError {
+                        message: "repetition inputs (`T^N`) are supported in top-level \
+                                  constructors, not lambdas"
+                            .to_string(),
+                        span: *span,
+                    });
+                }
             }
             let mut inner_scope = ExprScope {
                 names: scope.names.clone(),
+                repeated: scope.repeated.clone(),
             };
             for param in params {
                 push_param_names(&param.ty, &mut inner_scope.names);
@@ -2929,7 +3382,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
     }
     // Only the base comparisons (`eq`/`lt`) are builtins; the derived
     // `ne`/`le`/`gt`/`ge` are stdlib constructor families
-    // (`canon/std/{int,float,string}.can`) found via `symbols.methods`.
+    // (`canon/{int,float,string}.can`) found via `symbols.methods`.
     if matches!(receiver_ty, "Int" | "Float")
         && matches!(method, "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt")
         && arg_count == 1
@@ -2968,7 +3421,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
         return true;
     }
     // NOTE: `Map` and `Set` have no builtin entries — they are pure
-    // Canon (`canon/std/Map`, `canon/std/Set`: sorted recursive
+    // Canon (`canon/Map`, `canon/Set`: sorted recursive
     // unions), so their methods arrive through `symbols.methods` like
     // any other stdlib declaration once the module is imported.
     false
@@ -3062,21 +3515,60 @@ fn check_product_construction_types(
     if arg_types.iter().any(|t| t == "<unknown>") {
         return;
     }
-    let mut used = vec![false; arg_types.len()];
-    let mut slot_val: Vec<Option<usize>> = vec![None; field_types.len()];
-    for threshold in [2u8, 1u8] {
-        for (si, field_ty) in field_types.iter().enumerate() {
-            if slot_val[si].is_some() {
-                continue;
-            }
-            if let Some(vi) = (0..arg_types.len()).find(|&vi| {
-                !used[vi]
-                    && product_field_match_score(symbols, &arg_types[vi], field_ty) == threshold
-            }) {
-                slot_val[si] = Some(vi);
-                used[vi] = true;
+    // The by-type assignment, parameterised by the order arguments are
+    // tried in. Running it over the written order and its reverse tells
+    // us whether written order decided any binding: types alone must
+    // select each field, so a divergence means two untagged values are
+    // competing for fields that share an underlying type — position
+    // would silently carry the meaning, which construction-by-type
+    // forbids. (Codegen's positional floor survives only for values the
+    // checker can't type at all; those returned `<unknown>` above.)
+    let assign = |order: &[usize]| -> Vec<Option<usize>> {
+        let mut used = vec![false; arg_types.len()];
+        let mut slot_val: Vec<Option<usize>> = vec![None; field_types.len()];
+        for threshold in [2u8, 1u8] {
+            for (si, field_ty) in field_types.iter().enumerate() {
+                if slot_val[si].is_some() {
+                    continue;
+                }
+                if let Some(&vi) = order.iter().find(|&&vi| {
+                    !used[vi]
+                        && product_field_match_score(symbols, &arg_types[vi], field_ty) == threshold
+                }) {
+                    slot_val[si] = Some(vi);
+                    used[vi] = true;
+                }
             }
         }
+        slot_val
+    };
+    let forward: Vec<usize> = (0..arg_types.len()).collect();
+    let reversed: Vec<usize> = forward.iter().rev().copied().collect();
+    let slot_val = assign(&forward);
+    let slot_val_rev = assign(&reversed);
+    let complete = slot_val.iter().all(Option::is_some) && slot_val_rev.iter().all(Option::is_some);
+    if complete && slot_val != slot_val_rev {
+        let contested: Vec<&str> = field_types
+            .iter()
+            .zip(slot_val.iter().zip(slot_val_rev.iter()))
+            .filter(|(_, (a, b))| a != b)
+            .map(|(f, _)| f.as_str())
+            .collect();
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "cannot construct `{type_name}`: fields `{}` share an underlying type, \
+                 so untagged values would bind by written order; tag each value with \
+                 its field's newtype ({})",
+                contested.join("` and `"),
+                contested
+                    .iter()
+                    .map(|f| format!("`{f}(…)`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            span,
+        });
+        return;
     }
     for (si, field_ty) in field_types.iter().enumerate() {
         if slot_val[si].is_none() {
@@ -3318,6 +3810,17 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
         Expr::FieldAccess {
             receiver, field, ..
         } => {
+            // Positional access into a repetition parameter (`Int.1`):
+            // every component has the element's type, which is the
+            // receiver's own name. Validity (the receiver really is a
+            // repeated parameter, the index is in range) is scope
+            // information checked in `check_expr`.
+            if field.name.parse::<u64>().is_ok() {
+                return match receiver.as_ref() {
+                    Expr::Ident(recv_ident) => recv_ident.name.clone(),
+                    _ => "<unknown>".to_string(),
+                };
+            }
             // If this is a zero-arg builtin method used without parens, return
             // its return type rather than the field name. We walk the alias
             // chain so `.print` on `Path` / `Now` / etc. resolves through to
@@ -3343,12 +3846,12 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             field.name.clone()
         }
         // A JSON literal expression has type `Json` (declared in
-        // `canon/std/json.can` as `Json = String`). The checker resolves
+        // `canon/json.can` as `Json = String`). The checker resolves
         // method dispatch on `Json` through the normal newtype-aliasing
         // path, so `.print` (on String), `.concat` (on String), and
         // `Json`-specific methods all line up.
         //
-        // Requires `use canon/std/Json` to be in scope at the call site
+        // Requires `use canon/Json` to be in scope at the call site
         // — same shape as any other stdlib type. JSON literal syntax
         // is first-class, but its *type name* is part of the stdlib.
         Expr::JsonLit { .. } => "Json".to_string(),

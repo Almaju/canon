@@ -28,8 +28,8 @@ Count = Int
 
 Unit => Program {
     Count(3) -> Gt(0) -> (
-        * False => Unit { "empty" -> Print }
-        * True => Unit { "has items" -> Print }
+        * False { "empty" -> Print }
+        * True { "has items" -> Print }
     )
 }
 ```
@@ -45,8 +45,8 @@ Route = String
 
 Route => Body {
     Route -> (
-        * "/health" => Body { Body("ok") }
-        * String => Body { Body("not found") }
+        * "/health" { Body("ok") }
+        * String { Body("not found") }
     )
 }
 ```

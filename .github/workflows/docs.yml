@@ -5,7 +5,7 @@ name: docs
 # the standard library's Markdown renderer, compiled to a WebAssembly
 # module. The landing page (`docs/landing/`) is served at the site root
 # and the app under `/doc/`, with the standard library's generated API
-# reference (`canon doc`) beside it at `/doc/std/`.
+# reference (`canon doc`) beside it at `/doc/api/`.
 on:
   push:
     branches: [main]
@@ -60,8 +60,8 @@ jobs:
 
       - name: Render the standard library's API reference
         run: |
-          target/release/canon doc packages/canon/std
-          cp -r packages/canon/std/build/doc docs/build/std
+          target/release/canon doc packages/canon
+          cp -r packages/canon/build/doc docs/build/api
 
       - name: Build the compiler for the browser (the playground)
         run: |

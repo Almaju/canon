@@ -150,13 +150,13 @@ bench:
 # browser, so the preview also needs the compiler built for wasm and the
 # two enhancement scripts beside the bundle — the same wiring docs.yml
 # does for the deployed site. `canon doc` renders the standard library's
-# API reference into `/std/` alongside it. See docs/src/contributing.md.
+# API reference into `/api/` alongside it. See docs/src/contributing.md.
 docs: build
     #!/usr/bin/env sh
     set -e
     cargo run --quiet -- build docs
-    cargo run --quiet -- doc packages/canon/std
-    rm -rf docs/build/std && cp -r packages/canon/std/build/doc docs/build/std
+    cargo run --quiet -- doc packages/canon
+    rm -rf docs/build/api && cp -r packages/canon/build/doc docs/build/api
     cargo build --lib --profile playground --target wasm32-unknown-unknown
     cp target/wasm32-unknown-unknown/playground/canon.wasm docs/build/canon-compiler.wasm
     cp docs/assets/canon-play.js docs/assets/docs-enhance.js docs/build/
@@ -168,11 +168,11 @@ docs: build
     cargo run --quiet -- run docs --addr 127.0.0.1:8080
 
 # Regenerate the embedded WASI bindings from the vendored WIT files
-# under packages/canon/std/wit/. Run after upgrading the WASI version
+# under packages/canon/wit/. Run after upgrading the WASI version
 # or after changing the bindgen emitter. Commit the resulting
-# packages/canon/std/bindgen/ tree.
+# packages/canon/bindgen/ tree.
 regen-bindings: build
-    cargo run --quiet -- install packages/canon/std
+    cargo run --quiet -- install packages/canon
 
 # Format compiler source
 fmt:

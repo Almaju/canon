@@ -4,8 +4,8 @@ Described = String
 
 Option => Described {
     Option -> (
-        * None => Described { "none" }
-        * Some<Content> => Described { "some" }
+        * None { "none" }
+        * Some<Content> { "some" }
     )
 }
 

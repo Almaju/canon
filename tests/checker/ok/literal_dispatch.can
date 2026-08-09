@@ -6,17 +6,17 @@ Routed = String
 
 Int => Classified {
     Int -> (
-        * 0 => Classified { "zero" }
-        * 1 => Classified { "one" }
-        * Int => Classified { "many" }
+        * 0 { "zero" }
+        * 1 { "one" }
+        * Int { "many" }
     )
 }
 
 Path => Routed {
     Path -> (
-        * "/" => Routed { "home" }
-        * "/notes" => Routed { "index" }
-        * Path => Routed { "not found" }
+        * "/" { "home" }
+        * "/notes" { "index" }
+        * Path { "not found" }
     )
 }
 

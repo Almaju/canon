@@ -12,7 +12,7 @@ use crate::ast::{Expr, FormatLitPart, HtmlLitPart, Ident, JsonLitPart};
 /// Lower a `JsonLit { parts }` into the equivalent left-associative
 /// `String.concat` chain over `StringLit` (Static parts) and `-> Encoded`
 /// constructions (Interp parts) — the `Encoded = Json` family in
-/// `canon/std/Json` selects the member by the hole's static type.
+/// `canon/Json` selects the member by the hole's static type.
 ///
 /// Example: `{"k": foo}` (parts = [Static(`{"k":`), Interp(foo), Static(`}`)])
 ///
@@ -31,6 +31,7 @@ pub(super) fn json_lit_to_concat_chain(parts: &[JsonLitPart], span: crate::error
                     name: "Encoded".to_string(),
                     span,
                 },
+                type_args: vec![],
                 args: vec![],
                 piped: true,
                 span,
@@ -49,6 +50,7 @@ pub(super) fn json_lit_to_concat_chain(parts: &[JsonLitPart], span: crate::error
                 name: "concat".to_string(),
                 span,
             },
+            type_args: vec![],
             args: vec![next],
             piped: false,
             span,
@@ -61,7 +63,7 @@ pub(super) fn json_lit_to_concat_chain(parts: &[JsonLitPart], span: crate::error
 /// `String.concat` chain over `StringLit` (Static parts) and
 /// `-> Escaped` constructions (Interp parts) — the exact HTML analogue
 /// of `json_lit_to_concat_chain` above. The `Escaped = Html` family in
-/// `canon/std/web/Html` selects by the hole's static type: `String` and
+/// `canon/web/Html` selects by the hole's static type: `String` and
 /// `Int` escape, `Html` passes through unchanged.
 ///
 /// Example: `<li>{name}</li>` (parts = [Static(`<li>`), Interp(name),
@@ -82,6 +84,7 @@ pub(super) fn html_lit_to_concat_chain(parts: &[HtmlLitPart], span: crate::error
                     name: "Escaped".to_string(),
                     span,
                 },
+                type_args: vec![],
                 args: vec![],
                 piped: true,
                 span,
@@ -100,6 +103,7 @@ pub(super) fn html_lit_to_concat_chain(parts: &[HtmlLitPart], span: crate::error
                 name: "concat".to_string(),
                 span,
             },
+            type_args: vec![],
             args: vec![next],
             piped: false,
             span,
@@ -135,6 +139,7 @@ pub(super) fn format_lit_to_concat_chain(
                     name: "String".to_string(),
                     span,
                 },
+                type_args: vec![],
                 args: vec![],
                 piped: true,
                 span,
@@ -153,6 +158,7 @@ pub(super) fn format_lit_to_concat_chain(
                 name: "concat".to_string(),
                 span,
             },
+            type_args: vec![],
             args: vec![next],
             piped: false,
             span,

@@ -17,7 +17,11 @@ pub fn format(source: &str) -> Result<String> {
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let module = parser.parse()?;
-    let module = canonicalize_module(&module);
+    let mut module = canonicalize_module(&module);
+    // An arm annotation that merely restates the context type is
+    // ceremony; the elided form is canonical
+    // (spec § Dispatch, "Arm Types").
+    crate::ast::strip_contextual_arm_types(&mut module);
     Ok(emit_module(&module))
 }
 
@@ -168,8 +172,15 @@ fn split_receiver(recv: Expr) -> (Expr, Vec<Expr>) {
 
 /// Build the canonical pipe `subject -> name(rest…)`. With no trailing
 /// factors it is the bare `subject -> name`; with several it wraps them
-/// in a product.
-fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
+/// in a product. Explicit type arguments ride along unchanged — the
+/// rewrite moves values between spellings, never type information.
+fn make_pipe(
+    subject: Expr,
+    name: Ident,
+    type_args: Vec<TypeExpr>,
+    rest: Vec<Expr>,
+    span: Span,
+) -> Expr {
     let args = match rest.len() {
         0 => Vec::new(),
         1 => rest,
@@ -178,6 +189,7 @@ fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
     Expr::MethodCall {
         receiver: Box::new(subject),
         method: name,
+        type_args,
         args,
         piped: true,
         span,
@@ -186,7 +198,7 @@ fn make_pipe(subject: Expr, name: Ident, rest: Vec<Expr>, span: Span) -> Expr {
 
 /// Build the canonical prefix call `Name(a * b * …)` with operand order
 /// preserved.
-fn prefix_call(name: Ident, inputs: Vec<Expr>, span: Span) -> Expr {
+fn prefix_call(name: Ident, type_args: Vec<TypeExpr>, inputs: Vec<Expr>, span: Span) -> Expr {
     let args = match inputs.len() {
         0 | 1 => inputs,
         _ => vec![Expr::ProductValue {
@@ -194,7 +206,12 @@ fn prefix_call(name: Ident, inputs: Vec<Expr>, span: Span) -> Expr {
             span,
         }],
     };
-    Expr::Constructor { name, args, span }
+    Expr::Constructor {
+        name,
+        type_args,
+        args,
+        span,
+    }
 }
 
 /// Scalar literals are born inside the call parens — they never pipe.
@@ -390,12 +407,18 @@ fn canon_expr(e: &Expr) -> Expr {
         },
 
         // ── Prefix constructor: `B(inputs…)` ────────────────────────────
-        Expr::Constructor { name, args, span } => {
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            span,
+        } => {
             // `List(…)` is an ordered sequence literal, not a
             // subject-bearing call — keep it prefix, elements in order.
             if name.name == "List" {
                 return Expr::Constructor {
                     name: name.clone(),
+                    type_args: type_args.clone(),
                     args: args.iter().map(canon_expr).collect(),
                     span: *span,
                 };
@@ -405,11 +428,15 @@ fn canon_expr(e: &Expr) -> Expr {
                 // Zero-input call stays prefix: `Now()`, `Map()`, `None()`.
                 return Expr::Constructor {
                     name: name.clone(),
+                    type_args: type_args.clone(),
                     args: Vec::new(),
                     span: *span,
                 };
             }
-            if inputs.len() == 1 && primitive_literal_wrap(&name.name, &inputs[0]) {
+            if inputs.len() == 1
+                && type_args.is_empty()
+                && primitive_literal_wrap(&name.name, &inputs[0])
+            {
                 return inputs.pop().unwrap();
             }
             if inputs.len() == 1
@@ -424,26 +451,27 @@ fn canon_expr(e: &Expr) -> Expr {
                 // calls keep the pipe too: the piped call binds its
                 // components commutatively, while a prefix argument list
                 // is positional.
-                return prefix_call(name.clone(), inputs, *span);
+                return prefix_call(name.clone(), type_args.clone(), inputs, *span);
             }
             if inputs.iter().any(is_scalar_literal) {
                 // Literal inputs present: order carries operand
                 // positions — pipe the first, keep the rest as written.
                 let subject = inputs.remove(0);
-                return make_pipe(subject, name.clone(), inputs, *span);
+                return make_pipe(subject, name.clone(), type_args.clone(), inputs, *span);
             }
             // All-computed inputs bind by type (distinct field types —
             // the product rule), so the order is free: sort for
             // determinism, pipe the first, parens hold the rest.
             inputs.sort_by_key(emit_inline);
             let subject = inputs.remove(0);
-            make_pipe(subject, name.clone(), inputs, *span)
+            make_pipe(subject, name.clone(), type_args.clone(), inputs, *span)
         }
 
         // ── Method / pipe: `recv.B(args…)` / `recv -> B(args…)` ──────────
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             piped,
             span,
@@ -455,7 +483,10 @@ fn canon_expr(e: &Expr) -> Expr {
             // direct string-literal segment stays a pipe: `Joined` is also
             // list concatenation, and only literal text proves the chain
             // builds a string.
-            if crate::ast::builtin_pipe_name(&method.name) == "Joined" && args.len() == 1 {
+            if crate::ast::builtin_pipe_name(&method.name) == "Joined"
+                && args.len() == 1
+                && type_args.is_empty()
+            {
                 if let Some(folded) = fold_joined_chain(e, *span) {
                     return folded;
                 }
@@ -467,6 +498,7 @@ fn canon_expr(e: &Expr) -> Expr {
                 return Expr::MethodCall {
                     receiver: Box::new(canon_expr(receiver)),
                     method: method.clone(),
+                    type_args: type_args.clone(),
                     args: args.iter().map(canon_expr).collect(),
                     piped: *piped,
                     span: *span,
@@ -487,12 +519,12 @@ fn canon_expr(e: &Expr) -> Expr {
                 // prefix form, and multi-input calls bind their
                 // components commutatively through the pipe — both keep
                 // the arrow.
-                if primitive_literal_wrap(&method.name, &subject) {
+                if type_args.is_empty() && primitive_literal_wrap(&method.name, &subject) {
                     return subject;
                 }
-                return prefix_call(method.clone(), vec![subject], *span);
+                return prefix_call(method.clone(), type_args.clone(), vec![subject], *span);
             }
-            make_pipe(subject, method.clone(), rest, *span)
+            make_pipe(subject, method.clone(), type_args.clone(), rest, *span)
         }
     }
 }
@@ -714,6 +746,7 @@ fn first_atom_is_bare_named(ty: &TypeExpr) -> bool {
         TypeExpr::Named { generics, .. } => generics.is_empty(),
         TypeExpr::Product { fields, .. } => fields.first().is_some_and(first_atom_is_bare_named),
         TypeExpr::Union { variants, .. } => variants.first().is_some_and(first_atom_is_bare_named),
+        TypeExpr::Repeat { ty, .. } => first_atom_is_bare_named(ty),
         _ => false,
     }
 }
@@ -842,8 +875,14 @@ fn emit_type_in_postfix(ty: &TypeExpr) -> String {
 #[derive(Clone)]
 enum ChainPart {
     Base(Expr),
-    Method { method: Ident, args: Vec<Expr> },
-    Dispatch { arms: Vec<MatchArm> },
+    Method {
+        method: Ident,
+        type_args: Vec<TypeExpr>,
+        args: Vec<Expr>,
+    },
+    Dispatch {
+        arms: Vec<MatchArm>,
+    },
     Try,
 }
 
@@ -858,12 +897,14 @@ fn flatten_into(expr: &Expr, parts: &mut Vec<ChainPart>) {
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
             args,
             ..
         } => {
             flatten_into(receiver, parts);
             parts.push(ChainPart::Method {
                 method: method.clone(),
+                type_args: type_args.clone(),
                 args: args.clone(),
             });
         }
@@ -947,11 +988,18 @@ fn method_pipe_name(name: &str) -> Option<&str> {
 /// `broken` selects the continuation-line pipe lead (`-> `) vs the inline
 /// lead (` -> `). Field access (`.Field`) and dispatch (`.( )`) never
 /// reach here — those *read*, they don't apply a function.
-fn emit_method(out: &mut String, method: &Ident, args: &[Expr], broken: bool) {
+fn emit_method(
+    out: &mut String,
+    method: &Ident,
+    type_args: &[TypeExpr],
+    args: &[Expr],
+    broken: bool,
+) {
     match method_pipe_name(&method.name) {
         Some(pname) => {
             out.push_str(if broken { "-> " } else { " -> " });
             out.push_str(pname);
+            out.push_str(&emit_expr_type_args(type_args));
             if !args.is_empty() {
                 out.push('(');
                 emit_args_inline(out, args);
@@ -961,6 +1009,7 @@ fn emit_method(out: &mut String, method: &Ident, args: &[Expr], broken: bool) {
         None => {
             out.push('.');
             out.push_str(&method.name);
+            out.push_str(&emit_expr_type_args(type_args));
             out.push('(');
             emit_args_inline(out, args);
             out.push(')');
@@ -968,13 +1017,31 @@ fn emit_method(out: &mut String, method: &Ident, args: &[Expr], broken: bool) {
     }
 }
 
+/// Render explicit call-site type arguments (`<String, Int>`), empty
+/// string when there are none.
+fn emit_expr_type_args(type_args: &[TypeExpr]) -> String {
+    if type_args.is_empty() {
+        return String::new();
+    }
+    let inner = type_args
+        .iter()
+        .map(emit_type_expr)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("<{}>", inner)
+}
+
 fn emit_chain_inline(chain: &[ChainPart]) -> String {
     let mut out = String::new();
     for part in chain {
         match part {
             ChainPart::Base(e) => out.push_str(&emit_base_inline(e)),
-            ChainPart::Method { method, args, .. } => {
-                emit_method(&mut out, method, args, false);
+            ChainPart::Method {
+                method,
+                type_args,
+                args,
+            } => {
+                emit_method(&mut out, method, type_args, args, false);
             }
             ChainPart::Dispatch { arms } => {
                 out.push_str(" -> (");
@@ -1033,8 +1100,12 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
         let after = &chain[dpos + 1..];
         for part in after {
             match part {
-                ChainPart::Method { method, args, .. } => {
-                    emit_method(&mut out, method, args, false);
+                ChainPart::Method {
+                    method,
+                    type_args,
+                    args,
+                } => {
+                    emit_method(&mut out, method, type_args, args, false);
                 }
                 ChainPart::Try => out.push('?'),
                 _ => {}
@@ -1058,10 +1129,14 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
             ChainPart::Base(e) => {
                 out.push_str(&emit_base_at(e, indent));
             }
-            ChainPart::Method { method, args, .. } => {
+            ChainPart::Method {
+                method,
+                type_args,
+                args,
+            } => {
                 out.push('\n');
                 out.push_str(&cont_pad);
-                emit_method(&mut out, method, args, true);
+                emit_method(&mut out, method, type_args, args, true);
             }
             ChainPart::Try => out.push('?'),
             ChainPart::Dispatch { arms } => {
@@ -1112,11 +1187,17 @@ fn emit_base_at(expr: &Expr, indent: usize) -> String {
         Expr::FormatLit { .. } | Expr::HtmlLit { .. } | Expr::JsonLit { .. } => {
             emit_literal_at(expr, indent, indent * 4)
         }
-        Expr::Constructor { name, args, .. } => match args.as_slice() {
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            ..
+        } => match args.as_slice() {
             [lit @ (Expr::FormatLit { .. } | Expr::HtmlLit { .. } | Expr::JsonLit { .. })] => {
                 // The wrapper shifts the literal right by `Name(`.
-                let inner = emit_literal_at(lit, indent, indent * 4 + name.name.len() + 1);
-                format!("{}({})", name.name, inner)
+                let head = format!("{}{}", name.name, emit_expr_type_args(type_args));
+                let inner = emit_literal_at(lit, indent, indent * 4 + head.len() + 1);
+                format!("{}({})", head, inner)
             }
             _ => emit_base_inline(expr),
         },
@@ -1225,11 +1306,16 @@ fn emit_base_inline(expr: &Expr) -> String {
         Expr::StringLit { value, .. } => format!("\"{}\"", escape_string(value)),
         Expr::IntLit { value, .. } => value.to_string(),
         Expr::FloatLit { value, .. } => format_float(*value),
-        Expr::Constructor { name, args, .. } => {
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            ..
+        } => {
             if args.is_empty() {
-                format!("{}()", name.name)
+                format!("{}{}()", name.name, emit_expr_type_args(type_args))
             } else {
-                let mut s = format!("{}(", name.name);
+                let mut s = format!("{}{}(", name.name, emit_expr_type_args(type_args));
                 match args.as_slice() {
                     // A product-type constructor is positionless: its
                     // fields bind to type-named slots, so canonicalise
@@ -1366,9 +1452,18 @@ fn emit_arm_pattern(arm: &MatchArm) -> String {
     }
 }
 
+/// The `=> Type ` head segment of an arm, or nothing when the type is
+/// elided (context supplies it — see `ast::strip_contextual_arm_types`).
+fn emit_arm_head(arm: &MatchArm) -> String {
+    if crate::ast::is_elided_return_ty(&arm.return_ty) {
+        String::new()
+    } else {
+        format!(" => {}", emit_type_expr(&arm.return_ty))
+    }
+}
+
 fn emit_arm_inline(arm: &MatchArm) -> String {
     let pat = emit_arm_pattern(arm);
-    let ret = emit_type_expr(&arm.return_ty);
     let body = arm
         .body
         .exprs
@@ -1376,22 +1471,22 @@ fn emit_arm_inline(arm: &MatchArm) -> String {
         .map(emit_inline)
         .collect::<Vec<_>>()
         .join(" ");
-    format!("{} => {} {{ {} }}", pat, ret, body)
+    format!("{}{} {{ {} }}", pat, emit_arm_head(arm), body)
 }
 
-/// Render a dispatch arm at the given indent level. Short arms whose
-/// bodies contain no nested dispatch stay on one line; an arm that
-/// nests another dispatch — or whose inline form would overflow
-/// `MAX_WIDTH` — breaks its body onto indented lines, so route-style
+/// Render a dispatch arm at the given indent level. Short single-line
+/// bodies stay on one line; an arm that nests another dispatch, holds
+/// more than one expression (body lines evaluate top to bottom — two
+/// statements never share a line), or whose inline form would overflow
+/// `MAX_WIDTH` breaks its body onto indented lines, so route-style
 /// nested dispatch reads as a tree instead of one opaque line.
 fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
     let inline = emit_arm_inline(arm);
     let nested = arm.body.exprs.iter().any(contains_dispatch);
-    if !nested && arm_indent * 4 + 2 + inline.len() <= MAX_WIDTH {
+    if !nested && arm.body.exprs.len() == 1 && arm_indent * 4 + 2 + inline.len() <= MAX_WIDTH {
         return inline;
     }
     let pat = emit_arm_pattern(arm);
-    let ret = emit_type_expr(&arm.return_ty);
     let body_pad = "    ".repeat(arm_indent + 1);
     let close_pad = "    ".repeat(arm_indent);
     let body = arm
@@ -1401,7 +1496,13 @@ fn emit_arm(arm: &MatchArm, arm_indent: usize) -> String {
         .map(|e| format!("{}{}", body_pad, emit_expr(e, arm_indent + 1)))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{} => {} {{\n{}\n{}}}", pat, ret, body, close_pad)
+    format!(
+        "{}{} {{\n{}\n{}}}",
+        pat,
+        emit_arm_head(arm),
+        body,
+        close_pad
+    )
 }
 
 /// Does this expression (or any sub-expression) contain a dispatch?
@@ -1591,7 +1692,7 @@ mod tests {
         // Union arms sort into variant (alphabetical) order.
         assert_format(
             "main = () => Unit {\n    True() -> (\n        * True => Unit { \"yes\".print() }\n        * False => Unit { \"no\".print() }\n    )\n}\n",
-            "main = () => Unit {\n    True() -> (\n        * False => Unit { \"no\" -> Print }\n        * True => Unit { \"yes\" -> Print }\n    )\n}\n",
+            "main = () => Unit {\n    True() -> (\n        * False { \"no\" -> Print }\n        * True { \"yes\" -> Print }\n    )\n}\n",
         );
     }
 
@@ -1600,7 +1701,7 @@ mod tests {
         // Literal arms sort alphabetically; the catch-all sorts last.
         assert_format(
             "Route = (String) => String {\n    String -> (\n        * String => String { \"other\" }\n        * \"/b\" => String { \"b\" }\n        * \"/a\" => String { \"a\" }\n    )\n}\n\nmain = () => Unit {\n    \"/a\".Route().print()\n}\n",
-            "Route = (String) => String {\n    String -> (\n        * \"/a\" => String { \"a\" }\n        * \"/b\" => String { \"b\" }\n        * String => String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    Route(\"/a\") -> Print\n}\n",
+            "Route = (String) => String {\n    String -> (\n        * \"/a\" { \"a\" }\n        * \"/b\" { \"b\" }\n        * String { \"other\" }\n    )\n}\n\nmain = () => Unit {\n    Route(\"/a\") -> Print\n}\n",
         );
     }
 
@@ -1661,6 +1762,24 @@ mod tests {
         assert_format(
             "parse = <T: Show>(Json * String) => Result<T, MalformedJson>\n",
             "parse = <T: Show>(Json * String) => Result<T, MalformedJson>\n",
+        );
+    }
+
+    #[test]
+    fn test_expr_type_args_round_trip() {
+        // Explicit call-site type arguments survive the canonical
+        // rewrite in both the prefix form and the pipe form.
+        assert_idempotent("main = () => Unit {\n    Map<String, Int>() -> Print\n}\n");
+        assert_idempotent(
+            "main = () => Unit {\n    Map<String, Int>()\n        -> Inserted<String, Int>(3)\n        -> Print\n}\n",
+        );
+    }
+
+    #[test]
+    fn test_parameterized_type_def_round_trip() {
+        assert_format(
+            "Map<K, V> = Empty + Node<K, V>\n",
+            "Map<K, V> = Empty + Node<K, V>\n",
         );
     }
 

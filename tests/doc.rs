@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use canon::doc;
 
 fn std_src() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/std/src")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/src")
 }
 
 fn tmpdir(name: &str) -> PathBuf {
@@ -29,7 +29,7 @@ fn tmpdir(name: &str) -> PathBuf {
 }
 
 fn api() -> doc::Api {
-    doc::build("std", &std_src())
+    doc::build("canon", &std_src())
         .unwrap_or_else(|(path, err)| panic!("canon doc failed on {}: {:?}", path.display(), err))
 }
 

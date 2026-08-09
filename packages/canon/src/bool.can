@@ -1,0 +1,28 @@
+And = Bool
+
+Not = Bool
+
+Or = Bool
+
+OtherBool = Bool
+
+Bool * OtherBool => And {
+    Bool -> (
+        * False { False() }
+        * True { OtherBool }
+    )
+}
+
+Bool => Not {
+    Bool -> (
+        * False { True() }
+        * True { False() }
+    )
+}
+
+Bool * OtherBool => Or {
+    Bool -> (
+        * False { OtherBool }
+        * True { True() }
+    )
+}

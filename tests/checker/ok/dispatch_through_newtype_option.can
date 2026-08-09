@@ -6,8 +6,8 @@ MessageContent = Option<Content>
 
 MessageContent => Described {
     MessageContent -> (
-        * None => Described { "absent" }
-        * Some<Content> => Described { "present" }
+        * None { "absent" }
+        * Some<Content> { "present" }
     )
 }
 

@@ -10,8 +10,8 @@ Update = Page
 
 Page => Content {
     Page -> (
-        * "guide" => Content { Guide() -> Html }
-        * String => Content { Intro() -> Html }
+        * "guide" { Guide() -> Html }
+        * String { Intro() -> Html }
     )
 }
 
@@ -33,7 +33,7 @@ Unit => Init {
 
 Page * Msg => Update {
     Msg -> Substring(From(1) * To(5)) -> (
-        * "Show:" => Page { Msg -> Substring(From(6) * Msg -> Length -> To) -> Page }
-        * String => Page { Page }
+        * "Show:" { Msg -> Substring(From(6) * Msg -> Length -> To) -> Page }
+        * String { Page }
     )
 }

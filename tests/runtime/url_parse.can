@@ -2,8 +2,8 @@ Reported = Unit
 
 String => Reported {
     String -> Url -> (
-        * Err<InvalidUrl> => Reported { InvalidUrl -> Print }
-        * Ok<Url> => Reported { Url -> Print }
+        * Err<InvalidUrl> { InvalidUrl -> Print }
+        * Ok<Url> { Url -> Print }
     )
 }
 

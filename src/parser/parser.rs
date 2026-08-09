@@ -140,14 +140,18 @@ impl Parser {
             return self.parse_paren_free_ctor(first_ident, start_span);
         }
 
-        // Parens-free product/union input: `Todos * String => Update
-        // { … }`. The declaration arrow `=>` binds looser than the
-        // type operators `*` / `+`, so the leading ident starts a
-        // compound input type. Rewind to re-include it, parse the whole
-        // input type, then require the arrow. (Generic-arg inputs like
-        // `Foo<T> * Bar` still need parens — `<` steers to the
-        // generic-params path below.)
-        if self.check(TokenKind::Star) || self.check(TokenKind::Plus) {
+        // Parens-free product/union/repetition input: `Todos * String
+        // => Update { … }`, `Int^2 => Ord { … }`. The declaration
+        // arrow `=>` binds looser than the type operators `*` / `+` /
+        // `^`, so the leading ident starts a compound input type.
+        // Rewind to re-include it, parse the whole input type, then
+        // require the arrow. (Generic-arg inputs like `Foo<T> * Bar`
+        // still need parens — `<` steers to the generic-params path
+        // below.)
+        if self.check(TokenKind::Star)
+            || self.check(TokenKind::Plus)
+            || self.check(TokenKind::Caret)
+        {
             self.pos -= 1;
             let input = self.parse_type_expr()?;
             let param = Param {
@@ -609,6 +613,23 @@ impl Parser {
             }
             if self.check(TokenKind::Dot) {
                 self.advance();
+                // Positional access into a repetition parameter:
+                // `Int.1`, `Int.2` (the language spec § Repetition).
+                // The index is 1-based and rides in the field name; the
+                // checker validates it against the parameter's count.
+                if self.check(TokenKind::IntLit) {
+                    let idx_tok = self.advance().clone();
+                    let start_span = expr.span();
+                    expr = Expr::FieldAccess {
+                        receiver: Box::new(expr),
+                        field: Ident {
+                            name: idx_tok.lexeme.clone(),
+                            span: idx_tok.span,
+                        },
+                        span: span_join(start_span, idx_tok.span),
+                    };
+                    continue;
+                }
                 let name_tok =
                     self.expect(TokenKind::Ident, "expected method or field name after `.`")?;
                 let ident = Ident {
@@ -616,12 +637,19 @@ impl Parser {
                     span: name_tok.span,
                 };
                 // Optional generic type args after the field/method
-                // name (`value.Option<Content>`, etc.). See
-                // `consume_phantom_type_args` for the rationale.
-                let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
+                // name (`value.Inserted<String, Int>(…)`, etc.). See
+                // `parse_expr_type_args` for the rationale.
+                let type_args = self.parse_expr_type_args(&name_tok.lexeme)?;
                 // `value.X` with no `(` after is field access; with `(`
-                // it's a method call.
+                // it's a method call. A field access names a component,
+                // not a call, so type arguments have nothing to apply to.
                 if !self.check(TokenKind::LParen) {
+                    if !type_args.is_empty() {
+                        return Err(CanonError::ParseError {
+                            message: "type arguments are not allowed on field access".to_string(),
+                            span: name_tok.span,
+                        });
+                    }
                     let start_span = expr.span();
                     expr = Expr::FieldAccess {
                         receiver: Box::new(expr),
@@ -645,6 +673,7 @@ impl Parser {
                 expr = Expr::MethodCall {
                     receiver: Box::new(expr),
                     method: ident,
+                    type_args,
                     args,
                     piped: false,
                     span: span_join(start_span, rparen.span),
@@ -691,7 +720,7 @@ impl Parser {
                         span: name_tok.span,
                     });
                 }
-                let _consumed_generics = self.consume_phantom_type_args(&name_tok.lexeme)?;
+                let type_args = self.parse_expr_type_args(&name_tok.lexeme)?;
                 let mut args = vec![expr];
                 let mut end_span = name_tok.span;
                 if self.check(TokenKind::LParen) {
@@ -716,6 +745,7 @@ impl Parser {
                         name: name_tok.lexeme.clone(),
                         span: name_tok.span,
                     },
+                    type_args,
                     args,
                     piped: true,
                     span: span_join(start_span, end_span),
@@ -734,12 +764,9 @@ impl Parser {
             TokenKind::Ident => {
                 self.advance();
                 // Optional generic type arguments after a PascalCase
-                // identifier: `Option<Content>`, `List<Choice>`, etc.
-                // Accepted and discarded (see `consume_phantom_type_args`).
-                // Skipped when followed by `(` to avoid swallowing the
-                // turbofish-like form `Foo<T>(arg)` mid-call — type args
-                // before a constructor call use `::<>` (turbofish) syntax.
-                let _consumed_generics = self.consume_phantom_type_args(&tok.lexeme)?;
+                // identifier (`Map<String, Int>()`). See
+                // `parse_expr_type_args` for the rationale.
+                let type_args = self.parse_expr_type_args(&tok.lexeme)?;
                 if self.check(TokenKind::LParen) {
                     self.advance();
                     self.skip_newlines();
@@ -758,8 +785,15 @@ impl Parser {
                             name: tok.lexeme,
                             span: tok.span,
                         },
+                        type_args,
                         args,
                         span: span_join(tok.span, rparen.span),
+                    });
+                }
+                if !type_args.is_empty() {
+                    return Err(CanonError::ParseError {
+                        message: "type arguments require a call: write `Name<Args>(…)`".to_string(),
+                        span: tok.span,
                     });
                 }
                 Ok(Expr::Ident(Ident {
@@ -1292,8 +1326,18 @@ impl Parser {
             // Err<String>, Ok<Int>, Branch
             _ => (self.parse_type_atom()?, None),
         };
-        self.expect_decl_arrow("expected `=>` in dispatch arm")?;
-        let return_ty = self.parse_type_expr()?;
+        // The arm type is elidable when context supplies it: an arm in
+        // return position whose type is the enclosing declaration's
+        // return type writes `* Pattern { … }`, and the loader fills
+        // the type by propagation (`propagate_elided_arm_types`). The
+        // parser records the elision as a sentinel; a sentinel no
+        // context resolves is a checker error.
+        let return_ty = if self.check(TokenKind::LBrace) {
+            elided_return_ty(param_ty.span())
+        } else {
+            self.expect_decl_arrow("expected `=>` or `{` in dispatch arm")?;
+            self.parse_type_expr()?
+        };
         let body = self.parse_block()?;
         let end = self.previous_span();
         Ok(MatchArm {
@@ -1447,45 +1491,28 @@ impl Parser {
     }
 
     /// If the next token is `<` and the current identifier is PascalCase,
-    /// consume a `<T1, T2, ...>` type-argument list and discard it.
+    /// consume a `<T1, T2, ...>` type-argument list and return it.
     ///
-    /// Returns `true` iff a type-argument list was consumed.
+    /// Returns the empty vec when no list is present.
     ///
-    /// This exists so that parameterized type names (`Option<Content>`,
-    /// `List<Choice>`, `Result<T, E>`) can appear in expression position
-    /// where they would otherwise be a parse error. Examples:
-    ///
-    /// ```text
-    /// // Dispatch on a value whose static type carries generic args:
-    /// Option<Content>.(
-    ///     * (None)          -> Json { ... }
-    ///     * (Some<Content>) -> Json { ... }
-    /// )
-    ///
-    /// // Field access where the field's underlying type is generic:
-    /// wrapper.Option<Content>
-    /// ```
-    ///
-    /// The generic args are accepted but discarded — runtime values don't
-    /// carry generic parameters, only their unparameterized type names
-    /// reach codegen. The identifier (`Option`, `List`, `Result`, …) is
-    /// what the checker and codegen look up. `<` is not used as a binary
-    /// operator anywhere in expression position, so consuming it here is
-    /// unambiguous.
-    fn consume_phantom_type_args(&mut self, ident_lexeme: &str) -> Result<bool> {
+    /// This is how parameterized type names appear in expression position
+    /// (`Map<String, Int>()`, `value -> Inserted<String, Int>(…)`), where
+    /// a bare `<` would otherwise be a parse error. `<` is not used as a
+    /// binary operator anywhere in expression position, so consuming it
+    /// here is unambiguous. The checker decides where the arguments are
+    /// meaningful; the parser only carries them.
+    fn parse_expr_type_args(&mut self, ident_lexeme: &str) -> Result<Vec<TypeExpr>> {
         if !Self::is_pascal_case_str(ident_lexeme) {
-            return Ok(false);
+            return Ok(Vec::new());
         }
         if !self.check(TokenKind::Lt) {
-            return Ok(false);
+            return Ok(Vec::new());
         }
         self.advance();
+        let mut type_args = Vec::new();
         if !self.check(TokenKind::Gt) {
             loop {
-                // Parse the type arg purely for syntactic acceptance.
-                // The result is dropped — it doesn't affect runtime
-                // behaviour.
-                let _ = self.parse_type_expr()?;
+                type_args.push(self.parse_type_expr()?);
                 if self.check(TokenKind::Comma) {
                     self.advance();
                 } else {
@@ -1494,7 +1521,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::Gt, "expected `>` to close generic argument list")?;
-        Ok(true)
+        Ok(type_args)
     }
 }
 
@@ -1576,7 +1603,7 @@ fn push_fmt_static(parts: &mut Vec<FormatLitPart>, s: &str) {
 }
 
 /// HTML-escape a string for element text content — the parse-time
-/// equivalent of the stdlib's `text()` (`packages/canon/std/src/web/
+/// equivalent of the stdlib's `text()` (`packages/canon/src/web/
 /// html.can`), applied when a string-literal interpolation is folded
 /// statically.
 fn html_encode_text(s: &str) -> String {

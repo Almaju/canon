@@ -1,0 +1,1 @@
+error[tests/checker/fail/repetition_bare_reference.can:4:5]: `Int` is a repetition parameter (`Int^2`): its components are positional — use `Int.1` … `Int.2`

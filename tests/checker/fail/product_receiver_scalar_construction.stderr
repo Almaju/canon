@@ -1,1 +1,2 @@
+error[tests/checker/fail/product_receiver_scalar_construction.can:8:5]: cannot construct `Pair`: fields `Left` and `Right` share an underlying type, so untagged values would bind by written order; tag each value with its field's newtype (`Left(…)`, `Right(…)`)
 error[tests/checker/fail/product_receiver_scalar_construction.can:8:5]: `Left` is a field of `Pair` — read it with `.Left`; `-> Left` is construction, and no `Pair => Left` constructor exists

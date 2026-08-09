@@ -20,7 +20,7 @@ Unit => Program {
         * True => Unit { "eq" -> Print }
     )
     "hello" -> Eq("hell") -> (
-        * False => Unit { "ne" -> Print }
-        * True => Unit { "eq" -> Print }
+        * False { "ne" -> Print }
+        * True { "eq" -> Print }
     )
 }

@@ -1,0 +1,70 @@
+Added = Set
+
+Contains = Bool
+
+Dropped = Set
+
+Entry = Item * Remaining
+
+Item = String
+
+Length = Int
+
+Remaining = Set
+
+Set = Absent + Entry
+
+Set * String => Added {
+    Set -> (
+        * Absent { Absent() -> Entry(String) }
+        * Entry {
+            String -> Ord(Entry.Item) -> (
+                * Equal { Set }
+                * Greater { Entry.Item -> Entry(Entry.Remaining -> Added(String)) }
+                * Less { Set -> Entry(String) }
+            )
+        }
+    )
+}
+
+Set * String => Contains {
+    Set -> (
+        * Absent { False() }
+        * Entry {
+            Entry.Item -> Eq(String) -> (
+                * False { Entry.Remaining -> Contains(String) }
+                * True { True() }
+            )
+        }
+    )
+}
+
+Set * String => Dropped {
+    Set -> (
+        * Absent { Absent() }
+        * Entry {
+            Entry.Item -> Eq(String) -> (
+                * False { Entry.Item -> Entry(Entry.Remaining -> Dropped(String)) }
+                * True { Entry.Remaining }
+            )
+        }
+    )
+}
+
+Set => Length {
+    Set -> (
+        * Absent { 0 }
+        * Entry { Entry.Remaining -> Length -> Sum(1) }
+    )
+}
+
+Set => List<Item> {
+    Set -> (
+        * Absent { List() }
+        * Entry { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
+    )
+}
+
+Unit => Set {
+    Absent()
+}

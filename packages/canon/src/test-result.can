@@ -1,0 +1,12 @@
+Fail = String
+
+Pass = Unit
+
+TestResult = Fail + Pass
+
+Bool => TestResult {
+    Bool -> (
+        * False { Fail("") }
+        * True { Pass() }
+    )
+}

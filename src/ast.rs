@@ -174,12 +174,19 @@ pub enum Expr {
     },
     Constructor {
         name: Ident,
+        /// Explicit type arguments at the call site (`Map<String, Int>()`).
+        /// Empty for the ordinary un-annotated call. Only meaningful on
+        /// generic type names — the checker rejects them elsewhere.
+        type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
         span: Span,
     },
     MethodCall {
         receiver: Box<Expr>,
         method: Ident,
+        /// Explicit type arguments at the call site — see
+        /// `Constructor::type_args`; carried on both the dot and pipe forms.
+        type_args: Vec<TypeExpr>,
         args: Vec<Expr>,
         /// Written in the pipe form `value -> Name(rest…)` — the third
         /// spelling of the commutative call (`Name(value, rest…)` /
@@ -337,7 +344,7 @@ pub enum EntryWorld {
 /// | `Program`, `Unit` (and `Result<…, _>` of either)   | Cli   |
 /// | `Response` (and `Result<Response, _>`)             | Http  |
 ///
-/// `Program` (`= Unit`, from `canon/std`) is the CLI world type — the
+/// `Program` (`= Unit`, from `canon`) is the CLI world type — the
 /// one entry is `Unit => Program`, matching the ABI: `wasi:cli/run.run`
 /// takes nothing (argv is fetched with the stdlib's `Args()`) and
 /// reports only success/failure (an exact code is `Exited(n)`). `Unit`
@@ -617,6 +624,124 @@ pub fn type_expr_canonical(ty: &TypeExpr) -> String {
     }
 }
 
+/// Substitute type parameters by name throughout a type expression.
+/// `Named` references with no arguments are replaced by their mapped
+/// expression; arguments substitute recursively (`T<X>` is a checker
+/// error, so an applied head is never itself a parameter). A nested
+/// function type's own generic parameters shadow the mapping.
+pub fn substitute_type_params(
+    ty: &TypeExpr,
+    map: &std::collections::HashMap<String, TypeExpr>,
+) -> TypeExpr {
+    match ty {
+        TypeExpr::Named {
+            name,
+            generics,
+            span,
+        } => {
+            if generics.is_empty() {
+                if let Some(replacement) = map.get(name) {
+                    return replacement.clone();
+                }
+                ty.clone()
+            } else {
+                TypeExpr::Named {
+                    name: name.clone(),
+                    generics: generics
+                        .iter()
+                        .map(|g| substitute_type_params(g, map))
+                        .collect(),
+                    span: *span,
+                }
+            }
+        }
+        TypeExpr::Union { variants, span } => TypeExpr::Union {
+            variants: variants
+                .iter()
+                .map(|v| substitute_type_params(v, map))
+                .collect(),
+            span: *span,
+        },
+        TypeExpr::Product { fields, span } => TypeExpr::Product {
+            fields: fields
+                .iter()
+                .map(|f| substitute_type_params(f, map))
+                .collect(),
+            span: *span,
+        },
+        TypeExpr::Repeat { ty, count, span } => TypeExpr::Repeat {
+            ty: Box::new(substitute_type_params(ty, map)),
+            count: *count,
+            span: *span,
+        },
+        TypeExpr::Spread { ty, span } => TypeExpr::Spread {
+            ty: Box::new(substitute_type_params(ty, map)),
+            span: *span,
+        },
+        TypeExpr::Function {
+            generic_params,
+            params,
+            return_ty,
+            span,
+        } => {
+            // The nested function type's own binders shadow the map;
+            // clone it only when there is something to shadow.
+            let narrowed;
+            let inner = if generic_params.is_empty() {
+                map
+            } else {
+                let mut m = map.clone();
+                for g in generic_params {
+                    m.remove(&g.name.name);
+                }
+                narrowed = m;
+                &narrowed
+            };
+            TypeExpr::Function {
+                generic_params: generic_params.clone(),
+                params: params
+                    .iter()
+                    .map(|p| substitute_type_params(p, inner))
+                    .collect(),
+                return_ty: Box::new(substitute_type_params(return_ty, inner)),
+                span: *span,
+            }
+        }
+    }
+}
+
+/// Canonical spelling of a whole type definition, declaration-side
+/// parameters included. Parameter names are normalized positionally
+/// (`Map<K, V> = Node<K, V>` and `Map<A, B> = Node<A, B>` spell the
+/// same type; a bound stays part of the identity), so the structural
+/// merge compares what the definition means, not what its binders are
+/// called. A parameter-free definition spells exactly as its body,
+/// keeping every existing merge unchanged.
+pub fn type_def_canonical(td: &TypeDef) -> String {
+    if td.generic_params.is_empty() {
+        return type_expr_canonical(&td.body);
+    }
+    let mut map = std::collections::HashMap::new();
+    let mut binders: Vec<String> = Vec::new();
+    for (i, g) in td.generic_params.iter().enumerate() {
+        let positional = format!("${}", i + 1);
+        match &g.bound {
+            Some(b) => binders.push(format!("{}: {}", positional, type_expr_canonical(b))),
+            None => binders.push(positional.clone()),
+        }
+        map.insert(
+            g.name.name.clone(),
+            TypeExpr::Named {
+                name: positional,
+                generics: Vec::new(),
+                span: g.span,
+            },
+        );
+    }
+    let body = substitute_type_params(&td.body, &map);
+    format!("<{}> {}", binders.join(", "), type_expr_canonical(&body))
+}
+
 /// The PascalCase pipe/vocabulary spelling of a compiler builtin
 /// method → its canonical (camelCase) implementation name. This is the
 /// types-only surface for operations the compiler owns: `x -> Print`,
@@ -652,7 +777,7 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Quotient", "div"),
     ("Remainder", "rem"),
     // Comparison — the two base predicates (wasm numerics). The derived
-    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon/std`
+    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon`
     // (`int.can`/`float.can`/`string.can`), one dispatch over `Lt`/`Eq`.
     ("Eq", "eq"),
     ("Lt", "lt"),
@@ -831,5 +956,156 @@ pub fn resolve_new_syntax(module: &mut Module) {
                 }
             }
         }
+    }
+
+    propagate_elided_arm_types(module);
+}
+
+/// Sentinel type name the parser records for a dispatch arm written
+/// without `=> Type`. An arm may elide its type exactly where context
+/// supplies it — the dispatch is the return value of the enclosing
+/// declaration (transitively: the last expression of a function, lambda,
+/// or arm body) — and `propagate_elided_arm_types` fills the sentinel
+/// with that context type. A sentinel nothing resolves is a checker
+/// error, never a codegen input.
+pub const ELIDED_RETURN: &str = "<elided>";
+
+pub fn elided_return_ty(span: Span) -> TypeExpr {
+    TypeExpr::Named {
+        name: ELIDED_RETURN.to_string(),
+        generics: Vec::new(),
+        span,
+    }
+}
+
+pub fn is_elided_return_ty(ty: &TypeExpr) -> bool {
+    matches!(ty, TypeExpr::Named { name, .. } if name == ELIDED_RETURN)
+}
+
+/// The two directions of the elided-arm-type walk. `Fill` (the loader,
+/// inside `resolve_new_syntax`) replaces each sentinel in return
+/// position with the context type, so everything downstream of the
+/// parser sees fully-typed arms. `Strip` (the formatter) is its exact
+/// inverse: an explicit annotation that merely restates the context
+/// type is ceremony, so it becomes the sentinel and the emitter drops
+/// it. Running Fill after Strip is the identity, which is what makes
+/// the elided form canonical and the rewrite semantics-preserving.
+#[derive(Clone, Copy, PartialEq)]
+enum ArmTyPass {
+    Fill,
+    Strip,
+}
+
+pub fn propagate_elided_arm_types(module: &mut Module) {
+    arm_ty_module(module, ArmTyPass::Fill);
+}
+
+pub fn strip_contextual_arm_types(module: &mut Module) {
+    arm_ty_module(module, ArmTyPass::Strip);
+}
+
+fn arm_ty_module(module: &mut Module, pass: ArmTyPass) {
+    for item in &mut module.items {
+        if let Item::Function(func) = item {
+            let expected = func.return_ty.clone();
+            arm_ty_block(&mut func.body, Some(&expected), pass);
+        }
+    }
+}
+
+fn arm_ty_block(block: &mut Block, expected: Option<&TypeExpr>, pass: ArmTyPass) {
+    let n = block.exprs.len();
+    for (i, expr) in block.exprs.iter_mut().enumerate() {
+        let exp = if i + 1 == n { expected } else { None };
+        arm_ty_expr(expr, exp, pass);
+    }
+}
+
+fn arm_ty_expr(expr: &mut Expr, expected: Option<&TypeExpr>, pass: ArmTyPass) {
+    match expr {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            arm_ty_expr(scrutinee, None, pass);
+            for arm in arms {
+                match pass {
+                    ArmTyPass::Fill => {
+                        if is_elided_return_ty(&arm.return_ty) {
+                            if let Some(t) = expected {
+                                arm.return_ty = t.clone();
+                            }
+                        }
+                    }
+                    ArmTyPass::Strip => {
+                        if let Some(t) = expected {
+                            if !is_elided_return_ty(&arm.return_ty)
+                                && type_expr_canonical(&arm.return_ty) == type_expr_canonical(t)
+                            {
+                                arm.return_ty = elided_return_ty(arm.return_ty.span());
+                            }
+                        }
+                    }
+                }
+                // The arm body's return position carries the arm's
+                // *semantic* type: the annotation when one survives, the
+                // context type when the arm is (or just became) elided.
+                let semantic = if is_elided_return_ty(&arm.return_ty) {
+                    expected.cloned()
+                } else {
+                    Some(arm.return_ty.clone())
+                };
+                arm_ty_block(&mut arm.body, semantic.as_ref(), pass);
+            }
+        }
+        Expr::Lambda {
+            return_ty, body, ..
+        } => {
+            let t = return_ty.clone();
+            arm_ty_block(body, Some(&t), pass);
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            arm_ty_expr(receiver, None, pass);
+            for a in args {
+                arm_ty_expr(a, None, pass);
+            }
+        }
+        Expr::Constructor { args, .. } => {
+            for a in args {
+                arm_ty_expr(a, None, pass);
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => {
+            arm_ty_expr(inner, None, pass);
+        }
+        Expr::FieldAccess { receiver, .. } => {
+            arm_ty_expr(receiver, None, pass);
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                arm_ty_expr(f, None, pass);
+            }
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    arm_ty_expr(e, None, pass);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
+                    arm_ty_expr(e, None, pass);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
+                    arm_ty_expr(e, None, pass);
+                }
+            }
+        }
+        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
     }
 }

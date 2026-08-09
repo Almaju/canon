@@ -1,0 +1,895 @@
+AfterDigits = Int
+
+AfterSign = Int
+
+AfterWs = Int
+
+CheckedTrailing = ParseStep
+
+ClosedOrKey = Json
+
+ColonChecked = Json
+
+ConsumedArrayTail = ParseStep
+
+ConsumedColonValue = ParseStep
+
+ConsumedObjectTail = ParseStep
+
+Decoded = String
+
+DispatchedValue = ParseStep
+
+Encoded = Json
+
+EscapeChar = EscapeOther
+  + EscapePlain
+  + EscapeUnicode
+
+EscapeOther = Unit
+
+EscapePlain = Unit
+
+EscapeUnicode = Unit
+
+EscapedByte = String
+
+EscapedMeaning = String
+
+EscapedTail = String
+
+Field = Json
+
+HexDigit = String
+
+HexVal = Int
+
+IsDigit = Bool
+
+IsExpMarker = Bool
+
+IsHex = Bool
+
+IsSign = Bool
+
+IsWs = Bool
+
+Json = String
+
+KeyEq = Bool
+
+KeyExpected = Json
+
+KeyParsed = Json
+
+KeyStart = Int
+
+OpenedObject = Json
+
+ParsedArray = ParseStep
+
+ParsedArrayItems = ParseStep
+
+ParsedArrayTail = ParseStep
+
+ParsedExp = ParseStep
+
+ParsedExpAfter = ParseStep
+
+ParsedFalse = ParseStep
+
+ParsedFrac = ParseStep
+
+ParsedFracExp = ParseStep
+
+ParsedIntPart = ParseStep
+
+ParsedNull = ParseStep
+
+ParsedNumber = ParseStep
+
+ParsedObject = ParseStep
+
+ParsedObjectColon = ParseStep
+
+ParsedObjectItems = ParseStep
+
+ParsedObjectTail = ParseStep
+
+ParsedString = ParseStep
+
+ParsedStringBody = ParseStep
+
+ParsedTrue = ParseStep
+
+Int * String => AfterDigits {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> IsDigit -> (
+                * False { Int }
+                * True { Int -> Sum(1) -> AfterDigits(String) }
+            )
+        }
+        * True { Int }
+    )
+}
+
+ParsedValue = ParseStep
+
+Int * String => AfterSign {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> IsSign -> (
+                * False { Int }
+                * True { Int -> Sum(1) }
+            )
+        }
+        * True { Int }
+    )
+}
+
+Int * String => AfterWs {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> IsWs -> (
+                * False { Int }
+                * True { Int -> Sum(1) -> AfterWs(String) }
+            )
+        }
+        * True { Int }
+    )
+}
+
+ParseStep * String => CheckedTrailing {
+    ParseStep -> (
+        * ParseFail { ParseFail }
+        * ParsePos {
+            ParsePos.Int -> AfterWs(String) -> Eq(String -> Length -> Sum(1)) -> (
+                * False { ParseFail("trailing characters") }
+                * True { ParsePos.Int -> ParsePos }
+            )
+        }
+    )
+}
+
+Int * Json * String => Result<ClosedOrKey, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> Eq(125) -> (
+                * False { Int -> KeyExpected(Json * String) }
+                * True { MalformedJson(`field \`{String}\` not found`) -> Err }
+            )
+        }
+        * True { MalformedJson("unterminated object") -> Err }
+    )
+}
+
+Int * KeyEq * Json * String => Result<ColonChecked, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> Eq(58) -> (
+                * False { MalformedJson("expected colon after key") -> Err }
+                * True { Int -> Sum(1) -> AfterWs(Json) -> ValueParsed(KeyEq * Json * String) }
+            )
+        }
+        * True { MalformedJson("expected colon after key") -> Err }
+    )
+}
+
+Int * String => ConsumedArrayTail {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(44) -> (
+                * False {
+                    String -> ByteAt(Int) -> Eq(93) -> (
+                        * False { ParseFail("expected comma or closing bracket in array") }
+                        * True { Int -> Sum(1) -> ParsePos }
+                    )
+                }
+                * True {
+                    Int
+                        -> Sum(1)
+                        -> AfterWs(String)
+                        -> ParsedValue(String)
+                        -> ParsedArrayTail(String)
+                }
+            )
+        }
+        * True { ParseFail("unterminated array") }
+    )
+}
+
+Int * String => ConsumedColonValue {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(58) -> (
+                * False { ParseFail("expected colon after key") }
+                * True { Int -> Sum(1) -> ParsedValue(String) -> ParsedObjectTail(String) }
+            )
+        }
+        * True { ParseFail("expected colon after key") }
+    )
+}
+
+Int * String => ConsumedObjectTail {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(44) -> (
+                * False {
+                    String -> ByteAt(Int) -> Eq(125) -> (
+                        * False { ParseFail("expected comma or closing brace in object") }
+                        * True { Int -> Sum(1) -> ParsePos }
+                    )
+                }
+                * True {
+                    Int
+                        -> Sum(1)
+                        -> AfterWs(String)
+                        -> ParsedString(String)
+                        -> ParsedObjectColon(String)
+                }
+            )
+        }
+        * True { ParseFail("unterminated object") }
+    )
+}
+
+Json => Result<Decoded, MalformedJson> {
+    1
+        -> AfterWs(Json)
+        -> QuoteChecked(Json)
+}
+
+Int * String => DispatchedValue {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(123) -> (
+                * False {
+                    String -> ByteAt(Int) -> Eq(91) -> (
+                        * False {
+                            String -> ByteAt(Int) -> Eq(34) -> (
+                                * False {
+                                    String -> ByteAt(Int) -> Eq(116) -> (
+                                        * False {
+                                            String -> ByteAt(Int) -> Eq(102) -> (
+                                                * False {
+                                                    String -> ByteAt(Int) -> Eq(110) -> (
+                                                        * False { Int -> ParsedNumber(String) }
+                                                        * True { Int -> ParsedNull(String) }
+                                                    )
+                                                }
+                                                * True { Int -> ParsedFalse(String) }
+                                            )
+                                        }
+                                        * True { Int -> ParsedTrue(String) }
+                                    )
+                                }
+                                * True { Int -> ParsedString(String) }
+                            )
+                        }
+                        * True { Int -> ParsedArray(String) }
+                    )
+                }
+                * True { Int -> ParsedObject(String) }
+            )
+        }
+        * True { ParseFail("unexpected end of input") }
+    )
+}
+
+Bool => Encoded {
+    Bool -> (
+        * False { "false" }
+        * True { "true" }
+    )
+}
+
+Float => Encoded {
+    Float -> Number
+}
+
+Int => Encoded {
+    Int -> String
+}
+
+String => Encoded {
+    `"{1 -> EscapedTail(String)}"`
+}
+
+Int => EscapeChar {
+    Int -> (
+        * 34 { EscapePlain() }
+        * 47 { EscapePlain() }
+        * 92 { EscapePlain() }
+        * 98 { EscapePlain() }
+        * 102 { EscapePlain() }
+        * 110 { EscapePlain() }
+        * 114 { EscapePlain() }
+        * 116 { EscapePlain() }
+        * 117 { EscapeUnicode() }
+        * Int { EscapeOther() }
+    )
+}
+
+Int => EscapedByte {
+    Int -> Lt(32) -> (
+        * False {
+            Int -> (
+                * 34 { "\\\"" }
+                * 92 { "\\\\" }
+                * Int { Int -> Byte -> String }
+            )
+        }
+        * True {
+            Int -> (
+                * 8 { "\\b" }
+                * 9 { "\\t" }
+                * 10 { "\\n" }
+                * 12 { "\\f" }
+                * 13 { "\\r" }
+                * Int { `\\u00{Int -> Quotient(16) -> HexDigit}{Int -> Remainder(16) -> HexDigit}` }
+            )
+        }
+    )
+}
+
+Int => EscapedMeaning {
+    Int -> (
+        * 34 { "\"" }
+        * 47 { "/" }
+        * 92 { "\\" }
+        * 98 { "\u0008" }
+        * 102 { "\u000C" }
+        * 110 { "\n" }
+        * 114 { "\r" }
+        * 116 { "\t" }
+        * Int { "" }
+    )
+}
+
+Int * String => EscapedTail {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String
+                -> ByteAt(Int)
+                -> EscapedByte
+                -> Joined(Int -> Sum(1) -> EscapedTail(String))
+        }
+        * True { "" }
+    )
+}
+
+Json * String => Result<Field, MalformedJson> {
+    1
+        -> AfterWs(Json)
+        -> OpenedObject(Json * String)
+}
+
+Int => HexDigit {
+    "0123456789abcdef" -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> To)
+}
+
+Int => HexVal {
+    Int -> Le(57) -> (
+        * False {
+            Int -> Le(70) -> (
+                * False { Int -> Difference(87) }
+                * True { Int -> Difference(55) }
+            )
+        }
+        * True { Int -> Difference(48) }
+    )
+}
+
+Int => IsDigit {
+    Int -> Ge(48) -> (
+        * False { False() }
+        * True { Int -> Le(57) }
+    )
+}
+
+Int => IsExpMarker {
+    Int -> Eq(101) -> (
+        * False { Int -> Eq(69) }
+        * True { True() }
+    )
+}
+
+Int => IsHex {
+    Int -> IsDigit -> (
+        * False {
+            Int -> Ge(65) -> (
+                * False { False() }
+                * True {
+                    Int -> Le(70) -> (
+                        * False {
+                            Int -> Ge(97) -> (
+                                * False { False() }
+                                * True { Int -> Le(102) }
+                            )
+                        }
+                        * True { True() }
+                    )
+                }
+            )
+        }
+        * True { True() }
+    )
+}
+
+Int => IsSign {
+    Int -> Eq(43) -> (
+        * False { Int -> Eq(45) }
+        * True { True() }
+    )
+}
+
+Int => IsWs {
+    Int -> Eq(32) -> (
+        * False {
+            Int -> Eq(9) -> (
+                * False {
+                    Int -> Eq(10) -> (
+                        * False { Int -> Eq(13) }
+                        * True { True() }
+                    )
+                }
+                * True { True() }
+            )
+        }
+        * True { True() }
+    )
+}
+
+String => Result<Json, MalformedJson> {
+    String
+        -> Validated
+        -> Json(String)
+}
+
+ParseStep * String => Result<Json, MalformedJson> {
+    ParseStep -> (
+        * ParseFail { ParseFail.String -> MalformedJson -> Err }
+        * ParsePos { String -> Ok }
+    )
+}
+
+Int * Json * String => Result<KeyExpected, MalformedJson> {
+    Int
+        -> ParsedString(Json)
+        -> KeyParsed(Int -> KeyStart * Json * String)
+}
+
+ParseStep * KeyStart * Json * String => Result<KeyParsed, MalformedJson> {
+    ParseStep -> (
+        * ParseFail { ParseFail.String -> MalformedJson -> Err }
+        * ParsePos {
+            ParsePos.Int
+                -> AfterWs(Json)
+                -> ColonChecked(Json -> Substring(KeyStart -> Sum(1) -> From * ParsePos.Int -> Difference(2) -> To) -> Eq(String) -> KeyEq * Json * String)
+        }
+    )
+}
+
+Int * Json * String => Result<OpenedObject, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> Eq(123) -> (
+                * False { MalformedJson("expected object") -> Err }
+                * True { Int -> Sum(1) -> AfterWs(Json) -> ClosedOrKey(Json * String) }
+            )
+        }
+        * True { MalformedJson("expected object") -> Err }
+    )
+}
+
+Int * String => ParsedArray {
+    Int
+        -> Sum(1)
+        -> AfterWs(String)
+        -> ParsedArrayItems(String)
+}
+
+Int * String => ParsedArrayItems {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(93) -> (
+                * False { Int -> ParsedValue(String) -> ParsedArrayTail(String) }
+                * True { Int -> Sum(1) -> ParsePos }
+            )
+        }
+        * True { ParseFail("unterminated array") }
+    )
+}
+
+ParseStep * String => ParsedArrayTail {
+    ParseStep -> (
+        * ParseFail { ParseFail }
+        * ParsePos { ParsePos.Int -> AfterWs(String) -> ConsumedArrayTail(String) }
+    )
+}
+
+Int * String => ParsedExp {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> IsExpMarker -> (
+                * False { Int -> ParsePos }
+                * True { Int -> Sum(1) -> AfterSign(String) -> RequiredDigits(String) }
+            )
+        }
+        * True { Int -> ParsePos }
+    )
+}
+
+ParseStep * String => ParsedExpAfter {
+    ParseStep -> (
+        * ParseFail { ParseFail }
+        * ParsePos { ParsePos.Int -> ParsedExp(String) }
+    )
+}
+
+Int * String => ParsedFalse {
+    Int -> Sum(4) -> Le(String -> Length) -> (
+        * False { ParseFail("expected false") }
+        * True {
+            String -> Substring(Int -> From * Int -> Sum(4) -> To) -> Eq("false") -> (
+                * False { ParseFail("expected false") }
+                * True { Int -> Sum(5) -> ParsePos }
+            )
+        }
+    )
+}
+
+Int * String => ParsedFrac {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(46) -> (
+                * False { Int -> ParsePos }
+                * True { Int -> Sum(1) -> RequiredDigits(String) }
+            )
+        }
+        * True { Int -> ParsePos }
+    )
+}
+
+Int * String => ParsedFracExp {
+    Int
+        -> ParsedFrac(String)
+        -> ParsedExpAfter(String)
+}
+
+Int * String => ParsedIntPart {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(48) -> (
+                * False {
+                    String -> ByteAt(Int) -> IsDigit -> (
+                        * False { ParseFail("expected digit") }
+                        * True { Int -> Sum(1) -> AfterDigits(String) -> ParsedFracExp(String) }
+                    )
+                }
+                * True { Int -> Sum(1) -> ParsedFracExp(String) }
+            )
+        }
+        * True { ParseFail("expected digit") }
+    )
+}
+
+Int * String => ParsedNull {
+    Int -> Sum(3) -> Le(String -> Length) -> (
+        * False { ParseFail("expected null") }
+        * True {
+            String -> Substring(Int -> From * Int -> Sum(3) -> To) -> Eq("null") -> (
+                * False { ParseFail("expected null") }
+                * True { Int -> Sum(4) -> ParsePos }
+            )
+        }
+    )
+}
+
+Prefix = String
+
+Prefixed = Decoded
+
+QuoteChecked = Decoded
+
+RequiredDigits = ParseStep
+
+TailChecked = Json
+
+UnescapedEscape = Decoded
+
+UnescapedTail = Decoded
+
+UnescapedUnicode = Decoded
+
+Utf8 = String
+
+Int * String => ParsedNumber {
+    String -> ByteAt(Int) -> Eq(45) -> (
+        * False { Int -> ParsedIntPart(String) }
+        * True { Int -> Sum(1) -> ParsedIntPart(String) }
+    )
+}
+
+Int * String => ParsedObject {
+    Int
+        -> Sum(1)
+        -> AfterWs(String)
+        -> ParsedObjectItems(String)
+}
+
+ParseStep * String => ParsedObjectColon {
+    ParseStep -> (
+        * ParseFail { ParseFail }
+        * ParsePos { ParsePos.Int -> AfterWs(String) -> ConsumedColonValue(String) }
+    )
+}
+
+Int * String => ParsedObjectItems {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(125) -> (
+                * False { Int -> ParsedString(String) -> ParsedObjectColon(String) }
+                * True { Int -> Sum(1) -> ParsePos }
+            )
+        }
+        * True { ParseFail("unterminated object") }
+    )
+}
+
+ParseStep * String => ParsedObjectTail {
+    ParseStep -> (
+        * ParseFail { ParseFail }
+        * ParsePos { ParsePos.Int -> AfterWs(String) -> ConsumedObjectTail(String) }
+    )
+}
+
+Int * String => ParsedString {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(34) -> (
+                * False { ParseFail("expected quote to start string") }
+                * True { Int -> Sum(1) -> ParsedStringBody(String) }
+            )
+        }
+        * True { ParseFail("expected quote to start string") }
+    )
+}
+
+Int * String => ParsedStringBody {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> Eq(34) -> (
+                * False {
+                    String -> ByteAt(Int) -> Eq(92) -> (
+                        * False {
+                            String -> ByteAt(Int) -> Lt(32) -> (
+                                * False { Int -> Sum(1) -> ParsedStringBody(String) }
+                                * True { ParseFail("unescaped control character") }
+                            )
+                        }
+                        * True { Int -> Sum(2) -> ParsedStringBody(String) }
+                    )
+                }
+                * True { Int -> Sum(1) -> ParsePos }
+            )
+        }
+        * True { ParseFail("unterminated string") }
+    )
+}
+
+Int * String => ParsedTrue {
+    Int -> Sum(3) -> Le(String -> Length) -> (
+        * False { ParseFail("expected true") }
+        * True {
+            String -> Substring(Int -> From * Int -> Sum(3) -> To) -> Eq("true") -> (
+                * False { ParseFail("expected true") }
+                * True { Int -> Sum(4) -> ParsePos }
+            )
+        }
+    )
+}
+
+Int * String => ParsedValue {
+    Int
+        -> AfterWs(String)
+        -> DispatchedValue(String)
+}
+
+Result * Prefix => Result<Prefixed, MalformedJson> {
+    Result -> (
+        * Err<MalformedJson> { MalformedJson -> Err }
+        * Ok<Decoded> { Prefix -> Joined(Decoded) -> Ok }
+    )
+}
+
+Int * Json => Result<QuoteChecked, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> Eq(34) -> (
+                * False { MalformedJson("expected string") -> Err }
+                * True { Int -> Sum(1) -> UnescapedTail(Json) }
+            )
+        }
+        * True { MalformedJson("expected string") -> Err }
+    )
+}
+
+Int * String => RequiredDigits {
+    Int -> Gt(String -> Length) -> (
+        * False {
+            String -> ByteAt(Int) -> IsDigit -> (
+                * False { ParseFail("expected digit") }
+                * True { Int -> Sum(1) -> AfterDigits(String) -> ParsePos }
+            )
+        }
+        * True { ParseFail("expected digit") }
+    )
+}
+
+Int * Json * String => Result<TailChecked, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> Eq(44) -> (
+                * False {
+                    Json -> ByteAt(Int) -> Eq(125) -> (
+                        * False {
+                            MalformedJson("expected comma or closing brace in object") -> Err
+                        }
+                        * True { MalformedJson(`field \`{String}\` not found`) -> Err }
+                    )
+                }
+                * True { Int -> Sum(1) -> AfterWs(Json) -> KeyExpected(Json * String) }
+            )
+        }
+        * True { MalformedJson("expected comma or closing brace in object") -> Err }
+    )
+}
+
+Int * Json => Result<UnescapedEscape, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> EscapeChar -> (
+                * EscapeOther { MalformedJson("bad escape") -> Err }
+                * EscapePlain {
+                    Int
+                        -> Sum(1)
+                        -> UnescapedTail(Json)
+                        -> Prefixed(Json -> ByteAt(Int) -> EscapedMeaning -> Prefix)
+                }
+                * EscapeUnicode { Int -> Sum(1) -> UnescapedUnicode(Json) }
+            )
+        }
+        * True { MalformedJson("truncated escape") -> Err }
+    )
+}
+
+Int * Json => Result<UnescapedTail, MalformedJson> {
+    Int -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> Eq(34) -> (
+                * False {
+                    Json -> ByteAt(Int) -> Eq(92) -> (
+                        * False {
+                            Int
+                                -> Sum(1)
+                                -> UnescapedTail(Json)
+                                -> Prefixed(Json -> Substring(Int -> From * Int -> To) -> Prefix)
+                        }
+                        * True { Int -> Sum(1) -> UnescapedEscape(Json) }
+                    )
+                }
+                * True { Ok("") }
+            )
+        }
+        * True { MalformedJson("unterminated string") -> Err }
+    )
+}
+
+Int * Json => Result<UnescapedUnicode, MalformedJson> {
+    Int -> Sum(3) -> Gt(Json -> Length) -> (
+        * False {
+            Json -> ByteAt(Int) -> IsHex -> (
+                * False { MalformedJson("bad \\u escape") -> Err }
+                * True {
+                    Json -> ByteAt(Int -> Sum(1)) -> IsHex -> (
+                        * False { MalformedJson("bad \\u escape") -> Err }
+                        * True {
+                            Json -> ByteAt(Int -> Sum(2)) -> IsHex -> (
+                                * False { MalformedJson("bad \\u escape") -> Err }
+                                * True {
+                                    Json -> ByteAt(Int -> Sum(3)) -> IsHex -> (
+                                        * False { MalformedJson("bad \\u escape") -> Err }
+                                        * True {
+                                            Int
+                                                -> Sum(4)
+                                                -> UnescapedTail(Json)
+                                                -> Prefixed(Json -> ByteAt(Int) -> HexVal -> Product(4096) -> Sum(Json -> ByteAt(Int -> Sum(1)) -> HexVal -> Product(256)) -> Sum(Json -> ByteAt(Int -> Sum(2)) -> HexVal -> Product(16)) -> Sum(Json -> ByteAt(Int -> Sum(3)) -> HexVal) -> Utf8 -> Prefix)
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    )
+                }
+            )
+        }
+        * True { MalformedJson("truncated \\u escape") -> Err }
+    )
+}
+
+Int => Utf8 {
+    Int -> Lt(128) -> (
+        * False {
+            Int -> Lt(2048) -> (
+                * False {
+                    Int -> Ge(55296) -> (
+                        * False { Int -> Utf8Three }
+                        * True {
+                            Int -> Le(57343) -> (
+                                * False { Int -> Utf8Three }
+                                * True { Utf8Three(65533) }
+                            )
+                        }
+                    )
+                }
+                * True {
+                    192
+                        -> Sum(Int -> Quotient(64))
+                        -> Byte
+                        -> String
+                        -> Joined(128 -> Sum(Int -> Remainder(64)) -> Byte -> String)
+                }
+            )
+        }
+        * True { Int -> Byte -> String }
+    )
+}
+
+Int => Utf8Three {
+    224
+        -> Sum(Int -> Quotient(4096))
+        -> Byte
+        -> String
+        -> Joined(128 -> Sum(Int -> Quotient(64) -> Remainder(64)) -> Byte -> String)
+        -> Joined(128 -> Sum(Int -> Remainder(64)) -> Byte -> String)
+}
+
+String => Validated {
+    1
+        -> ParsedValue(String)
+        -> CheckedTrailing(String)
+}
+
+Utf8Three = Utf8
+
+Validated = ParseStep
+
+ValueEnded = Json
+
+ValueParsed = Json
+
+ValueStart = Int
+
+ParseStep * ValueStart * KeyEq * Json * String => Result<ValueEnded, MalformedJson> {
+    ParseStep -> (
+        * ParseFail { ParseFail.String -> MalformedJson -> Err }
+        * ParsePos {
+            KeyEq -> (
+                * False { ParsePos.Int -> AfterWs(Json) -> TailChecked(Json * String) }
+                * True {
+                    Json
+                        -> Substring(ValueStart -> From * ParsePos.Int -> Difference(1) -> To)
+                        -> Ok
+                }
+            )
+        }
+    )
+}
+
+Int * KeyEq * Json * String => Result<ValueParsed, MalformedJson> {
+    Int
+        -> DispatchedValue(Json)
+        -> ValueEnded(Int -> ValueStart * KeyEq * Json * String)
+}

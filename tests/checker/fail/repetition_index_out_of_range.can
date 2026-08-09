@@ -1,0 +1,12 @@
+Doubled = Int
+
+Int^2 => Doubled {
+    Int.1 -> Sum(Int.3)
+}
+
+Unit => Program {
+    3
+        -> Doubled(5)
+        -> String
+        -> Print
+}

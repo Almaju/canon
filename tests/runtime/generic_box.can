@@ -1,0 +1,8 @@
+Box<T> = T
+
+Unit => Program {
+    Box<Int>(42)
+        -> String
+        -> Print
+    Box<String>("generic") -> Print
+}

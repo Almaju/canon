@@ -12,7 +12,7 @@ Unit => Program {
         -> Length
         -> Print
     List(1 * 2 * 3) -> Taken(2) -> At(2) -> (
-        * None => Unit { "none" -> Print }
-        * Some<Int> => Unit { Int -> Print }
+        * None { "none" -> Print }
+        * Some<Int> { Int -> Print }
     )
 }

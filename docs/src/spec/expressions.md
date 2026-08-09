@@ -85,11 +85,13 @@ The full rule, case by case:
   a subject-bearing call, so `List(1 * 2 * 3)` is left as written.
 - **Operand order is positional and never reordered.** The pipe receiver
   is always the first operand (`0 -> Difference(5)` is -5), and literal
-  operands keep their written order -- untagged same-typed components
-  bind by declaration order, so reshuffling them would change which
-  field gets which value. Only an all-computed input list (where every
-  operand carries its type syntactically) is sorted for determinism
-  before the first pipes.
+  operands keep their written order. Where written order would decide a
+  product-field binding -- two untagged values competing for fields
+  that share an underlying type -- the construction is a compile error
+  requiring the field tags ([Types § Products](./types.md#products)),
+  so reshuffling accepted operands never changes meaning. Only an
+  all-computed input list (where every operand carries its type
+  syntactically) is sorted for determinism before the first pipes.
 
 Because the spellings denote the same call, every rewrite is
 semantics-preserving: the compiler treats a piped call to a type
@@ -115,6 +117,25 @@ File => Result<Config, IoError + MalformedJson> {
 }
 ```
 
+## Evaluation Order
+
+**Pipes sequence; operands don't.** The constructs whose order the
+writer controls are the sequencing constructs:
+
+- **Body lines** evaluate top to bottom.
+- **Pipeline stages** evaluate strictly left to right: in
+  `a -> F(b) -> G`, each stage runs only after its input completes.
+
+Evaluation order *among sibling operands* of a single call or product
+construction is the **canonical order** -- deterministic, chosen by
+the compiler, never by the writer. This is the ordering rule applied
+to time: operand order is not discretionary spelling (`canon check --fix`
+may sort an all-computed operand list), so it cannot carry sequencing
+intent either, and a `--fix` rewrite can never change what a program
+does. Effects that must happen in a specific order belong in a
+pipeline or on separate lines, never side by side in one argument
+list.
+
 ## Dispatch
 
 Dispatch is the language's only branching construct. The scrutinee (a
@@ -132,9 +153,9 @@ Sign = Negative
 
 Ord => Sign {
     Ord -> (
-        * Equal => Sign { Zero() }
-        * Greater => Sign { Positive() }
-        * Less => Sign { Negative() }
+        * Equal { Zero() }
+        * Greater { Positive() }
+        * Less { Negative() }
     )
 }
 ```
@@ -161,6 +182,28 @@ Algebraically, dispatch is the isomorphism
 
 made literal: a sum value applied to a product of handlers.
 
+### Arm Types
+
+An arm's type is fully determined wherever the dispatch is a **return
+value** -- the last expression of a function, lambda, or arm body --
+so spelling it there is ceremony, and the elided form above
+(`* Equal { … }`) is canonical:
+
+- **In return position, arms elide their type**; each elided arm takes
+  the enclosing declaration's return type. An explicit annotation that
+  restates that type is a format error (`canon check --fix` strips it),
+  and one that restates it *through an alias chain* (`=> Unit` inside a
+  `Unit => Program` entry, `=> TestResult` inside a test newtype's
+  constructor) is a checker error directing to the elided spelling --
+  the same rule, backstopped where the purely syntactic formatter
+  cannot see aliases.
+- **Anywhere else** -- a dispatch on a non-final body line, or nested
+  mid-chain -- there is no context type to elide into, so the arm
+  spells its type: `* Pattern => Type { … }`. An elided arm outside
+  return position is a checker error.
+- An annotation that genuinely *differs* from the context type (an arm
+  producing a compatible newtype) survives in either position.
+
 ### Payload Binding
 
 When a variant carries data, the arm body sees the payload under a
@@ -176,8 +219,8 @@ Outcome = Result<String, IoError>
 
 Outcome => Message {
     Outcome -> (
-        * Err<IoError> => Message { IoError }
-        * Ok<String> => Message { String }
+        * Err<IoError> { IoError }
+        * Ok<String> { String }
     )
 }
 ```
@@ -207,9 +250,9 @@ catch-all** naming the scrutinee's type:
 ```canon
 String => String {
     String -> (
-        * "/notes" => String { "index" }
-        * "/notes/1" => String { "note one" }
-        * String => String { `not found: {String}` }
+        * "/notes" { "index" }
+        * "/notes/1" { "note one" }
+        * String { `not found: {String}` }
     )
 }
 ```
@@ -230,6 +273,41 @@ Rules:
 Nested dispatch composes: dispatch on a union, then literal-dispatch
 the payload inside an arm. This is the shape of every HTTP route table
 (see the [notes-api example](../examples/notes-api.md)).
+
+### Binding Dispatch
+
+A dispatch with a **single arm naming the scrutinee's own type** always
+matches: nothing is compared, and the arm binds the scrutinee under
+that name for the body. With no local variables, this is the one way
+to use a computed value twice -- the value gets a name the same way
+every dispatch arm binds one, and the name is its type:
+
+```canon
+Unit => Program {
+    3 -> Sum(4) -> (
+        * Int {
+            Int
+                -> String
+                -> Print
+            Int
+                -> Product(Int)
+                -> String
+                -> Print
+        }
+    )
+}
+```
+
+- Works on **any** scrutinee type: primitives, newtypes, products, and
+  unions (`map -> ( * Map => Report { ... } )` binds the whole union
+  value without dispatching its variants).
+- The arm must name the scrutinee's type, directly or through its
+  newtype alias chain; any other single-arm pattern is a checker
+  error. A single *variant* arm is not a binding dispatch -- it falls
+  under the union rules and fails exhaustiveness.
+- The scrutinee is evaluated exactly once, before the body runs; inside
+  the body it is in scope under the arm's pattern name, exactly like a
+  literal dispatch's catch-all binding.
 
 ## The `?` Operator
 
@@ -327,7 +405,7 @@ construction is intrinsic -- so it works in every world, including
 ### JSON Literals
 
 Object and array literals produce `Json` values. The compiler knows
-`Json = String` intrinsically and the loader pulls in `canon/std/Json`
+`Json = String` intrinsically and the loader pulls in `canon/Json`
 the moment a program uses its machinery (interpolation, the validating
 constructor, or the `Encoded` family).
 

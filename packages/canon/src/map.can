@@ -1,0 +1,90 @@
+Contains = Bool
+
+Inserted = Map
+
+Key = String
+
+Keys = List<Key>
+
+Length = Int
+
+Map = Empty + Node
+
+Node = Key * Rest * Value
+
+Removed = Map
+
+Rest = Map
+
+Value = String
+
+Values = List<Value>
+
+Map * String => Contains {
+    Map -> Value(String) -> (
+        * None { False() }
+        * Some<Value> { True() }
+    )
+}
+
+Map * String * Value => Inserted {
+    Map -> (
+        * Empty { Empty() -> Node(String * Value) }
+        * Node {
+            String -> Ord(Node.Key) -> (
+                * Equal { Node.Rest -> Node(String * Value) }
+                * Greater { Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value) }
+                * Less { Map -> Node(String * Value) }
+            )
+        }
+    )
+}
+
+Map => Keys {
+    Map -> (
+        * Empty { List() }
+        * Node { List(Node.Key) -> Joined(Node.Rest -> Keys) }
+    )
+}
+
+Map => Length {
+    Map -> (
+        * Empty { 0 }
+        * Node { Node.Rest -> Length -> Sum(1) }
+    )
+}
+
+Unit => Map {
+    Empty()
+}
+
+Map * String => Removed {
+    Map -> (
+        * Empty { Empty() }
+        * Node {
+            Node.Key -> Eq(String) -> (
+                * False { Node.Key -> Node(Node.Rest -> Removed(String) * Node.Value) }
+                * True { Node.Rest }
+            )
+        }
+    )
+}
+
+Map * String => Option<Value> {
+    Map -> (
+        * Empty { None() }
+        * Node {
+            Node.Key -> Eq(String) -> (
+                * False { Node.Rest -> Value(String) }
+                * True { Node.Value -> Some }
+            )
+        }
+    )
+}
+
+Map => Values {
+    Map -> (
+        * Empty { List() }
+        * Node { List(Node.Value) -> Joined(Node.Rest -> Values) }
+    )
+}

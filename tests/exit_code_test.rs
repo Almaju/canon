@@ -1,5 +1,5 @@
 //! Exit-code threading: a Canon program calling
-//! `canon/std/cli`'s `exit` terminates the `canon run` process with
+//! `canon/cli`'s `exit` terminates the `canon run` process with
 //! that code. The stdlib wrapper rides the *real*
 //! `wasi:cli/exit@0.3.0-rc-2026-03-15#exit-with-code` import — the
 //! first narrow-int (u8) WASI binding emitted by the WIT-informed
@@ -25,8 +25,8 @@ fn canon_test_exit_codes() {
 
 Unit => BrokenMath {
     1 -> Sum(2) -> Eq(7) -> (
-        * False => TestResult { Fail("math is broken") }
-        * True => TestResult { Pass() }
+        * False { Fail("math is broken") }
+        * True { Pass() }
     )
 }
 

@@ -4,7 +4,7 @@ Unit => Program {
         * Ok<Int> => Unit { "parsed" -> Print }
     )
     "a" -> Ge("b") -> (
-        * False => Unit { "lt" -> Print }
-        * True => Unit { "ge" -> Print }
+        * False { "lt" -> Print }
+        * True { "ge" -> Print }
     )
 }

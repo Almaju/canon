@@ -44,19 +44,23 @@ directly).
 
 ## Memory Model
 
-Canon has **no garbage collector** and no user-visible ownership
-syntax. The compiler performs Rust-style ownership analysis and lowers
-every value to a concrete linear-memory layout:
+Canon has **no garbage collector** and no user-visible memory
+syntax. Every value lowers to one of two places:
 
 | Source concept | Lowering |
 |---|---|
-| Function parameter | moved or borrowed value in wasm locals |
-| Recursive type | heap cell in the bump heap (auto-boxed) |
-| Shared ownership the analysis can't otherwise prove | reference-counted cell |
+| Scalar (`Int`, `Float`, `Bool`, erased newtypes of them) | wasm locals |
+| Compound (`String`, `List`, product, union, recursive cell) | the **bump heap** |
 
-There are no lifetimes, no `&`/`&mut`, no `Box`/`Rc` in source. If no
-valid ownership scheme exists for a program, that is a compile error,
-reported in Canon terms.
+The bump heap is an arena: allocation moves a pointer forward, nothing
+is freed mid-run, and the whole heap is reclaimed when the instance
+ends (a CLI run, one served HTTP connection). Recursive types are
+boxed into it automatically -- there is no user-visible `Box<T>`.
+There are no lifetimes, no `&`/`&mut`, no `Rc` in source, and no
+program is ever rejected for memory reasons: every checked program
+has a valid lowering. Values are immutable, so the arena model is
+observationally equivalent to precise reclamation -- the trade is
+peak memory during a run, not correctness.
 
 ## Binding Files
 
@@ -158,10 +162,10 @@ has no privileged mechanism:
 - **generated bindings** (under the stdlib's `bindgen/`): raw,
   machine-produced from vendored WASI WIT, regenerated and never
   hand-edited;
-- **curated wrappers** (`canon/std/...`): hand-written Canon presenting
+- **curated wrappers** (`canon/...`): hand-written Canon presenting
   one primary type per file with capability discipline.
 
-Idiomatic code imports only `canon/std/...`. A direct import of a raw
+Idiomatic code imports only `canon/...`. A direct import of a raw
 binding works (everything is public) but gives up the curated naming
 and discipline. Where a `wasi:*` interface isn't yet expressible through
 the canonical ABI, the binding temporarily points at a

@@ -7,7 +7,7 @@ SumIsThree = () => TestResult {
 
 Unit => Program {
     SumIsThree() -> (
-        * Fail => Unit { "fail" -> Print }
-        * Pass => Unit { "pass" -> Print }
+        * Fail { "fail" -> Print }
+        * Pass { "pass" -> Print }
     )
 }

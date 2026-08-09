@@ -14,7 +14,7 @@ only ever reaches the wrappers below.
 
 ## At a Glance
 
-| Module (`canon/std/...`) | Type | Backing binding | Notes |
+| Module (`canon/...`) | Type | Backing binding | Notes |
 |---|---|---|---|
 | `time/Mark` | `Mark = Int` | `wasi/clocks/monotonic_clock` | `Mark()` reads the monotonic clock (nanoseconds) |
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
@@ -25,6 +25,7 @@ only ever reaches the wrappers below.
 | `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
 | `IoError` | `IoError = String` | none | filesystem error newtype |
 | `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
+| `Ord` | `Ord = Equal + Greater + Less` | pure Canon | three-way comparison: `a -> Ord(b)` on `Int^2` / `String^2`, dispatched in one step |
 | `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set -> List` = members, alphabetically |
 | `Bool` | `And`, `Not`, `Or` | pure Canon | boolean algebra by dispatch — the only builtin comparisons are `Eq`/`Lt` |
 | `Int` | `Int = (String) => Result<Int, MalformedInt>`, `Ge`, `Gt`, `Le`, `Ne`, `Maximum`, `Minimum` | pure Canon | the fallible parse constructor (`Int("42")?`) plus derived comparisons |
@@ -53,11 +54,11 @@ only ever reaches the wrappers below.
 Anything not listed is third-party territory: a library to be
 published, or future stdlib work.
 
-Every type name `canon/std` declares is global — a type of the same
+Every type name `canon` declares is global — a type of the same
 name in your own project is a compile error — so the complete set,
 internal helpers included, is worth checking before you name a type.
 That list is the index of the [generated API
-reference](std/index.html), which `canon doc` derives from the
+reference](api/index.html), which `canon doc` derives from the
 stdlib source itself and therefore cannot drift from it. This page is
 the prose the generator has no way to write.
 

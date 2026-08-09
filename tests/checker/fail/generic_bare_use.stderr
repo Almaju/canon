@@ -1,0 +1,3 @@
+error[tests/checker/fail/generic_bare_use.can:3:10]: generic type `Box` requires 1 type argument(s)
+error[tests/checker/fail/generic_bare_use.can:1:1]: `Box` is never used: dead code is not allowed to accumulate; delete it or wire it into the program
+error[tests/checker/fail/generic_bare_use.can:3:1]: `Holder` is never used: dead code is not allowed to accumulate; delete it or wire it into the program

@@ -6,19 +6,19 @@ RenderedItem = Html
 
 Line => Flipped {
     Line -> ByteAt(1) -> Eq(48) -> (
-        * False => Flipped { Line(`0{Line -> Substring(From(2) * Line -> Length -> To)}`) }
-        * True => Flipped { Line(`1{Line -> Substring(From(2) * Line -> Length -> To)}`) }
+        * False { Line(`0{Line -> Substring(From(2) * Line -> Length -> To)}`) }
+        * True { Line(`1{Line -> Substring(From(2) * Line -> Length -> To)}`) }
     )
 }
 
 Int * Line => RenderedItem {
     Line -> ByteAt(1) -> Eq(49) -> (
-        * False => RenderedItem {
+        * False {
             Li(`{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped} {
                 Msg(`Toggle:{Int -> String}`) -> Button("done")
             } {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
         }
-        * True => RenderedItem {
+        * True {
             Li(`<s>{Line -> Substring(From(3) * Line -> Length -> To) -> Escaped}</s> {
                 Msg(`Toggle:{Int -> String}`) -> Button("undo")
             } {Msg(`Delete:{Int -> String}`) -> Button("remove")}`)
