@@ -12,7 +12,7 @@ world-shaped entry, found the same way the entry declaration itself is
 ```text
 my-app/
   src/
-    my-app.can      # declares `Args => Exit` — that shape makes it the entry
+    my-app.can      # declares `Unit => Program` — that shape makes it the entry
     helpers.can
   build/           # compiler output (gitignored)
     my-app.wasm
@@ -84,4 +84,4 @@ canon help                      # all commands
 ```
 
 There is no `canon new`: drop a `.can` file anywhere and `canon run`
-it, or create a `src/main.can` for a real project.
+it, or put your `.can` files under `src/` for a real project.

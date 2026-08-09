@@ -3,9 +3,8 @@
 Create a file named `hello.can`:
 
 ```canon,run
-Args => Exit {
+Unit => Program {
     "hello" -> Print
-    Exit(0)
 }
 ```
 
@@ -24,35 +23,25 @@ hello
 ## Line by Line
 
 ```canon
-Args => Exit {
+Unit => Program {
 ```
 
 This is the entry point, selected by its signature -- no name needed,
 just as an HTTP handler is selected by `Request => Response`. Like every
-arrow in Canon it has the shape `Input => ReturnType { body }`, and the
-CLI entry mirrors the HTTP one: the command's **argument vector flows in
-as `Args`, an exit status flows out as `Exit`**.
-
-`Args` (`= List<String>`, from `canon/std`) is the program's `argv` -- the
-compiler binds it from `wasi:cli/environment`, so you never fetch it, it
-is handed to you. `Exit` (`= Int`) is the exit status; the whole arrow is
-what the compiler lifts as the component's `wasi:cli/run.run` export.
-This program ignores its arguments, but the shape is always there -- the
-same way an HTTP handler names `Request` even when it ignores it. (More
-on entry points in [Programs & Modules](../learn/programs-and-modules.md).)
+arrow in Canon it has the shape `Input => ReturnType { body }`. `Unit`
+is the single-value type, the name of "no input"; `Program` (`= Unit`,
+from `canon/std`) is the CLI world -- the whole arrow is what the
+compiler lifts as the component's `wasi:cli/run.run` export. (More on
+entry points in [Programs & Modules](../learn/programs-and-modules.md).)
 
 ```text
     "hello" -> Print
-    Exit(0)
 }
 ```
 
 `"hello"` is sugar for `String("hello")`. A function body is a sequence
-of expressions separated by newlines; the last one is the return value --
-here `Exit(0)`, a successful exit. `Exit(0)` is success (process exit 0);
-any nonzero `Exit` reports failure. (Nothing to report and no arguments
-to read? The arg-less shorthand `Unit => Program { ... }` still works and
-needs no explicit exit.)
+of expressions separated by newlines; the last one is the return value.
+A `Program` body needs no explicit exit -- reaching the end is success.
 
 `"hello" -> Print` is a pipe call. `Print` takes a single `String`
 component and writes it to stdout:
@@ -65,15 +54,36 @@ There is no `Stdout` capability to thread through. The compiler lowers
 `Print` against the standard `wasi:cli/stdout` interface, so the
 resulting `.wasm` runs on any Component Model host.
 
+## Reading Arguments
+
+A program that reads its argument vector declares the variant entry
+`Args => Exit` -- the command's **argument vector flows in as `Args`,
+an exit status flows out as `Exit`**, mirroring the HTTP entry:
+
+```canon
+Args => Exit {
+    Args
+        -> Length
+        -> String
+        -> Print
+    Exit(0)
+}
+```
+
+`Args` (`= List<String>`, from `canon/std`) is the program's `argv`,
+handed to the entry the way an HTTP handler is handed its `Request`.
+`Exit` (`= Int`) is the exit status: `Exit(0)` is success (process
+exit 0); any nonzero `Exit` reports failure.
+
 ## Try Breaking Things
 
 - **Add a second `-> Print` line.** Each call writes its argument followed
   by a newline.
 - **Add a comment** (`// hi`). The lexer rejects it; comments are not
   allowed.
-- **Drop the `Exit(0)` line.** The body's last expression must match the
-  declared return type (`Exit`), so ending on a `Print` (which yields
-  `Unit`) is a checker error.
+- **Drop the `Exit(0)` line** from the arg-reading variant. The body's
+  last expression must match the declared return type (`Exit`), so ending
+  on a `Print` (which yields `Unit`) is a checker error.
 - **Inspect the compiled component.** `canon build hello.can` writes
   `build/hello/hello.wasm` and a sibling `.wit` describing the
   component's world.
