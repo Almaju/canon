@@ -78,6 +78,7 @@ Page => Content {
         * "multifile" { Multifile() -> Html }
         * "newtypes" { Page -> Tour(Newtypes() -> Html -> Lesson) }
         * "notes-api" { NotesApi() -> Html }
+        * "numerics" { Numerics() -> Html }
         * "ordering" { Ordering() -> Html }
         * "overview" { Overview() -> Html }
         * "philosophy" { Philosophy() -> Html }
@@ -130,6 +131,7 @@ Model => Html {
             {Model.Page -> NavItem(Slug("overview") * Label("Overview"))}
             {Model.Page -> NavItem(Slug("lexical-structure") * Label("Lexical Structure"))}
             {Model.Page -> NavItem(Slug("types") * Label("Types"))}
+            {Model.Page -> NavItem(Slug("numerics") * Label("Numerics"))}
             {Model.Page -> NavItem(Slug("expressions") * Label("Expressions &amp; Dispatch"))}
             {Model.Page -> NavItem(Slug("functions") * Label("Functions"))}
             {Model.Page -> NavItem(Slug("ordering") * Label("Ordering Rules"))}
@@ -262,7 +264,7 @@ Page => Pager {
             }{Slug("validated-constructors") -> Next(Label("Constructors That Check")) -> String}</nav>`)
         }
         * "expressions" {
-            Html(`<nav class="pager">{Slug("types") -> Prev(Label("Types")) -> String}{
+            Html(`<nav class="pager">{Slug("numerics") -> Prev(Label("Numerics")) -> String}{
                 Slug("functions")
                     -> Next(Label("Functions"))
                     -> String
@@ -366,6 +368,13 @@ Page => Pager {
                     -> String
             }{Slug("markdown-web") -> Next(Label("Docs Site in the Browser")) -> String}</nav>`)
         }
+        * "numerics" {
+            Html(`<nav class="pager">{Slug("types") -> Prev(Label("Types")) -> String}{
+                Slug("expressions")
+                    -> Next(Label("Expressions &amp; Dispatch"))
+                    -> String
+            }</nav>`)
+        }
         * "ordering" {
             Html(`<nav class="pager">{Slug("functions") -> Prev(Label("Functions")) -> String}{
                 Slug("modules")
@@ -434,7 +443,7 @@ Page => Pager {
                 Slug("lexical-structure")
                     -> Prev(Label("Lexical Structure"))
                     -> String
-            }{Slug("expressions") -> Next(Label("Expressions &amp; Dispatch")) -> String}</nav>`)
+            }{Slug("numerics") -> Next(Label("Numerics")) -> String}</nav>`)
         }
         * "types-only" {
             Html(`<nav class="pager">{
