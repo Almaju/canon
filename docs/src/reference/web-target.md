@@ -27,7 +27,7 @@ is any user type, `Msg` the message type (`String` today). `Init` and
 `Update = Model`); they exist because `init` and `update` both produce
 the model and would otherwise collide on one constructor key -- the
 markers give each a distinct type. `Html` resolves to
-`canon/std/web/Html` automatically.
+`canon/web/Html` automatically.
 
 Detection is **by shape**: the `view` is the sole `Model => Html` whose
 receiver is a user type (a primitive receiver marks a stdlib
@@ -71,7 +71,7 @@ declarative attributes:
 Payload-carrying messages are plain string composition
 (`"Toggle:" -> Joined(Id -> String)`) decoded by the reducer with
 `Substring`/`ByteAt` -- the same pure-Canon parsing the JSON validator uses.
-`canon/std/web` provides `Button` (renders `data-msg`), `ElAttr` (arbitrary
+`canon/web` provides `Button` (renders `data-msg`), `ElAttr` (arbitrary
 attributes), and `Escaped` (HTML-escapes user content).
 
 There is no virtual DOM: `view` returns the whole page and the host swaps it

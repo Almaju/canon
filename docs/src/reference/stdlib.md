@@ -14,7 +14,7 @@ only ever reaches the wrappers below.
 
 ## At a Glance
 
-| Module (`canon/std/...`) | Type | Backing binding | Notes |
+| Module (`canon/...`) | Type | Backing binding | Notes |
 |---|---|---|---|
 | `time/Mark` | `Mark = Int` | `wasi/clocks/monotonic_clock` | `Mark()` reads the monotonic clock (nanoseconds) |
 | `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
@@ -274,7 +274,7 @@ Unit => Result<Program, MalformedJson> {
 
 ## Reserved Names
 
-Every type name `canon/std` declares is global — a type of the same
+Every type name `canon` declares is global — a type of the same
 name in your own project is a compile error. Check this list before
 naming a type (internal helpers included):
 

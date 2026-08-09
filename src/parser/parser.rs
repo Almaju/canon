@@ -1572,7 +1572,7 @@ fn push_fmt_static(parts: &mut Vec<FormatLitPart>, s: &str) {
 }
 
 /// HTML-escape a string for element text content — the parse-time
-/// equivalent of the stdlib's `text()` (`packages/canon/std/src/web/
+/// equivalent of the stdlib's `text()` (`packages/canon/src/web/
 /// html.can`), applied when a string-literal interpolation is folded
 /// statically.
 fn html_encode_text(s: &str) -> String {

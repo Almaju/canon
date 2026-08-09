@@ -188,7 +188,7 @@ fn loader_resolves_use_against_installed_bindgen() {
     // We stand up that exact shape on disk and assert that
     // `loader::load_module` resolves the `use` line against the
     // installed binding file.
-    // A uniquely-named WIT package (not one the bundled `canon/std`
+    // A uniquely-named WIT package (not one the bundled `canon`
     // already provides) so a bare reference resolves to the project's
     // `bindgen/` without colliding with the standard library.
     let root = tmpdir("loader_uses_bindgen");

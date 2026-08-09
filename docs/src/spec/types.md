@@ -179,7 +179,7 @@ Value = Int
 
 There is no user-visible `Box<T>`; the compiler chooses the indirection.
 
-The stdlib's `Map` and `Set` (`canon/std/Map`, `canon/std/Set`) are
+The stdlib's `Map` and `Set` (`canon/Map`, `canon/Set`) are
 recursive unions in exactly this shape -- `Map = Empty + Node` with
 `Node = Key * Rest * Value` and `Rest = Map` -- and double as reference
 code for the pattern.
@@ -274,7 +274,7 @@ Two escape hatches exist, both deliberate:
   `-> Appended(...)`.
 - A type may declare its own nullary [validated
   constructor](#validated-constructors): `Unit => Map { Empty() }`
-  in `canon/std/Map` makes `Map()` the empty map.
+  in `canon/Map` makes `Map()` the empty map.
 
 ## No Type Inference
 

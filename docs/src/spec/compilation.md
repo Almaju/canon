@@ -158,10 +158,10 @@ has no privileged mechanism:
 - **generated bindings** (under the stdlib's `bindgen/`): raw,
   machine-produced from vendored WASI WIT, regenerated and never
   hand-edited;
-- **curated wrappers** (`canon/std/...`): hand-written Canon presenting
+- **curated wrappers** (`canon/...`): hand-written Canon presenting
   one primary type per file with capability discipline.
 
-Idiomatic code imports only `canon/std/...`. A direct import of a raw
+Idiomatic code imports only `canon/...`. A direct import of a raw
 binding works (everything is public) but gives up the curated naming
 and discipline. Where a `wasi:*` interface isn't yet expressible through
 the canonical ABI, the binding temporarily points at a

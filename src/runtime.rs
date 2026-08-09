@@ -13,7 +13,7 @@
 //! filesystem, float formatting) or extern/async-ABI test fixtures —
 //! string processing that used to live here (URL validation, JSON
 //! escaping / field extraction / decoding, RFC-3339 formatting, case
-//! mapping) is pure Canon in `canon/std` now.
+//! mapping) is pure Canon in `canon` now.
 
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
@@ -98,7 +98,7 @@ impl WasiHttpHooks for CanonHttpHooks {
             Err(ErrorCode::InternalError(Some(
                 "wasi:http/client outbound requests are not routed by the \
                  Canon runtime yet: use `canon:builtins/http` (via \
-                 `canon/std/Url`) for now"
+                 `canon/Url`) for now"
                     .to_string(),
             ))
             .into())
@@ -609,7 +609,7 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
 ///
 /// `min` survives only as the extern-binding test fixture (the `deps/`
 /// resolution tests and `tests/runtime/extern.can` import it) — real
-/// integer `Minimum` / `Maximum` are pure Canon in `canon/std/int.can`.
+/// integer `Minimum` / `Maximum` are pure Canon in `canon/int.can`.
 mod host_builtins {
     use super::State;
     use wasmtime::component::{HasSelf, Linker};
@@ -639,7 +639,7 @@ mod host_builtins {
 }
 
 /// `canon:builtins/string` — async host echoes. String *transforms*
-/// (case mapping, escaping) are pure Canon in `canon/std` now; the two
+/// (case mapping, escaping) are pure Canon in `canon` now; the two
 /// functions left here exist only to exercise the guest-side async
 /// canonical-ABI call sequence from tests.
 mod host_builtin_string {
@@ -834,7 +834,7 @@ mod host_builtin_http {
 /// `canon:builtins/json` — the one JSON builder Canon can't express:
 /// float formatting. Everything else (validation, escaping, field
 /// extraction, string decoding, int/bool rendering) is pure Canon in
-/// `canon/std/json.can` now. Shortest-round-trip decimal rendering of an
+/// `canon/json.can` now. Shortest-round-trip decimal rendering of an
 /// f64 is genuinely numeric machinery (Grisu/Ryū territory), so it stays
 /// a host bridge.
 mod host_builtin_json {

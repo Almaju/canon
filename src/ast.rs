@@ -344,7 +344,7 @@ pub enum EntryWorld {
 /// | `Program`, `Unit` (and `Result<…, _>` of either)   | Cli   |
 /// | `Response` (and `Result<Response, _>`)             | Http  |
 ///
-/// `Program` (`= Unit`, from `canon/std`) is the CLI world type — the
+/// `Program` (`= Unit`, from `canon`) is the CLI world type — the
 /// one entry is `Unit => Program`, matching the ABI: `wasi:cli/run.run`
 /// takes nothing (argv is fetched with the stdlib's `Args()`) and
 /// reports only success/failure (an exact code is `Exited(n)`). `Unit`
@@ -777,7 +777,7 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("Quotient", "div"),
     ("Remainder", "rem"),
     // Comparison — the two base predicates (wasm numerics). The derived
-    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon/std`
+    // comparisons (`Ne`/`Le`/`Gt`/`Ge`) are pure Canon in `canon`
     // (`int.can`/`float.can`/`string.can`), one dispatch over `Lt`/`Eq`.
     ("Eq", "eq"),
     ("Lt", "lt"),

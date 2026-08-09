@@ -268,7 +268,7 @@ fn single_string_body(block: &Block) -> Option<String> {
 // Bundled packages
 // ---------------------------------------------------------------------------
 //
-// The shipped packages (`canon/std`, `canon/wasi`, …) are baked into the
+// The shipped packages (`canon`, `canon/wasi`, …) are baked into the
 // compiler binary at build time by `build.rs`, which walks `packages/` and
 // emits a flat registry as `bundled_packages.rs`. The registry replaces what
 // used to be hand-maintained `STDLIB` and `WASI_BINDINGS` arrays — drop a new
@@ -277,7 +277,7 @@ fn single_string_body(block: &Block) -> Option<String> {
 /// One package shipped with the compiler.
 #[derive(Debug, Clone, Copy)]
 pub struct BundledPackage {
-    /// Canonical name, e.g. `"canon/std"`, derived from the package's
+    /// Canonical name, e.g. `"canon"` (the stdlib) or `"acme/http-kit"`, derived from the package's
     /// directory path under `packages/<namespace>/<package>/`.
     pub name: &'static str,
     /// Every `.can` file under the package root, sorted alphabetically by
@@ -302,7 +302,7 @@ pub struct BundledFile {
 
 include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
 
-/// Find a bundled package by its canonical name (`"canon/std"`).
+/// Find a bundled package by its canonical name (`"canon"`).
 pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
     BUNDLED_PACKAGES.iter().find(|p| p.name == name)
 }
@@ -312,7 +312,7 @@ pub fn bundled_file(pkg: &BundledPackage, rel_path: &str) -> Option<&'static Bun
     pkg.files.iter().find(|f| f.path == rel_path)
 }
 
-/// Resolve a package path (`a/b/c/…/Z`, e.g. `canon/std/Json`) against
+/// Resolve a package path (`a/b/c/…/Z`, e.g. `canon/Json`) against
 /// the bundled packages. Only the JSON prelude and tooling use this
 /// path-shaped lookup now — ordinary references resolve by name via
 /// `bundled_decl_matches`.
@@ -327,18 +327,27 @@ pub fn resolve_bundled_use(
     use_path: &str,
 ) -> Option<(&'static BundledPackage, &'static BundledFile)> {
     // Two-segment package prefix: `<namespace>/<package>`.
-    let segments: Vec<&str> = use_path.split('/').collect();
-    if segments.len() < 3 {
-        // Need at least `<ns>/<pkg>/<something>` to be a package import.
+    // Longest bundled-package name that is a proper prefix of the path
+    // (`canon/Json` → package `canon`; `canon/wasi/clocks/…` would prefer
+    // a `canon/wasi` package over `canon` if both existed).
+    let (pkg, rest_str) = BUNDLED_PACKAGES
+        .iter()
+        .filter_map(|p| {
+            use_path
+                .strip_prefix(p.name)
+                .and_then(|r| r.strip_prefix('/'))
+                .map(|r| (p, r))
+        })
+        .max_by_key(|(p, _)| p.name.len())?;
+    if rest_str.is_empty() {
         return None;
     }
-    let package_name = format!("{}/{}", segments[0], segments[1]);
-    let pkg = bundled_package(&package_name)?;
 
     // Walk the remaining segments. Intermediate ones are directory names
     // (kept as-is, no case translation); the final segment is the type or
     // file name and gets kebab-cased before we append `.can`.
-    let rest = &segments[2..];
+    let segments: Vec<&str> = rest_str.split('/').collect();
+    let rest = &segments[..];
     let (last, dirs) = rest.split_last()?;
     let mut rel = String::new();
     for d in dirs {
@@ -603,7 +612,7 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usiz
 }
 
 /// Int prelude: the fallible parse constructor `Int(String) ->
-/// Result<Int, MalformedInt>` lives in `canon/std/Int` (pure Canon),
+/// Result<Int, MalformedInt>` lives in `canon/Int` (pure Canon),
 /// but the name `Int` is undiscoverable — it appears in virtually
 /// every program as the builtin type. Mirror of the JSON prelude:
 /// load the stdlib module only when the program actually reaches for
@@ -620,7 +629,7 @@ fn inject_int_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
     if already_in_scope || !items_use_int_parse(other_items) {
         return Ok(());
     }
-    let Some((pkg, file)) = resolve_bundled_use("canon/std/Int") else {
+    let Some((pkg, file)) = resolve_bundled_use("canon/Int") else {
         return Ok(());
     };
     let key = format!("{}/{}", pkg.name, file.path);
@@ -633,7 +642,7 @@ fn inject_int_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
 /// String prelude: the `String` constructor family — `Bool => String`,
 /// `Float => String`, `Int => String`, the decimal renderers behind
 /// `Print`, `-> String` conversions, and format-string holes — lives
-/// in `canon/std/String` (pure Canon). The name `String` is
+/// in `canon/String` (pure Canon). The name `String` is
 /// undiscoverable for the same reason `Int` is (it appears in
 /// virtually every program as the builtin type), and a `Print` call or
 /// format hole names nothing the loader can see at all, so — mirror of
@@ -648,7 +657,7 @@ fn inject_string_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> 
     if already_in_scope || !items_use_rendering(other_items) {
         return Ok(());
     }
-    let Some((pkg, file)) = resolve_bundled_use("canon/std/String") else {
+    let Some((pkg, file)) = resolve_bundled_use("canon/String") else {
         return Ok(());
     };
     let key = format!("{}/{}", pkg.name, file.path);
@@ -751,7 +760,7 @@ fn expr_uses_int_parse(expr: &Expr) -> bool {
     }
 }
 
-/// JSON prelude: `canon/std/Json` loads automatically — like Rust's
+/// JSON prelude: `canon/Json` loads automatically — like Rust's
 /// prelude, JSON support doesn't need an explicit import. A fully static
 /// JSON literal is constant-folded and needs nothing at all (the checker
 /// knows `Json = String` intrinsically), so the stdlib module is pulled
@@ -770,7 +779,7 @@ fn inject_json_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
     if already_in_scope || !items_use_json_machinery(other_items) {
         return Ok(());
     }
-    let Some((pkg, file)) = resolve_bundled_use("canon/std/Json") else {
+    let Some((pkg, file)) = resolve_bundled_use("canon/Json") else {
         return Ok(());
     };
     let key = format!("{}/{}", pkg.name, file.path);
@@ -787,7 +796,7 @@ fn items_use_json_machinery(items: &[Item]) -> bool {
     })
 }
 
-/// HTML prelude: `canon/std/web/Html` loads automatically, mirroring
+/// HTML prelude: `canon/web/Html` loads automatically, mirroring
 /// the JSON prelude. A fully static HTML literal is constant-folded and
 /// needs nothing at all (the checker knows `Html = String`
 /// intrinsically), so the stdlib module is pulled in only when a
@@ -807,7 +816,7 @@ fn inject_html_prelude(other_items: &[Item], ctx: &mut LoadCtx) -> Result<()> {
     if already_in_scope || !items_use_html_machinery(other_items) {
         return Ok(());
     }
-    let Some((pkg, file)) = resolve_bundled_use("canon/std/web/Html") else {
+    let Some((pkg, file)) = resolve_bundled_use("canon/web/Html") else {
         return Ok(());
     };
     let key = format!("{}/{}", pkg.name, file.path);
@@ -928,7 +937,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 //      `bindgen/`, `target/`, and hidden directories;
 //   2. the project's `bindgen/` tree, by declared name;
 //   3. the project's `deps/` tree (vendored packages), by declared name;
-//   4. the bundled packages (`canon/std`), by declared name.
+//   4. the bundled packages (`canon`), by declared name.
 //
 // The non-local roots are *declaration-indexed* rather than
 // filename-matched because binding files declare functions whose names
@@ -945,7 +954,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 /// `Json` alias (the JSON prelude decides when the stdlib machinery is
 /// actually needed — see `inject_json_prelude`).
 // NOTE: `Map` and `Set` are deliberately NOT here — they are ordinary
-// pure-Canon stdlib modules (`canon/std/{map,set}.can`), so referencing
+// pure-Canon stdlib modules (`canon/{map,set}.can`), so referencing
 // either name loads its file like any other stdlib type. `Int` IS here
 // (it appears in virtually every program as the builtin type), so the
 // stdlib parse constructor `Int(String)` loads through
@@ -1801,7 +1810,7 @@ fn discover_bundled_references(
 ///
 /// So `Notes()` is the document and `Notes() -> Html` renders it — the
 /// markdown lives in the `.md` file, never in a `.can` string literal.
-/// The `= Markdown` alias pulls in `canon/std`'s renderer automatically.
+/// The `= Markdown` alias pulls in `canon`'s renderer automatically.
 fn markdown_asset_source(path: &Path, content: &str) -> String {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Doc");
     let name = crate::bindgen::naming::kebab_to_pascal(stem);
