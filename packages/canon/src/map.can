@@ -31,16 +31,12 @@ Map * String * Value => Inserted {
     Map -> (
         * Empty => Inserted { Empty() -> Node(String * Value) }
         * Node => Inserted {
-            String -> Lt(Node.Key) -> (
-                * False => Inserted {
-                    String -> Eq(Node.Key) -> (
-                        * False => Inserted {
-                            Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value)
-                        }
-                        * True => Inserted { Node.Rest -> Node(String * Value) }
-                    )
+            String -> Ord(Node.Key) -> (
+                * Equal => Inserted { Node.Rest -> Node(String * Value) }
+                * Greater => Inserted {
+                    Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value)
                 }
-                * True => Inserted { Map -> Node(String * Value) }
+                * Less => Inserted { Map -> Node(String * Value) }
             )
         }
     )
