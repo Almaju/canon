@@ -1437,7 +1437,7 @@ fn name_decl_profile(source: &str, name: &str) -> Option<NameDeclProfile> {
         match item {
             Item::TypeDef(td) if td.name.name == name => {
                 declares = true;
-                type_bodies.push(crate::ast::type_expr_canonical(&td.body));
+                type_bodies.push(crate::ast::type_def_canonical(td));
             }
             Item::Function(f) if f.name.name == name => declares = true,
             _ => {}

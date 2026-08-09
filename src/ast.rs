@@ -641,6 +641,115 @@ pub fn type_expr_canonical(ty: &TypeExpr) -> String {
     }
 }
 
+/// Substitute type parameters by name throughout a type expression.
+/// `Named` references with no arguments are replaced by their mapped
+/// expression; arguments substitute recursively (`T<X>` is a checker
+/// error, so an applied head is never itself a parameter). A nested
+/// function type's own generic parameters shadow the mapping.
+pub fn substitute_type_params(
+    ty: &TypeExpr,
+    map: &std::collections::HashMap<String, TypeExpr>,
+) -> TypeExpr {
+    match ty {
+        TypeExpr::Named {
+            name,
+            generics,
+            span,
+        } => {
+            if generics.is_empty() {
+                if let Some(replacement) = map.get(name) {
+                    return replacement.clone();
+                }
+                ty.clone()
+            } else {
+                TypeExpr::Named {
+                    name: name.clone(),
+                    generics: generics
+                        .iter()
+                        .map(|g| substitute_type_params(g, map))
+                        .collect(),
+                    span: *span,
+                }
+            }
+        }
+        TypeExpr::Union { variants, span } => TypeExpr::Union {
+            variants: variants
+                .iter()
+                .map(|v| substitute_type_params(v, map))
+                .collect(),
+            span: *span,
+        },
+        TypeExpr::Product { fields, span } => TypeExpr::Product {
+            fields: fields
+                .iter()
+                .map(|f| substitute_type_params(f, map))
+                .collect(),
+            span: *span,
+        },
+        TypeExpr::Repeat { ty, count, span } => TypeExpr::Repeat {
+            ty: Box::new(substitute_type_params(ty, map)),
+            count: *count,
+            span: *span,
+        },
+        TypeExpr::Spread { ty, span } => TypeExpr::Spread {
+            ty: Box::new(substitute_type_params(ty, map)),
+            span: *span,
+        },
+        TypeExpr::Function {
+            generic_params,
+            params,
+            return_ty,
+            span,
+        } => {
+            let mut inner = map.clone();
+            for g in generic_params {
+                inner.remove(&g.name.name);
+            }
+            TypeExpr::Function {
+                generic_params: generic_params.clone(),
+                params: params
+                    .iter()
+                    .map(|p| substitute_type_params(p, &inner))
+                    .collect(),
+                return_ty: Box::new(substitute_type_params(return_ty, &inner)),
+                span: *span,
+            }
+        }
+    }
+}
+
+/// Canonical spelling of a whole type definition, declaration-side
+/// parameters included. Parameter names are normalized positionally
+/// (`Map<K, V> = Node<K, V>` and `Map<A, B> = Node<A, B>` spell the
+/// same type; a bound stays part of the identity), so the structural
+/// merge compares what the definition means, not what its binders are
+/// called. A parameter-free definition spells exactly as its body,
+/// keeping every existing merge unchanged.
+pub fn type_def_canonical(td: &TypeDef) -> String {
+    if td.generic_params.is_empty() {
+        return type_expr_canonical(&td.body);
+    }
+    let mut map = std::collections::HashMap::new();
+    let mut binders: Vec<String> = Vec::new();
+    for (i, g) in td.generic_params.iter().enumerate() {
+        let positional = format!("${}", i + 1);
+        match &g.bound {
+            Some(b) => binders.push(format!("{}: {}", positional, type_expr_canonical(b))),
+            None => binders.push(positional.clone()),
+        }
+        map.insert(
+            g.name.name.clone(),
+            TypeExpr::Named {
+                name: positional,
+                generics: Vec::new(),
+                span: g.span,
+            },
+        );
+    }
+    let body = substitute_type_params(&td.body, &map);
+    format!("<{}> {}", binders.join(", "), type_expr_canonical(&body))
+}
+
 /// The PascalCase pipe/vocabulary spelling of a compiler builtin
 /// method → its canonical (camelCase) implementation name. This is the
 /// types-only surface for operations the compiler owns: `x -> Print`,

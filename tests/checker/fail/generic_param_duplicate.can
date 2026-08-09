@@ -1,0 +1,5 @@
+Pair<T, T> = List<T>
+
+Unit => Program {
+    "hi" -> Print
+}

@@ -1,0 +1,5 @@
+error[tests/checker/fail/generic_uninstantiable.can:3:9]: generic type instantiation is not implemented yet: `Box` cannot be applied to concrete types
+error[tests/checker/fail/generic_uninstantiable.can:5:10]: generic type `Box` requires 1 type argument(s)
+error[tests/checker/fail/generic_uninstantiable.can:1:1]: `Box` is never used: dead code is not allowed to accumulate; delete it or wire it into the program
+error[tests/checker/fail/generic_uninstantiable.can:3:1]: `Boxed` is never used: dead code is not allowed to accumulate; delete it or wire it into the program
+error[tests/checker/fail/generic_uninstantiable.can:5:1]: `Holder` is never used: dead code is not allowed to accumulate; delete it or wire it into the program
