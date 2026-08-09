@@ -1,19 +1,18 @@
 # args-echo
 
-The canonical CLI entry shape, `Args => Exit`: the command's argument
-vector flows in as `Args` (`List<String>`, bound by the compiler from
-`wasi:cli/environment`), and an exit status flows out as `Exit`
-(`= Int`) — the mirror of the HTTP world's `Request => Response`.
+Reading the argument vector. The entry takes no input — at the ABI
+level `wasi:cli/run.run` passes none — so argv is fetched, not
+received: `Args()` (`= List<String>`, from `canon/std`) reads it via
+`wasi:cli/environment`.
 
 ```canon
-Args => Exit {
-    Args
+Unit => Program {
+    Args()
         -> Length
         -> Print
-    Args
+    Args()
         -> Json
         -> Print
-    0 -> Exit
 }
 ```
 
@@ -25,6 +24,6 @@ canon run examples/args-echo one two three
 # [one,two,three]
 ```
 
-With no arguments the vector is empty (`0` and `[]`). `Exit(0)` reports
-success (process exit 0); any nonzero `Exit` reports failure (exit 1).
-For an exact nonzero exit code, use `Exited(n)`.
+With no arguments the vector is empty (`0` and `[]`). Reaching the end
+of the body is success (process exit 0); an exact exit code is
+`Exited(n)`.

@@ -33,7 +33,7 @@ world:
 
 | Entry signature | World | Export |
 |---|---|---|
-| `Unit => Program` (also `Args => Exit`) | `wasi:cli/command` | `wasi:cli/run.run` |
+| `Unit => Program` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response` | `wasi:http/service` | `wasi:http/handler.handle` |
 | `Model => Html` triple (+ `Unit => Init`, `Model * Msg => Update`) | browser ([web target](../reference/web-target.md)) | core module + JS host |
 

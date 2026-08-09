@@ -1,5 +1,3 @@
-Exit = Int
-
 Exited = Unit
 
 Int => Exited {

@@ -130,13 +130,13 @@ fn component_has_a_memory_provider_and_a_program() {
 #[test]
 fn program_imports_stay_within_the_browser_host() {
     let hosted: BTreeSet<&str> = HOSTED.iter().copied().collect();
-    // Both CLI entry shapes: `Unit => Program` prints and nothing else,
-    // while `Args => Exit` also reaches for arguments, the working
-    // directory and the exit code. The third encodes a float, the one
-    // thing JSON still needs a host for.
+    // Three programs: the first prints and nothing else, the second
+    // also reaches for arguments (`Args()`) and the exit code
+    // (`Exited`). The third encodes a float, the one thing JSON still
+    // needs a host for.
     let sources = [
         "Unit => Program {\n    \"hi\" -> Print\n}\n",
-        "Args => Exit {\n    1 -> Sum(2) -> String -> Print\n    Exit(0)\n}\n",
+        "Unit => Program {\n    Args() -> Length -> Print\n    Exited(0)\n}\n",
         "Unit => Program {\n    1.5 -> Encoded -> String -> Print\n}\n",
     ];
     for source in sources {
