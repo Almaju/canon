@@ -17,8 +17,8 @@ vocabulary needs no coordination: `map.can` and `set.can` both declare
 
 ## Projects Are Directories
 
-There is no manifest. A directory with `src/main.can` is a package
-(named after the directory); a directory of packages is a workspace;
+There is no manifest. A directory with `.can` files under `src/` is a
+package (named after the directory); a directory of packages is a workspace;
 WIT files under `wit/` are external imports; vendored packages under
 `deps/<ns>/<name>@<version>/` are dependencies, pinned by their
 directory name.
@@ -26,7 +26,7 @@ directory name.
 ```text
 my-app/
   src/
-    main.can       # entry point — this file makes the directory a package
+    main.can       # entry point — found by its shape, not its name
     invoice.can    # declares Invoice; referenced, never imported
   build/           # compiler output
 ```
@@ -43,7 +43,7 @@ entry:
 
 | You write | You get |
 |---|---|
-| `Args => Exit` (or `Unit => Program`) | a CLI command (`wasi:cli/command`) |
+| `Unit => Program` (or `Args => Exit`) | a CLI command (`wasi:cli/command`) |
 | `Request => Response` | an HTTP service (`wasi:http/service`) |
 | `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app (wasm + generated JS host) |
 

@@ -217,5 +217,5 @@ fix ordering errors — never by hand.
 
 ## …start a project?
 
-A directory with `src/main.can` is a package; there is nothing else to
-set up.
+A directory with `.can` files under `src/` is a package — the entry
+file is found by its shape; there is nothing else to set up.

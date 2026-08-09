@@ -136,7 +136,8 @@ Canon has none:
   (`http-server.can` ⇄ `HttpServer`), so a reference *is* an import:
   mentioning a name loads its file, and the same rule reaches the
   standard library. Ambiguity is a hard error, not a shadowing rule.
-- **No manifest.** A directory with `src/main.can` is a package; a
+- **No manifest.** A directory with `.can` files under `src/` is a
+  package (its entry file found by shape, like the entry itself); a
   directory of packages is a workspace; a WIT file under `wit/` is an
   external import; a vendored directory under `deps/` is a dependency,
   and its name is the version pin. There is no `canon.toml` and no
