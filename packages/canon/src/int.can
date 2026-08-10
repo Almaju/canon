@@ -16,8 +16,6 @@ Ne = Bool
 
 Negated = Int
 
-OtherInt = Int
-
 Int * Pos * String => Result<Digits, MalformedInt> {
     Pos -> Gt(String -> Length) -> (
         * False {
@@ -35,15 +33,15 @@ Int * Pos * String => Result<Digits, MalformedInt> {
     )
 }
 
-Int * OtherInt => Ge {
-    OtherInt -> Lt(Int) -> (
-        * False { Int -> Eq(OtherInt) }
+Int^2 => Ge {
+    Int.2 -> Lt(Int.1) -> (
+        * False { Int.1 -> Eq(Int.2) }
         * True { True() }
     )
 }
 
-Int * OtherInt => Gt {
-    OtherInt -> Lt(Int)
+Int^2 => Gt {
+    Int.2 -> Lt(Int.1)
 }
 
 String => Result<Int, MalformedInt> {
@@ -65,29 +63,29 @@ Int => IsIntDigit {
     )
 }
 
-Int * OtherInt => Le {
-    Int -> Lt(OtherInt) -> (
-        * False { Int -> Eq(OtherInt) }
+Int^2 => Le {
+    Int.1 -> Lt(Int.2) -> (
+        * False { Int.1 -> Eq(Int.2) }
         * True { True() }
     )
 }
 
-Int * OtherInt => Maximum {
-    Int -> Lt(OtherInt) -> (
-        * False { Int }
-        * True { OtherInt }
+Int^2 => Maximum {
+    Int.1 -> Lt(Int.2) -> (
+        * False { Int.1 }
+        * True { Int.2 }
     )
 }
 
-Int * OtherInt => Minimum {
-    Int -> Lt(OtherInt) -> (
-        * False { OtherInt }
-        * True { Int }
+Int^2 => Minimum {
+    Int.1 -> Lt(Int.2) -> (
+        * False { Int.2 }
+        * True { Int.1 }
     )
 }
 
-Int * OtherInt => Ne {
-    Int -> Eq(OtherInt) -> (
+Int^2 => Ne {
+    Int.1 -> Eq(Int.2) -> (
         * False { True() }
         * True { False() }
     )

@@ -50,6 +50,14 @@ comparisons (`i64.eq`/`i64.lt_s`, `f64.eq`/`f64.lt`). Everything else
 stdlib, one dispatch over the base pair, and `le`/`ge` is the one
 spelling — there is no `lte`/`gte`.
 
+Each is declared over a **repeated input** (`Int^2 => Gt`, reached as
+`Int.1` / `Int.2`), because operand position is meaning: `a -> Gt(b)`
+must be `a > b`, and the receiver is `.1`. That is the spelling
+[Functions § The Binding Rule](./functions.md#the-binding-rule)
+prescribes when order is the honest semantic — a two-component product
+of a type and a newtype of it would instead invite binding by type,
+which for an operator is exactly wrong.
+
 On `Float` the predicates are IEEE: `NaN` compares false to
 everything, itself included, so `x -> Eq(x)` is the idiomatic NaN
 test's negation and `Ord` on floats does not exist — a total order

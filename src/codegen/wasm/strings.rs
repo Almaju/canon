@@ -224,6 +224,12 @@ pub(super) struct FuncInfo {
     pub(super) param_components: Vec<String>,
     pub(super) type_idx: u32,
     pub(super) result_ty: Ty,
+    /// The callee's declared input components, by type name, in
+    /// parameter order — the receiver first when it is a runtime value
+    /// (a `Self`-renamed constructor's receiver is a type marker, so it
+    /// contributes nothing). Call sites bind their inputs to these by
+    /// type rather than by position; see `commutative_order`.
+    pub(super) input_types: Vec<String>,
     /// `Some(shape)` when this is an `extern Wasm` whose canonical-ABI
     /// lowering uses indirect return. Call sites allocate a return area,
     /// pass its pointer as an extra last arg, and decode the result

@@ -1,15 +1,39 @@
+Cursor = Int
+
 Greeted = Greeting
 
 Greeting = String
 
 Name = String
 
+Scanned = Int
+
+Text = String
+
 Greeting * Name => Greeted {
-    Greeting
+    `greeting={Greeting.String} name={Name.String}`
+}
+
+Cursor * Text => Scanned {
+    Cursor -> Gt(Text -> Length) -> (
+        * False { Text -> Scanned(Cursor -> Sum(1) -> Cursor) -> Sum(1) }
+        * True { 0 }
+    )
 }
 
 Unit => Program {
-    Greeting("hello") -> Greeted(Name("world"))
-    Name("world") -> Greeted(Greeting("hello"))
-    "commutative calling works" -> Print
+    Greeting("hello")
+        -> Greeted(Name("world"))
+        -> Print
+    Name("world")
+        -> Greeted(Greeting("hello"))
+        -> Print
+    Cursor(1)
+        -> Scanned(Text("abcde"))
+        -> String
+        -> Print
+    Text("abcde")
+        -> Scanned(Cursor(1))
+        -> String
+        -> Print
 }

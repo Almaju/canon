@@ -158,7 +158,10 @@ Int * String => FenceBody {
                         * True {
                             `{
                                 String
-                                    -> Substring(Int -> From * Int -> LineEnd(String) -> Difference(1) -> To)
+                                    -> Substring(
+                                        Int -> From
+                                        * Int -> LineEnd(String) -> Difference(1) -> To
+                                    )
                                     -> Escaped
                             }\n{Int -> LineEnd(String) -> Sum(1) -> FenceBody(String)}`
                         }
@@ -269,7 +272,10 @@ Int * String => Inline {
                                                 * True {
                                                     `<a href="{
                                                         String
-                                                            -> Substring(Int -> Sum(1) -> BracketClose(String) -> Sum(2) -> From * Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Difference(1) -> To)
+                                                            -> Substring(
+                                                                Int -> Sum(1) -> BracketClose(String) -> Sum(2) -> From
+                                                                * Int -> Sum(1) -> BracketClose(String) -> Sum(1) -> ParenClose(String) -> Difference(1) -> To
+                                                            )
                                                             -> Escaped
                                                     }">{
                                                         1
@@ -337,7 +343,10 @@ Int * String => Inline {
                 * True {
                     `<code>{
                         String
-                            -> Substring(Int -> Sum(1) -> From * Int -> Sum(1) -> TickClose(String) -> Difference(1) -> To)
+                            -> Substring(
+                                Int -> Sum(1) -> From
+                                * Int -> Sum(1) -> TickClose(String) -> Difference(1) -> To
+                            )
                             -> Escaped
                     }</code>{Int -> Sum(1) -> TickClose(String) -> Sum(1) -> Inline(String)}`
                 }

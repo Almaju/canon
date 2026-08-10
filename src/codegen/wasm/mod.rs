@@ -43,8 +43,8 @@ mod ty;
 mod web;
 
 use extern_imports::{
-    classify_return, collect_extern_imports, is_self_ctor, ExternImport, IndirectReturnShape,
-    ParamKind,
+    classify_return, collect_extern_imports, func_input_types, is_self_ctor, ExternImport,
+    IndirectReturnShape, ParamKind,
 };
 use http::generate_http_core_module;
 use strings::{extra_locals_decl, FuncInfo, LocalScope, StringTable};
@@ -590,6 +590,7 @@ impl<'m> WasmGen<'m> {
                 func_idx: ext.func_idx,
                 type_idx,
                 result_ty: surface_result_ty,
+                input_types: func_input_types(func),
                 narrow_params: ext.narrow_params.clone(),
                 narrow_result_signed: ext.narrow_result_signed,
                 indirect_return: ext.indirect_return.clone(),
@@ -680,6 +681,7 @@ impl<'m> WasmGen<'m> {
                     func_idx: idx,
                     type_idx,
                     result_ty,
+                    input_types: func_input_types(func),
                     narrow_params: Vec::new(),
                     narrow_result_signed: None,
                     indirect_return: None,

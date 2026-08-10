@@ -38,7 +38,9 @@ in more than one location fails the build naming every candidate --
 there is no shadowing, so names are globally unique across a project,
 its dependency closure, and the standard library. A name that resolves
 nowhere is left for the checker, which reports the undefined name with
-full type context.
+full type context -- unless a file in the tree *declares* that name
+without being reachable under it, which the loader reports directly:
+the fix is the file's name, not the call site the checker would point at.
 
 A resolved reference brings the type **with its constructor and
 methods** (no wildcards, no aliasing -- there is nothing to write).

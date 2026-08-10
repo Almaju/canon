@@ -121,7 +121,29 @@ pub const CANON_WEB_JS: &str = r#""use strict";
       }
     }
 
+    // ── Render deferral across a pointer interaction ────────────────
+    // `view` returns the whole page and the host swaps it in, so a
+    // render that lands *between* a mousedown and its mouseup destroys
+    // the element the pair was headed for and the browser never fires
+    // `click`. That is exactly the ordering a `data-msg-input` control
+    // produces: its `change` fires on blur, i.e. on the next control's
+    // mousedown. The fold still happens immediately — only the swap
+    // waits, so messages still apply in the order they were sent.
+    let pointerHeld = false;
+    let renderPending = false;
+    for (const ev of ["pointerdown", "pointercancel", "pointerup"]) {
+      document.addEventListener(ev, () => {
+        pointerHeld = ev === "pointerdown";
+        if (pointerHeld) return;
+        // `click` fires after `pointerup`, synchronously; the timeout
+        // lets it run (and render on its own) before the swap.
+        setTimeout(() => { if (renderPending) render(); }, 0);
+      }, true);
+    }
+
     function render() {
+      if (pointerHeld) { renderPending = true; return; }
+      renderPending = false;
       const [ptr, len] = exports.view(model);
       root.innerHTML = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
       // Optional post-render hook: a page can define `canonAfterRender`

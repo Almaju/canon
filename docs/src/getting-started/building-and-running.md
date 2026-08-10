@@ -64,6 +64,11 @@ it rewrites sources into canonical form (spacing, call shape, every
 sort-order rule) and reports whatever it couldn't fix. There is no
 separate formatter command.
 
+A package's `*_test.can` files are checked too, though no reference
+reaches them from the entry: `canon test` holds them to canonical form,
+so `--fix` is what produces it. A test file is a valid target on its own
+(`canon check src/sum_test.can`) — its tests are its entry.
+
 ## Test
 
 ```sh

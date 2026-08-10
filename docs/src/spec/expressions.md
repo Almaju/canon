@@ -38,8 +38,10 @@ always the type.
 
 A call applies one PascalCase name to an input product. The three
 spellings -- `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` -- denote the
-*same* call (the receiver / left value fills the first slot of the input
-product). Since the choice between them is discretionary, the compiler
+*same* call. The receiver is not privileged: it is one component of the
+input product like any other, and which component it is follows from its
+type (see [Commutative Calling](functions.md)), not from where it was
+written. Since the choice between them is discretionary, the compiler
 picks one canonical form and `canon check --fix` rewrites the rest to it,
 backstopped by the checker -- the same instrument that enforces
 alphabetical ordering.
@@ -81,6 +83,27 @@ The full rule, case by case:
   builtins migrate to stdlib newtypes (`Maximum(3 * 5)` already
   constructs).
 - **Zero-input calls stay prefix** -- `Now()`, `Map()`, `None()`.
+- **A wide product argument wraps, one component per line.** A `*`
+  continuation may open a line inside a call's parentheses; the
+  formatter puts it there when the single line would overflow, and
+  leaves it inline when it fits:
+
+  ```text
+  Model.Jobs
+      -> Model(
+          Model.Resume
+          * Model.Stage
+          * Msg -> Payload -> WantedPlace
+      )
+  ```
+
+  The same `* X` opens a dispatch arm, but the two never meet: arms are
+  read from the parenthesis that follows `->` directly, never from an
+  argument list. Without this, a product built from more than a few
+  components had no multi-line spelling at all -- the one place line
+  length was unbounded, which matters most where a model rebuild
+  restates every component and the semantic diff between two arms is a
+  single term.
 - **`List(...)` keeps its elements** -- a list is an ordered sequence, not
   a subject-bearing call, so `List(1 * 2 * 3)` is left as written.
 - **Operand order is positional and never reordered.** The pipe receiver

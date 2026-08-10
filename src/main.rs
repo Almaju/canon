@@ -1,4 +1,4 @@
-use canon::ast::{resolve_new_syntax, FunctionDef, Item, TypeDef, TypeExpr};
+use canon::ast::{is_test_constructor, is_test_newtype, resolve_new_syntax, Item};
 use canon::checker;
 use canon::codegen;
 use canon::error::CanonError;
@@ -926,25 +926,67 @@ fn check_target(target: &Target, fix: bool) -> bool {
 /// and the target is re-loaded so the checker sees what's now on disk.
 /// Whatever the fixer can't repair is then reported as usual.
 fn check_spec(spec: &BuildSpec, fix: bool) -> bool {
-    let Some(mut loaded) = load_or_print(spec.entry_str()) else {
+    // A package's `*_test.can` files are unreachable from its entry, so
+    // the entry pass never sees them. They get their own — `canon test`
+    // enforces canonical form on exactly these files, and `--fix` is the
+    // command that is supposed to produce it.
+    let mut ok = check_file(spec.entry_str(), fix);
+    for test in package_test_files(spec) {
+        ok &= check_file(&test, fix);
+    }
+    if ok {
+        println!("All checks passed.");
+    }
+    ok
+}
+
+/// Load one `.can` entry, repair it in place if `fix`, and check it.
+/// Prints any diagnostics; returns `true` when clean.
+fn check_file(path: &str, fix: bool) -> bool {
+    let Some(mut loaded) = load_or_print(path) else {
         return false;
     };
     if fix && apply_fixes(&loaded) {
-        let Some(reloaded) = load_or_print(spec.entry_str()) else {
+        let Some(reloaded) = load_or_print(path) else {
             return false;
         };
         loaded = reloaded;
     }
     let errors = checker::check_loaded(&loaded);
-    if !errors.is_empty() {
-        for err in &errors {
-            print_error(spec.entry_str(), err);
-        }
-        eprintln!("{} error(s) found.", errors.len());
-        return false;
+    if errors.is_empty() {
+        return true;
     }
-    println!("All checks passed.");
-    true
+    for err in &errors {
+        print_error(path, err);
+    }
+    eprintln!("{} error(s) found.", errors.len());
+    false
+}
+
+/// Every `*_test.can` beside a package's entry file. Empty for a loose
+/// file target: `canon check foo.can` checks the file it was handed.
+fn package_test_files(spec: &BuildSpec) -> Vec<String> {
+    if spec.name.is_empty() {
+        return Vec::new();
+    }
+    let Some(dir) = spec.entry.parent() else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.ends_with("_test.can"))
+        })
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    out.sort();
+    out
 }
 
 /// Load + check one fullstack entry, then confirm the *loaded* module
@@ -1497,30 +1539,6 @@ fn compile_test_file(file_path: &str) -> Option<(usize, Vec<u8>)> {
     }
 
     Some((tests.len(), codegen::generate(&codegen_module(&loaded))))
-}
-
-/// A test's identity is a result newtype of `TestResult` — a plain,
-/// non-generic alias `X = TestResult`. The name is a type name, so it is
-/// checked and sorted like every other name in the language.
-fn is_test_newtype(t: &TypeDef) -> bool {
-    t.generic_params.is_empty()
-        && matches!(
-            &t.body,
-            TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
-        )
-}
-
-/// …and a test's body is the newtype's nullary constructor
-/// (`Unit => X { … }`). After `resolve_new_syntax` a constructor carries
-/// its constructed type as its *receiver* and the name `Self` (the lone
-/// `Unit` input is already stripped to zero params), so discovery is:
-/// a zero-param `Self` constructor whose receiver is a test newtype.
-fn is_test_constructor(f: &FunctionDef, test_types: &HashSet<String>) -> bool {
-    f.name.name == "Self"
-        && f.params.is_empty()
-        && f.receiver
-            .as_ref()
-            .is_some_and(|r| test_types.contains(&r.name))
 }
 
 fn synthesise_test_main(tests: &[String]) -> String {

@@ -1597,20 +1597,7 @@ impl<'m> WasmGen<'m> {
                         args.to_vec()
                     };
                     if let Some(first_ty) = self.infer_ctor_arg_type_name(&flat[0]) {
-                        // The declared param type may sit anywhere on the
-                        // arg's widening chain: the exact name, the
-                        // variant's parent union (`True()` fills a `Bool`
-                        // param), or a newtype's underlying type.
-                        let mut candidates: Vec<String> = vec![first_ty.clone()];
-                        if let Some(parent) = self.variant_parent.get(&first_ty) {
-                            candidates.push(parent.clone());
-                        }
-                        for link in self.collect_alias_chain(&first_ty) {
-                            if !candidates.contains(&link) {
-                                candidates.push(link);
-                            }
-                        }
-                        for cand in candidates {
+                        for cand in self.dispatch_candidates(&first_ty) {
                             let key = (Some(cand), name.to_string());
                             if let Some(info) = self.func_table.get(&key).cloned() {
                                 // Compile the first arg (this becomes the
@@ -1754,16 +1741,7 @@ impl<'m> WasmGen<'m> {
                 receiver, method, ..
             } => {
                 let recv = self.infer_ctor_arg_type_name(receiver)?;
-                let mut cands: Vec<String> = vec![recv.clone()];
-                if let Some(p) = self.variant_parent.get(&recv) {
-                    cands.push(p.clone());
-                }
-                for link in self.collect_alias_chain(&recv) {
-                    if !cands.contains(&link) {
-                        cands.push(link);
-                    }
-                }
-                for c in cands {
+                for c in self.dispatch_candidates(&recv) {
                     if let Some(info) = self.func_table.get(&(Some(c), method.name.clone())) {
                         return match &info.result_ty {
                             Ty::NamedPtr(n) | Ty::NamedStr(n) | Ty::NamedPtrStr(n, _, _) => {
@@ -2271,6 +2249,74 @@ impl<'m> WasmGen<'m> {
             return 1;
         }
         0
+    }
+
+    /// Every type name a value of type `name` can be looked up under, in
+    /// preference order. A declared param type may sit anywhere on the
+    /// value's widening chain: the exact name, the variant's parent
+    /// union (`True()` fills a `Bool` param), or a newtype's underlying
+    /// type (`Port` fills an `Int` one).
+    pub(super) fn dispatch_candidates(&self, name: &str) -> Vec<String> {
+        let mut out = vec![name.to_string()];
+        if let Some(parent) = self.variant_parent.get(name) {
+            out.push(parent.clone());
+        }
+        for link in self.collect_alias_chain(name) {
+            if !out.contains(&link) {
+                out.push(link);
+            }
+        }
+        out
+    }
+
+    /// Order a call's inputs to match the callee's declared components.
+    ///
+    /// Commutative calling lets any component pipe in on the left of
+    /// `->` (`docs/src/spec/functions.md`), so written order is not slot
+    /// order: `Sep(124) -> Tail(text)` and `text -> Tail(Sep(124))` are
+    /// the same call. Binding is by type, so the caller can compile the
+    /// inputs in parameter order.
+    ///
+    /// Only an *exact* type match moves an input. The looser scores
+    /// `build_product_value` falls back on can't be used here: a
+    /// product's fields are distinct newtypes by construction (the
+    /// checker rejects one where written order would decide an untagged
+    /// value's field), but a function's components are not — `Int *
+    /// OtherInt => Gt` would have its two operands bind either way
+    /// round. Anything short of one exact match per component keeps the
+    /// written order, which is what every call compiled as before.
+    ///
+    /// Returns `None` when the callee's components aren't known
+    /// one-per-input, when a component has no exact match, or when the
+    /// written order already is the declaration order.
+    pub(super) fn commutative_order(
+        &self,
+        input_types: &[String],
+        inputs: &[Expr],
+    ) -> Option<Vec<Expr>> {
+        if inputs.len() < 2 || input_types.len() != inputs.len() {
+            return None;
+        }
+        let value_names: Vec<Option<String>> = inputs
+            .iter()
+            .map(|e| self.infer_ctor_arg_type_name(e))
+            .collect();
+        let mut used = vec![false; inputs.len()];
+        let mut order = Vec::with_capacity(input_types.len());
+        for want in input_types {
+            let vi = (0..inputs.len()).find(|&vi| {
+                !used[vi]
+                    && value_names[vi]
+                        .as_ref()
+                        .is_some_and(|nm| self.field_match_score(nm, want) == 2)
+            })?;
+            used[vi] = true;
+            order.push(vi);
+        }
+        if order.iter().enumerate().all(|(i, &vi)| i == vi) {
+            return None;
+        }
+        Some(order.into_iter().map(|vi| inputs[vi].clone()).collect())
     }
 
     pub(super) fn build_product_value(
@@ -2806,6 +2852,31 @@ impl<'m> WasmGen<'m> {
             }
             _ => args,
         };
+
+        // Commutative calling: any component of the callee's input
+        // product may pipe in on the left, so the receiver is not
+        // necessarily the first slot (`Sep(124) -> Tail(text)` and
+        // `text -> Tail(Sep(124))` are one call). Bind the inputs by
+        // type and compile them in parameter order. This must run
+        // *before* the receiver is compiled — once it is on the stack it
+        // occupies slot 0, and a call entered from a later component
+        // pushes its operands against the wrong slots.
+        if !is_builtin_op {
+            if let Some(recv_name) = self.infer_ctor_arg_type_name(receiver) {
+                let hit = self
+                    .dispatch_candidates(&recv_name)
+                    .into_iter()
+                    .find_map(|c| self.func_table.get(&(Some(c), method.to_string())).cloned());
+                if let Some(info) = hit {
+                    let mut inputs = vec![receiver.clone()];
+                    inputs.extend(args.iter().cloned());
+                    if let Some(ordered) = self.commutative_order(&info.input_types, &inputs) {
+                        let _ = self.compile_expr(&ordered[0], scope, f);
+                        return self.emit_func_table_call(&info, &ordered[1..], scope, f);
+                    }
+                }
+            }
+        }
 
         let recv_ty = self.compile_expr(receiver, scope, f);
 

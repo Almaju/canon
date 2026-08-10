@@ -466,7 +466,11 @@ ParseStep * KeyStart * Json * String => Result<KeyParsed, MalformedJson> {
         * ParsePos {
             ParsePos.Int
                 -> AfterWs(Json)
-                -> ColonChecked(Json -> Substring(KeyStart -> Sum(1) -> From * ParsePos.Int -> Difference(2) -> To) -> Eq(String) -> KeyEq * Json * String)
+                -> ColonChecked(
+                    Json -> Substring(KeyStart -> Sum(1) -> From * ParsePos.Int -> Difference(2) -> To) -> Eq(String) -> KeyEq
+                    * Json
+                    * String
+                )
         }
     )
 }
