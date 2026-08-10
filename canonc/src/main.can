@@ -1,14 +1,30 @@
 Counted = Int
 
+Emitted = String
+
+HexByte = String
+
 InToken = Bool
 
 IsSpace = Bool
 
+Nibble = Int
+
+Int => Emitted {
+    Int
+        -> Quotient(16)
+        -> Nibble
+        -> HexByte
+        -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
+}
+
+Nibble => HexByte {
+    "0123456789abcdef" -> Substring(Nibble -> Sum(1) -> From * Nibble -> Sum(1) -> To)
+}
+
 Pos = Int
 
 Scanned = Int
-
-Source = String
 
 Int => IsSpace {
     Int -> Eq(32) -> (
@@ -21,6 +37,8 @@ Int => IsSpace {
         * True { True() }
     )
 }
+
+Source = String
 
 Counted * InToken * Pos * Source => Scanned {
     Pos -> Gt(Source -> Length) -> (
@@ -47,8 +65,10 @@ Counted * InToken * Pos * Source => Scanned {
 }
 
 Unit => Program {
-    Counted(0)
-        -> Scanned(False() -> InToken * Pos(1) * Source("Bool = False + True"))
-        -> String
+    `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
+        Counted(0)
+            -> Scanned(False() -> InToken * Pos(1) * Source("Bool = False + True"))
+            -> Emitted
+    }0b`
         -> Print
 }
