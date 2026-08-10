@@ -2958,6 +2958,20 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 message,
                                 span: *span,
                             });
+                        } else if matches!(recv_terminal, "Option" | "Result") {
+                            // Same hole again: a container is one pointer
+                            // at the value level, so the erasure fallback
+                            // would hand the constructed type the
+                            // container's pointer. The payload has to be
+                            // taken out first.
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`: unwrap it with `?`, or \
+                                     dispatch on it, before constructing",
+                                    method.name, target_scalar, recv_terminal
+                                ),
+                                span: *span,
+                            });
                         }
                     }
                 }
