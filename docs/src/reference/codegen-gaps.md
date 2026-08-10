@@ -34,11 +34,14 @@ bindings.
 An HTTP handler program (`Request => Response`) may import only
 `wasi:http/types`; the `wasi:http/service` world has no host for anything
 else (`Parallel` / `Race` still work — they are compiler builtins emitted
-inline, not imports). The restriction applies to every *loaded* extern, not
-just called ones — codegen links the whole import block — and a JSON
-literal with interpolation holes loads the `canon:builtins/json` bridge, so
-it trips this too. HTML and format-string interpolation lower without a
-bridge and work in handlers.
+inline, not imports). The restriction applies to the externs a handler can
+*reach*: the loader is file-granular, but codegen compiles the reachable
+set, so a binding's unreached siblings are neither linked nor reported. A
+JSON literal with interpolation holes still trips this — a hole lowers
+through the whole `Encoded` family, whose `Float` member is the
+`canon:builtins/json` bridge — while `-> Json` over strings reaches no
+such member and works. HTML and format-string interpolation lower without
+a bridge and work in handlers.
 
 ## `Stream<T>` lowering and streaming response bodies
 
