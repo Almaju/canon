@@ -2873,6 +2873,12 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: *span,
                 });
             } else if is_piped_construction {
+                // The canonical call form pipes the first arg (`A -> B(rest)`
+                // for `B(A * rest)`), so a multi-field product's construction
+                // reaches the checker as a `MethodCall`, not an
+                // `Expr::Constructor` — the receiver fills the first field
+                // slot and `args` (itself flattened the same way a direct
+                // constructor's args are) fills the rest.
                 if let Some(field_types) = symbols.product_fields.get(&method.name) {
                     check_product_construction_arity(
                         &method.name,
