@@ -96,8 +96,46 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
             _ => {}
         }
     }
+    // A generic function is reached through the type it constructs:
+    // `instantiate` is driven by type applications, and a call site
+    // names the instantiation by spelling that type
+    // (`-> Inserted<String, Int>(…)`). So its parameters have to appear
+    // in the constructed type — otherwise nothing can ever bind them,
+    // the schema is never expanded, and the parameters survive into
+    // codegen as an unresolved name. Left unchecked that builds an
+    // invalid module from a program the checker accepted.
+    //
+    // Inference from the argument types would lift this; Milestone A
+    // deliberately deferred it (#201), so for now it is an error rather
+    // than a silent trap.
+    let mut seed_errors: Vec<CanonError> = Vec::new();
+    for (surface, members) in &func_schemas {
+        if type_schemas.contains_key(surface) {
+            continue;
+        }
+        for schema in members {
+            let params: Vec<String> = schema
+                .generic_params
+                .iter()
+                .map(|g| g.name.name.clone())
+                .collect();
+            seed_errors.push(CanonError::CheckError {
+                message: format!(
+                    "`{}` declares type parameter(s) `{}` that its constructed type `{}` \
+                     does not carry: a call site names the instantiation through that type, \
+                     so nothing can bind them — declare `{}<{}>`",
+                    surface,
+                    params.join("`, `"),
+                    surface,
+                    surface,
+                    params.join(", ")
+                ),
+                span: schema.name.span,
+            });
+        }
+    }
     if type_schemas.is_empty() && func_schemas.is_empty() {
-        return Vec::new();
+        return seed_errors;
     }
 
     let mut ex = Expander {
@@ -107,7 +145,7 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
         done: HashSet::new(),
         queue: VecDeque::new(),
         minted: Vec::new(),
-        errors: Vec::new(),
+        errors: seed_errors,
     };
 
     // Roots: every concrete generic application in a non-generic item.
