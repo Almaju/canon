@@ -78,6 +78,14 @@ There is no virtual DOM: `view` returns the whole page and the host swaps it
 in. Focus does not survive a re-render, which is why typing flows through
 `data-msg-form` (read at submit) rather than per-keystroke updates.
 
+The swap waits for a pointer interaction to finish. A `data-msg-input`
+control fires `change` on blur -- that is, on the *next* control's
+mousedown -- so an unguarded re-render would replace the element the
+mousedown was headed for and the browser would never fire its `click`.
+The message still folds the moment it is sent; only the swap defers, so
+editing a field and clicking a button in one gesture applies both, in
+order.
+
 ## Persistence
 
 The host can persist app state to `localStorage` with **no guest-side
