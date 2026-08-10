@@ -44,24 +44,10 @@ Unit => Program {
 }
 ```
 
-## Why Canon?
-
-Four commitments explain nearly every design decision. Each gets one
-sentence here and a full chapter in [The Philosophy](./philosophy.md).
-
-- **One way to do everything.** Wherever a choice is discretionary —
-  ordering, formatting, call spelling — the compiler picks the answer,
-  so two programmers writing the same program produce the same bytes.
-- **Types are the only names.** No variables, no parameter names, no
-  function names: every name in a Canon program is a type, and every
-  operation is named after what it produces.
-- **Having a value is having the capability.** No permission system and
-  no ambient authority: reading a file requires holding a `File`, and
-  the type chain that produces one *is* the access control.
-- **The artifact is a standard.** Every program compiles to a
-  WebAssembly component (or a browser bundle) with no runtime of its
-  own to ship — it runs on any Component Model host, sandboxed by
-  construction.
+Four commitments explain nearly every design decision — one way to do
+everything, types as the only names, having a value is having the
+capability, and the artifact is a standard. [The
+Philosophy](./philosophy.md) takes each in turn.
 
 Sixteen steps of the [Tour](./tour/hello.md) teach the rest, each one
 running in this tab.

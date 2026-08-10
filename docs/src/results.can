@@ -40,14 +40,6 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("coming-from") * Label("Is Canon for You?") * ComingFrom() -> String -> Text)
-            -> String
-    }{
-        Query
-            -> Hit(Slug("canon-for-ai") * Label("Canon for AI") * CanonForAi() -> String -> Text)
-            -> String
-    }{
-        Query
             -> Hit(Slug("installation") * Label("Installation") * Installation() -> String -> Text)
             -> String
     }{
@@ -113,22 +105,6 @@ Query => Hits {
     }{
         Query
             -> Hit(Slug("worlds") * Label("Tour: One Arrow, Three Worlds") * Worlds() -> String -> Text)
-            -> String
-    }{Query -> Hit(Slug("how-do-i") * Label("How Do I…?") * HowDoI() -> String -> Text) -> String}{
-        Query
-            -> Hit(Slug("multifile") * Label("Multi-File Project") * Multifile() -> String -> Text)
-            -> String
-    }{
-        Query
-            -> Hit(Slug("notes-api") * Label("notes-api: JSON Service") * NotesApi() -> String -> Text)
-            -> String
-    }{
-        Query
-            -> Hit(Slug("markdown-web") * Label("Docs Site in the Browser") * MarkdownWeb() -> String -> Text)
-            -> String
-    }{
-        Query
-            -> Hit(Slug("fullstack") * Label("Fullstack") * Fullstack() -> String -> Text)
             -> String
     }{
         Query

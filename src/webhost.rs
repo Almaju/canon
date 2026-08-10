@@ -257,12 +257,17 @@ pub fn write_bundle(dir: &Path, stem: &str, wasm: &[u8]) -> std::io::Result<()> 
 
 /// The in-memory web bundle keyed by request path — the four paths the
 /// frontend owns (`/`, `/index.html`, `/canon-web.js`, `/<stem>.wasm`).
-/// `serve_bundle` falls back to `dir` for anything else, so files
-/// written *beside* the bundle are reachable in a local preview the way
-/// they are on a static host: the docs site's enhancement scripts, the
-/// browser build of the compiler, the `canon doc` reference. The
-/// fullstack server in `runtime::serve_component` sets no `dir` — there,
-/// a miss belongs to the backend component.
+///
+/// `serve_bundle` resolves against `dir` too, so a local preview sees
+/// what a static host would: the docs site's enhancement scripts, the
+/// browser build of the compiler, the `canon doc` reference — and an
+/// `index.html` a build step has edited, which is how the docs site
+/// injects those scripts. Only the two artifacts `canon run` compiles
+/// fresh (`canon-web.js` and the wasm) refuse to come from disk, where
+/// an earlier `canon build` may have left an older copy.
+///
+/// The fullstack server in `runtime::serve_component` sets no `dir` —
+/// there, a miss belongs to the backend component.
 pub struct WebAssets {
     html: String,
     wasm_path: String,
@@ -315,6 +320,13 @@ impl WebAssets {
     pub fn get(&self, path: &str) -> Option<(&'static str, &[u8])> {
         match path {
             "/" | "/index.html" => Some(("text/html; charset=utf-8", self.html.as_bytes())),
+            _ => self.generated(path),
+        }
+    }
+
+    /// The two artifacts this run compiled. Disk never overrides them.
+    fn generated(&self, path: &str) -> Option<(&'static str, &[u8])> {
+        match path {
             "/canon-web.js" => Some((
                 "application/javascript; charset=utf-8",
                 CANON_WEB_JS.as_bytes(),
@@ -369,16 +381,22 @@ fn serve_one(mut stream: TcpStream, assets: &WebAssets) -> std::io::Result<()> {
         .unwrap_or("/");
     let path = path.split('?').next().unwrap_or(path);
 
-    let bundled = assets.get(path);
-    let from_dir = if bundled.is_none() {
+    // Freshly compiled artifacts first, then the build directory, then
+    // the generated `index.html` — so an on-disk page a build step has
+    // augmented wins over the template, but a stale wasm never does.
+    let generated = assets.generated(path);
+    let from_dir = if generated.is_none() {
         assets.file(path)
     } else {
         None
     };
-    let (status, mime, body): (&str, &str, &[u8]) = match (bundled, &from_dir) {
+    let (status, mime, body): (&str, &str, &[u8]) = match (generated, &from_dir) {
         (Some((mime, body)), _) => ("200 OK", mime, body),
         (None, Some((mime, body))) => ("200 OK", mime, body),
-        (None, None) => ("404 Not Found", "text/plain; charset=utf-8", b"not found"),
+        (None, None) => match assets.get(path) {
+            Some((mime, body)) => ("200 OK", mime, body),
+            None => ("404 Not Found", "text/plain; charset=utf-8", b"not found"),
+        },
     };
     stream.write_all(
         format!(

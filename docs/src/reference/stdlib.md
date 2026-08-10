@@ -12,48 +12,6 @@ temporary `canon:builtins/*` host bridges — see
 [Using WASI Interfaces](./wasi.md) for the layering. Idiomatic code
 only ever reaches the wrappers below.
 
-## At a Glance
-
-| Module (`canon/...`) | Type | Backing binding | Notes |
-|---|---|---|---|
-| `time/Mark` | `Mark = Int` | `wasi/clocks/monotonic_clock` | `Mark()` reads the monotonic clock (nanoseconds) |
-| `Random` | `Random = Int` | `wasi/random/random` | `Random()` returns a fresh cryptographically-secure `Int` |
-| `time/Now` | `Now = String` | pure Canon over `time/Unix` | RFC 3339 wall-clock time |
-| `time/Date` | `Date`, `Weekday`, `Hour`, `Minute`, `Second` | pure Canon over `time/Unix` | calendar components: `Unix() -> Date` is a `Day * Month * Year` product |
-| `fs/Path` | `Path = String` | none | filesystem path newtype |
-| `fs/File` | `File` | `canon:builtins/filesystem` | `File`, `Read`, `Written` |
-| `fs/Contents` | `Contents = String` | none | file-contents newtype (the `Written` receiver) |
-| `IoError` | `IoError = String` | none | filesystem error newtype |
-| `Map` | `Map = Empty + Node` | pure Canon | sorted key->value map (`String` keys/values) |
-| `Ord` | `Ord = Equal + Greater + Less` | pure Canon | three-way comparison: `a -> Ord(b)` on `Int^2` / `String^2`, dispatched in one step |
-| `Set` | `Set = Absent + Entry` | pure Canon | sorted string set; `set -> List` = members, alphabetically |
-| `Bool` | `And`, `Not`, `Or` | pure Canon | boolean algebra by dispatch — the only builtin comparisons are `Eq`/`Lt` |
-| `Int` | `Int = (String) => Result<Int, MalformedInt>`, `Ge`, `Gt`, `Le`, `Ne`, `Maximum`, `Minimum` | pure Canon | the fallible parse constructor (`Int("42")?`) plus derived comparisons |
-| `MalformedInt` | `MalformedInt = String` | none | `Int(String)`'s error newtype |
-| `Float` | `Ge`, `Gt`, `Le`, `Ne` | pure Canon | derived comparisons over the builtin `Lt`/`Eq` |
-| `String` | the `String(...)` family, `Ge`, `Gt`, `Le`, `Ne`, `Padded`, `Width` | pure Canon | rendering (`String(42)` is `"42"`), comparisons, zero-padding: `7 -> Padded(Width(3))` is `"007"` |
-| `From`, `To` | `From = Int`, `To = Int` | none | `Substring`'s 1-based, inclusive bounds — see below |
-| `Byte` | `Byte = Int` | none | picks the byte->character reading of `String(...)`: `String(Byte(65))` is `"A"` |
-| `Case` | `Lowercased`, `Uppercased` | pure Canon | ASCII case mapping: `"Hi" -> Uppercased` is `"HI"` |
-| `http/Url` | `Url`, `Fetched`, `InvalidUrl` | pure Canon (validation) + `canon:builtins/http` (fetch) | `Url`, `Fetched` (blocking GET) |
-| `Base64` | `Base64 = String`, `Base64Encoded`, `Base64Decoded` | pure Canon | RFC 4648 base64: `Base64Encoded("hi")`, `Base64("aGk=") -> Base64Decoded?` |
-| `Hex` | `Hex = String`, `HexEncoded`, `HexDecoded` | pure Canon | lowercase hex octets: `HexEncoded("hi")`, `Hex("6869") -> HexDecoded?` |
-| `http/HttpError` | `HttpError = String` | none | HTTP-client error newtype |
-| `Json` | `Json = String`, `MalformedJson` | pure Canon (`from-float` excepted) | `Json` (validate), the `Encoded` family, `Field`, `Decoded` |
-| `Markdown` | `Markdown = String` | pure Canon | `Markdown -> Html` renders to HTML; see [Markdown](./markdown-renderer.md) |
-| `web/Html` | `Html = String`, `Escaped` | pure Canon | HTML element vocabulary + escaping; see [The Web Target](./web-target.md) |
-| `web/Attr`, `web/Msg`, `web/Tag` | `Attr = String`, `Msg = String`, `Tag = String` | none | element-builder inputs: `El`/`ElAttr` take a `Tag`, `Button` a `Msg` |
-| `TestResult` | `TestResult = Fail + Pass` | pure Canon | for `canon test`; see [Testing](../tour/testing.md) |
-| `Program` | `Program = Unit` | none | the CLI entry's declared return: `Unit => Program` |
-| `cli/Exit` | `Exited` | `wasi/cli/exit` | `3 -> Exited` hard-terminates with that code; reaching the entry's end is exit 0 |
-| `cli/Args` | `Args = List<String>` + `Args()` accessor | `wasi/cli/environment` | the program's argv, fetched with `Args()` from any code |
-| `cli/Cwd` | `Cwd = String`, `Unit => Option<Cwd>` | `wasi/cli/environment` | initial working directory, when the host provides one |
-| `time/Unix` | `Unix = Int`, `Unix()` | `wasi/clocks/system_clock` | wall-clock Unix seconds |
-| `http/Request`, `http/Response`, `http/Body`, `http/Headers`, `http/Status` | resource handles + newtypes | `wasi/http/types` | the `wasi:http/service` world |
-
-Anything not listed is third-party territory: a library to be
-published, or future stdlib work.
-
 Every type name `canon` declares is global — a type of the same
 name in your own project is a compile error — so the complete set,
 internal helpers included, is worth checking before you name a type.

@@ -22,24 +22,27 @@ Three kinds of files live under `docs/src/`:
   turns into `Html`. Markdown stays in `.md` files, never in Canon string
   literals.
 - **`main.can`** — the app shell. It holds the router (a dispatch on the
-  page name), the sidebar, and the `init` / `view` / `update` triple.
-  Adding a page means dropping a `.md` file next to the others, then
-  wiring a dispatch arm and a sidebar `<button>` here.
+  page name), the top bar, the sidebar, and the `init` / `view` /
+  `update` triple. Adding a page means dropping a `.md` file next to the
+  others, then wiring a dispatch arm and a sidebar `<button>` here.
 - **`styles.can`** — the stylesheet, emitted as a `<style>` element from
   the `view`.
 
 ### Adding a Page
 
 1. Write `docs/src/<your-page>.md` (pages live in a subdirectory per
-   sidebar section — `tour/`, `reference/`, `spec/`, … — but the slug
-   is just the file's basename).
-2. In `main.can`, add a dispatch arm to the `Page => Content` function:
-   `* "<your-page>" => Content { YourPage() -> Html }` (arms are sorted
+   area — `tour/`, `reference/`, `spec/`, … — but the slug is just the
+   file's basename).
+2. In `main.can`, add a dispatch arm to `Page => Content`:
+   `* "<your-page>" { YourPage() -> Html }` (arms are sorted
    alphabetically — `canon check --fix` enforces it).
-3. Add a `{Model.Page -> NavItem(Slug("<your-page>") * Label("…"))}` line to
-   the sidebar under the appropriate `<div class="sec">` section.
-4. Wire the page into the reading order: add a `Page => Pager` arm for
-   it, and update the `Next`/`Prev` targets of its new neighbours.
+3. Add a `{Model.Page -> NavItem(Slug("<your-page>") * Label("…"))}` line
+   to `Model => Side` — or, for a spec chapter, to `Page => SpecLinks`
+   plus an arm in `Page => SpecGroup` so the group opens on it.
+4. A tour step needs three more: an arm in `Page => Section` marking it
+   `"tour"`, a `RailDot` in `Page => Rail`, and a `Page => Pager` arm
+   with the `Next`/`Prev` of its new neighbours updated. Everything else
+   is reference material and has no reading order.
 5. Add it to `results.can` so search can find it.
 
 To make a snippet runnable in the browser, fence it as ` ```canon,run `

@@ -271,8 +271,7 @@ Rules:
   in scope under its type name, exactly like a bound payload.
 
 Nested dispatch composes: dispatch on a union, then literal-dispatch
-the payload inside an arm. This is the shape of every HTTP route table
-(see the [notes-api example](../examples/notes-api.md)).
+the payload inside an arm. This is the shape of every HTTP route table.
 
 ### Binding Dispatch
 
