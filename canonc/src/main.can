@@ -51,11 +51,12 @@ Acc * Pos * Source => Literal {
     )
 }
 
-Unit => Program {
+Unit => Result<Program, IoError> {
     `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
         Acc(0)
-            -> Literal(Pos(1) * Source("Unit => Answer { 42 }"))
+            -> Literal(Pos(1) * Args() -> At(1)? -> Path -> File? -> Read? -> Source)
             -> Emitted
     }0b`
         -> Print
+    Unit() -> Ok
 }
