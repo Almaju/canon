@@ -586,7 +586,6 @@ impl<'m> WasmGen<'m> {
                 None => result_ty,
             };
             let info = FuncInfo {
-                param_components: Vec::new(),
                 func_idx: ext.func_idx,
                 type_idx,
                 result_ty: surface_result_ty,
@@ -677,7 +676,6 @@ impl<'m> WasmGen<'m> {
                     func.name.name.clone(),
                 );
                 let info = FuncInfo {
-                    param_components: param_component_names(func),
                     func_idx: idx,
                     type_idx,
                     result_ty,

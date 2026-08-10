@@ -2873,43 +2873,6 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: *span,
                 });
             } else if is_piped_construction {
-                // An `Option` / `Result` cannot fill a scalar newtype's
-                // input slot: `list -> At(1) -> Path` pipes an
-                // `Option<String>` into `Path = String`. Construction
-                // accepted it because `Path` is a type name, and codegen
-                // then had a container pointer where a (ptr, len) pair
-                // belonged — a program that checked and could not build.
-                // Unwrap with `?` or dispatch on the container first.
-                //
-                // Only when nothing declares a member accepting the
-                // container: `Result => Result<Negated, MalformedInt>`
-                // in `int.can` is a legitimate constructor over a
-                // `Result`, and `-> Some` / `-> Ok` wrap any receiver.
-                let target_is_scalar_newtype = symbols.standalone_types.contains(&method.name)
-                    && !symbols.variant_of.contains_key(&method.name)
-                    && matches!(
-                        symbols.resolve_alias(&method.name),
-                        "String" | "Int" | "Float" | "Bool"
-                    );
-                if matches!(recv_ty.as_str(), "Option" | "Result")
-                    && target_is_scalar_newtype
-                    && !has_alias_method
-                {
-                    errors.push(CanonError::CheckError {
-                        message: format!(
-                            "`{}` cannot construct `{}`: unwrap it with `?` \
-                             or dispatch on it first",
-                            recv_ty, method.name
-                        ),
-                        span: *span,
-                    });
-                }
-                // The canonical call form pipes the first arg (`A -> B(rest)`
-                // for `B(A * rest)`), so a multi-field product's construction
-                // reaches the checker as a `MethodCall`, not an
-                // `Expr::Constructor` — the receiver fills the first field
-                // slot and `args` (itself flattened the same way a direct
-                // constructor's args are) fills the rest.
                 if let Some(field_types) = symbols.product_fields.get(&method.name) {
                     check_product_construction_arity(
                         &method.name,
