@@ -586,6 +586,7 @@ impl<'m> WasmGen<'m> {
                 None => result_ty,
             };
             let info = FuncInfo {
+                param_components: Vec::new(),
                 func_idx: ext.func_idx,
                 type_idx,
                 result_ty: surface_result_ty,
@@ -675,6 +676,7 @@ impl<'m> WasmGen<'m> {
                     func.name.name.clone(),
                 );
                 let info = FuncInfo {
+                    param_components: param_component_names(func),
                     func_idx: idx,
                     type_idx,
                     result_ty,
@@ -724,36 +726,7 @@ impl<'m> WasmGen<'m> {
                         .as_ref()
                         .map(|r| r.name.clone())
                         .unwrap_or_default();
-                    let mut components: Vec<String> = Vec::new();
-                    for param in &func.params {
-                        match &param.ty {
-                            TypeExpr::Named {
-                                name: param_name, ..
-                            } => components.push(param_name.clone()),
-                            TypeExpr::Product { fields, .. } => {
-                                for field in fields {
-                                    if let TypeExpr::Named {
-                                        name: field_name, ..
-                                    } = field
-                                    {
-                                        components.push(field_name.clone());
-                                    }
-                                }
-                            }
-                            // A `T^N` input registers its element type
-                            // once — the commutative key is per *type*,
-                            // and every component shares it.
-                            TypeExpr::Repeat { ty, .. } => {
-                                if let TypeExpr::Named {
-                                    name: elem_name, ..
-                                } = ty.as_ref()
-                                {
-                                    components.push(elem_name.clone());
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                    let components = param_component_names(func);
                     for param_name in components {
                         let commutative_key = (Some(param_name), recv_name.clone());
                         self.func_table
@@ -799,6 +772,33 @@ pub(super) fn validate(bytes: &[u8]) {
             std::process::exit(1);
         }
     }
+}
+
+/// The type names of a function's input components, in declaration
+/// (alphabetical) order — flattening a product input and counting a
+/// `T^N` repetition once, mirroring how the commutative func-table keys
+/// are registered.
+fn param_component_names(func: &crate::ast::FunctionDef) -> Vec<String> {
+    let mut components: Vec<String> = Vec::new();
+    for param in &func.params {
+        match &param.ty {
+            TypeExpr::Named { name, .. } => components.push(name.clone()),
+            TypeExpr::Product { fields, .. } => {
+                for field in fields {
+                    if let TypeExpr::Named { name, .. } = field {
+                        components.push(name.clone());
+                    }
+                }
+            }
+            TypeExpr::Repeat { ty, .. } => {
+                if let TypeExpr::Named { name, .. } = ty.as_ref() {
+                    components.push(name.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    components
 }
 
 /// Emits the raw core WASM module — used by the Component Model wrapper.

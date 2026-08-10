@@ -214,6 +214,14 @@ pub(super) fn extra_locals_decl() -> Vec<(u32, ValType)> {
 #[derive(Clone, Debug)]
 pub(super) struct FuncInfo {
     pub(super) func_idx: u32,
+    /// Input component type names in declaration (alphabetical) order,
+    /// for constructor families; empty for externs and plain methods.
+    /// A family registers a func-table key under *every* component so
+    /// any of them can be the piped receiver, but the call sequence
+    /// pushes the receiver as param 0 — so when the receiver is not
+    /// `param_components[0]` the call site must emit the operands in
+    /// this order instead. See `compile_method_call`.
+    pub(super) param_components: Vec<String>,
     pub(super) type_idx: u32,
     pub(super) result_ty: Ty,
     /// `Some(shape)` when this is an `extern Wasm` whose canonical-ABI

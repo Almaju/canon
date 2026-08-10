@@ -1,0 +1,20 @@
+Aaa = Int
+
+Bbb = Int
+
+Diff = Int
+
+Aaa * Bbb => Diff {
+    Aaa -> Difference(Bbb)
+}
+
+Unit => Program {
+    Aaa(10)
+        -> Diff(Bbb(3))
+        -> String
+        -> Print
+    Bbb(3)
+        -> Diff(Aaa(10))
+        -> String
+        -> Print
+}

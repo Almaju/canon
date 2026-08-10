@@ -1,0 +1,22 @@
+Digits = Int
+
+Pos = Int
+
+Source = String
+
+Pos * Source => Digits {
+    Source
+        -> Length
+        -> Sum(Pos)
+}
+
+Unit => Program {
+    Source("abc")
+        -> Digits(Pos(1))
+        -> String
+        -> Print
+    Pos(1)
+        -> Digits(Source("abc"))
+        -> String
+        -> Print
+}

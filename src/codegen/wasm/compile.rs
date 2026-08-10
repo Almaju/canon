@@ -2559,6 +2559,68 @@ impl<'m> WasmGen<'m> {
 
     // ── Method call dispatch ────────────────────────────────────────────────────
 
+    /// Resolves a piped call to a constructor family whose receiver is
+    /// *not* its first declared input, returning the callee and its
+    /// operands in declaration order.
+    ///
+    /// `None` whenever the ordinary path is already correct: the method
+    /// is not a multi-input family, the receiver is its first component
+    /// (so receiver-then-args is already declaration order), an operand
+    /// cannot be matched to a component by its syntactic type, or the
+    /// callee needs the extern call sequence (indirect return, async,
+    /// narrowed params) rather than a plain `call`.
+    fn commutative_ctor_operands(
+        &self,
+        receiver: &Expr,
+        method: &str,
+        args: &[Expr],
+    ) -> Option<(FuncInfo, Vec<Expr>)> {
+        let recv_name = syntactic_type_name(receiver)?;
+        let info = self
+            .collect_alias_chain(recv_name)
+            .into_iter()
+            .find_map(|alias| self.func_table.get(&(Some(alias), method.to_string())))?
+            .clone();
+        if info.param_components.len() < 2
+            || info.indirect_return.is_some()
+            || info.is_async
+            || !info.narrow_params.is_empty()
+        {
+            return None;
+        }
+        // Already in order — leave the ordinary path alone.
+        if self
+            .collect_alias_chain(recv_name)
+            .contains(&info.param_components[0])
+        {
+            return None;
+        }
+        let mut inputs: Vec<Expr> = vec![receiver.clone()];
+        match args {
+            [Expr::ProductValue { fields, .. }] => inputs.extend(fields.iter().cloned()),
+            _ => inputs.extend(args.iter().cloned()),
+        }
+        if inputs.len() != info.param_components.len() {
+            return None;
+        }
+        // Bind each declared component to the operand carrying its type,
+        // the same by-type routing `build_product_value` does for
+        // products. Every operand must match, or this is not a
+        // commutative call and the ordinary path should handle it.
+        let mut used = vec![false; inputs.len()];
+        let mut ordered: Vec<Expr> = Vec::with_capacity(inputs.len());
+        for component in &info.param_components {
+            let found = inputs.iter().enumerate().position(|(i, expr)| {
+                !used[i]
+                    && syntactic_type_name(expr)
+                        .is_some_and(|n| self.collect_alias_chain(n).contains(component))
+            })?;
+            used[found] = true;
+            ordered.push(inputs[found].clone());
+        }
+        Some((info, ordered))
+    }
+
     pub(super) fn compile_method_call(
         &mut self,
         receiver: &Expr,
@@ -2617,6 +2679,31 @@ impl<'m> WasmGen<'m> {
             // (`build_http_response`) regardless of its checker binding,
             // so route the piped form there too.
             || (self.http_mode && method == "Response");
+        // Commutative constructor receivers. A constructor family
+        // registers a func-table key under *every* input component
+        // (`assign_func_indices`), so `Bbb(3) -> Diff(Aaa(10))` resolves
+        // just as `Aaa(10) -> Diff(Bbb(3))` does — construction is
+        // positionless. But the ordinary method path compiles the
+        // receiver first and `emit_func_table_call` pushes it as param
+        // 0, so piping any component other than the first handed the
+        // callee its operands in the wrong order: a silently wrong
+        // answer when the components share a core width, invalid wasm
+        // when they don't (`Int` is i64, `String` an i32 pair).
+        //
+        // Emit in declaration order instead. This runs before the
+        // receiver is compiled, so the operands simply go out in the
+        // right order — nothing has to be spilled to locals afterwards.
+        if !is_builtin_op {
+            if let Some(ordered) = self.commutative_ctor_operands(receiver, method, args) {
+                let (info, operands) = ordered;
+                for operand in &operands {
+                    let _ = self.compile_expr(operand, scope, f);
+                }
+                f.instruction(&Instruction::Call(info.func_idx));
+                return info.result_ty.clone();
+            }
+        }
+
         if is_ctor_name {
             let mut ctor_inputs = vec![receiver.clone()];
             match args {
