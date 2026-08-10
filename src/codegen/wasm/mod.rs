@@ -47,7 +47,7 @@ use extern_imports::{
     IndirectReturnShape, ParamKind,
 };
 use http::generate_http_core_module;
-use strings::{extra_locals_decl, FuncInfo, LocalScope, StringTable};
+use strings::{extra_locals_decl, max_arm_depth, FuncInfo, LocalScope, StringTable};
 use ty::*;
 use web::generate_web_core_module;
 

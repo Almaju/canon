@@ -833,7 +833,11 @@ impl<'m> WasmGen<'m> {
         });
 
         let scope = LocalScope::empty();
-        let mut f = Function::new(extra_locals_decl());
+        let mut f = Function::new(extra_locals_decl(
+            main_func
+                .as_ref()
+                .map_or(0, |func| max_arm_depth(&func.body)),
+        ));
         let result_ty = main_func
             .as_ref()
             .map(|func| self.compile_block_return(&func.body, &scope, &mut f));
@@ -854,7 +858,7 @@ impl<'m> WasmGen<'m> {
     pub(super) fn build_user_function(&mut self, func: &FunctionDef) -> Function {
         let (params, scope) = self.build_local_scope(func);
         let _ = params; // params are implicit in the function type
-        let mut f = Function::new(extra_locals_decl());
+        let mut f = Function::new(extra_locals_decl(max_arm_depth(&func.body)));
         let body = func.body.clone();
         // `?` may early-return the whole Result/Option value, but only
         // when the enclosing function itself returns the same shape
@@ -1103,7 +1107,14 @@ impl<'m> WasmGen<'m> {
                 // `Cleared = Todos = String` makes `Cleared.String` valid),
                 // so codegen has to walk it the same way rather than only
                 // matching the receiver's immediate alias target.
-                if let Ty::NamedPtr(name) = &recv_ty {
+                //
+                // A string-aliased chain (`Head = Token = Number`, all
+                // reaching `String`) is the same pure retype and walks
+                // the same way — the (ptr, len) pair on the stack is
+                // already the projection. Only the `String` hop had a
+                // case before (`newtype_unwrap_ty`), so `Head.Number`
+                // fell through and dropped the pair.
+                if let Ty::NamedPtr(name) | Ty::NamedStr(name) = &recv_ty {
                     let mut current = name.as_str();
                     let mut depth = 0;
                     while depth < 20 {
@@ -1740,8 +1751,16 @@ impl<'m> WasmGen<'m> {
             Expr::MethodCall {
                 receiver, method, ..
             } => {
-                let recv = self.infer_ctor_arg_type_name(receiver)?;
-                for c in self.dispatch_candidates(&recv) {
+                // An unknown receiver type only rules out the
+                // func-table lookup — the fallbacks below read the
+                // method name alone, so a chain whose receiver isn't
+                // statically typed (a `?` unwrap, say) still resolves
+                // `-> Source` to `Source`. Bailing here instead cost
+                // the caller its type, and `commutative_order` silently
+                // kept written order for a call whose components then
+                // landed in the wrong slots.
+                let recv = self.infer_ctor_arg_type_name(receiver);
+                for c in recv.into_iter().flat_map(|r| self.dispatch_candidates(&r)) {
                     if let Some(info) = self.func_table.get(&(Some(c), method.name.clone())) {
                         return match &info.result_ty {
                             Ty::NamedPtr(n) | Ty::NamedStr(n) | Ty::NamedPtrStr(n, _, _) => {
@@ -4077,6 +4096,7 @@ impl<'m> WasmGen<'m> {
         let mut inner = LocalScope {
             vars: scope.vars.clone(),
             param_count: scope.param_count,
+            arm_depth: scope.arm_depth,
         };
         for alias in self.collect_alias_chain(elem_name) {
             inner.vars.insert(alias, (elem_local, elem_repr.clone()));
@@ -5763,6 +5783,9 @@ impl<'m> WasmGen<'m> {
         f: &mut Function,
     ) -> LocalScope {
         let mut scope = base_scope.clone();
+        // The arm body is one dispatch deeper, so anything it binds
+        // takes the next pair down and leaves this arm's name intact.
+        scope.arm_depth = base_scope.arm_depth + 1;
         let (bound_name, payload_ty) = self.arm_payload_binding(param_ty);
         if bound_name.is_empty() {
             return scope;

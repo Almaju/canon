@@ -15,6 +15,9 @@ use super::*;
 ///   pc+5        (i32): alloc_ptr     — result of $alloc
 ///   pc+6        (i32): tmp_i32_b     — second scratch i32
 ///   pc+7, pc+8  (i32): arm_payload_ptr (+1) — bound arm payload
+///                       (outermost dispatch only; a dispatch nested
+///                       inside an arm body binds into the tail pairs
+///                       from pc+32 on, one pair per extra level)
 ///   pc+9, pc+10 (i32): str_scratch_ptr (+1) — string-builtin scratch
 ///   pc+11..pc+18 (i32): par_subtask_a/b, par_retarea_a/b, par_set,
 ///                       par_event_ptr, par_seen_a/b — parallel/race state.
@@ -27,6 +30,10 @@ use super::*;
 pub(super) struct LocalScope {
     pub(super) vars: HashMap<String, (u32, Ty)>,
     pub(super) param_count: u32, // first extra-local index
+    /// How many dispatches enclose the code being compiled. Selects
+    /// which `arm_payload_ptr` pair a bound payload lives in, so an
+    /// inner dispatch can't overwrite the name an outer arm bound.
+    pub(super) arm_depth: u32,
 }
 
 impl LocalScope {
@@ -34,6 +41,7 @@ impl LocalScope {
         LocalScope {
             vars: HashMap::new(),
             param_count: 0,
+            arm_depth: 0,
         }
     }
     pub(super) fn rptr(&self) -> u32 {
@@ -61,8 +69,19 @@ impl LocalScope {
     /// bound inside a match arm. Adjacency matters: `push_local` for
     /// `Ty::Str` pushes `LocalGet(idx)` followed by `LocalGet(idx + 1)`,
     /// so the two slots must sit at consecutive indices.
+    ///
+    /// One pair per dispatch depth: a tokenizer's `* Name` arm sits
+    /// inside a `* Cons` arm and still reads `Cons.Tail`, so a single
+    /// shared pair would have the inner bind erase the outer name. The
+    /// outermost dispatch keeps the historical fixed slot, so a
+    /// function whose dispatches never nest declares no extra locals;
+    /// deeper levels take the tail pairs `extra_locals_decl` reserves
+    /// from `max_arm_depth`.
     pub(super) fn arm_payload_ptr(&self) -> u32 {
-        self.param_count + 7
+        match self.arm_depth {
+            0 => self.param_count + 7,
+            d => self.param_count + 32 + 2 * (d - 1),
+        }
     }
     /// Adjacent pair of i32s reserved as scratch for string-shaped
     /// builtins (`concat`, `substring`, …) that need to stash a
@@ -146,9 +165,10 @@ impl LocalScope {
     /// Kept distinct from `arm_payload_ptr` and the eq-compare scratch
     /// (`rptr`/`rbool`/`tmp_i32`/`tmp_i32_b`) so each successive
     /// compare — and the scrutinee binding inside arm bodies — reads
-    /// an unclobbered value. Same single-slot nesting caveat as
-    /// `arm_payload_ptr`: a literal dispatch nested inside another
-    /// literal dispatch's arm body reuses the pair.
+    /// an unclobbered value. Still one pair per function, though: a
+    /// literal dispatch nested inside another literal dispatch's arm
+    /// body reuses it. `arm_payload_ptr` shed that caveat by taking a
+    /// pair per depth; this one has not needed to yet.
     pub(super) fn lit_scrut_ptr(&self) -> u32 {
         self.param_count + 24
     }
@@ -186,9 +206,66 @@ impl LocalScope {
     }
 }
 
-/// Local declarations appended after the function params.
-pub(super) fn extra_locals_decl() -> Vec<(u32, ValType)> {
-    vec![
+/// Deepest chain of dispatches nested inside one another's arm bodies
+/// (`0` when the block holds none, `1` for a flat dispatch). Each level
+/// past the first needs its own `arm_payload_ptr` pair — see that
+/// accessor — so this is what sizes a function's tail locals.
+pub(super) fn max_arm_depth(block: &Block) -> u32 {
+    block.exprs.iter().map(expr_arm_depth).max().unwrap_or(0)
+}
+
+fn expr_arm_depth(expr: &Expr) -> u32 {
+    let deepest = |es: &[Expr]| es.iter().map(expr_arm_depth).max().unwrap_or(0);
+    match expr {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            let inner = arms
+                .iter()
+                .map(|a| max_arm_depth(&a.body))
+                .max()
+                .unwrap_or(0);
+            expr_arm_depth(scrutinee).max(1 + inner)
+        }
+        Expr::FieldAccess { receiver, .. } => expr_arm_depth(receiver),
+        Expr::MethodCall { receiver, args, .. } => expr_arm_depth(receiver).max(deepest(args)),
+        Expr::Constructor { args, .. } => deepest(args),
+        Expr::ProductValue { fields, .. } => deepest(fields),
+        Expr::Lambda { body, .. } => max_arm_depth(body),
+        Expr::Try { inner, .. } => expr_arm_depth(inner),
+        Expr::JsonLit { parts, .. } => parts
+            .iter()
+            .map(|p| match p {
+                crate::ast::JsonLitPart::Interp(e) => expr_arm_depth(e),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0),
+        Expr::HtmlLit { parts, .. } => parts
+            .iter()
+            .map(|p| match p {
+                crate::ast::HtmlLitPart::Interp(e) => expr_arm_depth(e),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0),
+        Expr::FormatLit { parts, .. } => parts
+            .iter()
+            .map(|p| match p {
+                crate::ast::FormatLitPart::Interp(e) => expr_arm_depth(e),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// Local declarations appended after the function params. `arm_depth`
+/// is the function body's `max_arm_depth`; every level past the first
+/// takes one more `(ptr, len)` pair at the tail.
+pub(super) fn extra_locals_decl(arm_depth: u32) -> Vec<(u32, ValType)> {
+    let mut decl = vec![
         (4, ValType::I32), // rptr, rlen, rbool, tmp_i32
         (1, ValType::I64), // tmp_i64
         (2, ValType::I32), // alloc_ptr, tmp_i32_b
@@ -206,7 +283,12 @@ pub(super) fn extra_locals_decl() -> Vec<(u32, ValType)> {
         (2, ValType::I32), // bind_scrut_ptr, bind_scrut_ptr + 1 (len)
         (1, ValType::I64), // bind_scrut_i64 (Int binding-dispatch scrutinee)
         (1, ValType::F64), // bind_scrut_f64 (Float binding-dispatch scrutinee)
-    ]
+    ];
+    let extra_pairs = arm_depth.saturating_sub(1);
+    if extra_pairs > 0 {
+        decl.push((2 * extra_pairs, ValType::I32));
+    }
+    decl
 }
 
 // ── Function table ────────────────────────────────────────────────────────────
