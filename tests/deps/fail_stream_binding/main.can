@@ -1,0 +1,4 @@
+Unit => Result<Program, IoError> {
+    Piped("hi")? -> Print
+    Unit() -> Ok
+}

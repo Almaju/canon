@@ -52,6 +52,17 @@ bindings). The enabling move is routing Stream-using programs through
 `wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder`
 type section.
 
+A binding can carry a stream without saying so. Canon has no surface for
+`stream` or `future`, so `wasi:cli/stdin`'s
+`func() -> tuple<stream<u8>, future<result<_, error-code>>>` is spelled
+`Unit => Result<Stdin, IoError>` and reads as an ordinary fallible string
+constructor. The vendored WIT is the only place the real shape appears, so
+the rejection consults it: any `wasi:*` binding whose WIT signature
+mentions a `stream` or `future` in any position is a checker error. Without
+that, codegen types the import from the Canon signature and the component
+fails to *instantiate* against a host carrying the real shape — a program
+that passed both `check` and `build`.
+
 ## HTTP handler request headers and body
 
 Not rejected — not expressible. `method()` and `path()` land, but the
