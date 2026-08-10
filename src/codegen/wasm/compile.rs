@@ -2931,6 +2931,30 @@ impl<'m> WasmGen<'m> {
             }
         }
 
+        // Union injection via pipe: `Nil() -> Texts` with `Texts = Cons
+        // + Nil` is the identity — a variant constructor already built
+        // the union struct (tag + payload), so the receiver on the stack
+        // *is* the union value. Only an injection a constructor family
+        // doesn't own reaches here: the family registers one commutative
+        // key per input component, so `has_func_body` is true for the
+        // union's name and sends every `X -> Union` pipe down this path,
+        // including the ones no member accepts. Those resolve nowhere,
+        // and without the relabel the value is dropped — the union
+        // arrives untagged and dispatch reads whatever memory held.
+        if args.is_empty() {
+            if let Some(TypeExpr::Union { .. }) = self.type_defs.get(method) {
+                if let Ty::NamedPtr(recv_name) = &recv_ty {
+                    if self
+                        .collect_alias_chain(recv_name)
+                        .iter()
+                        .any(|a| a == method)
+                    {
+                        return Ty::NamedPtr(method.to_string());
+                    }
+                }
+            }
+        }
+
         // `.print()` is a universal zero-arg method that delegates to the
         // type-aware `emit_print` helper.
         if method == "print" && args.is_empty() {
