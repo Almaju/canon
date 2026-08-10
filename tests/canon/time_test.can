@@ -83,7 +83,7 @@ PaddedLeavesWiderValue = TestResult
 
 Unit => PaddedLeavesWiderValue {
     123
-        -> Padded(2)
+        -> Padded(Width(2))
         -> Eq("123")
         -> TestResult
 }
@@ -92,7 +92,7 @@ PaddedZeroFills = TestResult
 
 Unit => PaddedZeroFills {
     5
-        -> Padded(4)
+        -> Padded(Width(4))
         -> Eq("0005")
         -> TestResult
 }

@@ -109,10 +109,14 @@ The full rule, case by case:
 - **Operand order is positional and never reordered.** The pipe receiver
   is always the first operand (`0 -> Difference(5)` is -5), and literal
   operands keep their written order. Where written order would decide a
-  product-field binding -- two untagged values competing for fields
-  that share an underlying type -- the construction is a compile error
-  requiring the field tags ([Types § Products](./types.md#products)),
-  so reshuffling accepted operands never changes meaning. Only an
+  binding -- two untagged values competing for slots that share an
+  underlying type -- the construction is a compile error requiring the
+  tags ([Types § Products](./types.md#products)), whether the slots are
+  a product type's fields (`Node`'s `Key` and `Value`) or a
+  constructor's input components (`Int * Width => Padded`, called as
+  `5 -> Padded(Width(4))`). Where order genuinely *is* the meaning, the
+  input is a repetition (`Int^2 => Gt`), which binds positionally and is
+  exempt. So reshuffling accepted operands never changes meaning. Only an
   all-computed input list (where every operand carries its type
   syntactically) is sorted for determinism before the first pipes.
 

@@ -1,0 +1,1 @@
+error[tests/checker/fail/ctor_component_ambiguous.can:12:5]: cannot construct `Compared`: components `OtherUser` and `User` share an underlying type, so untagged values would bind by written order; tag each value with its component's newtype (`OtherUser(…)`, `User(…)`)

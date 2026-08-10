@@ -5,7 +5,9 @@ Now = String
 TimePart = String
 
 Civil => DatePart {
-    `{Civil.Year -> Padded(4)}-{Civil.Month -> Padded(2)}-{Civil.Day -> Padded(2)}`
+    `{Civil.Year -> Padded(Width(4))}-{Civil.Month -> Padded(Width(2))}-{
+        Civil.Day -> Padded(Width(2))
+    }`
 }
 
 Unit => Now {
@@ -17,5 +19,9 @@ Unix => Now {
 }
 
 Unix => TimePart {
-    `{Unix -> Hour -> Padded(2)}:{Unix -> Minute -> Padded(2)}:{Unix -> Second -> Padded(2)}`
+    `{Unix -> Hour -> Padded(Width(2))}:{Unix -> Minute -> Padded(Width(2))}:{
+        Unix
+            -> Second
+            -> Padded(Width(2))
+    }`
 }

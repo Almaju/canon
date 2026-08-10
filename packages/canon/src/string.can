@@ -101,12 +101,12 @@ Int * Width => Padded {
         * False {
             Int
                 -> Quotient(10)
-                -> Padded(Width -> Difference(1))
+                -> Padded(Width -> Difference(1) -> Width)
                 -> Joined(Int -> Remainder(10) -> DecimalDigit)
         }
         * True {
             Width -> Lt(2) -> (
-                * False { `0{Int -> Padded(Width -> Difference(1))}` }
+                * False { `0{Int -> Padded(Width -> Difference(1) -> Width)}` }
                 * True { Int -> DecimalDigit }
             )
         }
