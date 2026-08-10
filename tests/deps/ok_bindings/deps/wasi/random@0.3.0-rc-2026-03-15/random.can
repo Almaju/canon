@@ -1,0 +1,5 @@
+Seed = Int
+
+Unit => Seed {
+    "get-random-u64"
+}

@@ -545,15 +545,16 @@ pub(super) struct ExternImport {
     /// The full path string from the source program, kept verbatim for error
     /// messages and debugging.
     pub(super) full_path: String,
-    /// Component-level import name, e.g. `"canon:builtins/math@0.1.0"`.
+    /// Component-level import name, e.g.
+    /// `"wasi:random/random@0.3.0-rc-2026-03-15"`.
     /// Multiple functions can share the same `component_namespace` — they end
     /// up as members of the same imported instance.
     pub(super) component_namespace: String,
-    /// Core-module import-module name, e.g. `"canon:builtins/math"` (no
+    /// Core-module import-module name, e.g. `"wasi:random/random"` (no
     /// version). Multiple `ExternImport`s sharing this name are all served by
     /// the same synthetic core instance built inside the component wrapper.
     pub(super) core_namespace: String,
-    /// Function name within the interface, e.g. `"min"`.
+    /// Function name within the interface, e.g. `"get-random-u64"`.
     pub(super) fn_name: String,
     /// Core WASM signature after any indirect-return transformation:
     /// `returns_string` extends `params` with an `i32` return-area pointer

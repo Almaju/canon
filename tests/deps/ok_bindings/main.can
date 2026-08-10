@@ -1,5 +1,5 @@
 Unit => Program {
-    5
-        -> Min(3)
+    Seed()
+        -> Product(0)
         -> Print
 }

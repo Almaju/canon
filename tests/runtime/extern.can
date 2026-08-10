@@ -1,5 +1,0 @@
-Unit => Program {
-    5
-        -> Min(3)
-        -> Print
-}
