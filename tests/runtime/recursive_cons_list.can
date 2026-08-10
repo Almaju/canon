@@ -1,0 +1,44 @@
+Cons = Head * Tail
+
+Counted = Int
+
+Head = Text
+
+Nil = Unit
+
+Pos = Int
+
+Source = String
+
+Tail = Texts
+
+Text = String
+
+Texts = Cons + Nil
+
+Texts => Counted {
+    Texts -> (
+        * Cons { Cons.Tail -> Counted -> Sum(1) }
+        * Nil { 0 }
+    )
+}
+
+Pos * Source => Texts {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source
+                -> Texts(Pos -> Sum(1) -> Pos)
+                -> Cons(Source -> Substring(Pos -> From * Pos -> To) -> Text -> Head)
+                -> Texts
+        }
+        * True { Nil() -> Texts }
+    )
+}
+
+Unit => Program {
+    Source("abc")
+        -> Texts(Pos(1))
+        -> Counted
+        -> String
+        -> Print
+}
