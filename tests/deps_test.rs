@@ -63,27 +63,35 @@ fn vendored_package_loads_checks_and_runs() {
 
 #[test]
 fn path_derived_bindings_load_and_run() {
-    // `deps/canon/builtins@0.1.0/math.can` holds a string-anchored
-    // constructor and nothing else — no `bindings` directive. The
-    // loader derives the `canon:builtins/math@0.1.0` URN from the path
-    // alone, reads the `min` fragment from the constructor's string
-    // body, and the host builtin satisfies it at run time.
+    // `deps/wasi/random@0.3.0-rc-2026-03-15/random.can` holds a
+    // string-anchored constructor and nothing else — no `bindings`
+    // directive. The loader derives the
+    // `wasi:random/random@0.3.0-rc-2026-03-15` URN from the path alone
+    // and reads the `get-random-u64` fragment from the constructor's
+    // string body.
+    //
+    // The target is a real WASI interface rather than a bespoke host
+    // shim, so this pins the whole path end to end: derived URN, lowered
+    // import, and a live call through the embedded runtime. `main.can`
+    // multiplies the draw by zero, which keeps stdout deterministic
+    // while still requiring the import to resolve — a missing one is an
+    // instantiation failure, not a wrong number.
     let loaded = loader::load_module(&entry("ok_bindings")).expect("ok_bindings should load");
-    let min = loaded
+    let seed = loaded
         .module
         .items
         .iter()
         .find_map(|item| match item {
             canon::ast::Item::Function(f)
-                if f.receiver.as_ref().is_some_and(|r| r.name == "Min") =>
+                if f.receiver.as_ref().is_some_and(|r| r.name == "Seed") =>
             {
                 f.extern_wasm.as_ref()
             }
             _ => None,
         })
-        .expect("`Min` should load as an extern binding");
+        .expect("`Seed` should load as an extern binding");
     assert_eq!(
-        min.path, "canon:builtins/math@0.1.0#min",
+        seed.path, "wasi:random/random@0.3.0-rc-2026-03-15#get-random-u64",
         "the binding URN must be derived from the vendored path"
     );
 
@@ -95,7 +103,7 @@ fn path_derived_bindings_load_and_run() {
         out.stdout,
         out.stderr
     );
-    assert_eq!(out.stdout, "3\n");
+    assert_eq!(out.stdout, "0\n");
 }
 
 #[test]

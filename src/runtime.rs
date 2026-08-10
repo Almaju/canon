@@ -324,7 +324,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // canonical-ABI shapes (resources, async, streams) become available
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
-    host_builtins::add_to_linker(&mut linker)?;
     host_builtin_string::add_to_linker(&mut linker)?;
     host_builtin_filesystem::add_to_linker(&mut linker)?;
     host_builtin_http::add_to_linker(&mut linker)?;
@@ -602,40 +601,6 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
         .header(http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
         .body(body)
         .expect("static response builder shape is valid")
-}
-
-/// `canon:builtins/math` — a tiny standard library of pure math functions
-/// that compiled programs can call via `extern Wasm("canon:builtins/math…")`.
-///
-/// `min` survives only as the extern-binding test fixture (the `deps/`
-/// resolution tests and `tests/runtime/extern.can` import it) — real
-/// integer `Minimum` / `Maximum` are pure Canon in `canon/int.can`.
-mod host_builtins {
-    use super::State;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface math {
-                min: func(a: s64, b: s64) -> s64;
-            }
-            world host-shim {
-                import math;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::math::Host for State {
-        fn min(&mut self, a: i64, b: i64) -> i64 {
-            a.min(b)
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::math::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
 }
 
 /// `canon:builtins/string` — async host echoes. String *transforms*

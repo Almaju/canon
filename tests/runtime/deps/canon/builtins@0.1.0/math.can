@@ -1,7 +1,0 @@
-Min = Int
-
-OtherInt = Int
-
-Int * OtherInt => Min {
-    "min"
-}
