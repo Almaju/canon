@@ -1,0 +1,34 @@
+Name = Text
+
+Number = Text
+
+Picked = String
+
+Text = String
+
+Token = Name + Number
+
+Token => Picked {
+    Token -> (
+        * Name { `{Name} is a name` }
+        * Number { `{Number} is a number` }
+    )
+}
+
+Text => Token {
+    Text -> ByteAt(1) -> IsIntDigit -> (
+        * False { Text -> Name -> Token }
+        * True { Text -> Number -> Token }
+    )
+}
+
+Unit => Program {
+    Text("abc")
+        -> Token
+        -> Picked
+        -> Print
+    Text("12")
+        -> Token
+        -> Picked
+        -> Print
+}
