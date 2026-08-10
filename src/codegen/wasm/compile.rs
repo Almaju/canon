@@ -1107,7 +1107,14 @@ impl<'m> WasmGen<'m> {
                 // `Cleared = Todos = String` makes `Cleared.String` valid),
                 // so codegen has to walk it the same way rather than only
                 // matching the receiver's immediate alias target.
-                if let Ty::NamedPtr(name) = &recv_ty {
+                //
+                // A string-aliased chain (`Head = Token = Number`, all
+                // reaching `String`) is the same pure retype and walks
+                // the same way — the (ptr, len) pair on the stack is
+                // already the projection. Only the `String` hop had a
+                // case before (`newtype_unwrap_ty`), so `Head.Number`
+                // fell through and dropped the pair.
+                if let Ty::NamedPtr(name) | Ty::NamedStr(name) = &recv_ty {
                     let mut current = name.as_str();
                     let mut depth = 0;
                     while depth < 20 {

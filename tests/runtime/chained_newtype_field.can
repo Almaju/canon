@@ -1,0 +1,22 @@
+Cons = Head * Tail
+
+Head = Token
+
+Nil = Unit
+
+Number = Text
+
+Tail = Tokens
+
+Text = String
+
+Token = Number
+
+Tokens = Cons + Nil
+
+Unit => Program {
+    Nil() -> Tokens -> Cons(Text("hi") -> Number -> Token -> Head) -> Tokens -> (
+        * Cons { Cons.Head.Number.Text -> Print }
+        * Nil { "none" -> Print }
+    )
+}
