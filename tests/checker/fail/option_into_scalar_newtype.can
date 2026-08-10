@@ -1,0 +1,8 @@
+Path = String
+
+Unit => Program {
+    List("aa" * "bb")
+        -> At(1)
+        -> Path
+        -> Print
+}

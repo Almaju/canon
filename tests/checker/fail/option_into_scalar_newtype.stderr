@@ -1,0 +1,1 @@
+error[tests/checker/fail/option_into_scalar_newtype.can:4:5]: `Option` cannot construct `Path`: unwrap it with `?` or dispatch on it first
