@@ -2841,7 +2841,25 @@ impl<'m> WasmGen<'m> {
             .map(str::to_string);
         let mut candidate_types: Vec<String> = Vec::new();
         if let Some(st) = &static_recv_type {
-            candidate_types.extend(self.collect_alias_chain(st));
+            // A name that is both a union variant and a newtype has two
+            // runtime shapes: the union struct (`Text -> Name` with
+            // `Name` a variant of `Token` builds one) or the bare
+            // payload (a `* Name` arm binds one). Only the payload can
+            // satisfy a function typed on the erased type, so the alias
+            // chain is consulted only when the compiled receiver isn't
+            // the union struct — otherwise `Text -> Name -> Token`
+            // walks `Name` to `Text` and finds the very `Text => Token`
+            // family member it sits inside, handing it a union pointer
+            // where a string goes.
+            let is_union_struct = matches!(
+                (&recv_ty, self.variant_parent.get(st)),
+                (Ty::NamedPtr(n), Some(parent)) if n == parent
+            );
+            if is_union_struct {
+                candidate_types.push(st.clone());
+            } else {
+                candidate_types.extend(self.collect_alias_chain(st));
+            }
         }
         if let Some(name) = &type_name {
             for a in self.collect_alias_chain(name) {
