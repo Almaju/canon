@@ -35,8 +35,12 @@ Unit => Program {
     Greeting("hi ")
         -> Line(Name("ada"))
         -> Print
-    Greeting("hello ")
-        -> Line(Name("grace"))
+    Name("grace")
+        -> Line(Greeting("hello "))
         -> Print
 }
 ```
+
+The second call leads with the `Name`. It is the same call as the first
+— each value lands in the component whose type it matches, so leading
+with one or the other only changes which one you read first.

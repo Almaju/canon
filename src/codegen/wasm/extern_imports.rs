@@ -268,6 +268,35 @@ pub(super) fn func_wasm_params_for(
     out
 }
 
+/// The type names of a function's input components, in parameter order:
+/// one per input a call site supplies. Mirrors `func_wasm_params_for`'s
+/// receiver rule, and flattens a product parameter into its components.
+/// A component whose type isn't a plain name contributes nothing, which
+/// makes the list shorter than the input count and so opts the callee
+/// out of by-type binding.
+pub(super) fn func_input_types(func: &FunctionDef) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(recv) = &func.receiver {
+        if !is_self_ctor(func) {
+            out.push(recv.name.clone());
+        }
+    }
+    for p in &func.params {
+        match &p.ty {
+            TypeExpr::Named { name, .. } => out.push(name.clone()),
+            TypeExpr::Product { fields, .. } => {
+                for field in fields {
+                    if let TypeExpr::Named { name, .. } = field {
+                        out.push(name.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 pub(super) fn func_wasm_results_for(
     func: &FunctionDef,
     type_defs: &HashMap<String, TypeExpr>,
