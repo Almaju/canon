@@ -193,6 +193,57 @@ pub(super) type ExternPrimSig = (
     Option<Option<PrimitiveValType>>,
 );
 
+/// Whether a `wasi:*` extern's vendored WIT signature mentions a
+/// `stream` or `future` anywhere.
+///
+/// Canon's own signature cannot say so: a binding spells
+/// `wasi:cli/stdin`'s `func() -> tuple<stream<u8>, future<result<_,
+/// error-code>>>` as `Unit => Result<Stdin, IoError>`, because Canon has
+/// no surface for either type. The vendored WIT is the only place the
+/// real shape is visible, and without this the extern is typed from the
+/// Canon signature — the component then imports `read-via-stream` with a
+/// `result` return where the host has a `tuple`, and instantiation fails
+/// on a program that passed `check` and `build`.
+pub fn vendored_extern_uses_async_value(urn: &str) -> bool {
+    let Some((resolve, func)) = vendored_func(urn) else {
+        return false;
+    };
+    func.params
+        .iter()
+        .map(|p| &p.ty)
+        .chain(func.result.as_ref())
+        .any(|t| wit_mentions_async_value(resolve, t))
+}
+
+/// Recursive walk for `vendored_extern_uses_async_value`. Descends
+/// through the shapes a binding can legitimately name (aliases, tuples,
+/// options, results, lists) looking for a `stream` or `future` in any
+/// position.
+fn wit_mentions_async_value(resolve: &wit_parser::Resolve, t: &wit_parser::Type) -> bool {
+    use wit_parser::TypeDefKind as K;
+    let wit_parser::Type::Id(id) = t else {
+        return false;
+    };
+    let nested = |ty: &Option<wit_parser::Type>| {
+        ty.as_ref()
+            .is_some_and(|inner| wit_mentions_async_value(resolve, inner))
+    };
+    match &resolve.types[*id].kind {
+        K::Stream(_) | K::Future(_) => true,
+        K::Type(inner) | K::List(inner) | K::Option(inner) => {
+            wit_mentions_async_value(resolve, inner)
+        }
+        K::Tuple(t) => t.types.iter().any(|i| wit_mentions_async_value(resolve, i)),
+        K::Result(r) => nested(&r.ok) || nested(&r.err),
+        K::Record(r) => r
+            .fields
+            .iter()
+            .any(|f| wit_mentions_async_value(resolve, &f.ty)),
+        K::Variant(v) => v.cases.iter().any(|c| nested(&c.ty)),
+        _ => false,
+    }
+}
+
 pub(super) fn vendored_extern_prim_sig(urn: &str) -> Option<ExternPrimSig> {
     let (resolve, func) = vendored_func(urn)?;
     let params = func

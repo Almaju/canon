@@ -34,7 +34,7 @@ use crate::ast::{
 };
 
 mod compile;
-mod component;
+pub(crate) mod component;
 mod extern_imports;
 mod http;
 mod literals;

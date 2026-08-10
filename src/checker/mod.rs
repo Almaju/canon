@@ -771,6 +771,26 @@ pub fn codegen_gap_errors(
                 func.name.span,
             ));
         }
+        // A binding can hide a stream: Canon has no surface for `stream`
+        // or `future`, so `wasi:cli/stdin`'s
+        // `func() -> tuple<stream<u8>, future<…>>` is spelled
+        // `Unit => Result<Stdin, IoError>` and `sig_mentions` sees
+        // nothing. Codegen then types the import from the Canon
+        // signature and the component fails to instantiate against a
+        // host that has the real shape — a build that passed both check
+        // and build. The vendored WIT is the only place the shape shows.
+        if let Some(ext) = &func.extern_wasm {
+            if crate::codegen::vendored_extern_uses_async_value(&ext.path) {
+                errors.push(gap_error(
+                    &GAP_STREAM,
+                    &format!(
+                        "`{}` has a `stream` or `future` in its WIT signature",
+                        ext.path
+                    ),
+                    func.name.span,
+                ));
+            }
+        }
         for ty in func.params.iter().map(|p| &p.ty).chain([&func.return_ty]) {
             if let Some(offender) = compound_payload_in_type(ty, &type_defs) {
                 errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, func.name.span));
