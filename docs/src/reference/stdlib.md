@@ -109,12 +109,12 @@ insertion order (of course it is).
 ```canon
 Unit => Program {
     Map()
-        -> Inserted("b" * "2")
-        -> Inserted("a" * "1")
+        -> Inserted(Key("b") * Value("2"))
+        -> Inserted(Key("a") * Value("1"))
         -> Keys
         -> Json
         -> Print
-    Map() -> Inserted("k" * "v") -> Value("k") -> (
+    Map() -> Inserted(Key("k") * Value("v")) -> Value("k") -> (
         * None => Unit { "absent" -> Print }
         * Some<Value> => Unit { Value -> Print }
     )

@@ -62,6 +62,14 @@ pub struct SymbolTable {
     /// component types (in declaration order). Used to validate
     /// `value.Field` access.
     pub product_fields: HashMap<String, Vec<String>>,
+    /// For a type constructed by exactly one multi-input constructor
+    /// whose input binds *by type*, that constructor's declared
+    /// component names. A repeated input (`T^N`) is deliberately absent:
+    /// its components bind positionally, so written order is their
+    /// identity and the ambiguity check below must not fire on them.
+    /// A type with two such constructors is absent too — the call site
+    /// alone doesn't say which member it selects.
+    pub ctor_components: HashMap<String, Vec<String>>,
     /// Type names that have an explicit `TypeDef` in this module.
     /// Used to distinguish user-defined types (which resolve to themselves
     /// in method lookup) from bare variant tags (which widen to the parent).
@@ -1408,6 +1416,46 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         }
     }
 
+    // Constructors whose input binds by type, keyed by the type they
+    // construct. A second qualifying constructor for the same type
+    // disqualifies the name: the call site alone doesn't say which
+    // family member it selects, so neither component list can be
+    // checked against it.
+    let mut ctor_components: HashMap<String, Vec<String>> = HashMap::new();
+    let mut ctor_ambiguous: HashSet<String> = HashSet::new();
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            let Some(recv) = &func.receiver else { continue };
+            if func.name.name != "Self" {
+                continue;
+            }
+            // `T^N` binds positionally — never by type.
+            if func
+                .params
+                .iter()
+                .any(|p| matches!(&p.ty, TypeExpr::Repeat { .. }))
+            {
+                continue;
+            }
+            let mut components: Vec<String> = Vec::new();
+            for param in &func.params {
+                push_component_names(&param.ty, &mut components);
+            }
+            if components.len() < 2 {
+                continue;
+            }
+            if ctor_components
+                .insert(recv.name.clone(), components)
+                .is_some()
+            {
+                ctor_ambiguous.insert(recv.name.clone());
+            }
+        }
+    }
+    for name in &ctor_ambiguous {
+        ctor_components.remove(name);
+    }
+
     let mut methods: HashMap<(String, String), MethodSig> = HashMap::new();
     for item in &module.items {
         if let Item::Function(func) = item {
@@ -1605,6 +1653,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         variant_of,
         methods,
         product_fields,
+        ctor_components,
         standalone_types,
         free_funcs,
         aliases,
@@ -2789,6 +2838,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 let arg_refs: Vec<&Expr> = args.iter().collect();
                 check_product_construction_types(
                     &name.name,
+                    "field",
                     &field_types,
                     &arg_refs,
                     symbols,
@@ -2982,7 +3032,29 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // reaches the checker as a `MethodCall`, not an
                 // `Expr::Constructor` — validate it the same way, with the
                 // receiver standing in for the first constructor arg.
-                if let Some(field_types) = symbols.product_fields.get(&method.name).cloned() {
+                // A constructor's *declared input components* are checked
+                // the same way a product type's fields are: the Binding
+                // Rule (`docs/src/spec/functions.md`) says types alone must
+                // select each component, so written order deciding one is
+                // the error. `product_fields` covers `B(a * b)` where `B`
+                // is a product type; `ctor_components` covers
+                // `(A * B) => C`, where the product is the constructor's
+                // input rather than the constructed type.
+                // A newtype registers a single-component `product_fields`
+                // entry, so require a real multi-field product before it
+                // wins the lookup.
+                let (noun, components) = match symbols
+                    .product_fields
+                    .get(&method.name)
+                    .filter(|fields| fields.len() >= 2)
+                {
+                    Some(fields) => ("field", Some(fields.clone())),
+                    None => (
+                        "component",
+                        symbols.ctor_components.get(&method.name).cloned(),
+                    ),
+                };
+                if let Some(field_types) = components {
                     let mut ctor_args: Vec<&Expr> = vec![receiver.as_ref()];
                     match args.as_slice() {
                         [Expr::ProductValue { fields, .. }] => ctor_args.extend(fields.iter()),
@@ -2990,6 +3062,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     }
                     check_product_construction_types(
                         &method.name,
+                        noun,
                         &field_types,
                         &ctor_args,
                         symbols,
@@ -3579,8 +3652,11 @@ fn product_field_match_score(symbols: &SymbolTable, value_ty: &str, field_ty: &s
 /// Skips validation whenever any argument's type can't be statically
 /// named (`expr_type_name_in_scope` returns `"<unknown>"`) to avoid
 /// false positives on expressions this analysis can't see through.
+/// `noun` is what the parts are called in diagnostics: a product type
+/// has `field`s, a constructor has input `component`s.
 fn check_product_construction_types(
     type_name: &str,
+    noun: &str,
     field_types: &[String],
     args: &[&Expr],
     symbols: &SymbolTable,
@@ -3638,9 +3714,9 @@ fn check_product_construction_types(
             .collect();
         errors.push(CanonError::CheckError {
             message: format!(
-                "cannot construct `{type_name}`: fields `{}` share an underlying type, \
+                "cannot construct `{type_name}`: {noun}s `{}` share an underlying type, \
                  so untagged values would bind by written order; tag each value with \
-                 its field's newtype ({})",
+                 its {noun}'s newtype ({})",
                 contested.join("` and `"),
                 contested
                     .iter()

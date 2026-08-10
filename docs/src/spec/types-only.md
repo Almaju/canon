@@ -17,7 +17,7 @@ Inserted = Map
 
 (Map * String * Value) => Inserted { ... }
 
-map -> Inserted("k" * "v")
+map -> Inserted(Key("k") * Value("v"))
 ```
 
 An operation is identified by *what it produces*, never by a verb. A
@@ -89,7 +89,7 @@ string -> Substring(From(1) * To(4))           # execute
   `Inserted = Map`, `Joined = String`. Checked, not conventional: an
   arrow constructing a type in its own input product is an error
   directing to the newtype. Substitutability makes chaining free --
-  `Map() -> Inserted("a" * "1") -> Removed("a")`.
+  `Map() -> Inserted(Key("a") * Value("1")) -> Removed("a")`.
 - **Effects produce evidence**: a write returns `Written = Path`; a
   function accepting `(Written)` requires proof the write happened
   ([Effects](./effects-and-async.md)).

@@ -20,21 +20,21 @@ Value = String
 
 Values = List<Value>
 
-Map * String => Contains {
-    Map -> Value(String) -> (
+Map * Key => Contains {
+    Map -> Value(Key) -> (
         * None { False() }
         * Some<Value> { True() }
     )
 }
 
-Map * String * Value => Inserted {
+Map * Key * Value => Inserted {
     Map -> (
-        * Empty { Empty() -> Node(String * Value) }
+        * Empty { Empty() -> Node(Key * Value) }
         * Node {
-            String -> Ord(Node.Key) -> (
-                * Equal { Node.Rest -> Node(String * Value) }
-                * Greater { Node.Key -> Node(Node.Rest -> Inserted(String * Value) * Node.Value) }
-                * Less { Map -> Node(String * Value) }
+            Key -> Ord(Node.Key) -> (
+                * Equal { Node.Rest -> Node(Key * Value) }
+                * Greater { Node.Key -> Node(Node.Rest -> Inserted(Key * Value) * Node.Value) }
+                * Less { Map -> Node(Key * Value) }
             )
         }
     )
@@ -58,24 +58,24 @@ Unit => Map {
     Empty()
 }
 
-Map * String => Removed {
+Map * Key => Removed {
     Map -> (
         * Empty { Empty() }
         * Node {
-            Node.Key -> Eq(String) -> (
-                * False { Node.Key -> Node(Node.Rest -> Removed(String) * Node.Value) }
+            Node.Key -> Eq(Key) -> (
+                * False { Node.Key -> Node(Node.Rest -> Removed(Key) * Node.Value) }
                 * True { Node.Rest }
             )
         }
     )
 }
 
-Map * String => Option<Value> {
+Map * Key => Option<Value> {
     Map -> (
         * Empty { None() }
         * Node {
-            Node.Key -> Eq(String) -> (
-                * False { Node.Rest -> Value(String) }
+            Node.Key -> Eq(Key) -> (
+                * False { Node.Rest -> Value(Key) }
                 * True { Node.Value -> Some }
             )
         }

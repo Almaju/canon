@@ -264,14 +264,17 @@ These are the non-obvious rules the code won't spell out. Together with
   `build_product_value` binds each value to the field whose type it matches
   (exact newtype first, then shared base, then declaration order as a floor). So
   `canon check --fix` may sort a constructor's inputs and codegen still routes
-  them — **but only when every input carries its type syntactically**. Literal
-  operands are NEVER reordered (`Padded(5 * 4)` ≠ `Padded(4 * 5)`). Consequences:
-  same-underlying-type fields (map's `Key`/`Value`, both `String`) must be
-  distinct newtypes with tagged values — the checker rejects a product
-  construction where written order would decide an untagged value's field
-  (`check_product_construction_types` runs the assignment forward and reversed;
-  divergence is the error); the formatter never reorders `List(…)` or
-  method/pipe args.
+  them — **but only when every input carries its type syntactically**.
+  Consequences: same-underlying-type parts (map's `Key`/`Value`, both `String`;
+  `Padded`'s `Int`/`Width`, both `Int`) must be distinct newtypes *and* tagged at
+  the call site — `Padded(Width(4))`, `Inserted(Key("a") * Value("1"))`. The
+  checker rejects a construction where written order would decide an untagged
+  value's slot (`check_product_construction_types` runs the assignment forward
+  and reversed; divergence is the error), and this covers both a product type's
+  fields and a constructor's declared input components. Where order *is* the
+  meaning, the input is a repetition (`Int^2 => Gt`, reached as `Int.1`/`Int.2`),
+  which binds positionally and is exempt. The formatter never reorders `List(…)`
+  or method/pipe args.
 - **Canonical call form: values flow through pipes, literals are born in the
   parens.** `canon check --fix` (`canon_expr` in `src/formatter.rs`) rewrites
   every call: computed first input pipes (`B(A)` → `A -> B`); a lone scalar

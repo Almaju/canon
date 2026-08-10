@@ -1,0 +1,15 @@
+Compared = String
+
+OtherUser = User
+
+User = String
+
+OtherUser * User => Compared {
+    OtherUser -> Joined(User)
+}
+
+Unit => Program {
+    User("alice")
+        -> Compared(User("bob"))
+        -> Print
+}
