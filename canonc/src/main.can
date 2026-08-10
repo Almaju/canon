@@ -1,0 +1,54 @@
+Counted = Int
+
+InToken = Bool
+
+IsSpace = Bool
+
+Pos = Int
+
+Scanned = Int
+
+Source = String
+
+Int => IsSpace {
+    Int -> Eq(32) -> (
+        * False {
+            Int -> Eq(10) -> (
+                * False { Int -> Eq(9) }
+                * True { True() }
+            )
+        }
+        * True { True() }
+    )
+}
+
+Counted * InToken * Pos * Source => Scanned {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> IsSpace -> (
+                * False {
+                    InToken -> (
+                        * False {
+                            Counted
+                                -> Sum(1)
+                                -> Counted
+                                -> Scanned(True() -> InToken * Pos -> Sum(1) -> Pos * Source)
+                        }
+                        * True {
+                            Counted -> Scanned(True() -> InToken * Pos -> Sum(1) -> Pos * Source)
+                        }
+                    )
+                }
+                * True { Counted -> Scanned(False() -> InToken * Pos -> Sum(1) -> Pos * Source) }
+            )
+        }
+        * True { Counted }
+    )
+}
+
+Unit => Program {
+    Counted(0)
+        -> Scanned(False() -> InToken * Pos(1) * Source("Bool = False + True"))
+        -> String
+        -> Print
+}

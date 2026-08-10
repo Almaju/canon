@@ -113,6 +113,7 @@ same PR; never open standalone docs-sync PRs.
 | `packages/canon/` | The standard library — one shipped package. Hand-written wrappers under `src/`, WIT-derived bindings under `bindgen/` (committed), vendored upstream WIT under `wit/` (the import declaration — no manifest). |
 | `packages/canon/bindgen/` | Generated WASI bindings (`wasi/<pkg>@<ver>/<iface>.can`), from `just regen-bindings`. Derived — never hand-edit. A same-`rel_path` file under `src/` shadows its `bindgen/` twin. |
 | `packages/canon/wit/wasi/` | Vendored upstream WIT — source for the bindings. Bumped when WASI advances. |
+| `canonc/` | The self-hosted compiler, written in Canon. Currently the lexer's scanning core — a recursive byte scan over source text. Compiled by the Rust compiler (`canon run canonc`), which stays the bootstrap host. |
 | `examples/` | Example `.can` programs |
 | `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests (incl. `tests/fixtures/`, `tests/canon/`) |
