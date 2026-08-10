@@ -14,8 +14,6 @@ Magnitude = String
 
 Ne = Bool
 
-OtherString = String
-
 Padded = String
 
 Scaled = Int
@@ -45,20 +43,20 @@ Int * Width => Fraction {
     )
 }
 
-String * OtherString => Ge {
-    OtherString -> Lt(String) -> (
-        * False { String -> Eq(OtherString) }
+String^2 => Ge {
+    String.2 -> Lt(String.1) -> (
+        * False { String.1 -> Eq(String.2) }
         * True { True() }
     )
 }
 
-String * OtherString => Gt {
-    OtherString -> Lt(String)
+String^2 => Gt {
+    String.2 -> Lt(String.1)
 }
 
-String * OtherString => Le {
-    String -> Lt(OtherString) -> (
-        * False { String -> Eq(OtherString) }
+String^2 => Le {
+    String.1 -> Lt(String.2) -> (
+        * False { String.1 -> Eq(String.2) }
         * True { True() }
     )
 }
@@ -91,8 +89,8 @@ Float => Magnitude {
     )
 }
 
-String * OtherString => Ne {
-    String -> Eq(OtherString) -> (
+String^2 => Ne {
+    String.1 -> Eq(String.2) -> (
         * False { True() }
         * True { False() }
     )

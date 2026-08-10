@@ -4,12 +4,10 @@ Not = Bool
 
 Or = Bool
 
-OtherBool = Bool
-
-Bool * OtherBool => And {
-    Bool -> (
+Bool^2 => And {
+    Bool.1 -> (
         * False { False() }
-        * True { OtherBool }
+        * True { Bool.2 }
     )
 }
 
@@ -20,9 +18,9 @@ Bool => Not {
     )
 }
 
-Bool * OtherBool => Or {
-    Bool -> (
-        * False { OtherBool }
+Bool^2 => Or {
+    Bool.1 -> (
+        * False { Bool.2 }
         * True { True() }
     )
 }

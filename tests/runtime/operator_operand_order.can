@@ -1,0 +1,50 @@
+Unit => Program {
+    1
+        -> Gt(3)
+        -> String
+        -> Print
+    3
+        -> Gt(1)
+        -> String
+        -> Print
+    1
+        -> Ge(1)
+        -> String
+        -> Print
+    3
+        -> Le(1)
+        -> String
+        -> Print
+    1
+        -> Ne(3)
+        -> String
+        -> Print
+    3
+        -> Maximum(7)
+        -> String
+        -> Print
+    3
+        -> Minimum(7)
+        -> String
+        -> Print
+    "a"
+        -> Gt("b")
+        -> String
+        -> Print
+    "b"
+        -> Gt("a")
+        -> String
+        -> Print
+    1.5
+        -> Gt(0.5)
+        -> String
+        -> Print
+    True()
+        -> And(False())
+        -> String
+        -> Print
+    False()
+        -> Or(True())
+        -> String
+        -> Print
+}

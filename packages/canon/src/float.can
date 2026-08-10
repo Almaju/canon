@@ -6,28 +6,26 @@ Le = Bool
 
 Ne = Bool
 
-OtherFloat = Float
-
-Float * OtherFloat => Ge {
-    OtherFloat -> Lt(Float) -> (
-        * False { Float -> Eq(OtherFloat) }
+Float^2 => Ge {
+    Float.2 -> Lt(Float.1) -> (
+        * False { Float.1 -> Eq(Float.2) }
         * True { True() }
     )
 }
 
-Float * OtherFloat => Gt {
-    OtherFloat -> Lt(Float)
+Float^2 => Gt {
+    Float.2 -> Lt(Float.1)
 }
 
-Float * OtherFloat => Le {
-    Float -> Lt(OtherFloat) -> (
-        * False { Float -> Eq(OtherFloat) }
+Float^2 => Le {
+    Float.1 -> Lt(Float.2) -> (
+        * False { Float.1 -> Eq(Float.2) }
         * True { True() }
     )
 }
 
-Float * OtherFloat => Ne {
-    Float -> Eq(OtherFloat) -> (
+Float^2 => Ne {
+    Float.1 -> Eq(Float.2) -> (
         * False { True() }
         * True { False() }
     )
