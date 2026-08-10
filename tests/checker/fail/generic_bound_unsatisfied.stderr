@@ -1,0 +1,1 @@
+error[tests/checker/fail/generic_bound_unsatisfied.can:7:2]: `Float` does not satisfy `Ord`: no `Ord` constructor accepts a `Float`

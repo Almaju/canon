@@ -1,0 +1,20 @@
+Bag<T> = One<T>
+
+One<T> = T
+
+Shown<T> = String
+
+<T: Ord>(Bag<T>) => Shown<T> {
+    "a" -> Ord("b") -> (
+        * Equal { "eq" }
+        * Greater { "gt" }
+        * Less { "lt" }
+    )
+}
+
+Unit => Program {
+    One<Int>(1)
+        -> Bag<Int>
+        -> Shown<Int>
+        -> Print
+}

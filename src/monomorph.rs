@@ -43,6 +43,8 @@ pub fn instantiation_head(name: &str) -> Option<&str> {
 }
 
 struct Expander {
+    /// `(constraint, type)` pairs — see the index built in `expand`.
+    constraint_impls: HashSet<(String, String)>,
     /// Generic typedef schemas by name.
     type_schemas: HashMap<String, TypeDef>,
     /// Generic function schemas grouped by declared name (constructor
@@ -108,6 +110,32 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
     // Inference from the argument types would lift this; Milestone A
     // deliberately deferred it (#201), so for now it is an error rather
     // than a silent trap.
+    // Which types satisfy a constraint. `<T: Ord>` is read as "some
+    // `Ord` constructor accepts a `T`" — the same by-type routing every
+    // call site uses, so a bound needs no new mechanism: it asks whether
+    // the family the bound names has a member taking this type.
+    let mut constraint_impls: HashSet<(String, String)> = HashSet::new();
+    for item in &module.items {
+        let Item::Function(f) = item else { continue };
+        let key = crate::checker::decl_key(f);
+        let note = |ty: &TypeExpr, set: &mut HashSet<(String, String)>| {
+            if let TypeExpr::Named { name, .. } = ty {
+                set.insert((key.clone(), name.clone()));
+            }
+        };
+        for p in &f.params {
+            match &p.ty {
+                TypeExpr::Product { fields, .. } => {
+                    for field in fields {
+                        note(field, &mut constraint_impls);
+                    }
+                }
+                TypeExpr::Repeat { ty, .. } => note(ty, &mut constraint_impls),
+                other => note(other, &mut constraint_impls),
+            }
+        }
+    }
+
     let mut seed_errors: Vec<CanonError> = Vec::new();
     for (surface, members) in &func_schemas {
         if type_schemas.contains_key(surface) {
@@ -139,6 +167,7 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
     }
 
     let mut ex = Expander {
+        constraint_impls,
         type_schemas,
         func_schemas,
         zero_data_variants,
@@ -483,8 +512,56 @@ impl Expander {
 
     /// Mint the concrete copies for one instantiation: the typedef
     /// (when `head` names one) and every function-family member.
+    /// Verify each bound at the point the parameter is bound to a
+    /// concrete type. Instantiation is where a constraint can finally be
+    /// decided — the schema itself says nothing about which types will
+    /// arrive — so the error lands on the application that chose them.
+    fn check_bounds(&mut self, head: &str, args: &[TypeExpr]) {
+        // A name can be both a type schema and a constructor family
+        // (`Shown<T> = String` plus `<T: Ord>(…) => Shown<T>`), and the
+        // bound may be written on either. Check every parameter list
+        // declared under this name, not the first one found.
+        let mut param_lists: Vec<Vec<crate::ast::GenericParam>> = Vec::new();
+        if let Some(td) = self.type_schemas.get(head) {
+            param_lists.push(td.generic_params.clone());
+        }
+        if let Some(members) = self.func_schemas.get(head) {
+            param_lists.extend(members.iter().map(|f| f.generic_params.clone()));
+        }
+        let mut reported: HashSet<(String, String)> = HashSet::new();
+        for (param, arg) in param_lists.iter().flatten().zip(
+            param_lists
+                .iter()
+                .flat_map(|list| args.iter().take(list.len())),
+        ) {
+            let Some(TypeExpr::Named { name: bound, .. }) = &param.bound else {
+                continue;
+            };
+            let TypeExpr::Named { name: arg_name, .. } = arg else {
+                continue;
+            };
+            if self
+                .constraint_impls
+                .contains(&(bound.clone(), arg_name.clone()))
+            {
+                continue;
+            }
+            if !reported.insert((bound.clone(), arg_name.clone())) {
+                continue;
+            }
+            self.errors.push(CanonError::CheckError {
+                message: format!(
+                    "`{}` does not satisfy `{}`: no `{}` constructor accepts a `{}`",
+                    arg_name, bound, bound, arg_name
+                ),
+                span: param.span,
+            });
+        }
+    }
+
     fn instantiate(&mut self, head: &str, args: &[TypeExpr]) {
         let mangled = mangle(head, args);
+        self.check_bounds(head, args);
         if let Some(schema) = self.type_schemas.get(head).cloned() {
             if schema.generic_params.len() != args.len() {
                 self.arity_error(
