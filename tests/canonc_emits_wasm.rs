@@ -1,9 +1,10 @@
 //! The self-hosted compiler's output is real wasm, and it runs.
 //!
-//! `canonc` parses an arithmetic expression and emits a WebAssembly core
-//! module whose exported `answer` computes it — one `i32.const` per
-//! operand and an `i32.add` between them, so the instruction sequence is
-//! generated from the source, not templated. The emission is hex
+//! `canonc` reads *Canon* source — a single nullary constructor whose
+//! body is an integer literal — and emits a WebAssembly core module whose
+//! exported `answer` returns that literal. One declaration form of one
+//! language, but the input is Canon and the output is wasm. The emission
+//! is hex
 //! rather than bytes because Canon cannot write binary yet — `write`
 //! takes a UTF-8 `string` (see the codegen gaps) — and hex sidesteps
 //! that without waiting on it.
@@ -43,8 +44,7 @@ fn canonc_output_is_wasm_that_runs() {
         .get_typed_func::<(), i32>(&mut store, "answer")
         .expect("emitted module exports `answer`");
 
-    // `canonc` compiled the expression `1+2+3`: three `i32.const`s and
-    // two `i32.add`s, generated from the operands it found in the source.
-    // Running them gives 6.
-    assert_eq!(answer.call(&mut store, ()).expect("call answer"), 6);
+    // `canonc` compiled `Unit => Answer { 42 }` — it found the literal in
+    // the declaration body and emitted `i32.const 42`.
+    assert_eq!(answer.call(&mut store, ()).expect("call answer"), 42);
 }
