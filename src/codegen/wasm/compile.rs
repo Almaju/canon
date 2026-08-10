@@ -2605,6 +2605,75 @@ impl<'m> WasmGen<'m> {
 
     // ── Method call dispatch ────────────────────────────────────────────────────
 
+    /// The `Option` type `At` / `First` yield for a list receiver:
+    /// `Ty::NamedPtrStr` when the elements are strings so `?` and
+    /// dispatch decode the (ptr, len) pair, the plain option otherwise.
+    /// The in-memory layout is identical either way — an i64 payload at
+    /// +4 covers the same bytes as (ptr at +4, len at +8) — so only the
+    /// Canon-level type changes.
+    fn option_ty_for_list(&self, receiver: &Expr) -> Ty {
+        if self.list_elem_is_string(receiver) {
+            Ty::NamedPtrStr(
+                "Option".to_string(),
+                "String".to_string(),
+                "String".to_string(),
+            )
+        } else {
+            Ty::NamedPtr("Option".to_string())
+        }
+    }
+
+    /// Whether a list-typed receiver's elements are `String`-shaped.
+    ///
+    /// `Ty::List` records no element type, so `At` / `First` — which
+    /// wrap an element in an `Option` — cannot otherwise tell a
+    /// `List<String>` from a `List<Int>`. The element layouts are both
+    /// 8 bytes and the option layouts coincide (an i64 at +4 covers the
+    /// same bytes as an (i32 ptr, i32 len) pair at +4/+8), so only the
+    /// *type* of the result differs: a string element must surface as
+    /// `Ty::NamedPtrStr` for `?` and dispatch to decode the pair,
+    /// instead of `Ty::NamedPtr("Option")`, whose `?` reads one packed
+    /// i64.
+    ///
+    /// Recovered from the receiver's syntax: a named list type resolved
+    /// through `type_defs` (`Args = List<String>`, `Keys = List<Key>`),
+    /// or a `List(…)` literal's first element.
+    fn list_elem_is_string(&self, receiver: &Expr) -> bool {
+        // `List(a * b * …)` literal — read the first element's type.
+        if let Expr::Constructor { name, args, .. } = receiver {
+            if name.name == "List" {
+                let first = match args.as_slice() {
+                    [Expr::ProductValue { fields, .. }] => fields.first(),
+                    _ => args.first(),
+                };
+                if let Some(first) = first {
+                    return match first {
+                        Expr::StringLit { .. } | Expr::FormatLit { .. } => true,
+                        other => syntactic_type_name(other).is_some_and(|n| {
+                            matches!(self.resolve_repr(n), Ty::Str | Ty::NamedStr(_))
+                        }),
+                    };
+                }
+                return false;
+            }
+        }
+        // A named list type — chase the alias chain to its `List<T>`
+        // body and resolve the element.
+        let Some(name) = syntactic_type_name(receiver) else {
+            return false;
+        };
+        for alias in self.collect_alias_chain(name) {
+            if let Some(TypeExpr::Named { name, generics, .. }) = self.type_defs.get(&alias) {
+                if name == "List" && generics.len() == 1 {
+                    if let TypeExpr::Named { name: elem, .. } = &generics[0] {
+                        return matches!(self.resolve_repr(elem), Ty::Str | Ty::NamedStr(_));
+                    }
+                }
+            }
+        }
+        false
+    }
+
     pub(super) fn compile_method_call(
         &mut self,
         receiver: &Expr,
@@ -2870,7 +2939,7 @@ impl<'m> WasmGen<'m> {
         }
 
         // Built-in methods
-        self.compile_builtin_method(recv_ty, method, args, scope, f)
+        self.compile_builtin_method(receiver, recv_ty, method, args, scope, f)
     }
 
     /// Emits a call to a function registered in `func_table`. Handles the
@@ -4285,6 +4354,10 @@ impl<'m> WasmGen<'m> {
 
     pub(super) fn compile_builtin_method(
         &mut self,
+        // The receiver expression, needed only to recover a list's
+        // element type — `Ty::List` does not carry one. See
+        // `list_elem_is_string`.
+        receiver: &Expr,
         recv_ty: Ty,
         method: &str,
         args: &[Expr],
@@ -4768,7 +4841,7 @@ impl<'m> WasmGen<'m> {
                 }));
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
-                Ty::NamedPtr("Option".to_string())
+                self.option_ty_for_list(receiver)
             }
             // NOTE: `Map` / `Set` methods are NOT built in — they are
             // pure Canon (`canon/Map`, `canon/Set`) and resolve
@@ -4874,7 +4947,7 @@ impl<'m> WasmGen<'m> {
                 }));
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
-                Ty::NamedPtr("Option".to_string())
+                self.option_ty_for_list(receiver)
             }
             // ── HTTP mode: request introspection ─────────────────────────────
             // `request.path()` — `[method]request.get-path-with-query`

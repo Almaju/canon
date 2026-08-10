@@ -1,0 +1,61 @@
+Acc = Int
+
+Emitted = String
+
+HexByte = String
+
+IsDigit = Bool
+
+Literal = Int
+
+Nibble = Int
+
+Pos = Int
+
+Source = String
+
+Int => Emitted {
+    Int
+        -> Quotient(16)
+        -> Nibble
+        -> HexByte
+        -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
+}
+
+Nibble => HexByte {
+    "0123456789abcdef" -> Substring(Nibble -> Sum(1) -> From * Nibble -> Sum(1) -> To)
+}
+
+Int => IsDigit {
+    Int -> Ge(48) -> (
+        * False { False() }
+        * True { Int -> Le(57) }
+    )
+}
+
+Acc * Pos * Source => Literal {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> IsDigit -> (
+                * False { Acc -> Literal(Pos -> Sum(1) -> Pos * Source) }
+                * True {
+                    Acc
+                        -> Product(10)
+                        -> Sum(Source -> ByteAt(Pos) -> Difference(48))
+                        -> Acc
+                        -> Literal(Pos -> Sum(1) -> Pos * Source)
+                }
+            )
+        }
+        * True { Acc }
+    )
+}
+
+Unit => Program {
+    `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
+        Acc(0)
+            -> Literal(Pos(1) * Source("Unit => Answer { 42 }"))
+            -> Emitted
+    }0b`
+        -> Print
+}

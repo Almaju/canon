@@ -1,0 +1,16 @@
+Unit => Result<Program, IoError> {
+    List("aa" * "bb")
+        -> At(2)?
+        -> Print
+    List("aa" * "bb")
+        -> First?
+        -> Print
+    List("aa" * "bb")
+        -> At(1)?
+        -> Length
+        -> Print
+    List(11 * 22)
+        -> At(2)?
+        -> Print
+    Unit() -> Ok
+}
