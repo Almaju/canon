@@ -391,6 +391,45 @@ pub struct WebEntry {
     pub view: (Option<String>, String),
 }
 
+/// A test is a result newtype of `TestResult` (`SumIsThree = TestResult`)…
+pub fn is_test_newtype(t: &TypeDef) -> bool {
+    t.generic_params.is_empty()
+        && matches!(
+            &t.body,
+            TypeExpr::Named { name, generics, .. } if name == "TestResult" && generics.is_empty()
+        )
+}
+
+/// …and a test's body is the newtype's nullary constructor
+/// (`Unit => X { … }`). After `resolve_new_syntax` a constructor carries
+/// its constructed type as its *receiver* and the name `Self` (the lone
+/// `Unit` input is already stripped to zero params), so discovery is:
+/// a zero-param `Self` constructor whose receiver is a test newtype.
+pub fn is_test_constructor(f: &FunctionDef, test_types: &HashSet<String>) -> bool {
+    f.name.name == "Self"
+        && f.params.is_empty()
+        && f.receiver
+            .as_ref()
+            .is_some_and(|r| test_types.contains(&r.name))
+}
+
+/// True when `items` declare at least one test. A test file has no entry
+/// of its own — `canon test` synthesises the `main` that runs the tests —
+/// so this pair *is* its entry shape, and the checker accepts a file
+/// built from it the same way it accepts a CLI, HTTP, or web entry.
+pub fn has_test_entry(items: &[Item]) -> bool {
+    let test_types: HashSet<String> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(t) if is_test_newtype(t) => Some(t.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    items
+        .iter()
+        .any(|item| matches!(item, Item::Function(f) if is_test_constructor(f, &test_types)))
+}
+
 /// Detects the web-app entry triple among `items` by *shape*, not name.
 /// The anchor is `view` — the sole `Model => Html` whose receiver is a
 /// user type (excluding primitive receivers filters out stdlib `Escaped`,
