@@ -100,6 +100,15 @@ decode can build the same 12-byte `Result` struct `ResultStringString`
 produces and reuse `?` and dispatch unchanged; the return area itself is
 8 bytes, the readable handle at +0 and the completion future at +4.
 
+The one part that cannot be added incrementally: the decode *calls*
+`stream.read`, so the user core module has to import it, which moves
+`FIRST_EXTERN_IMPORT_FN` from 5 to 7 and shifts the fixed import blocks
+of all three encoder modes together. That is the same hazard a
+newly defined helper carries, and it is why this gap closes as one PR
+rather than a series: the shape, its
+classification, the instance type, the decode, and the relaxation of the
+binding rejection above are all unreachable until they land at once.
+
 ## HTTP handler request headers and body
 
 Not rejected — not expressible. `method()` and `path()` land, but the
