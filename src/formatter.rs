@@ -994,6 +994,7 @@ fn emit_method(
     type_args: &[TypeExpr],
     args: &[Expr],
     broken: bool,
+    indent: usize,
 ) {
     match method_pipe_name(&method.name) {
         Some(pname) => {
@@ -1002,7 +1003,7 @@ fn emit_method(
             out.push_str(&emit_expr_type_args(type_args));
             if !args.is_empty() {
                 out.push('(');
-                emit_args_inline(out, args);
+                emit_call_args(out, args, broken, indent);
                 out.push(')');
             }
         }
@@ -1011,7 +1012,7 @@ fn emit_method(
             out.push_str(&method.name);
             out.push_str(&emit_expr_type_args(type_args));
             out.push('(');
-            emit_args_inline(out, args);
+            emit_call_args(out, args, broken, indent);
             out.push(')');
         }
     }
@@ -1032,6 +1033,7 @@ fn emit_expr_type_args(type_args: &[TypeExpr]) -> String {
 }
 
 fn emit_chain_inline(chain: &[ChainPart]) -> String {
+    let indent = 0; // inline rendering never wraps; the pads go unused
     let mut out = String::new();
     for part in chain {
         match part {
@@ -1041,7 +1043,7 @@ fn emit_chain_inline(chain: &[ChainPart]) -> String {
                 type_args,
                 args,
             } => {
-                emit_method(&mut out, method, type_args, args, false);
+                emit_method(&mut out, method, type_args, args, false, indent);
             }
             ChainPart::Dispatch { arms } => {
                 out.push_str(" -> (");
@@ -1105,7 +1107,7 @@ fn emit_chain_multi(chain: &[ChainPart], indent: usize) -> String {
                     type_args,
                     args,
                 } => {
-                    emit_method(&mut out, method, type_args, args, false);
+                    emit_method(&mut out, method, type_args, args, false, indent);
                 }
                 ChainPart::Try => out.push('?'),
                 _ => {}
@@ -1136,7 +1138,7 @@ fn emit_chain_broken(chain: &[ChainPart], indent: usize) -> String {
             } => {
                 out.push('\n');
                 out.push_str(&cont_pad);
-                emit_method(&mut out, method, type_args, args, true);
+                emit_method(&mut out, method, type_args, args, true, indent + 1);
             }
             ChainPart::Try => out.push('?'),
             ChainPart::Dispatch { arms } => {
@@ -1425,6 +1427,52 @@ fn emit_base_inline(expr: &Expr) -> String {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+/// A call's arguments, wrapped one component per line when the single
+/// line would overflow [`MAX_WIDTH`].
+///
+/// Only a product argument wraps, and only on a continuation line. A
+/// product is the one argument shape with a separator to break at, and
+/// until the parser accepted a `*` continuation it was the one
+/// expression in the language with no multi-line form at all — so a wide
+/// model rebuild (`Model(Model.A * Model.B * …)`, every arm restating
+/// every component) had to sit on one unbounded line, where the visual
+/// diff between two arms is the whole line and the semantic diff is one
+/// term.
+fn emit_call_args(out: &mut String, args: &[Expr], broken: bool, indent: usize) {
+    let mut inline = String::new();
+    emit_args_inline(&mut inline, args);
+    let col = out.rsplit('\n').next().map_or(0, str::len);
+    // `+ 1` for the closing paren the caller appends.
+    let fits = col + inline.len() < MAX_WIDTH;
+    let fields = match args {
+        [Expr::ProductValue { fields, .. }] if fields.len() >= 2 => fields,
+        _ => {
+            out.push_str(&inline);
+            return;
+        }
+    };
+    if fits || !broken {
+        out.push_str(&inline);
+        return;
+    }
+    // Written order, exactly as the inline form renders it: the
+    // formatter never reorders a method or pipe argument, and wrapping
+    // must not be the one place it does.
+    let parts: Vec<String> = fields.iter().map(emit_inline).collect();
+    let field_pad = "    ".repeat(indent + 1);
+    let close_pad = "    ".repeat(indent);
+    out.push('\n');
+    for (i, part) in parts.iter().enumerate() {
+        out.push_str(&field_pad);
+        if i > 0 {
+            out.push_str("* ");
+        }
+        out.push_str(part);
+        out.push('\n');
+    }
+    out.push_str(&close_pad);
+}
+
 fn emit_args_inline(out: &mut String, args: &[Expr]) {
     for (i, arg) in args.iter().enumerate() {
         if i > 0 {
@@ -1649,6 +1697,36 @@ mod tests {
         let expected = "Ipv6SocketAddress = Ipv6SocketAddressAddress\n  * Ipv6SocketAddressFlowInfo\n  * Ipv6SocketAddressPort\n  * Ipv6SocketAddressScopeId\n";
         assert_format(input, expected);
         assert_idempotent(input);
+    }
+
+    #[test]
+    fn test_wide_product_argument_wraps() {
+        // A product argument is the one expression that used to have no
+        // multi-line form: the wrapped spelling was a parse error, so
+        // canonical form for a wide product was however long the line
+        // happened to be. One component per line, written order kept —
+        // the formatter never reorders a pipe argument.
+        let input = "Alpha = String\n\nBeta = String\n\nDelta = String\n\nGamma = String\n\nWide = Alpha * Beta * Delta * Gamma\n\nUnit => Program {\n    Alpha(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\") -> Wide(Beta(\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\") * Delta(\"dddddddddddddddddddddddddddddddd\") * Gamma(\"gggggggggggggggggggggggggggggggg\")) -> Program\n}\n";
+        let formatted = format(input).expect("parses");
+        assert!(
+            formatted.contains(
+                "        -> Wide(\n            Beta(\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\")\n            * Delta(\"dddddddddddddddddddddddddddddddd\")\n            * Gamma(\"gggggggggggggggggggggggggggggggg\")\n        )\n"
+            ),
+            "one component per line, got:\n{formatted}"
+        );
+        assert!(
+            formatted.lines().all(|l| l.len() <= MAX_WIDTH),
+            "no line exceeds MAX_WIDTH, got:\n{formatted}"
+        );
+        assert_idempotent(&formatted);
+    }
+
+    #[test]
+    fn test_narrow_product_argument_stays_inline() {
+        // Wrapping is width-driven only: a product that fits keeps its
+        // single line, so short constructions do not sprout five lines.
+        let src = "Alpha = String\n\nBeta = String\n\nPair = Alpha * Beta\n\nUnit => Program {\n    Alpha(\"a\")\n        -> Pair(Beta(\"b\"))\n        -> Program\n}\n";
+        assert_idempotent(src);
     }
 
     #[test]

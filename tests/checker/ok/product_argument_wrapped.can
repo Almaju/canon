@@ -1,0 +1,19 @@
+Alpha = String
+
+Beta = String
+
+Delta = String
+
+Gamma = String
+
+Wide = Alpha * Beta * Delta * Gamma
+
+Unit => Program {
+    Alpha("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        -> Wide(
+            Beta("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+            * Delta("dddddddddddddddddddddddddddddddd")
+            * Gamma("gggggggggggggggggggggggggggggggg")
+        )
+        -> Program
+}
