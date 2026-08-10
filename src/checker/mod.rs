@@ -189,9 +189,17 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
     // positive. Codegen resolves it the same way.
     let web_entry = crate::ast::find_web_entry(&module.items);
 
+    // A test file's entry is its tests: `canon test` synthesises the
+    // `main` that runs them, so the file is entry-shaped without
+    // declaring one. Scoped to the entry file's own items — an imported
+    // `TestResult` newtype must not stand in for a missing entry.
+    let test_entry = crate::ast::has_test_entry(&module.items[entry_items_start..]);
+
     match (main_found, http_entries.len(), web_entry.is_some()) {
         // CLI program: `main` exists, no other entry. Existing behaviour.
         (true, 0, false) => {}
+        // Test file: the tests are the entry.
+        (false, 0, false) if test_entry => {}
         // Library or malformed: no entry shape is present.
         (false, 0, false) => {
             errors.push(CanonError::CheckError {
@@ -2948,6 +2956,20 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             };
                             errors.push(CanonError::CheckError {
                                 message,
+                                span: *span,
+                            });
+                        } else if matches!(recv_terminal, "Option" | "Result") {
+                            // Same hole again: a container is one pointer
+                            // at the value level, so the erasure fallback
+                            // would hand the constructed type the
+                            // container's pointer. The payload has to be
+                            // taken out first.
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`: unwrap it with `?`, or \
+                                     dispatch on it, before constructing",
+                                    method.name, target_scalar, recv_terminal
+                                ),
                                 span: *span,
                             });
                         }

@@ -1,0 +1,1 @@
+error[tests/checker/fail/option_receiver_scalar_construction.can:4:5]: `Slug` expects a `String`, found `Option`: unwrap it with `?`, or dispatch on it, before constructing

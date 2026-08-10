@@ -38,8 +38,10 @@ always the type.
 
 A call applies one PascalCase name to an input product. The three
 spellings -- `Name(a * b)`, `a.Name(b)`, and `a -> Name(b)` -- denote the
-*same* call (the receiver / left value fills the first slot of the input
-product). Since the choice between them is discretionary, the compiler
+*same* call. The receiver is not privileged: it is one component of the
+input product like any other, and which component it is follows from its
+type (see [Commutative Calling](functions.md)), not from where it was
+written. Since the choice between them is discretionary, the compiler
 picks one canonical form and `canon check --fix` rewrites the rest to it,
 backstopped by the checker -- the same instrument that enforces
 alphabetical ordering.

@@ -167,3 +167,70 @@ fn fmt_is_not_a_command() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("unknown command 'fmt'"), "got:\n{stderr}");
 }
+
+/// A package's `*_test.can` files are unreachable from its entry, so
+/// nothing loaded them and `--fix` left them non-canonical — while
+/// `canon test` failed them for exactly that. One `canon check --fix`
+/// over the package now covers them, and the per-file form works too:
+/// a test file's entry is its tests, so it no longer trips the
+/// entry-point requirement after being fixed.
+#[test]
+fn fix_covers_a_package_s_test_files() {
+    const UNFORMATTED_TEST: &str =
+        "SumAddsOperands   = TestResult\n\nUnit => SumAddsOperands {\n    1 -> Sum(2) -> Eq(3) -> TestResult\n}\n";
+    let src = scratch("pkgtests").join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(
+        src.join("main.can"),
+        "Unit => Program {\n    \"hi\" -> Print\n}\n",
+    )
+    .unwrap();
+    let test_file = src.join("sum_test.can");
+    std::fs::write(&test_file, UNFORMATTED_TEST).unwrap();
+    let pkg = src.parent().unwrap();
+
+    let out = Command::new(canon_bin())
+        .args(["check", "--fix"])
+        .arg(pkg)
+        .output()
+        .expect("canon check --fix spawns");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "package fix passes, stderr:\n{stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&test_file).unwrap(),
+        format(UNFORMATTED_TEST).unwrap(),
+        "the test file is canonical on disk"
+    );
+
+    // `canon test` agrees — the format gate it enforces is now
+    // satisfied by the command it points at.
+    let out = Command::new(canon_bin())
+        .arg("test")
+        .arg(&src)
+        .output()
+        .expect("canon test spawns");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "tests run clean, stderr:\n{stderr}"
+    );
+
+    // And the per-file form exits 0 rather than demanding an entry
+    // point the shape is not supposed to have.
+    let out = Command::new(canon_bin())
+        .arg("check")
+        .arg(&test_file)
+        .output()
+        .expect("canon check spawns");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a test file is a valid unit for check, stderr:\n{stderr}"
+    );
+}
