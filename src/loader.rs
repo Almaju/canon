@@ -434,6 +434,17 @@ struct LoadCtx {
     bindgen_decls: Option<HashMap<String, Vec<PathBuf>>>,
     /// Lazily-built declaration index over the project's `deps/` tree.
     deps_decls: Option<HashMap<String, Vec<PathBuf>>>,
+    /// References that resolved nowhere, paired with a local `.can` that
+    /// *declares* the name. Resolution is name → file, so a file no
+    /// reference can name is never read and its constructors never
+    /// exist. Recorded here rather than reported on the spot: a name
+    /// declared alongside others in an already-loaded file resolves
+    /// fine, and only the finished module can tell the two apart.
+    unnamed_decls: Vec<(String, Span, PathBuf)>,
+    /// Lazily-built declaration index over the local tree, rooted at the
+    /// project root (or the entry's directory). Only built when a
+    /// reference resolves nowhere.
+    local_decls: Option<HashMap<String, Vec<PathBuf>>>,
     /// User-authored sources accumulated during load (entry + transitive
     /// local imports). Mirrors `seen` but keeps each file's full
     /// text so callers can validate canonical formatting later.
@@ -490,6 +501,66 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
 /// every name must come from the bundled packages. That is exactly the
 /// surface a one-file program has. Nothing reads `path` — it is the name
 /// diagnostics are reported against.
+/// A reference that resolved nowhere, is still missing from the finished
+/// module, and names something a local file declares: resolution is
+/// name → file, so that file was never read and its constructors never
+/// existed. Confirming against the module is what makes this precise — a
+/// name declared alongside others in a file some *other* reference
+/// already pulled in is present here, and drops out.
+///
+/// Reported from the loader so it *replaces* the checker's "no method
+/// `X` on type `Y`", which describes the call site rather than the file
+/// that was skipped.
+fn unnamed_decl_error(module: &Module, unnamed: &[(String, Span, PathBuf)]) -> Result<()> {
+    if unnamed.is_empty() {
+        return Ok(());
+    }
+    // What the finished module provides: top-level names plus the
+    // variants declared inside unions, which are referable but are not
+    // items of their own.
+    let mut provided: HashSet<&str> = HashSet::new();
+    for item in &module.items {
+        match item {
+            Item::Function(f) => {
+                provided.insert(f.name.name.as_str());
+            }
+            Item::TypeDef(t) => {
+                provided.insert(t.name.name.as_str());
+                if let TypeExpr::Union { variants, .. } = &t.body {
+                    for v in variants {
+                        if let TypeExpr::Named { name, .. } = v {
+                            provided.insert(name.as_str());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let Some((name, span, path)) = unnamed.iter().find(|(name, _, _)| {
+        // Builtin vocabulary (`First`, `Length`, `Sum`, …) resolves
+        // without a file and never appears among the module's items, so
+        // a sibling that happens to declare the same name proves
+        // nothing.
+        !provided.contains(name.as_str()) && crate::ast::builtin_method_alias(name).is_none()
+    }) else {
+        return Ok(());
+    };
+    let shown = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf))
+        .unwrap_or_else(|| path.clone());
+    Err(CanonError::CheckError {
+        message: format!(
+            "`{name}` is declared in `{}`, but nothing loads that file: a reference resolves \
+             name → file, and no reference names a type it declares. Rename it to `{}.can`, \
+             or reference one of its types.",
+            shown.display(),
+            kebab_case(name),
+        ),
+        span: *span,
+    })
+}
+
 pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
     let mut ctx = LoadCtx {
         seen: HashSet::new(),
@@ -501,6 +572,8 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
+        unnamed_decls: Vec::new(),
+        local_decls: None,
         local_sources: vec![LoadedSource {
             path: path.to_path_buf(),
             source: source.to_string(),
@@ -515,6 +588,7 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         items: ctx.items,
         span: Span::default(),
     };
+    unnamed_decl_error(&module, &ctx.unnamed_decls)?;
     let expand_errors = crate::monomorph::expand(&mut module);
     crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
@@ -552,6 +626,8 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
+        unnamed_decls: Vec::new(),
+        local_decls: None,
         local_sources: Vec::new(),
         project_root,
         deps_dir,
@@ -576,6 +652,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
     // `Expr::Await` nodes wherever a `Future<T>` value is used in a
     // position that expects `T`. Both run before the checker so type
     // comparisons see the post-rewrite tree.
+    unnamed_decl_error(&module, &ctx.unnamed_decls)?;
     let expand_errors = crate::monomorph::expand(&mut module);
     crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
@@ -1319,12 +1396,23 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             .seen_bundled
             .contains(&format!("{}/{}", pkg.name, file.path)),
     });
-    if all_loaded {
+    // Vacuously true for an empty candidate set, which is not "already
+    // loaded" but "nothing named this" — that case belongs to the match
+    // below, which reports a file the naming rule hid.
+    if !unique.is_empty() && all_loaded {
         return Ok(());
     }
 
     match unique.len() {
-        0 => Ok(()),
+        0 => {
+            // Nothing named this. If a local file *declares* it, the
+            // file-naming rule is why it was never read — note it for
+            // `load_module` to confirm against the finished module.
+            if let Some(path) = ctx.local_decl_match(name, dir) {
+                ctx.unnamed_decls.push((name.to_string(), span, path));
+            }
+            Ok(())
+        }
         1 => match unique.remove(0) {
             Found::Local(p) => {
                 let canonical = p.canonicalize().map_err(|err| CanonError::CheckError {
@@ -1459,8 +1547,20 @@ impl LoadCtx {
         };
         let index = self
             .bindgen_decls
-            .get_or_insert_with(|| build_decl_index(&root));
+            .get_or_insert_with(|| build_decl_index(&root, false));
         index.get(name).cloned().unwrap_or_default()
+    }
+
+    /// A local `.can` that declares `name`, for a reference that
+    /// resolved nowhere. Searches the same tree `local_stem_matches`
+    /// does — by declaration rather than by file stem, which is the
+    /// difference that made the file invisible in the first place.
+    fn local_decl_match(&mut self, name: &str, dir: &Path) -> Option<PathBuf> {
+        let root = dir.to_path_buf();
+        let index = self
+            .local_decls
+            .get_or_insert_with(|| build_decl_index(&root, true));
+        index.get(name).and_then(|paths| paths.first()).cloned()
     }
 
     fn deps_decl_matches(&mut self, name: &str) -> Vec<PathBuf> {
@@ -1469,7 +1569,7 @@ impl LoadCtx {
         };
         let index = self
             .deps_decls
-            .get_or_insert_with(|| build_decl_index(&root));
+            .get_or_insert_with(|| build_decl_index(&root, false));
         index.get(name).cloned().unwrap_or_default()
     }
 }
@@ -1526,7 +1626,7 @@ fn build_stem_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
 /// `.can` file declares, mapped to the declaring files. Files that fail
 /// to parse contribute nothing — they'll error properly if and when
 /// they're actually loaded.
-fn build_decl_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
+fn build_decl_index(root: &Path, skip_nested_roots: bool) -> HashMap<String, Vec<PathBuf>> {
     let mut map: HashMap<String, Vec<PathBuf>> = HashMap::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -1536,6 +1636,12 @@ fn build_decl_index(root: &Path) -> HashMap<String, Vec<PathBuf>> {
         for e in entries {
             let path = e.path();
             if path.is_dir() {
+                if skip_nested_roots {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if name.starts_with('.') || SKIPPED_DIR_NAMES.contains(&name.as_str()) {
+                        continue;
+                    }
+                }
                 stack.push(path);
             } else if path.extension().is_some_and(|x| x == "can") {
                 let Ok(src) = fs::read_to_string(&path) else {
@@ -1648,6 +1754,8 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
+        unnamed_decls: Vec::new(),
+        local_decls: None,
         local_sources: Vec::new(),
         project_root,
         deps_dir,
