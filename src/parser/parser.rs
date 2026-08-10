@@ -564,15 +564,27 @@ impl Parser {
 
     /// An argument-position expression: a normal expression possibly joined
     /// with `*` into a value-level product. Used inside `(...)` arg lists.
+    /// A call's argument: one expression, or a product of them.
+    ///
+    /// A `*` continuation may sit on its own line. That is unambiguous
+    /// here and only here: dispatch arms are also written `* X => Y {…}`,
+    /// but they are parsed by `finish_dispatch` from a `(` that follows
+    /// `->` directly, never through an argument list — every caller of
+    /// this function is already inside a `(` opened after a name. Without
+    /// the newline the wrapped spelling is a parse error, which leaves a
+    /// wide product as the one expression with no multi-line form.
     fn parse_arg_expr(&mut self) -> Result<Expr> {
         let first = self.parse_expr()?;
-        if !self.check(TokenKind::Star) {
+        if self.peek_past_newlines() != TokenKind::Star {
             return Ok(first);
         }
+        self.skip_newlines();
         let start_span = first.span();
         let mut fields = vec![first];
-        while self.check(TokenKind::Star) {
+        while self.peek_past_newlines() == TokenKind::Star {
+            self.skip_newlines();
             self.advance();
+            self.skip_newlines();
             fields.push(self.parse_expr()?);
         }
         let end_span = self.previous_span();

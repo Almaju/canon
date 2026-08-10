@@ -52,35 +52,67 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("newtypes") * Label("Tour: Types Are the Vocabulary") * Newtypes() -> String -> Text)
+            -> Hit(
+                Slug("newtypes")
+                * Label("Tour: Types Are the Vocabulary")
+                * Newtypes() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("format-strings") * Label("Tour: Strings With Holes") * FormatStrings() -> String -> Text)
+            -> Hit(
+                Slug("format-strings")
+                * Label("Tour: Strings With Holes")
+                * FormatStrings() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("constructors") * Label("Tour: Conversion Is Construction") * Constructors() -> String -> Text)
+            -> Hit(
+                Slug("constructors")
+                * Label("Tour: Conversion Is Construction")
+                * Constructors() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("calls") * Label("Tour: Calls With More Than One Input") * Calls() -> String -> Text)
+            -> Hit(
+                Slug("calls")
+                * Label("Tour: Calls With More Than One Input")
+                * Calls() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("dispatch") * Label("Tour: Branching Is Dispatch") * Dispatch() -> String -> Text)
+            -> Hit(
+                Slug("dispatch")
+                * Label("Tour: Branching Is Dispatch")
+                * Dispatch() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("literal-dispatch") * Label("Tour: Dispatch on Literals") * LiteralDispatch() -> String -> Text)
+            -> Hit(
+                Slug("literal-dispatch")
+                * Label("Tour: Dispatch on Literals")
+                * LiteralDispatch() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("recursion") * Label("Tour: Loops Without Loops") * Recursion() -> String -> Text)
+            -> Hit(
+                Slug("recursion")
+                * Label("Tour: Loops Without Loops")
+                * Recursion() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("result-newtypes") * Label("Tour: Naming What Happened") * ResultNewtypes() -> String -> Text)
+            -> Hit(
+                Slug("result-newtypes")
+                * Label("Tour: Naming What Happened")
+                * ResultNewtypes() -> String -> Text
+            )
             -> String
     }{
         Query
@@ -88,15 +120,27 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("validated-constructors") * Label("Tour: Constructors That Check") * ValidatedConstructors() -> String -> Text)
+            -> Hit(
+                Slug("validated-constructors")
+                * Label("Tour: Constructors That Check")
+                * ValidatedConstructors() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("capabilities") * Label("Tour: Effects Are Values") * Capabilities() -> String -> Text)
+            -> Hit(
+                Slug("capabilities")
+                * Label("Tour: Effects Are Values")
+                * Capabilities() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("async") * Label("Tour: Async Without a Keyword") * Async() -> String -> Text)
+            -> Hit(
+                Slug("async")
+                * Label("Tour: Async Without a Keyword")
+                * Async() -> String -> Text
+            )
             -> String
     }{
         Query
@@ -104,7 +148,11 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("worlds") * Label("Tour: One Arrow, Three Worlds") * Worlds() -> String -> Text)
+            -> Hit(
+                Slug("worlds")
+                * Label("Tour: One Arrow, Three Worlds")
+                * Worlds() -> String -> Text
+            )
             -> String
     }{
         Query
@@ -112,7 +160,11 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("markdown-renderer") * Label("Markdown") * MarkdownRenderer() -> String -> Text)
+            -> Hit(
+                Slug("markdown-renderer")
+                * Label("Markdown")
+                * MarkdownRenderer() -> String -> Text
+            )
             -> String
     }{Query -> Hit(Slug("wasi") * Label("WASI Interfaces") * Wasi() -> String -> Text) -> String}{
         Query
@@ -120,7 +172,11 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("building-and-running") * Label("The canon CLI") * BuildingAndRunning() -> String -> Text)
+            -> Hit(
+                Slug("building-and-running")
+                * Label("The canon CLI")
+                * BuildingAndRunning() -> String -> Text
+            )
             -> String
     }{
         Query
@@ -128,19 +184,35 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("codegen-gaps") * Label("Known Codegen Gaps") * CodegenGaps() -> String -> Text)
+            -> Hit(
+                Slug("codegen-gaps")
+                * Label("Known Codegen Gaps")
+                * CodegenGaps() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("overview") * Label("Specification Overview") * Overview() -> String -> Text)
+            -> Hit(
+                Slug("overview")
+                * Label("Specification Overview")
+                * Overview() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("lexical-structure") * Label("Lexical Structure") * LexicalStructure() -> String -> Text)
+            -> Hit(
+                Slug("lexical-structure")
+                * Label("Lexical Structure")
+                * LexicalStructure() -> String -> Text
+            )
             -> String
     }{Query -> Hit(Slug("types") * Label("Types") * Types() -> String -> Text) -> String}{
         Query
-            -> Hit(Slug("expressions") * Label("Expressions & Dispatch") * Expressions() -> String -> Text)
+            -> Hit(
+                Slug("expressions")
+                * Label("Expressions & Dispatch")
+                * Expressions() -> String -> Text
+            )
             -> String
     }{
         Query
@@ -156,11 +228,19 @@ Query => Hits {
             -> String
     }{
         Query
-            -> Hit(Slug("effects-and-async") * Label("Effects & Async") * EffectsAndAsync() -> String -> Text)
+            -> Hit(
+                Slug("effects-and-async")
+                * Label("Effects & Async")
+                * EffectsAndAsync() -> String -> Text
+            )
             -> String
     }{
         Query
-            -> Hit(Slug("compilation") * Label("Compilation & ABI") * Compilation() -> String -> Text)
+            -> Hit(
+                Slug("compilation")
+                * Label("Compilation & ABI")
+                * Compilation() -> String -> Text
+            )
             -> String
     }{
         Query

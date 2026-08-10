@@ -81,14 +81,20 @@ Month * Doy * Era * Mp * Yoe => Date {
             Yoe
                 -> Sum(Era -> Product(400))
                 -> Year
-                -> Civil(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
+                -> Civil(
+                    Month
+                    * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day
+                )
         }
         * True {
             Yoe
                 -> Sum(Era -> Product(400))
                 -> Sum(1)
                 -> Year
-                -> Civil(Month * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day)
+                -> Civil(
+                    Month
+                    * Doy -> Difference(Mp -> Product(153) -> Sum(2) -> Quotient(5)) -> Sum(1) -> Day
+                )
         }
     )
 }
