@@ -1,0 +1,1 @@
+error[tests/checker/fail/generic_param_not_in_constructed_type.can:13:1]: `Count` declares type parameter(s) `T` that its constructed type `Count` does not carry: a call site names the instantiation through that type, so nothing can bind them — declare `Count<T>`

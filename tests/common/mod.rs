@@ -56,7 +56,15 @@ pub fn run_check_fixture(fixture_path: &Path) -> String {
     let display_path = fixture_display_path(fixture_path);
     match loader::load_module(fixture_path) {
         Ok(loaded) => {
-            let errors = checker::check_with_entry(&loaded.module, loaded.entry_items_start);
+            // Generic instantiation runs in the loader, so its errors
+            // arrive on `LoadResult` rather than from the checker. Report
+            // them first, matching `canon check` — without this no
+            // generics diagnostic could be fixture-tested at all.
+            let mut errors = loaded.expand_errors.clone();
+            errors.extend(checker::check_with_entry(
+                &loaded.module,
+                loaded.entry_items_start,
+            ));
             format_errors(&display_path, &errors)
         }
         Err(err) => format_single_error(&display_path, &err),

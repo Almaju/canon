@@ -1,0 +1,28 @@
+Bag<T> = Nil + One<T>
+
+Count = Int
+
+Nil = Unit
+
+One<T> = T
+
+<T>(Unit) => Bag<T> {
+    Nil()
+}
+
+<T>(Bag<T>) => Count {
+    Bag -> (
+        * Nil { 0 }
+        * One<T> { 1 }
+    )
+}
+
+Unit => Program {
+    Bag<Int>()
+        -> Count
+        -> String
+        -> Print
+    "hi"
+        -> Length
+        -> Print
+}
