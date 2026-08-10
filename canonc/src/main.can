@@ -1,14 +1,44 @@
+Acc = String
+
+Body = Int
+
 Counted = Int
+
+Digits = Int
 
 Emitted = String
 
 HexByte = String
 
-InToken = Bool
-
-IsSpace = Bool
+IsDigit = Bool
 
 Nibble = Int
+
+Ops = String
+
+Payload = Int
+
+Pos = Int
+
+Source = String
+
+Digits => Body {
+    Digits
+        -> Product(3)
+        -> Sum(1)
+}
+
+Counted * Pos * Source => Digits {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> IsDigit -> (
+                * False { Counted -> Digits(Pos -> Sum(1) -> Pos * Source) }
+                * True { Counted -> Sum(1) -> Counted -> Digits(Pos -> Sum(1) -> Pos * Source) }
+            )
+        }
+        * True { Counted }
+    )
+}
 
 Int => Emitted {
     Int
@@ -22,53 +52,49 @@ Nibble => HexByte {
     "0123456789abcdef" -> Substring(Nibble -> Sum(1) -> From * Nibble -> Sum(1) -> To)
 }
 
-Pos = Int
-
-Scanned = Int
-
-Int => IsSpace {
-    Int -> Eq(32) -> (
-        * False {
-            Int -> Eq(10) -> (
-                * False { Int -> Eq(9) }
-                * True { True() }
-            )
-        }
-        * True { True() }
+Int => IsDigit {
+    Int -> Ge(48) -> (
+        * False { False() }
+        * True { Int -> Le(57) }
     )
 }
 
-Source = String
-
-Counted * InToken * Pos * Source => Scanned {
+Acc * Pos * Source => Ops {
     Pos -> Gt(Source -> Length) -> (
         * False {
-            Source -> ByteAt(Pos) -> IsSpace -> (
-                * False {
-                    InToken -> (
+            Source -> ByteAt(Pos) -> IsDigit -> (
+                * False { Acc -> Ops(Pos -> Sum(1) -> Pos * Source) }
+                * True {
+                    Acc -> Length -> Eq(0) -> (
                         * False {
-                            Counted
-                                -> Sum(1)
-                                -> Counted
-                                -> Scanned(True() -> InToken * Pos -> Sum(1) -> Pos * Source)
+                            Acc(`{Acc}41{Source -> ByteAt(Pos) -> Difference(48) -> Emitted}6a`)
+                                -> Ops(Pos -> Sum(1) -> Pos * Source)
                         }
                         * True {
-                            Counted -> Scanned(True() -> InToken * Pos -> Sum(1) -> Pos * Source)
+                            Acc(`41{Source -> ByteAt(Pos) -> Difference(48) -> Emitted}`)
+                                -> Ops(Pos -> Sum(1) -> Pos * Source)
                         }
                     )
                 }
-                * True { Counted -> Scanned(False() -> InToken * Pos -> Sum(1) -> Pos * Source) }
             )
         }
-        * True { Counted }
+        * True { Acc }
     )
 }
 
+Body => Payload {
+    Body -> Sum(2)
+}
+
 Unit => Program {
-    `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
+    `0061736d010000000105016000017f03020100070a0106616e7377657200000a{
         Counted(0)
-            -> Scanned(False() -> InToken * Pos(1) * Source("Bool = False + True"))
+            -> Digits(Pos(1) * Source("1+2+3"))
+            -> Body
+            -> Payload
             -> Emitted
+    }01{Counted(0) -> Digits(Pos(1) * Source("1+2+3")) -> Body -> Emitted}00{
+        Acc("") -> Ops(Pos(1) * Source("1+2+3"))
     }0b`
         -> Print
 }
