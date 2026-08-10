@@ -1,18 +1,42 @@
 Acc = Int
 
+Cons = Head * Tail
+
 Emitted = String
+
+Head = Token
 
 HexByte = String
 
 IsDigit = Bool
 
+IsLetter = Bool
+
+IsWord = Bool
+
 Literal = Int
+
+Name = Text
 
 Nibble = Int
 
+Nil = Unit
+
+Number = Text
+
 Pos = Int
 
+Run = Int
+
 Source = String
+
+Tail = Tokens
+
+Text = String
+
+Token = Name + Number
+
+Tokens = Cons + Nil
 
 Int => Emitted {
     Int
@@ -33,28 +57,101 @@ Int => IsDigit {
     )
 }
 
+Int => IsLetter {
+    Int -> Ge(65) -> (
+        * False { False() }
+        * True {
+            Int -> Le(90) -> (
+                * False {
+                    Int -> Ge(97) -> (
+                        * False { False() }
+                        * True { Int -> Le(122) }
+                    )
+                }
+                * True { True() }
+            )
+        }
+    )
+}
+
+Int => IsWord {
+    Int -> IsDigit -> (
+        * False { Int -> IsLetter }
+        * True { True() }
+    )
+}
+
 Acc * Pos * Source => Literal {
     Pos -> Gt(Source -> Length) -> (
         * False {
-            Source -> ByteAt(Pos) -> IsDigit -> (
-                * False { Acc -> Literal(Pos -> Sum(1) -> Pos * Source) }
-                * True {
-                    Acc
-                        -> Product(10)
-                        -> Sum(Source -> ByteAt(Pos) -> Difference(48))
-                        -> Acc
-                        -> Literal(Pos -> Sum(1) -> Pos * Source)
-                }
-            )
+            Acc
+                -> Product(10)
+                -> Sum(Source -> ByteAt(Pos) -> Difference(48))
+                -> Acc
+                -> Literal(Pos -> Sum(1) -> Pos * Source)
         }
         * True { Acc }
     )
 }
 
+Tokens => Literal {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Literal }
+                * Number { Acc(0) -> Literal(Pos(1) * Number -> Source) }
+            )
+        }
+        * Nil { 0 }
+    )
+}
+
+Pos * Source => Run {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> IsWord -> (
+                * False { Pos }
+                * True { Source -> Run(Pos -> Sum(1) -> Pos) }
+            )
+        }
+        * True { Pos }
+    )
+}
+
+Text => Token {
+    Text -> ByteAt(1) -> IsDigit -> (
+        * False { Text -> Name -> Token }
+        * True { Text -> Number -> Token }
+    )
+}
+
+Pos * Source => Tokens {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> IsWord -> (
+                * False { Source -> Tokens(Pos -> Sum(1) -> Pos) }
+                * True {
+                    Source
+                        -> Tokens(Source -> Run(Pos) -> Pos)
+                        -> Cons(Source -> Substring(Pos -> From * Source -> Run(Pos) -> Difference(1) -> To) -> Text -> Token -> Head)
+                        -> Tokens
+                }
+            )
+        }
+        * True { Nil() -> Tokens }
+    )
+}
+
 Unit => Result<Program, IoError> {
     `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
-        Acc(0)
-            -> Literal(Pos(1) * Args() -> At(1)? -> Path -> File? -> Read? -> Source)
+        Args()
+            -> At(1)?
+            -> Path
+            -> File?
+            -> Read?
+            -> Source
+            -> Tokens(Pos(1))
+            -> Literal
             -> Emitted
     }0b`
         -> Print

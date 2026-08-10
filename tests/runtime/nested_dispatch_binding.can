@@ -1,0 +1,43 @@
+Cons = Head * Tail
+
+Counted = Int
+
+Head = Token
+
+Name = Text
+
+Nil = Unit
+
+Number = Text
+
+Tail = Tokens
+
+Text = String
+
+Token = Name + Number
+
+Tokens = Cons + Nil
+
+Tokens => Counted {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Counted -> Sum(1) }
+                * Number { Cons.Tail -> Counted -> Sum(100) }
+            )
+        }
+        * Nil { 0 }
+    )
+}
+
+Unit => Program {
+    Nil()
+        -> Tokens
+        -> Cons(Text("b") -> Number -> Token -> Head)
+        -> Tokens
+        -> Cons(Text("a") -> Name -> Token -> Head)
+        -> Tokens
+        -> Counted
+        -> String
+        -> Print
+}
