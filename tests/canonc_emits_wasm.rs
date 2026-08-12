@@ -102,3 +102,18 @@ fn canonc_reports_a_body_with_no_literal() {
         "declaration body is empty"
     );
 }
+
+#[test]
+fn canonc_encodes_literals_past_one_leb_byte() {
+    // `i32.const` takes a signed LEB128 operand, so 64 is `c0 00`, not
+    // the `40` a single byte would give — that decodes as -64. Past
+    // 127 a one-byte operand isn't even well formed, and the module
+    // failed to validate. The section and body sizes move with the
+    // operand's width, so they are computed rather than baked in.
+    assert_eq!(canonc_answer("n64.can", "Unit => Answer { 64 }\n"), 64);
+    assert_eq!(canonc_answer("n200.can", "Unit => Answer { 200 }\n"), 200);
+    assert_eq!(
+        canonc_answer("n100000.can", "Unit => Answer { 100000 }\n"),
+        100000
+    );
+}

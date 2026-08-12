@@ -6,6 +6,8 @@ Bad = String
 
 Body = Parsed
 
+BodySize = Int
+
 BraceClose = Unit
 
 BraceOpen = Unit
@@ -28,6 +30,8 @@ IsWord = Bool
 
 Literal = Int
 
+Module = String
+
 Name = Text
 
 Nibble = Int
@@ -35,6 +39,8 @@ Nibble = Int
 Nil = Unit
 
 Number = Text
+
+Octet = String
 
 Parsed = Bad + Good
 
@@ -73,12 +79,30 @@ Tokens => Body {
     )
 }
 
+Literal => BodySize {
+    Literal
+        -> Emitted
+        -> Length
+        -> Quotient(2)
+        -> Sum(3)
+}
+
 Int => Emitted {
-    Int
-        -> Quotient(16)
-        -> Nibble
-        -> HexByte
-        -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
+    Int -> Quotient(128) -> Eq(0) -> (
+        * False {
+            Int
+                -> Remainder(128)
+                -> Sum(128)
+                -> Octet
+                -> Joined(Int -> Quotient(128) -> Emitted)
+        }
+        * True {
+            Int -> Ge(64) -> (
+                * False { Int -> Octet }
+                * True { `{Int -> Sum(128) -> Octet}00` }
+            )
+        }
+    )
 }
 
 Nibble => HexByte {
@@ -129,6 +153,23 @@ Acc * Pos * Source => Literal {
     )
 }
 
+Literal => Module {
+    `0061736d010000000105016000017f03020100070a0106616e7377657200000a{
+        Literal
+            -> BodySize
+            -> Sum(2)
+            -> Octet
+    }01{Literal -> BodySize -> Octet}0041{Literal -> Emitted}0b`
+}
+
+Int => Octet {
+    Int
+        -> Quotient(16)
+        -> Nibble
+        -> HexByte
+        -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
+}
+
 Tokens => Parsed {
     Tokens -> (
         * Cons {
@@ -147,12 +188,7 @@ Tokens => Parsed {
 Parsed => Reported {
     Parsed -> (
         * Bad { Bad -> Print }
-        * Good {
-            `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
-                Good -> Emitted
-            }0b`
-                -> Print
-        }
+        * Good { Good -> Module -> Print }
     )
 }
 
