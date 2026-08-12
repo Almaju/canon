@@ -1,8 +1,22 @@
 Acc = Int
 
+Arrow = Unit
+
+Bad = String
+
+Body = Parsed
+
+BodySize = Int
+
+BraceClose = Unit
+
+BraceOpen = Unit
+
 Cons = Head * Tail
 
 Emitted = String
+
+Good = Literal
 
 Head = Token
 
@@ -16,6 +30,8 @@ IsWord = Bool
 
 Literal = Int
 
+Module = String
+
 Name = Text
 
 Nibble = Int
@@ -24,7 +40,13 @@ Nil = Unit
 
 Number = Text
 
+Octet = String
+
+Parsed = Bad + Good
+
 Pos = Int
+
+Reported = Unit
 
 Run = Int
 
@@ -34,16 +56,53 @@ Tail = Tokens
 
 Text = String
 
-Token = Name + Number
+Token = Arrow
+  + BraceClose
+  + BraceOpen
+  + Name
+  + Number
 
 Tokens = Cons + Nil
 
+Tokens => Body {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Arrow { Bad("expected a literal after `{`") -> Parsed }
+                * BraceClose { Bad("declaration body is empty") -> Parsed }
+                * BraceOpen { Bad("expected a literal after `{`") -> Parsed }
+                * Name { Bad("expected a literal after `{`") -> Parsed }
+                * Number { Acc(0) -> Literal(Pos(1) * Number -> Source) -> Good -> Parsed }
+            )
+        }
+        * Nil { Bad("declaration body is empty") -> Parsed }
+    )
+}
+
+Literal => BodySize {
+    Literal
+        -> Emitted
+        -> Length
+        -> Quotient(2)
+        -> Sum(3)
+}
+
 Int => Emitted {
-    Int
-        -> Quotient(16)
-        -> Nibble
-        -> HexByte
-        -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
+    Int -> Quotient(128) -> Eq(0) -> (
+        * False {
+            Int
+                -> Remainder(128)
+                -> Sum(128)
+                -> Octet
+                -> Joined(Int -> Quotient(128) -> Emitted)
+        }
+        * True {
+            Int -> Ge(64) -> (
+                * False { Int -> Octet }
+                * True { `{Int -> Sum(128) -> Octet}00` }
+            )
+        }
+    )
 }
 
 Nibble => HexByte {
@@ -94,15 +153,42 @@ Acc * Pos * Source => Literal {
     )
 }
 
-Tokens => Literal {
+Literal => Module {
+    `0061736d010000000105016000017f03020100070a0106616e7377657200000a{
+        Literal
+            -> BodySize
+            -> Sum(2)
+            -> Octet
+    }01{Literal -> BodySize -> Octet}0041{Literal -> Emitted}0b`
+}
+
+Int => Octet {
+    Int
+        -> Quotient(16)
+        -> Nibble
+        -> HexByte
+        -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
+}
+
+Tokens => Parsed {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Cons.Tail -> Literal }
-                * Number { Acc(0) -> Literal(Pos(1) * Number -> Source) }
+                * Arrow { Cons.Tail -> Parsed }
+                * BraceClose { Cons.Tail -> Parsed }
+                * BraceOpen { Cons.Tail -> Body }
+                * Name { Cons.Tail -> Parsed }
+                * Number { Cons.Tail -> Parsed }
             )
         }
-        * Nil { 0 }
+        * Nil { Bad("no declaration body") -> Parsed }
+    )
+}
+
+Parsed => Reported {
+    Parsed -> (
+        * Bad { Bad -> Print }
+        * Good { Good -> Module -> Print }
     )
 }
 
@@ -129,7 +215,37 @@ Pos * Source => Tokens {
     Pos -> Gt(Source -> Length) -> (
         * False {
             Source -> ByteAt(Pos) -> IsWord -> (
-                * False { Source -> Tokens(Pos -> Sum(1) -> Pos) }
+                * False {
+                    Source -> ByteAt(Pos) -> Eq(61) -> (
+                        * False {
+                            Source -> ByteAt(Pos) -> Eq(123) -> (
+                                * False {
+                                    Source -> ByteAt(Pos) -> Eq(125) -> (
+                                        * False { Source -> Tokens(Pos -> Sum(1) -> Pos) }
+                                        * True {
+                                            Source
+                                                -> Tokens(Pos -> Sum(1) -> Pos)
+                                                -> Cons(BraceClose() -> Token -> Head)
+                                                -> Tokens
+                                        }
+                                    )
+                                }
+                                * True {
+                                    Source
+                                        -> Tokens(Pos -> Sum(1) -> Pos)
+                                        -> Cons(BraceOpen() -> Token -> Head)
+                                        -> Tokens
+                                }
+                            )
+                        }
+                        * True {
+                            Source
+                                -> Tokens(Pos -> Sum(2) -> Pos)
+                                -> Cons(Arrow() -> Token -> Head)
+                                -> Tokens
+                        }
+                    )
+                }
                 * True {
                     Source
                         -> Tokens(Source -> Run(Pos) -> Pos)
@@ -143,17 +259,14 @@ Pos * Source => Tokens {
 }
 
 Unit => Result<Program, IoError> {
-    `0061736d010000000105016000017f03020100070a0106616e7377657200000a0601040041{
-        Args()
-            -> At(1)?
-            -> Path
-            -> File?
-            -> Read?
-            -> Source
-            -> Tokens(Pos(1))
-            -> Literal
-            -> Emitted
-    }0b`
-        -> Print
+    Args()
+        -> At(1)?
+        -> Path
+        -> File?
+        -> Read?
+        -> Source
+        -> Tokens(Pos(1))
+        -> Parsed
+        -> Reported
     Unit() -> Ok
 }

@@ -1,8 +1,8 @@
 //! The self-hosted compiler's output is real wasm, and it runs.
 //!
 //! `canonc` reads *Canon* source from a file named on the command line,
-//! tokenizes it, and emits a WebAssembly core module whose exported
-//! `answer` returns the first integer literal in the token stream. One
+//! tokenizes it, parses the literal out of a declaration body, and emits
+//! a WebAssembly core module whose exported `answer` returns it. One
 //! declaration form of one language, but the input is Canon and the
 //! output is wasm. The emission is hex rather than bytes because Canon
 //! cannot write binary yet — `write` takes a UTF-8 `string` (see the
@@ -16,9 +16,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Compile `source` with `canonc`, run the wasm it emits, and return
-/// what `answer` evaluates to.
-fn canonc_answer(name: &str, source: &str) -> i32 {
+/// Run `canonc` over `source` and return what it wrote to stdout —
+/// hex for a module it accepted, a diagnostic for one it rejected.
+fn canonc_stdout(name: &str, source: &str) -> String {
     // Written where the test can point at it — `canonc` reads its input
     // path from the program arguments, so this exercises the real entry
     // rather than a baked-in string.
@@ -38,8 +38,17 @@ fn canonc_answer(name: &str, source: &str) -> i32 {
         "canon run canonc failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let stdout = String::from_utf8(out.stdout).expect("utf-8 stdout");
-    let hex = stdout.trim();
+    String::from_utf8(out.stdout)
+        .expect("utf-8 stdout")
+        .trim()
+        .to_string()
+}
+
+/// Compile `source` with `canonc`, run the wasm it emits, and return
+/// what `answer` evaluates to.
+fn canonc_answer(name: &str, source: &str) -> i32 {
+    let hex = canonc_stdout(name, source);
+    let hex = hex.as_str();
 
     let bytes: Vec<u8> = (0..hex.len())
         .step_by(2)
@@ -72,4 +81,39 @@ fn canonc_tokenizes_rather_than_scanning_for_digits() {
     // into the answer and return 73; the scanner runs each word to its
     // end and classifies it by its first byte, so only `3` is a number.
     assert_eq!(canonc_answer("word.can", "Unit => Answer7 { 3 }\n"), 3);
+}
+
+#[test]
+fn canonc_takes_the_literal_from_the_declaration_body() {
+    // The parser wants the literal that opens a brace body, so a
+    // number loose in the declaration head is not the answer. The
+    // tokenizer alone would have taken the first `Number` it saw and
+    // returned 7.
+    assert_eq!(canonc_answer("body.can", "Answer 7 { 3 }\n"), 3);
+}
+
+#[test]
+fn canonc_reports_a_body_with_no_literal() {
+    // No literal to emit, so `canonc` says so instead of emitting a
+    // module for a number it never read. Before the parser this was a
+    // silent `i32.const 0`.
+    assert_eq!(
+        canonc_stdout("empty.can", "Unit => Answer { }\n"),
+        "declaration body is empty"
+    );
+}
+
+#[test]
+fn canonc_encodes_literals_past_one_leb_byte() {
+    // `i32.const` takes a signed LEB128 operand, so 64 is `c0 00`, not
+    // the `40` a single byte would give — that decodes as -64. Past
+    // 127 a one-byte operand isn't even well formed, and the module
+    // failed to validate. The section and body sizes move with the
+    // operand's width, so they are computed rather than baked in.
+    assert_eq!(canonc_answer("n64.can", "Unit => Answer { 64 }\n"), 64);
+    assert_eq!(canonc_answer("n200.can", "Unit => Answer { 200 }\n"), 200);
+    assert_eq!(
+        canonc_answer("n100000.can", "Unit => Answer { 100000 }\n"),
+        100000
+    );
 }
