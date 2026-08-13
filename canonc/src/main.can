@@ -1,22 +1,20 @@
 Acc = Int
 
-Arrow = Unit
-
 Bad = String
 
 Body = Parsed
 
 BodySize = Int
 
-BraceClose = Unit
+Chain = Parsed
 
-BraceOpen = Unit
+Code = String
 
 Cons = Head * Tail
 
 Emitted = String
 
-Good = Literal
+Good = Code
 
 Head = Token
 
@@ -26,9 +24,13 @@ IsDigit = Bool
 
 IsLetter = Bool
 
+IsSpace = Bool
+
 IsWord = Bool
 
 Literal = Int
+
+Lparen = Parsed
 
 Module = String
 
@@ -42,11 +44,21 @@ Number = Text
 
 Octet = String
 
+Opcode = String
+
+Operand = Parsed
+
+Opname = Parsed
+
 Parsed = Bad + Good
 
 Pos = Int
 
+Punct = Int
+
 Reported = Unit
+
+Rparen = Parsed
 
 Run = Int
 
@@ -56,23 +68,29 @@ Tail = Tokens
 
 Text = String
 
-Token = Arrow
-  + BraceClose
-  + BraceOpen
-  + Name
+Token = Name
   + Number
+  + Punct
 
 Tokens = Cons + Nil
+
+Widened = Int
 
 Tokens => Body {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Arrow { Bad("expected a literal after `{`") -> Parsed }
-                * BraceClose { Bad("declaration body is empty") -> Parsed }
-                * BraceOpen { Bad("expected a literal after `{`") -> Parsed }
-                * Name { Bad("expected a literal after `{`") -> Parsed }
-                * Number { Acc(0) -> Literal(Pos(1) * Number -> Source) -> Good -> Parsed }
+                * Name { Bad("expected a literal") -> Parsed }
+                * Number {
+                    Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
+                        -> Chain(Cons.Tail)
+                }
+                * Punct {
+                    Punct -> Eq(125) -> (
+                        * False { Bad("expected a literal") -> Parsed }
+                        * True { Bad("declaration body is empty") -> Parsed }
+                    )
+                }
             )
         }
         * Nil { Bad("declaration body is empty") -> Parsed }
@@ -85,6 +103,36 @@ Literal => BodySize {
         -> Length
         -> Quotient(2)
         -> Sum(3)
+}
+
+Code => BodySize {
+    Code
+        -> Length
+        -> Quotient(2)
+        -> Sum(2)
+}
+
+Code * Tokens => Chain {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `->` or `}`") -> Parsed }
+                * Number { Bad("expected `->` or `}`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(125) -> (
+                        * False {
+                            Punct -> Eq(45) -> (
+                                * False { Bad("expected `->` or `}`") -> Parsed }
+                                * True { Code -> Opname(Cons.Tail) }
+                            )
+                        }
+                        * True { Code -> Good -> Parsed }
+                    )
+                }
+            )
+        }
+        * Nil { Bad("declaration body is unterminated") -> Parsed }
+    )
 }
 
 Int => Emitted {
@@ -133,6 +181,13 @@ Int => IsLetter {
     )
 }
 
+Int => IsSpace {
+    Int -> Le(32) -> (
+        * False { False() }
+        * True { Int -> Ge(9) }
+    )
+}
+
 Int => IsWord {
     Int -> IsDigit -> (
         * False { Int -> IsLetter }
@@ -153,13 +208,31 @@ Acc * Pos * Source => Literal {
     )
 }
 
-Literal => Module {
+Code * Opcode * Tokens => Lparen {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `(`") -> Parsed }
+                * Number { Bad("expected `(`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(40) -> (
+                        * False { Bad("expected `(`") -> Parsed }
+                        * True { Code -> Operand(Opcode * Cons.Tail) }
+                    )
+                }
+            )
+        }
+        * Nil { Bad("expected `(`") -> Parsed }
+    )
+}
+
+Code => Module {
     `0061736d010000000105016000017f03020100070a0106616e7377657200000a{
-        Literal
+        Code
             -> BodySize
             -> Sum(2)
             -> Octet
-    }01{Literal -> BodySize -> Octet}0041{Literal -> Emitted}0b`
+    }01{Code -> BodySize -> Octet}00{Code}0b`
 }
 
 Int => Octet {
@@ -170,15 +243,61 @@ Int => Octet {
         -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
 }
 
+Text => Opcode {
+    Text -> (
+        * "Difference" { "6b" }
+        * "Product" { "6c" }
+        * "Sum" { "6a" }
+        * String { "" }
+    )
+}
+
+Code * Opcode * Tokens => Operand {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected a literal operand") -> Parsed }
+                * Number {
+                    Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`)
+                        -> Rparen(Cons.Tail)
+                }
+                * Punct { Bad("expected a literal operand") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected a literal operand") -> Parsed }
+    )
+}
+
+Code * Tokens => Opname {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Name -> Text -> Opcode -> Length -> Eq(0) -> (
+                        * False { Code -> Lparen(Name -> Text -> Opcode * Cons.Tail) }
+                        * True { Bad(`{Name} is not an operation`) -> Parsed }
+                    )
+                }
+                * Number { Bad("expected an operation after `->`") -> Parsed }
+                * Punct { Bad("expected an operation after `->`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected an operation after `->`") -> Parsed }
+    )
+}
+
 Tokens => Parsed {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Arrow { Cons.Tail -> Parsed }
-                * BraceClose { Cons.Tail -> Parsed }
-                * BraceOpen { Cons.Tail -> Body }
                 * Name { Cons.Tail -> Parsed }
                 * Number { Cons.Tail -> Parsed }
+                * Punct {
+                    Punct -> Eq(123) -> (
+                        * False { Cons.Tail -> Parsed }
+                        * True { Cons.Tail -> Body }
+                    )
+                }
             )
         }
         * Nil { Bad("no declaration body") -> Parsed }
@@ -189,6 +308,24 @@ Parsed => Reported {
     Parsed -> (
         * Bad { Bad -> Print }
         * Good { Good -> Module -> Print }
+    )
+}
+
+Code * Tokens => Rparen {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `)`") -> Parsed }
+                * Number { Bad("expected `)`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(41) -> (
+                        * False { Bad("expected `)`") -> Parsed }
+                        * True { Code -> Chain(Cons.Tail) }
+                    )
+                }
+            )
+        }
+        * Nil { Bad("expected `)`") -> Parsed }
     )
 }
 
@@ -216,34 +353,14 @@ Pos * Source => Tokens {
         * False {
             Source -> ByteAt(Pos) -> IsWord -> (
                 * False {
-                    Source -> ByteAt(Pos) -> Eq(61) -> (
+                    Source -> ByteAt(Pos) -> IsSpace -> (
                         * False {
-                            Source -> ByteAt(Pos) -> Eq(123) -> (
-                                * False {
-                                    Source -> ByteAt(Pos) -> Eq(125) -> (
-                                        * False { Source -> Tokens(Pos -> Sum(1) -> Pos) }
-                                        * True {
-                                            Source
-                                                -> Tokens(Pos -> Sum(1) -> Pos)
-                                                -> Cons(BraceClose() -> Token -> Head)
-                                                -> Tokens
-                                        }
-                                    )
-                                }
-                                * True {
-                                    Source
-                                        -> Tokens(Pos -> Sum(1) -> Pos)
-                                        -> Cons(BraceOpen() -> Token -> Head)
-                                        -> Tokens
-                                }
-                            )
-                        }
-                        * True {
                             Source
-                                -> Tokens(Pos -> Sum(2) -> Pos)
-                                -> Cons(Arrow() -> Token -> Head)
+                                -> Tokens(Source -> Widened(Pos) -> Pos)
+                                -> Cons(Source -> ByteAt(Pos) -> Punct -> Token -> Head)
                                 -> Tokens
                         }
+                        * True { Source -> Tokens(Pos -> Sum(1) -> Pos) }
                     )
                 }
                 * True {
@@ -255,6 +372,13 @@ Pos * Source => Tokens {
             )
         }
         * True { Nil() -> Tokens }
+    )
+}
+
+Pos * Source => Widened {
+    Source -> ByteAt(Pos -> Sum(1)) -> Eq(62) -> (
+        * False { Pos -> Sum(1) }
+        * True { Pos -> Sum(2) }
     )
 }
 
