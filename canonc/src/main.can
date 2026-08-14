@@ -1,26 +1,42 @@
 Acc = Int
 
+After = Tokens
+
+Assembly = Broken + Made
+
 Bad = String
 
 Body = Parsed
 
 BodySize = Int
 
+Broken = String
+
 Chain = Parsed
 
 Code = String
 
+Codes = String
+
 Cons = Head * Tail
+
+Count = Int
 
 Emitted = String
 
 Export = Text
 
-Good = Code
+Exports = String
+
+Funcs = String
+
+Good = After * Code
 
 Head = Token
 
 HexByte = String
+
+Index = Int
 
 IsDigit = Bool
 
@@ -35,6 +51,8 @@ Literal = Int
 Lowered = Int
 
 Lparen = Parsed
+
+Made = Codes * Count * Exports * Funcs * Types
 
 Module = String
 
@@ -82,11 +100,39 @@ Token = Name
 
 Tokens = Cons + Nil
 
-TypeSection = String
+TypeEntry = String
+
+Types = String
 
 Utf8 = String
 
 Widened = Int
+
+Index * Tokens => Assembly {
+    Tokens -> (
+        * Cons {
+            Tokens -> Parsed(Tokens -> Param) -> (
+                * Bad { Bad -> Broken -> Assembly }
+                * Good {
+                    Good.After -> Assembly(Index -> Sum(1) -> Index) -> (
+                        * Broken { Broken -> Broken -> Assembly }
+                        * Made {
+                            Codes(`{Good.Code -> BodySize -> Octet}00{Good.Code}0b{Made.Codes}`)
+                                -> Made(
+                                    Exports(`{Tokens -> Export(Prev("")) -> Length -> Octet}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Octet}{Made.Exports}`)
+                                    * Funcs(`{Index -> Octet}{Made.Funcs}`)
+                                    * Made.Count -> Sum(1) -> Count
+                                    * Types(`{Tokens -> Param -> TypeEntry}{Made.Types}`)
+                                )
+                                -> Assembly
+                        }
+                    )
+                }
+            )
+        }
+        * Nil { Codes("") -> Made(Count(0) * Exports("") * Funcs("") * Types("")) -> Assembly }
+    )
+}
 
 Param * Tokens => Body {
     Tokens -> (
@@ -146,7 +192,7 @@ Code * Param * Tokens => Chain {
                                 * True { Cons.Tail -> Opname(Code * Param) }
                             )
                         }
-                        * True { Code -> Good -> Parsed }
+                        * True { Code -> Good(Cons.Tail -> After) -> Parsed }
                     )
                 }
             )
@@ -276,16 +322,16 @@ Code * Opcode * Param * Tokens => Lparen {
     )
 }
 
-Code * Export * Param => Module {
-    `0061736d01000000{Param -> TypeSection}0302010007{Export -> Length -> Sum(4) -> Octet}01{
-        Export
+Made => Module {
+    `0061736d0100000001{Made.Types -> Length -> Quotient(2) -> Sum(1) -> Octet}{Made.Count -> Octet}{Made.Types}03{
+        Made.Funcs
             -> Length
+            -> Quotient(2)
+            -> Sum(1)
             -> Octet
-    }{Export -> Utf8(Pos(1))}00000a{Code -> BodySize -> Sum(2) -> Octet}01{
-        Code
-            -> BodySize
-            -> Octet
-    }00{Code}0b`
+    }{Made.Count -> Octet}{Made.Funcs}07{Made.Exports -> Length -> Quotient(2) -> Sum(1) -> Octet}{
+        Made.Count -> Octet
+    }{Made.Exports}0a{Made.Codes -> Length -> Quotient(2) -> Sum(1) -> Octet}{Made.Count -> Octet}{Made.Codes}`
 }
 
 Int => Octet {
@@ -386,14 +432,9 @@ Param * Tokens => Parsed {
 }
 
 Tokens => Reported {
-    Tokens -> Parsed(Tokens -> Param) -> (
-        * Bad { Bad -> Print }
-        * Good {
-            Tokens -> Export(Prev("")) -> Length -> Eq(0) -> (
-                * False { Good -> Module(Tokens -> Export(Prev("")) * Tokens -> Param) -> Print }
-                * True { "declaration has no name" -> Print }
-            )
-        }
+    Tokens -> Assembly(Index(0)) -> (
+        * Broken { Broken -> Print }
+        * Made { Made -> Module -> Print }
     )
 }
 
@@ -461,6 +502,13 @@ Pos * Source => Tokens {
     )
 }
 
+Param => TypeEntry {
+    Param -> Length -> Eq(0) -> (
+        * False { "60017f017f" }
+        * True { "6000017f" }
+    )
+}
+
 Unit => Result<Program, IoError> {
     Args()
         -> At(1)?
@@ -471,13 +519,6 @@ Unit => Result<Program, IoError> {
         -> Tokens(Pos(1))
         -> Reported
     Unit() -> Ok
-}
-
-Param => TypeSection {
-    Param -> Length -> Eq(0) -> (
-        * False { "01060160017f017f" }
-        * True { "0105016000017f" }
-    )
 }
 
 Export * Pos => Utf8 {
