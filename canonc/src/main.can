@@ -82,8 +82,8 @@ Tokens => Body {
             Cons.Head -> (
                 * Name { Bad("expected a literal") -> Parsed }
                 * Number {
-                    Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
-                        -> Chain(Cons.Tail)
+                    Cons.Tail
+                        -> Chain(Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`))
                 }
                 * Punct {
                     Punct -> Eq(125) -> (
@@ -123,7 +123,7 @@ Code * Tokens => Chain {
                         * False {
                             Punct -> Eq(45) -> (
                                 * False { Bad("expected `->` or `}`") -> Parsed }
-                                * True { Code -> Opname(Cons.Tail) }
+                                * True { Cons.Tail -> Opname(Code) }
                             )
                         }
                         * True { Code -> Good -> Parsed }
@@ -217,7 +217,7 @@ Code * Opcode * Tokens => Lparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Code -> Operand(Opcode * Cons.Tail) }
+                        * True { Cons.Tail -> Operand(Code * Opcode) }
                     )
                 }
             )
@@ -258,8 +258,8 @@ Code * Opcode * Tokens => Operand {
             Cons.Head -> (
                 * Name { Bad("expected a literal operand") -> Parsed }
                 * Number {
-                    Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`)
-                        -> Rparen(Cons.Tail)
+                    Cons.Tail
+                        -> Rparen(Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`))
                 }
                 * Punct { Bad("expected a literal operand") -> Parsed }
             )
@@ -274,7 +274,7 @@ Code * Tokens => Opname {
             Cons.Head -> (
                 * Name {
                     Name -> Opcode -> Length -> Eq(0) -> (
-                        * False { Code -> Lparen(Name -> Opcode * Cons.Tail) }
+                        * False { Cons.Tail -> Lparen(Code * Name -> Opcode) }
                         * True { Bad(`{Name} is not an operation`) -> Parsed }
                     )
                 }
@@ -320,7 +320,7 @@ Code * Tokens => Rparen {
                 * Punct {
                     Punct -> Eq(41) -> (
                         * False { Bad("expected `)`") -> Parsed }
-                        * True { Code -> Chain(Cons.Tail) }
+                        * True { Cons.Tail -> Chain(Code) }
                     )
                 }
             )

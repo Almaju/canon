@@ -2296,18 +2296,20 @@ impl<'m> WasmGen<'m> {
     /// the same call. Binding is by type, so the caller can compile the
     /// inputs in parameter order.
     ///
-    /// Only an *exact* type match moves an input. The looser scores
-    /// `build_product_value` falls back on can't be used here: a
-    /// product's fields are distinct newtypes by construction (the
-    /// checker rejects one where written order would decide an untagged
-    /// value's field), but a function's components are not — `Int *
-    /// OtherInt => Gt` would have its two operands bind either way
-    /// round. Anything short of one exact match per component keeps the
-    /// written order, which is what every call compiled as before.
+    /// Exact matches are tried first: one per component, first unused
+    /// value wins. Failing that, a value may fill a component it
+    /// *widens to* — `Tail = Tokens` means a `Tail` is a `Tokens`, so
+    /// it fills a `Tokens` slot. Widening is one-directional: a
+    /// `Tokens` does not fill a `Tail`, because the newtype is the
+    /// narrower claim. On that pass a component matched by more than
+    /// one value bails out entirely — written order deciding a slot is
+    /// exactly what binding by type must not do, and a function's
+    /// components are not distinct newtypes the way a product's fields
+    /// are (`Int * OtherInt => Gt` binds either way round).
     ///
     /// Returns `None` when the callee's components aren't known
-    /// one-per-input, when a component has no exact match, or when the
-    /// written order already is the declaration order.
+    /// one-per-input, when a component goes unmatched or ambiguous, or
+    /// when the written order already is the declaration order.
     pub(super) fn commutative_order(
         &self,
         input_types: &[String],
@@ -2320,22 +2322,46 @@ impl<'m> WasmGen<'m> {
             .iter()
             .map(|e| self.infer_ctor_arg_type_name(e))
             .collect();
-        let mut used = vec![false; inputs.len()];
-        let mut order = Vec::with_capacity(input_types.len());
-        for want in input_types {
-            let vi = (0..inputs.len()).find(|&vi| {
-                !used[vi]
-                    && value_names[vi]
-                        .as_ref()
-                        .is_some_and(|nm| self.field_match_score(nm, want) == 2)
-            })?;
-            used[vi] = true;
-            order.push(vi);
-        }
+        let order = self
+            .assign_inputs(input_types, &value_names, true)
+            .or_else(|| self.assign_inputs(input_types, &value_names, false))?;
         if order.iter().enumerate().all(|(i, &vi)| i == vi) {
             return None;
         }
         Some(order.into_iter().map(|vi| inputs[vi].clone()).collect())
+    }
+
+    /// Bind each declared component to an input index. With
+    /// `exact_only`, a value matches its own type (or its union);
+    /// without, it also matches anything on its alias chain, and a
+    /// component two values could fill fails the whole assignment.
+    fn assign_inputs(
+        &self,
+        input_types: &[String],
+        value_names: &[Option<String>],
+        exact_only: bool,
+    ) -> Option<Vec<usize>> {
+        let mut used = vec![false; value_names.len()];
+        let mut order = Vec::with_capacity(input_types.len());
+        for want in input_types {
+            let candidates: Vec<usize> = (0..value_names.len())
+                .filter(|&vi| {
+                    !used[vi]
+                        && value_names[vi].as_ref().is_some_and(|nm| {
+                            self.field_match_score(nm, want) == 2
+                                || (!exact_only
+                                    && self.collect_alias_chain(nm).iter().any(|n| n == want))
+                        })
+                })
+                .collect();
+            let vi = *candidates.first()?;
+            if !exact_only && candidates.len() > 1 {
+                return None;
+            }
+            used[vi] = true;
+            order.push(vi);
+        }
+        Some(order)
     }
 
     pub(super) fn build_product_value(
