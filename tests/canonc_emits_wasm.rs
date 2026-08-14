@@ -287,3 +287,13 @@ fn canonc_compiles_the_parameter_as_an_operand() {
         "expected a literal operand"
     );
 }
+
+#[test]
+fn canonc_compiles_more_than_one_declaration() {
+    // Every declaration becomes its own exported function: the type,
+    // function, export and code sections all carry one entry each, with
+    // counts and sizes derived from what was compiled.
+    let source = "Unit => Answer { 7 }\n\nInt => Double { Int -> Product(2) }\n";
+    assert_eq!(canonc_export("multi.can", source, "answer"), 7);
+    assert_eq!(canonc_apply("multi.can", source, "double", Some(21)), 42);
+}
