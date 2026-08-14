@@ -1,0 +1,1 @@
+error[tests/checker/fail/union_piped_into_scalar.can:9:5]: `String` expects a `String`, found the union `Texts`: dispatch on it before constructing

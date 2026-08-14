@@ -243,8 +243,8 @@ Int => Octet {
         -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
 }
 
-Text => Opcode {
-    Text -> (
+Name => Opcode {
+    Name -> (
         * "Difference" { "6b" }
         * "Product" { "6c" }
         * "Sum" { "6a" }
@@ -273,8 +273,8 @@ Code * Tokens => Opname {
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Name -> Text -> Opcode -> Length -> Eq(0) -> (
-                        * False { Code -> Lparen(Name -> Text -> Opcode * Cons.Tail) }
+                    Name -> Opcode -> Length -> Eq(0) -> (
+                        * False { Code -> Lparen(Name -> Opcode * Cons.Tail) }
                         * True { Bad(`{Name} is not an operation`) -> Parsed }
                     )
                 }
