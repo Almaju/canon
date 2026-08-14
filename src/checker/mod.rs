@@ -3022,6 +3022,32 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *span,
                             });
+                        } else if !recv_terminal.contains('<')
+                            && symbols.variant_of.values().any(|p| p == recv_terminal)
+                        {
+                            // And again for a user union: one pointer at
+                            // the value level, with no rendering of it.
+                            // Generic receivers stay in the conservative
+                            // pass-through the branches above already
+                            // reserve for them — `has_alias_method`
+                            // doesn't resolve a constructor declared on
+                            // `Bag<T>` from a `Bag<Int>` call site, so
+                            // firing here would reject a legitimate one.
+                            // `Bool` reaches `String` through the stdlib
+                            // family, which `has_alias_method` already
+                            // took. The erasure fallback handed the
+                            // constructed type the union's pointer, and
+                            // codegen, finding nothing to do with it,
+                            // dropped the value — the statement compiled,
+                            // ran, and printed nothing at all.
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found the union `{}`: dispatch on it \
+                                     before constructing",
+                                    method.name, target_scalar, recv_terminal
+                                ),
+                                span: *span,
+                            });
                         }
                     }
                 }
@@ -3747,10 +3773,16 @@ fn check_product_construction_types(
 pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> String {
     match expr {
         Expr::Ident(ident) => {
-            if let Some(parent) = symbols.variant_of.get(&ident.name) {
-                parent.clone()
-            } else {
-                ident.name.clone()
+            // A bare variant *tag* — a name declared only by appearing in
+            // a union — widens to that union. A variant with its own
+            // `TypeDef` does not: an identifier is a parameter or an
+            // arm binding, and there it holds the variant's payload, so
+            // `Name = Text` inside `Token = Name + Number` is a `Text`.
+            // Widening it made a literal dispatch on such a parameter
+            // report the union as the scrutinee.
+            match symbols.variant_of.get(&ident.name) {
+                Some(parent) if !symbols.standalone_types.contains(&ident.name) => parent.clone(),
+                _ => ident.name.clone(),
             }
         }
         Expr::StringLit { .. } => "String".to_string(),

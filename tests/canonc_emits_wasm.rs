@@ -1,10 +1,10 @@
 //! The self-hosted compiler's output is real wasm, and it runs.
 //!
 //! `canonc` reads *Canon* source from a file named on the command line,
-//! tokenizes it, parses the literal out of a declaration body, and emits
-//! a WebAssembly core module whose exported `answer` returns it. One
-//! declaration form of one language, but the input is Canon and the
-//! output is wasm. The emission is hex rather than bytes because Canon
+//! tokenizes it, parses the declaration body as a literal followed by a
+//! chain of `-> Op(literal)` steps, and emits a WebAssembly core module
+//! whose exported `answer` evaluates it. One declaration form of one
+//! language, but the input is Canon and the output is wasm. The emission is hex rather than bytes because Canon
 //! cannot write binary yet — `write` takes a UTF-8 `string` (see the
 //! codegen gaps) — and hex sidesteps that without waiting on it.
 //!
@@ -116,4 +116,58 @@ fn canonc_encodes_literals_past_one_leb_byte() {
         canonc_answer("n100000.can", "Unit => Answer { 100000 }\n"),
         100000
     );
+}
+
+#[test]
+fn canonc_compiles_an_arithmetic_chain() {
+    // The body is no longer one instruction: each `-> Op(n)` step
+    // appends an `i32.const` and the operator, and the body and section
+    // sizes follow the instruction stream's length.
+    assert_eq!(
+        canonc_answer("sum.can", "Unit => Answer { 1 -> Sum(2) }\n"),
+        3
+    );
+    assert_eq!(
+        canonc_answer("diff.can", "Unit => Answer { 10 -> Difference(4) }\n"),
+        6
+    );
+    assert_eq!(
+        canonc_answer("prod.can", "Unit => Answer { 6 -> Product(7) }\n"),
+        42
+    );
+    // Chains keep folding left, the way the pipe reads.
+    assert_eq!(
+        canonc_answer(
+            "chain.can",
+            "Unit => Answer { 1 -> Sum(2) -> Product(10) }\n"
+        ),
+        30
+    );
+}
+
+#[test]
+fn canonc_reports_what_the_grammar_wanted() {
+    // Each parse step names the token it expected, so a malformed body
+    // is a diagnostic rather than a module built from whatever the
+    // scanner happened to find.
+    for (name, source, want) in [
+        (
+            "op.can",
+            "Unit => Answer { 1 -> Frobnicate(2) }\n",
+            "Frobnicate is not an operation",
+        ),
+        (
+            "lparen.can",
+            "Unit => Answer { 1 -> Sum 2 }\n",
+            "expected `(`",
+        ),
+        (
+            "rparen.can",
+            "Unit => Answer { 1 -> Sum(2 }\n",
+            "expected `)`",
+        ),
+        ("bare.can", "Unit => Answer { -> }\n", "expected a literal"),
+    ] {
+        assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
+    }
 }

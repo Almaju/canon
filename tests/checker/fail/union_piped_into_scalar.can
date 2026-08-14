@@ -1,0 +1,14 @@
+Cons = Int
+
+Nil = Unit
+
+Texts = Cons + Nil
+
+Unit => Program {
+    "before" -> Print
+    Nil()
+        -> Texts
+        -> String
+        -> Print
+    "after" -> Print
+}

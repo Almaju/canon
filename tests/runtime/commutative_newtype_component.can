@@ -1,0 +1,31 @@
+Code = String
+
+Cons = Head * Tail
+
+Head = Int
+
+Nil = Unit
+
+Shown = String
+
+Tail = Tokens
+
+Tokens = Cons + Nil
+
+Code * Tokens => Shown {
+    Tokens -> (
+        * Cons { Cons.Tail -> Shown(Code(`{Code}/{Cons.Head -> String}`)) }
+        * Nil { Code }
+    )
+}
+
+Unit => Program {
+    Nil()
+        -> Tokens
+        -> Cons(Head(7))
+        -> Tokens
+        -> Cons(Head(4))
+        -> Tokens
+        -> Shown(Code("start"))
+        -> Print
+}

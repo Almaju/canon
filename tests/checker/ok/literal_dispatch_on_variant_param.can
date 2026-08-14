@@ -1,0 +1,23 @@
+Name = Text
+
+Number = Text
+
+Opcode = String
+
+Text = String
+
+Token = Name + Number
+
+Name => Opcode {
+    Name -> (
+        * "Sum" { "6a" }
+        * String { "" }
+    )
+}
+
+Unit => Program {
+    Text("Sum") -> Name -> Token -> (
+        * Name { Name -> Opcode -> Print }
+        * Number { Number -> Print }
+    )
+}
