@@ -160,6 +160,14 @@ fn canonc_compiles_an_arithmetic_chain() {
         canonc_answer("prod.can", "Unit => Answer { 6 -> Product(7) }\n"),
         42
     );
+    assert_eq!(
+        canonc_answer("quot.can", "Unit => Answer { 20 -> Quotient(6) }\n"),
+        3
+    );
+    assert_eq!(
+        canonc_answer("rem.can", "Unit => Answer { 20 -> Remainder(6) }\n"),
+        2
+    );
     // Chains keep folding left, the way the pipe reads.
     assert_eq!(
         canonc_answer(
