@@ -95,12 +95,15 @@ Param * Tokens => Body {
                 * Name {
                     Name -> Eq(Param) -> (
                         * False { Bad("expected a literal") -> Parsed }
-                        * True { Cons.Tail -> Chain(Code("2000")) }
+                        * True { Cons.Tail -> Chain(Code("2000") * Param) }
                     )
                 }
                 * Number {
                     Cons.Tail
-                        -> Chain(Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`))
+                        -> Chain(
+                            Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
+                            * Param
+                        )
                 }
                 * Punct {
                     Punct -> Eq(125) -> (
@@ -129,7 +132,7 @@ Code => BodySize {
         -> Sum(2)
 }
 
-Code * Tokens => Chain {
+Code * Param * Tokens => Chain {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -140,7 +143,7 @@ Code * Tokens => Chain {
                         * False {
                             Punct -> Eq(45) -> (
                                 * False { Bad("expected `->` or `}`") -> Parsed }
-                                * True { Cons.Tail -> Opname(Code) }
+                                * True { Cons.Tail -> Opname(Code * Param) }
                             )
                         }
                         * True { Code -> Good -> Parsed }
@@ -255,7 +258,7 @@ Int => Lowered {
     )
 }
 
-Code * Opcode * Tokens => Lparen {
+Code * Opcode * Param * Tokens => Lparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -264,7 +267,7 @@ Code * Opcode * Tokens => Lparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Cons.Tail -> Operand(Code * Opcode) }
+                        * True { Cons.Tail -> Operand(Code * Opcode * Param) }
                     )
                 }
             )
@@ -302,14 +305,22 @@ Name => Opcode {
     )
 }
 
-Code * Opcode * Tokens => Operand {
+Code * Opcode * Param * Tokens => Operand {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Bad("expected a literal operand") -> Parsed }
+                * Name {
+                    Name -> Eq(Param) -> (
+                        * False { Bad("expected a literal operand") -> Parsed }
+                        * True { Cons.Tail -> Rparen(Code(`{Code}2000{Opcode}`) * Param) }
+                    )
+                }
                 * Number {
                     Cons.Tail
-                        -> Rparen(Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`))
+                        -> Rparen(
+                            Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`)
+                            * Param
+                        )
                 }
                 * Punct { Bad("expected a literal operand") -> Parsed }
             )
@@ -318,13 +329,13 @@ Code * Opcode * Tokens => Operand {
     )
 }
 
-Code * Tokens => Opname {
+Code * Param * Tokens => Opname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Opcode -> Length -> Eq(0) -> (
-                        * False { Cons.Tail -> Lparen(Code * Name -> Opcode) }
+                        * False { Cons.Tail -> Lparen(Code * Name -> Opcode * Param) }
                         * True { Bad(`{Name} is not an operation`) -> Parsed }
                     )
                 }
@@ -384,7 +395,7 @@ Tokens => Reported {
     )
 }
 
-Code * Tokens => Rparen {
+Code * Param * Tokens => Rparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -393,7 +404,7 @@ Code * Tokens => Rparen {
                 * Punct {
                     Punct -> Eq(41) -> (
                         * False { Bad("expected `)`") -> Parsed }
-                        * True { Cons.Tail -> Chain(Code) }
+                        * True { Cons.Tail -> Chain(Code * Param) }
                     )
                 }
             )
