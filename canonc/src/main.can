@@ -300,6 +300,8 @@ Name => Opcode {
     Name -> (
         * "Difference" { "6b" }
         * "Product" { "6c" }
+        * "Quotient" { "6d" }
+        * "Remainder" { "6f" }
         * "Sum" { "6a" }
         * String { "" }
     )
