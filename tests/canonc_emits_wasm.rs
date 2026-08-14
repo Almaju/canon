@@ -54,6 +54,12 @@ fn canonc_answer(name: &str, source: &str) -> i32 {
 /// `canonc` lowercases the declared type, so `Unit => Total { … }`
 /// exports `total`.
 fn canonc_export(name: &str, source: &str, export: &str) -> i32 {
+    canonc_apply(name, source, export, None)
+}
+
+/// Same again, for a declaration that takes a parameter: `arg` is
+/// passed to the exported function.
+fn canonc_apply(name: &str, source: &str, export: &str, arg: Option<i32>) -> i32 {
     let hex = canonc_stdout(name, source);
     let hex = hex.as_str();
 
@@ -68,10 +74,18 @@ fn canonc_export(name: &str, source: &str, export: &str) -> i32 {
     let mut store = wasmtime::Store::new(&engine, ());
     let instance =
         wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
-    let answer = instance
-        .get_typed_func::<(), i32>(&mut store, export)
-        .unwrap_or_else(|_| panic!("emitted module should export `{export}`"));
-    answer.call(&mut store, ()).expect("call answer")
+    match arg {
+        None => instance
+            .get_typed_func::<(), i32>(&mut store, export)
+            .unwrap_or_else(|_| panic!("emitted module should export `{export}`"))
+            .call(&mut store, ())
+            .expect("call the export"),
+        Some(a) => instance
+            .get_typed_func::<i32, i32>(&mut store, export)
+            .unwrap_or_else(|_| panic!("emitted module should export `{export}`"))
+            .call(&mut store, a)
+            .expect("call the export"),
+    }
 }
 
 #[test]
@@ -100,7 +114,7 @@ fn canonc_takes_the_literal_from_the_declaration_body() {
     // number loose in the declaration head is not the answer. The
     // tokenizer alone would have taken the first `Number` it saw and
     // returned 7.
-    assert_eq!(canonc_answer("body.can", "Answer 7 { 3 }\n"), 3);
+    assert_eq!(canonc_answer("body.can", "Unit => Answer 7 { 3 }\n"), 3);
 }
 
 #[test]
@@ -197,5 +211,41 @@ fn canonc_exports_the_declared_name() {
     assert_eq!(
         canonc_export("sum2.can", "Unit => Grand { 1 -> Sum(2) }\n", "grand"),
         3
+    );
+}
+
+#[test]
+fn canonc_compiles_a_parameter() {
+    // A declaration whose input isn't `Unit` takes one i32: the type
+    // section grows a parameter, and naming it in the body reads it
+    // back with `local.get 0`.
+    assert_eq!(
+        canonc_apply(
+            "double.can",
+            "Int => Double { Int -> Product(2) }\n",
+            "double",
+            Some(21)
+        ),
+        42
+    );
+    // The parameter is named by its declared type, whatever that is.
+    assert_eq!(
+        canonc_apply(
+            "bumped.can",
+            "Count => Bumped { Count -> Sum(1) }\n",
+            "bumped",
+            Some(9)
+        ),
+        10
+    );
+}
+
+#[test]
+fn canonc_rejects_a_name_that_is_not_the_parameter() {
+    // `Unit` declares no parameter, so there is nothing for a name in
+    // the body to refer to.
+    assert_eq!(
+        canonc_stdout("noparam.can", "Unit => Answer { Int -> Sum(1) }\n"),
+        "expected a literal"
     );
 }

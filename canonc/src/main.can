@@ -54,6 +54,8 @@ Operand = Parsed
 
 Opname = Parsed
 
+Param = Text
+
 Parsed = Bad + Good
 
 Pos = Int
@@ -80,15 +82,22 @@ Token = Name
 
 Tokens = Cons + Nil
 
+TypeSection = String
+
 Utf8 = String
 
 Widened = Int
 
-Tokens => Body {
+Param * Tokens => Body {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Bad("expected a literal") -> Parsed }
+                * Name {
+                    Name -> Eq(Param) -> (
+                        * False { Bad("expected a literal") -> Parsed }
+                        * True { Cons.Tail -> Chain(Code("2000")) }
+                    )
+                }
                 * Number {
                     Cons.Tail
                         -> Chain(Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`))
@@ -264,8 +273,8 @@ Code * Opcode * Tokens => Lparen {
     )
 }
 
-Code * Export => Module {
-    `0061736d010000000105016000017f0302010007{Export -> Length -> Sum(4) -> Octet}01{
+Code * Export * Param => Module {
+    `0061736d01000000{Param -> TypeSection}0302010007{Export -> Length -> Sum(4) -> Octet}01{
         Export
             -> Length
             -> Octet
@@ -327,16 +336,34 @@ Code * Tokens => Opname {
     )
 }
 
-Tokens => Parsed {
+Tokens => Param {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Cons.Tail -> Parsed }
-                * Number { Cons.Tail -> Parsed }
+                * Name {
+                    Name -> (
+                        * "Unit" { "" }
+                        * String { Name }
+                    )
+                }
+                * Number { "" }
+                * Punct { "" }
+            )
+        }
+        * Nil { "" }
+    )
+}
+
+Param * Tokens => Parsed {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Parsed(Param) }
+                * Number { Cons.Tail -> Parsed(Param) }
                 * Punct {
                     Punct -> Eq(123) -> (
-                        * False { Cons.Tail -> Parsed }
-                        * True { Cons.Tail -> Body }
+                        * False { Cons.Tail -> Parsed(Param) }
+                        * True { Cons.Tail -> Body(Param) }
                     )
                 }
             )
@@ -346,11 +373,11 @@ Tokens => Parsed {
 }
 
 Tokens => Reported {
-    Tokens -> Parsed -> (
+    Tokens -> Parsed(Tokens -> Param) -> (
         * Bad { Bad -> Print }
         * Good {
             Tokens -> Export(Prev("")) -> Length -> Eq(0) -> (
-                * False { Good -> Module(Tokens -> Export(Prev(""))) -> Print }
+                * False { Good -> Module(Tokens -> Export(Prev("")) * Tokens -> Param) -> Print }
                 * True { "declaration has no name" -> Print }
             )
         }
@@ -421,15 +448,6 @@ Pos * Source => Tokens {
     )
 }
 
-Export * Pos => Utf8 {
-    Pos -> Gt(Export -> Length) -> (
-        * False {
-            `{Export -> ByteAt(Pos) -> Lowered -> Octet}{Export -> Utf8(Pos -> Sum(1) -> Pos)}`
-        }
-        * True { "" }
-    )
-}
-
 Unit => Result<Program, IoError> {
     Args()
         -> At(1)?
@@ -440,6 +458,22 @@ Unit => Result<Program, IoError> {
         -> Tokens(Pos(1))
         -> Reported
     Unit() -> Ok
+}
+
+Param => TypeSection {
+    Param -> Length -> Eq(0) -> (
+        * False { "01060160017f017f" }
+        * True { "0105016000017f" }
+    )
+}
+
+Export * Pos => Utf8 {
+    Pos -> Gt(Export -> Length) -> (
+        * False {
+            `{Export -> ByteAt(Pos) -> Lowered -> Octet}{Export -> Utf8(Pos -> Sum(1) -> Pos)}`
+        }
+        * True { "" }
+    )
 }
 
 Pos * Source => Widened {
