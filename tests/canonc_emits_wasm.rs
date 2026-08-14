@@ -297,3 +297,38 @@ fn canonc_compiles_more_than_one_declaration() {
     assert_eq!(canonc_export("multi.can", source, "answer"), 7);
     assert_eq!(canonc_apply("multi.can", source, "double", Some(21)), 42);
 }
+
+#[test]
+fn canonc_compiles_comparisons() {
+    // The comparisons are ordinary binary operations that happen to
+    // yield 0 or 1, so they need no signature of their own.
+    assert_eq!(
+        canonc_answer("lt.can", "Unit => Answer { 3 -> Lt(5) }\n"),
+        1
+    );
+    assert_eq!(
+        canonc_answer("nlt.can", "Unit => Answer { 5 -> Lt(3) }\n"),
+        0
+    );
+    assert_eq!(
+        canonc_answer("eq.can", "Unit => Answer { 4 -> Eq(4) }\n"),
+        1
+    );
+    assert_eq!(
+        canonc_answer("ne.can", "Unit => Answer { 4 -> Ne(4) }\n"),
+        0
+    );
+    assert_eq!(
+        canonc_answer("ge.can", "Unit => Answer { 4 -> Ge(4) }\n"),
+        1
+    );
+    assert_eq!(
+        canonc_apply(
+            "gtp.can",
+            "Int => Positive { Int -> Gt(0) }\n",
+            "positive",
+            Some(-3)
+        ),
+        0
+    );
+}

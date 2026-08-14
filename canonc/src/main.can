@@ -345,6 +345,12 @@ Int => Octet {
 Name => Opcode {
     Name -> (
         * "Difference" { "6b" }
+        * "Eq" { "46" }
+        * "Ge" { "4e" }
+        * "Gt" { "4a" }
+        * "Le" { "4c" }
+        * "Lt" { "48" }
+        * "Ne" { "47" }
         * "Product" { "6c" }
         * "Quotient" { "6d" }
         * "Remainder" { "6f" }
