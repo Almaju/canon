@@ -14,6 +14,8 @@ Cons = Head * Tail
 
 Emitted = String
 
+Export = Text
+
 Good = Code
 
 Head = Token
@@ -29,6 +31,8 @@ IsSpace = Bool
 IsWord = Bool
 
 Literal = Int
+
+Lowered = Int
 
 Lparen = Parsed
 
@@ -54,6 +58,8 @@ Parsed = Bad + Good
 
 Pos = Int
 
+Prev = Text
+
 Punct = Int
 
 Reported = Unit
@@ -73,6 +79,8 @@ Token = Name
   + Punct
 
 Tokens = Cons + Nil
+
+Utf8 = String
 
 Widened = Int
 
@@ -153,6 +161,24 @@ Int => Emitted {
     )
 }
 
+Prev * Tokens => Export {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Export(Name -> Prev) }
+                * Number { Cons.Tail -> Export(Prev) }
+                * Punct {
+                    Punct -> Eq(123) -> (
+                        * False { Cons.Tail -> Export(Prev) }
+                        * True { Prev }
+                    )
+                }
+            )
+        }
+        * Nil { "" }
+    )
+}
+
 Nibble => HexByte {
     "0123456789abcdef" -> Substring(Nibble -> Sum(1) -> From * Nibble -> Sum(1) -> To)
 }
@@ -208,6 +234,18 @@ Acc * Pos * Source => Literal {
     )
 }
 
+Int => Lowered {
+    Int -> Ge(65) -> (
+        * False { Int }
+        * True {
+            Int -> Le(90) -> (
+                * False { Int }
+                * True { Int -> Sum(32) }
+            )
+        }
+    )
+}
+
 Code * Opcode * Tokens => Lparen {
     Tokens -> (
         * Cons {
@@ -226,13 +264,16 @@ Code * Opcode * Tokens => Lparen {
     )
 }
 
-Code => Module {
-    `0061736d010000000105016000017f03020100070a0106616e7377657200000a{
+Code * Export => Module {
+    `0061736d010000000105016000017f0302010007{Export -> Length -> Sum(4) -> Octet}01{
+        Export
+            -> Length
+            -> Octet
+    }{Export -> Utf8(Pos(1))}00000a{Code -> BodySize -> Sum(2) -> Octet}01{
         Code
             -> BodySize
-            -> Sum(2)
             -> Octet
-    }01{Code -> BodySize -> Octet}00{Code}0b`
+    }00{Code}0b`
 }
 
 Int => Octet {
@@ -304,10 +345,15 @@ Tokens => Parsed {
     )
 }
 
-Parsed => Reported {
-    Parsed -> (
+Tokens => Reported {
+    Tokens -> Parsed -> (
         * Bad { Bad -> Print }
-        * Good { Good -> Module -> Print }
+        * Good {
+            Tokens -> Export(Prev("")) -> Length -> Eq(0) -> (
+                * False { Good -> Module(Tokens -> Export(Prev(""))) -> Print }
+                * True { "declaration has no name" -> Print }
+            )
+        }
     )
 }
 
@@ -375,10 +421,12 @@ Pos * Source => Tokens {
     )
 }
 
-Pos * Source => Widened {
-    Source -> ByteAt(Pos -> Sum(1)) -> Eq(62) -> (
-        * False { Pos -> Sum(1) }
-        * True { Pos -> Sum(2) }
+Export * Pos => Utf8 {
+    Pos -> Gt(Export -> Length) -> (
+        * False {
+            `{Export -> ByteAt(Pos) -> Lowered -> Octet}{Export -> Utf8(Pos -> Sum(1) -> Pos)}`
+        }
+        * True { "" }
     )
 }
 
@@ -390,7 +438,13 @@ Unit => Result<Program, IoError> {
         -> Read?
         -> Source
         -> Tokens(Pos(1))
-        -> Parsed
         -> Reported
     Unit() -> Ok
+}
+
+Pos * Source => Widened {
+    Source -> ByteAt(Pos -> Sum(1)) -> Eq(62) -> (
+        * False { Pos -> Sum(1) }
+        * True { Pos -> Sum(2) }
+    )
 }

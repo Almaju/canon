@@ -45,8 +45,15 @@ fn canonc_stdout(name: &str, source: &str) -> String {
 }
 
 /// Compile `source` with `canonc`, run the wasm it emits, and return
-/// what `answer` evaluates to.
+/// what its `answer` export evaluates to.
 fn canonc_answer(name: &str, source: &str) -> i32 {
+    canonc_export(name, source, "answer")
+}
+
+/// Same, for a module whose exported function is named something else —
+/// `canonc` lowercases the declared type, so `Unit => Total { … }`
+/// exports `total`.
+fn canonc_export(name: &str, source: &str, export: &str) -> i32 {
     let hex = canonc_stdout(name, source);
     let hex = hex.as_str();
 
@@ -62,8 +69,8 @@ fn canonc_answer(name: &str, source: &str) -> i32 {
     let instance =
         wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
     let answer = instance
-        .get_typed_func::<(), i32>(&mut store, "answer")
-        .expect("emitted module exports `answer`");
+        .get_typed_func::<(), i32>(&mut store, export)
+        .unwrap_or_else(|_| panic!("emitted module should export `{export}`"));
     answer.call(&mut store, ()).expect("call answer")
 }
 
@@ -80,7 +87,11 @@ fn canonc_tokenizes_rather_than_scanning_for_digits() {
     // Reading the source byte by byte would fold the `7` of `Answer7`
     // into the answer and return 73; the scanner runs each word to its
     // end and classifies it by its first byte, so only `3` is a number.
-    assert_eq!(canonc_answer("word.can", "Unit => Answer7 { 3 }\n"), 3);
+    // The export follows the declaration too, so this one is `answer7`.
+    assert_eq!(
+        canonc_export("word.can", "Unit => Answer7 { 3 }\n", "answer7"),
+        3
+    );
 }
 
 #[test]
@@ -170,4 +181,21 @@ fn canonc_reports_what_the_grammar_wanted() {
     ] {
         assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
     }
+}
+
+#[test]
+fn canonc_exports_the_declared_name() {
+    // The declaration's name reaches the export section rather than
+    // being thrown away — every module used to export `answer` no
+    // matter what it was called. The name is lowercased, so the type
+    // `Total` exports `total`, and the export section's size follows
+    // the name's length.
+    assert_eq!(
+        canonc_export("total.can", "Unit => Total { 7 }\n", "total"),
+        7
+    );
+    assert_eq!(
+        canonc_export("sum2.can", "Unit => Grand { 1 -> Sum(2) }\n", "grand"),
+        3
+    );
 }
