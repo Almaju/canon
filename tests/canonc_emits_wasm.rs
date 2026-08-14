@@ -249,3 +249,33 @@ fn canonc_rejects_a_name_that_is_not_the_parameter() {
         "expected a literal"
     );
 }
+
+#[test]
+fn canonc_compiles_the_parameter_as_an_operand() {
+    // The parameter reads back on either side of an operation, not
+    // just as the body's head.
+    assert_eq!(
+        canonc_apply(
+            "halved.can",
+            "Int => Halved { 100 -> Difference(Int) }\n",
+            "halved",
+            Some(60)
+        ),
+        40
+    );
+    // Both sides at once, so `local.get 0` is emitted twice.
+    assert_eq!(
+        canonc_apply(
+            "squared.can",
+            "Int => Squared { Int -> Product(Int) }\n",
+            "squared",
+            Some(7)
+        ),
+        49
+    );
+    // Still nothing to refer to when the declaration takes `Unit`.
+    assert_eq!(
+        canonc_stdout("noparamop.can", "Unit => Answer { 2 -> Product(Int) }\n"),
+        "expected a literal operand"
+    );
+}
