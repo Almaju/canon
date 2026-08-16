@@ -436,3 +436,31 @@ fn canonc_reports_what_a_dispatch_wanted() {
         assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
     }
 }
+
+#[test]
+fn canonc_reads_a_head_that_follows_type_declarations() {
+    // Canonical Canon puts every type declaration before the first
+    // constructor, so a real file's tokens open with `Total = Int`, not
+    // with the declaration head. The parameter is the name the head puts
+    // before `=>`, which needs `=>` to be its own token — sharing `=`'s
+    // made the alias's own left side look like the parameter.
+    assert_eq!(
+        canonc_apply(
+            "aliased.can",
+            "Total = Int\n\nCount => Bumped { Count -> Sum(1) }\n",
+            "bumped",
+            Some(9)
+        ),
+        10
+    );
+    // Products and unions in front of it are skipped the same way.
+    assert_eq!(
+        canonc_apply(
+            "aliased2.can",
+            "Pair = Left * Right\n\nSign = Down + Up\n\nInt => Twice { Int -> Product(2) }\n",
+            "twice",
+            Some(6)
+        ),
+        12
+    );
+}
