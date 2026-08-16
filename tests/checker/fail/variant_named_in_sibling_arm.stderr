@@ -1,0 +1,1 @@
+error[tests/checker/fail/variant_named_in_sibling_arm.can:12:18]: `Leaf` is a variant of `Tree`: it names a value only inside its own `* Leaf` arm

@@ -1,0 +1,21 @@
+Leaf = Int
+
+Shown = String
+
+Tree = Leaf + Twig
+
+Twig = String
+
+Tree => Shown {
+    Tree -> (
+        * Leaf { Leaf -> String }
+        * Twig { Leaf -> String }
+    )
+}
+
+Unit => Program {
+    Twig("x")
+        -> Tree
+        -> Shown
+        -> Print
+}

@@ -2765,6 +2765,27 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: ident.span,
                 });
             }
+            // Knowing the *type* is not enough: an identifier in
+            // expression position has to name a value, and the only
+            // things that do are parameters, repetition components and
+            // arm bindings. A union variant is the case where the two
+            // diverge — its name is always a known type, so nothing
+            // caught it being read where no arm bound it, and codegen
+            // read whatever the stack happened to hold. Sibling arms are
+            // where that lands, since seeding one arm from its
+            // neighbour carries the neighbour's payload name along.
+            if !scope.contains(&ident.name) {
+                if let Some(union_name) = symbols.variant_of.get(&ident.name) {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{0}` is a variant of `{1}`: it names a value only inside its \
+                             own `* {0}` arm",
+                            ident.name, union_name
+                        ),
+                        span: ident.span,
+                    });
+                }
+            }
         }
         Expr::StringLit { .. } => {}
         Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
