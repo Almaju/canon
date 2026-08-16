@@ -187,7 +187,7 @@ fn canonc_reports_what_the_grammar_wanted() {
         (
             "op.can",
             "Unit => Answer { 1 -> Frobnicate(2) }\n",
-            "Frobnicate is not an operation",
+            "Frobnicate is not a declaration or an operation",
         ),
         (
             "lparen.can",
@@ -330,5 +330,37 @@ fn canonc_compiles_comparisons() {
             Some(-3)
         ),
         0
+    );
+}
+
+#[test]
+fn canonc_compiles_a_call_to_another_declaration() {
+    // A name in the chain that is not an operation is a call to a
+    // declaration in the same file, resolved through a table of every
+    // declared name built before any body is parsed — so a call can
+    // point forward as well as back.
+    let source = "Int => Double { Int -> Product(2) }\n\nInt => Quad { Int -> Double -> Double }\n";
+    assert_eq!(canonc_apply("quad.can", source, "quad", Some(5)), 20);
+
+    let forward =
+        "Int => Quad { Int -> Double -> Double }\n\nInt => Double { Int -> Product(2) }\n";
+    assert_eq!(canonc_apply("fwd.can", forward, "quad", Some(5)), 20);
+
+    // A call is an operand too, so it composes with the arithmetic.
+    let mixed = "Int => Double { Int -> Product(2) }\n\nInt => Odd { Int -> Double -> Sum(1) }\n";
+    assert_eq!(canonc_apply("odd.can", mixed, "odd", Some(3)), 7);
+}
+
+#[test]
+fn canonc_rejects_a_call_to_a_declaration_taking_no_parameter() {
+    // A `Unit` declaration has nothing to pipe into, so its name is not
+    // a call target — it goes into the table as a hole that no name
+    // matches, which keeps every other declaration's index in place.
+    assert_eq!(
+        canonc_stdout(
+            "unitcall.can",
+            "Unit => Seed { 7 }\n\nInt => Grown { Int -> Seed }\n"
+        ),
+        "Seed is not a declaration or an operation"
     );
 }

@@ -58,6 +58,16 @@ Module = String
 
 Name = Text
 
+Namecons = Namehead * Nametail
+
+Namehead = Text
+
+Namenil = Unit
+
+Names = Namecons + Namenil
+
+Nametail = Names
+
 Nibble = Int
 
 Nil = Unit
@@ -88,6 +98,14 @@ Rparen = Parsed
 
 Run = Int
 
+Seen = Int
+
+Skipped = Tokens
+
+Slot = Int
+
+Slug = Text
+
 Source = String
 
 Tail = Tokens
@@ -106,15 +124,17 @@ Types = String
 
 Utf8 = String
 
+Wanted = Text
+
 Widened = Int
 
-Index * Tokens => Assembly {
+Index * Names * Tokens => Assembly {
     Tokens -> (
         * Cons {
-            Tokens -> Parsed(Tokens -> Param) -> (
+            Tokens -> Parsed(Names * Tokens -> Param) -> (
                 * Bad { Bad -> Broken -> Assembly }
                 * Good {
-                    Good.After -> Assembly(Index -> Sum(1) -> Index) -> (
+                    Good.After -> Assembly(Index -> Sum(1) -> Index * Names) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
                             Codes(`{Good.Code -> BodySize -> Octet}00{Good.Code}0b{Made.Codes}`)
@@ -134,20 +154,21 @@ Index * Tokens => Assembly {
     )
 }
 
-Param * Tokens => Body {
+Names * Param * Tokens => Body {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq(Param) -> (
                         * False { Bad("expected a literal") -> Parsed }
-                        * True { Cons.Tail -> Chain(Code("2000") * Param) }
+                        * True { Cons.Tail -> Chain(Code("2000") * Names * Param) }
                     )
                 }
                 * Number {
                     Cons.Tail
                         -> Chain(
                             Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
+                            * Names
                             * Param
                         )
                 }
@@ -178,7 +199,7 @@ Code => BodySize {
         -> Sum(2)
 }
 
-Code * Param * Tokens => Chain {
+Code * Names * Param * Tokens => Chain {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -189,7 +210,7 @@ Code * Param * Tokens => Chain {
                         * False {
                             Punct -> Eq(45) -> (
                                 * False { Bad("expected `->` or `}`") -> Parsed }
-                                * True { Cons.Tail -> Opname(Code * Param) }
+                                * True { Cons.Tail -> Opname(Code * Names * Param) }
                             )
                         }
                         * True { Code -> Good(Cons.Tail -> After) -> Parsed }
@@ -304,7 +325,7 @@ Int => Lowered {
     )
 }
 
-Code * Opcode * Param * Tokens => Lparen {
+Code * Names * Opcode * Param * Tokens => Lparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -313,7 +334,7 @@ Code * Opcode * Param * Tokens => Lparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Cons.Tail -> Operand(Code * Opcode * Param) }
+                        * True { Cons.Tail -> Operand(Code * Names * Opcode * Param) }
                     )
                 }
             )
@@ -332,6 +353,13 @@ Made => Module {
     }{Made.Count -> Octet}{Made.Funcs}07{Made.Exports -> Length -> Quotient(2) -> Sum(1) -> Octet}{
         Made.Count -> Octet
     }{Made.Exports}0a{Made.Codes -> Length -> Quotient(2) -> Sum(1) -> Octet}{Made.Count -> Octet}{Made.Codes}`
+}
+
+Tokens => Names {
+    Tokens -> (
+        * Cons { Tokens -> Skipped -> Names -> Namecons(Tokens -> Slug -> Namehead) -> Names }
+        * Nil { Namenil() -> Names }
+    )
 }
 
 Int => Octet {
@@ -359,20 +387,21 @@ Name => Opcode {
     )
 }
 
-Code * Opcode * Param * Tokens => Operand {
+Code * Names * Opcode * Param * Tokens => Operand {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq(Param) -> (
                         * False { Bad("expected a literal operand") -> Parsed }
-                        * True { Cons.Tail -> Rparen(Code(`{Code}2000{Opcode}`) * Param) }
+                        * True { Cons.Tail -> Rparen(Code(`{Code}2000{Opcode}`) * Names * Param) }
                     )
                 }
                 * Number {
                     Cons.Tail
                         -> Rparen(
                             Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`)
+                            * Names
                             * Param
                         )
                 }
@@ -383,14 +412,28 @@ Code * Opcode * Param * Tokens => Operand {
     )
 }
 
-Code * Param * Tokens => Opname {
+Code * Names * Param * Tokens => Opname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Opcode -> Length -> Eq(0) -> (
-                        * False { Cons.Tail -> Lparen(Code * Name -> Opcode * Param) }
-                        * True { Bad(`{Name} is not an operation`) -> Parsed }
+                        * False { Cons.Tail -> Lparen(Code * Names * Name -> Opcode * Param) }
+                        * True {
+                            Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Chain(
+                                            Code(`{Code}10{Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
+                                            * Names
+                                            * Param
+                                        )
+                                }
+                                * True {
+                                    Bad(`{Name} is not a declaration or an operation`) -> Parsed
+                                }
+                            )
+                        }
                     )
                 }
                 * Number { Bad("expected an operation after `->`") -> Parsed }
@@ -419,16 +462,16 @@ Tokens => Param {
     )
 }
 
-Param * Tokens => Parsed {
+Names * Param * Tokens => Parsed {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Cons.Tail -> Parsed(Param) }
-                * Number { Cons.Tail -> Parsed(Param) }
+                * Name { Cons.Tail -> Parsed(Names * Param) }
+                * Number { Cons.Tail -> Parsed(Names * Param) }
                 * Punct {
                     Punct -> Eq(123) -> (
-                        * False { Cons.Tail -> Parsed(Param) }
-                        * True { Cons.Tail -> Body(Param) }
+                        * False { Cons.Tail -> Parsed(Names * Param) }
+                        * True { Cons.Tail -> Body(Names * Param) }
                     )
                 }
             )
@@ -438,13 +481,13 @@ Param * Tokens => Parsed {
 }
 
 Tokens => Reported {
-    Tokens -> Assembly(Index(0)) -> (
+    Tokens -> Assembly(Index(0) * Tokens -> Names) -> (
         * Broken { Broken -> Print }
         * Made { Made -> Module -> Print }
     )
 }
 
-Code * Param * Tokens => Rparen {
+Code * Names * Param * Tokens => Rparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -453,7 +496,7 @@ Code * Param * Tokens => Rparen {
                 * Punct {
                     Punct -> Eq(41) -> (
                         * False { Bad("expected `)`") -> Parsed }
-                        * True { Cons.Tail -> Chain(Code * Param) }
+                        * True { Cons.Tail -> Chain(Code * Names * Param) }
                     )
                 }
             )
@@ -471,6 +514,43 @@ Pos * Source => Run {
             )
         }
         * True { Pos }
+    )
+}
+
+Tokens => Skipped {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Skipped }
+                * Number { Cons.Tail -> Skipped }
+                * Punct {
+                    Punct -> Eq(125) -> (
+                        * False { Cons.Tail -> Skipped }
+                        * True { Cons.Tail }
+                    )
+                }
+            )
+        }
+        * Nil { Nil() -> Tokens }
+    )
+}
+
+Names * Seen * Wanted => Slot {
+    Names -> (
+        * Namecons {
+            Namecons.Namehead -> Eq(Wanted) -> (
+                * False { Namecons.Nametail -> Slot(Seen -> Sum(1) -> Seen * Wanted) }
+                * True { Seen }
+            )
+        }
+        * Namenil { 0 -> Difference(1) }
+    )
+}
+
+Tokens => Slug {
+    Tokens -> Param -> Length -> Eq(0) -> (
+        * False { Tokens -> Export(Prev("")) }
+        * True { "" }
     )
 }
 
