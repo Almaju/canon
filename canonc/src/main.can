@@ -66,6 +66,8 @@ Lparen = Parsed
 
 Made = Codes * Count * Exports * Funcs * Types
 
+Marked = Int
+
 Module = String
 
 Name = Text
@@ -151,7 +153,7 @@ Widened = Int
 Index * Names * Tokens => Assembly {
     Tokens -> (
         * Cons {
-            Tokens -> Parsed(Names * Tokens -> Param) -> (
+            Tokens -> Parsed(Names * Tokens -> Param(Prev(""))) -> (
                 * Bad { Bad -> Broken -> Assembly }
                 * Good {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Names) -> (
@@ -162,7 +164,7 @@ Index * Names * Tokens => Assembly {
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Octet}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Octet}{Made.Exports}`)
                                     * Funcs(`{Index -> Octet}{Made.Funcs}`)
                                     * Made.Count -> Sum(1) -> Count
-                                    * Types(`{Tokens -> Param -> TypeEntry}{Made.Types}`)
+                                    * Types(`{Tokens -> Param(Prev("")) -> TypeEntry}{Made.Types}`)
                                 )
                                 -> Assembly
                         }
@@ -450,6 +452,18 @@ Code * Names * Opcode * Param * Tokens => Lparen {
     )
 }
 
+Pos * Source => Marked {
+    Source -> ByteAt(Pos) -> Eq(61) -> (
+        * False { Source -> ByteAt(Pos) }
+        * True {
+            Source -> ByteAt(Pos -> Sum(1)) -> Eq(62) -> (
+                * False { Source -> ByteAt(Pos) }
+                * True { 62 }
+            )
+        }
+    )
+}
+
 Made => Module {
     `0061736d0100000001{Made.Types -> Length -> Quotient(2) -> Sum(1) -> Octet}{Made.Count -> Octet}{Made.Types}03{
         Made.Funcs
@@ -562,18 +576,23 @@ Code * Names * Param * Tokens => Opname {
     )
 }
 
-Tokens => Param {
+Prev * Tokens => Param {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name {
-                    Name -> (
-                        * "Unit" { "" }
-                        * String { Name }
+                * Name { Cons.Tail -> Param(Name -> Prev) }
+                * Number { Cons.Tail -> Param(Prev) }
+                * Punct {
+                    Punct -> Eq(62) -> (
+                        * False { Cons.Tail -> Param(Prev) }
+                        * True {
+                            Prev -> (
+                                * "Unit" { "" }
+                                * String { Prev }
+                            )
+                        }
                     )
                 }
-                * Number { "" }
-                * Punct { "" }
             )
         }
         * Nil { "" }
@@ -678,7 +697,7 @@ Names * Seen * Wanted => Slot {
 }
 
 Tokens => Slug {
-    Tokens -> Param -> Length -> Eq(0) -> (
+    Tokens -> Param(Prev("")) -> Length -> Eq(0) -> (
         * False { Tokens -> Export(Prev("")) }
         * True { "" }
     )
@@ -700,7 +719,7 @@ Pos * Source => Tokens {
                         * False {
                             Source
                                 -> Tokens(Source -> Widened(Pos) -> Pos)
-                                -> Cons(Source -> ByteAt(Pos) -> Punct -> Token -> Head)
+                                -> Cons(Source -> Marked(Pos) -> Punct -> Token -> Head)
                                 -> Tokens
                         }
                         * True { Source -> Tokens(Pos -> Sum(1) -> Pos) }
