@@ -2904,6 +2904,19 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     method.name.as_str(),
                     "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
                 );
+            // Construction alone only accounts for the arguments when the
+            // name takes them: a multi-field product takes the rest of its
+            // fields, and the wrappers take their payload. Anything else
+            // carrying arguments has to match a declared constructor at
+            // that arity — otherwise the receiver relabels to the newtype,
+            // the arguments are dropped on the floor, and codegen emits a
+            // call with the wrong stack shape.
+            let construction_takes_args = effective_arity == 0
+                || symbols
+                    .product_fields
+                    .get(&method.name)
+                    .is_some_and(|fields| fields.len() >= 2)
+                || matches!(method.name.as_str(), "Some" | "Ok" | "Err");
             let has_alias_method =
                 method_known_via_aliases(&recv_ty_specific, &method.name, effective_arity, symbols)
                     || (recv_ty_specific != recv_ty
@@ -2913,7 +2926,9 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             effective_arity,
                             symbols,
                         ));
-            let known = is_concurrent_combinator || is_piped_construction || has_alias_method;
+            let known = is_concurrent_combinator
+                || (is_piped_construction && construction_takes_args)
+                || has_alias_method;
             if !known {
                 errors.push(CanonError::CheckError {
                     message: format!(

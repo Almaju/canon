@@ -1,0 +1,17 @@
+Height = Int
+
+Label = String
+
+Shown = String
+
+Width = Int
+
+Height * Label * Width => Shown {
+    `{Label}:{Height -> String}x{Width -> String}`
+}
+
+Unit => Program {
+    Label("box")
+        -> Shown(Height(2))
+        -> Print
+}

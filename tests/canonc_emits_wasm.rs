@@ -88,6 +88,25 @@ fn canonc_apply(name: &str, source: &str, export: &str, arg: Option<i32>) -> i32
     }
 }
 
+/// Same again, for a declaration taking two parameters.
+fn canonc_apply2(name: &str, source: &str, export: &str, a: i32, b: i32) -> i32 {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    instance
+        .get_typed_func::<(i32, i32), i32>(&mut store, export)
+        .unwrap_or_else(|_| panic!("emitted module should export `{export}`"))
+        .call(&mut store, (a, b))
+        .expect("call the export")
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -124,7 +143,7 @@ fn canonc_reports_a_body_with_no_literal() {
     // silent `i32.const 0`.
     assert_eq!(
         canonc_stdout("empty.can", "Unit => Answer { }\n"),
-        "declaration body is empty"
+        "expected a literal"
     );
 }
 
@@ -197,7 +216,7 @@ fn canonc_reports_what_the_grammar_wanted() {
         (
             "rparen.can",
             "Unit => Answer { 1 -> Sum(2 }\n",
-            "expected `)`",
+            "expected `->` or `)`",
         ),
         ("bare.can", "Unit => Answer { -> }\n", "expected a literal"),
     ] {
@@ -462,5 +481,32 @@ fn canonc_reads_a_head_that_follows_type_declarations() {
             Some(6)
         ),
         12
+    );
+}
+
+#[test]
+fn canonc_compiles_more_than_one_parameter() {
+    // The head's inputs are the run of names before `=>`, so a
+    // declaration takes as many `i32`s as it names — and a body reads
+    // each one back by the local index its position gives it.
+    let area = "Base * Height => Area { Base -> Product(Height) -> Quotient(2) }\n";
+    assert_eq!(canonc_apply2("area.can", area, "area", 6, 4), 12);
+
+    // The second call argument is an expression in its own right, not
+    // just a literal or a name.
+    let gcd = "Left * Right => Gcd { Right -> Eq(0) -> ( * False { Right -> Gcd(Left -> Remainder(Right)) } * True { Left } ) }\n";
+    assert_eq!(canonc_apply2("gcd.can", gcd, "gcd", 1071, 462), 21);
+}
+
+#[test]
+fn canonc_nests_call_arguments() {
+    // An argument is parsed by the same step that parses a body, closed
+    // by `)` instead of `}`, so it nests to any depth.
+    let deep = "Int => Deep { 1 -> Sum(2 -> Product(3 -> Sum(4))) }\n";
+    assert_eq!(canonc_apply("deep.can", deep, "deep", Some(0)), 15);
+    // And the diagnostic names the terminator the argument wanted.
+    assert_eq!(
+        canonc_stdout("unclosed.can", "Unit => Answer { 1 -> Sum(2 -> Sum(3) }\n"),
+        "expected `->` or `)`"
     );
 }

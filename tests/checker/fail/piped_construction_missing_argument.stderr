@@ -1,0 +1,1 @@
+error[tests/checker/fail/piped_construction_missing_argument.can:14:5]: no method `Shown` on type `Label` with 1 argument(s)
