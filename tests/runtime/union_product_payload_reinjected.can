@@ -1,0 +1,36 @@
+Chain = Link + Stop
+
+Head = Int
+
+Kept = Chain
+
+Link = Head * Tail
+
+Shown = String
+
+Stop = Unit
+
+Tail = Chain
+
+Chain => Kept {
+    Chain -> (
+        * Link { Link -> Chain }
+        * Stop { Stop() -> Chain }
+    )
+}
+
+Chain => Shown {
+    Chain -> (
+        * Link { `{Link.Head -> String}/{Link.Tail -> Shown}` }
+        * Stop { "end" }
+    )
+}
+
+Unit => Program {
+    Head(3)
+        -> Link(Stop() -> Chain -> Tail)
+        -> Chain
+        -> Kept
+        -> Shown
+        -> Print
+}

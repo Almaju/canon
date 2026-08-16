@@ -1910,6 +1910,50 @@ impl<'m> WasmGen<'m> {
         Ty::NamedPtr("Result".to_string())
     }
 
+    /// Wraps a value that already *is* a variant's payload in its union
+    /// struct — the `payload -> Union` pipe. `build_union_value` compiles
+    /// the variant's individual *fields* from the argument list, so a
+    /// boxed product variant (two or more fields, stored behind one
+    /// pointer) can't go through it: the payload here is that pointer
+    /// already, and it stores straight through. Every other payload shape
+    /// is a single value the argument path handles as it stands.
+    fn inject_union_variant(
+        &mut self,
+        union_name: &str,
+        variant: &str,
+        payload: &Expr,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let tag = self.variant_tag[variant];
+        let total = self.union_total_size(union_name);
+        if self.product_field_layout(variant).len() < 2 {
+            let args = std::slice::from_ref(payload);
+            return self.build_union_value(union_name, variant, tag, total, args, scope, f);
+        }
+        let _ = self.compile_expr(payload, scope, f);
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Const(total as i32));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Const(tag as i32));
+        f.instruction(&Instruction::I32Store(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Store(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        Ty::NamedPtr(union_name.to_string())
+    }
+
     /// Build a union value (tag + payload). Returns Ty::NamedPtr(union_name).
     ///
     /// IMPORTANT: all field expressions are compiled BEFORE the union struct is
@@ -2759,6 +2803,31 @@ impl<'m> WasmGen<'m> {
         // stdlib shape. Excluding it keeps `list -> Length` a length, not
         // a `Length(list)` newtype wrap.
         let is_builtin_op = crate::ast::builtin_method_alias(method).is_some();
+
+        // Union injection from a payload: `Broken -> Outcome` inside a
+        // `* Broken` arm. A value *referenced* by a variant's name — an
+        // arm-bound payload, a parameter, a product field — is the bare
+        // payload, so the pipe has to build the variant around it. (A
+        // *construction* — `Nil()`, `x -> Made` — already produced the
+        // union struct; that injection is the identity relabel further
+        // down.) Owned here, ahead of every other route: the construction
+        // path treats a union name as a newtype and would relabel the
+        // payload without tagging it, and the method path resolves
+        // nothing for a payload receiver and drops it. Both were silent —
+        // dispatch then read whatever memory happened to hold.
+        if args.is_empty() && matches!(receiver, Expr::Ident(_) | Expr::FieldAccess { .. }) {
+            if let Some(variant) = syntactic_type_name(receiver) {
+                if self
+                    .variant_parent
+                    .get(variant)
+                    .is_some_and(|p| p == method)
+                {
+                    let variant = variant.to_string();
+                    return self.inject_union_variant(method, &variant, receiver, scope, f);
+                }
+            }
+        }
+
         // A name with a func-table body is a shape / constructor family
         // (`Route`, `Served`, `TestResult`, `Greeting`'s Int member, …).
         // Those resolve on the method path below, keyed on the receiver's
