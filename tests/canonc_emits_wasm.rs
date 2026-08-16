@@ -510,3 +510,25 @@ fn canonc_nests_call_arguments() {
         "expected `->` or `)`"
     );
 }
+
+#[test]
+fn canonc_calls_a_declaration_that_takes_nothing() {
+    // A `Unit` declaration is a constant, and naming one in a body calls
+    // it — as the body's head or as an operand. Until now it could be
+    // declared and never used. The name table tells the two arities
+    // apart, so the same name still can't be *piped* into: there is
+    // nothing for the receiver to fill.
+    let head = "Unit => Seed { 7 }\n\nUnit => Total { Seed -> Sum(1) }\n";
+    assert_eq!(canonc_export("seedhead.can", head, "total"), 8);
+
+    let operand = "Unit => Seed { 7 }\n\nInt => Shifted { Int -> Sum(Seed) }\n";
+    assert_eq!(canonc_apply("seedarg.can", operand, "shifted", Some(2)), 9);
+
+    assert_eq!(
+        canonc_stdout(
+            "seedpipe.can",
+            "Unit => Seed { 7 }\n\nInt => Nope { Int -> Seed }\n"
+        ),
+        "Seed is not a declaration or an operation"
+    );
+}
