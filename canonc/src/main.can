@@ -100,6 +100,8 @@ Nibble = Int
 
 Nil = Unit
 
+Nullname = Text
+
 Number = Text
 
 Octet = String
@@ -233,7 +235,20 @@ Ender * Names * Params * Tokens => Body {
                                     * Params
                                 )
                         }
-                        * True { Ender -> Wantsliteral -> Bad -> Parsed }
+                        * True {
+                            Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Chain(
+                                            Code(`10{Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Emitted}`)
+                                            * Ender
+                                            * Names
+                                            * Params
+                                        )
+                                }
+                                * True { Ender -> Wantsliteral -> Bad -> Parsed }
+                            )
+                        }
                     )
                 }
                 * Number {
@@ -623,6 +638,10 @@ Tokens => Names {
     )
 }
 
+Text => Nullname {
+    `.{Text}`
+}
+
 Int => Octet {
     Int
         -> Quotient(16)
@@ -790,7 +809,7 @@ Names * Seen * Wanted => Slot {
 Tokens => Slug {
     Tokens -> Header -> Arity(Seen(0)) -> Eq(0) -> (
         * False { Tokens -> Export(Prev("")) }
-        * True { "" }
+        * True { Tokens -> Export(Prev("")) -> Nullname }
     )
 }
 
