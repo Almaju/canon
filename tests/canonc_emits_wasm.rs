@@ -364,3 +364,75 @@ fn canonc_rejects_a_call_to_a_declaration_taking_no_parameter() {
         "Seed is not a declaration or an operation"
     );
 }
+
+#[test]
+fn canonc_compiles_a_dispatch() {
+    // `-> ( * False { … } * True { … } )` is wasm's `if (result i32)`.
+    // The arms come in alphabetical order, the way Canon writes them,
+    // and are emitted the other way round: `if` takes the branch for a
+    // non-zero scrutinee, which is `True`.
+    let sign = "Int => Sign { Int -> Lt(0) -> ( * False { 1 } * True { 0 -> Difference(1) } ) }\n";
+    assert_eq!(canonc_apply("sign.can", sign, "sign", Some(-9)), -1);
+    assert_eq!(canonc_apply("sign.can", sign, "sign", Some(9)), 1);
+
+    // An arm body is a body: operand, chain, nested dispatch and all.
+    let clamp = "Int => Clamp { Int -> Gt(10) -> ( * False { Int -> Lt(0) -> ( * False { Int } * True { 0 } ) } * True { 10 } ) }\n";
+    assert_eq!(canonc_apply("clamp.can", clamp, "clamp", Some(-4)), 0);
+    assert_eq!(canonc_apply("clamp.can", clamp, "clamp", Some(4)), 4);
+    assert_eq!(canonc_apply("clamp.can", clamp, "clamp", Some(40)), 10);
+
+    // The dispatch is a chain step, so the chain keeps going after it.
+    let bumped = "Int => Bumped { Int -> Gt(0) -> ( * False { 0 } * True { Int } ) -> Sum(100) }\n";
+    assert_eq!(canonc_apply("bumped.can", bumped, "bumped", Some(-3)), 100);
+    assert_eq!(canonc_apply("bumped.can", bumped, "bumped", Some(3)), 103);
+}
+
+#[test]
+fn canonc_compiles_recursion() {
+    // Branching plus calls is a base case plus a recursive step, which
+    // is the first program `canonc` can compile that it could not have
+    // unrolled: the module it emits computes rather than evaluates.
+    let fact = "Int => Factorial { Int -> Le(1) -> ( * False { Int -> Difference(1) -> Factorial -> Product(Int) } * True { 1 } ) }\n";
+    assert_eq!(canonc_apply("fact.can", fact, "factorial", Some(0)), 1);
+    assert_eq!(canonc_apply("fact.can", fact, "factorial", Some(5)), 120);
+    assert_eq!(
+        canonc_apply("fact.can", fact, "factorial", Some(10)),
+        3628800
+    );
+
+    // Mutual recursion needs the forward half of the name table.
+    let parity = "Int => Even { Int -> Eq(0) -> ( * False { Int -> Difference(1) -> Odd } * True { 1 } ) }\n\nInt => Odd { Int -> Eq(0) -> ( * False { Int -> Difference(1) -> Even } * True { 0 } ) }\n";
+    assert_eq!(canonc_apply("parity.can", parity, "even", Some(10)), 1);
+    assert_eq!(canonc_apply("parity.can", parity, "even", Some(7)), 0);
+    assert_eq!(canonc_apply("parity.can", parity, "odd", Some(7)), 1);
+}
+
+#[test]
+fn canonc_reports_what_a_dispatch_wanted() {
+    // The arms are fixed — `False` then `True`, in the order Canon
+    // requires — so each token of the shape is checked and named.
+    for (name, source, want) in [
+        (
+            "nostar.can",
+            "Unit => Answer { 1 -> Eq(1) -> ( False { 2 } * True { 3 } ) }\n",
+            "expected `*`",
+        ),
+        (
+            "noname.can",
+            "Unit => Answer { 1 -> Eq(1) -> ( * Nope { 2 } * True { 3 } ) }\n",
+            "expected `False`",
+        ),
+        (
+            "noorder.can",
+            "Unit => Answer { 1 -> Eq(1) -> ( * False { 2 } * Nope { 3 } ) }\n",
+            "expected `True`",
+        ),
+        (
+            "noclose.can",
+            "Unit => Answer { 1 -> Eq(1) -> ( * False { 2 } * True { 3 } }\n",
+            "expected `)`",
+        ),
+    ] {
+        assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
+    }
+}
