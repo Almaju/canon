@@ -2,6 +2,10 @@ Acc = Int
 
 After = Tokens
 
+Argument = Parsed
+
+Arity = Int
+
 Assembly = Broken + Made
 
 Bad = String
@@ -11,6 +15,8 @@ Body = Parsed
 BodySize = Int
 
 Broken = String
+
+Callargs = Parsed
 
 Chain = Parsed
 
@@ -30,6 +36,8 @@ Dispatch = Parsed
 
 Emitted = String
 
+Ender = Int
+
 Export = Text
 
 Exports = String
@@ -42,9 +50,13 @@ Falsemark = Parsed
 
 Funcs = String
 
+Gathered = Params
+
 Good = After * Code
 
 Head = Token
+
+Header = Params
 
 HexByte = String
 
@@ -59,6 +71,8 @@ IsSpace = Bool
 IsWord = Bool
 
 Literal = Int
+
+Local = Int
 
 Lowered = Int
 
@@ -92,11 +106,17 @@ Octet = String
 
 Opcode = String
 
-Operand = Parsed
-
 Opname = Parsed
 
-Param = Text
+Paramcons = Paramhead * Paramtail
+
+Paramhead = Text
+
+Paramnil = Unit
+
+Params = Paramcons + Paramnil
+
+Paramtail = Params
 
 Parsed = Bad + Good
 
@@ -106,13 +126,15 @@ Prev = Text
 
 Punct = Int
 
-Reported = Unit
+Rank = Int
 
-Rparen = Parsed
+Reported = Unit
 
 Run = Int
 
 Seen = Int
+
+Sevens = String
 
 Skipped = Tokens
 
@@ -148,12 +170,32 @@ Utf8 = String
 
 Wanted = Text
 
+Wantsliteral = String
+
+Wantsstep = String
+
+Wasname = Bool
+
 Widened = Int
+
+Code * Ender * Names * Opcode * Params * Tokens => Argument {
+    Tokens -> Body(Ender(41) * Names * Params) -> (
+        * Bad { Bad -> Parsed }
+        * Good { Good.After -> Chain(Code(`{Code}{Good.Code}{Opcode}`) * Ender * Names * Params) }
+    )
+}
+
+Params * Seen => Arity {
+    Params -> (
+        * Paramcons { Paramcons.Paramtail -> Arity(Seen -> Sum(1) -> Seen) }
+        * Paramnil { Seen }
+    )
+}
 
 Index * Names * Tokens => Assembly {
     Tokens -> (
         * Cons {
-            Tokens -> Parsed(Names * Tokens -> Param(Prev(""))) -> (
+            Tokens -> Parsed(Names * Tokens -> Header) -> (
                 * Bad { Bad -> Broken -> Assembly }
                 * Good {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Names) -> (
@@ -164,7 +206,7 @@ Index * Names * Tokens => Assembly {
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Octet}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Octet}{Made.Exports}`)
                                     * Funcs(`{Index -> Octet}{Made.Funcs}`)
                                     * Made.Count -> Sum(1) -> Count
-                                    * Types(`{Tokens -> Param(Prev("")) -> TypeEntry}{Made.Types}`)
+                                    * Types(`{Tokens -> Header -> TypeEntry}{Made.Types}`)
                                 )
                                 -> Assembly
                         }
@@ -176,33 +218,42 @@ Index * Names * Tokens => Assembly {
     )
 }
 
-Names * Param * Tokens => Body {
+Ender * Names * Params * Tokens => Body {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Name -> Eq(Param) -> (
-                        * False { Bad("expected a literal") -> Parsed }
-                        * True { Cons.Tail -> Chain(Code("2000") * Names * Param) }
+                    Params -> Rank(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                        * False {
+                            Cons.Tail
+                                -> Chain(
+                                    Code(`20{Params -> Local(Name -> Wanted) -> Emitted}`)
+                                    * Ender
+                                    * Names
+                                    * Params
+                                )
+                        }
+                        * True { Ender -> Wantsliteral -> Bad -> Parsed }
                     )
                 }
                 * Number {
                     Cons.Tail
                         -> Chain(
                             Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
+                            * Ender
                             * Names
-                            * Param
+                            * Params
                         )
                 }
                 * Punct {
-                    Punct -> Eq(125) -> (
-                        * False { Bad("expected a literal") -> Parsed }
-                        * True { Bad("declaration body is empty") -> Parsed }
+                    Punct -> Eq(Ender) -> (
+                        * False { Ender -> Wantsliteral -> Bad -> Parsed }
+                        * True { Ender -> Wantsliteral -> Bad -> Parsed }
                     )
                 }
             )
         }
-        * Nil { Bad("declaration body is empty") -> Parsed }
+        * Nil { Ender -> Wantsliteral -> Bad -> Parsed }
     )
 }
 
@@ -221,18 +272,36 @@ Code => BodySize {
         -> Sum(2)
 }
 
-Code * Names * Param * Tokens => Chain {
+Code * Ender * Names * Opcode * Params * Tokens => Callargs {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Bad("expected `->` or `}`") -> Parsed }
-                * Number { Bad("expected `->` or `}`") -> Parsed }
+                * Name { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
+                * Number { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
                 * Punct {
-                    Punct -> Eq(125) -> (
+                    Punct -> Eq(40) -> (
+                        * False { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
+                        * True { Cons.Tail -> Argument(Code * Ender * Names * Opcode * Params) }
+                    )
+                }
+            )
+        }
+        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
+    )
+}
+
+Code * Ender * Names * Params * Tokens => Chain {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Ender -> Wantsstep -> Bad -> Parsed }
+                * Number { Ender -> Wantsstep -> Bad -> Parsed }
+                * Punct {
+                    Punct -> Eq(Ender) -> (
                         * False {
                             Punct -> Eq(45) -> (
-                                * False { Bad("expected `->` or `}`") -> Parsed }
-                                * True { Cons.Tail -> Opname(Code * Names * Param) }
+                                * False { Ender -> Wantsstep -> Bad -> Parsed }
+                                * True { Cons.Tail -> Opname(Code * Ender * Names * Params) }
                             )
                         }
                         * True { Code -> Good(Cons.Tail -> After) -> Parsed }
@@ -240,11 +309,11 @@ Code * Names * Param * Tokens => Chain {
                 }
             )
         }
-        * Nil { Bad("declaration body is unterminated") -> Parsed }
+        * Nil { Bad("expression is unterminated") -> Parsed }
     )
 }
 
-Code * Falsecode * Names * Param * Tokens * Truecode => Closer {
+Code * Ender * Falsecode * Names * Params * Tokens * Truecode => Closer {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -257,8 +326,9 @@ Code * Falsecode * Names * Param * Tokens * Truecode => Closer {
                             Cons.Tail
                                 -> Chain(
                                     Code(`{Code}047f{Truecode}05{Falsecode}0b`)
+                                    * Ender
                                     * Names
-                                    * Param
+                                    * Params
                                 )
                         }
                     )
@@ -269,7 +339,7 @@ Code * Falsecode * Names * Param * Tokens * Truecode => Closer {
     )
 }
 
-Code * Names * Param * Tokens => Dispatch {
+Code * Ender * Names * Params * Tokens => Dispatch {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -278,7 +348,7 @@ Code * Names * Param * Tokens => Dispatch {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Falsemark(Code * Names * Param) }
+                        * True { Cons.Tail -> Falsemark(Code * Ender * Names * Params) }
                     )
                 }
             )
@@ -323,7 +393,7 @@ Prev * Tokens => Export {
     )
 }
 
-Code * Names * Param * Tokens => Falsebrace {
+Code * Ender * Names * Params * Tokens => Falsebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -333,11 +403,17 @@ Code * Names * Param * Tokens => Falsebrace {
                     Punct -> Eq(123) -> (
                         * False { Bad("expected `{`") -> Parsed }
                         * True {
-                            Cons.Tail -> Body(Names * Param) -> (
+                            Cons.Tail -> Body(Ender(125) * Names * Params) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
-                                        -> Truestar(Code * Good.Code -> Falsecode * Names * Param)
+                                        -> Truestar(
+                                            Code
+                                            * Ender
+                                            * Good.Code -> Falsecode
+                                            * Names
+                                            * Params
+                                        )
                                 }
                             )
                         }
@@ -349,14 +425,14 @@ Code * Names * Param * Tokens => Falsebrace {
     )
 }
 
-Code * Names * Param * Tokens => Falsemark {
+Code * Ender * Names * Params * Tokens => Falsemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq("False") -> (
                         * False { Bad("expected `False`") -> Parsed }
-                        * True { Cons.Tail -> Falsebrace(Code * Names * Param) }
+                        * True { Cons.Tail -> Falsebrace(Code * Ender * Names * Params) }
                     )
                 }
                 * Number { Bad("expected `False`") -> Parsed }
@@ -365,6 +441,57 @@ Code * Names * Param * Tokens => Falsemark {
         }
         * Nil { Bad("expected `False`") -> Parsed }
     )
+}
+
+Params * Tokens * Wasname => Gathered {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Name -> Eq("Unit") -> (
+                        * False {
+                            Wasname -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Gathered(
+                                            Params -> Paramcons(Name -> Paramhead) -> Params
+                                            * True() -> Wasname
+                                        )
+                                }
+                                * True {
+                                    Cons.Tail
+                                        -> Gathered(
+                                            Paramnil() -> Params -> Paramcons(Name -> Paramhead) -> Params
+                                            * True() -> Wasname
+                                        )
+                                }
+                            )
+                        }
+                        * True { Cons.Tail -> Gathered(Paramnil() -> Params * True() -> Wasname) }
+                    )
+                }
+                * Number { Cons.Tail -> Gathered(Params * False() -> Wasname) }
+                * Punct {
+                    Punct -> Eq(62) -> (
+                        * False {
+                            Punct -> Eq(61) -> (
+                                * False { Cons.Tail -> Gathered(Params * False() -> Wasname) }
+                                * True { Cons.Tail -> Gathered(Params * True() -> Wasname) }
+                            )
+                        }
+                        * True { Params }
+                    )
+                }
+            )
+        }
+        * Nil { Params }
+    )
+}
+
+Tokens => Header {
+    Tokens
+        -> Gathered(Paramnil() -> Params * False() -> Wasname)
+        -> Params
 }
 
 Nibble => HexByte {
@@ -422,6 +549,13 @@ Acc * Pos * Source => Literal {
     )
 }
 
+Params * Wanted => Local {
+    Params
+        -> Arity(Seen(0))
+        -> Difference(1)
+        -> Difference(Params -> Rank(Seen(0) * Wanted))
+}
+
 Int => Lowered {
     Int -> Ge(65) -> (
         * False { Int }
@@ -434,7 +568,7 @@ Int => Lowered {
     )
 }
 
-Code * Names * Opcode * Param * Tokens => Lparen {
+Code * Ender * Names * Opcode * Params * Tokens => Lparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -443,7 +577,7 @@ Code * Names * Opcode * Param * Tokens => Lparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Cons.Tail -> Operand(Code * Names * Opcode * Param) }
+                        * True { Cons.Tail -> Argument(Code * Ender * Names * Opcode * Params) }
                     )
                 }
             )
@@ -514,46 +648,25 @@ Name => Opcode {
     )
 }
 
-Code * Names * Opcode * Param * Tokens => Operand {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name {
-                    Name -> Eq(Param) -> (
-                        * False { Bad("expected a literal operand") -> Parsed }
-                        * True { Cons.Tail -> Rparen(Code(`{Code}2000{Opcode}`) * Names * Param) }
-                    )
-                }
-                * Number {
-                    Cons.Tail
-                        -> Rparen(
-                            Code(`{Code}41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}{Opcode}`)
-                            * Names
-                            * Param
-                        )
-                }
-                * Punct { Bad("expected a literal operand") -> Parsed }
-            )
-        }
-        * Nil { Bad("expected a literal operand") -> Parsed }
-    )
-}
-
-Code * Names * Param * Tokens => Opname {
+Code * Ender * Names * Params * Tokens => Opname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Opcode -> Length -> Eq(0) -> (
-                        * False { Cons.Tail -> Lparen(Code * Names * Name -> Opcode * Param) }
+                        * False {
+                            Cons.Tail -> Lparen(Code * Ender * Names * Name -> Opcode * Params)
+                        }
                         * True {
                             Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
                                 * False {
                                     Cons.Tail
-                                        -> Chain(
-                                            Code(`{Code}10{Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
+                                        -> Callargs(
+                                            Code
+                                            * Ender
                                             * Names
-                                            * Param
+                                            * Opcode(`10{Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
+                                            * Params
                                         )
                                 }
                                 * True {
@@ -567,7 +680,7 @@ Code * Names * Param * Tokens => Opname {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected an operation after `->`") -> Parsed }
-                        * True { Cons.Tail -> Dispatch(Code * Names * Param) }
+                        * True { Cons.Tail -> Dispatch(Code * Ender * Names * Params) }
                     )
                 }
             )
@@ -576,39 +689,16 @@ Code * Names * Param * Tokens => Opname {
     )
 }
 
-Prev * Tokens => Param {
+Names * Params * Tokens => Parsed {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Cons.Tail -> Param(Name -> Prev) }
-                * Number { Cons.Tail -> Param(Prev) }
-                * Punct {
-                    Punct -> Eq(62) -> (
-                        * False { Cons.Tail -> Param(Prev) }
-                        * True {
-                            Prev -> (
-                                * "Unit" { "" }
-                                * String { Prev }
-                            )
-                        }
-                    )
-                }
-            )
-        }
-        * Nil { "" }
-    )
-}
-
-Names * Param * Tokens => Parsed {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name { Cons.Tail -> Parsed(Names * Param) }
-                * Number { Cons.Tail -> Parsed(Names * Param) }
+                * Name { Cons.Tail -> Parsed(Names * Params) }
+                * Number { Cons.Tail -> Parsed(Names * Params) }
                 * Punct {
                     Punct -> Eq(123) -> (
-                        * False { Cons.Tail -> Parsed(Names * Param) }
-                        * True { Cons.Tail -> Body(Names * Param) }
+                        * False { Cons.Tail -> Parsed(Names * Params) }
+                        * True { Cons.Tail -> Body(Ender(125) * Names * Params) }
                     )
                 }
             )
@@ -617,28 +707,22 @@ Names * Param * Tokens => Parsed {
     )
 }
 
+Params * Seen * Wanted => Rank {
+    Params -> (
+        * Paramcons {
+            Paramcons.Paramhead -> Eq(Wanted) -> (
+                * False { Paramcons.Paramtail -> Rank(Seen -> Sum(1) -> Seen * Wanted) }
+                * True { Seen }
+            )
+        }
+        * Paramnil { 0 -> Difference(1) }
+    )
+}
+
 Tokens => Reported {
     Tokens -> Assembly(Index(0) * Tokens -> Names) -> (
         * Broken { Broken -> Print }
         * Made { Made -> Module -> Print }
-    )
-}
-
-Code * Names * Param * Tokens => Rparen {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name { Bad("expected `)`") -> Parsed }
-                * Number { Bad("expected `)`") -> Parsed }
-                * Punct {
-                    Punct -> Eq(41) -> (
-                        * False { Bad("expected `)`") -> Parsed }
-                        * True { Cons.Tail -> Chain(Code * Names * Param) }
-                    )
-                }
-            )
-        }
-        * Nil { Bad("expected `)`") -> Parsed }
     )
 }
 
@@ -651,6 +735,13 @@ Pos * Source => Run {
             )
         }
         * True { Pos }
+    )
+}
+
+Arity => Sevens {
+    Arity -> Eq(0) -> (
+        * False { `7f{Arity -> Difference(1) -> Arity -> Sevens}` }
+        * True { "" }
     )
 }
 
@@ -697,7 +788,7 @@ Names * Seen * Wanted => Slot {
 }
 
 Tokens => Slug {
-    Tokens -> Param(Prev("")) -> Length -> Eq(0) -> (
+    Tokens -> Header -> Arity(Seen(0)) -> Eq(0) -> (
         * False { Tokens -> Export(Prev("")) }
         * True { "" }
     )
@@ -737,7 +828,7 @@ Pos * Source => Tokens {
     )
 }
 
-Code * Falsecode * Names * Param * Tokens => Truebrace {
+Code * Ender * Falsecode * Names * Params * Tokens => Truebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -747,15 +838,16 @@ Code * Falsecode * Names * Param * Tokens => Truebrace {
                     Punct -> Eq(123) -> (
                         * False { Bad("expected `{`") -> Parsed }
                         * True {
-                            Cons.Tail -> Body(Names * Param) -> (
+                            Cons.Tail -> Body(Ender(125) * Names * Params) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
                                         -> Closer(
                                             Code
+                                            * Ender
                                             * Falsecode
                                             * Names
-                                            * Param
+                                            * Params
                                             * Good.Code -> Truecode
                                         )
                                 }
@@ -769,14 +861,14 @@ Code * Falsecode * Names * Param * Tokens => Truebrace {
     )
 }
 
-Code * Falsecode * Names * Param * Tokens => Truemark {
+Code * Ender * Falsecode * Names * Params * Tokens => Truemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq("True") -> (
                         * False { Bad("expected `True`") -> Parsed }
-                        * True { Cons.Tail -> Truebrace(Code * Falsecode * Names * Param) }
+                        * True { Cons.Tail -> Truebrace(Code * Ender * Falsecode * Names * Params) }
                     )
                 }
                 * Number { Bad("expected `True`") -> Parsed }
@@ -787,7 +879,7 @@ Code * Falsecode * Names * Param * Tokens => Truemark {
     )
 }
 
-Code * Falsecode * Names * Param * Tokens => Truestar {
+Code * Ender * Falsecode * Names * Params * Tokens => Truestar {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -796,19 +888,12 @@ Code * Falsecode * Names * Param * Tokens => Truestar {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Truemark(Code * Falsecode * Names * Param) }
+                        * True { Cons.Tail -> Truemark(Code * Ender * Falsecode * Names * Params) }
                     )
                 }
             )
         }
         * Nil { Bad("expected `*`") -> Parsed }
-    )
-}
-
-Param => TypeEntry {
-    Param -> Length -> Eq(0) -> (
-        * False { "60017f017f" }
-        * True { "6000017f" }
     )
 }
 
@@ -824,6 +909,10 @@ Unit => Result<Program, IoError> {
     Unit() -> Ok
 }
 
+Params => TypeEntry {
+    `60{Params -> Arity(Seen(0)) -> Emitted}{Params -> Arity(Seen(0)) -> Sevens}017f`
+}
+
 Export * Pos => Utf8 {
     Pos -> Gt(Export -> Length) -> (
         * False {
@@ -831,6 +920,17 @@ Export * Pos => Utf8 {
         }
         * True { "" }
     )
+}
+
+Ender => Wantsliteral {
+    Ender -> Eq(125) -> (
+        * False { "expected a literal operand" }
+        * True { "expected a literal" }
+    )
+}
+
+Ender => Wantsstep {
+    `expected \`->\` or \`{Ender -> Byte -> String}\``
 }
 
 Pos * Source => Widened {

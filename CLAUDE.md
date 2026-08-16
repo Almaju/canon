@@ -113,7 +113,7 @@ same PR; never open standalone docs-sync PRs.
 | `packages/canon/` | The standard library — one shipped package. Hand-written wrappers under `src/`, WIT-derived bindings under `bindgen/` (committed), vendored upstream WIT under `wit/` (the import declaration — no manifest). |
 | `packages/canon/bindgen/` | Generated WASI bindings (`wasi/<pkg>@<ver>/<iface>.can`), from `just regen-bindings`. Derived — never hand-edit. A same-`rel_path` file under `src/` shadows its `bindgen/` twin. |
 | `packages/canon/wit/wasi/` | Vendored upstream WIT — source for the bindings. Bumped when WASI advances. |
-| `canonc/` | The self-hosted compiler, written in Canon. Reads a `.can` path from its arguments, tokenizes the source into a cons-list (`Name` / `Number` / `Punct`, with `=>` its own punctuation so a declaration head can be told from the type declarations that precede it), parses a brace body as an operand followed by a chain of steps — `-> Op(operand)` for the arithmetic and comparison operators, `-> Name` for a call to another declaration (resolved through a table of every declared name built before any body is parsed, so calls may point forward, and recursion and mutual recursion both compile), or `-> ( * False { … } * True { … } )` for a dispatch, which is wasm's `if` and whose arms are bodies in their own right — where an operand is a literal or the parameter, and emits a WebAssembly core module exporting each declared type, lowercased, as a function evaluating it — taking one `i32` unless the declared input is `Unit`; anything the grammar doesn't accept is a diagnostic naming the token it wanted. Emits hex, since Canon cannot write binary yet; `tests/canonc_emits_wasm.rs` decodes it, runs it on wasmtime and checks the result. Compiled by the Rust compiler, which stays the bootstrap host. |
+| `canonc/` | The self-hosted compiler, written in Canon. Reads a `.can` path from its arguments, tokenizes the source into a cons-list (`Name` / `Number` / `Punct`, with `=>` its own punctuation so a declaration head can be told from the type declarations that precede it), parses a brace body as an operand followed by a chain of steps — `-> Op(operand)` for the arithmetic and comparison operators, `-> Name` or `-> Name(operand)` for a call to another declaration (resolved through a table of every declared name built before any body is parsed, so calls may point forward, and recursion and mutual recursion both compile), or `-> ( * False { … } * True { … } )` for a dispatch, which is wasm's `if` — where an operand is a literal, a parameter, or a parenthesised body, since one parse step reads every body and takes its terminator (`}` or `)`) as an input, and emits a WebAssembly core module exporting each declared type, lowercased, as a function evaluating it — taking one `i32` per name the head puts before `=>`; anything the grammar doesn't accept is a diagnostic naming the token it wanted. Emits hex, since Canon cannot write binary yet; `tests/canonc_emits_wasm.rs` decodes it, runs it on wasmtime and checks the result. Compiled by the Rust compiler, which stays the bootstrap host. |
 | `examples/` | Example `.can` programs |
 | `githooks/` | Git hooks (`pre-commit`) |
 | `tests/` | Rust integration tests (incl. `tests/fixtures/`, `tests/canon/`) |
@@ -276,6 +276,11 @@ These are the non-obvious rules the code won't spell out. Together with
   meaning, the input is a repetition (`Int^2 => Gt`, reached as `Int.1`/`Int.2`),
   which binds positionally and is exempt. The formatter never reorders `List(…)`
   or method/pipe args.
+  A piped construction stands in for a call only when it takes the arguments
+  written: `x -> Newtype` relabels and a multi-field product takes the rest of
+  its fields, but any other name carrying arguments must match a declared
+  constructor at that arity — otherwise the relabel drops them and codegen
+  emits the wrong stack shape.
 - **Canonical call form: values flow through pipes, literals are born in the
   parens.** `canon check --fix` (`canon_expr` in `src/formatter.rs`) rewrites
   every call: computed first input pipes (`B(A)` → `A -> B`); a lone scalar
