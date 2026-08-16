@@ -1,0 +1,23 @@
+Broken = String
+
+Index = Int
+
+Made = Int
+
+Outcome = Broken + Made
+
+Passed = Outcome
+
+Index * Outcome => Passed {
+    Outcome -> (
+        * Broken { Broken -> Outcome }
+        * Made { Made -> Sum(Index) -> Made -> Outcome }
+    )
+}
+
+Unit => Program {
+    Broken("nope") -> Outcome -> Passed(Index(1)) -> (
+        * Broken { Broken -> Print }
+        * Made { Made -> String -> Print }
+    )
+}

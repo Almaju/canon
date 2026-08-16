@@ -115,7 +115,7 @@ Index * Tokens => Assembly {
                 * Bad { Bad -> Broken -> Assembly }
                 * Good {
                     Good.After -> Assembly(Index -> Sum(1) -> Index) -> (
-                        * Broken { Broken -> Broken -> Assembly }
+                        * Broken { Broken -> Assembly }
                         * Made {
                             Codes(`{Good.Code -> BodySize -> Octet}00{Good.Code}0b{Made.Codes}`)
                                 -> Made(
