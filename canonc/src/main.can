@@ -14,6 +14,8 @@ Body = Parsed
 
 BodySize = Int
 
+Bodyortext = Parsed
+
 Broken = String
 
 Callargs = Parsed
@@ -26,9 +28,19 @@ Code = String
 
 Codes = String
 
+Codesection = Section
+
 Cons = Head * Tail
 
 Count = Int
+
+Data = String
+
+Dataat = Int
+
+Dataoffset = Int
+
+Datasection = Section
 
 Depth = Int
 
@@ -42,6 +54,8 @@ Export = Text
 
 Exports = String
 
+Exportsection = Section
+
 Falsebrace = Parsed
 
 Falsecode = String
@@ -50,15 +64,19 @@ Falsemark = Parsed
 
 Funcs = String
 
+Funcsection = Section
+
 Gathered = Params
 
-Good = After * Code
+Good = After * Code * Stringy
 
 Head = Token
 
 Header = Params
 
 HexByte = String
+
+Hexed = String
 
 Index = Int
 
@@ -70,7 +88,17 @@ IsSpace = Bool
 
 IsWord = Bool
 
+Litcons = Lithead * Littail
+
 Literal = Int
+
+Literals = Litcons + Litnil
+
+Lithead = Text
+
+Litnil = Unit
+
+Littail = Literals
 
 Local = Int
 
@@ -128,11 +156,19 @@ Prev = Text
 
 Punct = Int
 
+Quoted = Text
+
+Quoterun = Int
+
 Rank = Int
 
 Reported = Unit
 
 Run = Int
+
+Section = String
+
+Sectionbody = String
 
 Seen = Int
 
@@ -144,15 +180,24 @@ Slot = Int
 
 Slug = Text
 
+Sofar = Literals
+
 Source = String
+
+Stringy = Bool
+
+Tag = Int
 
 Tail = Tokens
 
 Text = String
 
+Textend = Parsed
+
 Token = Name
   + Number
   + Punct
+  + Quoted
 
 Tokens = Cons + Nil
 
@@ -167,6 +212,8 @@ Truestar = Parsed
 TypeEntry = String
 
 Types = String
+
+Typesection = Section
 
 Utf8 = String
 
@@ -194,21 +241,21 @@ Params * Seen => Arity {
     )
 }
 
-Index * Names * Tokens => Assembly {
+Index * Literals * Names * Tokens => Assembly {
     Tokens -> (
         * Cons {
-            Tokens -> Parsed(Names * Tokens -> Header) -> (
+            Tokens -> Parsed(Literals * Names * Tokens -> Header) -> (
                 * Bad { Bad -> Broken -> Assembly }
                 * Good {
-                    Good.After -> Assembly(Index -> Sum(1) -> Index * Names) -> (
+                    Good.After -> Assembly(Index -> Sum(1) -> Index * Literals * Names) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Octet}00{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}00{Good.Code}0b{Made.Codes}`)
                                 -> Made(
-                                    Exports(`{Tokens -> Export(Prev("")) -> Length -> Octet}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Octet}{Made.Exports}`)
-                                    * Funcs(`{Index -> Octet}{Made.Funcs}`)
+                                    Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Emitted}{Made.Exports}`)
+                                    * Funcs(`{Index -> Emitted}{Made.Funcs}`)
                                     * Made.Count -> Sum(1) -> Count
-                                    * Types(`{Tokens -> Header -> TypeEntry}{Made.Types}`)
+                                    * Types(`{Tokens -> Header -> TypeEntry(Good.Stringy)}{Made.Types}`)
                                 )
                                 -> Assembly
                         }
@@ -266,6 +313,7 @@ Ender * Names * Params * Tokens => Body {
                         * True { Ender -> Wantsliteral -> Bad -> Parsed }
                     )
                 }
+                * Quoted { Bad("a string literal must be the whole body") -> Parsed }
             )
         }
         * Nil { Ender -> Wantsliteral -> Bad -> Parsed }
@@ -287,6 +335,23 @@ Code => BodySize {
         -> Sum(2)
 }
 
+Literals * Names * Params * Tokens => Bodyortext {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Tokens -> Body(Ender(125) * Names * Params) }
+                * Number { Tokens -> Body(Ender(125) * Names * Params) }
+                * Punct { Tokens -> Body(Ender(125) * Names * Params) }
+                * Quoted {
+                    Cons.Tail
+                        -> Textend(Code(`41{Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}`))
+                }
+            )
+        }
+        * Nil { Tokens -> Body(Ender(125) * Names * Params) }
+    )
+}
+
 Code * Ender * Names * Opcode * Params * Tokens => Callargs {
     Tokens -> (
         * Cons {
@@ -299,6 +364,7 @@ Code * Ender * Names * Opcode * Params * Tokens => Callargs {
                         * True { Cons.Tail -> Argument(Code * Ender * Names * Opcode * Params) }
                     )
                 }
+                * Quoted { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
             )
         }
         * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
@@ -319,9 +385,10 @@ Code * Ender * Names * Params * Tokens => Chain {
                                 * True { Cons.Tail -> Opname(Code * Ender * Names * Params) }
                             )
                         }
-                        * True { Code -> Good(Cons.Tail -> After) -> Parsed }
+                        * True { Code -> Good(Cons.Tail -> After * False() -> Stringy) -> Parsed }
                     )
                 }
+                * Quoted { Ender -> Wantsstep -> Bad -> Parsed }
             )
         }
         * Nil { Bad("expression is unterminated") -> Parsed }
@@ -348,10 +415,41 @@ Code * Ender * Falsecode * Names * Params * Tokens * Truecode => Closer {
                         }
                     )
                 }
+                * Quoted { Bad("expected `)`") -> Parsed }
             )
         }
         * Nil { Bad("expected `)`") -> Parsed }
     )
+}
+
+Made => Codesection {
+    Sectionbody(`{Made.Count -> Emitted}{Made.Codes}`) -> Section(Tag(10))
+}
+
+Literals => Data {
+    Literals -> (
+        * Litcons { `{Litcons.Lithead -> Hexed(Pos(1))}{Litcons.Littail -> Data}` }
+        * Litnil { "" }
+    )
+}
+
+Dataat * Literals * Wanted => Dataoffset {
+    Literals -> (
+        * Litcons {
+            Litcons.Lithead -> Eq(Wanted) -> (
+                * False {
+                    Litcons.Littail
+                        -> Dataoffset(Dataat -> Sum(Litcons.Lithead -> Length) -> Dataat * Wanted)
+                }
+                * True { Dataat }
+            )
+        }
+        * Litnil { 0 -> Difference(1) }
+    )
+}
+
+Data => Datasection {
+    Sectionbody(`010041000b{Data -> Length -> Quotient(2) -> Emitted}{Data}`) -> Section(Tag(11))
 }
 
 Code * Ender * Names * Params * Tokens => Dispatch {
@@ -366,6 +464,7 @@ Code * Ender * Names * Params * Tokens => Dispatch {
                         * True { Cons.Tail -> Falsemark(Code * Ender * Names * Params) }
                     )
                 }
+                * Quoted { Bad("expected `*`") -> Parsed }
             )
         }
         * Nil { Bad("expected `*`") -> Parsed }
@@ -402,10 +501,16 @@ Prev * Tokens => Export {
                         * True { Prev }
                     )
                 }
+                * Quoted { Cons.Tail -> Export(Prev) }
             )
         }
         * Nil { "" }
     )
+}
+
+Made => Exportsection {
+    Sectionbody(`{Made.Count -> Sum(1) -> Emitted}{Made.Exports}066d656d6f72790200`)
+        -> Section(Tag(7))
 }
 
 Code * Ender * Names * Params * Tokens => Falsebrace {
@@ -434,6 +539,7 @@ Code * Ender * Names * Params * Tokens => Falsebrace {
                         }
                     )
                 }
+                * Quoted { Bad("expected `{`") -> Parsed }
             )
         }
         * Nil { Bad("expected `{`") -> Parsed }
@@ -452,10 +558,15 @@ Code * Ender * Names * Params * Tokens => Falsemark {
                 }
                 * Number { Bad("expected `False`") -> Parsed }
                 * Punct { Bad("expected `False`") -> Parsed }
+                * Quoted { Bad("expected `False`") -> Parsed }
             )
         }
         * Nil { Bad("expected `False`") -> Parsed }
     )
+}
+
+Made => Funcsection {
+    Sectionbody(`{Made.Count -> Emitted}{Made.Funcs}`) -> Section(Tag(3))
 }
 
 Params * Tokens * Wasname => Gathered {
@@ -497,6 +608,7 @@ Params * Tokens * Wasname => Gathered {
                         * True { Params }
                     )
                 }
+                * Quoted { Cons.Tail -> Gathered(Params * False() -> Wasname) }
             )
         }
         * Nil { Params }
@@ -511,6 +623,13 @@ Tokens => Header {
 
 Nibble => HexByte {
     "0123456789abcdef" -> Substring(Nibble -> Sum(1) -> From * Nibble -> Sum(1) -> To)
+}
+
+Pos * Text => Hexed {
+    Pos -> Gt(Text -> Length) -> (
+        * False { `{Text -> ByteAt(Pos) -> Octet}{Text -> Hexed(Pos -> Sum(1) -> Pos)}` }
+        * True { "" }
+    )
 }
 
 Int => IsDigit {
@@ -564,6 +683,27 @@ Acc * Pos * Source => Literal {
     )
 }
 
+Sofar * Tokens => Literals {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Literals(Sofar) }
+                * Number { Cons.Tail -> Literals(Sofar) }
+                * Punct { Cons.Tail -> Literals(Sofar) }
+                * Quoted {
+                    Sofar -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Lt(0) -> (
+                        * False { Cons.Tail -> Literals(Sofar) }
+                        * True {
+                            Cons.Tail -> Literals(Sofar -> Litcons(Quoted -> Lithead) -> Sofar)
+                        }
+                    )
+                }
+            )
+        }
+        * Nil { Sofar }
+    )
+}
+
 Params * Wanted => Local {
     Params
         -> Arity(Seen(0))
@@ -595,6 +735,7 @@ Code * Ender * Names * Opcode * Params * Tokens => Lparen {
                         * True { Cons.Tail -> Argument(Code * Ender * Names * Opcode * Params) }
                     )
                 }
+                * Quoted { Bad("expected `(`") -> Parsed }
             )
         }
         * Nil { Bad("expected `(`") -> Parsed }
@@ -613,16 +754,10 @@ Pos * Source => Marked {
     )
 }
 
-Made => Module {
-    `0061736d0100000001{Made.Types -> Length -> Quotient(2) -> Sum(1) -> Octet}{Made.Count -> Octet}{Made.Types}03{
-        Made.Funcs
-            -> Length
-            -> Quotient(2)
-            -> Sum(1)
-            -> Octet
-    }{Made.Count -> Octet}{Made.Funcs}07{Made.Exports -> Length -> Quotient(2) -> Sum(1) -> Octet}{
-        Made.Count -> Octet
-    }{Made.Exports}0a{Made.Codes -> Length -> Quotient(2) -> Sum(1) -> Octet}{Made.Count -> Octet}{Made.Codes}`
+Data * Made => Module {
+    `0061736d01000000{Made -> Typesection}{Made -> Funcsection}0503010001{Made -> Exportsection}{
+        Made -> Codesection
+    }{Data -> Datasection}`
 }
 
 Tokens => Names {
@@ -702,27 +837,41 @@ Code * Ender * Names * Params * Tokens => Opname {
                         * True { Cons.Tail -> Dispatch(Code * Ender * Names * Params) }
                     )
                 }
+                * Quoted { Bad("expected an operation after `->`") -> Parsed }
             )
         }
         * Nil { Bad("expected an operation after `->`") -> Parsed }
     )
 }
 
-Names * Params * Tokens => Parsed {
+Literals * Names * Params * Tokens => Parsed {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Cons.Tail -> Parsed(Names * Params) }
-                * Number { Cons.Tail -> Parsed(Names * Params) }
+                * Name { Cons.Tail -> Parsed(Literals * Names * Params) }
+                * Number { Cons.Tail -> Parsed(Literals * Names * Params) }
                 * Punct {
                     Punct -> Eq(123) -> (
-                        * False { Cons.Tail -> Parsed(Names * Params) }
-                        * True { Cons.Tail -> Body(Ender(125) * Names * Params) }
+                        * False { Cons.Tail -> Parsed(Literals * Names * Params) }
+                        * True { Cons.Tail -> Bodyortext(Literals * Names * Params) }
                     )
                 }
+                * Quoted { Cons.Tail -> Parsed(Literals * Names * Params) }
             )
         }
         * Nil { Bad("no declaration body") -> Parsed }
+    )
+}
+
+Pos * Source => Quoterun {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> Eq(34) -> (
+                * False { Source -> Quoterun(Pos -> Sum(1) -> Pos) }
+                * True { Pos }
+            )
+        }
+        * True { Pos }
     )
 }
 
@@ -739,9 +888,9 @@ Params * Seen * Wanted => Rank {
 }
 
 Tokens => Reported {
-    Tokens -> Assembly(Index(0) * Tokens -> Names) -> (
+    Tokens -> Assembly(Index(0) * Tokens -> Literals(Litnil() -> Sofar) * Tokens -> Names) -> (
         * Broken { Broken -> Print }
-        * Made { Made -> Module -> Print }
+        * Made { Made -> Module(Tokens -> Literals(Litnil() -> Sofar) -> Data) -> Print }
     )
 }
 
@@ -755,6 +904,10 @@ Pos * Source => Run {
         }
         * True { Pos }
     )
+}
+
+Sectionbody * Tag => Section {
+    `{Tag -> Octet}{Sectionbody -> Length -> Quotient(2) -> Emitted}{Sectionbody}`
 }
 
 Arity => Sevens {
@@ -788,6 +941,7 @@ Depth * Tokens => Skipped {
                         * True { Cons.Tail -> Skipped(Depth -> Sum(1) -> Depth) }
                     )
                 }
+                * Quoted { Cons.Tail -> Skipped(Depth) }
             )
         }
         * Nil { Nil() -> Tokens }
@@ -813,6 +967,25 @@ Tokens => Slug {
     )
 }
 
+Code * Tokens => Textend {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `}`") -> Parsed }
+                * Number { Bad("expected `}`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(125) -> (
+                        * False { Bad("expected `}`") -> Parsed }
+                        * True { Code -> Good(Cons.Tail -> After * True() -> Stringy) -> Parsed }
+                    )
+                }
+                * Quoted { Bad("expected `}`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `}`") -> Parsed }
+    )
+}
+
 Text => Token {
     Text -> ByteAt(1) -> IsDigit -> (
         * False { Text -> Name -> Token }
@@ -827,10 +1000,20 @@ Pos * Source => Tokens {
                 * False {
                     Source -> ByteAt(Pos) -> IsSpace -> (
                         * False {
-                            Source
-                                -> Tokens(Source -> Widened(Pos) -> Pos)
-                                -> Cons(Source -> Marked(Pos) -> Punct -> Token -> Head)
-                                -> Tokens
+                            Source -> ByteAt(Pos) -> Eq(34) -> (
+                                * False {
+                                    Source
+                                        -> Tokens(Source -> Widened(Pos) -> Pos)
+                                        -> Cons(Source -> Marked(Pos) -> Punct -> Token -> Head)
+                                        -> Tokens
+                                }
+                                * True {
+                                    Source
+                                        -> Tokens(Source -> Quoterun(Pos -> Sum(1) -> Pos) -> Sum(1) -> Pos)
+                                        -> Cons(Source -> Substring(Pos -> Sum(1) -> From * Source -> Quoterun(Pos -> Sum(1) -> Pos) -> Difference(1) -> To) -> Quoted -> Token -> Head)
+                                        -> Tokens
+                                }
+                            )
                         }
                         * True { Source -> Tokens(Pos -> Sum(1) -> Pos) }
                     )
@@ -874,6 +1057,7 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truebrace {
                         }
                     )
                 }
+                * Quoted { Bad("expected `{`") -> Parsed }
             )
         }
         * Nil { Bad("expected `{`") -> Parsed }
@@ -892,6 +1076,7 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truemark {
                 }
                 * Number { Bad("expected `True`") -> Parsed }
                 * Punct { Bad("expected `True`") -> Parsed }
+                * Quoted { Bad("expected `True`") -> Parsed }
             )
         }
         * Nil { Bad("expected `True`") -> Parsed }
@@ -910,9 +1095,21 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truestar {
                         * True { Cons.Tail -> Truemark(Code * Ender * Falsecode * Names * Params) }
                     )
                 }
+                * Quoted { Bad("expected `*`") -> Parsed }
             )
         }
         * Nil { Bad("expected `*`") -> Parsed }
+    )
+}
+
+Params * Stringy => TypeEntry {
+    Stringy -> (
+        * False {
+            `60{Params -> Arity(Seen(0)) -> Emitted}{Params -> Arity(Seen(0)) -> Sevens}017f`
+        }
+        * True {
+            `60{Params -> Arity(Seen(0)) -> Emitted}{Params -> Arity(Seen(0)) -> Sevens}027f7f`
+        }
     )
 }
 
@@ -928,8 +1125,8 @@ Unit => Result<Program, IoError> {
     Unit() -> Ok
 }
 
-Params => TypeEntry {
-    `60{Params -> Arity(Seen(0)) -> Emitted}{Params -> Arity(Seen(0)) -> Sevens}017f`
+Made => Typesection {
+    Sectionbody(`{Made.Count -> Emitted}{Made.Types}`) -> Section(Tag(1))
 }
 
 Export * Pos => Utf8 {

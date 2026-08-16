@@ -107,6 +107,35 @@ fn canonc_apply2(name: &str, source: &str, export: &str, a: i32, b: i32) -> i32 
         .expect("call the export")
 }
 
+/// Same again, for a declaration returning a string: the export hands
+/// back the `(ptr, len)` pair and the bytes are read out of the module's
+/// own exported memory.
+fn canonc_string(name: &str, source: &str, export: &str) -> String {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let (ptr, len) = instance
+        .get_typed_func::<(), (i32, i32)>(&mut store, export)
+        .unwrap_or_else(|_| panic!("emitted module should export `{export}`"))
+        .call(&mut store, ())
+        .expect("call the export");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let mut out = vec![0u8; len as usize];
+    memory
+        .read(&store, ptr as usize, &mut out)
+        .expect("read the string out of memory");
+    String::from_utf8(out).expect("utf-8 string")
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -531,4 +560,55 @@ fn canonc_calls_a_declaration_that_takes_nothing() {
         ),
         "Seed is not a declaration or an operation"
     );
+}
+
+#[test]
+fn canonc_compiles_a_string_literal() {
+    // A string is a `(ptr, len)` pair into the module's own linear
+    // memory — the reference compiler's representation — so a
+    // declaration returning one has two results, and the bytes ride in a
+    // data segment rather than being built at runtime.
+    assert_eq!(
+        canonc_string(
+            "greeting.can",
+            "Unit => Greeting { \"hello\" }\n",
+            "greeting"
+        ),
+        "hello"
+    );
+
+    // The table is interned and shared across declarations: one copy of
+    // the bytes, and the second declaration points at the same offset.
+    let shared =
+        "Unit => Greeting { \"hi\" }\n\nUnit => Other { \"hi\" }\n\nUnit => Third { \"bye\" }\n";
+    assert_eq!(canonc_string("shared.can", shared, "greeting"), "hi");
+    assert_eq!(canonc_string("shared.can", shared, "other"), "hi");
+    assert_eq!(canonc_string("shared.can", shared, "third"), "bye");
+    // One copy of the bytes: "bye" and "hi" back to back, five in all,
+    // rather than seven with "hi" written twice.
+    let hex = canonc_stdout("shared.can", shared);
+    assert!(hex.ends_with("056279656869"), "data segment was {hex}");
+
+    // Nothing else takes a string yet, and saying so beats emitting a
+    // module that reads the bytes as a number.
+    assert_eq!(
+        canonc_stdout("strop.can", "Unit => Answer { \"hi\" -> Sum(1) }\n"),
+        "expected `}`"
+    );
+    assert_eq!(
+        canonc_stdout("strarg.can", "Unit => Answer { 1 -> Sum(\"hi\") }\n"),
+        "a string literal must be the whole body"
+    );
+}
+
+#[test]
+fn canonc_sizes_a_section_past_one_byte() {
+    // Section sizes and entry counts are LEB128, not a single byte: a
+    // body longer than 127 bytes used to emit a size with the
+    // continuation bit set and no byte to follow it.
+    let long = format!(
+        "Unit => Answer {{ 0 {} }}\n",
+        (0..60).map(|_| "-> Sum(1)").collect::<Vec<_>>().join(" ")
+    );
+    assert_eq!(canonc_answer("long.can", &long), 60);
 }
