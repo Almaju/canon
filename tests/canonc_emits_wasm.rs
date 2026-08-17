@@ -184,6 +184,52 @@ fn canonc_string_arg(name: &str, source: &str, export: &str, arg: &str) -> Strin
 
 /// Same again, for a declaration taking a product: the fields are laid
 /// out in the module's memory and the pointer to them is the argument.
+/// Same again, for a product holding a string: the text goes into
+/// memory beside the cell, and the export gives back a `(ptr, len)`.
+fn canonc_string_product(
+    name: &str,
+    source: &str,
+    export: &str,
+    scalar: i32,
+    text: &str,
+) -> String {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let at = 32768;
+    let text_at = at + 64;
+    let mut cell = Vec::new();
+    cell.extend_from_slice(&scalar.to_le_bytes());
+    cell.extend_from_slice(&(text_at as i32).to_le_bytes());
+    cell.extend_from_slice(&(text.len() as i32).to_le_bytes());
+    memory
+        .write(&mut store, at, &cell)
+        .expect("lay the product out in memory");
+    memory
+        .write(&mut store, text_at, text.as_bytes())
+        .expect("write the field's text");
+    let (ptr, len) = instance
+        .get_typed_func::<i32, (i32, i32)>(&mut store, export)
+        .unwrap_or_else(|e| panic!("export `{export}`: {e}"))
+        .call(&mut store, at as i32)
+        .expect("call the export");
+    let mut out = vec![0u8; len as usize];
+    memory
+        .read(&store, ptr as usize, &mut out)
+        .expect("read the string out of memory");
+    String::from_utf8(out).expect("utf-8 string")
+}
+
 fn canonc_product_arg(name: &str, source: &str, export: &str, fields: &[i32]) -> i32 {
     let hex = canonc_stdout(name, source);
     let bytes: Vec<u8> = (0..hex.len())
@@ -1195,6 +1241,15 @@ fn canonc_reads_a_product_field() {
             &[11, 22]
         ),
         33
+    );
+
+    // A string field is eight bytes, so reading it pushes the pointer
+    // and the length — the struct pointer is parked once and loaded
+    // from twice.
+    let text = "Count = Int\n\nLabel = String\n\nShown = String\n\nTagged = Count * Label\n\nTagged => Shown { Tagged.Label -> Joined(\"!\") }\n";
+    assert_eq!(
+        canonc_string_product("pstr.can", text, "shown", 7, "hi"),
+        "hi!"
     );
 
     // A name that isn't a field, and a `.` on something with no fields.
