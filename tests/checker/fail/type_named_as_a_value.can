@@ -1,0 +1,13 @@
+Answer = Int
+
+Count = Int
+
+Unit => Answer {
+    Count -> Sum(1)
+}
+
+Unit => Program {
+    Answer()
+        -> String
+        -> Print
+}

@@ -321,6 +321,10 @@ treatment in `docs/src/spec/types-only.md`.
   camelCase FFI bindings; `B(a)` prefix survives only where the literals-in-parens
   rule puts it. **No implicit dependency threading:** an omitted argument is a
   missing-argument error even when exactly one in-scope value matches.
+  **An identifier names a value, never a type**: parameters, repetition
+  components and arm bindings are the only things that carry one, so a name in
+  expression position must be in scope. `Unit` is the sole exception — the
+  single-value type's name *is* its value (`MonotonicClock -> Now`).
 - **Anonymous arrows are the one constructor form.** `(A) => B { … }` declares the
   `B` constructor (return type with `Result`/`Option`/`Future` peeled). The named
   spelling `B = (A) => …` still parses but `--fix` rewrites it when the name is
