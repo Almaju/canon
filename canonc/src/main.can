@@ -88,7 +88,7 @@ Gathered = Params
 
 Globalsection = Section
 
-Good = After * Code * Stringy
+Good = After * Code * Kind
 
 Head = Token
 
@@ -117,6 +117,8 @@ Itoabody = String
 Itoacode = String
 
 Joiner = String
+
+Kind = Text
 
 Litcons = Lithead * Littail
 
@@ -246,8 +248,6 @@ Streqcode = String
 
 Streqtype = String
 
-Stringy = Bool
-
 Strop = Parsed
 
 Tables = Literals * Names * Whole
@@ -295,11 +295,11 @@ Whole = Tokens
 
 Widened = Int
 
-Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Argument {
+Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
         * Good {
-            Good.Stringy -> (
+            Tables.Whole -> Isstring(Depthleft(8) * Good.Kind -> Wanted) -> (
                 * False {
                     Argkind -> (
                         * False {
@@ -308,7 +308,7 @@ Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Argument
                                     Code(`{Code}{Good.Code}{Opcode}`)
                                     * Ender
                                     * Params
-                                    * Stringy
+                                    * Kind
                                     * Tables
                                 )
                         }
@@ -324,7 +324,7 @@ Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Argument
                                     Code(`{Code}{Good.Code}{Opcode}`)
                                     * Ender
                                     * Params
-                                    * Stringy
+                                    * Kind
                                     * Tables
                                 )
                         }
@@ -356,7 +356,7 @@ Index * Tables * Tokens => Assembly {
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(2) -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Sum(3) -> Emitted}{Made.Funcs}`)
                                     * Made.Count -> Sum(1) -> Count
-                                    * Types(`{Tokens -> Header -> TypeEntry(Good.Stringy * Tables)}{Made.Types}`)
+                                    * Types(`{Tokens -> Header -> TypeEntry(Good.Kind * Tables)}{Made.Types}`)
                                 )
                                 -> Assembly
                         }
@@ -368,8 +368,8 @@ Index * Tables * Tokens => Assembly {
     )
 }
 
-Stringy => Blocktype {
-    Stringy -> (
+Kind * Tables => Blocktype {
+    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
         * False { "047f" }
         * True { "0401" }
     )
@@ -387,7 +387,7 @@ Ender * Params * Tables * Tokens => Body {
                                     Params -> Localget(Tables * Name -> Wanted) -> Code
                                     * Ender
                                     * Params
-                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                    * Name -> Kind
                                     * Tables
                                 )
                         }
@@ -399,7 +399,7 @@ Ender * Params * Tables * Tokens => Body {
                                             Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(2) -> Emitted}`)
                                             * Ender
                                             * Params
-                                            * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                            * Name -> Kind
                                             * Tables
                                         )
                                 }
@@ -414,7 +414,7 @@ Ender * Params * Tables * Tokens => Body {
                             Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
                             * Ender
                             * Params
-                            * False() -> Stringy
+                            * Kind("")
                             * Tables
                         )
                 }
@@ -433,7 +433,7 @@ Ender * Params * Tables * Tokens => Body {
                             Code(`41{Tables.Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}`)
                             * Ender
                             * Params
-                            * True() -> Stringy
+                            * Kind("String")
                             * Tables
                         )
                 }
@@ -464,21 +464,18 @@ Scratch => Byteat {
     }20{Scratch -> Sum(2) -> Emitted}6a41016b2d0000`
 }
 
-Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Callargs {
+Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Callargs {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name {
-                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
-                }
+                * Name { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Kind * Tables) }
                 * Number {
-                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
+                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Kind * Tables)
                 }
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False {
-                            Tokens
-                                -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
+                            Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Kind * Tables)
                         }
                         * True {
                             Cons.Tail
@@ -488,22 +485,22 @@ Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Callargs
                                     * Ender
                                     * Opcode
                                     * Params
-                                    * Stringy
+                                    * Kind
                                     * Tables
                                 )
                         }
                     )
                 }
                 * Quoted {
-                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
+                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Kind * Tables)
                 }
             )
         }
-        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables) }
+        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Kind * Tables) }
     )
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Chain {
+Code * Ender * Params * Kind * Tables * Tokens => Chain {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -515,11 +512,11 @@ Code * Ender * Params * Stringy * Tables * Tokens => Chain {
                             Punct -> Eq(45) -> (
                                 * False { Ender -> Wantsstep -> Bad -> Parsed }
                                 * True {
-                                    Cons.Tail -> Opname(Code * Ender * Params * Stringy * Tables)
+                                    Cons.Tail -> Opname(Code * Ender * Params * Kind * Tables)
                                 }
                             )
                         }
-                        * True { Code -> Good(Cons.Tail -> After * Stringy) -> Parsed }
+                        * True { Code -> Good(Cons.Tail -> After * Kind) -> Parsed }
                     )
                 }
                 * Quoted { Ender -> Wantsstep -> Bad -> Parsed }
@@ -529,7 +526,7 @@ Code * Ender * Params * Stringy * Tables * Tokens => Chain {
     )
 }
 
-Code * Ender * Falsecode * Params * Stringy * Tables * Tokens * Truecode => Closer {
+Code * Ender * Falsecode * Params * Kind * Tables * Tokens * Truecode => Closer {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -541,9 +538,9 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens * Truecode => Clos
                         * True {
                             Cons.Tail
                                 -> Chain(
-                                    Code(`{Code}{Stringy -> Blocktype}{Truecode}05{Falsecode}0b`)
+                                    Code(`{Code}{Kind -> Blocktype(Tables)}{Truecode}05{Falsecode}0b`)
                                     * Ender
-                                    * Stringy
+                                    * Kind
                                     * Tables
                                     * Params
                                 )
@@ -612,7 +609,7 @@ Data => Datasection {
     Sectionbody(`010041000b{Data -> Length -> Quotient(2) -> Emitted}{Data}`) -> Section(Tag(11))
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Dispatch {
+Code * Ender * Params * Kind * Tables * Tokens => Dispatch {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -621,7 +618,7 @@ Code * Ender * Params * Stringy * Tables * Tokens => Dispatch {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Falsemark(Code * Ender * Params * Stringy * Tables) }
+                        * True { Cons.Tail -> Falsemark(Code * Ender * Params * Kind * Tables) }
                     )
                 }
                 * Quoted { Bad("expected `*`") -> Parsed }
@@ -673,7 +670,7 @@ Made => Exportsection {
         -> Section(Tag(7))
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Falsebrace {
+Code * Ender * Params * Kind * Tables * Tokens => Falsebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -691,7 +688,7 @@ Code * Ender * Params * Stringy * Tables * Tokens => Falsebrace {
                                             Code
                                             * Ender
                                             * Good.Code -> Falsecode
-                                            * Stringy
+                                            * Kind
                                             * Tables
                                             * Params
                                         )
@@ -707,14 +704,14 @@ Code * Ender * Params * Stringy * Tables * Tokens => Falsebrace {
     )
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Falsemark {
+Code * Ender * Params * Kind * Tables * Tokens => Falsemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq("False") -> (
                         * False { Bad("expected `False`") -> Parsed }
-                        * True { Cons.Tail -> Falsebrace(Code * Ender * Params * Stringy * Tables) }
+                        * True { Cons.Tail -> Falsebrace(Code * Ender * Params * Kind * Tables) }
                     )
                 }
                 * Number { Bad("expected `False`") -> Parsed }
@@ -726,21 +723,14 @@ Code * Ender * Params * Stringy * Tables * Tokens => Falsemark {
     )
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Firstarg {
+Code * Ender * Params * Kind * Tables * Tokens => Firstarg {
     Tokens -> Body(Ender(42) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
         * Good {
-            Good.Stringy -> (
+            Tables.Whole -> Isstring(Depthleft(8) * Good.Kind -> Wanted) -> (
                 * False {
                     Good.After
-                        -> Secondarg(
-                            Code
-                            * Ender
-                            * Good.Code -> Firstcode
-                            * Params
-                            * Stringy
-                            * Tables
-                        )
+                        -> Secondarg(Code * Ender * Good.Code -> Firstcode * Params * Kind * Tables)
                 }
                 * True { Bad("a slice bound must be a number") -> Parsed }
             )
@@ -754,7 +744,7 @@ Code * Ender * Params * Started * Tables * Tokens => Fmthole {
         * Good {
             Good.After
                 -> Fmtpiece(
-                    Code(`{Code}{Good.Code}{Good.Stringy -> Rendered}{Params -> Joiner(Started * Tables)}`)
+                    Code(`{Code}{Good.Code}{Good.Kind -> Rendered(Tables)}{Params -> Joiner(Started * Tables)}`)
                     * Ender
                     * Params
                     * True() -> Started
@@ -788,13 +778,13 @@ Code * Ender * Params * Started * Tables * Tokens => Fmtpiece {
                                             Code(`{Code}41004100`)
                                             * Ender
                                             * Params
-                                            * True() -> Stringy
+                                            * Kind("String")
                                             * Tables
                                         )
                                 }
                                 * True {
                                     Cons.Tail
-                                        -> Chain(Code * Ender * Params * True() -> Stringy * Tables)
+                                        -> Chain(Code * Ender * Params * Kind("String") * Tables)
                                 }
                             )
                         }
@@ -1032,7 +1022,7 @@ Int => Lowered {
     )
 }
 
-Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Lparen {
+Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Lparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1049,7 +1039,7 @@ Argkind * Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Lparen {
                                     * Ender
                                     * Opcode
                                     * Params
-                                    * Stringy
+                                    * Kind
                                     * Tables
                                 )
                         }
@@ -1109,7 +1099,7 @@ Code * Ender * Name * Params * Tables * Tokens => Numop {
                             * Ender
                             * Name -> Opcode
                             * Params
-                            * False() -> Stringy
+                            * Kind("")
                             * Tables
                         )
                 }
@@ -1123,7 +1113,7 @@ Code * Ender * Name * Params * Tables * Tokens => Numop {
                                     * Ender
                                     * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Sum(2) -> Emitted}`)
                                     * Params
-                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                    * Name -> Kind
                                     * Tables
                                 )
                         }
@@ -1132,7 +1122,7 @@ Code * Ender * Name * Params * Tables * Tokens => Numop {
                 }
             )
         }
-        * True { Tokens -> Chain(Code(`{Code}1001`) * Ender * Params * True() -> Stringy * Tables) }
+        * True { Tokens -> Chain(Code(`{Code}1001`) * Ender * Params * Kind("String") * Tables) }
     )
 }
 
@@ -1168,12 +1158,12 @@ Name => Opcode {
     )
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Opname {
+Code * Ender * Params * Kind * Tables * Tokens => Opname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Stringy -> (
+                    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
                         * False { Cons.Tail -> Numop(Code * Ender * Name * Params * Tables) }
                         * True { Cons.Tail -> Strop(Code * Ender * Name * Params * Tables) }
                     )
@@ -1183,9 +1173,9 @@ Code * Ender * Params * Stringy * Tables * Tokens => Opname {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected an operation after `->`") -> Parsed }
                         * True {
-                            Stringy -> (
+                            Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
                                 * False {
-                                    Cons.Tail -> Dispatch(Code * Ender * Params * Stringy * Tables)
+                                    Cons.Tail -> Dispatch(Code * Ender * Params * Kind * Tables)
                                 }
                                 * True { Bad("a dispatch needs a number to branch on") -> Parsed }
                             )
@@ -1277,22 +1267,13 @@ Pos * Source => Quoterun {
 
 Code * Ender * Name * Params * Tables * Tokens => Relabel {
     Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
-        * False {
-            Tokens
-                -> Chain(
-                    Code
-                    * Ender
-                    * Params
-                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
-                    * Tables
-                )
-        }
+        * False { Tokens -> Chain(Code * Ender * Params * Name -> Kind * Tables) }
         * True { Bad(`{Name} is not a declaration or an operation`) -> Parsed }
     )
 }
 
-Stringy => Rendered {
-    Stringy -> (
+Kind * Tables => Rendered {
+    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
         * False { "1001" }
         * True { "" }
     )
@@ -1380,18 +1361,18 @@ Params * Tables => Scratch {
         -> Quotient(2)
 }
 
-Code * Ender * Firstcode * Params * Stringy * Tables * Tokens => Secondarg {
+Code * Ender * Firstcode * Params * Kind * Tables * Tokens => Secondarg {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
         * Good {
-            Good.Stringy -> (
+            Tables.Whole -> Isstring(Depthleft(8) * Good.Kind -> Wanted) -> (
                 * False {
                     Good.After
                         -> Chain(
                             Code(`{Code}{Firstcode}{Good.Code}{Params -> Scratch(Tables) -> Slicing}`)
                             * Ender
                             * Params
-                            * True() -> Stringy
+                            * Kind("String")
                             * Tables
                         )
                 }
@@ -1436,7 +1417,7 @@ Depth * Tokens => Skipped {
     )
 }
 
-Code * Ender * Params * Stringy * Tables * Tokens => Slicelparen {
+Code * Ender * Params * Kind * Tables * Tokens => Slicelparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1445,7 +1426,7 @@ Code * Ender * Params * Stringy * Tables * Tokens => Slicelparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Cons.Tail -> Firstarg(Code * Ender * Params * Stringy * Tables) }
+                        * True { Cons.Tail -> Firstarg(Code * Ender * Params * Kind * Tables) }
                     )
                 }
                 * Quoted { Bad("expected `(`") -> Parsed }
@@ -1517,7 +1498,7 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
                                                     Code
                                                     * Ender
                                                     * Params
-                                                    * True() -> Stringy
+                                                    * Kind("String")
                                                     * Tables
                                                 )
                                         }
@@ -1529,7 +1510,7 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
                                             Code(`{Code}21{Params -> Scratch(Tables) -> Emitted}1a20{Params -> Scratch(Tables) -> Emitted}`)
                                             * Ender
                                             * Params
-                                            * False() -> Stringy
+                                            * Kind("")
                                             * Tables
                                         )
                                 }
@@ -1543,7 +1524,7 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
                                     * Ender
                                     * Params -> Scratch(Tables) -> Concat -> Opcode
                                     * Params
-                                    * True() -> Stringy
+                                    * Kind("String")
                                     * Tables
                                 )
                         }
@@ -1557,7 +1538,7 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
                             * Ender
                             * Opcode("1000")
                             * Params
-                            * False() -> Stringy
+                            * Kind("")
                             * Tables
                         )
                 }
@@ -1571,7 +1552,7 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
                     * Ender
                     * Params -> Scratch(Tables) -> Byteat -> Opcode
                     * Params
-                    * False() -> Stringy
+                    * Kind("")
                     * Tables
                 )
         }
@@ -1684,7 +1665,7 @@ Fmtdepth * Intext * Pos * Source => Tokens {
     )
 }
 
-Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truebrace {
+Code * Ender * Falsecode * Params * Kind * Tables * Tokens => Truebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1702,7 +1683,7 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truebrace {
                                             Code
                                             * Ender
                                             * Falsecode
-                                            * Good.Stringy -> Stringy
+                                            * Good.Kind -> Kind
                                             * Tables
                                             * Params
                                             * Good.Code -> Truecode
@@ -1719,7 +1700,7 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truebrace {
     )
 }
 
-Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truemark {
+Code * Ender * Falsecode * Params * Kind * Tables * Tokens => Truemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1728,7 +1709,7 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truemark {
                         * False { Bad("expected `True`") -> Parsed }
                         * True {
                             Cons.Tail
-                                -> Truebrace(Code * Ender * Falsecode * Params * Stringy * Tables)
+                                -> Truebrace(Code * Ender * Falsecode * Params * Kind * Tables)
                         }
                     )
                 }
@@ -1741,7 +1722,7 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truemark {
     )
 }
 
-Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truestar {
+Code * Ender * Falsecode * Params * Kind * Tables * Tokens => Truestar {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1751,8 +1732,7 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truestar {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
                         * True {
-                            Cons.Tail
-                                -> Truemark(Code * Ender * Falsecode * Params * Stringy * Tables)
+                            Cons.Tail -> Truemark(Code * Ender * Falsecode * Params * Kind * Tables)
                         }
                     )
                 }
@@ -1763,8 +1743,8 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truestar {
     )
 }
 
-Params * Stringy * Tables => TypeEntry {
-    Stringy -> (
+Kind * Params * Tables => TypeEntry {
+    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
         * False {
             `60{Params -> Paramtypes(Tables) -> Length -> Quotient(2) -> Emitted}{
                 Params -> Paramtypes(Tables)
