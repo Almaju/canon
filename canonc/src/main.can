@@ -10,6 +10,8 @@ Argument = Parsed
 
 Arity = Int
 
+Armbound = Text
+
 Armbrace = Parsed
 
 Armcode = String
@@ -23,6 +25,22 @@ Armtag = Int
 Assembly = Broken + Made
 
 Bad = String
+
+Bindcons = Binddepth * Bindhead * Bindtail
+
+Binddepth = Int
+
+Bindhead = Text
+
+Bindnil = Unit
+
+Binds = Bindcons + Bindnil
+
+Bindsdepth = Int
+
+Bindslot = Int
+
+Bindtail = Binds
 
 Blocktype = String
 
@@ -194,6 +212,8 @@ Nibble = Int
 
 Nil = Unit
 
+Nonbind = Parsed
+
 Nullname = Text
 
 Number = Text
@@ -223,6 +243,8 @@ Paramtail = Params
 Paramtypes = String
 
 Parsed = Bad + Good
+
+Payloadget = String
 
 Pos = Int
 
@@ -284,6 +306,8 @@ Slug = Text
 
 Sofar = Literals
 
+Sofardeep = Int
+
 Source = String
 
 Started = Bool
@@ -298,7 +322,7 @@ Streqtype = String
 
 Strop = Parsed
 
-Tables = Literals * Names * Whole
+Tables = Binds * Literals * Names * Whole
 
 Tag = Int
 
@@ -410,7 +434,7 @@ Params * Seen => Arity {
     )
 }
 
-Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
+Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -420,7 +444,12 @@ Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens =>
                     Punct -> Eq(123) -> (
                         * False { Bad("expected `{`") -> Parsed }
                         * True {
-                            Cons.Tail -> Body(Ender(125) * Params * Tables) -> (
+                            Cons.Tail
+                                -> Body(
+                                    Ender(125)
+                                    * Params
+                                    * Tables.Binds -> Bindcons(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Binddepth * Armbound -> Bindhead) -> Binds -> Tables(Tables.Literals * Tables.Names * Tables.Whole)
+                                ) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
@@ -459,7 +488,8 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname 
                         * False {
                             Cons.Tail
                                 -> Armbrace(
-                                    Tables.Whole -> Rhstokens(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
+                                    Name -> Armbound
+                                    * Tables.Whole -> Rhstokens(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
                                     * Closers
                                     * Code
                                     * Ender
@@ -534,7 +564,7 @@ Index * Tables * Tokens => Assembly {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Emitted}01057f{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}010c7f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(2) -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Sum(3) -> Emitted}{Made.Funcs}`)
@@ -551,6 +581,25 @@ Index * Tables * Tokens => Assembly {
     )
 }
 
+Binds * Sofardeep => Bindsdepth {
+    Binds -> (
+        * Bindcons { Bindcons.Bindtail -> Bindsdepth(Sofardeep -> Sum(1) -> Sofardeep) }
+        * Bindnil { Sofardeep }
+    )
+}
+
+Binds * Wanted => Bindslot {
+    Binds -> (
+        * Bindcons {
+            Bindcons.Bindhead -> Eq(Wanted) -> (
+                * False { Bindcons.Bindtail -> Bindslot(Wanted) }
+                * True { Bindcons.Binddepth }
+            )
+        }
+        * Bindnil { 0 -> Difference(1) }
+    )
+}
+
 Kind * Tables => Blocktype {
     Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
         * False { "047f" }
@@ -563,32 +612,18 @@ Ender * Params * Tables * Tokens => Body {
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
+                    Tables.Binds -> Bindslot(Name -> Wanted) -> Lt(0) -> (
                         * False {
                             Cons.Tail
                                 -> Field(
-                                    Params -> Localget(Tables * Name -> Wanted) -> Code
+                                    Tables.Binds -> Bindslot(Name -> Wanted) -> Payloadget(Params * Tables) -> Code
                                     * Ender
                                     * Params
                                     * Name -> Kind
                                     * Tables
                                 )
                         }
-                        * True {
-                            Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
-                                * False {
-                                    Cons.Tail
-                                        -> Chain(
-                                            Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(2) -> Emitted}`)
-                                            * Ender
-                                            * Params
-                                            * Name -> Kind
-                                            * Tables
-                                        )
-                                }
-                                * True { Ender -> Wantsliteral -> Bad -> Parsed }
-                            )
-                        }
+                        * True { Cons.Tail -> Nonbind(Ender * Name * Params * Tables) }
                     )
                 }
                 * Number {
@@ -1420,6 +1455,36 @@ Tokens => Names {
     )
 }
 
+Ender * Name * Params * Tables * Tokens => Nonbind {
+    Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
+        * False {
+            Tokens
+                -> Field(
+                    Params -> Localget(Tables * Name -> Wanted) -> Code
+                    * Ender
+                    * Params
+                    * Name -> Kind
+                    * Tables
+                )
+        }
+        * True {
+            Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
+                * False {
+                    Tokens
+                        -> Chain(
+                            Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(2) -> Emitted}`)
+                            * Ender
+                            * Params
+                            * Name -> Kind
+                            * Tables
+                        )
+                }
+                * True { Ender -> Wantsliteral -> Bad -> Parsed }
+            )
+        }
+    )
+}
+
 Text => Nullname {
     `.{Text}`
 }
@@ -1601,6 +1666,10 @@ Params * Tables * Tokens => Parsed {
     )
 }
 
+Bindslot * Params * Tables => Payloadget {
+    `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}280204`
+}
+
 Code * Ender * Kind * Name * Params * Tables * Tokens => Prodarg {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
@@ -1730,7 +1799,7 @@ Tokens => Reported {
     Tokens
         -> Assembly(
             Index(0)
-            * Tokens -> Literals(Litnil() -> Sofar) -> Tables(Tokens -> Names * Tokens -> Whole)
+            * Tokens -> Literals(Litnil() -> Sofar) -> Tables(Bindnil() -> Binds * Tokens -> Names * Tokens -> Whole)
         ) -> (
         * Broken { Broken -> Print }
         * Made { Made -> Module(Tokens -> Literals(Litnil() -> Sofar) -> Data) -> Print }

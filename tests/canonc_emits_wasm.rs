@@ -778,7 +778,7 @@ fn canonc_compiles_a_string_chain() {
     // one i32 scratch local, then the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("01057f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("010c7f200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 
@@ -1264,5 +1264,35 @@ fn canonc_dispatches_on_a_union() {
             &format!("{decls}Slot => Kindof {{ Slot -> ( * Count {{ 10 }} * Nope {{ 20 }} ) }}\n")
         ),
         "Nope is not a variant of Slot"
+    );
+}
+
+#[test]
+fn canonc_binds_an_arm_payload() {
+    // An arm's name reads the payload back out of the cell its own
+    // dispatch parked. The binding lives in the tables the parse
+    // already carries, so nothing new is threaded to reach it.
+    let decls = "Count = Int\n\nOther = Int\n\nSlot = Count + Other\n\nValue = Int\n\n";
+    let src = format!(
+        "{decls}Slot => Value {{ Slot -> ( * Count {{ Count -> Sum(100) }} \
+         * Other {{ Other -> Sum(200) }} ) }}\n"
+    );
+    assert_eq!(canonc_product_arg("bind0.can", &src, "value", &[0, 7]), 107);
+    assert_eq!(canonc_product_arg("bind1.can", &src, "value", &[1, 7]), 207);
+
+    // Nested dispatches each park their own pointer, so an outer
+    // binding is still readable from inside an inner arm.
+    let nested = format!(
+        "{decls}Slot => Value {{ Slot -> ( \
+         * Count {{ Count -> Gt(5) -> ( * False {{ Count }} * True {{ Count -> Sum(1000) }} ) }} \
+         * Other {{ Other }} ) }}\n"
+    );
+    assert_eq!(
+        canonc_product_arg("nest0.can", &nested, "value", &[0, 3]),
+        3
+    );
+    assert_eq!(
+        canonc_product_arg("nest1.can", &nested, "value", &[0, 9]),
+        1009
     );
 }
