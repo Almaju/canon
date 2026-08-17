@@ -1235,3 +1235,34 @@ fn canonc_tags_a_union_variant() {
         "Other is not a variant of Slot"
     );
 }
+
+#[test]
+fn canonc_dispatches_on_a_union() {
+    // Arms name variants now, not `False` / `True`. The scrutinee's
+    // pointer is parked once and each arm tests the tag it loads back,
+    // so the arms nest into one `if` chain closed at the end.
+    let decls = "Count = Int\n\nKindof = Int\n\nLabel = String\n\nSlot = Count + Label\n\n";
+    let src =
+        format!("{decls}Slot => Kindof {{ Slot -> ( * Count {{ 10 }} * Label {{ 20 }} ) }}\n");
+    assert_eq!(canonc_product_arg("ud0.can", &src, "kindof", &[0, 7]), 10);
+    assert_eq!(canonc_product_arg("ud1.can", &src, "kindof", &[1, 7]), 20);
+
+    // Three arms nest the same way.
+    let three =
+        "Bit = Int\n\nOne = Int\n\nThree = Int\n\nTwo = Int\n\nDigit = One + Three + Two\n\n";
+    let src3 = format!(
+        "{three}Digit => Bit {{ Digit -> ( * One {{ 1 }} * Three {{ 3 }} * Two {{ 2 }} ) }}\n"
+    );
+    assert_eq!(canonc_product_arg("ud3a.can", &src3, "bit", &[0, 0]), 1);
+    assert_eq!(canonc_product_arg("ud3b.can", &src3, "bit", &[1, 0]), 3);
+    assert_eq!(canonc_product_arg("ud3c.can", &src3, "bit", &[2, 0]), 2);
+
+    // An arm that names something that isn't a variant.
+    assert_eq!(
+        canonc_stdout(
+            "udbad.can",
+            &format!("{decls}Slot => Kindof {{ Slot -> ( * Count {{ 10 }} * Nope {{ 20 }} ) }}\n")
+        ),
+        "Nope is not a variant of Slot"
+    );
+}
