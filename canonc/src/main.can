@@ -44,6 +44,8 @@ Datasection = Section
 
 Depth = Int
 
+Depthleft = Int
+
 Dispatch = Parsed
 
 Emitted = String
@@ -87,6 +89,8 @@ IsLetter = Bool
 IsSpace = Bool
 
 IsWord = Bool
+
+Isstring = Bool
 
 Litcons = Lithead * Littail
 
@@ -134,6 +138,8 @@ Number = Text
 
 Octet = String
 
+Onetype = String
+
 Opcode = String
 
 Opname = Parsed
@@ -148,6 +154,8 @@ Params = Paramcons + Paramnil
 
 Paramtail = Params
 
+Paramtypes = String
+
 Parsed = Bad + Good
 
 Pos = Int
@@ -160,9 +168,13 @@ Quoted = Text
 
 Quoterun = Int
 
-Rank = Int
-
 Reported = Unit
+
+Rhs = Text
+
+Rhseq = Text
+
+Rhsname = Text
 
 Run = Int
 
@@ -171,8 +183,6 @@ Section = String
 Sectionbody = String
 
 Seen = Int
-
-Sevens = String
 
 Skipped = Tokens
 
@@ -185,6 +195,8 @@ Sofar = Literals
 Source = String
 
 Stringy = Bool
+
+Tables = Literals * Names * Whole
 
 Tag = Int
 
@@ -225,12 +237,14 @@ Wantsstep = String
 
 Wasname = Bool
 
+Whole = Tokens
+
 Widened = Int
 
-Code * Ender * Names * Opcode * Params * Tokens => Argument {
-    Tokens -> Body(Ender(41) * Names * Params) -> (
+Code * Ender * Opcode * Params * Tables * Tokens => Argument {
+    Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
-        * Good { Good.After -> Chain(Code(`{Code}{Good.Code}{Opcode}`) * Ender * Names * Params) }
+        * Good { Good.After -> Chain(Code(`{Code}{Good.Code}{Opcode}`) * Ender * Params * Tables) }
     )
 }
 
@@ -241,13 +255,13 @@ Params * Seen => Arity {
     )
 }
 
-Index * Literals * Names * Tokens => Assembly {
+Index * Tables * Tokens => Assembly {
     Tokens -> (
         * Cons {
-            Tokens -> Parsed(Literals * Names * Tokens -> Header) -> (
+            Tokens -> Parsed(Tables * Tokens -> Header) -> (
                 * Bad { Bad -> Broken -> Assembly }
                 * Good {
-                    Good.After -> Assembly(Index -> Sum(1) -> Index * Literals * Names) -> (
+                    Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
                             Codes(`{Good.Code -> BodySize -> Emitted}00{Good.Code}0b{Made.Codes}`)
@@ -255,7 +269,7 @@ Index * Literals * Names * Tokens => Assembly {
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Emitted}{Made.Funcs}`)
                                     * Made.Count -> Sum(1) -> Count
-                                    * Types(`{Tokens -> Header -> TypeEntry(Good.Stringy)}{Made.Types}`)
+                                    * Types(`{Tokens -> Header -> TypeEntry(Good.Stringy * Tables)}{Made.Types}`)
                                 )
                                 -> Assembly
                         }
@@ -267,29 +281,29 @@ Index * Literals * Names * Tokens => Assembly {
     )
 }
 
-Ender * Names * Params * Tokens => Body {
+Ender * Params * Tables * Tokens => Body {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Params -> Rank(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                    Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
                         * False {
                             Cons.Tail
                                 -> Chain(
-                                    Code(`20{Params -> Local(Name -> Wanted) -> Emitted}`)
+                                    Code(`20{Params -> Local(Tables * Name -> Wanted) -> Emitted}`)
                                     * Ender
-                                    * Names
+                                    * Tables
                                     * Params
                                 )
                         }
                         * True {
-                            Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
+                            Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
                                 * False {
                                     Cons.Tail
                                         -> Chain(
-                                            Code(`10{Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Emitted}`)
+                                            Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Emitted}`)
                                             * Ender
-                                            * Names
+                                            * Tables
                                             * Params
                                         )
                                 }
@@ -303,7 +317,7 @@ Ender * Names * Params * Tokens => Body {
                         -> Chain(
                             Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
                             * Ender
-                            * Names
+                            * Tables
                             * Params
                         )
                 }
@@ -335,43 +349,58 @@ Code => BodySize {
         -> Sum(2)
 }
 
-Literals * Names * Params * Tokens => Bodyortext {
+Params * Tables * Tokens => Bodyortext {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Tokens -> Body(Ender(125) * Names * Params) }
-                * Number { Tokens -> Body(Ender(125) * Names * Params) }
-                * Punct { Tokens -> Body(Ender(125) * Names * Params) }
-                * Quoted {
-                    Cons.Tail
-                        -> Textend(Code(`41{Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}`))
-                }
-            )
-        }
-        * Nil { Tokens -> Body(Ender(125) * Names * Params) }
-    )
-}
-
-Code * Ender * Names * Opcode * Params * Tokens => Callargs {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
-                * Number { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
-                * Punct {
-                    Punct -> Eq(40) -> (
-                        * False { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
-                        * True { Cons.Tail -> Argument(Code * Ender * Names * Opcode * Params) }
+                * Name {
+                    Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> (
+                        * False { Tokens -> Body(Ender(125) * Params * Tables) }
+                        * True {
+                            Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Textend(Code(`20{Params -> Local(Tables * Name -> Wanted) -> Emitted}20{Params -> Local(Tables * Name -> Wanted) -> Sum(1) -> Emitted}`))
+                                }
+                                * True { Tokens -> Body(Ender(125) * Params * Tables) }
+                            )
+                        }
                     )
                 }
-                * Quoted { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
+                * Number { Tokens -> Body(Ender(125) * Params * Tables) }
+                * Punct { Tokens -> Body(Ender(125) * Params * Tables) }
+                * Quoted {
+                    Cons.Tail
+                        -> Textend(Code(`41{Tables.Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}`))
+                }
             )
         }
-        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Names * Params) }
+        * Nil { Tokens -> Body(Ender(125) * Params * Tables) }
     )
 }
 
-Code * Ender * Names * Params * Tokens => Chain {
+Code * Ender * Opcode * Params * Tables * Tokens => Callargs {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
+                * Number { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
+                * Punct {
+                    Punct -> Eq(40) -> (
+                        * False {
+                            Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables)
+                        }
+                        * True { Cons.Tail -> Argument(Code * Ender * Opcode * Params * Tables) }
+                    )
+                }
+                * Quoted { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
+            )
+        }
+        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
+    )
+}
+
+Code * Ender * Params * Tables * Tokens => Chain {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -382,7 +411,7 @@ Code * Ender * Names * Params * Tokens => Chain {
                         * False {
                             Punct -> Eq(45) -> (
                                 * False { Ender -> Wantsstep -> Bad -> Parsed }
-                                * True { Cons.Tail -> Opname(Code * Ender * Names * Params) }
+                                * True { Cons.Tail -> Opname(Code * Ender * Params * Tables) }
                             )
                         }
                         * True { Code -> Good(Cons.Tail -> After * False() -> Stringy) -> Parsed }
@@ -395,7 +424,7 @@ Code * Ender * Names * Params * Tokens => Chain {
     )
 }
 
-Code * Ender * Falsecode * Names * Params * Tokens * Truecode => Closer {
+Code * Ender * Falsecode * Params * Tables * Tokens * Truecode => Closer {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -409,7 +438,7 @@ Code * Ender * Falsecode * Names * Params * Tokens * Truecode => Closer {
                                 -> Chain(
                                     Code(`{Code}047f{Truecode}05{Falsecode}0b`)
                                     * Ender
-                                    * Names
+                                    * Tables
                                     * Params
                                 )
                         }
@@ -452,7 +481,7 @@ Data => Datasection {
     Sectionbody(`010041000b{Data -> Length -> Quotient(2) -> Emitted}{Data}`) -> Section(Tag(11))
 }
 
-Code * Ender * Names * Params * Tokens => Dispatch {
+Code * Ender * Params * Tables * Tokens => Dispatch {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -461,7 +490,7 @@ Code * Ender * Names * Params * Tokens => Dispatch {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Falsemark(Code * Ender * Names * Params) }
+                        * True { Cons.Tail -> Falsemark(Code * Ender * Params * Tables) }
                     )
                 }
                 * Quoted { Bad("expected `*`") -> Parsed }
@@ -513,7 +542,7 @@ Made => Exportsection {
         -> Section(Tag(7))
 }
 
-Code * Ender * Names * Params * Tokens => Falsebrace {
+Code * Ender * Params * Tables * Tokens => Falsebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -523,7 +552,7 @@ Code * Ender * Names * Params * Tokens => Falsebrace {
                     Punct -> Eq(123) -> (
                         * False { Bad("expected `{`") -> Parsed }
                         * True {
-                            Cons.Tail -> Body(Ender(125) * Names * Params) -> (
+                            Cons.Tail -> Body(Ender(125) * Params * Tables) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
@@ -531,7 +560,7 @@ Code * Ender * Names * Params * Tokens => Falsebrace {
                                             Code
                                             * Ender
                                             * Good.Code -> Falsecode
-                                            * Names
+                                            * Tables
                                             * Params
                                         )
                                 }
@@ -546,14 +575,14 @@ Code * Ender * Names * Params * Tokens => Falsebrace {
     )
 }
 
-Code * Ender * Names * Params * Tokens => Falsemark {
+Code * Ender * Params * Tables * Tokens => Falsemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq("False") -> (
                         * False { Bad("expected `False`") -> Parsed }
-                        * True { Cons.Tail -> Falsebrace(Code * Ender * Names * Params) }
+                        * True { Cons.Tail -> Falsebrace(Code * Ender * Params * Tables) }
                     )
                 }
                 * Number { Bad("expected `False`") -> Parsed }
@@ -670,6 +699,26 @@ Int => IsWord {
     )
 }
 
+Depthleft * Tokens * Wanted => Isstring {
+    Wanted -> (
+        * "" { False() }
+        * "Int" { False() }
+        * "String" { True() }
+        * String {
+            Depthleft -> Le(0) -> (
+                * False {
+                    Tokens
+                        -> Isstring(
+                            Depthleft -> Difference(1) -> Depthleft
+                            * Tokens -> Rhs(Wanted) -> Wanted
+                        )
+                }
+                * True { False() }
+            )
+        }
+    )
+}
+
 Acc * Pos * Source => Literal {
     Pos -> Gt(Source -> Length) -> (
         * False {
@@ -704,11 +753,16 @@ Sofar * Tokens => Literals {
     )
 }
 
-Params * Wanted => Local {
-    Params
-        -> Arity(Seen(0))
-        -> Difference(1)
-        -> Difference(Params -> Rank(Seen(0) * Wanted))
+Params * Tables * Wanted => Local {
+    Params -> (
+        * Paramcons {
+            Paramcons.Paramhead -> Eq(Wanted) -> (
+                * False { Paramcons.Paramtail -> Local(Tables * Wanted) }
+                * True { Paramcons.Paramtail -> Paramtypes(Tables) -> Length -> Quotient(2) }
+            )
+        }
+        * Paramnil { 0 -> Difference(1) }
+    )
 }
 
 Int => Lowered {
@@ -723,7 +777,7 @@ Int => Lowered {
     )
 }
 
-Code * Ender * Names * Opcode * Params * Tokens => Lparen {
+Code * Ender * Opcode * Params * Tables * Tokens => Lparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -732,7 +786,7 @@ Code * Ender * Names * Opcode * Params * Tokens => Lparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Cons.Tail -> Argument(Code * Ender * Names * Opcode * Params) }
+                        * True { Cons.Tail -> Argument(Code * Ender * Opcode * Params * Tables) }
                     )
                 }
                 * Quoted { Bad("expected `(`") -> Parsed }
@@ -785,6 +839,13 @@ Int => Octet {
         -> Joined(Int -> Remainder(16) -> Nibble -> HexByte)
 }
 
+Paramhead * Tables => Onetype {
+    Tables.Whole -> Isstring(Depthleft(8) * Paramhead -> Wanted) -> (
+        * False { "7f" }
+        * True { "7f7f" }
+    )
+}
+
 Name => Opcode {
     Name -> (
         * "Difference" { "6b" }
@@ -802,24 +863,24 @@ Name => Opcode {
     )
 }
 
-Code * Ender * Names * Params * Tokens => Opname {
+Code * Ender * Params * Tables * Tokens => Opname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Opcode -> Length -> Eq(0) -> (
                         * False {
-                            Cons.Tail -> Lparen(Code * Ender * Names * Name -> Opcode * Params)
+                            Cons.Tail -> Lparen(Code * Ender * Name -> Opcode * Params * Tables)
                         }
                         * True {
-                            Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                            Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
                                 * False {
                                     Cons.Tail
                                         -> Callargs(
                                             Code
                                             * Ender
-                                            * Names
-                                            * Opcode(`10{Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
+                                            * Tables
+                                            * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
                                             * Params
                                         )
                                 }
@@ -834,7 +895,7 @@ Code * Ender * Names * Params * Tokens => Opname {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected an operation after `->`") -> Parsed }
-                        * True { Cons.Tail -> Dispatch(Code * Ender * Names * Params) }
+                        * True { Cons.Tail -> Dispatch(Code * Ender * Params * Tables) }
                     )
                 }
                 * Quoted { Bad("expected an operation after `->`") -> Parsed }
@@ -844,19 +905,28 @@ Code * Ender * Names * Params * Tokens => Opname {
     )
 }
 
-Literals * Names * Params * Tokens => Parsed {
+Params * Tables => Paramtypes {
+    Params -> (
+        * Paramcons {
+            `{Paramcons.Paramtail -> Paramtypes(Tables)}{Paramcons.Paramhead -> Onetype(Tables)}`
+        }
+        * Paramnil { "" }
+    )
+}
+
+Params * Tables * Tokens => Parsed {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Cons.Tail -> Parsed(Literals * Names * Params) }
-                * Number { Cons.Tail -> Parsed(Literals * Names * Params) }
+                * Name { Cons.Tail -> Parsed(Params * Tables) }
+                * Number { Cons.Tail -> Parsed(Params * Tables) }
                 * Punct {
                     Punct -> Eq(123) -> (
-                        * False { Cons.Tail -> Parsed(Literals * Names * Params) }
-                        * True { Cons.Tail -> Bodyortext(Literals * Names * Params) }
+                        * False { Cons.Tail -> Parsed(Params * Tables) }
+                        * True { Cons.Tail -> Bodyortext(Params * Tables) }
                     )
                 }
-                * Quoted { Cons.Tail -> Parsed(Literals * Names * Params) }
+                * Quoted { Cons.Tail -> Parsed(Params * Tables) }
             )
         }
         * Nil { Bad("no declaration body") -> Parsed }
@@ -875,22 +945,66 @@ Pos * Source => Quoterun {
     )
 }
 
-Params * Seen * Wanted => Rank {
-    Params -> (
-        * Paramcons {
-            Paramcons.Paramhead -> Eq(Wanted) -> (
-                * False { Paramcons.Paramtail -> Rank(Seen -> Sum(1) -> Seen * Wanted) }
-                * True { Seen }
-            )
-        }
-        * Paramnil { 0 -> Difference(1) }
+Tokens => Reported {
+    Tokens
+        -> Assembly(
+            Index(0)
+            * Tokens -> Literals(Litnil() -> Sofar) -> Tables(Tokens -> Names * Tokens -> Whole)
+        ) -> (
+        * Broken { Broken -> Print }
+        * Made { Made -> Module(Tokens -> Literals(Litnil() -> Sofar) -> Data) -> Print }
     )
 }
 
-Tokens => Reported {
-    Tokens -> Assembly(Index(0) * Tokens -> Literals(Litnil() -> Sofar) * Tokens -> Names) -> (
-        * Broken { Broken -> Print }
-        * Made { Made -> Module(Tokens -> Literals(Litnil() -> Sofar) -> Data) -> Print }
+Tokens * Wanted => Rhs {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Name -> Eq(Wanted) -> (
+                        * False { Cons.Tail -> Rhs(Wanted) -> Text }
+                        * True { Cons.Tail -> Rhseq(Wanted) -> Text }
+                    )
+                }
+                * Number { Cons.Tail -> Rhs(Wanted) -> Text }
+                * Punct { Cons.Tail -> Rhs(Wanted) -> Text }
+                * Quoted { Cons.Tail -> Rhs(Wanted) -> Text }
+            )
+        }
+        * Nil { "" }
+    )
+}
+
+Tokens * Wanted => Rhseq {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Tokens -> Rhs(Wanted) -> Text }
+                * Number { Tokens -> Rhs(Wanted) -> Text }
+                * Punct {
+                    Punct -> Eq(61) -> (
+                        * False { Tokens -> Rhs(Wanted) -> Text }
+                        * True { Cons.Tail -> Rhsname(Wanted) -> Text }
+                    )
+                }
+                * Quoted { Tokens -> Rhs(Wanted) -> Text }
+            )
+        }
+        * Nil { "" }
+    )
+}
+
+Tokens * Wanted => Rhsname {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Name }
+                * Number { Tokens -> Rhs(Wanted) -> Text }
+                * Punct { Tokens -> Rhs(Wanted) -> Text }
+                * Quoted { Tokens -> Rhs(Wanted) -> Text }
+            )
+        }
+        * Nil { "" }
     )
 }
 
@@ -908,13 +1022,6 @@ Pos * Source => Run {
 
 Sectionbody * Tag => Section {
     `{Tag -> Octet}{Sectionbody -> Length -> Quotient(2) -> Emitted}{Sectionbody}`
-}
-
-Arity => Sevens {
-    Arity -> Eq(0) -> (
-        * False { `7f{Arity -> Difference(1) -> Arity -> Sevens}` }
-        * True { "" }
-    )
 }
 
 Depth * Tokens => Skipped {
@@ -1030,7 +1137,7 @@ Pos * Source => Tokens {
     )
 }
 
-Code * Ender * Falsecode * Names * Params * Tokens => Truebrace {
+Code * Ender * Falsecode * Params * Tables * Tokens => Truebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1040,7 +1147,7 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truebrace {
                     Punct -> Eq(123) -> (
                         * False { Bad("expected `{`") -> Parsed }
                         * True {
-                            Cons.Tail -> Body(Ender(125) * Names * Params) -> (
+                            Cons.Tail -> Body(Ender(125) * Params * Tables) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
@@ -1048,7 +1155,7 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truebrace {
                                             Code
                                             * Ender
                                             * Falsecode
-                                            * Names
+                                            * Tables
                                             * Params
                                             * Good.Code -> Truecode
                                         )
@@ -1064,14 +1171,16 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truebrace {
     )
 }
 
-Code * Ender * Falsecode * Names * Params * Tokens => Truemark {
+Code * Ender * Falsecode * Params * Tables * Tokens => Truemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq("True") -> (
                         * False { Bad("expected `True`") -> Parsed }
-                        * True { Cons.Tail -> Truebrace(Code * Ender * Falsecode * Names * Params) }
+                        * True {
+                            Cons.Tail -> Truebrace(Code * Ender * Falsecode * Params * Tables)
+                        }
                     )
                 }
                 * Number { Bad("expected `True`") -> Parsed }
@@ -1083,7 +1192,7 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truemark {
     )
 }
 
-Code * Ender * Falsecode * Names * Params * Tokens => Truestar {
+Code * Ender * Falsecode * Params * Tables * Tokens => Truestar {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1092,7 +1201,7 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truestar {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Truemark(Code * Ender * Falsecode * Names * Params) }
+                        * True { Cons.Tail -> Truemark(Code * Ender * Falsecode * Params * Tables) }
                     )
                 }
                 * Quoted { Bad("expected `*`") -> Parsed }
@@ -1102,13 +1211,17 @@ Code * Ender * Falsecode * Names * Params * Tokens => Truestar {
     )
 }
 
-Params * Stringy => TypeEntry {
+Params * Stringy * Tables => TypeEntry {
     Stringy -> (
         * False {
-            `60{Params -> Arity(Seen(0)) -> Emitted}{Params -> Arity(Seen(0)) -> Sevens}017f`
+            `60{Params -> Paramtypes(Tables) -> Length -> Quotient(2) -> Emitted}{
+                Params -> Paramtypes(Tables)
+            }017f`
         }
         * True {
-            `60{Params -> Arity(Seen(0)) -> Emitted}{Params -> Arity(Seen(0)) -> Sevens}027f7f`
+            `60{Params -> Paramtypes(Tables) -> Length -> Quotient(2) -> Emitted}{
+                Params -> Paramtypes(Tables)
+            }027f7f`
         }
     )
 }
