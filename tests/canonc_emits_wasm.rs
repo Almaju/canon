@@ -722,8 +722,9 @@ fn canonc_compiles_more_than_one_parameter() {
     assert_eq!(canonc_apply2("area.can", area, "area", 6, 4), 12);
 
     // The second call argument is an expression in its own right, not
-    // just a literal or a name.
-    let gcd = "Left * Right => Gcd { Right -> Eq(0) -> ( * False { Right -> Gcd(Left -> Remainder(Right)) } * True { Left } ) }\n";
+    // just a literal or a name — and the piped value fills the input
+    // its own type names, wherever that sits in the head.
+    let gcd = "Left = Int\n\nRight = Int\n\nLeft * Right => Gcd { Right -> Eq(0) -> ( * False { Left -> Remainder(Right) -> Right -> Gcd(Right -> Left) } * True { Left } ) }\n";
     assert_eq!(canonc_apply2("gcd.can", gcd, "gcd", 1071, 462), 21);
 }
 
@@ -864,10 +865,10 @@ fn canonc_compiles_a_string_chain() {
     // the string ones. `Length` drops the pointer and keeps the count.
     let size = "Size = Int\n\nText = String\n\nText => Size { Text -> Length }\n";
     let hex = canonc_stdout("size.can", size);
-    // one i32 scratch local, then the two parameter slots read back,
+    // the scratch locals, then the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("01147f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("017f7f200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 
