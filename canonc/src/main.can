@@ -70,6 +70,10 @@ Falsecode = String
 
 Falsemark = Parsed
 
+Firstarg = Parsed
+
+Firstcode = String
+
 Funcs = String
 
 Funcsection = Section
@@ -190,6 +194,8 @@ Run = Int
 
 Scratch = Int
 
+Secondarg = Parsed
+
 Section = String
 
 Sectionbody = String
@@ -197,6 +203,10 @@ Sectionbody = String
 Seen = Int
 
 Skipped = Tokens
+
+Slicelparen = Parsed
+
+Slicing = String
 
 Slot = Int
 
@@ -679,6 +689,28 @@ Code * Ender * Params * Stringy * Tables * Tokens => Falsemark {
     )
 }
 
+Code * Ender * Params * Stringy * Tables * Tokens => Firstarg {
+    Tokens -> Body(Ender(42) * Params * Tables) -> (
+        * Bad { Bad -> Parsed }
+        * Good {
+            Good.Stringy -> (
+                * False {
+                    Good.After
+                        -> Secondarg(
+                            Code
+                            * Ender
+                            * Good.Code -> Firstcode
+                            * Params
+                            * Stringy
+                            * Tables
+                        )
+                }
+                * True { Bad("a slice bound must be a number") -> Parsed }
+            )
+        }
+    )
+}
+
 Made => Funcsection {
     Sectionbody(`{Made.Count -> Sum(1) -> Emitted}00{Made.Funcs}`) -> Section(Tag(3))
 }
@@ -1012,8 +1044,22 @@ Code * Ender * Params * Stringy * Tables * Tokens => Opname {
                                                 )
                                         }
                                         * True {
-                                            Bad(`{Name} is not a declaration or an operation`)
-                                                -> Parsed
+                                            Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
+                                                * False {
+                                                    Cons.Tail
+                                                        -> Chain(
+                                                            Code
+                                                            * Ender
+                                                            * Params
+                                                            * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                                            * Tables
+                                                        )
+                                                }
+                                                * True {
+                                                    Bad(`{Name} is not a declaration or an operation`)
+                                                        -> Parsed
+                                                }
+                                            )
                                         }
                                     )
                                 }
@@ -1026,20 +1072,51 @@ Code * Ender * Params * Stringy * Tables * Tokens => Opname {
                                         * False {
                                             Name -> Eq("ByteAt") -> (
                                                 * False {
-                                                    Name -> Eq("Eq") -> (
+                                                    Name -> Eq("Substring") -> (
                                                         * False {
-                                                            Bad(`{Name} is not a string operation`)
-                                                                -> Parsed
+                                                            Name -> Eq("Eq") -> (
+                                                                * False {
+                                                                    Tables.Whole
+                                                                        -> Rhs(Name -> Wanted)
+                                                                        -> Length
+                                                                        -> Eq(0) -> (
+                                                                        * False {
+                                                                            Cons.Tail
+                                                                                -> Chain(
+                                                                                    Code
+                                                                                    * Ender
+                                                                                    * Params
+                                                                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                                                                    * Tables
+                                                                                )
+                                                                        }
+                                                                        * True {
+                                                                            Bad(`{Name} is not a string operation`)
+                                                                                -> Parsed
+                                                                        }
+                                                                    )
+                                                                }
+                                                                * True {
+                                                                    Cons.Tail
+                                                                        -> Lparen(
+                                                                            True() -> Argkind
+                                                                            * Code
+                                                                            * Ender
+                                                                            * Opcode("1000")
+                                                                            * Params
+                                                                            * False() -> Stringy
+                                                                            * Tables
+                                                                        )
+                                                                }
+                                                            )
                                                         }
                                                         * True {
                                                             Cons.Tail
-                                                                -> Lparen(
-                                                                    True() -> Argkind
-                                                                    * Code
+                                                                -> Slicelparen(
+                                                                    Code
                                                                     * Ender
-                                                                    * Opcode("1000")
                                                                     * Params
-                                                                    * False() -> Stringy
+                                                                    * Stringy
                                                                     * Tables
                                                                 )
                                                         }
@@ -1230,6 +1307,27 @@ Params * Tables => Scratch {
         -> Quotient(2)
 }
 
+Code * Ender * Firstcode * Params * Stringy * Tables * Tokens => Secondarg {
+    Tokens -> Body(Ender(41) * Params * Tables) -> (
+        * Bad { Bad -> Parsed }
+        * Good {
+            Good.Stringy -> (
+                * False {
+                    Good.After
+                        -> Chain(
+                            Code(`{Code}{Firstcode}{Good.Code}{Params -> Scratch(Tables) -> Slicing}`)
+                            * Ender
+                            * Params
+                            * True() -> Stringy
+                            * Tables
+                        )
+                }
+                * True { Bad("a slice bound must be a number") -> Parsed }
+            )
+        }
+    )
+}
+
 Sectionbody * Tag => Section {
     `{Tag -> Octet}{Sectionbody -> Length -> Quotient(2) -> Emitted}{Sectionbody}`
 }
@@ -1263,6 +1361,37 @@ Depth * Tokens => Skipped {
         }
         * Nil { Nil() -> Tokens }
     )
+}
+
+Code * Ender * Params * Stringy * Tables * Tokens => Slicelparen {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `(`") -> Parsed }
+                * Number { Bad("expected `(`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(40) -> (
+                        * False { Bad("expected `(`") -> Parsed }
+                        * True { Cons.Tail -> Firstarg(Code * Ender * Params * Stringy * Tables) }
+                    )
+                }
+                * Quoted { Bad("expected `(`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `(`") -> Parsed }
+    )
+}
+
+Scratch => Slicing {
+    `21{Scratch -> Sum(3) -> Emitted}21{Scratch -> Sum(2) -> Emitted}21{
+        Scratch
+            -> Sum(1)
+            -> Emitted
+    }21{Scratch -> Emitted}20{Scratch -> Emitted}20{Scratch -> Sum(2) -> Emitted}6a41016b20{
+        Scratch
+            -> Sum(3)
+            -> Emitted
+    }20{Scratch -> Sum(2) -> Emitted}6b41016a`
 }
 
 Names * Seen * Wanted => Slot {
