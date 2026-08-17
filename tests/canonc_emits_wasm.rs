@@ -136,6 +136,51 @@ fn canonc_string(name: &str, source: &str, export: &str) -> String {
     String::from_utf8(out).expect("utf-8 string")
 }
 
+/// Same again, for a declaration taking a string: the bytes are written
+/// into the module's memory past the data segment and handed in as the
+/// `(ptr, len)` pair the parameter expects.
+fn canonc_string_arg(name: &str, source: &str, export: &str, arg: &str) -> String {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let at = 1024;
+    memory
+        .write(&mut store, at, arg.as_bytes())
+        .expect("write the argument into memory");
+    let f = instance
+        .get_func(&mut store, export)
+        .unwrap_or_else(|| panic!("emitted module should export `{export}`"));
+    let mut results = [wasmtime::Val::I32(0), wasmtime::Val::I32(0)];
+    f.call(
+        &mut store,
+        &[
+            wasmtime::Val::I32(at as i32),
+            wasmtime::Val::I32(arg.len() as i32),
+        ],
+        &mut results,
+    )
+    .expect("call the export");
+    let (ptr, len) = match (&results[0], &results[1]) {
+        (wasmtime::Val::I32(p), wasmtime::Val::I32(l)) => (*p, *l),
+        other => panic!("expected a (ptr, len) pair, got {other:?}"),
+    };
+    let mut out = vec![0u8; len as usize];
+    memory
+        .read(&store, ptr as usize, &mut out)
+        .expect("read the result out of memory");
+    String::from_utf8(out).expect("utf-8 string")
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -611,4 +656,45 @@ fn canonc_sizes_a_section_past_one_byte() {
         (0..60).map(|_| "-> Sum(1)").collect::<Vec<_>>().join(" ")
     );
     assert_eq!(canonc_answer("long.can", &long), 60);
+}
+
+#[test]
+fn canonc_compiles_a_string_parameter() {
+    // `canonc` reads the file's type declarations now, resolving each
+    // name through its aliases to `Int` or `String`. A `String`-rooted
+    // parameter takes two `i32`s rather than one, so the signature and
+    // every later parameter's local index follow from the types rather
+    // than from counting names.
+    let echo = "Echo = String\n\nText = String\n\nText => Echo { Text }\n";
+    assert_eq!(
+        canonc_string_arg("echo.can", echo, "echo", "round trip"),
+        "round trip"
+    );
+
+    // An alias chain resolves the whole way down.
+    let deep =
+        "Echo = String\n\nName = Word\n\nWord = Text\n\nText = String\n\nName => Echo { Name }\n";
+    assert_eq!(
+        canonc_string_arg("deepecho.can", deep, "echo", "aliased"),
+        "aliased"
+    );
+}
+
+#[test]
+fn canonc_indexes_locals_past_a_string_parameter() {
+    // A string takes two local slots, so a scalar declared after one
+    // reads back at index 2, not 1. Counting parameters rather than
+    // slots put every later local one short.
+    let bumped = "Bumped = Int\n\nCount = Int\n\nText = String\n\nText * Count => Bumped { Count -> Sum(1) }\n";
+    let hex = canonc_stdout("bumped2.can", bumped);
+    assert!(hex.contains("2002410"), "expected `local.get 2` in {hex}");
+
+    // And a string declared after a scalar starts at 1.
+    let taken =
+        "Count = Int\n\nTaken = String\n\nText = String\n\nCount * Text => Taken { Text }\n";
+    let hex = canonc_stdout("taken.can", taken);
+    assert!(
+        hex.contains("20012002"),
+        "expected `local.get 1/2` in {hex}"
+    );
 }
