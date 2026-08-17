@@ -989,3 +989,66 @@ fn canonc_renders_a_number() {
         4
     );
 }
+
+#[test]
+fn canonc_compiles_a_format_string() {
+    // A backtick literal is text chunks and `{…}` holes, folded into a
+    // `Joined` chain. The scanner needs a mode for it: inside the
+    // backticks, text is text until a `{`, and inside a hole the
+    // ordinary rules apply again until the matching `}`.
+    assert_eq!(
+        canonc_string(
+            "fmt.can",
+            "Shown = String\n\nUnit => Shown { `hello, world` }\n",
+            "shown"
+        ),
+        "hello, world"
+    );
+
+    // A hole holding a string goes in as it stands; one holding a
+    // number renders first.
+    assert_eq!(
+        canonc_string(
+            "fmthole.can",
+            "Shown = String\n\nUnit => Shown { `there are {2 -> Sum(3)} left` }\n",
+            "shown"
+        ),
+        "there are 5 left"
+    );
+    assert_eq!(
+        canonc_string_arg(
+            "fmtstr.can",
+            "Shown = String\n\nText = String\n\nText => Shown { `<{Text}>` }\n",
+            "shown",
+            "body"
+        ),
+        "<body>"
+    );
+
+    // Holes at either end, and several of them.
+    assert_eq!(
+        canonc_string(
+            "fmtmany.can",
+            "Shown = String\n\nUnit => Shown { `{1 -> String}-{2 -> String}-{3 -> String}` }\n",
+            "shown"
+        ),
+        "1-2-3"
+    );
+    assert_eq!(
+        canonc_string(
+            "fmtempty.can",
+            "Shown = String\n\nUnit => Shown { `` }\n",
+            "shown"
+        ),
+        ""
+    );
+
+    // And the result is a string, so the chain keeps going.
+    assert_eq!(
+        canonc_answer(
+            "fmtlen.can",
+            "Answer = Int\n\nUnit => Answer { `ab{1 -> String}` -> Length }\n"
+        ),
+        3
+    );
+}

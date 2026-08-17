@@ -74,6 +74,12 @@ Firstarg = Parsed
 
 Firstcode = String
 
+Fmtdepth = Int
+
+Fmthole = Parsed
+
+Fmtpiece = Parsed
+
 Funcs = String
 
 Funcsection = Section
@@ -94,6 +100,8 @@ Hexed = String
 
 Index = Int
 
+Intext = Bool
+
 IsDigit = Bool
 
 IsLetter = Bool
@@ -107,6 +115,8 @@ Isstring = Bool
 Itoabody = String
 
 Itoacode = String
+
+Joiner = String
 
 Litcons = Lithead * Littail
 
@@ -164,6 +174,8 @@ Opcode = String
 
 Opname = Parsed
 
+Ordinary = Tokens
+
 Paramcons = Paramhead * Paramtail
 
 Paramhead = Text
@@ -189,6 +201,8 @@ Quoted = Text
 Quoterun = Int
 
 Relabel = Parsed
+
+Rendered = String
 
 Reported = Unit
 
@@ -224,6 +238,8 @@ Sofar = Literals
 
 Source = String
 
+Started = Bool
+
 Streqbody = String
 
 Streqcode = String
@@ -241,6 +257,8 @@ Tag = Int
 Tail = Tokens
 
 Text = String
+
+Textrun = Int
 
 Token = Name
   + Number
@@ -400,7 +418,15 @@ Ender * Params * Tables * Tokens => Body {
                             * Tables
                         )
                 }
-                * Punct { Ender -> Wantsliteral -> Bad -> Parsed }
+                * Punct {
+                    Punct -> Eq(96) -> (
+                        * False { Ender -> Wantsliteral -> Bad -> Parsed }
+                        * True {
+                            Cons.Tail
+                                -> Fmtpiece(Code("") * Ender * Params * False() -> Started * Tables)
+                        }
+                    )
+                }
                 * Quoted {
                     Cons.Tail
                         -> Chain(
@@ -722,6 +748,74 @@ Code * Ender * Params * Stringy * Tables * Tokens => Firstarg {
     )
 }
 
+Code * Ender * Params * Started * Tables * Tokens => Fmthole {
+    Tokens -> Body(Ender(125) * Params * Tables) -> (
+        * Bad { Bad -> Parsed }
+        * Good {
+            Good.After
+                -> Fmtpiece(
+                    Code(`{Code}{Good.Code}{Good.Stringy -> Rendered}{Params -> Joiner(Started * Tables)}`)
+                    * Ender
+                    * Params
+                    * True() -> Started
+                    * Tables
+                )
+        }
+    )
+}
+
+Code * Ender * Params * Started * Tables * Tokens => Fmtpiece {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected format text or a hole") -> Parsed }
+                * Number { Bad("expected format text or a hole") -> Parsed }
+                * Punct {
+                    Punct -> Eq(96) -> (
+                        * False {
+                            Punct -> Eq(123) -> (
+                                * False { Bad("expected format text or a hole") -> Parsed }
+                                * True {
+                                    Cons.Tail -> Fmthole(Code * Ender * Params * Started * Tables)
+                                }
+                            )
+                        }
+                        * True {
+                            Started -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Chain(
+                                            Code(`{Code}41004100`)
+                                            * Ender
+                                            * Params
+                                            * True() -> Stringy
+                                            * Tables
+                                        )
+                                }
+                                * True {
+                                    Cons.Tail
+                                        -> Chain(Code * Ender * Params * True() -> Stringy * Tables)
+                                }
+                            )
+                        }
+                    )
+                }
+                * Quoted {
+                    Cons.Tail
+                        -> Fmtpiece(
+                            Code(`{Code}41{Tables.Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}{Params -> Joiner(Started * Tables)}`)
+                            * Ender
+                            * Params
+                            * True() -> Started
+                            * Tables
+                        )
+                }
+            )
+        }
+        * Nil { Bad("unterminated format string") -> Parsed }
+    )
+}
+
 Made => Funcsection {
     Sectionbody(`{Made.Count -> Sum(2) -> Emitted}0002{Made.Funcs}`) -> Section(Tag(3))
 }
@@ -857,6 +951,13 @@ Unit => Itoabody {
 
 Unit => Itoacode {
     `{Itoabody() -> Length -> Quotient(2) -> Sum(4) -> Emitted}01047f{Itoabody()}0b`
+}
+
+Params * Started * Tables => Joiner {
+    Started -> (
+        * False { "" }
+        * True { Params -> Scratch(Tables) -> Concat }
+    )
 }
 
 Acc * Pos * Source => Literal {
@@ -1098,6 +1199,42 @@ Code * Ender * Params * Stringy * Tables * Tokens => Opname {
     )
 }
 
+Fmtdepth * Intext * Pos * Source => Ordinary {
+    Source -> ByteAt(Pos) -> IsWord -> (
+        * False {
+            Source -> ByteAt(Pos) -> IsSpace -> (
+                * False {
+                    Source -> ByteAt(Pos) -> Eq(34) -> (
+                        * False {
+                            Source
+                                -> Tokens(Fmtdepth * Intext * Source -> Widened(Pos) -> Pos)
+                                -> Cons(Source -> Marked(Pos) -> Punct -> Token -> Head)
+                                -> Tokens
+                        }
+                        * True {
+                            Source
+                                -> Tokens(
+                                    Fmtdepth
+                                    * Intext
+                                    * Source -> Quoterun(Pos -> Sum(1) -> Pos) -> Sum(1) -> Pos
+                                )
+                                -> Cons(Source -> Substring(Pos -> Sum(1) -> From * Source -> Quoterun(Pos -> Sum(1) -> Pos) -> Difference(1) -> To) -> Quoted -> Token -> Head)
+                                -> Tokens
+                        }
+                    )
+                }
+                * True { Source -> Tokens(Fmtdepth * Intext * Pos -> Sum(1) -> Pos) }
+            )
+        }
+        * True {
+            Source
+                -> Tokens(Fmtdepth * Intext * Source -> Run(Pos) -> Pos)
+                -> Cons(Source -> Substring(Pos -> From * Source -> Run(Pos) -> Difference(1) -> To) -> Text -> Token -> Head)
+                -> Tokens
+        }
+    )
+}
+
 Params * Tables => Paramtypes {
     Params -> (
         * Paramcons {
@@ -1151,6 +1288,13 @@ Code * Ender * Name * Params * Tables * Tokens => Relabel {
                 )
         }
         * True { Bad(`{Name} is not a declaration or an operation`) -> Parsed }
+    )
+}
+
+Stringy => Rendered {
+    Stringy -> (
+        * False { "1001" }
+        * True { "" }
     )
 }
 
@@ -1434,6 +1578,23 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
     )
 }
 
+Pos * Source => Textrun {
+    Pos -> Gt(Source -> Length) -> (
+        * False {
+            Source -> ByteAt(Pos) -> Eq(96) -> (
+                * False {
+                    Source -> ByteAt(Pos) -> Eq(123) -> (
+                        * False { Source -> Textrun(Pos -> Sum(1) -> Pos) }
+                        * True { Pos }
+                    )
+                }
+                * True { Pos }
+            )
+        }
+        * True { Pos }
+    )
+}
+
 Text => Token {
     Text -> ByteAt(1) -> IsDigit -> (
         * False { Text -> Name -> Token }
@@ -1441,36 +1602,81 @@ Text => Token {
     )
 }
 
-Pos * Source => Tokens {
+Fmtdepth * Intext * Pos * Source => Tokens {
     Pos -> Gt(Source -> Length) -> (
         * False {
-            Source -> ByteAt(Pos) -> IsWord -> (
+            Intext -> (
                 * False {
-                    Source -> ByteAt(Pos) -> IsSpace -> (
+                    Source -> ByteAt(Pos) -> Eq(96) -> (
                         * False {
-                            Source -> ByteAt(Pos) -> Eq(34) -> (
+                            Source -> ByteAt(Pos) -> Eq(125) -> (
+                                * False { Source -> Ordinary(Fmtdepth * Intext * Pos) }
+                                * True {
+                                    Fmtdepth -> Le(0) -> (
+                                        * False {
+                                            Source
+                                                -> Tokens(
+                                                    Fmtdepth
+                                                    * True() -> Intext
+                                                    * Pos -> Sum(1) -> Pos
+                                                )
+                                                -> Cons(Punct(125) -> Token -> Head)
+                                                -> Tokens
+                                        }
+                                        * True { Source -> Ordinary(Fmtdepth * Intext * Pos) }
+                                    )
+                                }
+                            )
+                        }
+                        * True {
+                            Source
+                                -> Tokens(
+                                    Fmtdepth -> Sum(1) -> Fmtdepth
+                                    * True() -> Intext
+                                    * Pos -> Sum(1) -> Pos
+                                )
+                                -> Cons(Punct(96) -> Token -> Head)
+                                -> Tokens
+                        }
+                    )
+                }
+                * True {
+                    Source -> ByteAt(Pos) -> Eq(96) -> (
+                        * False {
+                            Source -> ByteAt(Pos) -> Eq(123) -> (
                                 * False {
                                     Source
-                                        -> Tokens(Source -> Widened(Pos) -> Pos)
-                                        -> Cons(Source -> Marked(Pos) -> Punct -> Token -> Head)
+                                        -> Tokens(
+                                            Fmtdepth
+                                            * True() -> Intext
+                                            * Source -> Textrun(Pos) -> Pos
+                                        )
+                                        -> Cons(Source -> Substring(Pos -> From * Source -> Textrun(Pos) -> Difference(1) -> To) -> Quoted -> Token -> Head)
                                         -> Tokens
                                 }
                                 * True {
                                     Source
-                                        -> Tokens(Source -> Quoterun(Pos -> Sum(1) -> Pos) -> Sum(1) -> Pos)
-                                        -> Cons(Source -> Substring(Pos -> Sum(1) -> From * Source -> Quoterun(Pos -> Sum(1) -> Pos) -> Difference(1) -> To) -> Quoted -> Token -> Head)
+                                        -> Tokens(
+                                            Fmtdepth
+                                            * False() -> Intext
+                                            * Pos -> Sum(1) -> Pos
+                                        )
+                                        -> Cons(Punct(123) -> Token -> Head)
                                         -> Tokens
                                 }
                             )
                         }
-                        * True { Source -> Tokens(Pos -> Sum(1) -> Pos) }
+                        * True {
+                            Source
+                                -> Tokens(
+                                    Fmtdepth -> Difference(1) -> Fmtdepth
+                                    * Fmtdepth -> Gt(1) -> Intext
+                                    * Pos -> Sum(1) -> Pos
+                                )
+                                -> Cons(Punct(96) -> Token -> Head)
+                                -> Tokens
+                        }
                     )
-                }
-                * True {
-                    Source
-                        -> Tokens(Source -> Run(Pos) -> Pos)
-                        -> Cons(Source -> Substring(Pos -> From * Source -> Run(Pos) -> Difference(1) -> To) -> Text -> Token -> Head)
-                        -> Tokens
                 }
             )
         }
@@ -1579,7 +1785,7 @@ Unit => Result<Program, IoError> {
         -> File?
         -> Read?
         -> Source
-        -> Tokens(Pos(1))
+        -> Tokens(Fmtdepth(0) * False() -> Intext * Pos(1))
         -> Reported
     Unit() -> Ok
 }
