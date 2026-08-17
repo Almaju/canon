@@ -10,6 +10,16 @@ Argument = Parsed
 
 Arity = Int
 
+Armbrace = Parsed
+
+Armcode = String
+
+Armname = Parsed
+
+Armnext = Parsed
+
+Armtag = Int
+
 Assembly = Broken + Made
 
 Bad = String
@@ -29,6 +39,8 @@ Callargs = Parsed
 Chain = Parsed
 
 Closer = Parsed
+
+Closers = Int
 
 Code = String
 
@@ -59,6 +71,8 @@ Dispatch = Parsed
 Emitted = String
 
 Ender = Int
+
+Ends = String
 
 Export = Text
 
@@ -248,6 +262,8 @@ Run = Int
 
 Scratch = Int
 
+Scrutinee = Text
+
 Secondarg = Parsed
 
 Section = String
@@ -290,6 +306,8 @@ Tagging = String
 
 Tail = Tokens
 
+Testing = String
+
 Text = String
 
 Textrun = Int
@@ -314,6 +332,10 @@ TypeEntry = String
 Types = String
 
 Typesection = Section
+
+Unionarm = Parsed
+
+Uniondispatch = Unionarm
 
 Unionsize = Int
 
@@ -385,6 +407,121 @@ Params * Seen => Arity {
     Params -> (
         * Paramcons { Paramcons.Paramtail -> Arity(Seen -> Sum(1) -> Seen) }
         * Paramnil { Seen }
+    )
+}
+
+Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `{`") -> Parsed }
+                * Number { Bad("expected `{`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(123) -> (
+                        * False { Bad("expected `{`") -> Parsed }
+                        * True {
+                            Cons.Tail -> Body(Ender(125) * Params * Tables) -> (
+                                * Bad { Bad -> Parsed }
+                                * Good {
+                                    Good.After
+                                        -> Armnext(
+                                            Good.Code -> Armcode
+                                            * Armtag
+                                            * Closers
+                                            * Code
+                                            * Ender
+                                            * Good.Kind -> Kind
+                                            * Params
+                                            * Scrutinee
+                                            * Tables
+                                        )
+                                }
+                            )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `{`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `{`") -> Parsed }
+    )
+}
+
+Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Tables.Whole
+                        -> Rhstokens(Scrutinee -> Wanted)
+                        -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname)
+                        -> Lt(0) -> (
+                        * False {
+                            Cons.Tail
+                                -> Armbrace(
+                                    Tables.Whole -> Rhstokens(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
+                                    * Closers
+                                    * Code
+                                    * Ender
+                                    * Kind
+                                    * Params
+                                    * Scrutinee
+                                    * Tables
+                                )
+                        }
+                        * True { Bad(`{Name} is not a variant of {Scrutinee}`) -> Parsed }
+                    )
+                }
+                * Number { Bad("expected a variant name after `*`") -> Parsed }
+                * Punct { Bad("expected a variant name after `*`") -> Parsed }
+                * Quoted { Bad("expected a variant name after `*`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected a variant name after `*`") -> Parsed }
+    )
+}
+
+Armcode * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armnext {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `*` or `)`") -> Parsed }
+                * Number { Bad("expected `*` or `)`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(41) -> (
+                        * False {
+                            Punct -> Eq(42) -> (
+                                * False { Bad("expected `*` or `)`") -> Parsed }
+                                * True {
+                                    Tokens
+                                        -> Unionarm(
+                                            Closers -> Sum(1) -> Closers
+                                            * Code(`{Code}{Armtag -> Testing(Params -> Scratch(Tables))}{Kind -> Blocktype(Tables)}{Armcode}05`)
+                                            * Ender
+                                            * Kind
+                                            * Params
+                                            * Scrutinee
+                                            * Tables
+                                        )
+                                }
+                            )
+                        }
+                        * True {
+                            Cons.Tail
+                                -> Chain(
+                                    Code(`{Code}{Armcode}{Closers -> Ends}`)
+                                    * Ender
+                                    * Params
+                                    * Kind
+                                    * Tables
+                                )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `*` or `)`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `*` or `)`") -> Parsed }
     )
 }
 
@@ -689,6 +826,13 @@ Int => Emitted {
                 * True { `{Int -> Sum(128) -> Octet}00` }
             )
         }
+    )
+}
+
+Closers => Ends {
+    Closers -> Eq(0) -> (
+        * False { `0b{Closers -> Difference(1) -> Closers -> Ends}` }
+        * True { "" }
     )
 }
 
@@ -1366,11 +1510,22 @@ Code * Ender * Params * Kind * Tables * Tokens => Opname {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected an operation after `->`") -> Parsed }
                         * True {
-                            Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
+                            Tables.Whole -> Isunion(Kind -> Wanted) -> (
                                 * False {
-                                    Cons.Tail -> Dispatch(Code * Ender * Params * Kind * Tables)
+                                    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
+                                        * False {
+                                            Cons.Tail
+                                                -> Dispatch(Code * Ender * Params * Kind * Tables)
+                                        }
+                                        * True {
+                                            Bad("a dispatch needs a number to branch on") -> Parsed
+                                        }
+                                    )
                                 }
-                                * True { Bad("a dispatch needs a number to branch on") -> Parsed }
+                                * True {
+                                    Cons.Tail
+                                        -> Uniondispatch(Code * Ender * Kind * Params * Tables)
+                                }
                             )
                         }
                     )
@@ -1912,6 +2067,10 @@ Scratch * Unionsize * Variantindex * Wide => Tagging {
     }20{Scratch -> Sum(2) -> Emitted}`
 }
 
+Armtag * Scratch => Testing {
+    `20{Scratch -> Sum(3) -> Emitted}28020041{Armtag -> Emitted}46`
+}
+
 Pos * Source => Textrun {
     Pos -> Gt(Source -> Length) -> (
         * False {
@@ -2114,6 +2273,49 @@ Kind * Params * Tables => TypeEntry {
 Made => Typesection {
     Sectionbody(`{Made.Count -> Sum(3) -> Emitted}{Streqtype()}6000027f7f60017f027f7f{Made.Types}`)
         -> Section(Tag(1))
+}
+
+Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `*`") -> Parsed }
+                * Number { Bad("expected `*`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(42) -> (
+                        * False { Bad("expected `*`") -> Parsed }
+                        * True {
+                            Cons.Tail
+                                -> Armname(
+                                    Closers
+                                    * Code
+                                    * Ender
+                                    * Kind
+                                    * Params
+                                    * Scrutinee
+                                    * Tables
+                                )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `*`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `*`") -> Parsed }
+    )
+}
+
+Code * Ender * Kind * Params * Tables * Tokens => Uniondispatch {
+    Tokens
+        -> Unionarm(
+            Closers(0)
+            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(3) -> Emitted}`)
+            * Ender
+            * Kind
+            * Params
+            * Kind -> Scrutinee
+            * Tables
+        )
 }
 
 Seen * Tables * Tokens * Wanted * Wasname => Unionsize {
