@@ -56,6 +56,8 @@ Byteat = String
 
 Callargs = Parsed
 
+Catchbrace = Parsed
+
 Chain = Parsed
 
 Closer = Parsed
@@ -172,7 +174,15 @@ Joiner = String
 
 Kind = Text
 
+Litarm = Parsed
+
+Litbrace = Parsed
+
+Litclose = Parsed
+
 Litcons = Lithead * Littail
+
+Litdispatch = Litarm
 
 Literal = Int
 
@@ -180,9 +190,13 @@ Literals = Litcons + Litnil
 
 Lithead = Text
 
+Litmatch = Text
+
 Litnil = Unit
 
 Littail = Literals
+
+Litword = Parsed
 
 Local = Int
 
@@ -716,6 +730,41 @@ Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Callargs {
             )
         }
         * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Kind * Tables) }
+    )
+}
+
+Closers * Code * Ender * Kind * Params * Tables * Tokens => Catchbrace {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `{`") -> Parsed }
+                * Number { Bad("expected `{`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(123) -> (
+                        * False { Bad("expected `{`") -> Parsed }
+                        * True {
+                            Cons.Tail -> Body(Ender(125) * Params * Tables) -> (
+                                * Bad { Bad -> Parsed }
+                                * Good {
+                                    Good.After
+                                        -> Litclose(
+                                            Good.Code -> Armcode
+                                            * Closers
+                                            * Code
+                                            * Ender
+                                            * Good.Kind -> Kind
+                                            * Params
+                                            * Tables
+                                        )
+                                }
+                            )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `{`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `{`") -> Parsed }
     )
 }
 
@@ -1318,6 +1367,112 @@ Params * Started * Tables => Joiner {
     )
 }
 
+Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litarm {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `*`") -> Parsed }
+                * Number { Bad("expected `*`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(42) -> (
+                        * False { Bad("expected `*`") -> Parsed }
+                        * True {
+                            Cons.Tail
+                                -> Litword(
+                                    Armdepth
+                                    * Closers
+                                    * Code
+                                    * Ender
+                                    * Kind
+                                    * Params
+                                    * Tables
+                                )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `*`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `*`") -> Parsed }
+    )
+}
+
+Armdepth * Closers * Code * Ender * Kind * Litmatch * Params * Tables * Tokens => Litbrace {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `{`") -> Parsed }
+                * Number { Bad("expected `{`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(123) -> (
+                        * False { Bad("expected `{`") -> Parsed }
+                        * True {
+                            Cons.Tail -> Body(Ender(125) * Params * Tables) -> (
+                                * Bad { Bad -> Parsed }
+                                * Good {
+                                    Good.After
+                                        -> Litarm(
+                                            Armdepth
+                                            * Closers -> Sum(1) -> Closers
+                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Armdepth -> Product(2)) -> Emitted}20{Params -> Scratch(Tables) -> Sum(4) -> Sum(Armdepth -> Product(2)) -> Emitted}41{Tables.Literals -> Dataoffset(Dataat(0) * Litmatch -> Wanted) -> Emitted}41{Litmatch -> Length -> Emitted}1000{Good.Kind -> Blocktype(Tables)}{Good.Code}05`)
+                                            * Ender
+                                            * Good.Kind -> Kind
+                                            * Params
+                                            * Tables
+                                        )
+                                }
+                            )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `{`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `{`") -> Parsed }
+    )
+}
+
+Armcode * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litclose {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `)`") -> Parsed }
+                * Number { Bad("expected `)`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(41) -> (
+                        * False { Bad("expected `)`") -> Parsed }
+                        * True {
+                            Cons.Tail
+                                -> Chain(
+                                    Code(`{Code}{Armcode}{Closers -> Ends}`)
+                                    * Ender
+                                    * Params
+                                    * Kind
+                                    * Tables
+                                )
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `)`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `)`") -> Parsed }
+    )
+}
+
+Code * Ender * Kind * Params * Tables * Tokens => Litdispatch {
+    Tokens
+        -> Litarm(
+            Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth
+            * Closers(0)
+            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(4) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(2)) -> Emitted}21{Params -> Scratch(Tables) -> Sum(3) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(2)) -> Emitted}`)
+            * Ender
+            * Kind
+            * Params
+            * Tables
+        )
+}
+
 Acc * Pos * Source => Literal {
     Pos -> Gt(Source -> Length) -> (
         * False {
@@ -1349,6 +1504,32 @@ Sofar * Tokens => Literals {
             )
         }
         * Nil { Sofar }
+    )
+}
+
+Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litword {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Cons.Tail -> Catchbrace(Closers * Code * Ender * Kind * Params * Tables) }
+                * Number { Bad("expected a string or the catch-all after `*`") -> Parsed }
+                * Punct { Bad("expected a string or the catch-all after `*`") -> Parsed }
+                * Quoted {
+                    Cons.Tail
+                        -> Litbrace(
+                            Armdepth
+                            * Closers
+                            * Code
+                            * Ender
+                            * Kind
+                            * Quoted -> Litmatch
+                            * Params
+                            * Tables
+                        )
+                }
+            )
+        }
+        * Nil { Bad("expected a string or the catch-all after `*`") -> Parsed }
     )
 }
 
@@ -1579,7 +1760,14 @@ Code * Ender * Params * Kind * Tables * Tokens => Opname {
                                                 -> Dispatch(Code * Ender * Params * Kind * Tables)
                                         }
                                         * True {
-                                            Bad("a dispatch needs a number to branch on") -> Parsed
+                                            Cons.Tail
+                                                -> Litdispatch(
+                                                    Code
+                                                    * Ender
+                                                    * Kind
+                                                    * Params
+                                                    * Tables
+                                                )
                                         }
                                     )
                                 }

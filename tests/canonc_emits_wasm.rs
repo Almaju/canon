@@ -244,6 +244,34 @@ fn canonc_tagged(name: &str, source: &str, export: &str, arg: i32) -> (i32, i32)
     )
 }
 
+/// Same again, for a declaration taking a string and returning a
+/// number: the bytes go into memory past the bump region and the
+/// `(ptr, len)` pair is handed in.
+fn canonc_string_call(name: &str, source: &str, export: &str, arg: &str) -> i32 {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let at = 32768;
+    memory
+        .write(&mut store, at, arg.as_bytes())
+        .expect("write the argument into memory");
+    instance
+        .get_typed_func::<(i32, i32), i32>(&mut store, export)
+        .unwrap_or_else(|e| panic!("export `{export}`: {e}"))
+        .call(&mut store, (at as i32, arg.len() as i32))
+        .expect("call the export")
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -800,12 +828,14 @@ fn canonc_compiles_a_string_chain() {
         ),
         "Sum is not a declaration or an operation"
     );
+    // A string scrutinee dispatches on literals now, so `False` reads as
+    // the catch-all and the arm after it has nowhere to go.
     assert_eq!(
         canonc_stdout(
             "strdispatch.can",
             "Answer = Int\n\nUnit => Answer { \"hi\" -> ( * False { 0 } * True { 1 } ) }\n"
         ),
-        "a dispatch needs a number to branch on"
+        "expected `)`"
     );
 }
 
@@ -1328,5 +1358,28 @@ fn canonc_carries_a_string_payload() {
     assert!(
         hex2.contains("360204") && !hex2.contains("360208"),
         "a scalar payload parks one value: {hex2}"
+    );
+}
+
+#[test]
+fn canonc_dispatches_on_a_string() {
+    // Arms can be string literals with a required catch-all last —
+    // which is how `canonc`'s own opcode table is written. The
+    // scrutinee's pointer and length are parked once and each arm calls
+    // the equality helper against a literal from the data segment.
+    let src = "Code = Int\n\nName = String\n\n\
+               Name => Code { Name -> ( * \"Eq\" { 70 } * \"Sum\" { 106 } * String { 0 } ) }\n";
+    assert_eq!(canonc_string_call("le.can", src, "code", "Eq"), 70);
+    assert_eq!(canonc_string_call("ls.can", src, "code", "Sum"), 106);
+    assert_eq!(canonc_string_call("lo.can", src, "code", "Nope"), 0);
+    assert_eq!(canonc_string_call("lz.can", src, "code", ""), 0);
+
+    // The catch-all is not optional.
+    assert_eq!(
+        canonc_stdout(
+            "lnocatch.can",
+            "Code = Int\n\nName = String\n\nName => Code { Name -> ( * \"Eq\" { 70 } ) }\n"
+        ),
+        "expected `*`"
     );
 }
