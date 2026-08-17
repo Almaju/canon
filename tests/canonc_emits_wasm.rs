@@ -638,11 +638,11 @@ fn canonc_compiles_a_string_literal() {
     // module that reads the bytes as a number.
     assert_eq!(
         canonc_stdout("strop.can", "Unit => Answer { \"hi\" -> Sum(1) }\n"),
-        "expected `}`"
+        "Sum is not a string operation"
     );
     assert_eq!(
         canonc_stdout("strarg.can", "Unit => Answer { 1 -> Sum(\"hi\") }\n"),
-        "a string literal must be the whole body"
+        "an operation's argument must be a number"
     );
 }
 
@@ -696,5 +696,46 @@ fn canonc_indexes_locals_past_a_string_parameter() {
     assert!(
         hex.contains("20012002"),
         "expected `local.get 1/2` in {hex}"
+    );
+}
+
+#[test]
+fn canonc_compiles_a_string_chain() {
+    // The value in hand carries its kind through the chain now, so a
+    // string can be an operand and the operations that apply to it are
+    // the string ones. `Length` drops the pointer and keeps the count.
+    let size = "Size = Int\n\nText = String\n\nText => Size { Text -> Length }\n";
+    let hex = canonc_stdout("size.can", size);
+    // one i32 scratch local, then the two parameter slots read back,
+    // stashed, the pointer dropped and the count returned
+    assert!(
+        hex.contains("01017f200020012102 1a2002".replace(' ', "").as_str()),
+        "expected the length sequence in {hex}"
+    );
+
+    // A string literal is an ordinary operand: the chain keeps going.
+    assert_eq!(
+        canonc_answer(
+            "strlen.can",
+            "Answer = Int\n\nUnit => Answer { \"hello\" -> Length -> Sum(1) }\n"
+        ),
+        6
+    );
+
+    // And the kind decides which operations are in reach, in both
+    // directions — this used to emit an `i32.add` over a pointer.
+    assert_eq!(
+        canonc_stdout(
+            "numop.can",
+            "Answer = Int\n\nUnit => Answer { \"hi\" -> Sum(1) }\n"
+        ),
+        "Sum is not a string operation"
+    );
+    assert_eq!(
+        canonc_stdout(
+            "strdispatch.can",
+            "Answer = Int\n\nUnit => Answer { \"hi\" -> ( * False { 0 } * True { 1 } ) }\n"
+        ),
+        "a dispatch needs a number to branch on"
     );
 }
