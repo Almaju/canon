@@ -2755,36 +2755,39 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 });
                 return;
             }
-            let known = symbols.knows_type(&ident.name)
-                || symbols.variant_of.contains_key(&ident.name)
-                || scope.contains(&ident.name)
-                || ident.name == "Self";
-            if !known {
+            // An identifier in expression position names a *value*, and
+            // the only things that carry one are parameters, repetition
+            // components and arm bindings — all of which are in scope.
+            // Knowing the *type* of the same name proves nothing: every
+            // declared type is a known name, so a stale reference read
+            // whatever the stack happened to hold instead of failing.
+            // Sibling arms are where that lands, since seeding one arm
+            // from its neighbour carries the neighbour's payload name
+            // along, but a parameter dropped from a signature does it
+            // too.
+            // `Unit` is the exception, and the only one: it is the
+            // single-value type, so its name carries a value with no
+            // data to have come from anywhere. A binding's zero-arg
+            // receiver is spelled that way (`MonotonicClock -> Now`).
+            let is_unit_valued = !symbols.variant_of.contains_key(&ident.name)
+                && symbols.resolve_alias(&ident.name) == "Unit";
+            if !scope.contains(&ident.name) && ident.name != "Self" && !is_unit_valued {
+                let message = match symbols.variant_of.get(&ident.name) {
+                    Some(union_name) => format!(
+                        "`{0}` is a variant of `{1}`: it names a value only inside its \
+                         own `* {0}` arm",
+                        ident.name, union_name
+                    ),
+                    None if symbols.knows_type(&ident.name) => format!(
+                        "`{0}` is a type here, not a value: nothing in scope is called `{0}`",
+                        ident.name
+                    ),
+                    None => format!("unknown name `{}`", ident.name),
+                };
                 errors.push(CanonError::CheckError {
-                    message: format!("unknown name `{}`", ident.name),
+                    message,
                     span: ident.span,
                 });
-            }
-            // Knowing the *type* is not enough: an identifier in
-            // expression position has to name a value, and the only
-            // things that do are parameters, repetition components and
-            // arm bindings. A union variant is the case where the two
-            // diverge — its name is always a known type, so nothing
-            // caught it being read where no arm bound it, and codegen
-            // read whatever the stack happened to hold. Sibling arms are
-            // where that lands, since seeding one arm from its
-            // neighbour carries the neighbour's payload name along.
-            if !scope.contains(&ident.name) {
-                if let Some(union_name) = symbols.variant_of.get(&ident.name) {
-                    errors.push(CanonError::CheckError {
-                        message: format!(
-                            "`{0}` is a variant of `{1}`: it names a value only inside its \
-                             own `* {0}` arm",
-                            ident.name, union_name
-                        ),
-                        span: ident.span,
-                    });
-                }
             }
         }
         Expr::StringLit { .. } => {}

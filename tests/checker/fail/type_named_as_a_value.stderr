@@ -1,0 +1,1 @@
+error[tests/checker/fail/type_named_as_a_value.can:6:5]: `Count` is a type here, not a value: nothing in scope is called `Count`
