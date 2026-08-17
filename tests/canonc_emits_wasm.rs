@@ -213,6 +213,37 @@ fn canonc_product_arg(name: &str, source: &str, export: &str, fields: &[i32]) ->
         .expect("call the export")
 }
 
+/// Same again, for a declaration returning a union: the tagged cell's
+/// tag and payload are read back out of the module's memory.
+fn canonc_tagged(name: &str, source: &str, export: &str, arg: i32) -> (i32, i32) {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let ptr = instance
+        .get_typed_func::<i32, i32>(&mut store, export)
+        .unwrap_or_else(|e| panic!("export `{export}`: {e}"))
+        .call(&mut store, arg)
+        .expect("call the export");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let mut cell = [0u8; 8];
+    memory
+        .read(&store, ptr as usize, &mut cell)
+        .expect("read the tagged cell");
+    (
+        i32::from_le_bytes(cell[0..4].try_into().expect("tag")),
+        i32::from_le_bytes(cell[4..8].try_into().expect("payload")),
+    )
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -1175,5 +1206,32 @@ fn canonc_builds_a_product() {
             &format!("{decls}Right => Total {{ Right -> Pair(3 -> Boxed) -> Boxed }}\n")
         ),
         "Pair has no field of type Boxed"
+    );
+}
+
+#[test]
+fn canonc_tags_a_union_variant() {
+    // A union is a pointer to a tag and a payload. Piping a value into
+    // a union it belongs to allocates the cell, writes the variant's
+    // position as the tag and the value after it. The cell is as wide
+    // as the widest variant needs, so every variant fits the same slot.
+    let decls = "Count = Int\n\nLabel = String\n\nSlot = Count + Label\n\nWrapped = Slot\n\n";
+    assert_eq!(
+        canonc_tagged(
+            "tag0.can",
+            &format!("{decls}Count => Wrapped {{ Count -> Slot }}\n"),
+            "wrapped",
+            42
+        ),
+        (0, 42)
+    );
+
+    // A value whose type isn't one of the union's variants.
+    assert_eq!(
+        canonc_stdout(
+            "tagbad.can",
+            &format!("Other = Int\n\n{decls}Count => Wrapped {{ Count -> Other -> Slot }}\n")
+        ),
+        "Other is not a variant of Slot"
     );
 }
