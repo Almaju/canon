@@ -1,0 +1,2 @@
+error[tests/checker/fail/dispatch_on_a_scalar.can:7:11]: dispatching on `Label`, which is a `String`: only a union has variants to match, and a literal dispatch spells its patterns as literals
+error[tests/checker/fail/dispatch_on_a_scalar.can:8:11]: dispatching on `Label`, which is a `String`: only a union has variants to match, and a literal dispatch spells its patterns as literals

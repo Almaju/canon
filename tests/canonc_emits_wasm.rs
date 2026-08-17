@@ -182,6 +182,37 @@ fn canonc_string_arg(name: &str, source: &str, export: &str, arg: &str) -> Strin
     String::from_utf8(out).expect("utf-8 string")
 }
 
+/// Same again, for a declaration taking a product: the fields are laid
+/// out in the module's memory and the pointer to them is the argument.
+fn canonc_product_arg(name: &str, source: &str, export: &str, fields: &[i32]) -> i32 {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let at = 32768;
+    let mut raw = Vec::new();
+    for f in fields {
+        raw.extend_from_slice(&f.to_le_bytes());
+    }
+    memory
+        .write(&mut store, at, &raw)
+        .expect("lay the product out in memory");
+    instance
+        .get_typed_func::<i32, i32>(&mut store, export)
+        .unwrap_or_else(|e| panic!("export `{export}`: {e}"))
+        .call(&mut store, at as i32)
+        .expect("call the export")
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -1050,5 +1081,59 @@ fn canonc_compiles_a_format_string() {
             "Answer = Int\n\nUnit => Answer { `ab{1 -> String}` -> Length }\n"
         ),
         3
+    );
+}
+
+#[test]
+fn canonc_reads_a_product_field() {
+    // A product is a pointer to its fields laid out in declaration
+    // order — four bytes for a scalar, eight for a string's pointer and
+    // length. `.` reads one back at its offset.
+    let decls = "Left = Int\n\nPair = Left * Right\n\nRight = Int\n\n";
+    assert_eq!(
+        canonc_product_arg(
+            "pleft.can",
+            &format!("{decls}Pair => Left {{ Pair.Left }}\n"),
+            "left",
+            &[11, 22]
+        ),
+        11
+    );
+    assert_eq!(
+        canonc_product_arg(
+            "pright.can",
+            &format!("{decls}Pair => Right {{ Pair.Right }}\n"),
+            "right",
+            &[11, 22]
+        ),
+        22
+    );
+
+    // The field's own type is what the value carries away, so the
+    // operations that follow are that type's.
+    assert_eq!(
+        canonc_product_arg(
+            "pchain.can",
+            &format!("{decls}Pair => Left {{ Pair.Left -> Sum(Pair.Right) }}\n"),
+            "left",
+            &[11, 22]
+        ),
+        33
+    );
+
+    // A name that isn't a field, and a `.` on something with no fields.
+    assert_eq!(
+        canonc_stdout(
+            "pnofield.can",
+            &format!("{decls}Pair => Left {{ Pair.Nope }}\n")
+        ),
+        "Pair has no field Nope"
+    );
+    assert_eq!(
+        canonc_stdout(
+            "pnoprod.can",
+            "Answer = Int\n\nCount = Int\n\nCount => Answer { Count.Nope }\n"
+        ),
+        "Count has no fields to read"
     );
 }
