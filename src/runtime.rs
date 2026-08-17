@@ -287,6 +287,14 @@ fn build_engine() -> wasmtime::Result<Engine> {
     config.wasm_component_model_async(true);
     config.wasm_component_model_more_async_builtins(true);
     config.wasm_component_model_async_stackful(true);
+    // Canon has no loops, so walking a long input is walking a deep
+    // recursion — a tokenizer descends once per token and builds its
+    // result on the way back. wasmtime's default stack runs out a few
+    // thousand frames in, which is a modest source file. Sixty-four
+    // megabytes is what a compiler-shaped program needs, and it costs
+    // nothing until it is used.
+    config.max_wasm_stack(64 * 1024 * 1024);
+    config.async_stack_size(66 * 1024 * 1024);
     Engine::new(&config)
 }
 
