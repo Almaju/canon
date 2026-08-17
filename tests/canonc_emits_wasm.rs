@@ -874,3 +874,65 @@ fn canonc_compares_strings() {
         "yes"
     );
 }
+
+#[test]
+fn canonc_slices_a_string() {
+    // `Substring` takes a pair, which is the first argument list with a
+    // `*` in it. Slicing allocates nothing: strings are immutable, so
+    // the result is a pointer and length into the same bytes.
+    assert_eq!(
+        canonc_string(
+            "sub.can",
+            "From = Int\n\nPart = String\n\nTo = Int\n\nUnit => Part { \"hello world\" -> Substring(1 -> From * 5 -> To) }\n",
+            "part"
+        ),
+        "hello"
+    );
+    assert_eq!(
+        canonc_string(
+            "sub2.can",
+            "From = Int\n\nPart = String\n\nTo = Int\n\nUnit => Part { \"hello world\" -> Substring(7 -> From * 11 -> To) }\n",
+            "part"
+        ),
+        "world"
+    );
+    // Both bounds are numbers.
+    assert_eq!(
+        canonc_stdout(
+            "subbad.can",
+            "From = Int\n\nPart = String\n\nUnit => Part { \"abc\" -> Substring(1 -> From * \"x\") }\n"
+        ),
+        "a slice bound must be a number"
+    );
+}
+
+#[test]
+fn canonc_relabels_through_a_newtype() {
+    // `-> From` and `-> Acc` are relabels, not calls: a pipe into a
+    // declared type emits nothing and only changes what the value is
+    // called. Canon leans on them constantly, and `canonc` used to
+    // reject every one as an unknown operation.
+    assert_eq!(
+        canonc_answer(
+            "relabel.can",
+            "Acc = Int\n\nAnswer = Int\n\nUnit => Answer { 1 -> Sum(2) -> Acc -> Product(10) }\n"
+        ),
+        30
+    );
+    // A relabel can change the kind, and the operations follow it.
+    assert_eq!(
+        canonc_answer(
+            "relabelkind.can",
+            "Answer = Int\n\nWord = Text\n\nText = String\n\nUnit => Answer { \"abc\" -> Word -> Length }\n"
+        ),
+        3
+    );
+    // An unknown name is still an unknown name.
+    assert_eq!(
+        canonc_stdout(
+            "unknown.can",
+            "Answer = Int\n\nUnit => Answer { 1 -> Zork }\n"
+        ),
+        "Zork is not a declaration or an operation"
+    );
+}
