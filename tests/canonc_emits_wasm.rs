@@ -1137,3 +1137,43 @@ fn canonc_reads_a_product_field() {
         "Count has no fields to read"
     );
 }
+
+#[test]
+fn canonc_builds_a_product() {
+    // Constructing allocates the fields' total width from the bump
+    // pointer and stores each value at the offset of the field whose
+    // *type* it carries — so the receiver and the argument find their
+    // slots by name, not by the order they were written.
+    let decls =
+        "Boxed = Int\n\nLeft = Int\n\nPair = Left * Right\n\nRight = Int\n\nTotal = Int\n\n\
+                 Pair => Boxed { Pair.Left -> Sum(Pair.Right) }\n\n";
+    assert_eq!(
+        canonc_apply(
+            "build.can",
+            &format!("{decls}Right => Total {{ Right -> Pair(3 -> Left) -> Boxed }}\n"),
+            "total",
+            Some(4)
+        ),
+        7
+    );
+    // Written the other way round, the same fields are filled.
+    assert_eq!(
+        canonc_apply(
+            "build2.can",
+            &format!("{decls}Left => Total {{ Left -> Pair(9 -> Right) -> Boxed }}\n"),
+            "total",
+            Some(2)
+        ),
+        11
+    );
+
+    // A declaration of the same name is a call, not a construction —
+    // that precedence is what makes `Pair => Boxed` above reachable.
+    assert_eq!(
+        canonc_stdout(
+            "buildnofield.can",
+            &format!("{decls}Right => Total {{ Right -> Pair(3 -> Boxed) -> Boxed }}\n")
+        ),
+        "Pair has no field of type Boxed"
+    );
+}

@@ -4,6 +4,8 @@ After = Tokens
 
 Argkind = Bool
 
+Argoffset = Int
+
 Argument = Parsed
 
 Arity = Int
@@ -208,11 +210,19 @@ Pos = Int
 
 Prev = Text
 
+Prodarg = Parsed
+
+Prodlparen = Parsed
+
+Productsize = Int
+
 Punct = Int
 
 Quoted = Text
 
 Quoterun = Int
+
+Recvoffset = Int
 
 Relabel = Parsed
 
@@ -255,6 +265,8 @@ Sofar = Literals
 Source = String
 
 Started = Bool
+
+Storing = String
 
 Streqbody = String
 
@@ -779,12 +791,12 @@ Code * Ender * Kind * Params * Tables * Tokens => Fieldname {
                 * Name {
                     Tables.Whole
                         -> Rhstokens(Kind -> Wanted)
-                        -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables)
+                        -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables * False() -> Wasname)
                         -> Lt(0) -> (
                         * False {
                             Cons.Tail
                                 -> Chain(
-                                    Code(`{Code}{Tables.Whole -> Rhstokens(Kind -> Wanted) -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables) -> Fieldget(Tables * Name -> Wanted)}`)
+                                    Code(`{Code}{Tables.Whole -> Rhstokens(Kind -> Wanted) -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Fieldget(Tables * Name -> Wanted)}`)
                                     * Ender
                                     * Name -> Kind
                                     * Params
@@ -803,28 +815,37 @@ Code * Ender * Kind * Params * Tables * Tokens => Fieldname {
     )
 }
 
-Seen * Tables * Tokens * Wantedfield => Fieldoffset {
+Seen * Tables * Tokens * Wantedfield * Wasname => Fieldoffset {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Name -> Eq(Wantedfield) -> (
+                    Wasname -> (
                         * False {
-                            Cons.Tail
-                                -> Fieldoffset(
-                                    Seen -> Sum(Tables.Whole -> Fieldwidth(Name -> Wanted)) -> Seen
-                                    * Tables
-                                    * Wantedfield
-                                )
+                            Name -> Eq(Wantedfield) -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Fieldoffset(
+                                            Seen -> Sum(Tables.Whole -> Fieldwidth(Name -> Wanted)) -> Seen
+                                            * Tables
+                                            * Wantedfield
+                                            * True() -> Wasname
+                                        )
+                                }
+                                * True { Seen }
+                            )
                         }
-                        * True { Seen }
+                        * True { 0 -> Difference(1) }
                     )
                 }
-                * Number { Cons.Tail -> Fieldoffset(Seen * Tables * Wantedfield) }
+                * Number { 0 -> Difference(1) }
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { 0 -> Difference(1) }
-                        * True { Cons.Tail -> Fieldoffset(Seen * Tables * Wantedfield) }
+                        * True {
+                            Cons.Tail
+                                -> Fieldoffset(Seen * Tables * Wantedfield * False() -> Wasname)
+                        }
                     )
                 }
                 * Quoted { 0 -> Difference(1) }
@@ -1224,7 +1245,7 @@ Text => Nullname {
     `.{Text}`
 }
 
-Code * Ender * Name * Params * Tables * Tokens => Numop {
+Code * Ender * Kind * Name * Params * Tables * Tokens => Numop {
     Name -> Eq("String") -> (
         * False {
             Name -> Opcode -> Length -> Eq(0) -> (
@@ -1254,7 +1275,7 @@ Code * Ender * Name * Params * Tables * Tokens => Numop {
                                     * Tables
                                 )
                         }
-                        * True { Tokens -> Relabel(Code * Ender * Name * Params * Tables) }
+                        * True { Tokens -> Relabel(Code * Ender * Kind * Name * Params * Tables) }
                     )
                 }
             )
@@ -1301,8 +1322,8 @@ Code * Ender * Params * Kind * Tables * Tokens => Opname {
             Cons.Head -> (
                 * Name {
                     Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
-                        * False { Cons.Tail -> Numop(Code * Ender * Name * Params * Tables) }
-                        * True { Cons.Tail -> Strop(Code * Ender * Name * Params * Tables) }
+                        * False { Cons.Tail -> Numop(Code * Ender * Kind * Name * Params * Tables) }
+                        * True { Cons.Tail -> Strop(Code * Ender * Kind * Name * Params * Tables) }
                     )
                 }
                 * Number { Bad("expected an operation after `->`") -> Parsed }
@@ -1390,6 +1411,95 @@ Params * Tables * Tokens => Parsed {
     )
 }
 
+Code * Ender * Kind * Name * Params * Tables * Tokens => Prodarg {
+    Tokens -> Body(Ender(41) * Params * Tables) -> (
+        * Bad { Bad -> Parsed }
+        * Good {
+            Tables.Whole
+                -> Rhstokens(Name -> Wanted)
+                -> Fieldoffset(Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname)
+                -> Lt(0) -> (
+                * False {
+                    Tables.Whole
+                        -> Rhstokens(Name -> Wanted)
+                        -> Fieldoffset(
+                            Good.Kind -> Wantedfield
+                            * Seen(0)
+                            * Tables
+                            * False() -> Wasname
+                        )
+                        -> Lt(0) -> (
+                        * False {
+                            Good.After
+                                -> Chain(
+                                    Code(`{Code}{Good.Code}{Tables.Whole -> Rhstokens(Name -> Wanted) -> Fieldoffset(Good.Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Argoffset -> Storing(Tables.Whole -> Rhstokens(Name -> Wanted) -> Productsize(Seen(0) * Tables * False() -> Wasname) -> Productsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Fieldoffset(Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Recvoffset * Params -> Scratch(Tables))}`)
+                                    * Ender
+                                    * Name -> Kind
+                                    * Params
+                                    * Tables
+                                )
+                        }
+                        * True { Bad(`{Name} has no field of type {Good.Kind}`) -> Parsed }
+                    )
+                }
+                * True { Bad(`{Name} has no field of type {Kind}`) -> Parsed }
+            )
+        }
+    )
+}
+
+Code * Ender * Kind * Name * Params * Tables * Tokens => Prodlparen {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Bad("expected `(`") -> Parsed }
+                * Number { Bad("expected `(`") -> Parsed }
+                * Punct {
+                    Punct -> Eq(40) -> (
+                        * False { Bad("expected `(`") -> Parsed }
+                        * True {
+                            Cons.Tail -> Prodarg(Code * Ender * Kind * Name * Params * Tables)
+                        }
+                    )
+                }
+                * Quoted { Bad("expected `(`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected `(`") -> Parsed }
+    )
+}
+
+Seen * Tables * Tokens * Wasname => Productsize {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Wasname -> (
+                        * False {
+                            Cons.Tail
+                                -> Productsize(
+                                    Seen -> Sum(Tables.Whole -> Fieldwidth(Name -> Wanted)) -> Seen
+                                    * Tables
+                                    * True() -> Wasname
+                                )
+                        }
+                        * True { Seen }
+                    )
+                }
+                * Number { Seen }
+                * Punct {
+                    Punct -> Eq(42) -> (
+                        * False { Seen }
+                        * True { Cons.Tail -> Productsize(Seen * Tables * False() -> Wasname) }
+                    )
+                }
+                * Quoted { Seen }
+            )
+        }
+        * Nil { Seen }
+    )
+}
+
 Pos * Source => Quoterun {
     Pos -> Gt(Source -> Length) -> (
         * False {
@@ -1402,9 +1512,14 @@ Pos * Source => Quoterun {
     )
 }
 
-Code * Ender * Name * Params * Tables * Tokens => Relabel {
+Code * Ender * Kind * Name * Params * Tables * Tokens => Relabel {
     Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
-        * False { Tokens -> Chain(Code * Ender * Params * Name -> Kind * Tables) }
+        * False {
+            Tables.Whole -> Isproduct(Name -> Wanted) -> (
+                * False { Tokens -> Chain(Code * Ender * Params * Name -> Kind * Tables) }
+                * True { Tokens -> Prodlparen(Code * Ender * Kind * Name * Params * Tables) }
+            )
+        }
         * True { Bad(`{Name} is not a declaration or an operation`) -> Parsed }
     )
 }
@@ -1618,6 +1733,16 @@ Tokens => Slug {
     )
 }
 
+Argoffset * Productsize * Recvoffset * Scratch => Storing {
+    `21{Scratch -> Sum(1) -> Emitted}21{Scratch -> Emitted}230021{Scratch -> Sum(2) -> Emitted}230041{
+        Productsize -> Emitted
+    }6a240020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}3602{Recvoffset -> Emitted}20{
+        Scratch
+            -> Sum(2)
+            -> Emitted
+    }20{Scratch -> Sum(1) -> Emitted}3602{Argoffset -> Emitted}20{Scratch -> Sum(2) -> Emitted}`
+}
+
 Unit => Streqbody {
     "027f2001200347044041000c010b410021040340200420014e044041010c020b200020046a2d0000200220046a2d000047044041000c020b200441016a21040c000b41010b"
 }
@@ -1630,7 +1755,7 @@ Unit => Streqtype {
     "60047f7f7f7f017f"
 }
 
-Code * Ender * Name * Params * Tables * Tokens => Strop {
+Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
     Name -> Eq("ByteAt") -> (
         * False {
             Name -> Eq("Eq") -> (
@@ -1641,7 +1766,15 @@ Code * Ender * Name * Params * Tables * Tokens => Strop {
                                 * False {
                                     Name -> Eq("Substring") -> (
                                         * False {
-                                            Tokens -> Relabel(Code * Ender * Name * Params * Tables)
+                                            Tokens
+                                                -> Relabel(
+                                                    Code
+                                                    * Ender
+                                                    * Kind
+                                                    * Name
+                                                    * Params
+                                                    * Tables
+                                                )
                                         }
                                         * True {
                                             Tokens
