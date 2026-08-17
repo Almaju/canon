@@ -477,8 +477,14 @@ fn canonc_compiles_a_dispatch() {
 
     // The dispatch is a chain step, so the chain keeps going after it.
     let bumped = "Int => Bumped { Int -> Gt(0) -> ( * False { 0 } * True { Int } ) -> Sum(100) }\n";
-    assert_eq!(canonc_apply("bumped.can", bumped, "bumped", Some(-3)), 100);
-    assert_eq!(canonc_apply("bumped.can", bumped, "bumped", Some(3)), 103);
+    assert_eq!(
+        canonc_apply("dispatchbump.can", bumped, "bumped", Some(-3)),
+        100
+    );
+    assert_eq!(
+        canonc_apply("dispatchbump.can", bumped, "bumped", Some(3)),
+        103
+    );
 }
 
 #[test]
@@ -786,5 +792,85 @@ fn canonc_concatenates_strings() {
             "Greeting = String\n\nUnit => Greeting { \"a\" -> Joined(1) }\n"
         ),
         "this operation takes a string"
+    );
+}
+
+#[test]
+fn canonc_indexes_a_string_byte() {
+    // `ByteAt` is 1-based, the way Canon indexes everywhere, so the
+    // emitted address is `ptr + n - 1`. No allocation — the pointer and
+    // the index are all it needs.
+    assert_eq!(
+        canonc_answer(
+            "byte.can",
+            "Answer = Int\n\nUnit => Answer { \"abc\" -> ByteAt(2) }\n"
+        ),
+        98
+    );
+    assert_eq!(
+        canonc_answer(
+            "byte1.can",
+            "Answer = Int\n\nUnit => Answer { \"abc\" -> ByteAt(1) }\n"
+        ),
+        97
+    );
+    // It yields a number, so the numeric operations pick up after it.
+    assert_eq!(
+        canonc_answer(
+            "bytesum.can",
+            "Answer = Int\n\nUnit => Answer { \"abc\" -> ByteAt(3) -> Difference(96) }\n"
+        ),
+        3
+    );
+}
+
+#[test]
+fn canonc_compares_strings() {
+    // `Eq` on strings needs a loop, so it is the one helper function —
+    // prepended at index 0 so every declaration shifts up one rather
+    // than appended at an index the parse can't know yet.
+    for (name, source, want) in [
+        (
+            "eqsame.can",
+            "Answer = Int\n\nUnit => Answer { \"abc\" -> Eq(\"abc\") }\n",
+            1,
+        ),
+        (
+            "eqdiff.can",
+            "Answer = Int\n\nUnit => Answer { \"abc\" -> Eq(\"abd\") }\n",
+            0,
+        ),
+        (
+            "eqshort.can",
+            "Answer = Int\n\nUnit => Answer { \"abc\" -> Eq(\"ab\") }\n",
+            0,
+        ),
+        (
+            "eqempty.can",
+            "Answer = Int\n\nUnit => Answer { \"\" -> Eq(\"\") }\n",
+            1,
+        ),
+    ] {
+        assert_eq!(canonc_answer(name, source), want, "for {source:?}");
+    }
+
+    // It yields a number, so a dispatch can branch on it.
+    assert_eq!(
+        canonc_answer(
+            "eqbranch.can",
+            "Answer = Int\n\nUnit => Answer { \"yes\" -> Eq(\"yes\") -> ( * False { 10 } * True { 20 } ) }\n"
+        ),
+        20
+    );
+
+    // And it compares what a parameter brought in.
+    assert_eq!(
+        canonc_string_arg(
+            "eqparam.can",
+            "Shout = String\n\nText = String\n\nText => Shout { Text -> Eq(\"ok\") -> ( * False { \"no\" } * True { \"yes\" } ) }\n",
+            "shout",
+            "ok"
+        ),
+        "yes"
     );
 }
