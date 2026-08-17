@@ -16,6 +16,8 @@ Armbrace = Parsed
 
 Armcode = String
 
+Armdepth = Int
+
 Armname = Parsed
 
 Armnext = Parsed
@@ -330,8 +332,6 @@ Tagging = String
 
 Tail = Tokens
 
-Testing = String
-
 Text = String
 
 Textrun = Int
@@ -432,7 +432,7 @@ Params * Seen => Arity {
     )
 }
 
-Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
+Armbound * Armdepth * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -446,13 +446,14 @@ Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables 
                                 -> Body(
                                     Ender(125)
                                     * Params
-                                    * Tables.Binds -> Bindcons(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Binddepth * Armbound -> Bindhead) -> Binds -> Tables(Tables.Literals * Tables.Names * Tables.Whole)
+                                    * Tables.Binds -> Bindcons(Armdepth -> Binddepth * Armbound -> Bindhead) -> Binds -> Tables(Tables.Literals * Tables.Names * Tables.Whole)
                                 ) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
                                         -> Armnext(
                                             Good.Code -> Armcode
+                                            * Armdepth
                                             * Armtag
                                             * Closers
                                             * Code
@@ -474,7 +475,7 @@ Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables 
     )
 }
 
-Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname {
+Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -487,6 +488,7 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname 
                             Cons.Tail
                                 -> Armbrace(
                                     Name -> Armbound
+                                    * Armdepth
                                     * Tables.Whole -> Rhstokens(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
                                     * Closers
                                     * Code
@@ -509,7 +511,7 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname 
     )
 }
 
-Armcode * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armnext {
+Armcode * Armdepth * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armnext {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -523,8 +525,9 @@ Armcode * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables *
                                 * True {
                                     Tokens
                                         -> Unionarm(
-                                            Closers -> Sum(1) -> Closers
-                                            * Code(`{Code}{Armtag -> Testing(Params -> Scratch(Tables))}{Kind -> Blocktype(Tables)}{Armcode}05`)
+                                            Armdepth
+                                            * Closers -> Sum(1) -> Closers
+                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Armdepth -> Product(2)) -> Emitted}28020041{Armtag -> Emitted}46{Kind -> Blocktype(Tables)}{Armcode}05`)
                                             * Ender
                                             * Kind
                                             * Params
@@ -562,7 +565,7 @@ Index * Tables * Tokens => Assembly {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Emitted}010c7f{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}01147f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(2) -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Sum(3) -> Emitted}{Made.Funcs}`)
@@ -1661,9 +1664,11 @@ Params * Tables * Tokens => Parsed {
 
 Bindslot * Params * Tables * Wanted => Payloadget {
     Tables.Whole -> Isstring(Depthleft(8) * Wanted) -> (
-        * False { `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}280204` }
+        * False {
+            `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot -> Product(2)) -> Emitted}280204`
+        }
         * True {
-            `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}28020420{
+            `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot -> Product(2)) -> Emitted}28020420{
                 Params
                     -> Scratch(Tables)
                     -> Sum(3)
@@ -2159,10 +2164,6 @@ Scratch * Unionsize * Variantindex * Wide => Tagging {
     )
 }
 
-Armtag * Scratch => Testing {
-    `20{Scratch -> Sum(3) -> Emitted}28020041{Armtag -> Emitted}46`
-}
-
 Pos * Source => Textrun {
     Pos -> Gt(Source -> Length) -> (
         * False {
@@ -2367,7 +2368,7 @@ Made => Typesection {
         -> Section(Tag(1))
 }
 
-Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm {
+Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -2379,7 +2380,8 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm
                         * True {
                             Cons.Tail
                                 -> Armname(
-                                    Closers
+                                    Armdepth
+                                    * Closers
                                     * Code
                                     * Ender
                                     * Kind
@@ -2400,8 +2402,9 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm
 Code * Ender * Kind * Params * Tables * Tokens => Uniondispatch {
     Tokens
         -> Unionarm(
-            Closers(0)
-            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(3) -> Emitted}`)
+            Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth
+            * Closers(0)
+            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(3) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(2)) -> Emitted}`)
             * Ender
             * Kind
             * Params
