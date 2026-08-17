@@ -1,0 +1,16 @@
+Label = String
+
+Shown = String
+
+Label => Shown {
+    Label -> (
+        * False { "no" }
+        * True { "yes" }
+    )
+}
+
+Unit => Program {
+    Label("x")
+        -> Shown
+        -> Print
+}

@@ -3264,6 +3264,24 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                     span: *vspan,
                                 });
                             }
+                        } else if let Some(root) = scalar_primitive_root(symbols, &scrutinee_ty) {
+                            // The scrutinee isn't a union at all, so it has no
+                            // variants for an arm to name. Without this the
+                            // membership check simply never ran and every arm
+                            // was accepted — `Bool`'s `* False` / `* True`
+                            // against a `String` compiled to invalid wasm.
+                            // Only a scalar-rooted scrutinee fires: generics
+                            // and unresolved names keep the benefit of the
+                            // doubt.
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "dispatching on `{}`, which is a `{}`: only a union has \
+                                     variants to match, and a literal dispatch spells its \
+                                     patterns as literals",
+                                    scrutinee_ty, root
+                                ),
+                                span: *vspan,
+                            });
                         }
                     }
                 }
