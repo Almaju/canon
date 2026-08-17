@@ -1361,23 +1361,9 @@ Tokens * Wanted => Isproduct {
 }
 
 Depthleft * Tokens * Wanted => Isstring {
-    Wanted -> (
-        * "" { False() }
-        * "Int" { False() }
-        * "String" { True() }
-        * String {
-            Depthleft -> Le(0) -> (
-                * False {
-                    Tokens
-                        -> Isstring(
-                            Depthleft -> Difference(1) -> Depthleft
-                            * Tokens -> Rhs(Wanted) -> Wanted
-                        )
-                }
-                * True { False() }
-            )
-        }
-    )
+    Tokens
+        -> Rootname(Depthleft * Wanted)
+        -> Eq("String")
 }
 
 Tokens * Wanted => Isunion {
