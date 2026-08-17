@@ -70,6 +70,16 @@ Falsecode = String
 
 Falsemark = Parsed
 
+Field = Parsed
+
+Fieldget = String
+
+Fieldname = Parsed
+
+Fieldoffset = Int
+
+Fieldwidth = Int
+
 Firstarg = Parsed
 
 Firstcode = String
@@ -109,6 +119,8 @@ IsLetter = Bool
 IsSpace = Bool
 
 IsWord = Bool
+
+Isproduct = Bool
 
 Isstring = Bool
 
@@ -210,9 +222,11 @@ Reported = Unit
 
 Rhs = Text
 
-Rhseq = Text
+Rhseq = Tokens
 
-Rhsname = Text
+Rhsname = Tokens
+
+Rhstokens = Tokens
 
 Run = Int
 
@@ -284,6 +298,8 @@ Typesection = Section
 Utf8 = String
 
 Wanted = Text
+
+Wantedfield = Text
 
 Wantsliteral = String
 
@@ -383,7 +399,7 @@ Ender * Params * Tables * Tokens => Body {
                     Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
                         * False {
                             Cons.Tail
-                                -> Chain(
+                                -> Field(
                                     Params -> Localget(Tables * Name -> Wanted) -> Code
                                     * Ender
                                     * Params
@@ -723,6 +739,108 @@ Code * Ender * Params * Kind * Tables * Tokens => Falsemark {
     )
 }
 
+Code * Ender * Kind * Params * Tables * Tokens => Field {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Tokens -> Chain(Code * Ender * Kind * Params * Tables) }
+                * Number { Tokens -> Chain(Code * Ender * Kind * Params * Tables) }
+                * Punct {
+                    Punct -> Eq(46) -> (
+                        * False { Tokens -> Chain(Code * Ender * Kind * Params * Tables) }
+                        * True {
+                            Tables.Whole -> Isproduct(Kind -> Wanted) -> (
+                                * False { Bad(`{Kind} has no fields to read`) -> Parsed }
+                                * True {
+                                    Cons.Tail -> Fieldname(Code * Ender * Kind * Params * Tables)
+                                }
+                            )
+                        }
+                    )
+                }
+                * Quoted { Tokens -> Chain(Code * Ender * Kind * Params * Tables) }
+            )
+        }
+        * Nil { Tokens -> Chain(Code * Ender * Kind * Params * Tables) }
+    )
+}
+
+Fieldoffset * Tables * Wanted => Fieldget {
+    Tables.Whole -> Isstring(Depthleft(8) * Wanted) -> (
+        * False { `2802{Fieldoffset -> Emitted}` }
+        * True { `2202{Fieldoffset -> Emitted}20022802{Fieldoffset -> Sum(4) -> Emitted}` }
+    )
+}
+
+Code * Ender * Kind * Params * Tables * Tokens => Fieldname {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Tables.Whole
+                        -> Rhstokens(Kind -> Wanted)
+                        -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables)
+                        -> Lt(0) -> (
+                        * False {
+                            Cons.Tail
+                                -> Chain(
+                                    Code(`{Code}{Tables.Whole -> Rhstokens(Kind -> Wanted) -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables) -> Fieldget(Tables * Name -> Wanted)}`)
+                                    * Ender
+                                    * Name -> Kind
+                                    * Params
+                                    * Tables
+                                )
+                        }
+                        * True { Bad(`{Kind} has no field {Name}`) -> Parsed }
+                    )
+                }
+                * Number { Bad("expected a field name after `.`") -> Parsed }
+                * Punct { Bad("expected a field name after `.`") -> Parsed }
+                * Quoted { Bad("expected a field name after `.`") -> Parsed }
+            )
+        }
+        * Nil { Bad("expected a field name after `.`") -> Parsed }
+    )
+}
+
+Seen * Tables * Tokens * Wantedfield => Fieldoffset {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Name -> Eq(Wantedfield) -> (
+                        * False {
+                            Cons.Tail
+                                -> Fieldoffset(
+                                    Seen -> Sum(Tables.Whole -> Fieldwidth(Name -> Wanted)) -> Seen
+                                    * Tables
+                                    * Wantedfield
+                                )
+                        }
+                        * True { Seen }
+                    )
+                }
+                * Number { Cons.Tail -> Fieldoffset(Seen * Tables * Wantedfield) }
+                * Punct {
+                    Punct -> Eq(42) -> (
+                        * False { 0 -> Difference(1) }
+                        * True { Cons.Tail -> Fieldoffset(Seen * Tables * Wantedfield) }
+                    )
+                }
+                * Quoted { 0 -> Difference(1) }
+            )
+        }
+        * Nil { 0 -> Difference(1) }
+    )
+}
+
+Tokens * Wanted => Fieldwidth {
+    Tokens -> Isstring(Depthleft(8) * Wanted) -> (
+        * False { 4 }
+        * True { 8 }
+    )
+}
+
 Code * Ender * Params * Kind * Tables * Tokens => Firstarg {
     Tokens -> Body(Ender(42) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
@@ -912,6 +1030,25 @@ Int => IsWord {
     Int -> IsDigit -> (
         * False { Int -> IsLetter }
         * True { True() }
+    )
+}
+
+Tokens * Wanted => Isproduct {
+    Tokens -> Rhstokens(Wanted) -> (
+        * Cons {
+            Cons.Tail -> (
+                * Cons {
+                    Cons.Head -> (
+                        * Name { False() }
+                        * Number { False() }
+                        * Punct { Punct -> Eq(42) }
+                        * Quoted { False() }
+                    )
+                }
+                * Nil { False() }
+            )
+        }
+        * Nil { False() }
     )
 }
 
@@ -1291,18 +1428,13 @@ Tokens => Reported {
 }
 
 Tokens * Wanted => Rhs {
-    Tokens -> (
+    Tokens -> Rhstokens(Wanted) -> (
         * Cons {
             Cons.Head -> (
-                * Name {
-                    Name -> Eq(Wanted) -> (
-                        * False { Cons.Tail -> Rhs(Wanted) -> Text }
-                        * True { Cons.Tail -> Rhseq(Wanted) -> Text }
-                    )
-                }
-                * Number { Cons.Tail -> Rhs(Wanted) -> Text }
-                * Punct { Cons.Tail -> Rhs(Wanted) -> Text }
-                * Quoted { Cons.Tail -> Rhs(Wanted) -> Text }
+                * Name { Name }
+                * Number { "" }
+                * Punct { "" }
+                * Quoted { "" }
             )
         }
         * Nil { "" }
@@ -1313,18 +1445,18 @@ Tokens * Wanted => Rhseq {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Tokens -> Rhs(Wanted) -> Text }
-                * Number { Tokens -> Rhs(Wanted) -> Text }
+                * Name { Tokens -> Rhstokens(Wanted) -> Tokens }
+                * Number { Tokens -> Rhstokens(Wanted) -> Tokens }
                 * Punct {
                     Punct -> Eq(61) -> (
-                        * False { Tokens -> Rhs(Wanted) -> Text }
-                        * True { Cons.Tail -> Rhsname(Wanted) -> Text }
+                        * False { Tokens -> Rhstokens(Wanted) -> Tokens }
+                        * True { Cons.Tail -> Rhsname(Wanted) -> Tokens }
                     )
                 }
-                * Quoted { Tokens -> Rhs(Wanted) -> Text }
+                * Quoted { Tokens -> Rhstokens(Wanted) -> Tokens }
             )
         }
-        * Nil { "" }
+        * Nil { Nil() -> Tokens }
     )
 }
 
@@ -1332,13 +1464,32 @@ Tokens * Wanted => Rhsname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Name }
-                * Number { Tokens -> Rhs(Wanted) -> Text }
-                * Punct { Tokens -> Rhs(Wanted) -> Text }
-                * Quoted { Tokens -> Rhs(Wanted) -> Text }
+                * Name { Tokens }
+                * Number { Tokens -> Rhstokens(Wanted) -> Tokens }
+                * Punct { Tokens -> Rhstokens(Wanted) -> Tokens }
+                * Quoted { Tokens -> Rhstokens(Wanted) -> Tokens }
             )
         }
-        * Nil { "" }
+        * Nil { Nil() -> Tokens }
+    )
+}
+
+Tokens * Wanted => Rhstokens {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Name -> Eq(Wanted) -> (
+                        * False { Cons.Tail -> Rhstokens(Wanted) -> Tokens }
+                        * True { Cons.Tail -> Rhseq(Wanted) -> Tokens }
+                    )
+                }
+                * Number { Cons.Tail -> Rhstokens(Wanted) -> Tokens }
+                * Punct { Cons.Tail -> Rhstokens(Wanted) -> Tokens }
+                * Quoted { Cons.Tail -> Rhstokens(Wanted) -> Tokens }
+            )
+        }
+        * Nil { Nil() -> Tokens }
     )
 }
 
