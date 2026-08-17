@@ -868,7 +868,7 @@ fn canonc_compiles_a_string_chain() {
     // the scratch locals, then the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("017f7f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("01c5047f200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 

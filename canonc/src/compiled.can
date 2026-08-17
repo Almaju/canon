@@ -4,13 +4,25 @@ After = Tokens
 
 Altender = Int
 
+Argbase = Int
+
+Argget = String
+
 Argindex = Int
 
 Argkind = Int
 
 Argoffset = Int
 
+Argpark = String
+
+Argsget = String
+
+Argslot = Int
+
 Argument = Parsed
+
+Argwhere = Int
 
 Arity = Int
 
@@ -59,6 +71,8 @@ Broken = String
 Byteat = String
 
 Callargs = Parsed
+
+Callparams = Params
 
 Callslot = Parsed
 
@@ -276,6 +290,8 @@ Octet = String
 
 Onetype = String
 
+Opbyte = String
+
 Opcode = String
 
 Opensnothing = Bool
@@ -306,17 +322,13 @@ Paramtail = Params
 
 Paramtypes = String
 
-Parked = String
-
-Parking = String
-
-Parkslot = Int
-
 Parsed = Bad + Good
 
 Payloadget = String
 
 Pos = Int
+
+Position = Int
 
 Prefixlparen = Parsed
 
@@ -337,10 +349,6 @@ Quoted = Text
 Quoterun = Int
 
 Recvat = Int
-
-Recvcode = String
-
-Recvhere = String
 
 Relabel = Parsed
 
@@ -480,7 +488,73 @@ Ender => Altender {
     )
 }
 
-Argindex * Argkind * Code * Ender * Opcode * Outer * Params * Kind * Recvat * Recvcode * Tables * Tokens => Argument {
+Argbase * Paramhead * Position * Tables => Argget {
+    Tables.Whole -> Isstring(Depthleft(8) * Paramhead -> Wanted) -> (
+        * False { `20{Argbase -> Sum(Position -> Product(2)) -> Emitted}` }
+        * True {
+            `20{Argbase -> Sum(Position -> Product(2)) -> Emitted}20{
+                Argbase
+                    -> Sum(Position -> Product(2))
+                    -> Sum(1)
+                    -> Emitted
+            }`
+        }
+    )
+}
+
+Argbase * Argindex * Callparams * Kind * Tables => Argpark {
+    Callparams -> Params -> Paramcount(Seen(0)) -> Eq(0) -> (
+        * False {
+            Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
+                * False {
+                    `21{
+                        Argbase
+                            -> Sum(Argindex -> Argwhere(Callparams * Kind * Tables) -> Product(2))
+                            -> Emitted
+                    }`
+                }
+                * True {
+                    `21{
+                        Argbase
+                            -> Sum(Argindex -> Argwhere(Callparams * Kind * Tables) -> Product(2))
+                            -> Sum(1)
+                            -> Emitted
+                    }21{
+                        Argbase
+                            -> Sum(Argindex -> Argwhere(Callparams * Kind * Tables) -> Product(2))
+                            -> Emitted
+                    }`
+                }
+            )
+        }
+        * True { "" }
+    )
+}
+
+Argbase * Callparams * Tables => Argsget {
+    Callparams -> (
+        * Paramcons {
+            `{Paramcons.Paramtail -> Callparams -> Argsget(Argbase * Tables)}{
+                Paramcons.Paramhead
+                    -> Argget(
+                        Argbase
+                        * Paramcons.Paramtail -> Params -> Paramcount(Seen(0)) -> Position
+                        * Tables
+                    )
+            }`
+        }
+        * Paramnil { "" }
+    )
+}
+
+Params * Tables => Argslot {
+    Params
+        -> Scratch(Tables)
+        -> Sum(9)
+        -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36))
+}
+
+Argindex * Argkind * Callparams * Code * Ender * Opcode * Outer * Params * Kind * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
         * Good {
@@ -492,7 +566,7 @@ Argindex * Argkind * Code * Ender * Opcode * Outer * Params * Kind * Recvat * Re
                         * False {
                             Good.After
                                 -> Chain(
-                                    Code(`{Code}{Argindex -> Recvhere(Recvat * Recvcode)}{Good.Code}{Argindex -> Sum(1) -> Argindex -> Recvhere(Recvat * Recvcode)}{Opcode}`)
+                                    Code(`{Code}{Good.Code}{Params -> Argslot(Outer) -> Argbase -> Argpark(Argindex * Callparams * Good.Kind -> Kind * Outer)}{Params -> Argslot(Outer) -> Argbase -> Argsget(Callparams * Outer)}{Opcode}`)
                                     * Ender
                                     * Params
                                     * Kind
@@ -507,19 +581,25 @@ Argindex * Argkind * Code * Ender * Opcode * Outer * Params * Kind * Recvat * Re
                         -> Argument(
                             Argindex -> Sum(1) -> Argindex
                             * Argkind
-                            * Code(`{Code}{Argindex -> Recvhere(Recvat * Recvcode)}{Good.Code}`)
+                            * Callparams
+                            * Code(`{Code}{Good.Code}{Params -> Argslot(Outer) -> Argbase -> Argpark(Argindex * Callparams * Good.Kind -> Kind * Outer)}`)
                             * Ender
                             * Opcode
                             * Outer
                             * Params
                             * Kind
-                            * Recvat
-                            * Recvcode
                             * Tables
                         )
                 }
             )
         }
+    )
+}
+
+Argindex * Callparams * Kind * Tables => Argwhere {
+    Kind -> Recvat(Callparams -> Params * Tables) -> Lt(0) -> (
+        * False { Kind -> Recvat(Callparams -> Params * Tables) }
+        * True { Argindex }
     )
 }
 
@@ -625,7 +705,7 @@ Armcode * Armdepth * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee
                                         -> Unionarm(
                                             Armdepth
                                             * Closers -> Sum(1) -> Closers
-                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(6)) -> Emitted}28020041{Armtag -> Emitted}46{Kind -> Blocktype(Tables)}{Armcode}05`)
+                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(36)) -> Emitted}28020041{Armtag -> Emitted}46{Kind -> Blocktype(Tables)}{Armcode}05`)
                                             * Ender
                                             * Kind
                                             * Params
@@ -663,7 +743,7 @@ Index * Tables * Tokens => Assembly {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Emitted}017f7f{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}01c5047f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(2) -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Sum(3) -> Emitted}{Made.Funcs}`)
@@ -769,7 +849,7 @@ Code => BodySize {
     Code
         -> Length
         -> Quotient(2)
-        -> Sum(4)
+        -> Sum(5)
 }
 
 Scratch => Byteat {
@@ -778,24 +858,36 @@ Scratch => Byteat {
     }20{Scratch -> Sum(2) -> Emitted}6a41016b2d0000`
 }
 
-Argkind * Code * Ender * Opcode * Outer * Params * Kind * Recvat * Recvcode * Tables * Tokens => Callargs {
+Argkind * Callparams * Code * Ender * Opcode * Outer * Params * Kind * Tables * Tokens => Callargs {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Tokens
-                        -> Chain(Code(`{Code}{Recvcode}{Opcode}`) * Ender * Params * Kind * Outer)
+                        -> Chain(
+                            Code(`{Code}{Params -> Argslot(Outer) -> Argbase -> Argsget(Callparams * Outer)}{Opcode}`)
+                            * Ender
+                            * Params
+                            * Kind
+                            * Outer
+                        )
                 }
                 * Number {
                     Tokens
-                        -> Chain(Code(`{Code}{Recvcode}{Opcode}`) * Ender * Params * Kind * Outer)
+                        -> Chain(
+                            Code(`{Code}{Params -> Argslot(Outer) -> Argbase -> Argsget(Callparams * Outer)}{Opcode}`)
+                            * Ender
+                            * Params
+                            * Kind
+                            * Outer
+                        )
                 }
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False {
                             Tokens
                                 -> Chain(
-                                    Code(`{Code}{Recvcode}{Opcode}`)
+                                    Code(`{Code}{Params -> Argslot(Outer) -> Argbase -> Argsget(Callparams * Outer)}{Opcode}`)
                                     * Ender
                                     * Params
                                     * Kind
@@ -805,16 +897,15 @@ Argkind * Code * Ender * Opcode * Outer * Params * Kind * Recvat * Recvcode * Ta
                         * True {
                             Cons.Tail
                                 -> Argument(
-                                    Argindex(0)
+                                    Argindex(1)
                                     * Argkind
+                                    * Callparams
                                     * Code
                                     * Ender
                                     * Opcode
                                     * Outer
                                     * Params
                                     * Kind
-                                    * Recvat
-                                    * Recvcode
                                     * Tables
                                 )
                         }
@@ -822,11 +913,26 @@ Argkind * Code * Ender * Opcode * Outer * Params * Kind * Recvat * Recvcode * Ta
                 }
                 * Quoted {
                     Tokens
-                        -> Chain(Code(`{Code}{Recvcode}{Opcode}`) * Ender * Params * Kind * Outer)
+                        -> Chain(
+                            Code(`{Code}{Params -> Argslot(Outer) -> Argbase -> Argsget(Callparams * Outer)}{Opcode}`)
+                            * Ender
+                            * Params
+                            * Kind
+                            * Outer
+                        )
                 }
             )
         }
-        * Nil { Tokens -> Chain(Code(`{Code}{Recvcode}{Opcode}`) * Ender * Params * Kind * Outer) }
+        * Nil {
+            Tokens
+                -> Chain(
+                    Code(`{Code}{Params -> Argslot(Outer) -> Argbase -> Argsget(Callparams * Outer)}{Opcode}`)
+                    * Ender
+                    * Params
+                    * Kind
+                    * Outer
+                )
+        }
     )
 }
 
@@ -836,14 +942,13 @@ Code * Ender * Kind * Name * Params * Tables * Tokens * Wanted => Callslot {
             Tokens
                 -> Callargs(
                     Argkind(2)
-                    * Code(`{Code}{Kind -> Parking(Params * Tables)}`)
+                    * Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams
+                    * Code(`{Code}{Params -> Argslot(Tables) -> Argbase -> Argpark(Argindex(0) * Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams * Kind * Tables)}`)
                     * Ender
                     * Opcode(`10{Tables.Names -> Slot(Seen(0) * Wanted) -> Sum(2) -> Emitted}`)
                     * Tables -> Outer
                     * Params
                     * Name -> Kind
-                    * Kind -> Recvat(Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Params * Tables)
-                    * Kind -> Parked(Params * Tables) -> Recvcode
                     * Tables -> Pushed
                 )
         }
@@ -889,8 +994,8 @@ Closers * Code * Ender * Kind * Params * Tables * Tokens => Catchbrace {
 Params * Tables => Cellslot {
     Params
         -> Scratch(Tables)
-        -> Sum(9)
-        -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(6))
+        -> Sum(7)
+        -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36))
 }
 
 Code * Ender * Params * Kind * Tables * Tokens => Chain {
@@ -1693,7 +1798,7 @@ Armdepth * Closers * Code * Ender * Kind * Litmatch * Params * Tables * Tokens =
                                         -> Litarm(
                                             Armdepth
                                             * Closers -> Sum(1) -> Closers
-                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(6)) -> Emitted}20{Params -> Scratch(Tables) -> Sum(6) -> Sum(Armdepth -> Product(6)) -> Emitted}41{Tables.Literals -> Dataoffset(Dataat(0) * Litmatch -> Wanted) -> Emitted}41{Litmatch -> Length -> Emitted}1000{Good.Kind -> Blocktype(Tables)}{Good.Code}05`)
+                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(36)) -> Emitted}20{Params -> Scratch(Tables) -> Sum(6) -> Sum(Armdepth -> Product(36)) -> Emitted}41{Tables.Literals -> Dataoffset(Dataat(0) * Litmatch -> Wanted) -> Emitted}41{Litmatch -> Length -> Emitted}1000{Good.Kind -> Blocktype(Tables)}{Good.Code}05`)
                                             * Ender
                                             * Good.Kind -> Kind
                                             * Params
@@ -1744,7 +1849,7 @@ Code * Ender * Kind * Params * Tables * Tokens => Litdispatch {
         -> Litarm(
             Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth
             * Closers(0)
-            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(6) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(6)) -> Emitted}21{Params -> Scratch(Tables) -> Sum(5) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(6)) -> Emitted}`)
+            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(6) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36)) -> Emitted}21{Params -> Scratch(Tables) -> Sum(5) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36)) -> Emitted}`)
             * Ender
             * Kind
             * Params
@@ -1862,16 +1967,15 @@ Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Lparen {
                         * True {
                             Cons.Tail
                                 -> Argument(
-                                    Argindex(0)
+                                    Argindex(1)
                                     * Argkind
+                                    * Paramnil() -> Params -> Callparams
                                     * Code
                                     * Ender
                                     * Opcode
                                     * Tables -> Outer
                                     * Params
                                     * Kind
-                                    * 0 -> Difference(1) -> Recvat
-                                    * Recvcode("")
                                     * Tables
                                 )
                         }
@@ -2021,14 +2125,14 @@ Text => Nullname {
 Code * Ender * Kind * Name * Params * Tables * Tokens => Numop {
     Name -> Eq("String") -> (
         * False {
-            Name -> Opcode -> Length -> Eq(0) -> (
+            Name -> Opbyte -> Length -> Eq(0) -> (
                 * False {
                     Tokens
                         -> Lparen(
                             Argkind(0)
                             * Code
                             * Ender
-                            * Name -> Opcode
+                            * Name -> Opbyte -> Opcode
                             * Params
                             * Kind("")
                             * Tables
@@ -2056,7 +2160,7 @@ Paramhead * Tables => Onetype {
     )
 }
 
-Name => Opcode {
+Name => Opbyte {
     Name -> (
         * "Difference" { "6b" }
         * "Eq" { "46" }
@@ -2231,40 +2335,6 @@ Params * Tables => Paramtypes {
     )
 }
 
-Kind * Params * Tables => Parked {
-    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
-        * False { `20{Params -> Parkslot(Tables) -> Emitted}` }
-        * True {
-            `20{Params -> Parkslot(Tables) -> Emitted}20{
-                Params
-                    -> Parkslot(Tables)
-                    -> Sum(1)
-                    -> Emitted
-            }`
-        }
-    )
-}
-
-Kind * Params * Tables => Parking {
-    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
-        * False { `21{Params -> Parkslot(Tables) -> Emitted}` }
-        * True {
-            `21{Params -> Parkslot(Tables) -> Sum(1) -> Emitted}21{
-                Params
-                    -> Parkslot(Tables)
-                    -> Emitted
-            }`
-        }
-    )
-}
-
-Params * Tables => Parkslot {
-    Params
-        -> Scratch(Tables)
-        -> Sum(7)
-        -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(6))
-}
-
 Params * Tables * Tokens => Parsed {
     Tokens -> (
         * Cons {
@@ -2287,14 +2357,14 @@ Params * Tables * Tokens => Parsed {
 Bindslot * Params * Tables * Wanted => Payloadget {
     Tables.Whole -> Isstring(Depthleft(8) * Wanted) -> (
         * False {
-            `20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Bindslot -> Product(6)) -> Emitted}280204`
+            `20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Bindslot -> Product(36)) -> Emitted}280204`
         }
         * True {
-            `20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Bindslot -> Product(6)) -> Emitted}28020420{
+            `20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Bindslot -> Product(36)) -> Emitted}28020420{
                 Params
                     -> Scratch(Tables)
                     -> Sum(5)
-                    -> Sum(Bindslot -> Product(6))
+                    -> Sum(Bindslot -> Product(36))
                     -> Emitted
             }280208`
         }
@@ -2466,13 +2536,6 @@ Kind * Params * Tables => Recvat {
     False() -> Loose -> Paramat(Params * Tables * Kind -> Wanted) -> Lt(0) -> (
         * False { False() -> Loose -> Paramat(Params * Tables * Kind -> Wanted) }
         * True { True() -> Loose -> Paramat(Params * Tables * Kind -> Wanted) }
-    )
-}
-
-Argindex * Recvat * Recvcode => Recvhere {
-    Argindex -> Eq(Recvat) -> (
-        * False { "" }
-        * True { Recvcode }
     )
 }
 
@@ -3144,7 +3207,7 @@ Code * Ender * Kind * Params * Tables * Tokens => Uniondispatch {
         -> Unionarm(
             Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth
             * Closers(0)
-            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(5) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(6)) -> Emitted}`)
+            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(5) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36)) -> Emitted}`)
             * Ender
             * Kind
             * Params
