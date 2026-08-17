@@ -28,6 +28,8 @@ Codes = String
 
 Codesection = Section
 
+Concat = String
+
 Cons = Head * Tail
 
 Count = Int
@@ -67,6 +69,8 @@ Funcs = String
 Funcsection = Section
 
 Gathered = Params
+
+Globalsection = Section
 
 Good = After * Code * Stringy
 
@@ -247,16 +251,35 @@ Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Argument {
         * Good {
             Good.Stringy -> (
                 * False {
-                    Good.After
-                        -> Chain(
-                            Code(`{Code}{Good.Code}{Opcode}`)
-                            * Ender
-                            * Params
-                            * Stringy
-                            * Tables
-                        )
+                    Stringy -> (
+                        * False {
+                            Good.After
+                                -> Chain(
+                                    Code(`{Code}{Good.Code}{Opcode}`)
+                                    * Ender
+                                    * Params
+                                    * Stringy
+                                    * Tables
+                                )
+                        }
+                        * True { Bad("this operation takes a string") -> Parsed }
+                    )
                 }
-                * True { Bad("an operation's argument must be a number") -> Parsed }
+                * True {
+                    Stringy -> (
+                        * False { Bad("this operation takes a number") -> Parsed }
+                        * True {
+                            Good.After
+                                -> Chain(
+                                    Code(`{Code}{Good.Code}{Opcode}`)
+                                    * Ender
+                                    * Params
+                                    * Stringy
+                                    * Tables
+                                )
+                        }
+                    )
+                }
             )
         }
     )
@@ -278,7 +301,7 @@ Index * Tables * Tokens => Assembly {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Emitted}01017f{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}01057f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Emitted}{Made.Funcs}`)
@@ -456,6 +479,30 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens * Truecode => Clos
 
 Made => Codesection {
     Sectionbody(`{Made.Count -> Emitted}{Made.Codes}`) -> Section(Tag(10))
+}
+
+Scratch => Concat {
+    `21{Scratch -> Sum(3) -> Emitted}21{Scratch -> Sum(2) -> Emitted}21{
+        Scratch
+            -> Sum(1)
+            -> Emitted
+    }21{Scratch -> Emitted}230021{Scratch -> Sum(4) -> Emitted}230020{Scratch -> Sum(1) -> Emitted}20{
+        Scratch
+            -> Sum(3)
+            -> Emitted
+    }6a6a240020{Scratch -> Sum(4) -> Emitted}20{Scratch -> Emitted}20{Scratch -> Sum(1) -> Emitted}fc0a000020{
+        Scratch
+            -> Sum(4)
+            -> Emitted
+    }20{Scratch -> Sum(1) -> Emitted}6a20{Scratch -> Sum(2) -> Emitted}20{
+        Scratch
+            -> Sum(3)
+            -> Emitted
+    }fc0a000020{Scratch -> Sum(4) -> Emitted}20{Scratch -> Sum(1) -> Emitted}20{
+        Scratch
+            -> Sum(3)
+            -> Emitted
+    }6a`
 }
 
 Literals => Data {
@@ -648,6 +695,10 @@ Params * Tokens * Wasname => Gathered {
     )
 }
 
+Data => Globalsection {
+    Sectionbody(`017f0141{Data -> Length -> Quotient(2) -> Emitted}0b`) -> Section(Tag(6))
+}
+
 Tokens => Header {
     Tokens
         -> Gathered(Paramnil() -> Params * False() -> Wasname)
@@ -829,9 +880,9 @@ Pos * Source => Marked {
 }
 
 Data * Made => Module {
-    `0061736d01000000{Made -> Typesection}{Made -> Funcsection}0503010001{Made -> Exportsection}{
-        Made -> Codesection
-    }{Data -> Datasection}`
+    `0061736d01000000{Made -> Typesection}{Made -> Funcsection}0503010001{Data -> Globalsection}{
+        Made -> Exportsection
+    }{Made -> Codesection}{Data -> Datasection}`
 }
 
 Tokens => Names {
@@ -925,7 +976,24 @@ Code * Ender * Params * Stringy * Tables * Tokens => Opname {
                         }
                         * True {
                             Name -> Eq("Length") -> (
-                                * False { Bad(`{Name} is not a string operation`) -> Parsed }
+                                * False {
+                                    Name -> Eq("Joined") -> (
+                                        * False {
+                                            Bad(`{Name} is not a string operation`) -> Parsed
+                                        }
+                                        * True {
+                                            Cons.Tail
+                                                -> Lparen(
+                                                    Code
+                                                    * Ender
+                                                    * Params -> Scratch(Tables) -> Concat -> Opcode
+                                                    * Params
+                                                    * Stringy
+                                                    * Tables
+                                                )
+                                        }
+                                    )
+                                }
                                 * True {
                                     Cons.Tail
                                         -> Chain(

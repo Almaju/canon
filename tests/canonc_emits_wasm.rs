@@ -153,7 +153,8 @@ fn canonc_string_arg(name: &str, source: &str, export: &str, arg: &str) -> Strin
     let memory = instance
         .get_memory(&mut store, "memory")
         .expect("emitted module should export its memory");
-    let at = 1024;
+    // past anything the bump allocator will hand out in these tests
+    let at = 32768;
     memory
         .write(&mut store, at, arg.as_bytes())
         .expect("write the argument into memory");
@@ -642,7 +643,7 @@ fn canonc_compiles_a_string_literal() {
     );
     assert_eq!(
         canonc_stdout("strarg.can", "Unit => Answer { 1 -> Sum(\"hi\") }\n"),
-        "an operation's argument must be a number"
+        "this operation takes a number"
     );
 }
 
@@ -709,7 +710,7 @@ fn canonc_compiles_a_string_chain() {
     // one i32 scratch local, then the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("01017f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("01057f200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 
@@ -737,5 +738,53 @@ fn canonc_compiles_a_string_chain() {
             "Answer = Int\n\nUnit => Answer { \"hi\" -> ( * False { 0 } * True { 1 } ) }\n"
         ),
         "a dispatch needs a number to branch on"
+    );
+}
+
+#[test]
+fn canonc_concatenates_strings() {
+    // `Joined` is the first operation that has to allocate. The bump
+    // pointer is a mutable global starting past the data segment, and
+    // it moves inline — `global.get; global.get; n; i32.add;
+    // global.set` — so no helper function exists to shift every other
+    // function's index.
+    assert_eq!(
+        canonc_string(
+            "join.can",
+            "Greeting = String\n\nUnit => Greeting { \"hello, \" -> Joined(\"world\") }\n",
+            "greeting"
+        ),
+        "hello, world"
+    );
+
+    // It chains, so the second concatenation allocates over the first's
+    // result rather than reusing the literals' offsets.
+    assert_eq!(
+        canonc_string(
+            "join3.can",
+            "Greeting = String\n\nUnit => Greeting { \"a\" -> Joined(\"b\") -> Joined(\"c\") }\n",
+            "greeting"
+        ),
+        "abc"
+    );
+
+    // And it works on what a parameter brought in.
+    assert_eq!(
+        canonc_string_arg(
+            "shout.can",
+            "Shout = String\n\nText = String\n\nText => Shout { Text -> Joined(\"!\") }\n",
+            "shout",
+            "hey"
+        ),
+        "hey!"
+    );
+
+    // The argument's kind has to match what the operation produces.
+    assert_eq!(
+        canonc_stdout(
+            "joinnum.can",
+            "Greeting = String\n\nUnit => Greeting { \"a\" -> Joined(1) }\n"
+        ),
+        "this operation takes a string"
     );
 }
