@@ -385,8 +385,6 @@ Widened = Int
 
 Widest = Int
 
-Widestore = String
-
 Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
@@ -616,7 +614,7 @@ Ender * Params * Tables * Tokens => Body {
                         * False {
                             Cons.Tail
                                 -> Field(
-                                    Tables.Binds -> Bindslot(Name -> Wanted) -> Payloadget(Params * Tables) -> Code
+                                    Tables.Binds -> Bindslot(Name -> Wanted) -> Payloadget(Params * Tables * Name -> Wanted) -> Code
                                     * Ender
                                     * Params
                                     * Name -> Kind
@@ -1219,19 +1217,14 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Inject {
         -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname)
         -> Lt(0) -> (
         * False {
-            Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Eq(8) -> (
-                * False {
-                    Tokens
-                        -> Chain(
-                            Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables.Whole -> Rhstokens(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
-                            * Ender
-                            * Params
-                            * Name -> Kind
-                            * Tables
-                        )
-                }
-                * True { Bad(`a {Kind} payload is not stored in a {Name} yet`) -> Parsed }
-            )
+            Tokens
+                -> Chain(
+                    Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables.Whole -> Rhstokens(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
+                    * Ender
+                    * Params
+                    * Name -> Kind
+                    * Tables
+                )
         }
         * True { Bad(`{Kind} is not a variant of {Name}`) -> Parsed }
     )
@@ -1666,8 +1659,19 @@ Params * Tables * Tokens => Parsed {
     )
 }
 
-Bindslot * Params * Tables => Payloadget {
-    `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}280204`
+Bindslot * Params * Tables * Wanted => Payloadget {
+    Tables.Whole -> Isstring(Depthleft(8) * Wanted) -> (
+        * False { `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}280204` }
+        * True {
+            `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}28020420{
+                Params
+                    -> Scratch(Tables)
+                    -> Sum(3)
+                    -> Sum(Bindslot)
+                    -> Emitted
+            }280208`
+        }
+    )
 }
 
 Code * Ender * Kind * Name * Params * Tables * Tokens => Prodarg {
@@ -2127,13 +2131,32 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
 }
 
 Scratch * Unionsize * Variantindex * Wide => Tagging {
-    `21{Scratch -> Emitted}230021{Scratch -> Sum(2) -> Emitted}230041{Unionsize -> Emitted}6a240020{
-        Scratch
-            -> Sum(2)
-            -> Emitted
-    }41{Variantindex -> Emitted}36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}{
-        Wide -> Widestore
-    }20{Scratch -> Sum(2) -> Emitted}`
+    Wide -> Eq(8) -> (
+        * False {
+            `21{Scratch -> Emitted}230021{Scratch -> Sum(2) -> Emitted}230041{Unionsize -> Emitted}6a240020{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }41{Variantindex -> Emitted}36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}36020420{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }`
+        }
+        * True {
+            `21{Scratch -> Sum(1) -> Emitted}21{Scratch -> Emitted}230021{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }230041{Unionsize -> Emitted}6a240020{Scratch -> Sum(2) -> Emitted}41{
+                Variantindex -> Emitted
+            }36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}36020420{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }20{Scratch -> Sum(1) -> Emitted}36020820{Scratch -> Sum(2) -> Emitted}`
+        }
+    )
 }
 
 Armtag * Scratch => Testing {
@@ -2500,12 +2523,5 @@ Fieldwidth * Seen => Widest {
     Seen -> Ge(Fieldwidth) -> (
         * False { Fieldwidth }
         * True { Seen }
-    )
-}
-
-Wide => Widestore {
-    Wide -> Eq(8) -> (
-        * False { "360204" }
-        * True { "" }
     )
 }
