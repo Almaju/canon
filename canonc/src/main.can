@@ -112,6 +112,8 @@ Hexed = String
 
 Index = Int
 
+Inject = Parsed
+
 Intext = Bool
 
 IsDigit = Bool
@@ -125,6 +127,8 @@ IsWord = Bool
 Isproduct = Bool
 
 Isstring = Bool
+
+Isunion = Bool
 
 Itoabody = String
 
@@ -236,6 +240,8 @@ Rhseq = Tokens
 
 Rhsname = Tokens
 
+Rhsop = Int
+
 Rhstokens = Tokens
 
 Run = Int
@@ -280,6 +286,8 @@ Tables = Literals * Names * Whole
 
 Tag = Int
 
+Tagging = String
+
 Tail = Tokens
 
 Text = String
@@ -307,7 +315,11 @@ Types = String
 
 Typesection = Section
 
+Unionsize = Int
+
 Utf8 = String
+
+Variantindex = Int
 
 Wanted = Text
 
@@ -321,7 +333,13 @@ Wasname = Bool
 
 Whole = Tokens
 
+Wide = Int
+
 Widened = Int
+
+Widest = Int
+
+Widestore = String
 
 Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
@@ -1016,6 +1034,30 @@ Pos * Text => Hexed {
     )
 }
 
+Code * Ender * Kind * Name * Params * Tables * Tokens => Inject {
+    Tables.Whole
+        -> Rhstokens(Name -> Wanted)
+        -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname)
+        -> Lt(0) -> (
+        * False {
+            Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Eq(8) -> (
+                * False {
+                    Tokens
+                        -> Chain(
+                            Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables.Whole -> Rhstokens(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
+                            * Ender
+                            * Params
+                            * Name -> Kind
+                            * Tables
+                        )
+                }
+                * True { Bad(`a {Kind} payload is not stored in a {Name} yet`) -> Parsed }
+            )
+        }
+        * True { Bad(`{Kind} is not a variant of {Name}`) -> Parsed }
+    )
+}
+
 Int => IsDigit {
     Int -> Ge(48) -> (
         * False { False() }
@@ -1055,22 +1097,9 @@ Int => IsWord {
 }
 
 Tokens * Wanted => Isproduct {
-    Tokens -> Rhstokens(Wanted) -> (
-        * Cons {
-            Cons.Tail -> (
-                * Cons {
-                    Cons.Head -> (
-                        * Name { False() }
-                        * Number { False() }
-                        * Punct { Punct -> Eq(42) }
-                        * Quoted { False() }
-                    )
-                }
-                * Nil { False() }
-            )
-        }
-        * Nil { False() }
-    )
+    Tokens
+        -> Rhsop(Wanted)
+        -> Eq(42)
 }
 
 Depthleft * Tokens * Wanted => Isstring {
@@ -1091,6 +1120,12 @@ Depthleft * Tokens * Wanted => Isstring {
             )
         }
     )
+}
+
+Tokens * Wanted => Isunion {
+    Tokens
+        -> Rhsop(Wanted)
+        -> Eq(43)
 }
 
 Unit => Itoabody {
@@ -1516,7 +1551,12 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Relabel {
     Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
         * False {
             Tables.Whole -> Isproduct(Name -> Wanted) -> (
-                * False { Tokens -> Chain(Code * Ender * Params * Name -> Kind * Tables) }
+                * False {
+                    Tables.Whole -> Isunion(Name -> Wanted) -> (
+                        * False { Tokens -> Chain(Code * Ender * Params * Name -> Kind * Tables) }
+                        * True { Tokens -> Inject(Code * Ender * Kind * Name * Params * Tables) }
+                    )
+                }
                 * True { Tokens -> Prodlparen(Code * Ender * Kind * Name * Params * Tables) }
             )
         }
@@ -1586,6 +1626,25 @@ Tokens * Wanted => Rhsname {
             )
         }
         * Nil { Nil() -> Tokens }
+    )
+}
+
+Tokens * Wanted => Rhsop {
+    Tokens -> Rhstokens(Wanted) -> (
+        * Cons {
+            Cons.Tail -> (
+                * Cons {
+                    Cons.Head -> (
+                        * Name { 0 }
+                        * Number { 0 }
+                        * Punct { Punct }
+                        * Quoted { 0 }
+                    )
+                }
+                * Nil { 0 }
+            )
+        }
+        * Nil { 0 }
     )
 }
 
@@ -1843,6 +1902,16 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
     )
 }
 
+Scratch * Unionsize * Variantindex * Wide => Tagging {
+    `21{Scratch -> Emitted}230021{Scratch -> Sum(2) -> Emitted}230041{Unionsize -> Emitted}6a240020{
+        Scratch
+            -> Sum(2)
+            -> Emitted
+    }41{Variantindex -> Emitted}36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}{
+        Wide -> Widestore
+    }20{Scratch -> Sum(2) -> Emitted}`
+}
+
 Pos * Source => Textrun {
     Pos -> Gt(Source -> Length) -> (
         * False {
@@ -2042,6 +2111,90 @@ Kind * Params * Tables => TypeEntry {
     )
 }
 
+Made => Typesection {
+    Sectionbody(`{Made.Count -> Sum(3) -> Emitted}{Streqtype()}6000027f7f60017f027f7f{Made.Types}`)
+        -> Section(Tag(1))
+}
+
+Seen * Tables * Tokens * Wanted * Wasname => Unionsize {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Wasname -> (
+                        * False {
+                            Cons.Tail
+                                -> Unionsize(
+                                    Seen -> Widest(Tables.Whole -> Fieldwidth(Name -> Wanted)) -> Seen
+                                    * Tables
+                                    * Wanted
+                                    * True() -> Wasname
+                                )
+                        }
+                        * True { Seen -> Sum(4) }
+                    )
+                }
+                * Number { Seen -> Sum(4) }
+                * Punct {
+                    Punct -> Eq(43) -> (
+                        * False { Seen -> Sum(4) }
+                        * True {
+                            Cons.Tail -> Unionsize(Seen * Tables * Wanted * False() -> Wasname)
+                        }
+                    )
+                }
+                * Quoted { Seen -> Sum(4) }
+            )
+        }
+        * Nil { Seen -> Sum(4) }
+    )
+}
+
+Export * Pos => Utf8 {
+    Pos -> Gt(Export -> Length) -> (
+        * False {
+            `{Export -> ByteAt(Pos) -> Lowered -> Octet}{Export -> Utf8(Pos -> Sum(1) -> Pos)}`
+        }
+        * True { "" }
+    )
+}
+
+Seen * Tokens * Wanted * Wasname => Variantindex {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name {
+                    Wasname -> (
+                        * False {
+                            Name -> Eq(Wanted) -> (
+                                * False {
+                                    Cons.Tail
+                                        -> Variantindex(
+                                            Seen -> Sum(1) -> Seen
+                                            * Wanted
+                                            * True() -> Wasname
+                                        )
+                                }
+                                * True { Seen }
+                            )
+                        }
+                        * True { 0 -> Difference(1) }
+                    )
+                }
+                * Number { 0 -> Difference(1) }
+                * Punct {
+                    Punct -> Eq(43) -> (
+                        * False { 0 -> Difference(1) }
+                        * True { Cons.Tail -> Variantindex(Seen * Wanted * False() -> Wasname) }
+                    )
+                }
+                * Quoted { 0 -> Difference(1) }
+            )
+        }
+        * Nil { 0 -> Difference(1) }
+    )
+}
+
 Unit => Result<Program, IoError> {
     Args()
         -> At(1)?
@@ -2052,20 +2205,6 @@ Unit => Result<Program, IoError> {
         -> Tokens(Fmtdepth(0) * False() -> Intext * Pos(1))
         -> Reported
     Unit() -> Ok
-}
-
-Made => Typesection {
-    Sectionbody(`{Made.Count -> Sum(3) -> Emitted}{Streqtype()}6000027f7f60017f027f7f{Made.Types}`)
-        -> Section(Tag(1))
-}
-
-Export * Pos => Utf8 {
-    Pos -> Gt(Export -> Length) -> (
-        * False {
-            `{Export -> ByteAt(Pos) -> Lowered -> Octet}{Export -> Utf8(Pos -> Sum(1) -> Pos)}`
-        }
-        * True { "" }
-    )
 }
 
 Ender => Wantsliteral {
@@ -2083,5 +2222,19 @@ Pos * Source => Widened {
     Source -> ByteAt(Pos -> Sum(1)) -> Eq(62) -> (
         * False { Pos -> Sum(1) }
         * True { Pos -> Sum(2) }
+    )
+}
+
+Fieldwidth * Seen => Widest {
+    Seen -> Ge(Fieldwidth) -> (
+        * False { Fieldwidth }
+        * True { Seen }
+    )
+}
+
+Wide => Widestore {
+    Wide -> Eq(8) -> (
+        * False { "360204" }
+        * True { "" }
     )
 }
