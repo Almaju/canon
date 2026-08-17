@@ -537,6 +537,14 @@ fn canonc_compiles_a_call_to_another_declaration() {
     // A call is an operand too, so it composes with the arithmetic.
     let mixed = "Int => Double { Int -> Product(2) }\n\nInt => Odd { Int -> Double -> Sum(1) }\n";
     assert_eq!(canonc_apply("odd.can", mixed, "odd", Some(3)), 7);
+
+    // The same for a string in hand: past the string operations, a name
+    // is a call before it is a relabel, and it takes its arguments.
+    let wrapped = "Padded = String\n\nShown = String\n\nText = String\n\nWidth = Int\n\nText * Width => Padded { Text -> Joined(Width -> String) }\n\nText => Shown { Text -> Padded(Width(7)) }\n";
+    assert_eq!(
+        canonc_string_arg("strcall.can", wrapped, "shown", "n="),
+        "n=7"
+    );
 }
 
 #[test]
@@ -688,16 +696,19 @@ fn canonc_nests_call_arguments() {
 
 #[test]
 fn canonc_calls_a_declaration_that_takes_nothing() {
-    // A `Unit` declaration is a constant, and naming one in a body calls
-    // it — as the body's head or as an operand. Until now it could be
-    // declared and never used. The name table tells the two arities
+    // A `Unit` declaration is a constant, and `Seed()` calls it — as the
+    // body's head or as an operand. The name table tells the two arities
     // apart, so the same name still can't be *piped* into: there is
     // nothing for the receiver to fill.
-    let head = "Unit => Seed { 7 }\n\nUnit => Total { Seed -> Sum(1) }\n";
+    let head = "Unit => Seed { 7 }\n\nUnit => Total { Seed() -> Sum(1) }\n";
     assert_eq!(canonc_export("seedhead.can", head, "total"), 8);
 
-    let operand = "Unit => Seed { 7 }\n\nInt => Shifted { Int -> Sum(Seed) }\n";
+    let operand = "Unit => Seed { 7 }\n\nInt => Shifted { Int -> Sum(Seed()) }\n";
     assert_eq!(canonc_apply("seedarg.can", operand, "shifted", Some(2)), 9);
+
+    // A string constant is the same call, two results wide.
+    let text = "Seed = String\n\nShown = String\n\nUnit => Seed { \"s\" }\n\nUnit => Shown { `<{Seed()}>` }\n";
+    assert_eq!(canonc_string("seedstr.can", text, "shown"), "<s>");
 
     assert_eq!(
         canonc_stdout(
@@ -1267,6 +1278,31 @@ fn canonc_tags_a_union_variant() {
             &format!("Other = Int\n\n{decls}Count => Wrapped {{ Count -> Other -> Slot }}\n")
         ),
         "Wrapped: Other is not a variant of Slot"
+    );
+
+    // A value already carrying the union is relabelled, not injected a
+    // second time — the two names root at the same declaration.
+    assert_eq!(
+        canonc_tagged(
+            "tagsame.can",
+            &format!("Marked = Slot\n\n{decls}Count => Wrapped {{ Count -> Slot -> Marked }}\n"),
+            "wrapped",
+            42
+        ),
+        (0, 42)
+    );
+
+    // A `Unit` variant carries nothing, so its cell holds the tag alone.
+    let unitv = "Empty = Unit\n\nFull = Int\n\nMaybe = Empty + Full\n\nNothing = Maybe\n\n";
+    assert_eq!(
+        canonc_tagged(
+            "tagunit.can",
+            &format!("{unitv}Full => Nothing {{ Empty() -> Maybe }}\n"),
+            "nothing",
+            0
+        )
+        .0,
+        0
     );
 }
 
