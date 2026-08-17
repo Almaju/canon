@@ -246,6 +246,8 @@ Onetype = String
 
 Opcode = String
 
+Opensparen = Bool
+
 Opname = Parsed
 
 Ordinary = Tokens
@@ -594,7 +596,7 @@ Index * Tables * Tokens => Assembly {
     Tokens -> (
         * Cons {
             Tokens -> Parsed(Tables * Tokens -> Header) -> (
-                * Bad { Bad -> Broken -> Assembly }
+                * Bad { Broken(`{Tokens -> Export(Prev(""))}: {Bad}`) -> Assembly }
                 * Good {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
@@ -1653,23 +1655,13 @@ Tokens => Names {
 }
 
 Ender * Name * Params * Tables * Tokens => Nonbind {
-    Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
+    Tokens -> Opensparen -> (
         * False {
-            Tokens
-                -> Field(
-                    Params -> Localget(Tables * Name -> Wanted) -> Code
-                    * Ender
-                    * Params
-                    * Name -> Kind
-                    * Tables
-                )
-        }
-        * True {
-            Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
+            Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
                 * False {
                     Tokens
-                        -> Chain(
-                            Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(2) -> Emitted}`)
+                        -> Field(
+                            Params -> Localget(Tables * Name -> Wanted) -> Code
                             * Ender
                             * Params
                             * Name -> Kind
@@ -1677,11 +1669,26 @@ Ender * Name * Params * Tables * Tokens => Nonbind {
                         )
                 }
                 * True {
-                    Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
-                        * False { Tokens -> Prefixlparen(Ender * Name * Params * Tables) }
+                    Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Lt(0) -> (
+                        * False {
+                            Tokens
+                                -> Chain(
+                                    Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(2) -> Emitted}`)
+                                    * Ender
+                                    * Params
+                                    * Name -> Kind
+                                    * Tables
+                                )
+                        }
                         * True { Ender -> Wantsliteral -> Bad -> Parsed }
                     )
                 }
+            )
+        }
+        * True {
+            Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
+                * False { Tokens -> Prefixlparen(Ender * Name * Params * Tables) }
+                * True { Ender -> Wantsliteral -> Bad -> Parsed }
             )
         }
     )
@@ -1759,6 +1766,20 @@ Name => Opcode {
         * "Remainder" { "6f" }
         * "Sum" { "6a" }
         * String { "" }
+    )
+}
+
+Tokens => Opensparen {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { False() }
+                * Number { False() }
+                * Punct { Punct -> Eq(40) }
+                * Quoted { False() }
+            )
+        }
+        * Nil { False() }
     )
 }
 

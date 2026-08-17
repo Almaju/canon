@@ -308,7 +308,7 @@ fn canonc_reports_a_body_with_no_literal() {
     // silent `i32.const 0`.
     assert_eq!(
         canonc_stdout("empty.can", "Unit => Answer { }\n"),
-        "expected a literal"
+        "Answer: expected a literal"
     );
 }
 
@@ -371,19 +371,23 @@ fn canonc_reports_what_the_grammar_wanted() {
         (
             "op.can",
             "Unit => Answer { 1 -> Frobnicate(2) }\n",
-            "Frobnicate is not a declaration or an operation",
+            "Answer: Frobnicate is not a declaration or an operation",
         ),
         (
             "lparen.can",
             "Unit => Answer { 1 -> Sum 2 }\n",
-            "expected `(`",
+            "Answer: expected `(`",
         ),
         (
             "rparen.can",
             "Unit => Answer { 1 -> Sum(2 }\n",
-            "expected `->` or `)`",
+            "Answer: expected `->` or `)`",
         ),
-        ("bare.can", "Unit => Answer { -> }\n", "expected a literal"),
+        (
+            "bare.can",
+            "Unit => Answer { -> }\n",
+            "Answer: expected a literal",
+        ),
     ] {
         assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
     }
@@ -438,7 +442,7 @@ fn canonc_rejects_a_name_that_is_not_the_parameter() {
     // the body to refer to.
     assert_eq!(
         canonc_stdout("noparam.can", "Unit => Answer { Int -> Sum(1) }\n"),
-        "expected a literal"
+        "Answer: expected a literal"
     );
 }
 
@@ -468,7 +472,7 @@ fn canonc_compiles_the_parameter_as_an_operand() {
     // Still nothing to refer to when the declaration takes `Unit`.
     assert_eq!(
         canonc_stdout("noparamop.can", "Unit => Answer { 2 -> Product(Int) }\n"),
-        "expected a literal operand"
+        "Answer: expected a literal operand"
     );
 }
 
@@ -545,7 +549,7 @@ fn canonc_rejects_a_call_to_a_declaration_taking_no_parameter() {
             "unitcall.can",
             "Unit => Seed { 7 }\n\nInt => Grown { Int -> Seed }\n"
         ),
-        "Seed is not a declaration or an operation"
+        "Grown: Seed is not a declaration or an operation"
     );
 }
 
@@ -605,22 +609,22 @@ fn canonc_reports_what_a_dispatch_wanted() {
         (
             "nostar.can",
             "Unit => Answer { 1 -> Eq(1) -> ( False { 2 } * True { 3 } ) }\n",
-            "expected `*`",
+            "Answer: expected `*`",
         ),
         (
             "noname.can",
             "Unit => Answer { 1 -> Eq(1) -> ( * Nope { 2 } * True { 3 } ) }\n",
-            "expected `False`",
+            "Answer: expected `False`",
         ),
         (
             "noorder.can",
             "Unit => Answer { 1 -> Eq(1) -> ( * False { 2 } * Nope { 3 } ) }\n",
-            "expected `True`",
+            "Answer: expected `True`",
         ),
         (
             "noclose.can",
             "Unit => Answer { 1 -> Eq(1) -> ( * False { 2 } * True { 3 } }\n",
-            "expected `)`",
+            "Answer: expected `)`",
         ),
     ] {
         assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
@@ -678,7 +682,7 @@ fn canonc_nests_call_arguments() {
     // And the diagnostic names the terminator the argument wanted.
     assert_eq!(
         canonc_stdout("unclosed.can", "Unit => Answer { 1 -> Sum(2 -> Sum(3) }\n"),
-        "expected `->` or `)`"
+        "Answer: expected `->` or `)`"
     );
 }
 
@@ -700,7 +704,7 @@ fn canonc_calls_a_declaration_that_takes_nothing() {
             "seedpipe.can",
             "Unit => Seed { 7 }\n\nInt => Nope { Int -> Seed }\n"
         ),
-        "Seed is not a declaration or an operation"
+        "Nope: Seed is not a declaration or an operation"
     );
 }
 
@@ -735,11 +739,11 @@ fn canonc_compiles_a_string_literal() {
     // module that reads the bytes as a number.
     assert_eq!(
         canonc_stdout("strop.can", "Unit => Answer { \"hi\" -> Sum(1) }\n"),
-        "Sum is not a declaration or an operation"
+        "Answer: Sum is not a declaration or an operation"
     );
     assert_eq!(
         canonc_stdout("strarg.can", "Unit => Answer { 1 -> Sum(\"hi\") }\n"),
-        "this operation takes a number"
+        "Answer: this operation takes a number"
     );
 }
 
@@ -826,7 +830,7 @@ fn canonc_compiles_a_string_chain() {
             "numop.can",
             "Answer = Int\n\nUnit => Answer { \"hi\" -> Sum(1) }\n"
         ),
-        "Sum is not a declaration or an operation"
+        "Answer: Sum is not a declaration or an operation"
     );
     // A string scrutinee dispatches on literals now, so `False` reads as
     // the catch-all and the arm after it has nowhere to go.
@@ -835,7 +839,7 @@ fn canonc_compiles_a_string_chain() {
             "strdispatch.can",
             "Answer = Int\n\nUnit => Answer { \"hi\" -> ( * False { 0 } * True { 1 } ) }\n"
         ),
-        "expected `)`"
+        "Answer: expected `)`"
     );
 }
 
@@ -883,7 +887,7 @@ fn canonc_concatenates_strings() {
             "joinnum.can",
             "Greeting = String\n\nUnit => Greeting { \"a\" -> Joined(1) }\n"
         ),
-        "this operation takes a string"
+        "Greeting: this operation takes a string"
     );
 }
 
@@ -994,7 +998,7 @@ fn canonc_slices_a_string() {
             "subbad.can",
             "From = Int\n\nPart = String\n\nUnit => Part { \"abc\" -> Substring(1 -> From * \"x\") }\n"
         ),
-        "a slice bound must be a number"
+        "Part: a slice bound must be a number"
     );
 }
 
@@ -1025,7 +1029,7 @@ fn canonc_relabels_through_a_newtype() {
             "unknown.can",
             "Answer = Int\n\nUnit => Answer { 1 -> Zork }\n"
         ),
-        "Zork is not a declaration or an operation"
+        "Answer: Zork is not a declaration or an operation"
     );
 }
 
@@ -1188,14 +1192,14 @@ fn canonc_reads_a_product_field() {
             "pnofield.can",
             &format!("{decls}Pair => Left {{ Pair.Nope }}\n")
         ),
-        "Pair has no field Nope"
+        "Left: Pair has no field Nope"
     );
     assert_eq!(
         canonc_stdout(
             "pnoprod.can",
             "Answer = Int\n\nCount = Int\n\nCount => Answer { Count.Nope }\n"
         ),
-        "Count has no fields to read"
+        "Answer: Count has no fields to read"
     );
 }
 
@@ -1235,7 +1239,7 @@ fn canonc_builds_a_product() {
             "buildnofield.can",
             &format!("{decls}Right => Total {{ Right -> Pair(3 -> Boxed) -> Boxed }}\n")
         ),
-        "Pair has no field of type Boxed"
+        "Total: Pair has no field of type Boxed"
     );
 }
 
@@ -1262,7 +1266,7 @@ fn canonc_tags_a_union_variant() {
             "tagbad.can",
             &format!("Other = Int\n\n{decls}Count => Wrapped {{ Count -> Other -> Slot }}\n")
         ),
-        "Other is not a variant of Slot"
+        "Wrapped: Other is not a variant of Slot"
     );
 }
 
@@ -1293,7 +1297,7 @@ fn canonc_dispatches_on_a_union() {
             "udbad.can",
             &format!("{decls}Slot => Kindof {{ Slot -> ( * Count {{ 10 }} * Nope {{ 20 }} ) }}\n")
         ),
-        "Nope is not a variant of Slot"
+        "Kindof: Nope is not a variant of Slot"
     );
 }
 
@@ -1380,6 +1384,6 @@ fn canonc_dispatches_on_a_string() {
             "lnocatch.can",
             "Code = Int\n\nName = String\n\nName => Code { Name -> ( * \"Eq\" { 70 } ) }\n"
         ),
-        "expected `*`"
+        "Code: expected `*`"
     );
 }
