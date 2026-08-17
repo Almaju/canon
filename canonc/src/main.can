@@ -2,7 +2,9 @@ Acc = Int
 
 After = Tokens
 
-Argkind = Bool
+Altender = Int
+
+Argkind = Int
 
 Argoffset = Int
 
@@ -92,6 +94,8 @@ Dispatch = Parsed
 
 Emitted = String
 
+Ended = Int
+
 Ender = Int
 
 Ends = String
@@ -136,7 +140,7 @@ Gathered = Params
 
 Globalsection = Section
 
-Good = After * Code * Kind
+Good = After * Code * Ended * Kind
 
 Head = Token
 
@@ -264,6 +268,8 @@ Payloadget = String
 
 Pos = Int
 
+Prefixlparen = Parsed
+
 Prev = Text
 
 Prodarg = Parsed
@@ -290,11 +296,15 @@ Rhs = Text
 
 Rhseq = Tokens
 
+Rhsjoin = Int
+
 Rhsname = Tokens
 
-Rhsop = Int
-
 Rhstokens = Tokens
+
+Rootname = Text
+
+Rootrhs = Tokens
 
 Run = Int
 
@@ -385,6 +395,8 @@ Wanted = Text
 
 Wantedfield = Text
 
+Wantskind = String
+
 Wantsliteral = String
 
 Wantsstep = String
@@ -399,13 +411,24 @@ Widened = Int
 
 Widest = Int
 
+Wrongkind = Bool
+
+Ender => Altender {
+    Ender -> Eq(41) -> (
+        * False { Ender }
+        * True { 42 }
+    )
+}
+
 Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
         * Good {
-            Tables.Whole -> Isstring(Depthleft(8) * Good.Kind -> Wanted) -> (
+            Good.Ended -> Eq(42) -> (
                 * False {
-                    Argkind -> (
+                    Tables.Whole
+                        -> Isstring(Depthleft(8) * Good.Kind -> Wanted)
+                        -> Wrongkind(Argkind) -> (
                         * False {
                             Good.After
                                 -> Chain(
@@ -416,23 +439,20 @@ Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Argument {
                                     * Tables
                                 )
                         }
-                        * True { Bad("this operation takes a string") -> Parsed }
+                        * True { Argkind -> Wantskind -> Bad -> Parsed }
                     )
                 }
                 * True {
-                    Argkind -> (
-                        * False { Bad("this operation takes a number") -> Parsed }
-                        * True {
-                            Good.After
-                                -> Chain(
-                                    Code(`{Code}{Good.Code}{Opcode}`)
-                                    * Ender
-                                    * Params
-                                    * Kind
-                                    * Tables
-                                )
-                        }
-                    )
+                    Good.After
+                        -> Argument(
+                            Argkind
+                            * Code(`{Code}{Good.Code}`)
+                            * Ender
+                            * Opcode
+                            * Params
+                            * Kind
+                            * Tables
+                        )
                 }
             )
         }
@@ -494,8 +514,8 @@ Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens 
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Tables.Whole
-                        -> Rhstokens(Scrutinee -> Wanted)
+                    Tables
+                        -> Rootrhs(Scrutinee -> Wanted)
                         -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname)
                         -> Lt(0) -> (
                         * False {
@@ -503,7 +523,7 @@ Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens 
                                 -> Armbrace(
                                     Name -> Armbound
                                     * Armdepth
-                                    * Tables.Whole -> Rhstokens(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
+                                    * Tables -> Rootrhs(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
                                     * Closers
                                     * Code
                                     * Ender
@@ -777,14 +797,28 @@ Code * Ender * Params * Kind * Tables * Tokens => Chain {
                 * Punct {
                     Punct -> Eq(Ender) -> (
                         * False {
-                            Punct -> Eq(45) -> (
-                                * False { Ender -> Wantsstep -> Bad -> Parsed }
+                            Punct -> Eq(Ender -> Altender) -> (
+                                * False {
+                                    Punct -> Eq(45) -> (
+                                        * False { Ender -> Wantsstep -> Bad -> Parsed }
+                                        * True {
+                                            Cons.Tail
+                                                -> Opname(Code * Ender * Params * Kind * Tables)
+                                        }
+                                    )
+                                }
                                 * True {
-                                    Cons.Tail -> Opname(Code * Ender * Params * Kind * Tables)
+                                    Code
+                                        -> Good(Cons.Tail -> After * Punct -> Ended * Kind)
+                                        -> Parsed
                                 }
                             )
                         }
-                        * True { Code -> Good(Cons.Tail -> After * Kind) -> Parsed }
+                        * True {
+                            Code
+                                -> Good(Cons.Tail -> After * Punct -> Ended * Kind)
+                                -> Parsed
+                        }
                     )
                 }
                 * Quoted { Ender -> Wantsstep -> Bad -> Parsed }
@@ -1036,14 +1070,14 @@ Code * Ender * Kind * Params * Tables * Tokens => Fieldname {
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Tables.Whole
-                        -> Rhstokens(Kind -> Wanted)
+                    Tables
+                        -> Rootrhs(Kind -> Wanted)
                         -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables * False() -> Wasname)
                         -> Lt(0) -> (
                         * False {
                             Cons.Tail
                                 -> Chain(
-                                    Code(`{Code}{Tables.Whole -> Rhstokens(Kind -> Wanted) -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Fieldget(Tables * Name -> Wanted)}`)
+                                    Code(`{Code}{Tables -> Rootrhs(Kind -> Wanted) -> Fieldoffset(Name -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Fieldget(Tables * Name -> Wanted)}`)
                                     * Ender
                                     * Name -> Kind
                                     * Params
@@ -1264,14 +1298,14 @@ Pos * Text => Hexed {
 }
 
 Code * Ender * Kind * Name * Params * Tables * Tokens => Inject {
-    Tables.Whole
-        -> Rhstokens(Name -> Wanted)
+    Tables
+        -> Rootrhs(Name -> Wanted)
         -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname)
         -> Lt(0) -> (
         * False {
             Tokens
                 -> Chain(
-                    Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables.Whole -> Rhstokens(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
+                    Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables -> Rootrhs(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables -> Rootrhs(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
                     * Ender
                     * Params
                     * Name -> Kind
@@ -1322,7 +1356,7 @@ Int => IsWord {
 
 Tokens * Wanted => Isproduct {
     Tokens
-        -> Rhsop(Wanted)
+        -> Rhsjoin(Tokens -> Rootname(Depthleft(8) * Wanted) -> Wanted)
         -> Eq(42)
 }
 
@@ -1348,7 +1382,7 @@ Depthleft * Tokens * Wanted => Isstring {
 
 Tokens * Wanted => Isunion {
     Tokens
-        -> Rhsop(Wanted)
+        -> Rhsjoin(Tokens -> Rootname(Depthleft(8) * Wanted) -> Wanted)
         -> Eq(43)
 }
 
@@ -1656,7 +1690,12 @@ Ender * Name * Params * Tables * Tokens => Nonbind {
                             * Tables
                         )
                 }
-                * True { Ender -> Wantsliteral -> Bad -> Parsed }
+                * True {
+                    Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
+                        * False { Tokens -> Prefixlparen(Ender * Name * Params * Tables) }
+                        * True { Ender -> Wantsliteral -> Bad -> Parsed }
+                    )
+                }
             )
         }
     )
@@ -1673,7 +1712,7 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Numop {
                 * False {
                     Tokens
                         -> Lparen(
-                            False() -> Argkind
+                            Argkind(0)
                             * Code
                             * Ender
                             * Name -> Opcode
@@ -1687,7 +1726,7 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Numop {
                         * False {
                             Tokens
                                 -> Callargs(
-                                    False() -> Argkind
+                                    Argkind(0)
                                     * Code
                                     * Ender
                                     * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Sum(2) -> Emitted}`)
@@ -1867,6 +1906,39 @@ Bindslot * Params * Tables * Wanted => Payloadget {
     )
 }
 
+Ender * Name * Params * Tables * Tokens => Prefixlparen {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Ender -> Wantsliteral -> Bad -> Parsed }
+                * Number { Ender -> Wantsliteral -> Bad -> Parsed }
+                * Punct {
+                    Punct -> Eq(40) -> (
+                        * False { Ender -> Wantsliteral -> Bad -> Parsed }
+                        * True {
+                            Cons.Tail -> Body(Ender(41) * Params * Tables) -> (
+                                * Bad { Bad -> Parsed }
+                                * Good {
+                                    Good.After
+                                        -> Chain(
+                                            Good.Code -> Code
+                                            * Ender
+                                            * Name -> Kind
+                                            * Params
+                                            * Tables
+                                        )
+                                }
+                            )
+                        }
+                    )
+                }
+                * Quoted { Ender -> Wantsliteral -> Bad -> Parsed }
+            )
+        }
+        * Nil { Ender -> Wantsliteral -> Bad -> Parsed }
+    )
+}
+
 Code * Ender * Kind * Name * Params * Tables * Tokens => Prodarg {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
@@ -1888,7 +1960,7 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Prodarg {
                         * False {
                             Good.After
                                 -> Chain(
-                                    Code(`{Code}{Good.Code}{Tables.Whole -> Rhstokens(Name -> Wanted) -> Fieldoffset(Good.Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Argoffset -> Storing(Tables.Whole -> Rhstokens(Name -> Wanted) -> Productsize(Seen(0) * Tables * False() -> Wasname) -> Productsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Fieldoffset(Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Recvoffset * Params -> Scratch(Tables))}`)
+                                    Code(`{Code}{Good.Code}{Tables -> Rootrhs(Name -> Wanted) -> Fieldoffset(Good.Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Argoffset -> Storing(Tables -> Rootrhs(Name -> Wanted) -> Productsize(Seen(0) * Tables * False() -> Wasname) -> Productsize * Tables -> Rootrhs(Name -> Wanted) -> Fieldoffset(Kind -> Wantedfield * Seen(0) * Tables * False() -> Wasname) -> Recvoffset * Params -> Scratch(Tables))}`)
                                     * Ender
                                     * Name -> Kind
                                     * Params
@@ -2036,21 +2108,7 @@ Tokens * Wanted => Rhseq {
     )
 }
 
-Tokens * Wanted => Rhsname {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name { Tokens }
-                * Number { Tokens -> Rhstokens(Wanted) -> Tokens }
-                * Punct { Tokens -> Rhstokens(Wanted) -> Tokens }
-                * Quoted { Tokens -> Rhstokens(Wanted) -> Tokens }
-            )
-        }
-        * Nil { Nil() -> Tokens }
-    )
-}
-
-Tokens * Wanted => Rhsop {
+Tokens * Wanted => Rhsjoin {
     Tokens -> Rhstokens(Wanted) -> (
         * Cons {
             Cons.Tail -> (
@@ -2066,6 +2124,20 @@ Tokens * Wanted => Rhsop {
             )
         }
         * Nil { 0 }
+    )
+}
+
+Tokens * Wanted => Rhsname {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { Tokens }
+                * Number { Tokens -> Rhstokens(Wanted) -> Tokens }
+                * Punct { Tokens -> Rhstokens(Wanted) -> Tokens }
+                * Quoted { Tokens -> Rhstokens(Wanted) -> Tokens }
+            )
+        }
+        * Nil { Nil() -> Tokens }
     )
 }
 
@@ -2086,6 +2158,33 @@ Tokens * Wanted => Rhstokens {
         }
         * Nil { Nil() -> Tokens }
     )
+}
+
+Depthleft * Tokens * Wanted => Rootname {
+    Depthleft -> Le(0) -> (
+        * False {
+            Tokens -> Rhsjoin(Wanted) -> Eq(0) -> (
+                * False { Wanted }
+                * True {
+                    Tokens -> Rhs(Wanted) -> Length -> Eq(0) -> (
+                        * False {
+                            Tokens
+                                -> Rootname(
+                                    Depthleft -> Difference(1) -> Depthleft
+                                    * Tokens -> Rhs(Wanted) -> Wanted
+                                )
+                        }
+                        * True { Wanted }
+                    )
+                }
+            )
+        }
+        * True { Wanted }
+    )
+}
+
+Tables * Wanted => Rootrhs {
+    Tables.Whole -> Rhstokens(Tables.Whole -> Rootname(Depthleft(8) * Wanted) -> Wanted)
 }
 
 Pos * Source => Run {
@@ -2283,7 +2382,7 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
                         * True {
                             Tokens
                                 -> Lparen(
-                                    True() -> Argkind
+                                    Argkind(1)
                                     * Code
                                     * Ender
                                     * Params -> Scratch(Tables) -> Concat -> Opcode
@@ -2297,7 +2396,7 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
                 * True {
                     Tokens
                         -> Lparen(
-                            True() -> Argkind
+                            Argkind(1)
                             * Code
                             * Ender
                             * Opcode("1000")
@@ -2311,7 +2410,7 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
         * True {
             Tokens
                 -> Lparen(
-                    False() -> Argkind
+                    Argkind(0)
                     * Code
                     * Ender
                     * Params -> Scratch(Tables) -> Byteat -> Opcode
@@ -2680,6 +2779,20 @@ Seen * Tokens * Wanted * Wasname => Variantindex {
     )
 }
 
+Argkind => Wantskind {
+    Argkind -> Eq(1) -> (
+        * False { "this operation takes a number" }
+        * True { "this operation takes a string" }
+    )
+}
+
+Ender => Wantsliteral {
+    Ender -> Eq(125) -> (
+        * False { "expected a literal operand" }
+        * True { "expected a literal" }
+    )
+}
+
 Unit => Result<Program, IoError> {
     Args()
         -> At(1)?
@@ -2690,13 +2803,6 @@ Unit => Result<Program, IoError> {
         -> Tokens(Fmtdepth(0) * False() -> Intext * Pos(1))
         -> Reported
     Unit() -> Ok
-}
-
-Ender => Wantsliteral {
-    Ender -> Eq(125) -> (
-        * False { "expected a literal operand" }
-        * True { "expected a literal" }
-    )
 }
 
 Ender => Wantsstep {
@@ -2714,5 +2820,17 @@ Fieldwidth * Seen => Widest {
     Seen -> Ge(Fieldwidth) -> (
         * False { Fieldwidth }
         * True { Seen }
+    )
+}
+
+Argkind * Isstring => Wrongkind {
+    Argkind -> Eq(2) -> (
+        * False {
+            Isstring -> (
+                * False { Argkind -> Eq(1) }
+                * True { Argkind -> Eq(0) }
+            )
+        }
+        * True { False() }
     )
 }
