@@ -645,7 +645,7 @@ fn canonc_compiles_a_string_literal() {
     // module that reads the bytes as a number.
     assert_eq!(
         canonc_stdout("strop.can", "Unit => Answer { \"hi\" -> Sum(1) }\n"),
-        "Sum is not a string operation"
+        "Sum is not a declaration or an operation"
     );
     assert_eq!(
         canonc_stdout("strarg.can", "Unit => Answer { 1 -> Sum(\"hi\") }\n"),
@@ -736,7 +736,7 @@ fn canonc_compiles_a_string_chain() {
             "numop.can",
             "Answer = Int\n\nUnit => Answer { \"hi\" -> Sum(1) }\n"
         ),
-        "Sum is not a string operation"
+        "Sum is not a declaration or an operation"
     );
     assert_eq!(
         canonc_stdout(
@@ -934,5 +934,58 @@ fn canonc_relabels_through_a_newtype() {
             "Answer = Int\n\nUnit => Answer { 1 -> Zork }\n"
         ),
         "Zork is not a declaration or an operation"
+    );
+}
+
+#[test]
+fn canonc_renders_a_number() {
+    // `-> String` on a number is the second helper: allocate twelve
+    // bytes, fill them backwards, and hand back the pointer and length
+    // of what was written.
+    for (name, source, want) in [
+        (
+            "itoa0.can",
+            "Shown = String\n\nUnit => Shown { 0 -> String }\n",
+            "0",
+        ),
+        (
+            "itoa7.can",
+            "Shown = String\n\nUnit => Shown { 7 -> String }\n",
+            "7",
+        ),
+        (
+            "itoa42.can",
+            "Shown = String\n\nUnit => Shown { 42 -> String }\n",
+            "42",
+        ),
+        (
+            "itoabig.can",
+            "Shown = String\n\nUnit => Shown { 100000 -> String }\n",
+            "100000",
+        ),
+        (
+            "itoaneg.can",
+            "Shown = String\n\nUnit => Shown { 0 -> Difference(45) -> String }\n",
+            "-45",
+        ),
+    ] {
+        assert_eq!(canonc_string(name, source, "shown"), want, "for {source:?}");
+    }
+
+    // It yields a string, so the string operations pick up after it.
+    assert_eq!(
+        canonc_string(
+            "itoajoin.can",
+            "Shown = String\n\nUnit => Shown { 12 -> String -> Joined(\" apples\") }\n",
+            "shown"
+        ),
+        "12 apples"
+    );
+    assert_eq!(
+        canonc_answer(
+            "itoalen.can",
+            "Answer = Int\n\nUnit => Answer { 1234 -> String -> Length }\n"
+        ),
+        4
     );
 }

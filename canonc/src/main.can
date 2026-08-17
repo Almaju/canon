@@ -104,6 +104,10 @@ IsWord = Bool
 
 Isstring = Bool
 
+Itoabody = String
+
+Itoacode = String
+
 Litcons = Lithead * Littail
 
 Literal = Int
@@ -150,6 +154,8 @@ Nullname = Text
 
 Number = Text
 
+Numop = Parsed
+
 Octet = String
 
 Onetype = String
@@ -181,6 +187,8 @@ Punct = Int
 Quoted = Text
 
 Quoterun = Int
+
+Relabel = Parsed
 
 Reported = Unit
 
@@ -223,6 +231,8 @@ Streqcode = String
 Streqtype = String
 
 Stringy = Bool
+
+Strop = Parsed
 
 Tables = Literals * Names * Whole
 
@@ -325,8 +335,8 @@ Index * Tables * Tokens => Assembly {
                         * Made {
                             Codes(`{Good.Code -> BodySize -> Emitted}01057f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
-                                    Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(1) -> Emitted}{Made.Exports}`)
-                                    * Funcs(`{Index -> Sum(2) -> Emitted}{Made.Funcs}`)
+                                    Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(2) -> Emitted}{Made.Exports}`)
+                                    * Funcs(`{Index -> Sum(3) -> Emitted}{Made.Funcs}`)
                                     * Made.Count -> Sum(1) -> Count
                                     * Types(`{Tokens -> Header -> TypeEntry(Good.Stringy * Tables)}{Made.Types}`)
                                 )
@@ -368,7 +378,7 @@ Ender * Params * Tables * Tokens => Body {
                                 * False {
                                     Cons.Tail
                                         -> Chain(
-                                            Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(1) -> Emitted}`)
+                                            Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Sum(2) -> Emitted}`)
                                             * Ender
                                             * Params
                                             * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
@@ -522,7 +532,8 @@ Code * Ender * Falsecode * Params * Stringy * Tables * Tokens * Truecode => Clos
 }
 
 Made => Codesection {
-    Sectionbody(`{Made.Count -> Sum(1) -> Emitted}{Streqcode()}{Made.Codes}`) -> Section(Tag(10))
+    Sectionbody(`{Made.Count -> Sum(2) -> Emitted}{Streqcode()}{Itoacode()}{Made.Codes}`)
+        -> Section(Tag(10))
 }
 
 Scratch => Concat {
@@ -712,7 +723,7 @@ Code * Ender * Params * Stringy * Tables * Tokens => Firstarg {
 }
 
 Made => Funcsection {
-    Sectionbody(`{Made.Count -> Sum(1) -> Emitted}00{Made.Funcs}`) -> Section(Tag(3))
+    Sectionbody(`{Made.Count -> Sum(2) -> Emitted}0002{Made.Funcs}`) -> Section(Tag(3))
 }
 
 Params * Tokens * Wasname => Gathered {
@@ -838,6 +849,14 @@ Depthleft * Tokens * Wanted => Isstring {
             )
         }
     )
+}
+
+Unit => Itoabody {
+    "230021022300410c6a24002002410c6a2101200041004821042004047f410020006b0520000b21030340200141016b210120012003410a6f41306a3a00002003410a6d210320030d000b20040440200141016b21012001412d3a00000b20012002410c6a20016b"
+}
+
+Unit => Itoacode {
+    `{Itoabody() -> Length -> Quotient(2) -> Sum(4) -> Emitted}01047f{Itoabody()}0b`
 }
 
 Acc * Pos * Source => Literal {
@@ -977,6 +996,45 @@ Text => Nullname {
     `.{Text}`
 }
 
+Code * Ender * Name * Params * Tables * Tokens => Numop {
+    Name -> Eq("String") -> (
+        * False {
+            Name -> Opcode -> Length -> Eq(0) -> (
+                * False {
+                    Tokens
+                        -> Lparen(
+                            False() -> Argkind
+                            * Code
+                            * Ender
+                            * Name -> Opcode
+                            * Params
+                            * False() -> Stringy
+                            * Tables
+                        )
+                }
+                * True {
+                    Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                        * False {
+                            Tokens
+                                -> Callargs(
+                                    False() -> Argkind
+                                    * Code
+                                    * Ender
+                                    * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Sum(2) -> Emitted}`)
+                                    * Params
+                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                    * Tables
+                                )
+                        }
+                        * True { Tokens -> Relabel(Code * Ender * Name * Params * Tables) }
+                    )
+                }
+            )
+        }
+        * True { Tokens -> Chain(Code(`{Code}1001`) * Ender * Params * True() -> Stringy * Tables) }
+    )
+}
+
 Int => Octet {
     Int
         -> Quotient(16)
@@ -1015,153 +1073,8 @@ Code * Ender * Params * Stringy * Tables * Tokens => Opname {
             Cons.Head -> (
                 * Name {
                     Stringy -> (
-                        * False {
-                            Name -> Opcode -> Length -> Eq(0) -> (
-                                * False {
-                                    Cons.Tail
-                                        -> Lparen(
-                                            False() -> Argkind
-                                            * Code
-                                            * Ender
-                                            * Name -> Opcode
-                                            * Params
-                                            * Stringy
-                                            * Tables
-                                        )
-                                }
-                                * True {
-                                    Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
-                                        * False {
-                                            Cons.Tail
-                                                -> Callargs(
-                                                    False() -> Argkind
-                                                    * Code
-                                                    * Ender
-                                                    * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Sum(1) -> Emitted}`)
-                                                    * Params
-                                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
-                                                    * Tables
-                                                )
-                                        }
-                                        * True {
-                                            Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
-                                                * False {
-                                                    Cons.Tail
-                                                        -> Chain(
-                                                            Code
-                                                            * Ender
-                                                            * Params
-                                                            * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
-                                                            * Tables
-                                                        )
-                                                }
-                                                * True {
-                                                    Bad(`{Name} is not a declaration or an operation`)
-                                                        -> Parsed
-                                                }
-                                            )
-                                        }
-                                    )
-                                }
-                            )
-                        }
-                        * True {
-                            Name -> Eq("Length") -> (
-                                * False {
-                                    Name -> Eq("Joined") -> (
-                                        * False {
-                                            Name -> Eq("ByteAt") -> (
-                                                * False {
-                                                    Name -> Eq("Substring") -> (
-                                                        * False {
-                                                            Name -> Eq("Eq") -> (
-                                                                * False {
-                                                                    Tables.Whole
-                                                                        -> Rhs(Name -> Wanted)
-                                                                        -> Length
-                                                                        -> Eq(0) -> (
-                                                                        * False {
-                                                                            Cons.Tail
-                                                                                -> Chain(
-                                                                                    Code
-                                                                                    * Ender
-                                                                                    * Params
-                                                                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
-                                                                                    * Tables
-                                                                                )
-                                                                        }
-                                                                        * True {
-                                                                            Bad(`{Name} is not a string operation`)
-                                                                                -> Parsed
-                                                                        }
-                                                                    )
-                                                                }
-                                                                * True {
-                                                                    Cons.Tail
-                                                                        -> Lparen(
-                                                                            True() -> Argkind
-                                                                            * Code
-                                                                            * Ender
-                                                                            * Opcode("1000")
-                                                                            * Params
-                                                                            * False() -> Stringy
-                                                                            * Tables
-                                                                        )
-                                                                }
-                                                            )
-                                                        }
-                                                        * True {
-                                                            Cons.Tail
-                                                                -> Slicelparen(
-                                                                    Code
-                                                                    * Ender
-                                                                    * Params
-                                                                    * Stringy
-                                                                    * Tables
-                                                                )
-                                                        }
-                                                    )
-                                                }
-                                                * True {
-                                                    Cons.Tail
-                                                        -> Lparen(
-                                                            False() -> Argkind
-                                                            * Code
-                                                            * Ender
-                                                            * Params -> Scratch(Tables) -> Byteat -> Opcode
-                                                            * Params
-                                                            * False() -> Stringy
-                                                            * Tables
-                                                        )
-                                                }
-                                            )
-                                        }
-                                        * True {
-                                            Cons.Tail
-                                                -> Lparen(
-                                                    True() -> Argkind
-                                                    * Code
-                                                    * Ender
-                                                    * Params -> Scratch(Tables) -> Concat -> Opcode
-                                                    * Params
-                                                    * Stringy
-                                                    * Tables
-                                                )
-                                        }
-                                    )
-                                }
-                                * True {
-                                    Cons.Tail
-                                        -> Chain(
-                                            Code(`{Code}21{Params -> Scratch(Tables) -> Emitted}1a20{Params -> Scratch(Tables) -> Emitted}`)
-                                            * Ender
-                                            * Params
-                                            * False() -> Stringy
-                                            * Tables
-                                        )
-                                }
-                            )
-                        }
+                        * False { Cons.Tail -> Numop(Code * Ender * Name * Params * Tables) }
+                        * True { Cons.Tail -> Strop(Code * Ender * Name * Params * Tables) }
                     )
                 }
                 * Number { Bad("expected an operation after `->`") -> Parsed }
@@ -1222,6 +1135,22 @@ Pos * Source => Quoterun {
             )
         }
         * True { Pos }
+    )
+}
+
+Code * Ender * Name * Params * Tables * Tokens => Relabel {
+    Tables.Whole -> Rhs(Name -> Wanted) -> Length -> Eq(0) -> (
+        * False {
+            Tokens
+                -> Chain(
+                    Code
+                    * Ender
+                    * Params
+                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                    * Tables
+                )
+        }
+        * True { Bad(`{Name} is not a declaration or an operation`) -> Parsed }
     )
 }
 
@@ -1425,6 +1354,86 @@ Unit => Streqtype {
     "60047f7f7f7f017f"
 }
 
+Code * Ender * Name * Params * Tables * Tokens => Strop {
+    Name -> Eq("ByteAt") -> (
+        * False {
+            Name -> Eq("Eq") -> (
+                * False {
+                    Name -> Eq("Joined") -> (
+                        * False {
+                            Name -> Eq("Length") -> (
+                                * False {
+                                    Name -> Eq("Substring") -> (
+                                        * False {
+                                            Tokens -> Relabel(Code * Ender * Name * Params * Tables)
+                                        }
+                                        * True {
+                                            Tokens
+                                                -> Slicelparen(
+                                                    Code
+                                                    * Ender
+                                                    * Params
+                                                    * True() -> Stringy
+                                                    * Tables
+                                                )
+                                        }
+                                    )
+                                }
+                                * True {
+                                    Tokens
+                                        -> Chain(
+                                            Code(`{Code}21{Params -> Scratch(Tables) -> Emitted}1a20{Params -> Scratch(Tables) -> Emitted}`)
+                                            * Ender
+                                            * Params
+                                            * False() -> Stringy
+                                            * Tables
+                                        )
+                                }
+                            )
+                        }
+                        * True {
+                            Tokens
+                                -> Lparen(
+                                    True() -> Argkind
+                                    * Code
+                                    * Ender
+                                    * Params -> Scratch(Tables) -> Concat -> Opcode
+                                    * Params
+                                    * True() -> Stringy
+                                    * Tables
+                                )
+                        }
+                    )
+                }
+                * True {
+                    Tokens
+                        -> Lparen(
+                            True() -> Argkind
+                            * Code
+                            * Ender
+                            * Opcode("1000")
+                            * Params
+                            * False() -> Stringy
+                            * Tables
+                        )
+                }
+            )
+        }
+        * True {
+            Tokens
+                -> Lparen(
+                    False() -> Argkind
+                    * Code
+                    * Ender
+                    * Params -> Scratch(Tables) -> Byteat -> Opcode
+                    * Params
+                    * False() -> Stringy
+                    * Tables
+                )
+        }
+    )
+}
+
 Text => Token {
     Text -> ByteAt(1) -> IsDigit -> (
         * False { Text -> Name -> Token }
@@ -1576,7 +1585,7 @@ Unit => Result<Program, IoError> {
 }
 
 Made => Typesection {
-    Sectionbody(`{Made.Count -> Sum(2) -> Emitted}{Streqtype()}6000027f7f{Made.Types}`)
+    Sectionbody(`{Made.Count -> Sum(3) -> Emitted}{Streqtype()}6000027f7f60017f027f7f{Made.Types}`)
         -> Section(Tag(1))
 }
 
