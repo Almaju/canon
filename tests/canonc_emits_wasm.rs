@@ -778,7 +778,7 @@ fn canonc_compiles_a_string_chain() {
     // one i32 scratch local, then the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("010c7f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("01147f200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 
@@ -1294,5 +1294,39 @@ fn canonc_binds_an_arm_payload() {
     assert_eq!(
         canonc_product_arg("nest1.can", &nested, "value", &[0, 9]),
         1009
+    );
+}
+
+#[test]
+fn canonc_carries_a_string_payload() {
+    // A string payload is two values where a scalar is one, so the cell
+    // parks both halves — the pointer after the tag, the length after
+    // that — and an arm reads them back as a pair. This puts a string
+    // in and takes it out again through the tagged cell.
+    let src = "Count = Int\n\nLabel = String\n\nRoundtrip = String\n\nShown = String\n\n\
+               Slot = Count + Label\n\n\
+               Label => Shown { Label -> Slot -> Roundtrip }\n\n\
+               Slot => Roundtrip { Slot -> ( * Count { Count -> String } * Label { Label } ) }\n";
+    assert_eq!(
+        canonc_string_arg("payload.can", src, "shown", "through the cell"),
+        "through the cell"
+    );
+
+    // Both halves really do go into the cell: the pointer at offset 4
+    // and the length at 8.
+    let hex = canonc_stdout("payload.can", src);
+    assert!(hex.contains("360204"), "expected a pointer store in {hex}");
+    assert!(hex.contains("360208"), "expected a length store in {hex}");
+
+    // The scalar variant of the same union renders instead, and both
+    // arms still agree on a string result.
+    let src2 = "Count = Int\n\nLabel = String\n\nRoundtrip = String\n\nShown = String\n\n\
+                Slot = Count + Label\n\n\
+                Count => Shown { Count -> Slot -> Roundtrip }\n\n\
+                Slot => Roundtrip { Slot -> ( * Count { Count -> String } * Label { Label } ) }\n";
+    let hex2 = canonc_stdout("payload2.can", src2);
+    assert!(
+        hex2.contains("360204") && !hex2.contains("360208"),
+        "a scalar payload parks one value: {hex2}"
     );
 }

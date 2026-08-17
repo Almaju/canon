@@ -16,6 +16,8 @@ Armbrace = Parsed
 
 Armcode = String
 
+Armdepth = Int
+
 Armname = Parsed
 
 Armnext = Parsed
@@ -330,8 +332,6 @@ Tagging = String
 
 Tail = Tokens
 
-Testing = String
-
 Text = String
 
 Textrun = Int
@@ -385,8 +385,6 @@ Widened = Int
 
 Widest = Int
 
-Widestore = String
-
 Argkind * Code * Ender * Opcode * Params * Kind * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
@@ -434,7 +432,7 @@ Params * Seen => Arity {
     )
 }
 
-Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
+Armbound * Armdepth * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armbrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -448,13 +446,14 @@ Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables 
                                 -> Body(
                                     Ender(125)
                                     * Params
-                                    * Tables.Binds -> Bindcons(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Binddepth * Armbound -> Bindhead) -> Binds -> Tables(Tables.Literals * Tables.Names * Tables.Whole)
+                                    * Tables.Binds -> Bindcons(Armdepth -> Binddepth * Armbound -> Bindhead) -> Binds -> Tables(Tables.Literals * Tables.Names * Tables.Whole)
                                 ) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
                                     Good.After
                                         -> Armnext(
                                             Good.Code -> Armcode
+                                            * Armdepth
                                             * Armtag
                                             * Closers
                                             * Code
@@ -476,7 +475,7 @@ Armbound * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables 
     )
 }
 
-Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname {
+Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -489,6 +488,7 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname 
                             Cons.Tail
                                 -> Armbrace(
                                     Name -> Armbound
+                                    * Armdepth
                                     * Tables.Whole -> Rhstokens(Scrutinee -> Wanted) -> Variantindex(Seen(0) * Name -> Wanted * False() -> Wasname) -> Armtag
                                     * Closers
                                     * Code
@@ -511,7 +511,7 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armname 
     )
 }
 
-Armcode * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armnext {
+Armcode * Armdepth * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Armnext {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -525,8 +525,9 @@ Armcode * Armtag * Closers * Code * Ender * Kind * Params * Scrutinee * Tables *
                                 * True {
                                     Tokens
                                         -> Unionarm(
-                                            Closers -> Sum(1) -> Closers
-                                            * Code(`{Code}{Armtag -> Testing(Params -> Scratch(Tables))}{Kind -> Blocktype(Tables)}{Armcode}05`)
+                                            Armdepth
+                                            * Closers -> Sum(1) -> Closers
+                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Armdepth -> Product(2)) -> Emitted}28020041{Armtag -> Emitted}46{Kind -> Blocktype(Tables)}{Armcode}05`)
                                             * Ender
                                             * Kind
                                             * Params
@@ -564,7 +565,7 @@ Index * Tables * Tokens => Assembly {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Emitted}010c7f{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}01147f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Sum(2) -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Sum(3) -> Emitted}{Made.Funcs}`)
@@ -616,7 +617,7 @@ Ender * Params * Tables * Tokens => Body {
                         * False {
                             Cons.Tail
                                 -> Field(
-                                    Tables.Binds -> Bindslot(Name -> Wanted) -> Payloadget(Params * Tables) -> Code
+                                    Tables.Binds -> Bindslot(Name -> Wanted) -> Payloadget(Params * Tables * Name -> Wanted) -> Code
                                     * Ender
                                     * Params
                                     * Name -> Kind
@@ -1219,19 +1220,14 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Inject {
         -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname)
         -> Lt(0) -> (
         * False {
-            Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Eq(8) -> (
-                * False {
-                    Tokens
-                        -> Chain(
-                            Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables.Whole -> Rhstokens(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
-                            * Ender
-                            * Params
-                            * Name -> Kind
-                            * Tables
-                        )
-                }
-                * True { Bad(`a {Kind} payload is not stored in a {Name} yet`) -> Parsed }
-            )
+            Tokens
+                -> Chain(
+                    Code(`{Code}{Params -> Scratch(Tables) -> Tagging(Tables.Whole -> Rhstokens(Name -> Wanted) -> Unionsize(Seen(0) * Tables * Name -> Wanted * False() -> Wasname) -> Unionsize * Tables.Whole -> Rhstokens(Name -> Wanted) -> Variantindex(Seen(0) * Kind -> Wanted * False() -> Wasname) -> Variantindex * Tables.Whole -> Fieldwidth(Kind -> Wanted) -> Wide)}`)
+                    * Ender
+                    * Params
+                    * Name -> Kind
+                    * Tables
+                )
         }
         * True { Bad(`{Kind} is not a variant of {Name}`) -> Parsed }
     )
@@ -1666,8 +1662,21 @@ Params * Tables * Tokens => Parsed {
     )
 }
 
-Bindslot * Params * Tables => Payloadget {
-    `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot) -> Emitted}280204`
+Bindslot * Params * Tables * Wanted => Payloadget {
+    Tables.Whole -> Isstring(Depthleft(8) * Wanted) -> (
+        * False {
+            `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot -> Product(2)) -> Emitted}280204`
+        }
+        * True {
+            `20{Params -> Scratch(Tables) -> Sum(3) -> Sum(Bindslot -> Product(2)) -> Emitted}28020420{
+                Params
+                    -> Scratch(Tables)
+                    -> Sum(3)
+                    -> Sum(Bindslot)
+                    -> Emitted
+            }280208`
+        }
+    )
 }
 
 Code * Ender * Kind * Name * Params * Tables * Tokens => Prodarg {
@@ -2127,17 +2136,32 @@ Code * Ender * Kind * Name * Params * Tables * Tokens => Strop {
 }
 
 Scratch * Unionsize * Variantindex * Wide => Tagging {
-    `21{Scratch -> Emitted}230021{Scratch -> Sum(2) -> Emitted}230041{Unionsize -> Emitted}6a240020{
-        Scratch
-            -> Sum(2)
-            -> Emitted
-    }41{Variantindex -> Emitted}36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}{
-        Wide -> Widestore
-    }20{Scratch -> Sum(2) -> Emitted}`
-}
-
-Armtag * Scratch => Testing {
-    `20{Scratch -> Sum(3) -> Emitted}28020041{Armtag -> Emitted}46`
+    Wide -> Eq(8) -> (
+        * False {
+            `21{Scratch -> Emitted}230021{Scratch -> Sum(2) -> Emitted}230041{Unionsize -> Emitted}6a240020{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }41{Variantindex -> Emitted}36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}36020420{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }`
+        }
+        * True {
+            `21{Scratch -> Sum(1) -> Emitted}21{Scratch -> Emitted}230021{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }230041{Unionsize -> Emitted}6a240020{Scratch -> Sum(2) -> Emitted}41{
+                Variantindex -> Emitted
+            }36020020{Scratch -> Sum(2) -> Emitted}20{Scratch -> Emitted}36020420{
+                Scratch
+                    -> Sum(2)
+                    -> Emitted
+            }20{Scratch -> Sum(1) -> Emitted}36020820{Scratch -> Sum(2) -> Emitted}`
+        }
+    )
 }
 
 Pos * Source => Textrun {
@@ -2344,7 +2368,7 @@ Made => Typesection {
         -> Section(Tag(1))
 }
 
-Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm {
+Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -2356,7 +2380,8 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm
                         * True {
                             Cons.Tail
                                 -> Armname(
-                                    Closers
+                                    Armdepth
+                                    * Closers
                                     * Code
                                     * Ender
                                     * Kind
@@ -2377,8 +2402,9 @@ Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Unionarm
 Code * Ender * Kind * Params * Tables * Tokens => Uniondispatch {
     Tokens
         -> Unionarm(
-            Closers(0)
-            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(3) -> Emitted}`)
+            Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth
+            * Closers(0)
+            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(3) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(2)) -> Emitted}`)
             * Ender
             * Kind
             * Params
@@ -2500,12 +2526,5 @@ Fieldwidth * Seen => Widest {
     Seen -> Ge(Fieldwidth) -> (
         * False { Fieldwidth }
         * True { Seen }
-    )
-}
-
-Wide => Widestore {
-    Wide -> Eq(8) -> (
-        * False { "360204" }
-        * True { "" }
     )
 }
