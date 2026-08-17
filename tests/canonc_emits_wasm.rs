@@ -184,6 +184,52 @@ fn canonc_string_arg(name: &str, source: &str, export: &str, arg: &str) -> Strin
 
 /// Same again, for a declaration taking a product: the fields are laid
 /// out in the module's memory and the pointer to them is the argument.
+/// Same again, for a product holding a string: the text goes into
+/// memory beside the cell, and the export gives back a `(ptr, len)`.
+fn canonc_string_product(
+    name: &str,
+    source: &str,
+    export: &str,
+    scalar: i32,
+    text: &str,
+) -> String {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let at = 32768;
+    let text_at = at + 64;
+    let mut cell = Vec::new();
+    cell.extend_from_slice(&scalar.to_le_bytes());
+    cell.extend_from_slice(&(text_at as i32).to_le_bytes());
+    cell.extend_from_slice(&(text.len() as i32).to_le_bytes());
+    memory
+        .write(&mut store, at, &cell)
+        .expect("lay the product out in memory");
+    memory
+        .write(&mut store, text_at, text.as_bytes())
+        .expect("write the field's text");
+    let (ptr, len) = instance
+        .get_typed_func::<i32, (i32, i32)>(&mut store, export)
+        .unwrap_or_else(|e| panic!("export `{export}`: {e}"))
+        .call(&mut store, at as i32)
+        .expect("call the export");
+    let mut out = vec![0u8; len as usize];
+    memory
+        .read(&store, ptr as usize, &mut out)
+        .expect("read the string out of memory");
+    String::from_utf8(out).expect("utf-8 string")
+}
+
 fn canonc_product_arg(name: &str, source: &str, export: &str, fields: &[i32]) -> i32 {
     let hex = canonc_stdout(name, source);
     let bytes: Vec<u8> = (0..hex.len())
@@ -244,6 +290,34 @@ fn canonc_tagged(name: &str, source: &str, export: &str, arg: i32) -> (i32, i32)
     )
 }
 
+/// Same again, for a declaration taking a string and returning a
+/// number: the bytes go into memory past the bump region and the
+/// `(ptr, len)` pair is handed in.
+fn canonc_string_call(name: &str, source: &str, export: &str, arg: &str) -> i32 {
+    let hex = canonc_stdout(name, source);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex pair"))
+        .collect();
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &bytes).expect("emitted wasm should validate");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance =
+        wasmtime::Instance::new(&mut store, &module, &[]).expect("emitted wasm should instantiate");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("emitted module should export its memory");
+    let at = 32768;
+    memory
+        .write(&mut store, at, arg.as_bytes())
+        .expect("write the argument into memory");
+    instance
+        .get_typed_func::<(i32, i32), i32>(&mut store, export)
+        .unwrap_or_else(|e| panic!("export `{export}`: {e}"))
+        .call(&mut store, (at as i32, arg.len() as i32))
+        .expect("call the export")
+}
+
 #[test]
 fn canonc_output_is_wasm_that_runs() {
     // `canonc` read `Unit => Answer { 7 }` off disk, found the literal
@@ -280,7 +354,7 @@ fn canonc_reports_a_body_with_no_literal() {
     // silent `i32.const 0`.
     assert_eq!(
         canonc_stdout("empty.can", "Unit => Answer { }\n"),
-        "expected a literal"
+        "Answer: expected a literal"
     );
 }
 
@@ -343,19 +417,23 @@ fn canonc_reports_what_the_grammar_wanted() {
         (
             "op.can",
             "Unit => Answer { 1 -> Frobnicate(2) }\n",
-            "Frobnicate is not a declaration or an operation",
+            "Answer: Frobnicate is not a declaration or an operation",
         ),
         (
             "lparen.can",
             "Unit => Answer { 1 -> Sum 2 }\n",
-            "expected `(`",
+            "Answer: expected `(`",
         ),
         (
             "rparen.can",
             "Unit => Answer { 1 -> Sum(2 }\n",
-            "expected `->` or `)`",
+            "Answer: expected `->` or `)`",
         ),
-        ("bare.can", "Unit => Answer { -> }\n", "expected a literal"),
+        (
+            "bare.can",
+            "Unit => Answer { -> }\n",
+            "Answer: expected a literal",
+        ),
     ] {
         assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
     }
@@ -410,7 +488,7 @@ fn canonc_rejects_a_name_that_is_not_the_parameter() {
     // the body to refer to.
     assert_eq!(
         canonc_stdout("noparam.can", "Unit => Answer { Int -> Sum(1) }\n"),
-        "expected a literal"
+        "Answer: expected a literal"
     );
 }
 
@@ -440,7 +518,7 @@ fn canonc_compiles_the_parameter_as_an_operand() {
     // Still nothing to refer to when the declaration takes `Unit`.
     assert_eq!(
         canonc_stdout("noparamop.can", "Unit => Answer { 2 -> Product(Int) }\n"),
-        "expected a literal operand"
+        "Answer: expected a literal operand"
     );
 }
 
@@ -505,6 +583,14 @@ fn canonc_compiles_a_call_to_another_declaration() {
     // A call is an operand too, so it composes with the arithmetic.
     let mixed = "Int => Double { Int -> Product(2) }\n\nInt => Odd { Int -> Double -> Sum(1) }\n";
     assert_eq!(canonc_apply("odd.can", mixed, "odd", Some(3)), 7);
+
+    // The same for a string in hand: past the string operations, a name
+    // is a call before it is a relabel, and it takes its arguments.
+    let wrapped = "Padded = String\n\nShown = String\n\nText = String\n\nWidth = Int\n\nText * Width => Padded { Text -> Joined(Width -> String) }\n\nText => Shown { Text -> Padded(Width(7)) }\n";
+    assert_eq!(
+        canonc_string_arg("strcall.can", wrapped, "shown", "n="),
+        "n=7"
+    );
 }
 
 #[test]
@@ -517,7 +603,7 @@ fn canonc_rejects_a_call_to_a_declaration_taking_no_parameter() {
             "unitcall.can",
             "Unit => Seed { 7 }\n\nInt => Grown { Int -> Seed }\n"
         ),
-        "Seed is not a declaration or an operation"
+        "Grown: Seed is not a declaration or an operation"
     );
 }
 
@@ -577,22 +663,22 @@ fn canonc_reports_what_a_dispatch_wanted() {
         (
             "nostar.can",
             "Unit => Answer { 1 -> Eq(1) -> ( False { 2 } * True { 3 } ) }\n",
-            "expected `*`",
+            "Answer: expected `*`",
         ),
         (
             "noname.can",
             "Unit => Answer { 1 -> Eq(1) -> ( * Nope { 2 } * True { 3 } ) }\n",
-            "expected `False`",
+            "Answer: expected `False`",
         ),
         (
             "noorder.can",
             "Unit => Answer { 1 -> Eq(1) -> ( * False { 2 } * Nope { 3 } ) }\n",
-            "expected `True`",
+            "Answer: expected `True`",
         ),
         (
             "noclose.can",
             "Unit => Answer { 1 -> Eq(1) -> ( * False { 2 } * True { 3 } }\n",
-            "expected `)`",
+            "Answer: expected `)`",
         ),
     ] {
         assert_eq!(canonc_stdout(name, source), want, "for source {source:?}");
@@ -636,8 +722,9 @@ fn canonc_compiles_more_than_one_parameter() {
     assert_eq!(canonc_apply2("area.can", area, "area", 6, 4), 12);
 
     // The second call argument is an expression in its own right, not
-    // just a literal or a name.
-    let gcd = "Left * Right => Gcd { Right -> Eq(0) -> ( * False { Right -> Gcd(Left -> Remainder(Right)) } * True { Left } ) }\n";
+    // just a literal or a name — and the piped value fills the input
+    // its own type names, wherever that sits in the head.
+    let gcd = "Left = Int\n\nRight = Int\n\nLeft * Right => Gcd { Right -> Eq(0) -> ( * False { Left -> Remainder(Right) -> Right -> Gcd(Right -> Left) } * True { Left } ) }\n";
     assert_eq!(canonc_apply2("gcd.can", gcd, "gcd", 1071, 462), 21);
 }
 
@@ -650,29 +737,32 @@ fn canonc_nests_call_arguments() {
     // And the diagnostic names the terminator the argument wanted.
     assert_eq!(
         canonc_stdout("unclosed.can", "Unit => Answer { 1 -> Sum(2 -> Sum(3) }\n"),
-        "expected `->` or `)`"
+        "Answer: expected `->` or `)`"
     );
 }
 
 #[test]
 fn canonc_calls_a_declaration_that_takes_nothing() {
-    // A `Unit` declaration is a constant, and naming one in a body calls
-    // it — as the body's head or as an operand. Until now it could be
-    // declared and never used. The name table tells the two arities
+    // A `Unit` declaration is a constant, and `Seed()` calls it — as the
+    // body's head or as an operand. The name table tells the two arities
     // apart, so the same name still can't be *piped* into: there is
     // nothing for the receiver to fill.
-    let head = "Unit => Seed { 7 }\n\nUnit => Total { Seed -> Sum(1) }\n";
+    let head = "Unit => Seed { 7 }\n\nUnit => Total { Seed() -> Sum(1) }\n";
     assert_eq!(canonc_export("seedhead.can", head, "total"), 8);
 
-    let operand = "Unit => Seed { 7 }\n\nInt => Shifted { Int -> Sum(Seed) }\n";
+    let operand = "Unit => Seed { 7 }\n\nInt => Shifted { Int -> Sum(Seed()) }\n";
     assert_eq!(canonc_apply("seedarg.can", operand, "shifted", Some(2)), 9);
+
+    // A string constant is the same call, two results wide.
+    let text = "Seed = String\n\nShown = String\n\nUnit => Seed { \"s\" }\n\nUnit => Shown { `<{Seed()}>` }\n";
+    assert_eq!(canonc_string("seedstr.can", text, "shown"), "<s>");
 
     assert_eq!(
         canonc_stdout(
             "seedpipe.can",
             "Unit => Seed { 7 }\n\nInt => Nope { Int -> Seed }\n"
         ),
-        "Seed is not a declaration or an operation"
+        "Nope: Seed is not a declaration or an operation"
     );
 }
 
@@ -707,11 +797,11 @@ fn canonc_compiles_a_string_literal() {
     // module that reads the bytes as a number.
     assert_eq!(
         canonc_stdout("strop.can", "Unit => Answer { \"hi\" -> Sum(1) }\n"),
-        "Sum is not a declaration or an operation"
+        "Answer: Sum is not a declaration or an operation"
     );
     assert_eq!(
         canonc_stdout("strarg.can", "Unit => Answer { 1 -> Sum(\"hi\") }\n"),
-        "this operation takes a number"
+        "Answer: this operation takes a number"
     );
 }
 
@@ -775,10 +865,10 @@ fn canonc_compiles_a_string_chain() {
     // the string ones. `Length` drops the pointer and keeps the count.
     let size = "Size = Int\n\nText = String\n\nText => Size { Text -> Length }\n";
     let hex = canonc_stdout("size.can", size);
-    // one i32 scratch local, then the two parameter slots read back,
+    // the scratch locals, then the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("01147f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("01c5047f200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 
@@ -798,14 +888,16 @@ fn canonc_compiles_a_string_chain() {
             "numop.can",
             "Answer = Int\n\nUnit => Answer { \"hi\" -> Sum(1) }\n"
         ),
-        "Sum is not a declaration or an operation"
+        "Answer: Sum is not a declaration or an operation"
     );
+    // A string scrutinee dispatches on literals now, so `False` reads as
+    // the catch-all and the arm after it has nowhere to go.
     assert_eq!(
         canonc_stdout(
             "strdispatch.can",
             "Answer = Int\n\nUnit => Answer { \"hi\" -> ( * False { 0 } * True { 1 } ) }\n"
         ),
-        "a dispatch needs a number to branch on"
+        "Answer: expected `)`"
     );
 }
 
@@ -853,7 +945,7 @@ fn canonc_concatenates_strings() {
             "joinnum.can",
             "Greeting = String\n\nUnit => Greeting { \"a\" -> Joined(1) }\n"
         ),
-        "this operation takes a string"
+        "Greeting: this operation takes a string"
     );
 }
 
@@ -964,7 +1056,7 @@ fn canonc_slices_a_string() {
             "subbad.can",
             "From = Int\n\nPart = String\n\nUnit => Part { \"abc\" -> Substring(1 -> From * \"x\") }\n"
         ),
-        "a slice bound must be a number"
+        "Part: a slice bound must be a number"
     );
 }
 
@@ -995,7 +1087,7 @@ fn canonc_relabels_through_a_newtype() {
             "unknown.can",
             "Answer = Int\n\nUnit => Answer { 1 -> Zork }\n"
         ),
-        "Zork is not a declaration or an operation"
+        "Answer: Zork is not a declaration or an operation"
     );
 }
 
@@ -1152,20 +1244,29 @@ fn canonc_reads_a_product_field() {
         33
     );
 
+    // A string field is eight bytes, so reading it pushes the pointer
+    // and the length — the struct pointer is parked once and loaded
+    // from twice.
+    let text = "Count = Int\n\nLabel = String\n\nShown = String\n\nTagged = Count * Label\n\nTagged => Shown { Tagged.Label -> Joined(\"!\") }\n";
+    assert_eq!(
+        canonc_string_product("pstr.can", text, "shown", 7, "hi"),
+        "hi!"
+    );
+
     // A name that isn't a field, and a `.` on something with no fields.
     assert_eq!(
         canonc_stdout(
             "pnofield.can",
             &format!("{decls}Pair => Left {{ Pair.Nope }}\n")
         ),
-        "Pair has no field Nope"
+        "Left: Pair has no field Nope"
     );
     assert_eq!(
         canonc_stdout(
             "pnoprod.can",
             "Answer = Int\n\nCount = Int\n\nCount => Answer { Count.Nope }\n"
         ),
-        "Count has no fields to read"
+        "Answer: Count has no fields to read"
     );
 }
 
@@ -1205,7 +1306,7 @@ fn canonc_builds_a_product() {
             "buildnofield.can",
             &format!("{decls}Right => Total {{ Right -> Pair(3 -> Boxed) -> Boxed }}\n")
         ),
-        "Pair has no field of type Boxed"
+        "Total: Pair has no field of type Boxed"
     );
 }
 
@@ -1232,7 +1333,32 @@ fn canonc_tags_a_union_variant() {
             "tagbad.can",
             &format!("Other = Int\n\n{decls}Count => Wrapped {{ Count -> Other -> Slot }}\n")
         ),
-        "Other is not a variant of Slot"
+        "Wrapped: Other is not a variant of Slot"
+    );
+
+    // A value already carrying the union is relabelled, not injected a
+    // second time — the two names root at the same declaration.
+    assert_eq!(
+        canonc_tagged(
+            "tagsame.can",
+            &format!("Marked = Slot\n\n{decls}Count => Wrapped {{ Count -> Slot -> Marked }}\n"),
+            "wrapped",
+            42
+        ),
+        (0, 42)
+    );
+
+    // A `Unit` variant carries nothing, so its cell holds the tag alone.
+    let unitv = "Empty = Unit\n\nFull = Int\n\nMaybe = Empty + Full\n\nNothing = Maybe\n\n";
+    assert_eq!(
+        canonc_tagged(
+            "tagunit.can",
+            &format!("{unitv}Full => Nothing {{ Empty() -> Maybe }}\n"),
+            "nothing",
+            0
+        )
+        .0,
+        0
     );
 }
 
@@ -1263,7 +1389,7 @@ fn canonc_dispatches_on_a_union() {
             "udbad.can",
             &format!("{decls}Slot => Kindof {{ Slot -> ( * Count {{ 10 }} * Nope {{ 20 }} ) }}\n")
         ),
-        "Nope is not a variant of Slot"
+        "Kindof: Nope is not a variant of Slot"
     );
 }
 
@@ -1328,5 +1454,28 @@ fn canonc_carries_a_string_payload() {
     assert!(
         hex2.contains("360204") && !hex2.contains("360208"),
         "a scalar payload parks one value: {hex2}"
+    );
+}
+
+#[test]
+fn canonc_dispatches_on_a_string() {
+    // Arms can be string literals with a required catch-all last —
+    // which is how `canonc`'s own opcode table is written. The
+    // scrutinee's pointer and length are parked once and each arm calls
+    // the equality helper against a literal from the data segment.
+    let src = "Code = Int\n\nName = String\n\n\
+               Name => Code { Name -> ( * \"Eq\" { 70 } * \"Sum\" { 106 } * String { 0 } ) }\n";
+    assert_eq!(canonc_string_call("le.can", src, "code", "Eq"), 70);
+    assert_eq!(canonc_string_call("ls.can", src, "code", "Sum"), 106);
+    assert_eq!(canonc_string_call("lo.can", src, "code", "Nope"), 0);
+    assert_eq!(canonc_string_call("lz.can", src, "code", ""), 0);
+
+    // The catch-all is not optional.
+    assert_eq!(
+        canonc_stdout(
+            "lnocatch.can",
+            "Code = Int\n\nName = String\n\nName => Code { Name -> ( * \"Eq\" { 70 } ) }\n"
+        ),
+        "Code: expected `*`"
     );
 }

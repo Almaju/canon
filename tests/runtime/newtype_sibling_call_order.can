@@ -1,0 +1,23 @@
+Base = Int
+
+Depth = Int
+
+Scratch = Int
+
+Shown = String
+
+Tag = Int
+
+Base => Scratch {
+    Base -> Sum(100)
+}
+
+Depth * Scratch * Tag => Shown {
+    `d{Depth -> String} t{Tag -> String} s{Scratch -> String}`
+}
+
+Unit => Program {
+    Tag(1)
+        -> Shown(Depth(0) * Base(9) -> Scratch)
+        -> Print
+}

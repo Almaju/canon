@@ -1,0 +1,20 @@
+Acc = String
+
+Grown = String
+
+Left = Int
+
+Acc * Left => Grown {
+    Left -> Eq(0) -> (
+        * False { Acc(`{Acc}0123456789`) -> Grown(Left -> Difference(1) -> Left) }
+        * True { Acc }
+    )
+}
+
+Unit => Program {
+    Acc("")
+        -> Grown(Left(20000))
+        -> Length
+        -> String
+        -> Print
+}

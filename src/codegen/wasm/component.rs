@@ -1185,7 +1185,7 @@ fn build_memory_module(str_data_len: usize) -> Module {
     // ABI's use of `cabi_realloc(0, 0, align, new_size)` when allocating
     // host-side return buffers in guest memory.
     let mut code = CodeSection::new();
-    let mut f = Function::new([(1, ValType::I32)]); // local 4: aligned
+    let mut f = Function::new([(2, ValType::I32)]); // local 4: aligned, local 5: end
                                                     // bump_ptr + align - 1
     f.instruction(&Instruction::GlobalGet(0));
     f.instruction(&Instruction::LocalGet(2));
@@ -1202,7 +1202,33 @@ fn build_memory_module(str_data_len: usize) -> Module {
     // bump_ptr = aligned + new_size
     f.instruction(&Instruction::LocalGet(3));
     f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::LocalTee(5));
     f.instruction(&Instruction::GlobalSet(0));
+    // Grow when the allocation end passes the current size, exactly as
+    // `build_alloc` does. Both bump the same pointer, so a host-side
+    // buffer landing past the end is as ordinary as a guest-side one —
+    // and returning a pointer beyond memory is what the canonical ABI
+    // rejects as `realloc return: beyond end of memory`, which is the
+    // failure a long-running program hit first at a host boundary.
+    f.instruction(&Instruction::LocalGet(5));
+    f.instruction(&Instruction::MemorySize(0));
+    f.instruction(&Instruction::I32Const(16));
+    f.instruction(&Instruction::I32Shl);
+    f.instruction(&Instruction::I32GtU);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    // pages = (end - mem_bytes + 65535) >> 16
+    f.instruction(&Instruction::LocalGet(5));
+    f.instruction(&Instruction::MemorySize(0));
+    f.instruction(&Instruction::I32Const(16));
+    f.instruction(&Instruction::I32Shl);
+    f.instruction(&Instruction::I32Sub);
+    f.instruction(&Instruction::I32Const(65535));
+    f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::I32Const(16));
+    f.instruction(&Instruction::I32ShrU);
+    f.instruction(&Instruction::MemoryGrow(0));
+    f.instruction(&Instruction::Drop);
+    f.instruction(&Instruction::End);
     // return aligned
     f.instruction(&Instruction::LocalGet(4));
     f.instruction(&Instruction::End);

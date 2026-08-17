@@ -1762,6 +1762,16 @@ impl<'m> WasmGen<'m> {
                 let recv = self.infer_ctor_arg_type_name(receiver);
                 for c in recv.into_iter().flat_map(|r| self.dispatch_candidates(&r)) {
                     if let Some(info) = self.func_table.get(&(Some(c), method.name.clone())) {
+                        // A constructor's result is its own type, and a
+                        // bodied declaration is always named after the
+                        // type it constructs. Reading the registered
+                        // result type instead loses a scalar newtype's
+                        // name to the primitive it erases to — and that
+                        // name is exactly what tells two `Int` newtypes
+                        // apart when a call binds its inputs by type.
+                        if self.type_defs.contains_key(&method.name) {
+                            return Some(method.name.clone());
+                        }
                         return match &info.result_ty {
                             Ty::NamedPtr(n) | Ty::NamedStr(n) | Ty::NamedPtrStr(n, _, _) => {
                                 Some(n.clone())
