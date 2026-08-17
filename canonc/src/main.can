@@ -14,8 +14,6 @@ Body = Parsed
 
 BodySize = Int
 
-Bodyortext = Parsed
-
 Broken = String
 
 Callargs = Parsed
@@ -106,6 +104,8 @@ Littail = Literals
 
 Local = Int
 
+Localget = String
+
 Lowered = Int
 
 Lparen = Parsed
@@ -178,6 +178,8 @@ Rhsname = Text
 
 Run = Int
 
+Scratch = Int
+
 Section = String
 
 Sectionbody = String
@@ -203,8 +205,6 @@ Tag = Int
 Tail = Tokens
 
 Text = String
-
-Textend = Parsed
 
 Token = Name
   + Number
@@ -241,10 +241,24 @@ Whole = Tokens
 
 Widened = Int
 
-Code * Ender * Opcode * Params * Tables * Tokens => Argument {
+Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Argument {
     Tokens -> Body(Ender(41) * Params * Tables) -> (
         * Bad { Bad -> Parsed }
-        * Good { Good.After -> Chain(Code(`{Code}{Good.Code}{Opcode}`) * Ender * Params * Tables) }
+        * Good {
+            Good.Stringy -> (
+                * False {
+                    Good.After
+                        -> Chain(
+                            Code(`{Code}{Good.Code}{Opcode}`)
+                            * Ender
+                            * Params
+                            * Stringy
+                            * Tables
+                        )
+                }
+                * True { Bad("an operation's argument must be a number") -> Parsed }
+            )
+        }
     )
 }
 
@@ -264,7 +278,7 @@ Index * Tables * Tokens => Assembly {
                     Good.After -> Assembly(Index -> Sum(1) -> Index * Tables) -> (
                         * Broken { Broken -> Assembly }
                         * Made {
-                            Codes(`{Good.Code -> BodySize -> Emitted}00{Good.Code}0b{Made.Codes}`)
+                            Codes(`{Good.Code -> BodySize -> Emitted}01017f{Good.Code}0b{Made.Codes}`)
                                 -> Made(
                                     Exports(`{Tokens -> Export(Prev("")) -> Length -> Emitted}{Tokens -> Export(Prev("")) -> Utf8(Pos(1))}00{Index -> Emitted}{Made.Exports}`)
                                     * Funcs(`{Index -> Emitted}{Made.Funcs}`)
@@ -290,10 +304,11 @@ Ender * Params * Tables * Tokens => Body {
                         * False {
                             Cons.Tail
                                 -> Chain(
-                                    Code(`20{Params -> Local(Tables * Name -> Wanted) -> Emitted}`)
+                                    Params -> Localget(Tables * Name -> Wanted) -> Code
                                     * Ender
-                                    * Tables
                                     * Params
+                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                    * Tables
                                 )
                         }
                         * True {
@@ -303,8 +318,9 @@ Ender * Params * Tables * Tokens => Body {
                                         -> Chain(
                                             Code(`10{Tables.Names -> Slot(Seen(0) * Name -> Nullname -> Wanted) -> Emitted}`)
                                             * Ender
-                                            * Tables
                                             * Params
+                                            * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                            * Tables
                                         )
                                 }
                                 * True { Ender -> Wantsliteral -> Bad -> Parsed }
@@ -317,17 +333,22 @@ Ender * Params * Tables * Tokens => Body {
                         -> Chain(
                             Code(`41{Acc(0) -> Literal(Pos(1) * Number -> Source) -> Emitted}`)
                             * Ender
-                            * Tables
                             * Params
+                            * False() -> Stringy
+                            * Tables
                         )
                 }
-                * Punct {
-                    Punct -> Eq(Ender) -> (
-                        * False { Ender -> Wantsliteral -> Bad -> Parsed }
-                        * True { Ender -> Wantsliteral -> Bad -> Parsed }
-                    )
+                * Punct { Ender -> Wantsliteral -> Bad -> Parsed }
+                * Quoted {
+                    Cons.Tail
+                        -> Chain(
+                            Code(`41{Tables.Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}`)
+                            * Ender
+                            * Params
+                            * True() -> Stringy
+                            * Tables
+                        )
                 }
-                * Quoted { Bad("a string literal must be the whole body") -> Parsed }
             )
         }
         * Nil { Ender -> Wantsliteral -> Bad -> Parsed }
@@ -346,61 +367,40 @@ Code => BodySize {
     Code
         -> Length
         -> Quotient(2)
-        -> Sum(2)
+        -> Sum(4)
 }
 
-Params * Tables * Tokens => Bodyortext {
+Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Callargs {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> (
-                        * False { Tokens -> Body(Ender(125) * Params * Tables) }
-                        * True {
-                            Params -> Local(Tables * Name -> Wanted) -> Lt(0) -> (
-                                * False {
-                                    Cons.Tail
-                                        -> Textend(Code(`20{Params -> Local(Tables * Name -> Wanted) -> Emitted}20{Params -> Local(Tables * Name -> Wanted) -> Sum(1) -> Emitted}`))
-                                }
-                                * True { Tokens -> Body(Ender(125) * Params * Tables) }
-                            )
-                        }
-                    )
+                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
                 }
-                * Number { Tokens -> Body(Ender(125) * Params * Tables) }
-                * Punct { Tokens -> Body(Ender(125) * Params * Tables) }
-                * Quoted {
-                    Cons.Tail
-                        -> Textend(Code(`41{Tables.Literals -> Dataoffset(Dataat(0) * Quoted -> Wanted) -> Emitted}41{Quoted -> Length -> Emitted}`))
+                * Number {
+                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
                 }
-            )
-        }
-        * Nil { Tokens -> Body(Ender(125) * Params * Tables) }
-    )
-}
-
-Code * Ender * Opcode * Params * Tables * Tokens => Callargs {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
-                * Number { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False {
-                            Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables)
+                            Tokens
+                                -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
                         }
-                        * True { Cons.Tail -> Argument(Code * Ender * Opcode * Params * Tables) }
+                        * True {
+                            Cons.Tail -> Argument(Code * Ender * Opcode * Params * Stringy * Tables)
+                        }
                     )
                 }
-                * Quoted { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
+                * Quoted {
+                    Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables)
+                }
             )
         }
-        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Tables) }
+        * Nil { Tokens -> Chain(Code(`{Code}{Opcode}`) * Ender * Params * Stringy * Tables) }
     )
 }
 
-Code * Ender * Params * Tables * Tokens => Chain {
+Code * Ender * Params * Stringy * Tables * Tokens => Chain {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -411,10 +411,12 @@ Code * Ender * Params * Tables * Tokens => Chain {
                         * False {
                             Punct -> Eq(45) -> (
                                 * False { Ender -> Wantsstep -> Bad -> Parsed }
-                                * True { Cons.Tail -> Opname(Code * Ender * Params * Tables) }
+                                * True {
+                                    Cons.Tail -> Opname(Code * Ender * Params * Stringy * Tables)
+                                }
                             )
                         }
-                        * True { Code -> Good(Cons.Tail -> After * False() -> Stringy) -> Parsed }
+                        * True { Code -> Good(Cons.Tail -> After * Stringy) -> Parsed }
                     )
                 }
                 * Quoted { Ender -> Wantsstep -> Bad -> Parsed }
@@ -424,7 +426,7 @@ Code * Ender * Params * Tables * Tokens => Chain {
     )
 }
 
-Code * Ender * Falsecode * Params * Tables * Tokens * Truecode => Closer {
+Code * Ender * Falsecode * Params * Stringy * Tables * Tokens * Truecode => Closer {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -438,6 +440,7 @@ Code * Ender * Falsecode * Params * Tables * Tokens * Truecode => Closer {
                                 -> Chain(
                                     Code(`{Code}047f{Truecode}05{Falsecode}0b`)
                                     * Ender
+                                    * Stringy
                                     * Tables
                                     * Params
                                 )
@@ -481,7 +484,7 @@ Data => Datasection {
     Sectionbody(`010041000b{Data -> Length -> Quotient(2) -> Emitted}{Data}`) -> Section(Tag(11))
 }
 
-Code * Ender * Params * Tables * Tokens => Dispatch {
+Code * Ender * Params * Stringy * Tables * Tokens => Dispatch {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -490,7 +493,7 @@ Code * Ender * Params * Tables * Tokens => Dispatch {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Falsemark(Code * Ender * Params * Tables) }
+                        * True { Cons.Tail -> Falsemark(Code * Ender * Params * Stringy * Tables) }
                     )
                 }
                 * Quoted { Bad("expected `*`") -> Parsed }
@@ -542,7 +545,7 @@ Made => Exportsection {
         -> Section(Tag(7))
 }
 
-Code * Ender * Params * Tables * Tokens => Falsebrace {
+Code * Ender * Params * Stringy * Tables * Tokens => Falsebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -560,6 +563,7 @@ Code * Ender * Params * Tables * Tokens => Falsebrace {
                                             Code
                                             * Ender
                                             * Good.Code -> Falsecode
+                                            * Stringy
                                             * Tables
                                             * Params
                                         )
@@ -575,14 +579,14 @@ Code * Ender * Params * Tables * Tokens => Falsebrace {
     )
 }
 
-Code * Ender * Params * Tables * Tokens => Falsemark {
+Code * Ender * Params * Stringy * Tables * Tokens => Falsemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
                     Name -> Eq("False") -> (
                         * False { Bad("expected `False`") -> Parsed }
-                        * True { Cons.Tail -> Falsebrace(Code * Ender * Params * Tables) }
+                        * True { Cons.Tail -> Falsebrace(Code * Ender * Params * Stringy * Tables) }
                     )
                 }
                 * Number { Bad("expected `False`") -> Parsed }
@@ -765,6 +769,20 @@ Params * Tables * Wanted => Local {
     )
 }
 
+Params * Tables * Wanted => Localget {
+    Tables.Whole -> Isstring(Depthleft(8) * Wanted) -> (
+        * False { `20{Params -> Local(Tables * Wanted) -> Emitted}` }
+        * True {
+            `20{Params -> Local(Tables * Wanted) -> Emitted}20{
+                Params
+                    -> Local(Tables * Wanted)
+                    -> Sum(1)
+                    -> Emitted
+            }`
+        }
+    )
+}
+
 Int => Lowered {
     Int -> Ge(65) -> (
         * False { Int }
@@ -777,7 +795,7 @@ Int => Lowered {
     )
 }
 
-Code * Ender * Opcode * Params * Tables * Tokens => Lparen {
+Code * Ender * Opcode * Params * Stringy * Tables * Tokens => Lparen {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -786,7 +804,9 @@ Code * Ender * Opcode * Params * Tables * Tokens => Lparen {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected `(`") -> Parsed }
-                        * True { Cons.Tail -> Argument(Code * Ender * Opcode * Params * Tables) }
+                        * True {
+                            Cons.Tail -> Argument(Code * Ender * Opcode * Params * Stringy * Tables)
+                        }
                     )
                 }
                 * Quoted { Bad("expected `(`") -> Parsed }
@@ -863,29 +883,58 @@ Name => Opcode {
     )
 }
 
-Code * Ender * Params * Tables * Tokens => Opname {
+Code * Ender * Params * Stringy * Tables * Tokens => Opname {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name {
-                    Name -> Opcode -> Length -> Eq(0) -> (
+                    Stringy -> (
                         * False {
-                            Cons.Tail -> Lparen(Code * Ender * Name -> Opcode * Params * Tables)
-                        }
-                        * True {
-                            Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                            Name -> Opcode -> Length -> Eq(0) -> (
                                 * False {
                                     Cons.Tail
-                                        -> Callargs(
+                                        -> Lparen(
                                             Code
                                             * Ender
-                                            * Tables
-                                            * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
+                                            * Name -> Opcode
                                             * Params
+                                            * Stringy
+                                            * Tables
                                         )
                                 }
                                 * True {
-                                    Bad(`{Name} is not a declaration or an operation`) -> Parsed
+                                    Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                                        * False {
+                                            Cons.Tail
+                                                -> Callargs(
+                                                    Code
+                                                    * Ender
+                                                    * Opcode(`10{Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Emitted}`)
+                                                    * Params
+                                                    * Tables.Whole -> Isstring(Depthleft(8) * Name -> Wanted) -> Stringy
+                                                    * Tables
+                                                )
+                                        }
+                                        * True {
+                                            Bad(`{Name} is not a declaration or an operation`)
+                                                -> Parsed
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                        * True {
+                            Name -> Eq("Length") -> (
+                                * False { Bad(`{Name} is not a string operation`) -> Parsed }
+                                * True {
+                                    Cons.Tail
+                                        -> Chain(
+                                            Code(`{Code}21{Params -> Scratch(Tables) -> Emitted}1a20{Params -> Scratch(Tables) -> Emitted}`)
+                                            * Ender
+                                            * Params
+                                            * False() -> Stringy
+                                            * Tables
+                                        )
                                 }
                             )
                         }
@@ -895,7 +944,14 @@ Code * Ender * Params * Tables * Tokens => Opname {
                 * Punct {
                     Punct -> Eq(40) -> (
                         * False { Bad("expected an operation after `->`") -> Parsed }
-                        * True { Cons.Tail -> Dispatch(Code * Ender * Params * Tables) }
+                        * True {
+                            Stringy -> (
+                                * False {
+                                    Cons.Tail -> Dispatch(Code * Ender * Params * Stringy * Tables)
+                                }
+                                * True { Bad("a dispatch needs a number to branch on") -> Parsed }
+                            )
+                        }
                     )
                 }
                 * Quoted { Bad("expected an operation after `->`") -> Parsed }
@@ -923,7 +979,7 @@ Params * Tables * Tokens => Parsed {
                 * Punct {
                     Punct -> Eq(123) -> (
                         * False { Cons.Tail -> Parsed(Params * Tables) }
-                        * True { Cons.Tail -> Bodyortext(Params * Tables) }
+                        * True { Cons.Tail -> Body(Ender(125) * Params * Tables) }
                     )
                 }
                 * Quoted { Cons.Tail -> Parsed(Params * Tables) }
@@ -1020,6 +1076,13 @@ Pos * Source => Run {
     )
 }
 
+Params * Tables => Scratch {
+    Params
+        -> Paramtypes(Tables)
+        -> Length
+        -> Quotient(2)
+}
+
 Sectionbody * Tag => Section {
     `{Tag -> Octet}{Sectionbody -> Length -> Quotient(2) -> Emitted}{Sectionbody}`
 }
@@ -1074,25 +1137,6 @@ Tokens => Slug {
     )
 }
 
-Code * Tokens => Textend {
-    Tokens -> (
-        * Cons {
-            Cons.Head -> (
-                * Name { Bad("expected `}`") -> Parsed }
-                * Number { Bad("expected `}`") -> Parsed }
-                * Punct {
-                    Punct -> Eq(125) -> (
-                        * False { Bad("expected `}`") -> Parsed }
-                        * True { Code -> Good(Cons.Tail -> After * True() -> Stringy) -> Parsed }
-                    )
-                }
-                * Quoted { Bad("expected `}`") -> Parsed }
-            )
-        }
-        * Nil { Bad("expected `}`") -> Parsed }
-    )
-}
-
 Text => Token {
     Text -> ByteAt(1) -> IsDigit -> (
         * False { Text -> Name -> Token }
@@ -1137,7 +1181,7 @@ Pos * Source => Tokens {
     )
 }
 
-Code * Ender * Falsecode * Params * Tables * Tokens => Truebrace {
+Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truebrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1155,6 +1199,7 @@ Code * Ender * Falsecode * Params * Tables * Tokens => Truebrace {
                                             Code
                                             * Ender
                                             * Falsecode
+                                            * Stringy
                                             * Tables
                                             * Params
                                             * Good.Code -> Truecode
@@ -1171,7 +1216,7 @@ Code * Ender * Falsecode * Params * Tables * Tokens => Truebrace {
     )
 }
 
-Code * Ender * Falsecode * Params * Tables * Tokens => Truemark {
+Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truemark {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1179,7 +1224,8 @@ Code * Ender * Falsecode * Params * Tables * Tokens => Truemark {
                     Name -> Eq("True") -> (
                         * False { Bad("expected `True`") -> Parsed }
                         * True {
-                            Cons.Tail -> Truebrace(Code * Ender * Falsecode * Params * Tables)
+                            Cons.Tail
+                                -> Truebrace(Code * Ender * Falsecode * Params * Stringy * Tables)
                         }
                     )
                 }
@@ -1192,7 +1238,7 @@ Code * Ender * Falsecode * Params * Tables * Tokens => Truemark {
     )
 }
 
-Code * Ender * Falsecode * Params * Tables * Tokens => Truestar {
+Code * Ender * Falsecode * Params * Stringy * Tables * Tokens => Truestar {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1201,7 +1247,10 @@ Code * Ender * Falsecode * Params * Tables * Tokens => Truestar {
                 * Punct {
                     Punct -> Eq(42) -> (
                         * False { Bad("expected `*`") -> Parsed }
-                        * True { Cons.Tail -> Truemark(Code * Ender * Falsecode * Params * Tables) }
+                        * True {
+                            Cons.Tail
+                                -> Truemark(Code * Ender * Falsecode * Params * Stringy * Tables)
+                        }
                     )
                 }
                 * Quoted { Bad("expected `*`") -> Parsed }
