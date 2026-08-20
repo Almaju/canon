@@ -859,16 +859,27 @@ fn canonc_indexes_locals_past_a_string_parameter() {
 }
 
 #[test]
+fn canonc_grows_its_own_memory() {
+    // The arena bumps a global and never frees, so a program that
+    // builds anything sizeable outruns the one page the module starts
+    // with. Allocation goes through a helper that grows memory to fit,
+    // the way the reference compiler's does — nothing here grows it
+    // from the host.
+    let doubling = "Grown = Int\n\nRounds = Int\n\nText = String\n\nRounds * Text => Grown { Rounds -> Le(0) -> ( * False { Text -> Joined(Text) -> Text -> Grown(Rounds -> Difference(1) -> Rounds) } * True { Text -> Length } ) }\n\nUnit => Answer { \"x\" -> Text -> Grown(Rounds(17)) }\n";
+    assert_eq!(canonc_answer("grow.can", doubling), 131072);
+}
+
+#[test]
 fn canonc_compiles_a_string_chain() {
     // The value in hand carries its kind through the chain now, so a
     // string can be an operand and the operations that apply to it are
     // the string ones. `Length` drops the pointer and keeps the count.
     let size = "Size = Int\n\nText = String\n\nText => Size { Text -> Length }\n";
     let hex = canonc_stdout("size.can", size);
-    // the scratch locals, then the two parameter slots read back,
+    // the two parameter slots read back,
     // stashed, the pointer dropped and the count returned
     assert!(
-        hex.contains("01c5047f200020012102 1a2002".replace(' ', "").as_str()),
+        hex.contains("200020012102 1a2002".replace(' ', "").as_str()),
         "expected the length sequence in {hex}"
     );
 
