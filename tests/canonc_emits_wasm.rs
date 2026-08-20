@@ -859,6 +859,38 @@ fn canonc_indexes_locals_past_a_string_parameter() {
 }
 
 #[test]
+fn canonc_runs_a_body_of_several_expressions() {
+    // A body is expressions, not one expression: every one but the last
+    // is there for its effect, so its value is dropped — two slots when
+    // it is a string.
+    assert_eq!(
+        canonc_answer(
+            "several.can",
+            "Answer = Int\n\nUnit => Answer { 1 -> Sum(2)\n7 -> Sum(3) }\n"
+        ),
+        10
+    );
+    assert_eq!(
+        canonc_answer(
+            "severalstr.can",
+            "Answer = Int\n\nUnit => Answer { \"ab\" -> Joined(\"c\")\n4 }\n"
+        ),
+        4
+    );
+
+    // Inside a dispatch arm too.
+    assert_eq!(
+        canonc_apply(
+            "severalarm.can",
+            "Answer = Int\n\nInt => Answer { Int -> Lt(0) -> ( * False { 1\n2 } * True { 3 } ) }\n",
+            "answer",
+            Some(5)
+        ),
+        2
+    );
+}
+
+#[test]
 fn canonc_grows_its_own_memory() {
     // The arena bumps a global and never frees, so a program that
     // builds anything sizeable outruns the one page the module starts
@@ -1466,6 +1498,17 @@ fn canonc_carries_a_string_payload() {
         hex2.contains("360204") && !hex2.contains("360208"),
         "a scalar payload parks one value: {hex2}"
     );
+}
+
+#[test]
+fn canonc_dispatches_on_a_number() {
+    // The same shape with a number in hand: the scrutinee is parked
+    // once — one slot, not the pointer and length a string needs — and
+    // each arm tests it against a literal. The catch-all is still last.
+    let src = "Answer = Int\n\nInt => Answer { Int -> ( * 0 { 10 } * 1 { 20 } * Int { 30 } ) }\n";
+    assert_eq!(canonc_apply("nd0.can", src, "answer", Some(0)), 10);
+    assert_eq!(canonc_apply("nd1.can", src, "answer", Some(1)), 20);
+    assert_eq!(canonc_apply("nd9.can", src, "answer", Some(9)), 30);
 }
 
 #[test]
