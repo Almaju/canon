@@ -118,6 +118,8 @@ Depth = Int
 
 Depthleft = Int
 
+Discarded = String
+
 Dispatch = Parsed
 
 Emitted = String
@@ -230,6 +232,8 @@ Litbrace = Parsed
 
 Litclose = Parsed
 
+Litcompare = String
+
 Litcons = Lithead * Littail
 
 Litdispatch = Litarm
@@ -243,6 +247,8 @@ Lithead = Text
 Litmatch = Text
 
 Litnil = Unit
+
+Litpark = String
 
 Littail = Literals
 
@@ -280,6 +286,8 @@ Names = Namecons + Namenil
 
 Nametail = Names
 
+Nextexpr = Parsed
+
 Nibble = Int
 
 Nil = Unit
@@ -305,6 +313,8 @@ Opbyte = String
 Opcode = String
 
 Opensnothing = Bool
+
+Opensnumber = Bool
 
 Opensparen = Bool
 
@@ -419,6 +429,8 @@ Sofardeep = Int
 Source = String
 
 Started = Bool
+
+Startsnumber = Bool
 
 Streqbody = String
 
@@ -1015,15 +1027,18 @@ Code * Ender * Params * Kind * Tables * Tokens => Chain {
     Tokens -> (
         * Cons {
             Cons.Head -> (
-                * Name { Ender -> Wantsstep -> Bad -> Parsed }
-                * Number { Ender -> Wantsstep -> Bad -> Parsed }
+                * Name { Tokens -> Nextexpr(Code * Ender * Params * Kind * Tables) }
+                * Number { Tokens -> Nextexpr(Code * Ender * Params * Kind * Tables) }
                 * Punct {
                     Punct -> Eq(Ender) -> (
                         * False {
                             Punct -> Eq(Ender -> Altender) -> (
                                 * False {
                                     Punct -> Eq(45) -> (
-                                        * False { Ender -> Wantsstep -> Bad -> Parsed }
+                                        * False {
+                                            Tokens
+                                                -> Nextexpr(Code * Ender * Params * Kind * Tables)
+                                        }
                                         * True {
                                             Cons.Tail
                                                 -> Opname(Code * Ender * Params * Kind * Tables)
@@ -1044,7 +1059,7 @@ Code * Ender * Params * Kind * Tables * Tokens => Chain {
                         }
                     )
                 }
-                * Quoted { Ender -> Wantsstep -> Bad -> Parsed }
+                * Quoted { Tokens -> Nextexpr(Code * Ender * Params * Kind * Tables) }
             )
         }
         * Nil { Bad("expression is unterminated") -> Parsed }
@@ -1139,6 +1154,13 @@ Dataat * Literals * Wanted => Dataoffset {
 
 Data => Datasection {
     Sectionbody(`010041000b{Data -> Length -> Quotient(2) -> Emitted}{Data}`) -> Section(Tag(11))
+}
+
+Kind * Tables => Discarded {
+    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
+        * False { "1a" }
+        * True { "1a1a" }
+    )
 }
 
 Code * Ender * Params * Kind * Tables * Tokens => Dispatch {
@@ -1797,7 +1819,7 @@ Params * Started * Tables => Joiner {
     )
 }
 
-Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litarm {
+Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Litarm {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1815,6 +1837,7 @@ Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litarm {
                                     * Ender
                                     * Kind
                                     * Params
+                                    * Scrutinee
                                     * Tables
                                 )
                         }
@@ -1827,7 +1850,7 @@ Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litarm {
     )
 }
 
-Armdepth * Closers * Code * Ender * Kind * Litmatch * Params * Tables * Tokens => Litbrace {
+Armdepth * Closers * Code * Ender * Kind * Litmatch * Params * Scrutinee * Tables * Tokens => Litbrace {
     Tokens -> (
         * Cons {
             Cons.Head -> (
@@ -1844,10 +1867,11 @@ Armdepth * Closers * Code * Ender * Kind * Litmatch * Params * Tables * Tokens =
                                         -> Litarm(
                                             Armdepth
                                             * Closers -> Sum(1) -> Closers
-                                            * Code(`{Code}20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(36)) -> Emitted}20{Params -> Scratch(Tables) -> Sum(6) -> Sum(Armdepth -> Product(36)) -> Emitted}41{Tables.Literals -> Dataoffset(Dataat(0) * Litmatch -> Wanted) -> Emitted}41{Litmatch -> Length -> Emitted}1000{Good.Kind -> Blocktype(Tables)}{Good.Code}05`)
+                                            * Code(`{Code}{Scrutinee -> Kind -> Litcompare(Armdepth * Litmatch * Params * Tables)}{Good.Kind -> Blocktype(Tables)}{Good.Code}05`)
                                             * Ender
                                             * Good.Kind -> Kind
                                             * Params
+                                            * Scrutinee
                                             * Tables
                                         )
                                 }
@@ -1890,15 +1914,41 @@ Armcode * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litclose {
     )
 }
 
+Armdepth * Kind * Litmatch * Params * Tables => Litcompare {
+    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
+        * False {
+            `20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(36)) -> Emitted}41{
+                Acc(0)
+                    -> Literal(Pos(1) * Litmatch -> Source)
+                    -> Emitted
+            }46`
+        }
+        * True {
+            `20{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(36)) -> Emitted}20{
+                Params
+                    -> Scratch(Tables)
+                    -> Sum(6)
+                    -> Sum(Armdepth -> Product(36))
+                    -> Emitted
+            }41{Tables.Literals -> Dataoffset(Dataat(0) * Litmatch -> Wanted) -> Emitted}41{
+                Litmatch
+                    -> Length
+                    -> Emitted
+            }1000`
+        }
+    )
+}
+
 Code * Ender * Kind * Params * Tables * Tokens => Litdispatch {
     Tokens
         -> Litarm(
             Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth
             * Closers(0)
-            * Code(`{Code}21{Params -> Scratch(Tables) -> Sum(6) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36)) -> Emitted}21{Params -> Scratch(Tables) -> Sum(5) -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36)) -> Emitted}`)
+            * Code(`{Code}{Kind -> Litpark(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Armdepth * Params * Tables)}`)
             * Ender
             * Kind
             * Params
+            * Kind -> Scrutinee
             * Tables
         )
 }
@@ -1937,12 +1987,42 @@ Sofar * Tokens => Literals {
     )
 }
 
-Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litword {
+Armdepth * Kind * Params * Tables => Litpark {
+    Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
+        * False {
+            `21{Params -> Scratch(Tables) -> Sum(5) -> Sum(Armdepth -> Product(36)) -> Emitted}`
+        }
+        * True {
+            `21{Params -> Scratch(Tables) -> Sum(6) -> Sum(Armdepth -> Product(36)) -> Emitted}21{
+                Params
+                    -> Scratch(Tables)
+                    -> Sum(5)
+                    -> Sum(Armdepth -> Product(36))
+                    -> Emitted
+            }`
+        }
+    )
+}
+
+Armdepth * Closers * Code * Ender * Kind * Params * Scrutinee * Tables * Tokens => Litword {
     Tokens -> (
         * Cons {
             Cons.Head -> (
                 * Name { Cons.Tail -> Catchbrace(Closers * Code * Ender * Kind * Params * Tables) }
-                * Number { Bad("expected a string or the catch-all after `*`") -> Parsed }
+                * Number {
+                    Cons.Tail
+                        -> Litbrace(
+                            Armdepth
+                            * Closers
+                            * Code
+                            * Ender
+                            * Kind
+                            * Number -> Litmatch
+                            * Params
+                            * Scrutinee
+                            * Tables
+                        )
+                }
                 * Punct { Bad("expected a string or the catch-all after `*`") -> Parsed }
                 * Quoted {
                     Cons.Tail
@@ -1954,6 +2034,7 @@ Armdepth * Closers * Code * Ender * Kind * Params * Tables * Tokens => Litword {
                             * Kind
                             * Quoted -> Litmatch
                             * Params
+                            * Scrutinee
                             * Tables
                         )
                 }
@@ -2066,6 +2147,22 @@ Tokens => Names {
                 -> Names
         }
         * Nil { Namenil() -> Names }
+    )
+}
+
+Code * Ender * Params * Kind * Tables * Tokens => Nextexpr {
+    Ender -> Eq(125) -> (
+        * False { Ender -> Wantsstep -> Bad -> Parsed }
+        * True {
+            Tokens -> Body(Ender * Params * Tables) -> (
+                * Bad { Bad -> Parsed }
+                * Good {
+                    Code(`{Code}{Kind -> Discarded(Tables)}{Good.Code}`)
+                        -> Good(Good.After * Good.Ended * Good.Kind)
+                        -> Parsed
+                }
+            )
+        }
     )
 }
 
@@ -2242,6 +2339,25 @@ Tokens => Opensnothing {
     )
 }
 
+Tokens => Opensnumber {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { False() }
+                * Number { False() }
+                * Punct {
+                    Punct -> Eq(42) -> (
+                        * False { False() }
+                        * True { Cons.Tail -> Startsnumber }
+                    )
+                }
+                * Quoted { False() }
+            )
+        }
+        * Nil { False() }
+    )
+}
+
 Tokens => Opensparen {
     Tokens -> (
         * Cons {
@@ -2275,8 +2391,28 @@ Code * Ender * Params * Kind * Tables * Tokens => Opname {
                                 * False {
                                     Tables.Whole -> Isstring(Depthleft(8) * Kind -> Wanted) -> (
                                         * False {
-                                            Cons.Tail
-                                                -> Dispatch(Code * Ender * Params * Kind * Tables)
+                                            Cons.Tail -> Opensnumber -> (
+                                                * False {
+                                                    Cons.Tail
+                                                        -> Dispatch(
+                                                            Code
+                                                            * Ender
+                                                            * Params
+                                                            * Kind
+                                                            * Tables
+                                                        )
+                                                }
+                                                * True {
+                                                    Cons.Tail
+                                                        -> Litdispatch(
+                                                            Code
+                                                            * Ender
+                                                            * Kind
+                                                            * Params
+                                                            * Tables
+                                                        )
+                                                }
+                                            )
                                         }
                                         * True {
                                             Cons.Tail
@@ -2876,6 +3012,20 @@ Tokens => Slug {
             )
         }
         * True { Tokens -> Export(Prev("")) -> Nullname }
+    )
+}
+
+Tokens => Startsnumber {
+    Tokens -> (
+        * Cons {
+            Cons.Head -> (
+                * Name { False() }
+                * Number { True() }
+                * Punct { False() }
+                * Quoted { False() }
+            )
+        }
+        * Nil { False() }
     )
 }
 
