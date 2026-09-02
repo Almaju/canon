@@ -20,6 +20,11 @@
 //! Blocks that are deliberately not Canon (annotated schematics, retired
 //! syntax shown for contrast) opt out by using a ` ```text ` fence, which
 //! also stops the site from syntax-highlighting them as Canon.
+//!
+//! The scratch project the snippets check in has every shipped package
+//! vendored (`canon add`, the same way a reader would), so a page may
+//! use any of them — the docs describe the ecosystem, not the prelude
+//! alone.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -130,6 +135,9 @@ fn every_docs_canon_block_checks() {
     let canon = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
     let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("docs_snippets");
     fs::create_dir_all(&scratch).expect("create scratch dir");
+    for pkg in canon::add::addable() {
+        canon::add::add(&scratch, pkg.name).expect("vendor a shipped package");
+    }
 
     let mut pages = Vec::new();
     collect_md_files(&root.join("docs/src"), &mut pages);

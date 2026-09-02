@@ -60,7 +60,6 @@ fn every_stdlib_type_gets_a_page() {
         "Json",
         "Map",
         "MalformedInt",
-        "Markdown",
         "Node",
         "Now",
         "Program",

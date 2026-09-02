@@ -1928,7 +1928,8 @@ fn discover_bundled_references(
 ///
 /// So `Notes()` is the document and `Notes() -> Html` renders it — the
 /// markdown lives in the `.md` file, never in a `.can` string literal.
-/// The `= Markdown` alias pulls in `canon`'s renderer automatically.
+/// The `= Markdown` alias reaches the `canon/markdown` renderer through
+/// the project's `deps/`.
 fn markdown_asset_source(path: &Path, content: &str) -> String {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Doc");
     let name = crate::bindgen::naming::kebab_to_pascal(stem);
@@ -1957,7 +1958,8 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
     })?;
     // A `.md` file isn't Canon source — it's a Markdown document loaded
     // as a `Markdown` value. Synthesize the module that binds it.
-    let source = if path.extension().and_then(|e| e.to_str()) == Some("md") {
+    let source_is_markdown = path.extension().and_then(|e| e.to_str()) == Some("md");
+    let source = if source_is_markdown {
         markdown_asset_source(path, &raw)
     } else {
         raw
@@ -1973,7 +1975,21 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
         deps_pkg.as_ref(),
         ctx,
         file_id_of(path),
-    )
+    )?;
+    // The synthesized module is nothing but a `Markdown` value, so the
+    // renderer package is the one thing it can be missing — name it,
+    // rather than leaving the checker to report an undefined type in a
+    // file the user never wrote.
+    if source_is_markdown && !ctx.defined.contains("Markdown") {
+        return Err(CanonError::CheckError {
+            message: format!(
+                "`{}` is a Markdown document, which needs the `canon/markdown` package: run `canon add canon/markdown`",
+                path.display()
+            ),
+            span: Span::default(),
+        });
+    }
+    Ok(())
 }
 
 /// The id spans lexed from `path` carry (`error::file_id` over the
