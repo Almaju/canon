@@ -3549,6 +3549,95 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr(product)
             }
+            IndirectReturnShape::ByteStream {
+                ok_name, err_name, ..
+            } => {
+                // Drain the stream at +0 to its end. Chunks land back to
+                // back: the running position is the read target, and the
+                // bump pointer is reset to it before each further
+                // allocation so the next chunk's room starts exactly
+                // there (the allocator's own 8-byte rounding only moves
+                // where a *later* value goes). No user code runs, so the
+                // scratch locals are safe: `tmp_i32` = stream,
+                // `tmp_i32_b` = future, `addr_scratch` = start, `rbool`
+                // = position, `lit_scrut_ptr` = the packed read status
+                // `(count << 4) | code`.
+                const CHUNK: i32 = 65536;
+                let mem32 = |offset: u64| MemArg {
+                    offset,
+                    align: 2,
+                    memory_index: 0,
+                };
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(mem32(0)));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(mem32(4)));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Const(CHUNK));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalTee(scope.addr_scratch()));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(CHUNK));
+                f.instruction(&Instruction::Call(FN_STDOUT_STREAM_READ));
+                f.instruction(&Instruction::LocalTee(scope.lit_scrut_ptr()));
+                // `BLOCKED` (all ones) never comes back from a sync
+                // read; treat it as the end rather than as a count.
+                f.instruction(&Instruction::I32Const(-1));
+                f.instruction(&Instruction::I32Eq);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                f.instruction(&Instruction::I32Const(4));
+                f.instruction(&Instruction::I32ShrU);
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // Done on any code but `COMPLETED`, or on an empty read.
+                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                f.instruction(&Instruction::I32Const(15));
+                f.instruction(&Instruction::I32And);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                f.instruction(&Instruction::I32Const(4));
+                f.instruction(&Instruction::I32ShrU);
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+                f.instruction(&Instruction::I32Const(CHUNK + 8));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::Drop);
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::Call(FN_STDOUT_STREAM_DROP_READABLE));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::Call(FN_STDOUT_FUTURE_DROP_READABLE));
+                // The `Result`: tag 1 (Ok), then the string's ptr and len.
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Store(mem32(0)));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::I32Store(mem32(4)));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::I32Sub);
+                f.instruction(&Instruction::I32Store(mem32(8)));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
+            }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
                 // Flip the WIT discriminant (byte 0) into Canon's tag
                 // convention by XOR-ing with 1, and store back as a full
@@ -6946,6 +7035,16 @@ impl<'m> WasmGen<'m> {
         imports.import(
             "wasi:cli/stdout",
             "future-drop-readable",
+            EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
+        );
+        imports.import(
+            "wasi:cli/stdout",
+            "stream-read",
+            EntityType::Function(TY_STDOUT_STREAM_WRITE), // (i32, i32, i32) -> (i32)
+        );
+        imports.import(
+            "wasi:cli/stdout",
+            "stream-drop-readable",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         for ext in &self.extern_imports {

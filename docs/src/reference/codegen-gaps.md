@@ -46,69 +46,27 @@ a bridge and work in handlers.
 
 ## `Stream<T>` lowering and streaming response bodies
 
-The checker supports `Stream<T>` as a type expression, but codegen drops
-imports whose signatures mention it, so any program reaching a
-`Stream`-shaped declaration is rejected (and the stdlib ships no `Stream`
-bindings). The enabling move is routing Stream-using programs through
-`wit_component::ComponentEncoder` instead of the hand-rolled `wasm-encoder`
-type section.
+One stream shape lowers: a `wasi:*` binding whose WIT returns
+`tuple<stream<u8>, future<result<_, error-code>>>` and takes no stream
+or future — `wasi:cli/stdin`'s `read-via-stream`, and the filesystem and
+socket functions of the same shape. Canon has no surface for `stream` or
+`future`, so the binding is spelled as an ordinary fallible string
+(`Unit => Result<Stdin, IoError>`); the code generator imports the
+canonical-ABI `stream.read` and `stream.drop-readable` builtins, drains
+the stream to its end into one contiguous string at the call boundary,
+drops both handles, and hands back the same `Result` struct a
+`result<string, string>` return produces. `?` and dispatch never see a
+stream.
 
-A binding can carry a stream without saying so. Canon has no surface for
-`stream` or `future`, so `wasi:cli/stdin`'s
-`func() -> tuple<stream<u8>, future<result<_, error-code>>>` is spelled
-`Unit => Result<Stdin, IoError>` and reads as an ordinary fallible string
-constructor. The vendored WIT is the only place the real shape appears, so
-the rejection consults it: any `wasi:*` binding whose WIT signature
-mentions a `stream` or `future` in any position is a checker error. Without
-that, codegen types the import from the Canon signature and the component
-fails to *instantiate* against a host carrying the real shape — a program
-that passed both `check` and `build`.
-
-This gap gates the rest of the WASI migration: `wasi:filesystem`'s
-`read-via-stream`, the `wasi:http` client's response bodies, and the
-handler request body below all wait on the read half. Four things about
-the encoder are worth knowing before starting, each of which costs an
-afternoon to rediscover:
-
-- **`run_core_fn` counts past the whole canon section.** `component.rs`
-  indexes the aliased `run` export as `13 + externs.len()`, so every canon
-  builtin added in §7c shifts it. A stale count fails validation as
-  `lowered parameter types [] do not match parameter types [I32, I32, I32]
-  of core function 14` — a numbered core function, nothing naming `run`.
-  Adding the two read builtins makes it `15 + N`. This is the
-  component-level twin of the `fn_user_start` hazard the three encoder
-  modes carry.
-- **The read builtins are free until used.** A synthetic core instance may
-  export more than the user core module imports, so declaring
-  `stream.read` / `stream.drop-readable` alongside the existing write pair
-  costs two core function indices and does *not* shift
-  `FIRST_EXTERN_IMPORT_FN`.
-- **`error-code` cannot be a literal.** The instance type for a
-  stream-returning import must define and export `error-code` before the
-  `result` / `future` / `tuple` chain, following the `ScalarRecord`
-  define-then-export-then-reference-the-alias discipline. `wasi:cli`'s
-  enum is three cases and `wasi:filesystem`'s is far larger, so the cases
-  have to come from `vendored_resolve()` via the URN.
-- **A sync `stream.read` blocks; it does not return `BLOCKED`.** Declared
-  with `Memory(0)` and no `Async` — as the existing `stream.write` is —
-  the host blocks the caller, so draining needs no waitable-set. The
-  result packs as `(count << 4) | code` with `COMPLETED = 0`,
-  `DROPPED = 1`, `CANCELLED = 2` (`BLOCKED = 0xffff_ffff` only arises for
-  an async lower). `DROPPED` ends the stream.
-
-The Canon-visible shape is an ordinary fallible string return, so the
-decode can build the same 12-byte `Result` struct `ResultStringString`
-produces and reuse `?` and dispatch unchanged; the return area itself is
-8 bytes, the readable handle at +0 and the completion future at +4.
-
-The one part that cannot be added incrementally: the decode *calls*
-`stream.read`, so the user core module has to import it, which moves
-`FIRST_EXTERN_IMPORT_FN` from 5 to 7 and shifts the fixed import blocks
-of all three encoder modes together. That is the same hazard a
-newly defined helper carries, and it is why this gap closes as one PR
-rather than a series: the shape, its
-classification, the instance type, the decode, and the relaxation of the
-binding rejection above are all unreachable until they land at once.
+Everything else about streams is still the gap: a `stream<T>` of any
+other element type, a stream or future in a *parameter* (`write-via-stream`,
+`send`), a `future` returned on its own, `Stream<T>` written in a Canon
+signature, and streaming rather than draining — which is what the
+`wasi:http` client's response bodies and the handler request body below
+wait on. Any such binding is a checker error; `canon install` skips the
+WIT shapes it cannot spell. Draining was chosen over a `Stream<T>` value
+because every consumer the stdlib has wants the whole input as a string,
+and the drain costs nothing the consumer would not have paid.
 
 ## HTTP handler request headers and body
 

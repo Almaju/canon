@@ -149,6 +149,22 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         // not `list<s64>`) — both the component-level import type and the
         // decode stride must match it.
         if component_ns.starts_with("wasi:") {
+            // A byte stream hides behind a fallible string: the Canon
+            // signature says `Result<Stdin, IoError>`, the vendored WIT
+            // says `tuple<stream<u8>, future<result<_, error-code>>>`.
+            if let (
+                Some(IndirectReturnShape::ResultStringString { ok_name, err_name }),
+                Some(error_cases),
+            ) = (
+                &indirect_return,
+                component::vendored_extern_byte_stream_return(&ext.path),
+            ) {
+                indirect_return = Some(IndirectReturnShape::ByteStream {
+                    ok_name: ok_name.clone(),
+                    err_name: err_name.clone(),
+                    error_cases,
+                });
+            }
             match &mut indirect_return {
                 Some(IndirectReturnShape::OptionScalar { prim }) => {
                     if let Some(p) = component::vendored_extern_option_payload(&ext.path) {
@@ -510,6 +526,20 @@ pub(super) enum IndirectReturnShape {
     /// as-is; narrower elements are re-packed into a fresh Canon list,
     /// widening each element per the WIT signedness (`f32` promotes to
     /// `f64`).
+    /// `tuple<stream<u8>, future<result<_, error-code>>>` return — the
+    /// shape `wasi:cli/stdin`'s `read-via-stream` and its filesystem
+    /// and socket siblings share. Return area: 8 bytes, the readable
+    /// stream handle at +0 and the completion future at +4. The decode
+    /// drains the stream to its end into one contiguous string, drops
+    /// both handles, and builds the same 12-byte `Result` struct
+    /// `ResultStringString` does, so `?` and dispatch see an ordinary
+    /// fallible string. `error_cases` are the WIT `error-code` enum's
+    /// cases in declaration order, for the imported instance type.
+    ByteStream {
+        ok_name: String,
+        err_name: String,
+        error_cases: Vec<String>,
+    },
     ListScalar {
         prim: wasm_encoder::PrimitiveValType,
     },
@@ -562,6 +592,7 @@ impl IndirectReturnShape {
             }
             IndirectReturnShape::ListString => 8,
             IndirectReturnShape::ListScalar { .. } => 8,
+            IndirectReturnShape::ByteStream { .. } => 8,
             IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }
