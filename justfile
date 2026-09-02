@@ -141,7 +141,7 @@ bench:
 #
 # The docs are a Canon web app: `docs/src/main.can` is the Elm-triple
 # app shell that renders the `docs/src/*.md` content pages via the
-# stdlib Markdown renderer. `canon build docs` compiles it to a browser
+# `canon/markdown` renderer. `canon build docs` compiles it to a browser
 # bundle under `docs/build/`; `canon run docs` then serves that bundle
 # on 127.0.0.1:8080 with the compiler's built-in static server. Edit a
 # `.md` page (or `main.can` / `styles.can`), re-run, and refresh.

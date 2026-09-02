@@ -37,8 +37,8 @@ compiler enforces alphabetical order.**
 The full specification lives under `docs/src/spec/` — the canonical design doc.
 
 **The docs site is itself a Canon program.** `docs/src/main.can` is an
-Elm-architecture web app that renders the `docs/src/*.md` pages via the stdlib
-Markdown renderer, compiled by `canon build docs` to wasm (dogfoods the web
+Elm-architecture web app that renders the `docs/src/*.md` pages via the
+`canon/markdown` renderer, compiled by `canon build docs` to wasm (dogfoods the web
 target — see `docs/src/reference/web-target.md`). Page content stays plain
 Markdown; `main.can` (routing/sidebar) and `styles.can` (stylesheet) are the app
 shell.
@@ -94,7 +94,7 @@ same PR; never open standalone docs-sync PRs.
 | Path | Description |
 |---|---|
 | `.github/` | CI workflows (docs deploy, release pipeline) |
-| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (Elm triple) rendering `src/*.md` via the stdlib Markdown renderer; `canon build docs` → `docs/build/` (wasm + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` and `assets/canon-play.js` are injected by the deploy for progressive enhancement (highlighting, the playground page, click-to-run on ` ```canon,run ` snippets). `landing/index.html` is the marketing page. Deploy puts landing at root, app under `/doc/`, and the stdlib's `canon doc` output under `/doc/api/`. |
+| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (Elm triple) rendering `src/*.md` via the `canon/markdown` renderer (`docs/deps/`); `canon build docs` → `docs/build/` (wasm + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` and `assets/canon-play.js` are injected by the deploy for progressive enhancement (highlighting, the playground page, click-to-run on ` ```canon,run ` snippets). `landing/index.html` is the marketing page. Deploy puts landing at root, app under `/doc/`, and the stdlib's `canon doc` output under `/doc/api/`. |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | AST construction (`parser.rs`) |

@@ -2,7 +2,7 @@ name: docs
 
 # The documentation site is a Canon program: `docs/src/main.can` is the
 # Elm-architecture web app, and it renders the `docs/src/*.md` pages with
-# the standard library's Markdown renderer, compiled to a WebAssembly
+# the `canon/markdown` renderer, compiled to a WebAssembly
 # module. The landing page (`docs/landing/`) is served at the site root
 # and the app under `/doc/`, with the standard library's generated API
 # reference (`canon doc`) beside it at `/doc/api/`.
@@ -13,7 +13,7 @@ on:
       - "docs/**"
       - ".github/workflows/docs.yml"
       # The app is compiled by the canon compiler and renders the docs
-      # through the stdlib Markdown renderer, so compiler and stdlib
+      # through the `canon/markdown` renderer, so compiler and package
       # changes rebuild the site.
       - "src/**"
       - "packages/**"
