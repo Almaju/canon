@@ -1,0 +1,8 @@
+Over = Bool
+
+Board => Over {
+    Board
+        -> Won(Piece("X"))
+        -> Or(Board -> Won(Piece("O")))
+        -> Or(Board -> Free -> Eq(0))
+}

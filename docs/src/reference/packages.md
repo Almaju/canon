@@ -59,6 +59,32 @@ characters outside the alphabet, or padding before the end are the
 module's `MalformedBase64` / `MalformedHex` error. Uppercase hex
 digits decode fine; encoding always emits lowercase.
 
+## `canon/prng` — seeded pseudo-random numbers
+
+```sh
+canon add canon/prng
+```
+
+```canon
+Unit => Program {
+    Seed("any text")
+        -> Next
+        -> Below(Bound(6))
+        -> Sum(1)
+        -> Print
+}
+```
+
+Randomness without a host: the prelude's `Random()` draws from
+`wasi:random`, which the browser and the HTTP handler world cannot
+import, and a game or a test wants a reply it can replay. `Seed` is
+an `Int`; `String -> Seed` hashes text into one, `seed -> Next` is
+the next state of a linear congruential generator (31-bit, so the
+arithmetic never overflows), and `seed -> Below(Bound(n))` reads a
+number in `0 … n-1` from its high bits. The same seed always gives
+the same sequence — `examples/tic-tac-toe` seeds the computer's move
+from the board itself.
+
 ## `canon/router` — HTTP request routing
 
 ```sh

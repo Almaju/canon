@@ -1,0 +1,8 @@
+Free = Int
+
+Board => Free {
+    Board
+        -> Split(Separator("."))
+        -> Length
+        -> Difference(1)
+}
