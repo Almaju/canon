@@ -16,7 +16,7 @@ Every type name `canon` declares is global — a type of the same
 name in your own project is a compile error — so the complete set,
 internal helpers included, is worth checking before you name a type.
 That list is the index of the [generated API
-reference](api/index.html), which `canon doc` derives from the
+reference](api/canon/index.html), which `canon doc` derives from the
 stdlib source itself and therefore cannot drift from it. This page is
 the prose the generator has no way to write.
 
