@@ -1,0 +1,1 @@
+error[tests/checker/fail/command_two_messages.can:7:1]: an arrow that returns its own input type is a command, and a command takes exactly one other input, its message: declare a type for the operation (`Insert = Key * Value`) and write `Box * Insert => Box`

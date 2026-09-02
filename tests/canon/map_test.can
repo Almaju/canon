@@ -2,7 +2,7 @@ MapContainsFindsKey = TestResult
 
 Unit => MapContainsFindsKey {
     Map()
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("a") * Value("1"))
         -> Contains("a")
         -> TestResult
 }
@@ -11,20 +11,20 @@ MapContainsRejectsAbsent = TestResult
 
 Unit => MapContainsRejectsAbsent {
     Map()
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("a") * Value("1"))
         -> Contains("z")
         -> Not
         -> TestResult
 }
 
-MapInsertedRecursesPastMultipleNonMatchingKeys = TestResult
+MapInsertRecursesPastMultipleNonMatchingKeys = TestResult
 
-Unit => MapInsertedRecursesPastMultipleNonMatchingKeys {
+Unit => MapInsertRecursesPastMultipleNonMatchingKeys {
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
-        -> Inserted(Key("c") * Value("3"))
-        -> Inserted(Key("d") * Value("4"))
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Insert(Key("c") * Value("3"))
+        -> Insert(Key("d") * Value("4"))
         -> Keys
         -> Json
         -> Eq("[a,b,c,d]")
@@ -35,8 +35,8 @@ MapKeysSorted = TestResult
 
 Unit => MapKeysSorted {
     Map()
-        -> Inserted(Key("b") * Value("2"))
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Insert(Key("a") * Value("1"))
         -> Keys
         -> Json
         -> Eq("[a,b]")
@@ -47,8 +47,8 @@ MapLengthCountsKeys = TestResult
 
 Unit => MapLengthCountsKeys {
     Map()
-        -> Inserted(Key("b") * Value("2"))
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Insert(Key("a") * Value("1"))
         -> Length
         -> Eq(2)
         -> TestResult
@@ -57,42 +57,42 @@ Unit => MapLengthCountsKeys {
 MapReinsertOverwrites = TestResult
 
 Unit => MapReinsertOverwrites {
-    Map() -> Inserted(Key("a") * Value("1")) -> Inserted(Key("a") * Value("2")) -> Value("a") -> (
+    Map() -> Insert(Key("a") * Value("1")) -> Insert(Key("a") * Value("2")) -> Value("a") -> (
         * None { Fail("key a should be present") }
         * Some<Value> { Value -> Eq("2") -> TestResult }
     )
 }
 
-MapRemovedDropsKey = TestResult
+MapRemoveDropsKey = TestResult
 
-Unit => MapRemovedDropsKey {
+Unit => MapRemoveDropsKey {
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
-        -> Removed("a")
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Remove("a")
         -> Keys
         -> Json
         -> Eq("[b]")
         -> TestResult
 }
 
-MapRemovedOnEmptyIsNoOp = TestResult
+MapRemoveOnEmptyIsNoOp = TestResult
 
-Unit => MapRemovedOnEmptyIsNoOp {
+Unit => MapRemoveOnEmptyIsNoOp {
     Map()
-        -> Removed("a")
+        -> Remove("a")
         -> Length
         -> Eq(0)
         -> TestResult
 }
 
-MapRemovedRecursesPastNonMatchingKey = TestResult
+MapRemoveRecursesPastNonMatchingKey = TestResult
 
-Unit => MapRemovedRecursesPastNonMatchingKey {
+Unit => MapRemoveRecursesPastNonMatchingKey {
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
-        -> Removed("b")
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Remove("b")
         -> Keys
         -> Json
         -> Eq("[a]")
@@ -102,7 +102,7 @@ Unit => MapRemovedRecursesPastNonMatchingKey {
 MapValueAbsent = TestResult
 
 Unit => MapValueAbsent {
-    Map() -> Inserted(Key("a") * Value("1")) -> Value("z") -> (
+    Map() -> Insert(Key("a") * Value("1")) -> Value("z") -> (
         * None { Pass() }
         * Some<Value> { Fail("key z should be absent") }
     )
@@ -111,7 +111,7 @@ Unit => MapValueAbsent {
 MapValuePresent = TestResult
 
 Unit => MapValuePresent {
-    Map() -> Inserted(Key("a") * Value("1")) -> Value("a") -> (
+    Map() -> Insert(Key("a") * Value("1")) -> Value("a") -> (
         * None { Fail("key a should be present") }
         * Some<Value> { Value -> Eq("1") -> TestResult }
     )
@@ -121,8 +121,8 @@ MapValuesOrderedByKey = TestResult
 
 Unit => MapValuesOrderedByKey {
     Map()
-        -> Inserted(Key("b") * Value("2"))
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Insert(Key("a") * Value("1"))
         -> Values
         -> Json
         -> Eq("[1,2]")

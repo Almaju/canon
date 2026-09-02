@@ -13,16 +13,20 @@ map.insert("k", "v")
 Canon spells
 
 ```
-Inserted = Map
+Insert = Key * Value
 
-(Map * String * Value) => Inserted { ... }
+Map * Insert => Map { ... }
 
-map -> Inserted(Key("k") * Value("v"))
+map -> Insert(Key("k") * Value("v"))
 ```
 
-An operation is identified by *what it produces*, never by a verb. A
-function name can drift from what the function does; a constructor
-named after its return type is checked by the compiler.
+A query is identified by *what it produces*, never by a verb: a
+constructor named after its return type is checked by the compiler. A
+command — an operation that gives its input back — is identified by
+the **message** it takes, a type declared for the operation, and is
+applied by piping the value into that message. Either way the name is a
+type the compiler checks, and a function name that could drift from
+what the function does never exists.
 
 ## The Unified Declaration
 
@@ -84,12 +88,15 @@ string -> Substring(From(1) * To(4))           # execute
   `File(Path)` ([Types § Conversions](./types.md#conversions)).
 - **Accessors** construct the accessed thing: `map -> Value("k")?`
   reads "the Value in this Map at this key, which might not exist."
-- **Endomorphisms** (output type = an input type, the one place types
-  underdetermine the operation) take **result newtypes**:
-  `Inserted = Map`, `Joined = String`. Checked, not conventional: an
-  arrow constructing a type in its own input product is an error
-  directing to the newtype. Substitutability makes chaining free --
-  `Map() -> Inserted(Key("a") * Value("1")) -> Removed("a")`.
+- **Commands** (output type = an input type, the one place types
+  underdetermine the operation) take a **message**: `Insert = Key *
+  Value`, `Map * Insert => Map`. Checked, not conventional: an arrow
+  constructing one of its inputs must take exactly one other input, a
+  declared, non-primitive type that is not a part of the value it
+  applies to. A command is reached only by piping the value into its
+  message, so chaining is free --
+  `Map() -> Insert(Key("a") * Value("1")) -> Remove("a")` -- and the
+  message is data that can be stored and applied later.
 - **Effects produce evidence**: a write returns `Written = Path`; a
   function accepting `(Written)` requires proof the write happened
   ([Effects](./effects-and-async.md)).
@@ -118,4 +125,6 @@ Type names recur across files (`Value`, `Key`, `Length`), so:
    overlap, not co-declaration.
 3. **Distinct same-shaped operations take distinct newtypes**
    (`Length = Int`, `ByteCount = Int`) -- which is a feature: they can
-   no longer accidentally interchange.
+   no longer accidentally interchange. A message shared by two types
+   (`Remove = String` on both `Map` and `Set`) is one type by the same
+   rule; each receiver contributes its own command for it.

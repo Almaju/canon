@@ -1,0 +1,1 @@
+error[tests/checker/fail/command_message_primitive.can:3:7]: `String` cannot be a message: declare a type for the operation (`Msg = String`) — a command is applied by piping the value into its message, so the message names what the command does

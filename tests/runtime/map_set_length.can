@@ -1,16 +1,16 @@
 Unit => Program {
     Map()
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("a") * Value("1"))
         -> Length
         -> Print
     Set()
-        -> Added("a")
-        -> Added("b")
+        -> Add("a")
+        -> Add("b")
         -> Length
         -> Print
     Map()
-        -> Inserted(Key("k") * Value("v"))
-        -> Removed("k")
+        -> Insert(Key("k") * Value("v"))
+        -> Remove("k")
         -> Length
         -> Print
 }

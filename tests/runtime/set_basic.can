@@ -1,35 +1,35 @@
 Unit => Program {
     Set()
-        -> Added("b")
-        -> Added("a")
-        -> Added("b")
+        -> Add("b")
+        -> Add("a")
+        -> Add("b")
         -> Length
         -> Print
     Set()
-        -> Added("x")
+        -> Add("x")
         -> Contains("x")
         -> Print
     Set()
-        -> Added("x")
+        -> Add("x")
         -> Contains("y")
         -> Print
     Set()
-        -> Added("b")
-        -> Added("c")
-        -> Added("a")
+        -> Add("b")
+        -> Add("c")
+        -> Add("a")
         -> List
         -> Json
         -> Print
     Set()
-        -> Added("a")
-        -> Added("b")
-        -> Dropped("a")
+        -> Add("a")
+        -> Add("b")
+        -> Remove("a")
         -> List
         -> Json
         -> Print
     Set()
-        -> Added("a")
-        -> Dropped("missing")
+        -> Add("a")
+        -> Remove("missing")
         -> Length
         -> Print
 }

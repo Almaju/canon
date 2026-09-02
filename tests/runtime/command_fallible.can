@@ -1,0 +1,25 @@
+Box = Int
+
+Lid = Int
+
+Overflow = String
+
+Box * Lid => Result<Box, Overflow> {
+    Box -> Sum(Lid) -> Gt(10) -> (
+        * False { Box -> Sum(Lid) -> Box -> Ok }
+        * True { Overflow("too big") -> Err }
+    )
+}
+
+Unit => Result<Program, Overflow> {
+    Box(1)
+        -> Lid(2)?
+        -> Lid(3)?
+        -> String
+        -> Print
+    Box(1) -> Lid(20) -> (
+        * Err<Overflow> => Unit { Overflow -> Print }
+        * Ok<Box> => Unit { Box -> String -> Print }
+    )
+    Unit() -> Ok
+}

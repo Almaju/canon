@@ -44,14 +44,17 @@ boundary from both sides:
   `Frobnicated = (Int) => Int` with no `Frobnicated` newtype anywhere
   -- is a checker error: *a name carries no information the types
   don't*.
-- An arrow may not construct a type that is also one of its inputs. An
-  endomorphism (`Map * String => Map`) is the one operation whose types
-  cannot identify it -- insert, remove, and update all share that
-  signature -- so the operation takes a **result newtype**: `Inserted =
-  Map` plus `Map * String * Value => Inserted { ... }`. Exact-name
-  comparison only: a newtype input flowing into its base type's
-  constructor (`Rest = Map` into a `Map` constructor) is a different
-  type and stays legal.
+- An arrow that constructs one of its own inputs is a **command**, and
+  the types of a command cannot identify it -- insert, remove, and update
+  all share `Map * String => Map` -- so a command takes exactly one other
+  input, its **message**: a type declared for the operation, holding its
+  arguments. `Insert = Key * Value` plus `Map * Insert => Map { ... }`. A
+  message is a declared, non-primitive type that is not a part of the
+  value it applies to (`Key` is a part of `Map`, so `Map * Key => Map` is
+  an error); a message with no payload is a `Unit` newtype (`Clear =
+  Unit`). Exact-name comparison only: a newtype input flowing into its
+  base type's constructor (`Rest = Map` into a `Map` constructor) is a
+  different type and an ordinary constructor.
 
 The name must be PascalCase: a camelCase declaration is a checker error
 everywhere except [binding files](./compilation.md).
@@ -86,6 +89,24 @@ components are passed as a product value:
 ```canon
 0 -> Digits(Pos(1) * String)
 ```
+
+### Applying a Message
+
+A command is reached only through its message: the value pipes into the
+message, and what rides in the parentheses builds it.
+
+```text
+Map() -> Insert(Key("a") * Value("1")) -> Remove("a")
+todos -> Clear
+Node.Rest -> Insert(Insert)
+```
+
+`map -> Insert(…)` applies `Map * Insert => Map` to `map`; the
+expression's type is the command's return type (`Map`, or
+`Result<Map, E>` for a fallible command, unwrapped by `?` as usual). A
+value that already is the message passes through, which is the shape a
+recursive body takes. Constructing the receiver's type around the
+message (`map -> Map(Insert(…))`) is an error: one spelling.
 
 ### The Binding Rule
 
@@ -172,11 +193,11 @@ an exact exit code is the hard `Exited(n)`
 
 A third world -- the browser [web target](../reference/web-target.md) -- is
 selected by a **triple of anonymous, type-selected constructors**:
-`Model => Html` (the view), `Unit => Init` (init), and
-`Model * Msg => Update` (update), where `Init` / `Update` are model-alias
-markers. Detection anchors on the view -- the sole `Model => Html` with a
-user-type receiver -- then finds the model's nullary and two-input
-constructors. The triple compiles to a core wasm module plus a generated
+`Model => Html` (the view), `Unit => Init` (init, `Init` a model-alias
+marker), and `Model * Msg => Model` (update -- the model's one command,
+`Msg` its message). Detection anchors on the view -- the sole `Model =>
+Html` with a user-type receiver -- then finds the model's nullary
+constructor and its command. The triple compiles to a core wasm module plus a generated
 JS host rather than a component.
 
 Rules the compiler enforces:

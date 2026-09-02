@@ -22,8 +22,6 @@ const COUNTER_SRC: &str = r#"Init = Model
 
 Model = Int
 
-Update = Model
-
 Model => Html {
     H1("Canon Counter")
         -> Joined(Msg("Decrement") -> Button("-"))
@@ -36,8 +34,8 @@ Unit => Init {
     Model(0)
 }
 
-Model * String => Update {
-    String -> (
+Model * Msg => Model {
+    Msg -> (
         * "Decrement" { Model -> Difference(1) -> Model }
         * "Increment" { Model -> Sum(1) -> Model }
         * String { Model }

@@ -1,0 +1,1 @@
+error[tests/checker/fail/command_unit_message_payload.can:10:5]: `Reset` carries no payload: apply it as `-> Reset`

@@ -125,11 +125,12 @@ impl<'m> WasmGen<'m> {
             // `assign_func_indices`, so the triple's entries are always present.
             .expect("web entry `init` missing from func table");
         let update_info = self
-            .func_table
-            .get(&web.update)
+            .commands
+            .get(&(model.clone(), web.update.clone()))
             .cloned()
-            // invariant: see `init` above — `find_web_entry` keys are registered.
-            .expect("web entry `update` missing from func table");
+            // invariant: see `init` above — `find_web_entry` names a command
+            // `assign_func_indices` registered.
+            .expect("web entry `update` missing from the command table");
         let view_info = self
             .func_table
             .get(&web.view)
@@ -168,7 +169,7 @@ impl<'m> WasmGen<'m> {
         if update_params != expected_update || update_results != init_results {
             eprintln!(
                 "error: web entry shape mismatch: `update` must be \
-                 `({model} * String) -> {model}` with the same model type `init` returns"
+                 `{model} * Msg => {model}` with the same model type `init` returns"
             );
             std::process::exit(1);
         }

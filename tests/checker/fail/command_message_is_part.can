@@ -1,0 +1,15 @@
+Box = Lid * Wall
+
+Lid = Int
+
+Wall = Int
+
+Box * Lid => Box {
+    Box
+}
+
+Unit => Program {
+    Lid(1) -> Box(Wall(2)) -> Lid(3) -> (
+        * Box { Box.Lid -> String -> Print }
+    )
+}

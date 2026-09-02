@@ -54,11 +54,12 @@ names** — and removes every other kind:
   type must be told apart by a newtype (`OtherUser = User`) — and that
   newtype documents *why* there are two.
 - **No function names.** Every callable is a constructor, named after
-  the type it produces. An operation that transforms a value takes a
-  **result newtype** named for what it did: inserting into a `Map`
-  yields an `Inserted` (`Inserted = Map`). The naming treadmill —
-  `fromX`, `toX`, `parseX`, `tryX` — disappears because there is
-  nothing left to name.
+  the type it produces. An operation that gives a value back changed —
+  a command — is named by the **message** it takes: inserting into a
+  `Map` is `map -> Insert(Key("k") * Value("v"))`, with `Insert = Key *
+  Value` a type of its own. The naming treadmill — `fromX`, `toX`,
+  `parseX`, `tryX` — disappears because there is nothing left to name,
+  and a message is data: it can be logged, stored, and replayed.
 - **No comments.** If code needs explaining, the fix is a better type,
   not prose the compiler can't check and the next edit won't update.
 
@@ -162,7 +163,7 @@ A few choices look wrong until the principle behind them is visible:
 | `while`, `for` | collection operations and recursion |
 | `let`, local variables | the `->` pipe and newtypes |
 | parameter names | input products of distinct types |
-| function names | constructors and result newtypes |
+| function names | constructors and messages |
 | comments | types and names the compiler checks |
 | `import` / `use` | references resolved by file naming |
 | package manifest, lockfile | directory structure (`src/`, `wit/`, `deps/`) |

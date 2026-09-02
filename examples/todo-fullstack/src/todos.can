@@ -1,10 +1,10 @@
-AddedTodo = Todos
+Add = String
 
-Cleared = Todos
+Clear = Unit
+
+Delete = Int
 
 Done = Bool
-
-RemovedAt = Todos
 
 RenderedItems = Html
 
@@ -12,35 +12,7 @@ Todo = Done * Title
 
 Todos = List<Todo>
 
-ToggledAt = Todos
-
-Title * Todos => AddedTodo {
-    Todos
-        -> Appended(False() -> Todo(Title))
-        -> Todos
-}
-
-Todos => Cleared {
-    Todos
-        -> Filtered((Todo) => Bool { Todo.Done -> Not })
-        -> Todos
-}
-
-Int * Todos => RemovedAt {
-    Todos -> First -> (
-        * None { Todos }
-        * Some<Todo> {
-            Int -> Eq(1) -> (
-                * False {
-                    List(Todo)
-                        -> Joined(Int -> Difference(1) -> RemovedAt(Todos -> Skipped(1) -> Todos))
-                        -> Todos
-                }
-                * True { Todos -> Skipped(1) -> Todos }
-            )
-        }
-    )
-}
+Toggle = Int
 
 Int * Todos => RenderedItems {
     Todos -> First -> (
@@ -55,14 +27,42 @@ Int * Todos => RenderedItems {
     )
 }
 
-Int * Todos => ToggledAt {
+Todos * Add => Todos {
+    Todos
+        -> Appended(False() -> Todo(Add -> Title))
+        -> Todos
+}
+
+Todos * Clear => Todos {
+    Todos
+        -> Filtered((Todo) => Bool { Todo.Done -> Not })
+        -> Todos
+}
+
+Todos * Delete => Todos {
     Todos -> First -> (
         * None { Todos }
         * Some<Todo> {
-            Int -> Eq(1) -> (
+            Delete -> Eq(1) -> (
                 * False {
                     List(Todo)
-                        -> Joined(Int -> Difference(1) -> ToggledAt(Todos -> Skipped(1) -> Todos))
+                        -> Joined(Todos -> Skipped(1) -> Todos -> Delete(Delete -> Difference(1)))
+                        -> Todos
+                }
+                * True { Todos -> Skipped(1) -> Todos }
+            )
+        }
+    )
+}
+
+Todos * Toggle => Todos {
+    Todos -> First -> (
+        * None { Todos }
+        * Some<Todo> {
+            Toggle -> Eq(1) -> (
+                * False {
+                    List(Todo)
+                        -> Joined(Todos -> Skipped(1) -> Todos -> Toggle(Toggle -> Difference(1)))
                         -> Todos
                 }
                 * True {

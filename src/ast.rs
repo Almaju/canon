@@ -385,9 +385,11 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 pub struct WebEntry {
     /// The model type name — `view`'s receiver as written in source.
     pub model: String,
-    /// `func_table` keys `(receiver, name)` for the three members.
+    /// `func_table` keys `(receiver, name)` for `init` and `view`.
     pub init: (Option<String>, String),
-    pub update: (Option<String>, String),
+    /// The model's message type: `update` is the command `Model * Msg =>
+    /// Model`, keyed `(model, message)` in codegen's command table.
+    pub update: String,
     pub view: (Option<String>, String),
 }
 
@@ -430,14 +432,45 @@ pub fn has_test_entry(items: &[Item]) -> bool {
         .any(|item| matches!(item, Item::Function(f) if is_test_constructor(f, &test_types)))
 }
 
+/// A **message** is the one input a command takes beside the value it
+/// returns: `Map * Insert => Map` applies an `Insert` to a `Map`. After
+/// `resolve_new_syntax` that arrow is either a `Self` constructor whose
+/// two params include its own receiver, or — declared away from the
+/// type's file — a receiver-extracted function named after one of its
+/// two inputs. Returns `(receiver type, message type)` for either shape,
+/// `None` for anything that is not an arrow returning one of two inputs.
+pub fn message_shape(func: &FunctionDef) -> Option<(String, String)> {
+    let is_self = func.name.name == "Self";
+    let constructed = if is_self {
+        func.receiver.as_ref()?.name.clone()
+    } else {
+        func.name.name.clone()
+    };
+    let mut components: Vec<String> = Vec::new();
+    if !is_self {
+        components.push(func.receiver.as_ref()?.name.clone());
+    }
+    for param in &func.params {
+        components.push(param.ty.simple_name()?.to_string());
+    }
+    let [a, b] = components.as_slice() else {
+        return None;
+    };
+    match (a == &constructed, b == &constructed) {
+        (true, false) => Some((constructed, b.clone())),
+        (false, true) => Some((constructed, a.clone())),
+        _ => None,
+    }
+}
+
 /// Detects the web-app entry triple among `items` by *shape*, not name.
 /// The anchor is `view` — the sole `Model => Html` whose receiver is a
 /// user type (excluding primitive receivers filters out stdlib `Escaped`,
 /// which converts `Html`/`Int`/`String` to `Html`). From the model,
 /// `init` is the unique nullary constructor whose result aliases the
-/// model, and `update` the unique two-input constructor whose first
-/// input *is* the model and whose result aliases it. Returns `None`
-/// unless all three resolve uniquely.
+/// model, and `update` the model's command for `Msg` — `Model * Msg =>
+/// Model`, the message the host delivers. Returns `None` unless all
+/// three resolve uniquely.
 pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
     use std::collections::HashMap;
 
@@ -532,25 +565,23 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
             continue;
         };
 
-        // update: `(Model * Msg) => Update` — first input is the model,
-        // result aliases the model.
-        let updates: Vec<&&FunctionDef> = fns
+        // update: `Model * Msg => Model` — the model's command for
+        // `Msg`, the message the host delivers (`canon/web`). The model
+        // may have other commands; this is the one the host applies.
+        let updates: Vec<(String, String)> = fns
             .iter()
-            .filter(|f| {
-                f.name.name == "Self"
-                    && f.params.len() == 2
-                    && matches!(&f.params[0].ty, TypeExpr::Named { name, .. } if *name == model)
-                    && aliases(&f.return_ty, &model)
-            })
+            .filter(|f| aliases(&f.return_ty, &model))
+            .filter_map(|f| message_shape(f))
+            .filter(|(receiver, message)| *receiver == model && message == "Msg")
             .collect();
-        let [update] = updates.as_slice() else {
+        let [(_, msg)] = updates.as_slice() else {
             continue;
         };
 
         resolved.push(WebEntry {
             model,
             init: key(init),
-            update: key(update),
+            update: msg.clone(),
             view: key(view),
         });
     }

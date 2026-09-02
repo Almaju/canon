@@ -179,6 +179,11 @@ struct WasmGen<'m> {
 
     // User function table: (Option<receiver_type_name>, method_name) → FuncInfo
     func_table: HashMap<(Option<String>, String), FuncInfo>,
+    /// Commands, keyed `(receiver type, message)`: `Map * Insert => Map`
+    /// is `("Map", "Insert")`. Kept out of `func_table` so a command
+    /// never reads as a constructor-family member of its type — it is
+    /// reached only by piping a value into its message.
+    commands: HashMap<(String, String), FuncInfo>,
 
     // Every compiled user function in func-index order: (func_idx,
     // type_idx, def). The single source of truth for the emitted
@@ -293,6 +298,7 @@ impl<'m> WasmGen<'m> {
             variant_parent: HashMap::new(),
             variant_tag: HashMap::new(),
             func_table: HashMap::new(),
+            commands: HashMap::new(),
             compiled_user_funcs: Vec::new(),
             user_type_sigs: Vec::new(),
             user_type_map: HashMap::new(),
@@ -686,6 +692,12 @@ impl<'m> WasmGen<'m> {
                     bare_result: false,
                     is_async: false,
                 };
+                if let Some((receiver, message)) = crate::ast::message_shape(func) {
+                    self.commands.insert((receiver, message), info.clone());
+                    self.compiled_user_funcs.push((idx, type_idx, func.clone()));
+                    idx += 1;
+                    continue;
+                }
                 if is_self_ctor(func) {
                     // Constructor families: several `Self`-renamed bodies
                     // share the `(Type, "Self")` primary key. The zero-arg

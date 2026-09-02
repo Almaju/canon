@@ -270,7 +270,7 @@ These are the non-obvious rules the code won't spell out. Together with
   them — **but only when every input carries its type syntactically**.
   Consequences: same-underlying-type parts (map's `Key`/`Value`, both `String`;
   `Padded`'s `Int`/`Width`, both `Int`) must be distinct newtypes *and* tagged at
-  the call site — `Padded(Width(4))`, `Inserted(Key("a") * Value("1"))`. The
+  the call site — `Padded(Width(4))`, `Insert(Key("a") * Value("1"))`. The
   checker rejects a construction where written order would decide an untagged
   value's slot (`check_product_construction_types` runs the assignment forward
   and reversed; divergence is the error), and this covers both a product type's
@@ -333,8 +333,13 @@ treatment in `docs/src/spec/types-only.md`.
   exactly the constructed type; named declarations survive only as shape impls.
   Checked: a receiver-less bodied decl must be named after the type it constructs;
   a receiver-carrying one must be a declared shape or a newtype of its return; an
-  arrow whose constructed type appears in its own input is an error (endomorphisms
-  take result newtypes, `Inserted = Map`). **Shapes are rejected outright** —
+  arrow whose constructed type appears in its own input is a **command** and must
+  take exactly one other input, its **message** — a declared non-primitive type
+  that is not a part of the receiver (`Insert = Key * Value`, `Map * Insert =>
+  Map`), applied by piping the value into it (`map -> Insert(…)`; `Clear = Unit`
+  for a payload-less message, applied as `-> Clear`). Commands live in their own
+  tables (`SymbolTable::messages`, codegen `commands`), never in the constructor
+  family, and `map -> Map(Insert(…))` is an error. **Shapes are rejected outright** —
   no exceptions; the interpolation hooks are ordinary result-newtype families. A single
   named input drops its parens (`A => B { … }` == `(A) => B { … }`); products and
   generic inputs keep them.
@@ -347,8 +352,8 @@ treatment in `docs/src/spec/types-only.md`.
   back to `main` (so ordering exemption + `$start` inlining key on it); a literal
   `main` name is a checker error. All `Unit`-rooted types are interchangeable in
   return position. The web triple is type-selected too: `Model => Html` (view),
-  `Unit => Init`, `Model * Msg => Update` (`Init`/`Update` are marker newtypes for
-  distinct keys).
+  `Unit => Init`, `Model * Msg => Model` (`Init` is a marker newtype; update is the
+  model's command for the stdlib `Msg`).
 - **Value-level pipe.** `value -> B` == `B(value)` == `value.B()` (a `MethodCall`
   with `piped: true`); `-> B?` is the pipe plus postfix `?`.
 - **Structural type merge.** Two files declaring the same name with the same

@@ -91,6 +91,15 @@ pub struct SymbolTable {
     /// named list carries, so the list builtins can check what they are
     /// handed against it.
     pub list_elem_of: HashMap<String, String>,
+    /// Commands, keyed `(receiver, message)`: `Map * Insert => Map`
+    /// registers `("Map", "Insert")`. A value pipes into its message
+    /// (`map -> Insert(…)`) to apply it.
+    pub messages: HashMap<(String, String), MethodSig>,
+    /// Every type name a TypeDef's body mentions, one level deep
+    /// (`Node = Key * Rest * Value` → `Key`, `Rest`, `Value`; a generic
+    /// application contributes its arguments). `parts_of` closes over
+    /// it — a message may not be a part of the value it applies to.
+    pub type_parts: HashMap<String, Vec<String>>,
 }
 
 pub struct MethodSig {
@@ -104,6 +113,45 @@ pub struct MethodSig {
 }
 
 impl SymbolTable {
+    /// The transitive closure of `type_parts` from `name`: every type
+    /// that a value of `name` is made of.
+    pub fn parts_of(&self, name: &str) -> HashSet<String> {
+        let mut out: HashSet<String> = HashSet::new();
+        let mut stack = vec![name.to_string()];
+        while let Some(current) = stack.pop() {
+            for part in self.type_parts.get(&current).into_iter().flatten() {
+                if out.insert(part.clone()) {
+                    stack.push(part.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// `name` and every type on its newtype chain, nearest first.
+    pub fn alias_chain(&self, name: &str) -> Vec<String> {
+        let mut out = vec![name.to_string()];
+        let mut current = name;
+        for _ in 0..20 {
+            match self.aliases.get(current) {
+                Some(next) => {
+                    current = next;
+                    out.push(next.clone());
+                }
+                None => break,
+            }
+        }
+        out
+    }
+
+    /// The command `message` applies to a value of type `receiver`, found
+    /// on the receiver itself or along its alias chain.
+    pub fn message_sig(&self, receiver: &str, message: &str) -> Option<&MethodSig> {
+        self.alias_chain(receiver)
+            .into_iter()
+            .find_map(|t| self.messages.get(&(t, message.to_string())))
+    }
+
     /// Walks the alias chain starting at `name` and returns the underlying
     /// type name. Falls back to `name` itself when there's no alias entry,
     /// and is bounded against cycles by a depth cap.
@@ -217,7 +265,7 @@ pub fn check_with_entry(module: &Module, entry_items_start: usize) -> Vec<CanonE
             errors.push(CanonError::CheckError {
                 message: "no entry point defined: expected a CLI entry (`Unit => Program`), an \
                           HTTP handler (`Request => Response`), or a web-app triple (a \
-                          `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` \
+                          `Model => Html` view with its `Unit => Init` and `Model * Msg => Model` \
                           constructors)."
                     .to_string(),
                 span: module.span,
@@ -1229,7 +1277,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     for item in &module.items {
         if let Item::Function(func) = item {
             let Some(recv) = &func.receiver else { continue };
-            if func.name.name != "Self" {
+            if func.name.name != "Self" || crate::ast::message_shape(func).is_some() {
                 continue;
             }
             // `T^N` binds positionally — never by type.
@@ -1260,8 +1308,25 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     }
 
     let mut methods: HashMap<(String, String), MethodSig> = HashMap::new();
+    let mut messages: HashMap<(String, String), MethodSig> = HashMap::new();
     for item in &module.items {
         if let Item::Function(func) = item {
+            // A command is reached only through its message, so it is
+            // registered there and nowhere a constructor family is read.
+            if let Some((receiver, message)) = crate::ast::message_shape(func)
+                .filter(|(_, message)| !is_primitive_type_name(message))
+            {
+                let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
+                messages.insert(
+                    (receiver, message),
+                    MethodSig {
+                        arity: 1,
+                        return_ty,
+                        result_ok_ty,
+                    },
+                );
+                continue;
+            }
             if let Some(recv) = &func.receiver {
                 let (return_ty, result_ok_ty) = method_return_summary(&func.return_ty);
                 let primary_key = (recv.name.clone(), func.name.name.clone());
@@ -1335,14 +1400,20 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
             if func.name.name == "main" && func.receiver.is_none() {
                 continue;
             }
-            let first_component = func.params.first().and_then(|p| match &p.ty {
-                TypeExpr::Named { name, .. } => Some(name.clone()),
-                TypeExpr::Product { fields, .. } => fields
-                    .first()
-                    .and_then(|f| f.simple_name().map(|s| s.to_string())),
-                TypeExpr::Repeat { ty, .. } => ty.simple_name().map(|s| s.to_string()),
-                _ => None,
-            });
+            // A command is selected by its message, whichever side of
+            // the receiver the alphabet puts it: `Map * Insert => Map`
+            // and `Map * Remove => Map` are two members, not a collision.
+            let first_component = match crate::ast::message_shape(func) {
+                Some((_, message)) => Some(message),
+                None => func.params.first().and_then(|p| match &p.ty {
+                    TypeExpr::Named { name, .. } => Some(name.clone()),
+                    TypeExpr::Product { fields, .. } => fields
+                        .first()
+                        .and_then(|f| f.simple_name().map(|s| s.to_string())),
+                    TypeExpr::Repeat { ty, .. } => ty.simple_name().map(|s| s.to_string()),
+                    _ => None,
+                }),
+            };
             let key = (
                 func.receiver.as_ref().map(|r| r.name.clone()),
                 func.name.name.clone(),
@@ -1396,8 +1467,12 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // through the alias.
     let mut aliases: HashMap<String, String> = HashMap::new();
     let mut list_elem_of: HashMap<String, String> = HashMap::new();
+    let mut type_parts: HashMap<String, Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
+            let mut parts: HashSet<String> = HashSet::new();
+            collect_type_names(&td.body, &mut parts);
+            type_parts.insert(td.name.name.clone(), parts.into_iter().collect());
             if let TypeExpr::Named { name, generics, .. } = &td.body {
                 aliases.insert(td.name.name.clone(), name.clone());
                 if name == "List" {
@@ -1467,12 +1542,15 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         free_funcs,
         aliases,
         list_elem_of,
+        messages,
+        type_parts,
     }
 }
 
 fn check_self_constructor_signature(
     func: &FunctionDef,
     receiver_name: &str,
+    symbols: &SymbolTable,
     errors: &mut Vec<CanonError>,
 ) {
     // Collect this constructor's generic param names so we can accept
@@ -1517,42 +1595,80 @@ fn check_self_constructor_signature(
         });
     }
 
-    check_endomorphism_input(func, receiver_name, errors);
+    check_endomorphism_input(func, receiver_name, symbols, errors);
 }
 
-/// An arrow may not construct a type that is also one of its inputs. An
-/// endomorphism (`Map * String => Map`) is the one operation whose types
-/// cannot identify it — insert, remove, and update all share that
-/// signature — so the operation takes a **result newtype** (`Inserted =
-/// Map`, `Removed = Map`): the name relocates into a type the compiler
-/// checks, sorts, and resolves. Exact-name comparison only: an input
-/// that is a *newtype* of the constructed type (`Rest = Map` flowing
-/// into a `Map` constructor) is a different type and carries its own
-/// information. Binding files are exempt — WIT shapes its signatures.
-fn check_endomorphism_input(func: &FunctionDef, constructed: &str, errors: &mut Vec<CanonError>) {
+/// An arrow that returns one of its own input types is a **command**, and
+/// the types of a command cannot identify it — insert, remove, and update
+/// all share `Map * String => Map` — so a command takes exactly one other
+/// input, its **message**: a type declared for the operation
+/// (`Insert = Key * Value`, `Map * Insert => Map`), applied by piping the
+/// value into it (`map -> Insert(…)`). A message is not a part of the
+/// value it applies to (`Key` is a part of `Map`, so it names nothing) and
+/// not a primitive (`String` names nothing either); a message with no
+/// payload is a `Unit` newtype. Exact-name comparison throughout: an
+/// input that is a *newtype* of the constructed type (`Rest = Map`
+/// flowing into a `Map` constructor) is a different type and carries its
+/// own information. Binding files are exempt — WIT shapes its signatures.
+fn check_endomorphism_input(
+    func: &FunctionDef,
+    constructed: &str,
+    symbols: &SymbolTable,
+    errors: &mut Vec<CanonError>,
+) {
     if func.extern_wasm.is_some() {
         return;
     }
-    for param in &func.params {
-        let input_name = match &param.ty {
-            TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name),
-            TypeExpr::Repeat { ty, .. } => match ty.as_ref() {
-                TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name),
-                _ => None,
-            },
-            _ => None,
-        };
-        if input_name.is_some_and(|name| name == constructed) {
-            errors.push(CanonError::CheckError {
-                message: format!(
-                    "an arrow that returns its own input type needs a name the types can't \
-                     supply: mint a result newtype (`X = {constructed}`) and construct that \
-                     (`… => X`) instead of `{constructed}` itself",
-                ),
-                span: param.span,
-            });
-        }
+    let names_constructed = |ty: &TypeExpr| match ty {
+        TypeExpr::Named { name, generics, .. } if generics.is_empty() => name == constructed,
+        TypeExpr::Repeat { ty, .. } => matches!(ty.as_ref(),
+            TypeExpr::Named { name, generics, .. } if generics.is_empty() && name == constructed),
+        _ => false,
+    };
+    let Some(own_input) = func.params.iter().find(|p| names_constructed(&p.ty)) else {
+        return;
+    };
+    let Some((_, message)) = crate::ast::message_shape(func) else {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "an arrow that returns its own input type is a command, and a command takes \
+                 exactly one other input, its message: declare a type for the operation \
+                 (`Insert = Key * Value`) and write `{constructed} * Insert => {constructed}`",
+            ),
+            span: own_input.span,
+        });
+        return;
+    };
+    let message_span = func
+        .params
+        .iter()
+        .find(|p| p.ty.simple_name() == Some(message.as_str()))
+        .map_or(own_input.span, |p| p.span);
+    if !symbols.standalone_types.contains(&message) || is_primitive_type_name(&message) {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{message}` cannot be a message: declare a type for the operation \
+                 (`Msg = {message}`) — a command is applied by piping the value into its \
+                 message, so the message names what the command does",
+            ),
+            span: message_span,
+        });
+    } else if symbols.parts_of(constructed).contains(&message) {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{message}` is a part of `{constructed}`, so it cannot be its message: a \
+                 message is a type of its own, named for the operation (`Insert = Key * Value`)",
+            ),
+            span: message_span,
+        });
     }
+}
+
+fn is_primitive_type_name(name: &str) -> bool {
+    matches!(
+        name,
+        "Bool" | "Float" | "Int" | "String" | "Unit" | "Never" | "List" | "Option" | "Result"
+    )
 }
 
 /// Explicit call-site type arguments on a user generic are consumed by
@@ -1833,14 +1949,14 @@ fn check_function(
             });
         }
         if func.name.name == "Self" {
-            check_self_constructor_signature(func, &recv.name, errors);
+            check_self_constructor_signature(func, &recv.name, symbols, errors);
         }
     } else if func.name.name != "main" {
         // A receiver-less constructor (the constructed type's TypeDef
         // lives in another loaded file, so `resolve_new_syntax` left it
         // free) gets the same endomorphism check as a `Self` constructor:
         // the constructed identity is the function's own name.
-        check_endomorphism_input(func, &func.name.name, errors);
+        check_endomorphism_input(func, &func.name.name, symbols, errors);
     }
 
     if func.extern_wasm.is_some() {
@@ -2741,10 +2857,61 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         } => {
             check_expr_type_args(&method.name, type_args, errors);
             check_expr(receiver, scope, symbols, errors);
+            let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            // Message application: `map -> Insert(Key("a") * Value("1"))`
+            // builds the message from what rides in the parentheses and
+            // applies the receiver's command for it. A value that already
+            // is the message passes through (`Node.Rest -> Insert(Insert)`
+            // in a recursive body); a payload-less message (`Clear =
+            // Unit`) takes nothing.
+            if symbols.message_sig(&recv_ty, &method.name).is_some() {
+                let whole_message = args.len() == 1
+                    && symbols
+                        .alias_chain(&expr_type_name_in_scope(&args[0], symbols))
+                        .contains(&method.name);
+                if whole_message {
+                    check_expr(&args[0], scope, symbols, errors);
+                } else if symbols.resolve_alias(&method.name) == "Unit" {
+                    if !args.is_empty() {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{}` carries no payload: apply it as `-> {}`",
+                                method.name, method.name
+                            ),
+                            span: *span,
+                        });
+                    }
+                } else {
+                    let message = Expr::Constructor {
+                        name: method.clone(),
+                        type_args: Vec::new(),
+                        args: args.clone(),
+                        span: *span,
+                    };
+                    check_expr(&message, scope, symbols, errors);
+                }
+                return;
+            }
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
             }
-            let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            // A command is reached through its message, never through the
+            // type it returns: `map -> Map(Insert(…))` spells the same
+            // call a second way.
+            if !args.is_empty()
+                && symbols.messages.keys().any(|(r, _)| r == &method.name)
+                && symbols.alias_chain(&recv_ty).contains(&method.name)
+            {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "a command is applied by piping the value into its message \
+                         (`{} -> Insert(…)`), not by constructing `{}` around it",
+                        recv_ty, method.name
+                    ),
+                    span: *span,
+                });
+                return;
+            }
             // For types that are both a standalone typedef and a variant of a union,
             // try method lookup on the specific type first (e.g. JsonObject.get before
             // falling back to JsonValue.get).
@@ -4112,6 +4279,9 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                 return expr_type_name_in_scope(receiver, symbols);
             }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
+            if let Some(sig) = symbols.message_sig(&recv_ty, &method.name) {
+                return sig.return_ty.clone();
+            }
             if let Some(sig) = symbols.methods.get(&(recv_ty.clone(), method.name.clone())) {
                 return sig.return_ty.clone();
             }
@@ -4122,6 +4292,15 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                 {
                     return sig.return_ty.clone();
                 }
+            }
+            // A list relabelled into a declared list newtype (`list ->
+            // Todos` with `Todos = List<Todo>`) is a `Todos` — the wrap
+            // the method paths above cannot see when `Todos` also has a
+            // constructor family keyed on other inputs.
+            if matches!(recv_ty.as_str(), "List" | "<unknown>")
+                && symbols.list_elem_of.contains_key(&method.name)
+            {
+                return method.name.clone();
             }
             // Newtype unwrap projection: `cleared -> String` where
             // `Cleared = Todos = String` yields `String` — the method name
@@ -4212,6 +4391,12 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                     receiver, method, ..
                 } => {
                     let recv_ty = expr_type_name_in_scope(receiver, symbols);
+                    if let Some(sig) = symbols.message_sig(&recv_ty, &method.name) {
+                        return sig
+                            .result_ok_ty
+                            .clone()
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                    }
                     let mut current = recv_ty.as_str();
                     for _ in 0..20 {
                         if let Some(sig) = symbols

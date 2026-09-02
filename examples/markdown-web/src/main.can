@@ -6,8 +6,6 @@ Msg = String
 
 Page = String
 
-Update = Page
-
 Page => Content {
     Page -> (
         * "guide" { Guide() -> Html }
@@ -31,7 +29,7 @@ Unit => Init {
     Page("intro")
 }
 
-Page * Msg => Update {
+Page * Msg => Page {
     Msg -> Substring(From(1) * To(5)) -> (
         * "Show:" { Msg -> Substring(From(6) * Msg -> Length -> To) -> Page }
         * String { Page }

@@ -8,8 +8,6 @@ LoadButton = ElAttr
 
 Prefix = String
 
-Update = Todos
-
 Unit => AddForm {
     Attr("data-msg-form=\"Add:\"")
         -> ElAttr(
@@ -38,26 +36,21 @@ Unit => LoadButton {
         -> ElAttr("Load todos from the server" * Tag("button"))
 }
 
-Todos * String => Update {
-    String -> Substring(From(1) * To(4)) -> Prefix -> (
-        * "Add:" {
-            String
-                -> Substring(From(5) * String -> Length -> To)
-                -> Title
-                -> AddedTodo(Todos)
-        }
-        * "Clea" { Todos -> Cleared }
+Todos * Msg => Todos {
+    Msg -> Substring(From(1) * To(4)) -> Prefix -> (
+        * "Add:" { Todos -> Add(Msg -> Substring(From(5) * Msg -> Length -> To)) }
+        * "Clea" { Todos -> Clear }
         * "Dele" {
-            String -> Substring(From(8) * String -> Length -> To) -> Int -> (
+            Msg -> Substring(From(8) * Msg -> Length -> To) -> Int -> (
                 * Err<MalformedInt> { Todos }
-                * Ok<Int> { Int -> RemovedAt(Todos) }
+                * Ok<Int> { Todos -> Delete(Int) }
             )
         }
-        * "Load" { String -> Substring(From(6) * String -> Length -> To) -> Wire -> Todos }
+        * "Load" { Msg -> Substring(From(6) * Msg -> Length -> To) -> Wire -> Todos }
         * "Togg" {
-            String -> Substring(From(8) * String -> Length -> To) -> Int -> (
+            Msg -> Substring(From(8) * Msg -> Length -> To) -> Int -> (
                 * Err<MalformedInt> { Todos }
-                * Ok<Int> { Int -> ToggledAt(Todos) }
+                * Ok<Int> { Todos -> Toggle(Int) }
             )
         }
         * Prefix { Todos }

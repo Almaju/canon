@@ -136,5 +136,5 @@ code (both are bugs, tracked, not language rules):
   (`level -> HeadingHtml(content)`, not the reverse) — the other order
   can miscompile.
 - When a web app's model is a `String` newtype, give the update's
-  message its own newtype too (`Msg = String`, `Page * Msg => Update`),
+  message its own newtype too (`Msg = String`, `Page * Msg => Page`),
   so a bare `String` reference in the body is unambiguous.

@@ -1,0 +1,14 @@
+Box = Int
+
+Lid = Int
+
+Box * Lid => Box {
+    Box -> Sum(Lid)
+}
+
+Unit => Program {
+    Box(1)
+        -> Box(Lid(2))
+        -> String
+        -> Print
+}

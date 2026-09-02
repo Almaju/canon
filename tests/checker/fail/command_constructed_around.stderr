@@ -1,0 +1,1 @@
+error[tests/checker/fail/command_constructed_around.can:10:5]: a command is applied by piping the value into its message (`Box -> Insert(…)`), not by constructing `Box` around it

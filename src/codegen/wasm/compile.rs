@@ -1821,6 +1821,12 @@ impl<'m> WasmGen<'m> {
                 // kept written order for a call whose components then
                 // landed in the wrong slots.
                 let recv = self.infer_ctor_arg_type_name(receiver);
+                if let Some((target, _)) = recv
+                    .as_deref()
+                    .and_then(|r| self.message_target(r, &method.name))
+                {
+                    return Some(target);
+                }
                 for c in recv.into_iter().flat_map(|r| self.dispatch_candidates(&r)) {
                     if let Some(info) = self.func_table.get(&(Some(c), method.name.clone())) {
                         // A constructor's result is its own type, and a
@@ -1864,7 +1870,64 @@ impl<'m> WasmGen<'m> {
                 }
                 None
             }
+            // `call?` is the payload of the `Result` / `Option` the call
+            // produced — read it off the callee's registered result type,
+            // so a command applied to an unwrapped value (`box -> Lid(2)?
+            // -> Lid(3)?`) still finds its receiver's type.
+            Expr::Try { inner, .. } => match self.callee_info(inner)?.result_ty {
+                Ty::NamedPtrOf(_, ok, _) => Some(ok),
+                _ => None,
+            },
             _ => self.infer_static_type_name(expr),
+        }
+    }
+
+    /// The member a call expression resolves to: a message application,
+    /// a method on the receiver's type or alias chain, a constructor
+    /// family member selected by its first argument's type, or a free
+    /// function. `None` for builtins and anything not statically typed.
+    fn callee_info(&self, expr: &Expr) -> Option<FuncInfo> {
+        match expr {
+            Expr::MethodCall {
+                receiver, method, ..
+            } => {
+                let recv = self.infer_ctor_arg_type_name(receiver)?;
+                if let Some((_, info)) = self.message_target(&recv, &method.name) {
+                    return Some(info);
+                }
+                self.dispatch_candidates(&recv)
+                    .into_iter()
+                    .find_map(|c| {
+                        self.func_table
+                            .get(&(Some(c), method.name.clone()))
+                            .cloned()
+                    })
+                    .or_else(|| self.func_table.get(&(None, method.name.clone())).cloned())
+            }
+            Expr::Constructor { name, args, .. } => {
+                let first = match args.as_slice() {
+                    [Expr::ProductValue { fields, .. }] => fields.first(),
+                    [first, ..] => Some(first),
+                    [] => None,
+                };
+                match first {
+                    Some(arg) => {
+                        let arg_ty = self.infer_ctor_arg_type_name(arg)?;
+                        self.dispatch_candidates(&arg_ty).into_iter().find_map(|c| {
+                            self.func_table.get(&(Some(c), name.name.clone())).cloned()
+                        })
+                    }
+                    None => self
+                        .func_table
+                        .get(&(None, name.name.clone()))
+                        .or_else(|| {
+                            self.func_table
+                                .get(&(Some(name.name.clone()), "Self".to_string()))
+                        })
+                        .cloned(),
+                }
+            }
+            _ => None,
         }
     }
 
@@ -2395,6 +2458,20 @@ impl<'m> WasmGen<'m> {
     /// value's widening chain: the exact name, the variant's parent
     /// union (`True()` fills a `Bool` param), or a newtype's underlying
     /// type (`Port` fills an `Int` one).
+    /// The command `message` applies to a value whose static type is
+    /// `recv`, as `(receiver type, member)`: `("Map", Map * Insert => Map)`
+    /// for `map -> Insert(…)`, found on the receiver or along its alias
+    /// chain.
+    pub(super) fn message_target(&self, recv: &str, message: &str) -> Option<(String, FuncInfo)> {
+        self.dispatch_candidates(recv)
+            .into_iter()
+            .find_map(|candidate| {
+                self.commands
+                    .get(&(candidate.clone(), message.to_string()))
+                    .map(|info| (candidate, info.clone()))
+            })
+    }
+
     pub(super) fn dispatch_candidates(&self, name: &str) -> Vec<String> {
         let mut out = vec![name.to_string()];
         if let Some(parent) = self.variant_parent.get(name) {
@@ -2924,6 +3001,47 @@ impl<'m> WasmGen<'m> {
                     return self.inject_union_variant(method, &variant, receiver, scope, f);
                 }
             }
+        }
+
+        // Message application: `map -> Insert(Key("a") * Value("1"))`
+        // builds the message and calls the receiver's command for it,
+        // inputs in the command's declared order. A value that already
+        // is the message passes through; a payload-less message (`Clear
+        // = Unit`) has no stack shape and compiles to nothing.
+        if let Some((_, info)) = self
+            .infer_ctor_arg_type_name(receiver)
+            .and_then(|r| self.message_target(&r, method))
+        {
+            let whole_message = args.len() == 1
+                && self
+                    .infer_ctor_arg_type_name(&args[0])
+                    .is_some_and(|t| self.dispatch_candidates(&t).iter().any(|c| c == method));
+            let message: Option<Expr> = if whole_message {
+                Some(args[0].clone())
+            } else if self.collect_alias_chain(method).iter().any(|t| t == "Unit") {
+                None
+            } else {
+                Some(Expr::Constructor {
+                    name: crate::ast::Ident {
+                        name: method.to_string(),
+                        span: receiver.span(),
+                    },
+                    type_args: Vec::new(),
+                    args: args.to_vec(),
+                    span: receiver.span(),
+                })
+            };
+            let message_first = info.input_types[0] == method;
+            let mut ordered: Vec<Expr> = Vec::new();
+            if message_first {
+                ordered.extend(message.clone());
+                ordered.push(receiver.clone());
+            } else {
+                ordered.push(receiver.clone());
+                ordered.extend(message);
+            }
+            let _ = self.compile_expr(&ordered[0], scope, f);
+            return self.emit_func_table_call(&info, &ordered[1..], scope, f);
         }
 
         // A name with a func-table body is a shape / constructor family

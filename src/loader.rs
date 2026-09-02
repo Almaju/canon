@@ -1325,8 +1325,12 @@ fn discover_references(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<
         collect_item_refs(item, &mut refs);
     }
     for (name, span) in refs {
+        // Only a user-defined *type* shadows discovery. A constructor
+        // for a type declared in a sibling (`Wire => Todos`, `Todos *
+        // Msg => Todos`) registers the function name `Todos`, but the
+        // type still lives in `todos.can`, and that file must load.
         if is_undiscoverable(&name)
-            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
+            || (ctx.defined_types.contains(&name) && !ctx.defined_bundled.contains(&name))
         {
             continue;
         }

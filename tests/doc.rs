@@ -109,7 +109,7 @@ fn a_type_page_carries_its_definition_constructors_and_pipe_menu() {
     // The payload: what a `Map` pipes into, in call form. No
     // hand-written page can keep this list honest.
     assert!(map.contains("Pipes into"), "Map has no pipe menu");
-    for piped in ["Inserted", "Keys", "Length", "Removed", "Values"] {
+    for piped in ["Insert", "Keys", "Length", "Remove", "Values"] {
         assert!(
             map.contains(&format!(">{}</a>(", piped)) || map.contains(&format!(">{}</a>", piped)),
             "`Map -> {}` missing from Map's pipe menu",
