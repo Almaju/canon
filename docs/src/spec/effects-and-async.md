@@ -15,7 +15,7 @@ the value *is* the permission:
 ```canon
 Unit => Program {
     Path("./data.json")
-        -> File?
+        -> File
         -> Read?
         -> Print
 }

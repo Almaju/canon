@@ -1,1 +1,10 @@
 Contents = String
+
+Written = Path
+
+Contents * Path => Result<Written, IoError> {
+    Contents -> Stored(Path) -> (
+        * Err<FsCode> { FsCode -> IoError -> Err }
+        * Ok<Stored> { Stored -> Written -> Ok }
+    )
+}

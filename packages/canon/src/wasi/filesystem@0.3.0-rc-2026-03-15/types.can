@@ -1,0 +1,13 @@
+FsCode = String
+
+Stored = Path
+
+Streamed = String
+
+Contents * Path => Result<Stored, FsCode> {
+    "[method]descriptor.write-via-stream"
+}
+
+File => Result<Streamed, FsCode> {
+    "[method]descriptor.read-via-stream"
+}

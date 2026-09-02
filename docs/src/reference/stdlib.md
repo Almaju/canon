@@ -99,14 +99,14 @@ Unit => Program {
     Contents("hello from canon")
         -> Written(Path("/tmp/greeting.txt"))?
         -> Path
-        -> File?
+        -> File
         -> Read?
         -> Print
 }
 ```
 
 ```text
-File = (Path) => Result<File, IoError>
+File = String
 
 Read = String
 
@@ -117,7 +117,10 @@ Written = Path
 Contents * Path => Result<Written, IoError>
 ```
 
-`path -> File?` opens; `file -> Read?` reads the whole contents;
+`path -> File` names the file; `file -> Read?` opens it and reads the
+whole contents through `wasi:filesystem` (an `IoError` is the
+interface's `error-code` case, `no-entry` for a missing file, and a
+relative path is relative to the working directory);
 `contents -> Written(path)?` creates or truncates and returns the path
 as evidence — so a write chains straight into a re-open, as above.
 

@@ -1,1 +1,44 @@
 IoError = String
+
+FsCode => IoError {
+    FsCode -> Substring(From(1) * To(2)) -> (
+        * "00" { "access" }
+        * "01" { "already" }
+        * "02" { "bad-descriptor" }
+        * "03" { "busy" }
+        * "04" { "deadlock" }
+        * "05" { "quota" }
+        * "06" { "exist" }
+        * "07" { "file-too-large" }
+        * "08" { "illegal-byte-sequence" }
+        * "09" { "in-progress" }
+        * "10" { "interrupted" }
+        * "11" { "invalid" }
+        * "12" { "io" }
+        * "13" { "is-directory" }
+        * "14" { "loop" }
+        * "15" { "too-many-links" }
+        * "16" { "message-size" }
+        * "17" { "name-too-long" }
+        * "18" { "no-device" }
+        * "19" { "no-entry" }
+        * "20" { "no-lock" }
+        * "21" { "insufficient-memory" }
+        * "22" { "insufficient-space" }
+        * "23" { "not-directory" }
+        * "24" { "not-empty" }
+        * "25" { "not-recoverable" }
+        * "26" { "unsupported" }
+        * "27" { "no-tty" }
+        * "28" { "no-such-device" }
+        * "29" { "overflow" }
+        * "30" { "not-permitted" }
+        * "31" { "pipe" }
+        * "32" { "read-only" }
+        * "33" { "invalid-seek" }
+        * "34" { "text-file-busy" }
+        * "35" { "cross-device" }
+        * "36" { FsCode -> Substring(From(4) * FsCode -> Length -> To) }
+        * String { FsCode }
+    )
+}

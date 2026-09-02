@@ -66,9 +66,16 @@ body into its stream while the async `send` is in flight, and drains
 the response body the same way `Stdin` drains — so `Url -> Fetched?`
 imports only the standard interfaces.
 
+`wasi:filesystem`'s `read-via-stream` and `write-via-stream` are fused
+the same way: the stdlib binding takes the path (and the contents),
+codegen opens the file under the first preopened directory (`open-at`,
+async), then drains the read stream or writes the contents into a
+fresh stream and reads the completion future.
+
 Everything else about streams is still the gap: a `stream<T>` of any
 other element type, a stream or future in a *parameter* of a binding
-spelled by hand (`write-via-stream`), a `future` returned on its own,
+spelled by hand (`wasi:cli/stdout`'s `write-via-stream`), a `future`
+returned on its own,
 `Stream<T>` written in a Canon signature, and streaming rather than
 draining — which is what the handler request body below waits on. Any
 such binding is a checker error; `canon install` skips the WIT shapes

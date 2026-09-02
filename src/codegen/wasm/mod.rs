@@ -43,8 +43,8 @@ mod ty;
 mod web;
 
 use extern_imports::{
-    collect_extern_imports, func_input_types, is_self_ctor, ExternImport, HttpSendImport,
-    IndirectReturnShape, ParamKind, HTTP_SEND_IMPORTS,
+    collect_extern_imports, func_input_types, fused_imports, is_self_ctor, ExternImport,
+    FileImport, FileWriteImport, HttpSendImport, IndirectReturnShape, ParamKind,
 };
 use http::generate_http_core_module;
 use strings::{extra_locals_decl, max_arm_depth, FuncInfo, LocalScope, StringTable};
@@ -583,7 +583,9 @@ impl<'m> WasmGen<'m> {
                 Some(IndirectReturnShape::ListScalar { .. }) => Ty::List,
                 Some(
                     IndirectReturnShape::ByteStream { ok_name, err_name }
-                    | IndirectReturnShape::HttpSend { ok_name, err_name },
+                    | IndirectReturnShape::HttpSend { ok_name, err_name }
+                    | IndirectReturnShape::FileRead { ok_name, err_name }
+                    | IndirectReturnShape::FileWrite { ok_name, err_name },
                 ) => Ty::NamedPtrOf("Result".to_string(), ok_name.clone(), err_name.clone()),
                 Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
                     Ty::NamedPtr(product.clone())

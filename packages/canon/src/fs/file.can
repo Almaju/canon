@@ -1,5 +1,10 @@
 File = String
 
-Path => Result<File, IoError> {
-    Path -> Opened
+Read = String
+
+File => Result<Read, IoError> {
+    File -> Streamed -> (
+        * Err<FsCode> { FsCode -> IoError -> Err }
+        * Ok<Streamed> { Streamed -> Read -> Ok }
+    )
 }
