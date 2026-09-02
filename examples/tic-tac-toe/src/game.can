@@ -1,0 +1,30 @@
+Init = Board
+
+Update = Board
+
+Board => Html {
+    <div class="game">
+        {Styles()}
+        <h1>Tic-tac-toe</h1>
+        <p class="verdict">{Board -> Verdict}</p>
+        <div class="grid">{Cursor(1) -> Cells(Board)}</div>
+        {Msg("Reset") -> Button("Play again") -> Classed(Class("reset"))}
+    </div>
+}
+
+Unit => Init {
+    Board(".........")
+}
+
+Board * String => Update {
+    String -> Substring(From(1) * To(5)) -> (
+        * "Play:" {
+            String -> Substring(From(6) * String -> Length -> To) -> Int -> (
+                * Err<MalformedInt> { Board }
+                * Ok<Int> { Int -> Played(Board) }
+            )
+        }
+        * "Reset" { Board(".........") }
+        * String { Board }
+    )
+}

@@ -1,0 +1,13 @@
+Played = Board
+
+Int * Board => Played {
+    Board -> Over -> (
+        * False {
+            Board -> ByteAt(Int) -> Eq(46) -> (
+                * False { Board }
+                * True { Int -> Marked(Board * Piece("X")) -> Replied }
+            )
+        }
+        * True { Board }
+    )
+}
