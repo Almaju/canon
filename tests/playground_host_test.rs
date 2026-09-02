@@ -38,8 +38,10 @@ const HOSTED: &[&str] = &[
     "wasi:cli/stderr.stream-write",
     "wasi:cli/stderr.write-via-stream",
     "wasi:cli/stdout.future-drop-readable",
+    "wasi:cli/stdout.stream-drop-readable",
     "wasi:cli/stdout.stream-drop-writable",
     "wasi:cli/stdout.stream-new",
+    "wasi:cli/stdout.stream-read",
     "wasi:cli/stdout.stream-write",
     "wasi:cli/stdout.write-via-stream",
 ];

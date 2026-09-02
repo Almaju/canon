@@ -189,6 +189,10 @@
         },
         "stream-drop-writable": function () { return 0; },
         "future-drop-readable": function () { return 0; },
+        // The browser has no stdin: a read ends the stream at once
+        // (`DROPPED`, no bytes), so `Stdin()` is the empty string.
+        "stream-read": function () { return 1; },
+        "stream-drop-readable": function () { return 0; },
       };
     }
     return {

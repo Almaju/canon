@@ -436,7 +436,6 @@ fn builtin_hover(name: &str) -> Option<String> {
         "Network"    => "```canon\nNetwork\n```\nCapability for network I/O (suspending; makes the function async).",
 
         "Stderr"     => "```canon\nStderr\n```\nCapability for writing to stderr (non-suspending).",
-        "Stdin"      => "```canon\nStdin\n```\nCapability for reading from stdin (non-suspending).",
         "Stdout"     => "```canon\nStdout\n```\nCapability for writing to stdout (non-suspending).",
         _ => return None,
     };

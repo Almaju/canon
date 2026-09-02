@@ -84,7 +84,9 @@ const FN_STDOUT_STREAM_NEW: u32 = 1; // () -> i64
 const FN_STDOUT_STREAM_WRITE: u32 = 2; // (i32, i32, i32) -> i32
 const FN_STDOUT_STREAM_DROP_WRITABLE: u32 = 3; // (i32) -> ()
 const FN_STDOUT_FUTURE_DROP_READABLE: u32 = 4; // (i32) -> ()
-const FIRST_EXTERN_IMPORT_FN: u32 = 5; // first index of a user `extern Wasm` import
+const FN_STDOUT_STREAM_READ: u32 = 5; // (i32, i32, i32) -> i32
+const FN_STDOUT_STREAM_DROP_READABLE: u32 = 6; // (i32) -> ()
+const FIRST_EXTERN_IMPORT_FN: u32 = 7; // first index of a user `extern Wasm` import
 
 // ── HTTP-mode import indices ─────────────────────────────────────────
 // In HTTP encoder mode (`http_mode`, see `compile_http`) the import
@@ -584,6 +586,9 @@ impl<'m> WasmGen<'m> {
                 }
                 Some(IndirectReturnShape::ListString) => Ty::List,
                 Some(IndirectReturnShape::ListScalar { .. }) => Ty::List,
+                Some(IndirectReturnShape::ByteStream {
+                    ok_name, err_name, ..
+                }) => Ty::NamedPtrOf("Result".to_string(), ok_name.clone(), err_name.clone()),
                 Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
                     Ty::NamedPtr(product.clone())
                 }
