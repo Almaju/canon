@@ -1,0 +1,9 @@
+Input = Html
+
+Placeholder => Input {
+    Html(`<input placeholder="{Placeholder -> Escaped}">`)
+}
+
+Msg * Placeholder => Input {
+    Html(`<input data-msg-input="{Msg}" placeholder="{Placeholder -> Escaped}">`)
+}

@@ -1,0 +1,14 @@
+TagEnd = Int
+
+Html * Offset => TagEnd {
+    Offset -> Gt(Html -> Length) -> (
+        * False {
+            Html -> ByteAt(Offset) -> (
+                * 32 { Offset -> TagEnd }
+                * 62 { Offset -> TagEnd }
+                * Int { Html -> TagEnd(Offset -> Sum(1) -> Offset) }
+            )
+        }
+        * True { Offset -> TagEnd }
+    )
+}

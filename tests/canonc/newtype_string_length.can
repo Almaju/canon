@@ -1,0 +1,7 @@
+Answer = Int
+
+Greeting = String
+
+Unit => Answer {
+    Greeting("hello") -> Length
+}

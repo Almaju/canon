@@ -1,0 +1,13 @@
+Segments = List<String>
+
+RoutePath => Segments {
+    RoutePath
+        -> Split(Separator("/"))
+        -> Filtered((String) => Bool { String -> Length -> Gt(0) })
+}
+
+String => Segments {
+    String
+        -> RoutePath
+        -> Segments
+}

@@ -1,0 +1,2 @@
+error[tests/checker/fail/repetition_nested_in_type.can:3:9]: `Pixel` nests a repetition: give it its own name (`Rgb = Channel^3`) and use that
+error[tests/checker/fail/repetition_nested_in_type.can:6:5]: no method `Pixel` on type `Int` with 3 argument(s)

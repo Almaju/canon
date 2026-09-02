@@ -1,0 +1,20 @@
+Brightness = Int
+
+Channel = Int
+
+Rgb = Channel^3
+
+Rgb => Brightness {
+    Rgb.1
+        -> Product(100)
+        -> Sum(Rgb.2 -> Product(10))
+        -> Sum(Rgb.3)
+}
+
+Unit => Program {
+    2
+        -> Rgb(5 * 8)
+        -> Brightness
+        -> Print
+    1 -> Rgb(2 * 3).3 -> Print
+}

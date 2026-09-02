@@ -1184,11 +1184,9 @@ impl<'m> WasmGen<'m> {
                 // to a struct laid out by `build_product_value`. Read
                 // back from the matching byte offset.
                 if let Ty::NamedPtr(product_name) = &recv_ty {
-                    if self
-                        .type_defs
-                        .get(product_name)
-                        .is_some_and(|t| matches!(t, TypeExpr::Product { .. }))
-                    {
+                    if self.type_defs.get(product_name).is_some_and(|t| {
+                        matches!(t, TypeExpr::Product { .. } | TypeExpr::Repeat { .. })
+                    }) {
                         if let Some(ty) =
                             self.load_product_field(product_name, &field.name, scope, f)
                         {
@@ -1666,7 +1664,7 @@ impl<'m> WasmGen<'m> {
                 if self.type_defs.contains_key(name) {
                     let body = self.type_defs.get(name).cloned().unwrap();
                     return match &body {
-                        TypeExpr::Product { .. } => {
+                        TypeExpr::Product { .. } | TypeExpr::Repeat { .. } => {
                             // Product type. Two surface shapes reach here:
                             //   * `Name(a * b * c)` — one arg, an
                             //     `Expr::ProductValue` whose fields are
@@ -2491,7 +2489,7 @@ impl<'m> WasmGen<'m> {
         let layout = self.product_field_layout(product_name);
         let total_size: u32 = layout
             .iter()
-            .map(|(name, _, _)| self.field_byte_size(name))
+            .map(|(_, repr, _)| repr_byte_size(repr))
             .sum::<u32>()
             .max(4); // `alloc` expects a non-zero size.
 

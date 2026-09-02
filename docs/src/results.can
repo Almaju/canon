@@ -158,7 +158,7 @@ Query => Hits {
         Query
             -> Hit(Slug("stdlib") * Label("Standard Library") * Stdlib() -> String -> Text)
             -> String
-    }{
+    }{Query -> Hit(Slug("packages") * Label("Packages") * Packages() -> String -> Text) -> String}{
         Query
             -> Hit(
                 Slug("markdown-renderer")

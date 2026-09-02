@@ -16,7 +16,7 @@ Every type name `canon` declares is global — a type of the same
 name in your own project is a compile error — so the complete set,
 internal helpers included, is worth checking before you name a type.
 That list is the index of the [generated API
-reference](api/index.html), which `canon doc` derives from the
+reference](api/canon/index.html), which `canon doc` derives from the
 stdlib source itself and therefore cannot drift from it. This page is
 the prose the generator has no way to write.
 
@@ -203,27 +203,6 @@ separators leave an empty element, and a string with no separator is a
 one-element list. `Lines` is `Split` at `"\n"`. Both are pure Canon over
 `Substring`, so a very long input pays a quadratic copy — fine for
 configuration files and wire formats, not for logs.
-
-## Encodings: `Base64`, `Hex`
-
-```canon
-Unit => Result<Program, MalformedBase64> {
-    Base64Encoded("Canon") -> Print
-    Base64("Q2Fub24=")
-        -> Base64Decoded?
-        -> Print
-    HexEncoded("Canon") -> Print
-    Unit() -> Ok
-}
-```
-
-`Base64Encoded` / `HexEncoded` encode a string's bytes — RFC 4648
-base64 with padding, lowercase hex octets — in pure Canon. Decoding is
-the validating direction: tag the received text (`Base64(s)` /
-`Hex(s)`) and pipe `-> Base64Decoded?` / `-> HexDecoded?`; bad length,
-characters outside the alphabet, or padding before the end are the
-module's `MalformedBase64` / `MalformedHex` error. Uppercase hex
-digits decode fine; encoding always emits lowercase.
 
 ## HTTP Client: `Url`, `Fetched`
 

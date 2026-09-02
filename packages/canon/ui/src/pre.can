@@ -1,0 +1,5 @@
+Pre = Html
+
+String => Pre {
+    Html(`<pre>{String}</pre>`)
+}

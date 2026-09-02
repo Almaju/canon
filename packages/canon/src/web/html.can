@@ -1,38 +1,6 @@
-Button = Html
-
-Div = Html
-
-El = Html
-
-ElAttr = Html
-
 Escaped = Html
 
-H1 = Html
-
 Html = String
-
-Li = Html
-
-Span = Html
-
-Ul = Html
-
-Msg * String => Button {
-    Html(`<button data-msg="{Msg}">{String}</button>`)
-}
-
-String => Div {
-    Html(`<div>{String}</div>`)
-}
-
-String * Tag => El {
-    Html(`<{Tag}>{String}</{Tag}>`)
-}
-
-Attr * String * Tag => ElAttr {
-    Html(`<{Tag} {Attr}>{String}</{Tag}>`)
-}
 
 String => Escaped {
     String -> Length -> Eq(0) -> (
@@ -70,20 +38,4 @@ Int => Escaped {
     Int
         -> String
         -> Escaped
-}
-
-String => H1 {
-    Html(`<h1>{String}</h1>`)
-}
-
-String => Li {
-    Html(`<li>{String}</li>`)
-}
-
-String => Span {
-    Html(`<span>{String}</span>`)
-}
-
-String => Ul {
-    Html(`<ul>{String}</ul>`)
 }

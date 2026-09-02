@@ -269,11 +269,12 @@ fn single_string_body(block: &Block) -> Option<String> {
 // Bundled packages
 // ---------------------------------------------------------------------------
 //
-// The shipped packages (`canon`, `canon/wasi`, …) are baked into the
-// compiler binary at build time by `build.rs`, which walks `packages/` and
-// emits a flat registry as `bundled_packages.rs`. The registry replaces what
-// used to be hand-maintained `STDLIB` and `WASI_BINDINGS` arrays — drop a new
-// file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up.
+// The shipped packages are baked into the compiler binary at build time by
+// `build.rs`, which walks `packages/` and emits a flat registry as
+// `bundled_packages.rs` — drop a new file under `packages/<ns>/<pkg>/` and
+// the next `cargo build` picks it up. Only the prelude (`canon`) is reached
+// by name resolution; every other bundled package is a source for
+// `canon add`, which vendors it into a project's `deps/`.
 
 /// One package shipped with the compiler.
 #[derive(Debug, Clone, Copy)]
@@ -302,6 +303,11 @@ pub struct BundledFile {
 }
 
 include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
+
+/// The one bundled package every program sees without vendoring it: the
+/// standard library. Its names are global; the other bundled packages'
+/// names reach a program only through its `deps/` tree.
+pub const PRELUDE: &str = "canon";
 
 /// Find a bundled package by its canonical name (`"canon"`).
 pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
@@ -1015,7 +1021,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 //      `bindgen/`, `target/`, and hidden directories;
 //   2. the project's `bindgen/` tree, by declared name;
 //   3. the project's `deps/` tree (vendored packages), by declared name;
-//   4. the bundled packages (`canon`), by declared name.
+//   4. the prelude (the bundled package `canon`), by declared name.
 //
 // The non-local roots are *declaration-indexed* rather than
 // filename-matched because binding files declare functions whose names
@@ -1173,7 +1179,7 @@ fn collect_ty_refs(ty: &TypeExpr, skip: &HashSet<&str>, out: &mut Refs) {
                 collect_ty_refs(f, skip, out);
             }
         }
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => collect_ty_refs(ty, skip, out),
+        TypeExpr::Repeat { ty, .. } => collect_ty_refs(ty, skip, out),
         TypeExpr::Function {
             generic_params,
             params,
@@ -1325,9 +1331,7 @@ fn discover_references(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<
         collect_item_refs(item, &mut refs);
     }
     for (name, span) in refs {
-        if is_undiscoverable(&name)
-            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
-        {
+        if is_undiscoverable(&name) || ctx.is_declared_locally(&name) {
             continue;
         }
         resolve_reference(&name, span, dir, ctx)?;
@@ -1355,7 +1359,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
         found.push(Found::Local(path));
     }
 
-    // 4. Bundled packages. Wrapper (`src/`) declarations shadow the
+    // 4. The prelude. Wrapper (`src/`) declarations shadow the
     //    package's own bindgen substrate — that split is an internal
     //    layering detail of the package, not a user-visible ambiguity.
     for (pkg, file) in bundled_decl_matches(name, false) {
@@ -1564,6 +1568,23 @@ impl LoadCtx {
         index.get(name).and_then(|paths| paths.first()).cloned()
     }
 
+    /// Whether a reference to `name` needs no discovery: a type declared
+    /// by a file already loaded, or a method (a camelCase binding). A
+    /// constructor declares nothing but its bodies — `Model => Html` in
+    /// the entry still needs the file that declares `Html`, the prelude's
+    /// or a sibling's — so a function's PascalCase name never counts. A
+    /// prelude declaration never counts either: a constructor family
+    /// spans files, and a member loaded early must not hide its
+    /// siblings (see `defined_bundled`).
+    fn is_declared_locally(&self, name: &str) -> bool {
+        if self.defined_bundled.contains(name) {
+            return false;
+        }
+        self.defined_types.contains(name)
+            || (self.defined.contains(name)
+                && !name.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
+    }
+
     fn deps_decl_matches(&mut self, name: &str) -> Vec<PathBuf> {
         let Some(root) = self.deps_dir.clone() else {
             return Vec::new();
@@ -1684,6 +1705,9 @@ fn bundled_decl_index() -> &'static HashMap<String, Vec<(usize, usize)>> {
     INDEX.get_or_init(|| {
         let mut map: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         for (pi, pkg) in BUNDLED_PACKAGES.iter().enumerate() {
+            if pkg.name != PRELUDE {
+                continue;
+            }
             for (fi, file) in pkg.files.iter().enumerate() {
                 for name in declared_names_of_source(file.source) {
                     let entry = map.entry(name).or_default();
@@ -1781,7 +1805,7 @@ pub(crate) fn bundled_wrapper_items() -> &'static [Item] {
     static ITEMS: OnceLock<Vec<Item>> = OnceLock::new();
     ITEMS.get_or_init(|| {
         let mut items = Vec::new();
-        for pkg in BUNDLED_PACKAGES {
+        for pkg in BUNDLED_PACKAGES.iter().filter(|p| p.name == PRELUDE) {
             for file in pkg.files {
                 if urn_base_for_bundled_path(file.path).is_some() {
                     continue;
@@ -1831,9 +1855,7 @@ fn discover_bundled_references(
         })
         .collect();
     for (name, span) in refs {
-        if own.contains(name.as_str())
-            || is_undiscoverable(&name)
-            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
+        if own.contains(name.as_str()) || is_undiscoverable(&name) || ctx.is_declared_locally(&name)
         {
             continue;
         }
@@ -1919,7 +1941,8 @@ fn discover_bundled_references(
 ///
 /// So `Notes()` is the document and `Notes() -> Html` renders it — the
 /// markdown lives in the `.md` file, never in a `.can` string literal.
-/// The `= Markdown` alias pulls in `canon`'s renderer automatically.
+/// The `= Markdown` alias reaches the `canon/markdown` renderer through
+/// the project's `deps/`.
 fn markdown_asset_source(path: &Path, content: &str) -> String {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Doc");
     let name = crate::bindgen::naming::kebab_to_pascal(stem);
@@ -1948,7 +1971,8 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
     })?;
     // A `.md` file isn't Canon source — it's a Markdown document loaded
     // as a `Markdown` value. Synthesize the module that binds it.
-    let source = if path.extension().and_then(|e| e.to_str()) == Some("md") {
+    let source_is_markdown = path.extension().and_then(|e| e.to_str()) == Some("md");
+    let source = if source_is_markdown {
         markdown_asset_source(path, &raw)
     } else {
         raw
@@ -1964,7 +1988,21 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
         deps_pkg.as_ref(),
         ctx,
         file_id_of(path),
-    )
+    )?;
+    // The synthesized module is nothing but a `Markdown` value, so the
+    // renderer package is the one thing it can be missing — name it,
+    // rather than leaving the checker to report an undefined type in a
+    // file the user never wrote.
+    if source_is_markdown && !ctx.defined.contains("Markdown") {
+        return Err(CanonError::CheckError {
+            message: format!(
+                "`{}` is a Markdown document, which needs the `canon/markdown` package: run `canon add canon/markdown`",
+                path.display()
+            ),
+            span: Span::default(),
+        });
+    }
+    Ok(())
 }
 
 /// The id spans lexed from `path` carry (`error::file_id` over the

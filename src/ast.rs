@@ -79,10 +79,6 @@ pub enum TypeExpr {
         count: u64,
         span: Span,
     },
-    Spread {
-        ty: Box<TypeExpr>,
-        span: Span,
-    },
     Function {
         generic_params: Vec<GenericParam>,
         params: Vec<TypeExpr>,
@@ -98,7 +94,6 @@ impl TypeExpr {
             TypeExpr::Union { span, .. } => *span,
             TypeExpr::Product { span, .. } => *span,
             TypeExpr::Repeat { span, .. } => *span,
-            TypeExpr::Spread { span, .. } => *span,
             TypeExpr::Function { span, .. } => *span,
         }
     }
@@ -469,7 +464,7 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
         )
     };
     // Every `_ => Html` with a non-primitive receiver is a *candidate*
-    // view. There can be more than one — e.g. the stdlib's own
+    // view. There can be more than one — e.g. `canon/markdown`'s
     // `Markdown => Html` renderer is a non-primitive `_ => Html` too — so
     // the receiver being a user type is necessary but not sufficient. The
     // real view is the candidate whose receiver is also the model of a
@@ -638,7 +633,6 @@ pub fn type_expr_canonical(ty: &TypeExpr) -> String {
             fs.join(" * ")
         }
         TypeExpr::Repeat { ty, count, .. } => format!("{}^{}", type_expr_canonical(ty), count),
-        TypeExpr::Spread { ty, .. } => format!("{}^*", type_expr_canonical(ty)),
         TypeExpr::Function {
             generic_params,
             params,
@@ -711,10 +705,6 @@ pub fn substitute_type_params(
         TypeExpr::Repeat { ty, count, span } => TypeExpr::Repeat {
             ty: Box::new(substitute_type_params(ty, map)),
             count: *count,
-            span: *span,
-        },
-        TypeExpr::Spread { ty, span } => TypeExpr::Spread {
-            ty: Box::new(substitute_type_params(ty, map)),
             span: *span,
         },
         TypeExpr::Function {

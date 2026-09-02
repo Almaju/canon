@@ -453,17 +453,12 @@ impl Parser {
             return Ok(atom);
         }
         self.advance();
-        // ^* means unbounded repetition (Kleene star)
-        if self.check(TokenKind::Star) {
-            self.advance();
-            let end = self.previous_span();
-            return Ok(TypeExpr::Spread {
-                ty: Box::new(atom),
-                span: span_join(start, end),
-            });
-        }
-        // ^N means fixed repetition
-        let count_tok = self.expect(TokenKind::IntLit, "expected `*` or an integer after `^`")?;
+        // `T^N` is the N-fold product; there is no `T^*` — an unbounded
+        // sequence is a `List<T>`.
+        let count_tok = self.expect(
+            TokenKind::IntLit,
+            "expected a count after `^` (`T^3`); an unbounded sequence is a `List<T>`",
+        )?;
         let count: u64 = count_tok
             .lexeme
             .parse()

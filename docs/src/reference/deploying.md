@@ -79,7 +79,8 @@ install (`cargo install wkg`, or a release binary).
 Canon-to-Canon source libraries need none of this: a library is a
 directory of `.can` files. Vendor it under
 `deps/<ns>/<name>@<version>/` and references resolve automatically —
-the directory is the whole declaration.
+the directory is the whole declaration. For the packages that ship
+with the toolchain, `canon add <ns>/<name>` is that copy.
 
 ## Version pinning
 

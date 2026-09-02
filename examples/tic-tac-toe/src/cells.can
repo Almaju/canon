@@ -1,0 +1,14 @@
+Cells = Html
+
+Cursor * Board => Cells {
+    Cursor -> Gt(9) -> (
+        * False {
+            Cursor
+                -> Cell(Board)
+                -> String
+                -> Joined(Cursor -> Sum(1) -> Cursor -> Cells(Board) -> String)
+                -> Html
+        }
+        * True { Html("") }
+    )
+}

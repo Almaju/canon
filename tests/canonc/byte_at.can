@@ -1,0 +1,5 @@
+Answer = Int
+
+Unit => Answer {
+    "abc" -> ByteAt(2)
+}

@@ -1,47 +1,16 @@
-ButtonWiresMsg = TestResult
-
-Unit => ButtonWiresMsg {
-    Msg("inc")
-        -> Button("click")
-        -> Eq("<button data-msg=\"inc\">click</button>")
-        -> TestResult
-}
-
-DivWrapsContent = TestResult
-
-Unit => DivWrapsContent {
-    Div("hi")
-        -> Eq("<div>hi</div>")
-        -> TestResult
-}
-
-ElAttrAddsAttribute = TestResult
-
-Unit => ElAttrAddsAttribute {
-    Attr("class=\"x\"")
-        -> ElAttr("hi" * Tag("p"))
-        -> Eq("<p class=\"x\">hi</p>")
-        -> TestResult
-}
-
-ElWrapsInTag = TestResult
-
-Unit => ElWrapsInTag {
-    "hi"
-        -> El(Tag("p"))
-        -> Eq("<p>hi</p>")
-        -> TestResult
-}
-
 EscapedEscapesString = TestResult
+
+EscapedPassesThroughHtml = TestResult
+
+EscapedRendersInt = TestResult
+
+EscapedReplacesMetachars = TestResult
 
 Unit => EscapedEscapesString {
     Escaped("<b>")
         -> Eq("&lt;b&gt;")
         -> TestResult
 }
-
-EscapedPassesThroughHtml = TestResult
 
 Unit => EscapedPassesThroughHtml {
     Div("hi")
@@ -50,50 +19,14 @@ Unit => EscapedPassesThroughHtml {
         -> TestResult
 }
 
-EscapedRendersInt = TestResult
-
 Unit => EscapedRendersInt {
     Escaped(7)
         -> Eq("7")
         -> TestResult
 }
 
-EscapedReplacesMetachars = TestResult
-
 Unit => EscapedReplacesMetachars {
     Escaped("a<b>&\"c")
         -> Eq("a&lt;b&gt;&amp;&quot;c")
-        -> TestResult
-}
-
-H1WrapsHeading = TestResult
-
-Unit => H1WrapsHeading {
-    H1("Title")
-        -> Eq("<h1>Title</h1>")
-        -> TestResult
-}
-
-LiWrapsItem = TestResult
-
-Unit => LiWrapsItem {
-    Li("item")
-        -> Eq("<li>item</li>")
-        -> TestResult
-}
-
-SpanWrapsContent = TestResult
-
-Unit => SpanWrapsContent {
-    Span("hi")
-        -> Eq("<span>hi</span>")
-        -> TestResult
-}
-
-UlWrapsList = TestResult
-
-Unit => UlWrapsList {
-    Ul("items")
-        -> Eq("<ul>items</ul>")
         -> TestResult
 }

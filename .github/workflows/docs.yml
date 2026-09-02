@@ -2,10 +2,11 @@ name: docs
 
 # The documentation site is a Canon program: `docs/src/main.can` is the
 # Elm-architecture web app, and it renders the `docs/src/*.md` pages with
-# the standard library's Markdown renderer, compiled to a WebAssembly
+# the `canon/markdown` renderer, compiled to a WebAssembly
 # module. The landing page (`docs/landing/`) is served at the site root
 # and the app under `/doc/`, with the standard library's generated API
-# reference (`canon doc`) beside it at `/doc/api/`.
+# reference (`canon doc`) of the prelude and the packages beside it at
+# `/doc/api/`.
 on:
   push:
     branches: [main]
@@ -13,7 +14,7 @@ on:
       - "docs/**"
       - ".github/workflows/docs.yml"
       # The app is compiled by the canon compiler and renders the docs
-      # through the stdlib Markdown renderer, so compiler and stdlib
+      # through the `canon/markdown` renderer, so compiler and package
       # changes rebuild the site.
       - "src/**"
       - "packages/**"
@@ -58,10 +59,10 @@ jobs:
       - name: Build the docs app (Canon → WebAssembly)
         run: target/release/canon build docs
 
-      - name: Render the standard library's API reference
+      - name: Render the API reference of every shipped package
         run: |
-          target/release/canon doc packages/canon
-          cp -r packages/canon/build/doc docs/build/api
+          target/release/canon doc packages
+          cp -r packages/build/doc docs/build/api
 
       - name: Build the compiler for the browser (the playground)
         run: |

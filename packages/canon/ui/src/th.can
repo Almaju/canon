@@ -1,0 +1,5 @@
+Th = Html
+
+String => Th {
+    Html(`<th>{String}</th>`)
+}

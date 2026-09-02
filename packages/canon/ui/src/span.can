@@ -1,0 +1,5 @@
+Span = Html
+
+String => Span {
+    Html(`<span>{String}</span>`)
+}

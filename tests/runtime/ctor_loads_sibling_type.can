@@ -1,0 +1,7 @@
+Unit => Shout {
+    Uppercased("hello")
+}
+
+Unit => Program {
+    Shout() -> Print
+}

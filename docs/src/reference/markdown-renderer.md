@@ -1,10 +1,14 @@
 # Markdown
 
-Canon's standard library renders Markdown to HTML entirely in Canon --
-no external parser, no build plugin. The renderer is an ordinary Canon
-program (dispatch on bytes, recursion in place of loops), compiled
-through the same pipeline as everything else -- which is how this docs
-site renders itself.
+The `canon/markdown` package renders Markdown to HTML entirely in
+Canon -- no external parser, no build plugin. The renderer is an
+ordinary Canon program (dispatch on bytes, recursion in place of
+loops), compiled through the same pipeline as everything else -- which
+is how this docs site renders itself.
+
+```sh
+canon add canon/markdown
+```
 
 ## Rendering
 

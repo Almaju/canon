@@ -1,0 +1,5 @@
+Code = Html
+
+String => Code {
+    Html(`<code>{String}</code>`)
+}

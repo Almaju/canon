@@ -1,0 +1,20 @@
+Answer = Int
+
+Area = Int
+
+Circle = Int
+
+Shape = Circle + Square
+
+Square = Int
+
+Unit => Answer {
+    Area(5) -> Sum(Circle(2) -> Shape -> Area)
+}
+
+Shape => Area {
+    Shape -> (
+        * Circle { Circle -> Product(3) }
+        * Square { Square -> Product(Square) }
+    )
+}

@@ -1,11 +1,13 @@
 //! Bundles the shipped packages under `packages/<namespace>/<package>/` into
 //! the compiler binary as a flat registry the loader can consult at runtime.
 //!
-//! Today the only shipped package is `canon`, which contains both the
+//! `canon` — the prelude, at `packages/canon/` — contains both the
 //! hand-written wrappers under `src/` and the WIT-derived bindings under
 //! `bindgen/` (committed so `cargo build` works on a fresh clone without a
 //! prior `canon install` step). Both directories flatten into the same
-//! `BundledFile` namespace.
+//! `BundledFile` namespace. The packages beside it (`packages/canon/<name>/`,
+//! bundled as `canon/<name>`) ship in the binary too, but only reach a
+//! program once `canon add` vendors them into its `deps/`.
 //!
 //! The output is a generated Rust file (`bundled_packages.rs`) included by
 //! `src/loader.rs`. It contains a single `&[BundledPackage]` slice; each
@@ -89,51 +91,41 @@ struct DiscoveredFile {
 
 fn discover_packages(root: &Path) -> Vec<DiscoveredPackage> {
     let mut out = Vec::new();
-    if !root.exists() {
-        return out;
-    }
-    // Layout: `packages/<name>/` with sources directly under `<name>/src/`
-    // (the stdlib is the single-segment package `canon`), or
-    // `packages/<namespace>/<package>/` for namespaced packages. A
-    // directory carrying its own `src/` *is* a package; otherwise it is a
-    // namespace of packages — the same structural detection the language
-    // applies everywhere else.
-    for namespace_entry in fs::read_dir(root).expect("read packages dir").flatten() {
-        let namespace_path = namespace_entry.path();
-        if !namespace_path.is_dir() {
-            continue;
-        }
-        let namespace = namespace_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .expect("namespace name is utf-8")
-            .to_string();
-        if namespace_path.join("src").is_dir() {
-            if let Some(pkg) = discover_package(&namespace_path, namespace) {
-                out.push(pkg);
-            }
-            continue;
-        }
-        for package_entry in fs::read_dir(&namespace_path)
-            .expect("read namespace dir")
-            .flatten()
-        {
-            let package_path = package_entry.path();
-            if !package_path.is_dir() {
-                continue;
-            }
-            let package = package_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .expect("package name is utf-8")
-                .to_string();
-            let name = format!("{namespace}/{package}");
-            if let Some(pkg) = discover_package(&package_path, name) {
-                out.push(pkg);
-            }
-        }
+    if root.exists() {
+        walk_packages(root, root, &mut out);
     }
     out
+}
+
+/// A directory carrying its own `src/` *is* a package, named by its path
+/// under `packages/` — `packages/canon/` is `canon` (the prelude) and
+/// `packages/canon/markdown/` is `canon/markdown` — the same structural
+/// detection the language applies everywhere else. Every other
+/// subdirectory is walked for more packages, except a package's own trees
+/// (`src/`, `bindgen/`, `wit/`, `build/`).
+fn walk_packages(root: &Path, dir: &Path, out: &mut Vec<DiscoveredPackage>) {
+    if dir != root && dir.join("src").is_dir() {
+        let name = dir
+            .strip_prefix(root)
+            .expect("package under root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if let Some(pkg) = discover_package(dir, name) {
+            out.push(pkg);
+        }
+    }
+    for entry in fs::read_dir(dir).expect("read packages dir").flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.') || ["src", "bindgen", "wit", "build"].contains(&name.as_ref()) {
+            continue;
+        }
+        walk_packages(root, &path, out);
+    }
 }
 
 fn discover_package(package_path: &Path, name: String) -> Option<DiscoveredPackage> {

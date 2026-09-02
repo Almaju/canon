@@ -40,8 +40,8 @@ fn main() {
         "inspect" => cmd_inspect(&rest),
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
-        "publish" => cmd_publish(&rest),
         "add" => cmd_add(&rest),
+        "publish" => cmd_publish(&rest),
         "lsp" => canon::lsp::run(),
         "upgrade" => cmd_upgrade(&rest),
         "use" => toolchain::cmd_use(&rest),
@@ -91,13 +91,10 @@ fn print_help() {
     println!(
         "                            Generate Canon bindings from a WIT package or WASM component"
     );
-    println!("  add <git-url>@<tag>       Vendor a Canon package from a git tag into");
-    println!("                            `deps/<owner>/<name>@<version>/` — the directory");
-    println!("                            is the lockfile; delete it to remove the dependency.");
-    println!("  install [target]          Materialize the WIT sources under `<target>/wit/`");
-    println!(
-        "                            into `<target>/bindgen/`. Target defaults to the current directory."
-    );
+    println!("  add <package> [target]    Vendor a package into `<target>/deps/`: a name that");
+    println!("                            ships with the toolchain (`canon/ansi`), or a git");
+    println!("                            repository at a tag (`<git-url>@<tag>`). With no");
+    println!("                            package, lists what ships.");
     println!("  publish <oci-ref> [target] [-p name]");
     println!("                            Build the target and push its component to an");
     println!("                            OCI registry (shells out to `wkg`)");
@@ -857,6 +854,84 @@ fn cmd_install(args: &[String]) {
     }
 }
 
+/// `canon add <package> [target]` — vendor a package into the target's
+/// `deps/` tree (`canon::add`). The target is the project root when the
+/// directory is inside one, else the directory itself: a `deps/` tree
+/// is a project marker, so adding to a bare directory makes it a
+/// project.
+fn cmd_add(args: &[String]) {
+    let mut positional: Vec<&str> = Vec::new();
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                println!("Usage: canon add <package> [target]");
+                println!();
+                println!("  package      `<ns>/<name>` of a package bundled with this toolchain,");
+                println!("               or `<git-url>@<tag>` of a repository holding one.");
+                println!("  target       A directory inside the project. Defaults to the");
+                println!("               current directory.");
+                println!();
+                println!("Copies the package's sources to `deps/<ns>/<name>@<version>/` at");
+                println!("the project root — the directory is the whole declaration, and its");
+                println!("name is the version pin: the toolchain's for a bundled package, the");
+                println!("tag's for a git one. A copy at another version is replaced.");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("error: unknown add flag '{}'", other);
+                process::exit(1);
+            }
+            other => positional.push(other),
+        }
+    }
+    let Some(spec) = positional.first().copied() else {
+        eprintln!("Usage: canon add <package> [target]");
+        eprintln!();
+        eprintln!("Packages that ship with canon {}:", VERSION);
+        for pkg in canon::add::addable() {
+            eprintln!("  {}", pkg.name);
+        }
+        eprintln!();
+        eprintln!(
+            "Any other package is `<git-url>@<tag>`, e.g. https://github.com/acme/greet@v1.2.0"
+        );
+        process::exit(1);
+    };
+    if positional.len() > 2 {
+        eprintln!("error: unexpected argument '{}'", positional[2]);
+        process::exit(1);
+    }
+    let target = PathBuf::from(positional.get(1).copied().unwrap_or("."));
+    if !target.is_dir() {
+        eprintln!("error: `{}` is not a directory", target.display());
+        process::exit(1);
+    }
+    let root = canon::install::find_project_root(&target).unwrap_or(target);
+    match canon::add::add(&root, spec) {
+        Ok(outcome) => {
+            println!(
+                "added {}@{} -> {} ({} file{})",
+                outcome.package,
+                outcome.version,
+                outcome
+                    .dir
+                    .strip_prefix(".")
+                    .unwrap_or(&outcome.dir)
+                    .display(),
+                outcome.files,
+                if outcome.files == 1 { "" } else { "s" }
+            );
+            if let Some(old) = outcome.replaced {
+                println!("replaced {}@{}", outcome.package, old);
+            }
+        }
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            process::exit(1);
+        }
+    }
+}
+
 fn cmd_check(args: &[String]) {
     let mut fix = false;
     let filtered: Vec<String> = args
@@ -1077,24 +1152,28 @@ fn cmd_build(args: &[String]) {
     }
 }
 
-/// `canon doc [package]` — render a package's API reference to
-/// `<package>/build/doc/`.
+/// `canon doc [target]` — the generated API reference.
 ///
 /// Documentation is per *package*, so this resolves the target by
 /// package shape alone (a `src/` tree of `.can` files) instead of
 /// through the entry scan `build`/`run` use: a library has no entry,
-/// and a library is the main thing anyone documents. A directory whose
-/// immediate subdirectories are packages docs each of them.
+/// and a library is the main thing anyone documents. A package renders
+/// into its own `build/doc/`; any other directory renders every package
+/// under it — found the way `build.rs` finds the bundled ones, a
+/// directory with `src/` named by its path — as one site with an index,
+/// into `<target>/build/doc/`.
 fn cmd_doc(args: &[String]) {
     let mut target: Option<&str> = None;
     for arg in args {
         match arg.as_str() {
             "--help" | "-h" => {
-                println!("Usage: canon doc [package]");
+                println!("Usage: canon doc [target]");
                 println!();
-                println!("Renders every type in the package — its definition, the");
+                println!("Renders every type in a package — its definition, the");
                 println!("constructors that produce it, and the constructors that accept");
                 println!("it — as a cross-linked static site in `<package>/build/doc/`.");
+                println!("A directory of packages renders them all as one site, with an");
+                println!("index, into `<target>/build/doc/`.");
                 return;
             }
             other if other.starts_with('-') => {
@@ -1119,56 +1198,103 @@ fn cmd_doc(args: &[String]) {
         process::exit(1);
     }
 
-    let mut packages: Vec<PathBuf> = Vec::new();
-    if canon::install::has_can_file(&path.join("src")) {
-        packages.push(path.to_path_buf());
-    } else {
-        let mut members: Vec<PathBuf> = fs::read_dir(path)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| canon::install::has_can_file(&p.join("src")))
-            .collect();
-        members.sort();
-        packages = members;
-    }
-    if packages.is_empty() {
-        eprintln!(
-            "error: `{}` is not a Canon package (no `src/` tree of `.can` files) \
-             and none of its subdirectories is one",
-            arg
-        );
-        process::exit(1);
-    }
+    let build = |name: &str, pkg: &Path| match canon::doc::build(name, &pkg.join("src")) {
+        Ok(api) => api,
+        Err((file, err)) => {
+            print_error(&file.to_string_lossy(), &err);
+            process::exit(1);
+        }
+    };
+    let report = |api: &canon::doc::Api, pages: usize, out: &Path| {
+        println!(
+            "{}: {} pages ({} types, {} modules) -> {}",
+            api.package,
+            pages,
+            api.type_names().count(),
+            api.modules.len(),
+            out.display()
+        )
+    };
+    let out_dir = path.join("build").join("doc");
 
-    for pkg in &packages {
-        let name = pkg
+    if canon::install::has_can_file(&path.join("src")) {
+        let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| arg.to_string());
-        let api = match canon::doc::build(&name, &pkg.join("src")) {
-            Ok(api) => api,
-            Err((file, err)) => {
-                print_error(&file.to_string_lossy(), &err);
-                process::exit(1);
-            }
-        };
-        let out_dir = pkg.join("build").join("doc");
+        let api = build(&name, path);
         match canon::doc::render(&api, &out_dir) {
-            Ok(pages) => println!(
-                "{}: {} pages ({} types, {} modules) -> {}",
-                name,
-                pages,
-                api.type_names().count(),
-                api.modules.len(),
-                out_dir.display()
-            ),
+            Ok(pages) => report(&api, pages, &out_dir),
             Err(e) => {
                 eprintln!("error: could not write `{}`: {}", out_dir.display(), e);
                 process::exit(1);
             }
         }
+        return;
+    }
+
+    let mut packages: Vec<(String, PathBuf)> = Vec::new();
+    collect_packages(path, path, &mut packages);
+    packages.sort();
+    if packages.is_empty() {
+        eprintln!(
+            "error: `{}` is not a Canon package (no `src/` tree of `.can` files) \
+             and holds none",
+            arg
+        );
+        process::exit(1);
+    }
+    let apis: Vec<canon::doc::Api> = packages
+        .iter()
+        .map(|(name, pkg)| build(name, pkg))
+        .collect();
+    match canon::doc::render_site(&apis, &out_dir) {
+        Ok(pages) => {
+            for api in &apis {
+                println!(
+                    "{}: {} types, {} modules",
+                    api.package,
+                    api.type_names().count(),
+                    api.modules.len()
+                );
+            }
+            println!(
+                "{} packages, {} pages -> {}",
+                apis.len(),
+                pages,
+                out_dir.display()
+            );
+        }
+        Err(e) => {
+            eprintln!("error: could not write `{}`: {}", out_dir.display(), e);
+            process::exit(1);
+        }
+    }
+}
+
+/// Every package under `dir`, named by its path from `root`: a
+/// directory with `.can` files under `src/` is one, and the walk
+/// continues into everything but a package's own trees.
+fn collect_packages(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+    if dir != root && canon::install::has_can_file(&dir.join("src")) {
+        let name = dir
+            .strip_prefix(root)
+            .unwrap_or(dir)
+            .to_string_lossy()
+            .replace('\\', "/");
+        out.push((name, dir.to_path_buf()));
+    }
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !path.is_dir()
+            || name.starts_with('.')
+            || ["src", "bindgen", "wit", "build", "deps"].contains(&name.as_ref())
+        {
+            continue;
+        }
+        collect_packages(root, &path, out);
     }
 }
 
@@ -1176,85 +1302,6 @@ fn cmd_doc(args: &[String]) {
 /// hand its component to `wkg oci push`. The compiler owns no registry
 /// client: wkg (wasm-pkg-tools) is the ecosystem's publisher, and the
 /// shell-out keeps it that way.
-/// `canon add <git-url>@<tag>`: clone the tag and vendor the package's
-/// `src/` under `deps/<owner>/<name>@<version>/`. Publishing a
-/// dependency is pushing a tag; consuming one is this. There is no
-/// registry, manifest, or lockfile — the directory is the pin, and
-/// removing a dependency is deleting it.
-fn cmd_add(args: &[String]) {
-    let Some(source) = args.first().filter(|a| !a.starts_with('-')) else {
-        eprintln!("Usage: canon add <git-url>@<tag>");
-        eprintln!("       e.g. canon add https://github.com/acme/greet@v1.0.0");
-        process::exit(1);
-    };
-    let Some((url, tag)) = source
-        .rsplit_once('@')
-        .filter(|(u, t)| !u.is_empty() && !t.is_empty())
-    else {
-        eprintln!("error: `canon add` takes `<git-url>@<tag>`: the tag is the version pin");
-        process::exit(1);
-    };
-    let version = tag.trim_start_matches('v');
-    let mut segments = url
-        .trim_end_matches('/')
-        .trim_end_matches(".git")
-        .rsplit(['/', ':'])
-        .filter(|s| !s.is_empty());
-    let (Some(name), Some(owner)) = (segments.next(), segments.next()) else {
-        eprintln!("error: `{url}` names no `<owner>/<name>` — the last two path segments are the package's");
-        process::exit(1);
-    };
-    let Some(git) = which("git") else {
-        eprintln!("error: `canon add` clones with `git`, which is not on PATH");
-        process::exit(1);
-    };
-    let cwd = env::current_dir().expect("cwd");
-    let root = canon::install::find_project_root(&cwd).unwrap_or(cwd);
-    let dest = root
-        .join("deps")
-        .join(owner)
-        .join(format!("{name}@{version}"));
-    if dest.exists() {
-        eprintln!("error: `{}` is already vendored", dest.display());
-        process::exit(1);
-    }
-    let clone = env::temp_dir().join(format!("canon-add-{}", process::id()));
-    let _ = fs::remove_dir_all(&clone);
-    let cloned = process::Command::new(&git)
-        .args(["clone", "--quiet", "--depth", "1", "--branch", tag, url])
-        .arg(&clone)
-        .output();
-    match cloned {
-        Ok(out) if out.status.success() => {}
-        Ok(out) => {
-            eprintln!(
-                "error: could not clone `{url}` at `{tag}`:\n{}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            );
-            process::exit(1);
-        }
-        Err(e) => {
-            eprintln!("error: failed to run `git`: {e}");
-            process::exit(1);
-        }
-    }
-    let src = clone.join("src");
-    if !src.is_dir() {
-        let _ = fs::remove_dir_all(&clone);
-        eprintln!("error: `{url}` is not a Canon package: no `src/` at `{tag}`");
-        process::exit(1);
-    }
-    fs::create_dir_all(&dest).expect("create deps dir");
-    for entry in fs::read_dir(&src).expect("read src") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().and_then(|e| e.to_str()) == Some("can") {
-            fs::copy(&path, dest.join(path.file_name().unwrap())).expect("copy source");
-        }
-    }
-    let _ = fs::remove_dir_all(&clone);
-    println!("Added {owner}/{name}@{version} under {}", dest.display());
-}
-
 fn cmd_publish(args: &[String]) {
     let Some(reference) = args.first().filter(|a| !a.starts_with('-')).cloned() else {
         eprintln!("Usage: canon publish <oci-ref> [target] [-p name]");

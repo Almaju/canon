@@ -1,0 +1,13 @@
+Won = Bool
+
+Board * Piece => Won {
+    Line("123")
+        -> Filled(Board * Piece)
+        -> Or(Line("456") -> Filled(Board * Piece))
+        -> Or(Line("789") -> Filled(Board * Piece))
+        -> Or(Line("147") -> Filled(Board * Piece))
+        -> Or(Line("258") -> Filled(Board * Piece))
+        -> Or(Line("369") -> Filled(Board * Piece))
+        -> Or(Line("159") -> Filled(Board * Piece))
+        -> Or(Line("357") -> Filled(Board * Piece))
+}
