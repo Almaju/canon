@@ -1,0 +1,21 @@
+Mark = Int
+
+MonotonicClock = Unit
+
+MonotonicClockGetResolution = Duration
+
+MonotonicClock => MonotonicClockGetResolution {
+    "get-resolution"
+}
+
+MonotonicClockNow = Mark
+
+MonotonicClock => MonotonicClockNow {
+    "now"
+}
+
+Slept = Unit
+
+Duration => Future<Slept> {
+    "wait-for"
+}

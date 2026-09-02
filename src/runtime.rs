@@ -292,7 +292,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // canonical-ABI shapes (resources, async, streams) become available
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
-    host_builtin_string::add_to_linker(&mut linker)?;
     host_builtin_filesystem::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
 
@@ -568,70 +567,6 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
         .header(http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
         .body(body)
         .expect("static response builder shape is valid")
-}
-
-/// `canon:builtins/string` — async host echoes. String *transforms*
-/// (case mapping, escaping) are pure Canon in `canon` now; the two
-/// functions left here exist only to exercise the guest-side async
-/// canonical-ABI call sequence from tests.
-mod host_builtin_string {
-    use super::State;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface strings {
-                echo: async func(input: string) -> string;
-                slow-echo: async func(input: string) -> string;
-            }
-            world host-shim {
-                import strings;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::strings::Host for State {}
-
-    // Async functions go on the `HostWithStore` trait, with an
-    // `Accessor<T, Self>` first arg instead of `&mut self`. These two
-    // exist purely to exercise the guest-side async canonical-ABI call
-    // sequence from tests.
-    impl canon::builtins::strings::HostWithStore for HasSelf<State> {
-        async fn echo<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
-            input: String,
-        ) -> String {
-            // Used by `tests/runtime/async_echo.can` to exercise the
-            // guest-side async call sequence (alloc ret-area, call,
-            // check status, decode result). The Future completes
-            // immediately so the guest's sync-completion fast path
-            // hits the `Returned` branch.
-            input
-        }
-
-        async fn slow_echo<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
-            input: String,
-        ) -> String {
-            // Used by `tests/runtime/async_slow_echo.can` to exercise
-            // the *async-suspend* path of `emit_async_call`: the host
-            // future yields before producing a result, so wasmtime has
-            // to return a Started subtask handle to the guest. The
-            // guest's generated code then enters the waitable-set.wait
-            // block, blocks until this future resolves, and reads the
-            // result out of the ret-area. A 1ms sleep is enough to
-            // force at least one Pending poll on essentially every
-            // executor.
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-            input
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::strings::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
 }
 
 /// `canon:builtins/filesystem` — minimal filesystem operations exposed as

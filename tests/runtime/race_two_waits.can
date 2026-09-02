@@ -1,0 +1,4 @@
+Unit => Program {
+    Slept(1) -> Race(Slept(60000000000))
+    "won" -> Print
+}

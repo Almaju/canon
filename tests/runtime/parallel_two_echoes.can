@@ -1,6 +1,0 @@
-Unit => Program {
-    SlowEcho("hello")
-        -> Parallel(SlowEcho("world"))
-        -> Json
-        -> Print
-}

@@ -74,11 +74,6 @@ interface filesystem {
 interface json {
     from-float: func(value: f64) -> string;
 }
-
-interface strings {
-    echo: async func(input: string) -> string;
-    slow-echo: async func(input: string) -> string;
-}
 ";
 
 /// The `wasi:http/client` function codegen fuses into one round trip
