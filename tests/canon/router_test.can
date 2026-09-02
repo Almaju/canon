@@ -1,0 +1,43 @@
+ParamFindsLaterKey = TestResult
+
+ParamIgnoresPrefixMatch = TestResult
+
+QueryOfBarePathIsEmpty = TestResult
+
+SegmentsDropQueryAndEmpties = TestResult
+
+SegmentsKeepOrder = TestResult
+
+Unit => ParamFindsLaterKey {
+    Query("/s?a=1&b=2") -> Param(Key("b")) -> (
+        * None { Fail("b missing") }
+        * Some<Param> { Param -> Eq("2") -> TestResult }
+    )
+}
+
+Unit => ParamIgnoresPrefixMatch {
+    Query("/s?ab=1") -> Param(Key("a")) -> (
+        * None { Pass() }
+        * Some<Param> { Fail("matched the key ab") }
+    )
+}
+
+Unit => QueryOfBarePathIsEmpty {
+    Query("/notes")
+        -> Eq("")
+        -> TestResult
+}
+
+Unit => SegmentsDropQueryAndEmpties {
+    Segments("/notes/12/?x=1")
+        -> Length
+        -> Eq(2)
+        -> TestResult
+}
+
+Unit => SegmentsKeepOrder {
+    Segments("/notes/12") -> At(2) -> (
+        * None { Fail("no second segment") }
+        * Some<String> { String -> Eq("12") -> TestResult }
+    )
+}

@@ -18,7 +18,11 @@ $ curl localhost:8080/notes/1
 
 $ curl -i localhost:8080/other
 HTTP/1.1 404 Not Found
-{"error":"not found"}
+not found
+
+$ curl -i localhost:8080/
+HTTP/1.1 303 See Other
+location: /notes
 ```
 
 ## What it demonstrates
@@ -29,15 +33,19 @@ HTTP/1.1 404 Not Found
 - **Request introspection**: `Request.path()` returns
   `Option<String>`; dispatch on `(None, Some<String>)` extracts the
   live path.
-- **Routing as dispatch**: no router DSL — route matching is ordinary
-  union dispatch over `String.eq(..)` results. Verbose by design;
-  when it hurts, that's the signal for a stdlib routing helper, not
-  special syntax.
-- **Response composition**: `Response(Body(..) * Headers() *
-  Status(..))` — the body rides a real `wasi:http` contents stream,
-  the status is set per-route.
-- **Helpers return values, not worlds**: only the entry may return
-  `Response`, so the note bodies are `() -> Body` functions.
+- **Routing as dispatch**: no router DSL — `canon/router` (vendored
+  under `deps/`, see `canon add`) turns the path into `Segments`, and
+  a route is literal dispatch on `First` with its parameter at `At(2)`.
+  The parameter parses with the prelude's `String -> Int`, and a bad
+  id is the `Err` arm.
+- **Response composition**: `JsonResponse`, `NotFound()`, and
+  `Redirect` from `canon/router` are ordinary constructors over the
+  prelude's `Response(Body * Headers * Status)` — the body rides a real
+  `wasi:http` contents stream, the status and content type are set
+  per helper.
+- **Helpers return values, not worlds**: only the entry is `Request =>
+  Response`; the routing lives in `RoutePath => Routed` and the note
+  lookup in `Int => Shown`, both `= Response`.
 
 ## Compiled shape
 

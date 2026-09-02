@@ -1,0 +1,8 @@
+RoutePath = String
+
+String => RoutePath {
+    String -> SplitAt(Separator("?")) -> (
+        * 0 { String }
+        * Int { String -> Substring(From(1) * Int -> Difference(1) -> To) }
+    )
+}

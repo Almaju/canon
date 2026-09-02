@@ -1,0 +1,8 @@
+Query = String
+
+String => Query {
+    String -> SplitAt(Separator("?")) -> (
+        * 0 { "" }
+        * Int { String -> Substring(Int -> Sum(1) -> From * String -> Length -> To) }
+    )
+}

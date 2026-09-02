@@ -59,6 +59,43 @@ characters outside the alphabet, or padding before the end are the
 module's `MalformedBase64` / `MalformedHex` error. Uppercase hex
 digits decode fine; encoding always emits lowercase.
 
+## `canon/router` — HTTP request routing
+
+```sh
+canon add canon/router
+```
+
+```canon
+Request => Response {
+    Request.path() -> (
+        * None { NotFound() }
+        * Some<String> {
+            String -> Segments -> First -> (
+                * None { Location("/notes") -> Redirect }
+                * Some<String> {
+                    String -> (
+                        * "notes" { {"notes":[]} -> JsonResponse }
+                        * String { NotFound() }
+                    )
+                }
+            )
+        }
+    )
+}
+```
+
+Pure Canon over the prelude's handler surface. Reading the request
+target: `-> Segments` is the path's segments as a `List<String>` (the
+query dropped, empty segments skipped), so a route is dispatch on
+`First` and its parameters are `At(2)`, `At(3)`, …; `-> Query` is the
+text after `?`, and `query -> Param(Key("id"))` looks a parameter up
+(`Option<Param>`, no percent-decoding). Building the response:
+`HtmlResponse`, `JsonResponse`, and `TextResponse` are a 200 with the
+matching `content-type`; `Status(422) -> TextResponse("…")` picks the
+status; `NotFound()` is a 404 and `Location("/x") -> Redirect` a 303.
+Each is `= Response`, so a helper that computes one is an ordinary
+constructor (`RoutePath => Routed`, see `examples/notes-api`).
+
 ## `canon/ui` — HTML elements
 
 ```sh

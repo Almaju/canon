@@ -1,0 +1,8 @@
+JsonResponse = Response
+
+Json => JsonResponse {
+    Json
+        -> String
+        -> Body
+        -> Response(Headers().set("content-type" * "application/json") * Status(200))
+}

@@ -1,0 +1,8 @@
+HtmlResponse = Response
+
+Html => HtmlResponse {
+    Html
+        -> String
+        -> Body
+        -> Response(Headers().set("content-type" * "text/html; charset=utf-8") * Status(200))
+}
