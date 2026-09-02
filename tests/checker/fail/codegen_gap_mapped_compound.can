@@ -1,6 +1,0 @@
-Unit => Program {
-    List(1 * 2)
-        -> Mapped((Int) => List<Int> { List(Int * Int) })
-        -> Length
-        -> Print
-}

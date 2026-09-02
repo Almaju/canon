@@ -735,7 +735,7 @@ fn check_payload_return(
     }
     let Some(prim) = wit_scalar_prim(resolve, &payload) else {
         return Err(format!(
-            "{ctor}<T> return with compound payload (codegen gap, see CLAUDE.md)"
+            "{ctor}<T> return with compound payload (codegen gap, see docs/src/reference/codegen-gaps.md)"
         ));
     };
     match prim {

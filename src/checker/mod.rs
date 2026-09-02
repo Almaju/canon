@@ -714,12 +714,13 @@ pub struct CodegenGap {
     pub title: &'static str,
 }
 
-/// Compound payloads (products, unions, nested containers) inside `List<T>`
-/// / `Option<T>`. Scalar and `String` payloads lower — as binding returns
-/// and as Canon values — but the 8-byte element slot can't carry a compound
-/// value, so declaring or constructing one is rejected.
+/// Compound payloads (products, unions, nested containers) inside a
+/// binding's `List<T>` / `Option<T>`. Scalar and `String` payloads cross
+/// the WIT boundary; a compound one has no canonical-ABI lowering yet, so
+/// a binding whose signature carries one is rejected. Canon values are
+/// unaffected — a product is one pointer in the 8-byte slot.
 pub const GAP_COMPOUND_PAYLOAD: CodegenGap = CodegenGap {
-    title: "compound `List<T>` / `Option<T>` payloads",
+    title: "compound `List<T>` / `Option<T>` payloads in bindings",
 };
 
 /// Extern imports the `wasi:http/service` world can't satisfy. A handler
@@ -807,14 +808,16 @@ pub fn codegen_gap_errors(
                 ));
             }
         }
-        for ty in func.params.iter().map(|p| &p.ty).chain([&func.return_ty]) {
-            if let Some(offender) = compound_payload_in_type(ty, &type_defs) {
-                errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, func.name.span));
-                break;
+        // Canon values carry compound payloads (a product is one pointer
+        // in the slot); only the canonical-ABI lowering at the WIT
+        // boundary does not.
+        if func.extern_wasm.is_some() {
+            for ty in func.params.iter().map(|p| &p.ty).chain([&func.return_ty]) {
+                if let Some(offender) = compound_payload_in_type(ty, &type_defs) {
+                    errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, func.name.span));
+                    break;
+                }
             }
-        }
-        for expr in &func.body.exprs {
-            scan_expr_gaps(expr, &type_defs, &mut errors);
         }
     }
 
@@ -909,210 +912,6 @@ fn compound_payload_walk<'a>(
             .iter()
             .chain([return_ty.as_ref()])
             .find_map(|t| compound_payload_walk(t, type_defs, visited)),
-    }
-}
-
-fn compound_payload_gap(container: &str, payload: &str, span: crate::error::Span) -> CanonError {
-    gap_error(
-        &GAP_COMPOUND_PAYLOAD,
-        &format!("`{container}<{payload}>` has a compound payload"),
-        span,
-    )
-}
-
-/// Walk a function body for expressions that *construct* a compound
-/// `List` / `Option` payload — the construction sites a signature scan
-/// can't see: `List(…)` literals, `-> Some`, `Mapped` lambdas producing
-/// compound elements, `Appended` elements, and `Some<T>` dispatch arms.
-fn scan_expr_gaps(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>, errors: &mut Vec<CanonError>) {
-    match expr {
-        Expr::Constructor {
-            name, args, span, ..
-        } => {
-            if name.name == "List" {
-                // `List(a * b * c)` carries its elements as one product.
-                let elements: &[Expr] = match args.as_slice() {
-                    [Expr::ProductValue { fields, .. }] => fields,
-                    other => other,
-                };
-                for el in elements {
-                    if let Some(tn) = compound_expr_type(el, type_defs) {
-                        errors.push(compound_payload_gap("List", &tn, *span));
-                        break;
-                    }
-                }
-            }
-            if name.name == "Some" {
-                if let Some(tn) = args.first().and_then(|a| compound_expr_type(a, type_defs)) {
-                    errors.push(compound_payload_gap("Option", &tn, *span));
-                }
-            }
-            for a in args {
-                scan_expr_gaps(a, type_defs, errors);
-            }
-        }
-        Expr::MethodCall {
-            receiver,
-            method,
-            args,
-            span,
-            ..
-        } => {
-            if method.name == "Some" {
-                if let Some(tn) = compound_expr_type(receiver, type_defs) {
-                    errors.push(compound_payload_gap("Option", &tn, *span));
-                }
-            }
-            if method.name == "Mapped" {
-                if let Some(Expr::Lambda { return_ty, .. }) = args.first() {
-                    if !is_scalar_or_string_payload(return_ty, type_defs) {
-                        errors.push(gap_error(
-                            &GAP_COMPOUND_PAYLOAD,
-                            &format!(
-                                "`Mapped` here produces `List<{}>`, which has a compound payload",
-                                crate::ast::type_expr_canonical(return_ty)
-                            ),
-                            *span,
-                        ));
-                    }
-                }
-            }
-            if method.name == "Appended" {
-                if let Some(tn) = args.first().and_then(|a| compound_expr_type(a, type_defs)) {
-                    errors.push(compound_payload_gap("List", &tn, *span));
-                }
-            }
-            scan_expr_gaps(receiver, type_defs, errors);
-            for a in args {
-                scan_expr_gaps(a, type_defs, errors);
-            }
-        }
-        Expr::Match {
-            scrutinee, arms, ..
-        } => {
-            scan_expr_gaps(scrutinee, type_defs, errors);
-            for arm in arms {
-                if let Some(offender) = compound_payload_in_type(&arm.param_ty, type_defs) {
-                    errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, arm.span));
-                }
-                for e in &arm.body.exprs {
-                    scan_expr_gaps(e, type_defs, errors);
-                }
-            }
-        }
-        Expr::Lambda {
-            params,
-            return_ty,
-            body,
-            span,
-        } => {
-            for ty in params.iter().map(|p| &p.ty).chain([return_ty]) {
-                if let Some(offender) = compound_payload_in_type(ty, type_defs) {
-                    errors.push(gap_error(&GAP_COMPOUND_PAYLOAD, &offender, *span));
-                    break;
-                }
-            }
-            for e in &body.exprs {
-                scan_expr_gaps(e, type_defs, errors);
-            }
-        }
-        Expr::ProductValue { fields, .. } => {
-            for f in fields {
-                scan_expr_gaps(f, type_defs, errors);
-            }
-        }
-        Expr::Try { inner, .. } | Expr::Await { inner, .. } => {
-            scan_expr_gaps(inner, type_defs, errors)
-        }
-        Expr::FieldAccess { receiver, .. } => scan_expr_gaps(receiver, type_defs, errors),
-        Expr::JsonLit { parts, .. } => {
-            for p in parts {
-                if let JsonLitPart::Interp(e) = p {
-                    scan_expr_gaps(e, type_defs, errors);
-                }
-            }
-        }
-        Expr::HtmlLit { parts, .. } => {
-            for p in parts {
-                if let HtmlLitPart::Interp(e) = p {
-                    scan_expr_gaps(e, type_defs, errors);
-                }
-            }
-        }
-        Expr::FormatLit { parts, .. } => {
-            for p in parts {
-                if let FormatLitPart::Interp(e) = p {
-                    scan_expr_gaps(e, type_defs, errors);
-                }
-            }
-        }
-        Expr::Ident(_) | Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
-    }
-}
-
-/// The compound type an expression *provably* constructs, rendered for the
-/// error message — `None` when the static type is scalar, string, or not
-/// syntactically recoverable. Names are recovered from the syntax (every
-/// value flows through a type-named constructor in Canon) and chased
-/// through the alias chain; only a name that lands on a product, union, or
-/// generic container counts, so unknown names never flag. Deliberately
-/// conservative: the checker's richer `expr_type_name_in_scope` guesses
-/// through method/field ambiguity, which is fine for dispatch hints but
-/// too loose to make fatal.
-fn compound_expr_type(expr: &Expr, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
-    let name = static_expr_type_name(expr)?;
-    // Builtin containers, and the container-producing slice of the builtin
-    // pipe vocabulary (`ast::BUILTIN_ALIASES`), never appear in
-    // `type_defs`, so name them here. A future container-producing builtin
-    // must be added here too.
-    match name {
-        "List" | "Mapped" | "Appended" => return Some("List".to_string()),
-        "Option" | "Some" | "None" | "At" | "First" => return Some("Option".to_string()),
-        "Result" | "Ok" | "Err" => return Some("Result".to_string()),
-        "Future" | "Stream" => return Some(name.to_string()),
-        _ => {}
-    }
-    let mut current = name;
-    for _ in 0..20 {
-        if matches!(
-            current,
-            "String" | "Int" | "Float" | "Bool" | "Byte" | "Hex" | "Json" | "Html"
-        ) {
-            return None;
-        }
-        match type_defs.get(current).copied() {
-            Some(TypeExpr::Named {
-                name: next,
-                generics,
-                ..
-            }) if generics.is_empty() => current = next,
-            Some(_) => return Some(name.to_string()), // container generic or structural body
-            None => return None,
-        }
-    }
-    None
-}
-
-/// The type name an expression's value carries, recovered syntactically —
-/// the checker-side mirror of codegen's `static_recv_type` trick: in
-/// types-only Canon every name in value position is a type name.
-fn static_expr_type_name(expr: &Expr) -> Option<&str> {
-    match expr {
-        Expr::StringLit { .. } | Expr::FormatLit { .. } => Some("String"),
-        Expr::IntLit { .. } => Some("Int"),
-        Expr::FloatLit { .. } => Some("Float"),
-        Expr::JsonLit { .. } => Some("Json"),
-        Expr::HtmlLit { .. } => Some("Html"),
-        Expr::Ident(id) => Some(&id.name),
-        Expr::Constructor { name, .. } => Some(&name.name),
-        Expr::MethodCall { method, .. } => Some(&method.name),
-        Expr::FieldAccess { field, .. } => Some(&field.name),
-        Expr::Await { inner, .. } => static_expr_type_name(inner),
-        Expr::Match { arms, .. } => arms.first().and_then(|a| match &a.return_ty {
-            TypeExpr::Named { name, generics, .. } if generics.is_empty() => Some(name.as_str()),
-            _ => None,
-        }),
-        Expr::Try { .. } | Expr::Lambda { .. } | Expr::ProductValue { .. } => None,
     }
 }
 
@@ -2851,24 +2650,37 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     });
                 }
             }
-            if let Some(field_types) = symbols.product_fields.get(&name.name).cloned() {
-                check_product_construction_arity(
-                    &name.name,
-                    &field_types,
-                    effective_call_arity(args),
-                    *span,
-                    errors,
-                );
-                let arg_refs: Vec<&Expr> = args.iter().collect();
-                check_product_construction_types(
-                    &name.name,
-                    "field",
-                    &field_types,
-                    &arg_refs,
-                    symbols,
-                    *span,
-                    errors,
-                );
+            if let Some((product, field_types)) = product_fields_of(&name.name, symbols) {
+                // `Outer(tables)` with `Outer = Tables` relabels a value
+                // that already is the product: no fields to supply.
+                let relabel = product != name.name
+                    && args.len() == 1
+                    && widens_to(
+                        &expr_type_name_in_scope(&args[0], symbols),
+                        &product,
+                        symbols,
+                    );
+                if !relabel {
+                    check_product_construction_arity(
+                        &name.name,
+                        &field_types,
+                        effective_call_arity(args),
+                        *span,
+                        errors,
+                    );
+                }
+                if product == name.name {
+                    let arg_refs: Vec<&Expr> = args.iter().collect();
+                    check_product_construction_types(
+                        &name.name,
+                        "field",
+                        &field_types,
+                        &arg_refs,
+                        symbols,
+                        *span,
+                        errors,
+                    );
+                }
             }
             for arg in args {
                 check_expr(arg, scope, symbols, errors);
@@ -2968,14 +2780,21 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 // `Expr::Constructor` — the receiver fills the first field
                 // slot and `args` (itself flattened the same way a direct
                 // constructor's args are) fills the rest.
-                if let Some(field_types) = symbols.product_fields.get(&method.name) {
-                    check_product_construction_arity(
-                        &method.name,
-                        field_types,
-                        1 + effective_call_arity(args),
-                        *span,
-                        errors,
-                    );
+                if let Some((product, field_types)) = product_fields_of(&method.name, symbols) {
+                    // `tables -> Outer` with `Outer = Tables` is a relabel
+                    // of the product, not a construction.
+                    let relabel = product != method.name
+                        && args.is_empty()
+                        && widens_to(&recv_ty, &product, symbols);
+                    if !relabel {
+                        check_product_construction_arity(
+                            &method.name,
+                            &field_types,
+                            1 + effective_call_arity(args),
+                            *span,
+                            errors,
+                        );
+                    }
                 }
             }
             if is_piped_construction && !has_alias_method {
@@ -3463,6 +3282,49 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
     }
 }
 
+/// The product a construction of `name` builds and the fields it has to
+/// supply: `name` itself, or — for a newtype of a product (`Parsed =
+/// Todo`, itself a one-field entry in `product_fields`) — the product it
+/// aliases, so a lone argument can't slip through the wrapper. A name
+/// with a constructor family of its own is a call, not a construction,
+/// and the family's arity is checked by method lookup instead.
+fn product_fields_of(name: &str, symbols: &SymbolTable) -> Option<(String, Vec<String>)> {
+    let mut current = name;
+    for _ in 0..20 {
+        if let Some(fields) = symbols.product_fields.get(current) {
+            if fields.len() >= 2 {
+                return Some((current.to_string(), fields.clone()));
+            }
+        }
+        if symbols.methods.keys().any(|(_, m)| m == current) {
+            return None;
+        }
+        current = symbols.aliases.get(current)?;
+    }
+    None
+}
+
+/// Whether a value of type `ty` is a `target` through its newtype chain
+/// (`Outer = Tables` makes an `Outer` a `Tables`, and a `Tables` an
+/// `Outer`'s payload either way round).
+fn widens_to(ty: &str, target: &str, symbols: &SymbolTable) -> bool {
+    let chain = |from: &str| {
+        let mut out = vec![from.to_string()];
+        let mut current = from;
+        for _ in 0..20 {
+            match symbols.aliases.get(current) {
+                Some(next) => {
+                    current = next;
+                    out.push(next.clone());
+                }
+                None => break,
+            }
+        }
+        out
+    };
+    chain(ty).iter().any(|t| t == target) || chain(target).iter().any(|t| t == ty)
+}
+
 /// Validates that a multi-field product construction supplies exactly one
 /// argument per field. Codegen's `build_product_value` (`src/codegen/wasm/compile.rs`)
 /// binds each supplied value to a field by type and falls back to binding
@@ -3650,7 +3512,10 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("get", 1)
                 | ("map", 1)
                 | ("filter", 1)
+                | ("fold", 2)
                 | ("take", 1)
+                | ("skip", 1)
+                | ("reverse", 0)
                 | ("append", 1)
                 | ("concat", 1)
                 | ("Json", 0)
@@ -3909,8 +3774,16 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             }
         }
         Expr::MethodCall {
-            receiver, method, ..
+            receiver,
+            method,
+            args,
+            ..
         } => {
+            // `Folded` yields whatever its lambda accumulates: the
+            // lambda's declared return type.
+            if let Some(ty) = fold_result_type(&method.name, args) {
+                return ty;
+            }
             if method.name == "parallel" || method.name == "Parallel" {
                 // `a.parallel(b)` returns `Future<List<T>>`; the
                 // auto-await collapses `Future<List<T>>` → `List<T>` at
@@ -4112,6 +3985,26 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
     }
 }
 
+/// The type a `Folded` call produces — its lambda's declared return
+/// type, the accumulator — or `None` for any other method. The fold's
+/// argument is `init * lambda` in either order.
+pub(crate) fn fold_result_type(method: &str, args: &[Expr]) -> Option<String> {
+    if crate::ast::builtin_method_alias(method).unwrap_or(method) != "fold" {
+        return None;
+    }
+    let parts: &[Expr] = match args {
+        [Expr::ProductValue { fields, .. }] => fields,
+        other => other,
+    };
+    parts.iter().find_map(|e| match e {
+        Expr::Lambda {
+            return_ty: TypeExpr::Named { name, .. },
+            ..
+        } => Some(name.clone()),
+        _ => None,
+    })
+}
+
 /// The builtin-method fallback table: what `receiver_ty -> method`
 /// returns when no user/stdlib declaration claims the pair, or
 /// `"<unknown>"` when the builtin doesn't exist on that receiver.
@@ -4131,7 +4024,7 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "lt") => "Bool".to_string(),
         ("List", "length") => "Int".to_string(),
-        ("List", "map" | "filter" | "take") => "List".to_string(),
+        ("List", "map" | "filter" | "take" | "skip" | "reverse") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
         ("List", "get") => "Option".to_string(),
         ("List", "append" | "concat") => "List".to_string(),

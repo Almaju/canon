@@ -253,23 +253,24 @@ pub(super) enum Ty {
     NamedStr(String), // String alias (e.g. Greeting)  — 2 stack values (ptr, len)
     Ptr,              // anonymous heap ptr
     NamedPtr(String), // named heap ptr — union / product / Option / Result / List
-    /// `NamedPtr` to a union whose Ok *and* Err arms carry a
-    /// `String`-aliased payload. The three names are:
+    /// `NamedPtr` to a container (`Option` / `Result`) whose payload
+    /// types are known. The three names are:
     ///
-    ///   - `0`: the union type name (e.g. `"Result"`), used for variant
-    ///     dispatch and method lookups on the wrapper itself.
-    ///   - `1`: the Ok-payload type name (e.g. `"Url"` for
-    ///     `Result<Url, InvalidUrl>`), used when `?` extracts the payload
-    ///     so subsequent method calls dispatch against the right typed
-    ///     alias.
-    ///   - `2`: the Err-payload type name (e.g. `"InvalidUrl"`), used by
-    ///     dispatch arms to type the bound variable in an `Err(e) =>` arm.
+    ///   - `0`: the container type name (e.g. `"Result"`), used for
+    ///     variant dispatch and method lookups on the wrapper itself.
+    ///   - `1`: the Ok / Some payload type name (e.g. `"Url"` for
+    ///     `Result<Url, InvalidUrl>`, `"Todo"` for `Option<Todo>`), which
+    ///     `?` resolves through `resolve_repr` to read the payload back in
+    ///     its own shape and type the value it leaves on the stack.
+    ///   - `2`: the Err-payload type name (e.g. `"InvalidUrl"`); the Some
+    ///     payload's name again for an `Option`.
     ///
-    /// In-memory layout matches `NamedPtr` plus a String payload:
-    /// `[tag i32, ptr i32, len i32]` at offsets `0, 4, 8`. The two payload
-    /// arms share the same `(ptr, len)` slots — the discriminant decides
-    /// which type the bytes belong to.
-    NamedPtrStr(String, String, String),
+    /// In-memory layout matches `NamedPtr`: `[tag i32]` at `0`, the
+    /// payload at `4` in the shape its repr stores (`i64` / `f64` / one
+    /// `i32` pointer / a `(ptr, len)` pair at `4, 8`). The two payload
+    /// arms share the slots — the discriminant decides which type the
+    /// bytes belong to.
+    NamedPtrOf(String, String, String),
     List, // List<T>: 2 stack values (ptr: i32, len: i32)
     Unit, // no stack values
 }
@@ -281,7 +282,7 @@ impl Ty {
             Ty::I64 => vec![ValType::I64],
             Ty::F64 => vec![ValType::F64],
             Ty::I32 | Ty::Ptr => vec![ValType::I32],
-            Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) => vec![ValType::I32],
+            Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => vec![ValType::I32],
             Ty::Str | Ty::NamedStr(_) | Ty::List => vec![ValType::I32, ValType::I32],
             Ty::Unit => vec![],
         }
@@ -290,7 +291,7 @@ impl Ty {
     /// The Canon type name, if known (used for method dispatch).
     pub(super) fn canon_name(&self) -> Option<&str> {
         match self {
-            Ty::NamedStr(n) | Ty::NamedPtr(n) | Ty::NamedPtrStr(n, _, _) => Some(n.as_str()),
+            Ty::NamedStr(n) | Ty::NamedPtr(n) | Ty::NamedPtrOf(n, _, _) => Some(n.as_str()),
             _ => None,
         }
     }
@@ -309,7 +310,7 @@ pub(super) fn ret_area_size_for(ty: &Ty) -> u32 {
         Ty::I64 | Ty::F64 => 8,         // 8-byte scalar
         Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) => 4,
         // Tagged-string unions (Result<Ok-str, Err-str>): tag + ptr + len.
-        Ty::NamedPtrStr(_, _, _) => 12,
+        Ty::NamedPtrOf(_, _, _) => 12,
         Ty::Unit => 0,
     }
 }
@@ -362,7 +363,7 @@ impl<'m> WasmGen<'m> {
                             match inner_repr {
                                 Ty::I64 | Ty::F64 | Ty::I32 | Ty::Unit => inner_repr,
                                 Ty::Str | Ty::NamedStr(_) => Ty::NamedStr(name.to_string()),
-                                Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) | Ty::Ptr => {
+                                Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) | Ty::Ptr => {
                                     Ty::NamedPtr(name.to_string())
                                 }
                                 // Keep the two-slot list repr — wrapping it
@@ -408,7 +409,7 @@ impl<'m> WasmGen<'m> {
     pub(super) fn field_byte_size(&self, name: &str) -> u32 {
         match self.resolve_repr(name) {
             Ty::I64 | Ty::F64 => 8,
-            Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrStr(_, _, _) => 4,
+            Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => 4,
             Ty::Str | Ty::NamedStr(_) | Ty::List => 8,
             Ty::Unit => 0,
         }

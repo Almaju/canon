@@ -1,0 +1,84 @@
+FirstLine = String
+
+Line = String
+
+Parsed = Todo
+
+RenderedItem = Html
+
+RestLines = String
+
+Wire = String
+
+String => FirstLine {
+    String -> Length -> Eq(0) -> (
+        * False {
+            String -> ByteAt(1) -> Eq(10) -> (
+                * False {
+                    String
+                        -> Substring(From(1) * To(1))
+                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> FirstLine)
+                }
+                * True { "" }
+            )
+        }
+        * True { "" }
+    )
+}
+
+Todo => Line {
+    Todo.Done -> (
+        * False { `0|{Todo.Title}` }
+        * True { `1|{Todo.Title}` }
+    )
+}
+
+Line => Parsed {
+    Line
+        -> ByteAt(1)
+        -> Eq(49)
+        -> Done
+        -> Todo(Line -> Substring(From(3) * Line -> Length -> To) -> Title)
+}
+
+Int * Todo => RenderedItem {
+    Todo.Done -> (
+        * False {
+            Li(`{Todo.Title -> Escaped} {Msg(`Toggle:{Int -> String}`) -> Button("done")} {
+                Msg(`Delete:{Int -> String}`) -> Button("remove")
+            }`)
+        }
+        * True {
+            Li(`<s>{Todo.Title -> Escaped}</s> {Msg(`Toggle:{Int -> String}`) -> Button("undo")} {
+                Msg(`Delete:{Int -> String}`) -> Button("remove")
+            }`)
+        }
+    )
+}
+
+String => RestLines {
+    String -> Length -> Eq(0) -> (
+        * False {
+            String -> ByteAt(1) -> Eq(10) -> (
+                * False { String -> Substring(From(2) * String -> Length -> To) -> RestLines }
+                * True { String -> Substring(From(2) * String -> Length -> To) }
+            )
+        }
+        * True { "" }
+    )
+}
+
+Wire => Todos {
+    Wire.String -> Length -> Eq(0) -> (
+        * False {
+            List(Wire.String -> FirstLine -> Line -> Parsed)
+                -> Joined(Wire.String -> RestLines -> Wire -> Todos)
+                -> Todos
+        }
+        * True { List() -> Todos }
+    )
+}
+
+Todos => Wire {
+    Todos -> Folded(Wire("") * (Todo * Wire) => Wire { Wire(`{Wire}{Todo -> Line}\n`) })
+}

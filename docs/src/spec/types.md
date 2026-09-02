@@ -112,8 +112,11 @@ a *type definition* is accepted structurally but has no value-level
 lowering yet.
 
 `List<T>` is itself compiler-supplied, not derived from `T^*` --
-`List(...)` is its value-level constructor, with methods like
-`Mapped`, `Filtered`, `Taken`, `First`, and `At`. Indexing is **1-based** everywhere
+`List(...)` is its value-level constructor, and `T` is any type: a
+scalar, a string, a product, a union, another list. Its vocabulary
+(`Mapped`, `Filtered`, `Folded`, `Taken`, `Skipped`, `Reversed`, `First`,
+`At`, `Appended`, `Joined`, `Length`) is listed on the
+[Builtins](../reference/builtins.md) page. Indexing is **1-based** everywhere
 (`list -> At(1)` is the first element, `string -> ByteAt(1)` the first
 byte): one origin, matching positional product access `.1`.
 

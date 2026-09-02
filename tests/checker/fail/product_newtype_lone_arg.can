@@ -1,0 +1,11 @@
+Age = Int
+
+Name = String
+
+Parsed = User
+
+User = Age * Name
+
+Unit => Program {
+    Parsed("not a user").User.Age -> Print
+}

@@ -69,6 +69,7 @@ Page => Content {
     Page -> (
         * "async" { Page -> Tour(Async() -> Html -> Lesson) }
         * "building-and-running" { BuildingAndRunning() -> Html }
+        * "builtins" { Builtins() -> Html }
         * "calls" { Page -> Tour(Calls() -> Html -> Lesson) }
         * "capabilities" { Page -> Tour(Capabilities() -> Html -> Lesson) }
         * "codegen-gaps" { CodegenGaps() -> Html }
@@ -349,6 +350,7 @@ Model => Side {
                 {Model.Page -> NavItem(Slug("installation") * Label("Installation"))}
                 {Model.Page -> NavItem(Slug("building-and-running") * Label("The canon CLI"))}
                 {Model.Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
+                {Model.Page -> NavItem(Slug("builtins") * Label("Builtins"))}
                 {Model.Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
                 {Model.Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}
                 {Model.Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}

@@ -178,7 +178,7 @@ Query => Hits {
                 * BuildingAndRunning() -> String -> Text
             )
             -> String
-    }{
+    }{Query -> Hit(Slug("builtins") * Label("Builtins") * Builtins() -> String -> Text) -> String}{
         Query
             -> Hit(Slug("deploying") * Label("Deploying") * Deploying() -> String -> Text)
             -> String

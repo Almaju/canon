@@ -80,7 +80,7 @@ impl LocalScope {
     pub(super) fn arm_payload_ptr(&self) -> u32 {
         match self.arm_depth {
             0 => self.param_count + 7,
-            d => self.param_count + 32 + 2 * (d - 1),
+            d => self.param_count + 37 + 2 * (d - 1),
         }
     }
     /// Adjacent pair of i32s reserved as scratch for string-shaped
@@ -204,6 +204,25 @@ impl LocalScope {
     pub(super) fn bind_scrut_f64(&self) -> u32 {
         self.param_count + 31
     }
+
+    /// f64 sibling of `map_elem_i64` for a `Float` element.
+    pub(super) fn map_elem_f64(&self) -> u32 {
+        self.param_count + 32
+    }
+
+    /// The `list.fold` accumulator across iterations: an i64, an f64,
+    /// or an adjacent i32 pair (one pointer / `Bool`, or a `(ptr, len)`
+    /// string / list), by the accumulator's repr. Same nesting caveat as
+    /// `map_elem_i64`: a fold inside a fold's lambda reuses the slots.
+    pub(super) fn fold_acc_i64(&self) -> u32 {
+        self.param_count + 33
+    }
+    pub(super) fn fold_acc_f64(&self) -> u32 {
+        self.param_count + 34
+    }
+    pub(super) fn fold_acc_ptr(&self) -> u32 {
+        self.param_count + 35
+    }
 }
 
 /// Deepest chain of dispatches nested inside one another's arm bodies
@@ -283,6 +302,10 @@ pub(super) fn extra_locals_decl(arm_depth: u32) -> Vec<(u32, ValType)> {
         (2, ValType::I32), // bind_scrut_ptr, bind_scrut_ptr + 1 (len)
         (1, ValType::I64), // bind_scrut_i64 (Int binding-dispatch scrutinee)
         (1, ValType::F64), // bind_scrut_f64 (Float binding-dispatch scrutinee)
+        (1, ValType::F64), // map_elem_f64 (list.map current Float element)
+        (1, ValType::I64), // fold_acc_i64 (list.fold accumulator)
+        (1, ValType::F64), // fold_acc_f64
+        (2, ValType::I32), // fold_acc_ptr, fold_acc_ptr + 1 (len)
     ];
     let extra_pairs = arm_depth.saturating_sub(1);
     if extra_pairs > 0 {

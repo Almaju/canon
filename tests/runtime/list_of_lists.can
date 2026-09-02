@@ -1,0 +1,12 @@
+Row = List<Int>
+
+Unit => Program {
+    List(1 * 2)
+        -> Mapped((Int) => Row { List(Int * Int) })
+        -> Length
+        -> Print
+    List(1 * 2) -> Mapped((Int) => Row { List(Int * Int * Int) }) -> At(2) -> (
+        * None { "none" -> Print }
+        * Some<Row> { Row -> Length -> Print }
+    )
+}

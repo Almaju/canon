@@ -4,27 +4,7 @@ Canon is a new programming language. The reference compiler emits **WebAssembly 
 
 The guiding rule: wherever ordering is discretionary, the compiler enforces alphabetical order. Components of product types, variants of unions, function declarations, dispatch arms, imports — all alphabetical. Ordering is never a meaningful change.
 
-See the [language specification](docs/src/spec/) for the full semantics.
-
----
-
-## On Authorship and AI
-
-Canon's design is human work. The language — its philosophy, its type
-algebra, the "wherever ordering is discretionary, enforce it" rule, the
-types-only doctrine, capabilities-as-values, the whole small opinionated
-surface — comes from one person's head. Those ideas are not
-AI-generated.
-
-AI was used, under supervision, as an implementation aid for the
-*compiler*: a tool for turning already-decided designs into Rust, the
-way one might use any other power tool. Every design decision was made,
-reviewed, and owned by a human. The core is handmade; the AI helped pour
-the concrete, not draw the blueprint.
-
-I mention this deliberately. A language dismissed as "AI slop" would be
-judged on its provenance rather than its ideas — and the ideas here are
-genuinely mine. Judge them on their merits.
+**Try it without installing anything:** the [guided tour](https://almaju.github.io/canon/doc/#hello) compiles and runs every example in your browser, and the [playground](https://almaju.github.io/canon/doc/#play) takes your own programs. The [docs site](https://almaju.github.io/canon/doc/) and the [language specification](https://almaju.github.io/canon/doc/#overview) (source under [`docs/src/spec/`](docs/src/spec/)) cover the rest.
 
 ---
 
@@ -62,6 +42,26 @@ Request => Response {
 ```
 
 Functions are defined over compositions of types — there is no privileged receiver. There is no `let`, no `if`/`else`, no comments, no local variables. Branching is dispatch on a union. Imports are automatic and file-based — there is no `use` statement: referencing `Foo` loads the `foo.can` that declares it, whether that's a sibling file, a vendored dependency under `deps/`, or the bundled standard library.
+
+---
+
+## On Authorship and AI
+
+Canon's design is human work. The language — its philosophy, its type
+algebra, the "wherever ordering is discretionary, enforce it" rule, the
+types-only doctrine, capabilities-as-values, the whole small opinionated
+surface — comes from one person's head. Those ideas are not
+AI-generated.
+
+AI was used, under supervision, as an implementation aid for the
+*compiler*: a tool for turning already-decided designs into Rust, the
+way one might use any other power tool. Every design decision was made,
+reviewed, and owned by a human. The core is handmade; the AI helped pour
+the concrete, not draw the blueprint.
+
+I mention this deliberately. A language dismissed as "AI slop" would be
+judged on its provenance rather than its ideas — and the ideas here are
+genuinely mine. Judge them on their merits.
 
 ---
 
