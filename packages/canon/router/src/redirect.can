@@ -1,0 +1,7 @@
+Location = String
+
+Redirect = Response
+
+Location => Redirect {
+    Body("") -> Response(Headers().set("location" * Location -> String) * Status(303))
+}

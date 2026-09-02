@@ -26,6 +26,7 @@ const TEST_PORT: u16 = 38431;
 /// concurrently.
 const HEADERS_TEST_PORT: u16 = 38432;
 const METHOD_TEST_PORT: u16 = 38433;
+const ROUTER_TEST_PORT: u16 = 38434;
 
 #[test]
 fn wasi_http_service_smoke() {
@@ -259,15 +260,112 @@ fn wasi_http_service_method_dispatch() {
     let _ = std::fs::remove_dir_all(&workdir);
 }
 
+/// The `canon/router` package builds responses through the same
+/// `Response` / `Headers` constructors the handler world compiles
+/// natively, from a vendored file rather than the entry. Pins the
+/// package end to end: path segments read from the live request, a
+/// content-typed 200, and the 404 helper.
+#[test]
+fn wasi_http_service_router_package() {
+    let workdir = std::env::temp_dir().join(format!("canon_wasi_http_rt_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let src_path = workdir.join("service.can");
+    std::fs::write(
+        &src_path,
+        r#"Request => Response {
+    Request.path() -> (
+        * None { NotFound() }
+        * Some<String> {
+            String -> Segments -> At(2) -> (
+                * None { NotFound() }
+                * Some<String> { Html(`<p>{String}</p>`) -> HtmlResponse }
+            )
+        }
+    )
+}
+"#,
+    )
+    .unwrap();
+    canon::add::add(&workdir, "canon/router").expect("vendor canon/router");
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let addr = format!("127.0.0.1:{ROUTER_TEST_PORT}");
+    let mut child = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&src_path)
+        .arg("--addr")
+        .arg(&addr)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn `canon run --addr`");
+
+    let start = Instant::now();
+    let mut bound = false;
+    while start.elapsed() < Duration::from_secs(10) {
+        if TcpStream::connect(&addr).is_ok() {
+            bound = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if !bound {
+        let _ = child.kill();
+        let out = child.wait_with_output().ok();
+        let diag = out
+            .map(|o| {
+                format!(
+                    "stdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                )
+            })
+            .unwrap_or_default();
+        panic!("server never bound {addr}\n{diag}");
+    }
+
+    let found = send_path(&addr, "/notes/42?x=1").unwrap_or_else(|e| {
+        let _ = child.kill();
+        panic!("request failed: {e}");
+    });
+    let missing = send_path(&addr, "/").unwrap_or_else(|e| {
+        let _ = child.kill();
+        panic!("request failed: {e}");
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&workdir);
+
+    assert!(found.starts_with("HTTP/1.1 200"), "got:\n{found}");
+    assert!(
+        found
+            .to_ascii_lowercase()
+            .contains("content-type: text/html"),
+        "HtmlResponse sets the content type, got:\n{found}"
+    );
+    assert!(found.ends_with("<p>42</p>"), "got:\n{found}");
+    assert!(missing.starts_with("HTTP/1.1 404"), "got:\n{missing}");
+    assert!(missing.ends_with("not found"), "got:\n{missing}");
+}
+
 fn send_request(addr: &str) -> std::io::Result<String> {
     send_verb(addr, "GET")
 }
 
 fn send_verb(addr: &str, verb: &str) -> std::io::Result<String> {
+    send_line(addr, &format!("{verb} /"))
+}
+
+fn send_path(addr: &str, path: &str) -> std::io::Result<String> {
+    send_line(addr, &format!("GET {path}"))
+}
+
+fn send_line(addr: &str, request_line: &str) -> std::io::Result<String> {
     let mut stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.write_all(
-        format!("{verb} / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes(),
+        format!("{request_line} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .as_bytes(),
     )?;
     let mut response = String::new();
     stream.read_to_string(&mut response)?;

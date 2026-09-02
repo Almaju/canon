@@ -1,37 +1,46 @@
-IndexBody = Body
+Notes = Json
 
-NotFound = Body
+Routed = Response
 
-NoteOne = Body
+Shown = Response
 
-NoteTwo = Body
-
-Unit => IndexBody {
-    [{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}] -> Body
+Unit => Notes {
+    [{"id":1,"title":"ship canon v1"},{"id":2,"title":"write the docs"}]
 }
 
-Unit => NotFound {
-    {"error":"not found"} -> Body
+RoutePath => Routed {
+    RoutePath -> Segments -> First -> (
+        * None { Location("/notes") -> Redirect }
+        * Some<String> {
+            String -> (
+                * "notes" {
+                    RoutePath -> Segments -> At(2) -> (
+                        * None { Notes() -> JsonResponse }
+                        * Some<String> {
+                            String -> Int -> (
+                                * Err<MalformedInt> { NotFound() }
+                                * Ok<Int> { Int -> Shown }
+                            )
+                        }
+                    )
+                }
+                * String { NotFound() }
+            )
+        }
+    )
 }
 
-Unit => NoteOne {
-    {"id":1,"title":"ship canon v1"} -> Body
-}
-
-Unit => NoteTwo {
-    {"id":2,"title":"write the docs"} -> Body
+Int => Shown {
+    Int -> (
+        * 1 { {"id":1,"title":"ship canon v1"} -> JsonResponse }
+        * 2 { {"id":2,"title":"write the docs"} -> JsonResponse }
+        * Int { NotFound() }
+    )
 }
 
 Request => Response {
     Request.path() -> (
-        * None { Status(400) -> Response(Headers() * NotFound()) }
-        * Some<String> {
-            String -> (
-                * "/notes" { Status(200) -> Response(Headers() * IndexBody()) }
-                * "/notes/1" { Status(200) -> Response(Headers() * NoteOne()) }
-                * "/notes/2" { Status(200) -> Response(Headers() * NoteTwo()) }
-                * String { Status(404) -> Response(Headers() * NotFound()) }
-            )
-        }
+        * None { NotFound() }
+        * Some<String> { String -> RoutePath -> Routed }
     )
 }
