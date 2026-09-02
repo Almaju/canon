@@ -1,0 +1,5 @@
+Form = Html
+
+Msg * String => Form {
+    Html(`<form data-msg-form="{Msg}">{String}</form>`)
+}

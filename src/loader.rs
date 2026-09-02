@@ -1331,9 +1331,7 @@ fn discover_references(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<
         collect_item_refs(item, &mut refs);
     }
     for (name, span) in refs {
-        if is_undiscoverable(&name)
-            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
-        {
+        if is_undiscoverable(&name) || ctx.is_declared_locally(&name) {
             continue;
         }
         resolve_reference(&name, span, dir, ctx)?;
@@ -1568,6 +1566,23 @@ impl LoadCtx {
             .local_decls
             .get_or_insert_with(|| build_decl_index(&root, true));
         index.get(name).and_then(|paths| paths.first()).cloned()
+    }
+
+    /// Whether a reference to `name` needs no discovery: a type declared
+    /// by a file already loaded, or a method (a camelCase binding). A
+    /// constructor declares nothing but its bodies — `Model => Html` in
+    /// the entry still needs the file that declares `Html`, the prelude's
+    /// or a sibling's — so a function's PascalCase name never counts. A
+    /// prelude declaration never counts either: a constructor family
+    /// spans files, and a member loaded early must not hide its
+    /// siblings (see `defined_bundled`).
+    fn is_declared_locally(&self, name: &str) -> bool {
+        if self.defined_bundled.contains(name) {
+            return false;
+        }
+        self.defined_types.contains(name)
+            || (self.defined.contains(name)
+                && !name.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
     }
 
     fn deps_decl_matches(&mut self, name: &str) -> Vec<PathBuf> {
@@ -1840,9 +1855,7 @@ fn discover_bundled_references(
         })
         .collect();
     for (name, span) in refs {
-        if own.contains(name.as_str())
-            || is_undiscoverable(&name)
-            || (ctx.defined.contains(&name) && !ctx.defined_bundled.contains(&name))
+        if own.contains(name.as_str()) || is_undiscoverable(&name) || ctx.is_declared_locally(&name)
         {
             continue;
         }

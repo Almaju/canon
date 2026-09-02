@@ -490,8 +490,9 @@ String => Row {
 ```
 
 Holes work in attribute values too (`<button data-msg="{Msg}">`). The
-stdlib's tag-newtype constructors (`Button`, `Div`, … `= Html`) are for
-markup *computed* from values; static structure belongs in the literal.
+`canon/ui` package's tag-newtype constructors (`Button`, `Div`, … `= Html`)
+are for markup *computed* from values; static structure belongs in the
+literal.
 `Html` is a prelude type (`Html = String` intrinsically), and HTML
 literals power the [web target](../reference/web-target.md)'s `view`.
 

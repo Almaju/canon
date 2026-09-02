@@ -1,0 +1,131 @@
+ALinksHref = TestResult
+
+ButtonWiresMsg = TestResult
+
+ClassedInsertsIntoOpeningTag = TestResult
+
+ClassedKeepsExistingAttributes = TestResult
+
+DivWrapsContent = TestResult
+
+ElAttrAddsAttribute = TestResult
+
+ElWrapsInTag = TestResult
+
+FormWiresMsg = TestResult
+
+H1WrapsHeading = TestResult
+
+ImgEscapesAlt = TestResult
+
+InputWiresMsg = TestResult
+
+LiWrapsItem = TestResult
+
+SpanWrapsContent = TestResult
+
+TableNestsRows = TestResult
+
+UlWrapsList = TestResult
+
+Unit => ALinksHref {
+    Href("/x?a=1&b=2")
+        -> A("go")
+        -> Eq("<a href=\"/x?a=1&amp;b=2\">go</a>")
+        -> TestResult
+}
+
+Unit => ButtonWiresMsg {
+    Msg("inc")
+        -> Button("click")
+        -> Eq("<button data-msg=\"inc\">click</button>")
+        -> TestResult
+}
+
+Unit => ClassedInsertsIntoOpeningTag {
+    Div("hi")
+        -> Classed(Class("card"))
+        -> Eq("<div class=\"card\">hi</div>")
+        -> TestResult
+}
+
+Unit => ClassedKeepsExistingAttributes {
+    Msg("go")
+        -> Button("x")
+        -> Classed(Class("cta"))
+        -> Eq("<button class=\"cta\" data-msg=\"go\">x</button>")
+        -> TestResult
+}
+
+Unit => DivWrapsContent {
+    Div("hi")
+        -> Eq("<div>hi</div>")
+        -> TestResult
+}
+
+Unit => ElAttrAddsAttribute {
+    Attr("class=\"x\"")
+        -> ElAttr("hi" * Tag("p"))
+        -> Eq("<p class=\"x\">hi</p>")
+        -> TestResult
+}
+
+Unit => ElWrapsInTag {
+    "hi"
+        -> El(Tag("p"))
+        -> Eq("<p>hi</p>")
+        -> TestResult
+}
+
+Unit => FormWiresMsg {
+    Msg("Add:")
+        -> Form("f")
+        -> Eq("<form data-msg-form=\"Add:\">f</form>")
+        -> TestResult
+}
+
+Unit => H1WrapsHeading {
+    H1("Title")
+        -> Eq("<h1>Title</h1>")
+        -> TestResult
+}
+
+Unit => ImgEscapesAlt {
+    Alt("a<b")
+        -> Img(Src("/p.png"))
+        -> Eq("<img src=\"/p.png\" alt=\"a&lt;b\">")
+        -> TestResult
+}
+
+Unit => InputWiresMsg {
+    Msg("Name:")
+        -> Input(Placeholder("who?"))
+        -> Eq("<input data-msg-input=\"Name:\" placeholder=\"who?\">")
+        -> TestResult
+}
+
+Unit => LiWrapsItem {
+    Li("item")
+        -> Eq("<li>item</li>")
+        -> TestResult
+}
+
+Unit => SpanWrapsContent {
+    Span("hi")
+        -> Eq("<span>hi</span>")
+        -> TestResult
+}
+
+Unit => TableNestsRows {
+    Td("1")
+        -> Tr
+        -> Table
+        -> Eq("<table><tr><td>1</td></tr></table>")
+        -> TestResult
+}
+
+Unit => UlWrapsList {
+    Ul("items")
+        -> Eq("<ul>items</ul>")
+        -> TestResult
+}
