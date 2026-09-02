@@ -22,7 +22,7 @@ powers are the WASI interfaces its host chooses to satisfy.
 ```canon
 Unit => Program {
     Path("./data.json")
-        -> File?
+        -> File
         -> Read?
         -> Print
 }

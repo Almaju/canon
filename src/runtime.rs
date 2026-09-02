@@ -20,7 +20,7 @@ use http_body_util::combinators::UnsyncBoxBody;
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
 use wasmtime_wasi_http::p3::{WasiHttpCtxView, WasiHttpHooks, WasiHttpView};
 use wasmtime_wasi_http::WasiHttpCtx;
@@ -292,7 +292,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // canonical-ABI shapes (resources, async, streams) become available
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
-    host_builtin_filesystem::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
 
     Ok(linker)
@@ -312,6 +311,14 @@ fn build_state(args: &[&str]) -> State {
         .inherit_env()
         .inherit_network()
         .allow_ip_name_lookup(true);
+    // The host filesystem as the process sees it — `canon run` is a
+    // developer's tool: `/` for absolute paths, the working directory
+    // as `.` for relative ones (codegen picks the preopen by name).
+    builder
+        .preopened_dir("/", "/", DirPerms::all(), FilePerms::all())
+        .expect("the root directory opens")
+        .preopened_dir(".", ".", DirPerms::all(), FilePerms::all())
+        .expect("the working directory opens");
     if !args.is_empty() {
         builder.args(args);
     }
@@ -567,68 +574,6 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
         .header(http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
         .body(body)
         .expect("static response builder shape is valid")
-}
-
-/// `canon:builtins/filesystem` — minimal filesystem operations exposed as
-/// `string → string` functions. Errors are reported as empty strings
-/// (`""`) until the codegen learns to lower `result<string, error>`. The
-/// host has full POSIX-style access; sandboxing happens at the WASI level
-/// for everything else.
-mod host_builtin_filesystem {
-    use super::State;
-    use std::fs;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface filesystem {
-                /// Open a file by path. Returns the path string back as the
-                /// `File` handle on success, or a diagnostic message on
-                /// failure. The handle is just the path — actual reading
-                /// happens in `read`.
-                open-file: func(path: string) -> result<string, string>;
-
-                /// Read the contents of a previously-opened `File`. Takes
-                /// the same string handle returned by `open-file`.
-                read: func(file: string) -> result<string, string>;
-
-                /// Write `contents` to the file at `path`, creating it if
-                /// absent and truncating if present. Returns the path back
-                /// on success so call sites can keep chaining
-                /// (`.write(...)?.File()?.read()?`).
-                write: func(contents: string, path: string) -> result<string, string>;
-            }
-            world host-shim {
-                import filesystem;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::filesystem::Host for State {
-        fn open_file(&mut self, path: String) -> Result<String, String> {
-            if std::path::Path::new(&path).is_file() {
-                Ok(path)
-            } else {
-                Err(format!("file not found: {path}"))
-            }
-        }
-
-        fn read(&mut self, file: String) -> Result<String, String> {
-            fs::read_to_string(&file).map_err(|e| e.to_string())
-        }
-
-        fn write(&mut self, contents: String, path: String) -> Result<String, String> {
-            fs::write(&path, contents.as_bytes())
-                .map(|_| path)
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::filesystem::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
 }
 
 /// `canon:builtins/json` — the one JSON builder Canon can't express:

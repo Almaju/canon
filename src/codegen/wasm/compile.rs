@@ -3222,8 +3222,20 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::I32WrapI64);
             }
         }
-        if let Some(IndirectReturnShape::HttpSend { ok_name, err_name }) = &info.indirect_return {
-            return self.emit_http_send(info.func_idx, ok_name.clone(), err_name.clone(), scope, f);
+        match &info.indirect_return {
+            Some(IndirectReturnShape::HttpSend { ok_name, err_name }) => {
+                let (ok, err) = (ok_name.clone(), err_name.clone());
+                return self.emit_http_send(info.func_idx, ok, err, scope, f);
+            }
+            Some(IndirectReturnShape::FileRead { ok_name, err_name }) => {
+                let (ok, err) = (ok_name.clone(), err_name.clone());
+                return self.emit_file_read(info.func_idx, ok, err, scope, f);
+            }
+            Some(IndirectReturnShape::FileWrite { ok_name, err_name }) => {
+                let (ok, err) = (ok_name.clone(), err_name.clone());
+                return self.emit_file_write(info.func_idx, ok, err, scope, f);
+            }
+            _ => {}
         }
         if info.is_async {
             return self.emit_async_call(info, scope, f);
@@ -3277,7 +3289,9 @@ impl<'m> WasmGen<'m> {
         // Decode the result.
         match shape {
             // Fused before the generic call above.
-            IndirectReturnShape::HttpSend { .. } => unreachable!("http send is fused"),
+            IndirectReturnShape::HttpSend { .. }
+            | IndirectReturnShape::FileRead { .. }
+            | IndirectReturnShape::FileWrite { .. } => unreachable!("fused above"),
             IndirectReturnShape::String => {
                 // (i32 ptr at +0, i32 len at +4) — push both as a string
                 // pair. Use `info.result_ty` so the alias name is
@@ -3672,6 +3686,501 @@ impl<'m> WasmGen<'m> {
                 Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
             }
         }
+    }
+
+    /// Read the stream in `stream` to its end, chunk after chunk, at
+    /// `pos` onward — `pos` ends at the byte past the last one read.
+    /// Chunks land back to back: the bump pointer is reset to the
+    /// running position before each further reserve, so the next
+    /// chunk's room starts exactly there (the allocator's own 8-byte
+    /// rounding only moves where a *later* value goes), and is left at
+    /// the end. The caller reserves the first chunk's room past `pos`.
+    /// `status` holds the packed read status `(count << 4) | code`;
+    /// `BLOCKED` (all ones) never comes back from a sync read and is
+    /// treated as the end, as is any code but `COMPLETED` or an empty
+    /// read.
+    pub(super) fn emit_drain_stream(
+        &mut self,
+        read_fn: u32,
+        stream: u32,
+        pos: u32,
+        status: u32,
+        f: &mut Function,
+    ) {
+        const CHUNK: i32 = 65536;
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(stream));
+        f.instruction(&Instruction::LocalGet(pos));
+        f.instruction(&Instruction::I32Const(CHUNK));
+        f.instruction(&Instruction::Call(read_fn));
+        f.instruction(&Instruction::LocalTee(status));
+        f.instruction(&Instruction::I32Const(-1));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(pos));
+        f.instruction(&Instruction::LocalGet(status));
+        f.instruction(&Instruction::I32Const(4));
+        f.instruction(&Instruction::I32ShrU);
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(pos));
+        f.instruction(&Instruction::LocalGet(status));
+        f.instruction(&Instruction::I32Const(15));
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(status));
+        f.instruction(&Instruction::I32Const(4));
+        f.instruction(&Instruction::I32ShrU);
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(pos));
+        f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+        f.instruction(&Instruction::I32Const(CHUNK + 8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(pos));
+        f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+    }
+
+    /// Open the file at the path in `(path, path + 1)`: an absolute
+    /// path under the preopen named `/`, a relative one under the
+    /// preopen named `.` — the first preopen when neither is offered —
+    /// with the given `open-flags` and `descriptor-flags`
+    /// (`symlink-follow` always), awaiting the async `open-at`. Its six
+    /// flat params travel through memory (more than the async lower
+    /// passes flat); its `result<descriptor, error-code>` lands in
+    /// `alloc_ptr`: on `Ok` the descriptor is left in `tmp_i32`; on
+    /// `Err` the case is at +4 and, for `other`, the message at +8
+    /// (disc) / +12 / +16. Every preopen handle is dropped again. Uses
+    /// `tmp_i32`, `tmp_i32_b`, `rbool`, `rptr`, `rlen`, `addr_scratch`,
+    /// `par_seen_b`, `par_set`, `par_event_ptr`.
+    fn emit_open_at(
+        &mut self,
+        base: u32,
+        open_flags: i32,
+        descriptor_flags: i32,
+        path: u32,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) {
+        let imp = |i: FileImport| base + 1 + i as u32;
+        let mem32 = |offset: u64| MemArg {
+            offset,
+            align: 2,
+            memory_index: 0,
+        };
+        let mem8 = |offset: u64| MemArg {
+            offset,
+            align: 0,
+            memory_index: 0,
+        };
+        // Absolute: the wanted preopen name is `/` and the path loses
+        // its first byte; relative: `.`.
+        f.instruction(&Instruction::LocalGet(path));
+        f.instruction(&Instruction::I32Load8U(mem8(0)));
+        f.instruction(&Instruction::I32Const(b'/' as i32));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::LocalGet(path + 1));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Ne);
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        f.instruction(&Instruction::LocalGet(path));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(path));
+        f.instruction(&Instruction::LocalGet(path + 1));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(path + 1));
+        f.instruction(&Instruction::I32Const(b'/' as i32));
+        f.instruction(&Instruction::I32Const(b'.' as i32));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::Select);
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        // get-directories → (ptr, len) of 12-byte entries: a handle,
+        // then the name. Walk them: the match (or the first) is kept
+        // in par_seen_b, every other handle dropped.
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalTee(scope.addr_scratch()));
+        f.instruction(&Instruction::Call(imp(FileImport::GetDirectories)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Load(mem32(0)));
+        f.instruction(&Instruction::LocalSet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Load(mem32(4)));
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_b()));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::I32Load(mem32(0)));
+        f.instruction(&Instruction::LocalSet(scope.par_set()));
+        // Wanted: a one-byte name equal to the wanted byte, and nothing
+        // kept yet or a first-entry placeholder.
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::I32Load(mem32(8)));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::I32Load(mem32(4)));
+        f.instruction(&Instruction::I32Load8U(mem8(0)));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::LocalGet(scope.par_seen_b()));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::I32Or);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // Keep this one; a placeholder kept earlier is dropped.
+        f.instruction(&Instruction::LocalGet(scope.par_seen_b()));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(scope.par_seen_b()));
+        f.instruction(&Instruction::Call(imp(FileImport::DescriptorDrop)));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::LocalSet(scope.par_seen_b()));
+        f.instruction(&Instruction::Else);
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(imp(FileImport::DescriptorDrop)));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::I32Const(12));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        // open-at(root, symlink-follow, path, open-flags, flags) → the
+        // params area (each `flags` a byte), then the ret area.
+        f.instruction(&Instruction::I32Const(24));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(scope.par_seen_b()));
+        f.instruction(&Instruction::I32Store(mem32(0)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Store(mem32(4)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(path));
+        f.instruction(&Instruction::I32Store(mem32(8)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(path + 1));
+        f.instruction(&Instruction::I32Store(mem32(12)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Const(open_flags));
+        f.instruction(&Instruction::I32Store8(mem8(16)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Const(descriptor_flags));
+        f.instruction(&Instruction::I32Store8(mem8(17)));
+        f.instruction(&Instruction::I32Const(24));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::Call(imp(FileImport::OpenAt)));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+        self.emit_subtask_wait(scope, f);
+        f.instruction(&Instruction::LocalGet(scope.par_seen_b()));
+        f.instruction(&Instruction::Call(imp(FileImport::DescriptorDrop)));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load(mem32(4)));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+    }
+
+    /// With `open-at`'s result in `alloc_ptr` and its `Err` taken: the
+    /// error text, `"NN"` (the case number) and, for `other`, a space
+    /// and its message — ptr in `addr_scratch`, len in `rlen`. Uses
+    /// `rbool`, `rptr`, `tmp_i32_b`.
+    fn emit_file_error(&mut self, scope: &LocalScope, f: &mut Function) {
+        let mem32 = |offset: u64| MemArg {
+            offset,
+            align: 2,
+            memory_index: 0,
+        };
+        let mem8 = |offset: u64| MemArg {
+            offset,
+            align: 0,
+            memory_index: 0,
+        };
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load8U(mem8(4)));
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        // The message: src in tmp_i32_b, n in rlen (0 without one).
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Const(36));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load8U(mem8(8)));
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load(mem32(12)));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load(mem32(16)));
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::End);
+        // "NN" then " message".
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::I32Const(3));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Const(10));
+        f.instruction(&Instruction::I32DivU);
+        f.instruction(&Instruction::I32Const(b'0' as i32));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Store8(mem8(0)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Const(10));
+        f.instruction(&Instruction::I32RemU);
+        f.instruction(&Instruction::I32Const(b'0' as i32));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Store8(mem8(1)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Const(b' ' as i32));
+        f.instruction(&Instruction::I32Store8(mem8(2)));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Const(3));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalSet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+        self.emit_byte_copy_loop(scope, f);
+        // Without a message the text is just the two digits.
+        f.instruction(&Instruction::I32Const(2));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::I32Const(3));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::Select);
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+    }
+
+    /// The `Result` struct: tag 1 (Ok) or 0 (Err) from `tag`, then the
+    /// string in `addr_scratch` / `rlen`.
+    fn emit_result_string(
+        &mut self,
+        tag: u32,
+        ok_name: String,
+        err_name: String,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let mem32 = |offset: u64| MemArg {
+            offset,
+            align: 2,
+            memory_index: 0,
+        };
+        f.instruction(&Instruction::I32Const(12));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(tag));
+        f.instruction(&Instruction::I32Store(mem32(0)));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Store(mem32(4)));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::I32Store(mem32(8)));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
+    }
+
+    /// The fused file read — see `IndirectReturnShape::FileRead`. On
+    /// entry the path sits on the stack; no user code runs from here
+    /// on.
+    pub(super) fn emit_file_read(
+        &mut self,
+        read_fn: u32,
+        ok_name: String,
+        err_name: String,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        const CHUNK: i32 = 65536;
+        let imp = |i: FileImport| read_fn + 1 + i as u32;
+        let mem32 = |offset: u64| MemArg {
+            offset,
+            align: 2,
+            memory_index: 0,
+        };
+        let mem8 = |offset: u64| MemArg {
+            offset,
+            align: 0,
+            memory_index: 0,
+        };
+        let path = scope.arm_payload_ptr();
+        f.instruction(&Instruction::LocalSet(path + 1));
+        f.instruction(&Instruction::LocalSet(path));
+        self.emit_open_at(read_fn, 0, 1, path, scope, f);
+        // The tag: 1 on Ok.
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load8U(mem8(0)));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+        f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // read-via-stream(descriptor, offset 0, ret) → stream at +0,
+        // completion future at +4; drain from a fresh start.
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.par_set()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::I64Const(0));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::Call(read_fn));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::I32Load(mem32(0)));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::I32Load(mem32(4)));
+        f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
+        f.instruction(&Instruction::I32Const(CHUNK + 8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalTee(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalSet(scope.rptr()));
+        self.emit_drain_stream(
+            imp(FileImport::BodyRead),
+            scope.tmp_i32_b(),
+            scope.rptr(),
+            scope.par_set(),
+            f,
+        );
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+        f.instruction(&Instruction::Call(imp(FileImport::BodyDropReadable)));
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::Call(imp(
+            FileImport::BodyTrailersDropReadable,
+        )));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::Call(imp(FileImport::DescriptorDrop)));
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::Else);
+        self.emit_file_error(scope, f);
+        f.instruction(&Instruction::End);
+        self.emit_result_string(scope.par_seen_a(), ok_name, err_name, scope, f)
+    }
+
+    /// The fused file write — see `IndirectReturnShape::FileWrite`. On
+    /// entry the contents then the path sit on the stack; no user code
+    /// runs from here on.
+    pub(super) fn emit_file_write(
+        &mut self,
+        write_fn: u32,
+        ok_name: String,
+        err_name: String,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let imp = |i: FileWriteImport| write_fn + 1 + i as u32;
+        let mem8 = |offset: u64| MemArg {
+            offset,
+            align: 0,
+            memory_index: 0,
+        };
+        let path = scope.arm_payload_ptr();
+        let contents = scope.fold_acc_ptr();
+        // The path as written, for the `Ok` arm: opening trims it.
+        let written = scope.str_scratch_ptr();
+        f.instruction(&Instruction::LocalSet(path + 1));
+        f.instruction(&Instruction::LocalSet(path));
+        f.instruction(&Instruction::LocalGet(path));
+        f.instruction(&Instruction::LocalSet(written));
+        f.instruction(&Instruction::LocalGet(path + 1));
+        f.instruction(&Instruction::LocalSet(written + 1));
+        f.instruction(&Instruction::LocalSet(contents + 1));
+        f.instruction(&Instruction::LocalSet(contents));
+        // create | truncate; write.
+        self.emit_open_at(write_fn, 1 | 8, 2, path, scope, f);
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load8U(mem8(0)));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+        f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // A fresh stream: its reader goes to write-via-stream, the
+        // contents through its writer, then the completion future is
+        // read for the outcome.
+        f.instruction(&Instruction::Call(imp(FileWriteImport::ContentsNew)));
+        f.instruction(&Instruction::LocalTee(scope.tmp_i64()));
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(scope.par_set()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+        f.instruction(&Instruction::I64Const(32));
+        f.instruction(&Instruction::I64ShrU);
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::LocalGet(scope.par_set()));
+        f.instruction(&Instruction::I64Const(0));
+        f.instruction(&Instruction::Call(write_fn));
+        f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::LocalGet(contents));
+        f.instruction(&Instruction::LocalGet(contents + 1));
+        f.instruction(&Instruction::Call(imp(FileWriteImport::ContentsWrite)));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::Call(imp(
+            FileWriteImport::ContentsDropWritable,
+        )));
+        // The outcome lands where open-at's did, with the same layout
+        // for an error.
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::Call(imp(FileWriteImport::DoneRead)));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::Call(imp(FileWriteImport::DoneDropReadable)));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::Call(
+            write_fn + 1 + FileImport::DescriptorDrop as u32,
+        ));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load8U(mem8(0)));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // Ok carries the path back.
+        f.instruction(&Instruction::LocalGet(written));
+        f.instruction(&Instruction::LocalSet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(written + 1));
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::Else);
+        self.emit_file_error(scope, f);
+        f.instruction(&Instruction::End);
+        self.emit_result_string(scope.par_seen_a(), ok_name, err_name, scope, f)
     }
 
     /// With a packed subtask status in `tmp_i32`, block until the
@@ -4174,46 +4683,19 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::LocalGet(scope.par_set()));
         f.instruction(&Instruction::I32Load(mem32(4)));
         f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
-        // Drain: position in rptr, packed read status in par_set.
+        // Drain behind the prefix: position in rptr, packed read status
+        // in par_set.
         f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
         f.instruction(&Instruction::I32Const(4));
         f.instruction(&Instruction::I32Add);
         f.instruction(&Instruction::LocalSet(scope.rptr()));
-        f.instruction(&Instruction::Block(BlockType::Empty));
-        f.instruction(&Instruction::Loop(BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
-        f.instruction(&Instruction::LocalGet(scope.rptr()));
-        f.instruction(&Instruction::I32Const(CHUNK));
-        f.instruction(&Instruction::Call(imp(HttpSendImport::BodyRead)));
-        f.instruction(&Instruction::LocalTee(scope.par_set()));
-        f.instruction(&Instruction::I32Const(-1));
-        f.instruction(&Instruction::I32Eq);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(scope.rptr()));
-        f.instruction(&Instruction::LocalGet(scope.par_set()));
-        f.instruction(&Instruction::I32Const(4));
-        f.instruction(&Instruction::I32ShrU);
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::LocalSet(scope.rptr()));
-        f.instruction(&Instruction::LocalGet(scope.par_set()));
-        f.instruction(&Instruction::I32Const(15));
-        f.instruction(&Instruction::I32And);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(scope.par_set()));
-        f.instruction(&Instruction::I32Const(4));
-        f.instruction(&Instruction::I32ShrU);
-        f.instruction(&Instruction::I32Eqz);
-        f.instruction(&Instruction::BrIf(1));
-        f.instruction(&Instruction::LocalGet(scope.rptr()));
-        f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
-        f.instruction(&Instruction::I32Const(CHUNK + 8));
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::Drop);
-        f.instruction(&Instruction::Br(0));
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(scope.rptr()));
-        f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+        self.emit_drain_stream(
+            imp(HttpSendImport::BodyRead),
+            scope.tmp_i32_b(),
+            scope.rptr(),
+            scope.par_set(),
+            f,
+        );
         f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
         f.instruction(&Instruction::Call(imp(HttpSendImport::BodyDropReadable)));
         f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
@@ -4260,16 +4742,6 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::I32Store(mem32(8)));
         f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
         Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
-    }
-
-    /// Does the program reach `wasi:http/client`'s `send`?
-    fn has_http_send(&self) -> bool {
-        self.extern_imports.iter().any(|e| {
-            matches!(
-                e.indirect_return,
-                Some(IndirectReturnShape::HttpSend { .. })
-            )
-        })
     }
 
     /// Emits the guest-side sequence for calling an `extern Wasm.async`
@@ -7549,12 +8021,17 @@ impl<'m> WasmGen<'m> {
             &[ValType::I32, ValType::I32, ValType::I32],
         );
         let ty_cabi_realloc = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
-        // The fused `send` sequence's `wasi:http/types` imports carry
-        // their own core signatures (`HTTP_SEND_IMPORTS`); register them
-        // before the type section is emitted.
-        if self.has_http_send() {
-            for (_, params, results) in HTTP_SEND_IMPORTS {
-                self.get_or_add_wasm_type(params, results);
+        // A fused sequence's imports carry their own core signatures
+        // (`fused_imports`); register them before the type section is
+        // emitted.
+        let fused_shapes: Vec<IndirectReturnShape> = self
+            .extern_imports
+            .iter()
+            .filter_map(|e| e.indirect_return.clone())
+            .collect();
+        for shape in &fused_shapes {
+            for import in fused_imports(shape) {
+                self.get_or_add_wasm_type(import.params, import.results);
             }
         }
 
@@ -7665,17 +8142,10 @@ impl<'m> WasmGen<'m> {
                     EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
                 );
             }
-            if matches!(
-                ext.indirect_return,
-                Some(IndirectReturnShape::HttpSend { .. })
-            ) {
-                for (name, params, results) in HTTP_SEND_IMPORTS {
-                    let type_idx = self.get_or_add_wasm_type(params, results);
-                    imports.import(
-                        component::WASI_HTTP_TYPES_MODULE,
-                        name,
-                        EntityType::Function(type_idx),
-                    );
+            if let Some(shape) = &ext.indirect_return {
+                for import in fused_imports(shape) {
+                    let type_idx = self.get_or_add_wasm_type(import.params, import.results);
+                    imports.import(import.module, import.name, EntityType::Function(type_idx));
                 }
             }
         }

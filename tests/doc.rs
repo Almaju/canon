@@ -122,15 +122,15 @@ fn a_type_page_carries_its_definition_constructors_and_pipe_menu() {
     // A fallible constructor renders in both directions: declaration
     // form where it is declared, call form (with `?`) where it is
     // reached by a pipe.
+    let read = fs::read_to_string(out.join("type/Read.html")).expect("Read page");
+    assert!(
+        read.contains("=&gt; Result&lt;"),
+        "Read's fallible constructor is missing its declaration form"
+    );
     let file = fs::read_to_string(out.join("type/File.html")).expect("File page");
     assert!(
-        file.contains("=&gt; Result&lt;"),
-        "File's fallible constructor is missing its declaration form"
-    );
-    let path = fs::read_to_string(out.join("type/Path.html")).expect("Path page");
-    assert!(
-        path.contains("-&gt; <a href=\"../type/File.html\">File</a>?"),
-        "`Path -> File?` missing from Path's pipe menu"
+        file.contains("-&gt; <a href=\"../type/Read.html\">Read</a>?"),
+        "`File -> Read?` missing from File's pipe menu"
     );
 }
 

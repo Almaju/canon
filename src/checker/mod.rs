@@ -806,6 +806,7 @@ pub fn codegen_gap_errors(
         if let Some(ext) = &func.extern_wasm {
             if crate::codegen::vendored_extern_uses_async_value(&ext.path)
                 && !crate::codegen::vendored_extern_returns_byte_stream(&ext.path)
+                && !crate::codegen::extern_is_fused(&ext.path)
             {
                 errors.push(gap_error(
                     &GAP_STREAM,

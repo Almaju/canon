@@ -69,7 +69,7 @@ The full rule, case by case:
 - **A lone scalar literal never pipes into a construction** --
   `"hi" -> Greeting` is rewritten to `Greeting("hi")`, `42 -> Show` to
   `Show(42)`. A chain then *starts* with that construction and
-  *continues* with `->`: `Path("./data.json") -> File? -> Read?`.
+  *continues* with `->`: `Path("./data.json") -> File -> Read?`.
 - **Wrapping a literal in its own primitive constructor is ceremony** --
   `Int(3)`, `String("foo")`, `Float(1.5)` unwrap to the
   bare literal (which already desugars to exactly that construction),
