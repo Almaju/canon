@@ -1,0 +1,5 @@
+H3 = Html
+
+String => H3 {
+    Html(`<h3>{String}</h3>`)
+}

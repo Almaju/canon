@@ -1,0 +1,5 @@
+Ol = Html
+
+String => Ol {
+    Html(`<ol>{String}</ol>`)
+}

@@ -71,8 +71,10 @@ declarative attributes:
 Payload-carrying messages are plain string composition
 (`"Toggle:" -> Joined(Id -> String)`) decoded by the reducer with
 `Substring`/`ByteAt` -- the same pure-Canon parsing the JSON validator uses.
-`canon/web` provides `Button` (renders `data-msg`), `ElAttr` (arbitrary
-attributes), and `Escaped` (HTML-escapes user content).
+The prelude provides `Escaped` (HTML-escapes user content); the
+[`canon/ui` package](./packages.md#canonui--html-elements) provides the
+element vocabulary — `Button` (renders `data-msg`), `Form`, `Input`,
+`ElAttr` (arbitrary attributes), and the rest.
 
 There is no virtual DOM: `view` returns the whole page and the host swaps it
 in. Focus does not survive a re-render, which is why typing flows through

@@ -1,0 +1,5 @@
+Img = Html
+
+Alt * Src => Img {
+    Html(`<img src="{Src -> Escaped}" alt="{Alt -> Escaped}">`)
+}
