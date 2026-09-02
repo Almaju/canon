@@ -30,14 +30,9 @@
 //!     have to chain through methods to be useful, and the receiver auto-
 //!     await rule covers the chain.
 //!
-//! Not yet handled (acceptable while end-to-end async lowering is still
-//! being built):
-//!   - `Stream<T>` consumption (handled by `.each` / `.next` recognition in
-//!     `async_analysis::expr_has_async_trigger` instead — no AST rewrite is
-//!     needed because those method names are already async-by-construction).
-//!
-//! Once `wit-component` async lowering is wired into `component::wrap`, the
-//! remaining cases will be added here.
+//! `Stream<T>` consumption is not rewritten here: a stream value only
+//! lowers as the byte-stream return codegen drains at the boundary (see
+//! the codegen gaps page), so there is no stream to await in a body.
 //!
 //! The transform is **idempotent** and **type-conservative**: it only
 //! rewrites when the receiver's static type is unambiguously a `Future<T>`

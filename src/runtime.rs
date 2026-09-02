@@ -262,8 +262,8 @@ async fn run_cli_component(
     }
 }
 
-/// The component-export path for `wasi:cli/run`. Must match what the
-/// component wrapper emits in `wasm/component.rs`.
+/// The component-export path for `wasi:cli/run`. Must match what codegen
+/// exports (`component::WASI_CLI_RUN`).
 const WASI_CLI_RUN: &str = "wasi:cli/run@0.3.0-rc-2026-03-15";
 
 /// Builds the shared `wasmtime::Engine` for both `run` and `serve` paths.
