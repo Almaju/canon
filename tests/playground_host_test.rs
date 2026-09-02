@@ -21,29 +21,26 @@ use wasmparser::{Imports, Parser, Payload};
 /// this set reaches the host's fallback stub, which throws in the
 /// reader's face instead of running.
 const HOSTED: &[&str] = &[
-    "canon:async/waitable.join",
-    "canon:async/waitable.set-drop",
-    "canon:async/waitable.set-new",
-    "canon:async/waitable.set-wait",
-    "canon:async/waitable.subtask-cancel",
-    "canon:async/waitable.subtask-drop",
-    "canon:async/waitable.task-return",
-    "canon:builtins/json.from-float",
-    "wasi:cli/environment.get-arguments",
-    "wasi:cli/environment.get-initial-cwd",
-    "wasi:cli/exit.exit-with-code",
-    "wasi:cli/stderr.future-drop-readable",
-    "wasi:cli/stderr.stream-drop-writable",
-    "wasi:cli/stderr.stream-new",
-    "wasi:cli/stderr.stream-write",
-    "wasi:cli/stderr.write-via-stream",
-    "wasi:cli/stdout.future-drop-readable",
-    "wasi:cli/stdout.stream-drop-readable",
-    "wasi:cli/stdout.stream-drop-writable",
-    "wasi:cli/stdout.stream-new",
-    "wasi:cli/stdout.stream-read",
-    "wasi:cli/stdout.stream-write",
-    "wasi:cli/stdout.write-via-stream",
+    "$root.[subtask-cancel]",
+    "$root.[subtask-drop]",
+    "$root.[waitable-join]",
+    "$root.[waitable-set-drop]",
+    "$root.[waitable-set-new]",
+    "$root.[waitable-set-wait]",
+    "[export]wasi:cli/run@0.3.0-rc-2026-03-15.[task-return]run",
+    "canon:builtins/json@0.1.0.from-float",
+    "wasi:cli/environment@0.3.0-rc-2026-03-15.get-arguments",
+    "wasi:cli/environment@0.3.0-rc-2026-03-15.get-initial-cwd",
+    "wasi:cli/exit@0.3.0-rc-2026-03-15.exit-with-code",
+    "wasi:cli/stdin@0.3.0-rc-2026-03-15.[future-drop-readable-1]read-via-stream",
+    "wasi:cli/stdin@0.3.0-rc-2026-03-15.[stream-drop-readable-0]read-via-stream",
+    "wasi:cli/stdin@0.3.0-rc-2026-03-15.[stream-read-0]read-via-stream",
+    "wasi:cli/stdin@0.3.0-rc-2026-03-15.read-via-stream",
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15.[future-drop-readable-1]write-via-stream",
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15.[stream-drop-writable-0]write-via-stream",
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15.[stream-new-0]write-via-stream",
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15.[stream-write-0]write-via-stream",
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15.write-via-stream",
 ];
 
 /// Format then compile — the playground's own path, so these sources
@@ -104,31 +101,32 @@ fn exports(module: &[u8]) -> Vec<String> {
     out
 }
 
-/// The host identifies the two modules by what they say about
-/// themselves: the provider owns memory, the program imports it and
-/// exports `run`.
-#[test]
-fn component_has_a_memory_provider_and_a_program() {
-    let component = compile("Unit => Program {\n    \"hi\" -> Print\n}\n");
-    let mods = core_modules(&component);
-    assert_eq!(mods.len(), 2, "expected exactly two core modules");
-
-    let provider = &mods[0];
-    assert!(imports(provider).is_empty(), "the provider imports nothing");
-    assert!(exports(provider).contains(&"memory".to_string()));
-    assert!(exports(provider).contains(&"bump_ptr".to_string()));
-
-    let program = &mods[1];
-    assert!(exports(program).contains(&"run".to_string()));
-    let env: Vec<String> = imports(program)
+/// The program is the one core module that owns memory (wit-component
+/// adds import shims beside it); it is self-contained — its own memory
+/// and allocator — and exports the async-stackful `run`.
+fn program_module(component: &[u8]) -> &[u8] {
+    core_modules(component)
         .into_iter()
-        .filter(|(m, _)| m == "env")
-        .map(|(_, n)| n)
-        .collect();
-    assert_eq!(env, vec!["memory".to_string(), "bump_ptr".to_string()]);
+        .find(|m| exports(m).contains(&"memory".to_string()))
+        .expect("one core module exports memory")
 }
 
-/// Every import outside `env` has to be one the browser host answers.
+#[test]
+fn the_program_module_is_self_contained() {
+    let component = compile("Unit => Program {\n    \"hi\" -> Print\n}\n");
+    let program = program_module(&component);
+    let exported = exports(program);
+    assert!(exported.contains(&"cabi_realloc".to_string()));
+    assert!(
+        exported.contains(&"[async-lift-stackful]wasi:cli/run@0.3.0-rc-2026-03-15#run".to_string())
+    );
+    assert!(
+        !imports(program).iter().any(|(m, _)| m == "env"),
+        "the program imports no memory"
+    );
+}
+
+/// Every import has to be one the browser host answers.
 #[test]
 fn program_imports_stay_within_the_browser_host() {
     let hosted: BTreeSet<&str> = HOSTED.iter().copied().collect();
@@ -143,11 +141,8 @@ fn program_imports_stay_within_the_browser_host() {
     ];
     for source in sources {
         let component = compile(source);
-        let program = core_modules(&component).remove(1);
+        let program = program_module(&component);
         for (module, name) in imports(program) {
-            if module == "env" {
-                continue;
-            }
             let full = format!("{module}.{name}");
             assert!(
                 hosted.contains(full.as_str()),

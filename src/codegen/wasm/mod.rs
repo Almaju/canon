@@ -1,18 +1,18 @@
-/// Canon WASM codegen — emits a core module which is then wrapped into a
-/// **Component Model** component (WASI Preview 3) by `component::wrap`.
+/// Canon WASM codegen — emits a self-contained core module which
+/// `wit-component` then makes a **Component Model** component (WASI
+/// Preview 3) — see `component`.
 ///
 /// The core module:
-///   - Imports its linear memory from `"env" "memory"`
-///     (provided by a tiny memory-only core module instantiated by the wrapper).
+///   - Owns its linear memory, bump pointer and `cabi_realloc`.
 ///   - Imports five canonical-ABI builtins from `"wasi:cli/stdout"` —
 ///     `write-via-stream`, `stream-new`, `stream-write`,
 ///     `stream-drop-writable`, and `future-drop-readable`. `print_str`
 ///     stitches them into the native WASI P3 stdout sequence so the
 ///     produced `.wasm` is portable to any compliant Component Model
 ///     runtime (no `canon:*` host bridge required for output).
-///   - Exports `"run" (func (result i32))` — the entry point that the wrapper
-///     lifts as `wasi:cli/run.run`. The i32 result is the canonical-ABI
-///     discriminant for `result<_, _>`: 0 = Ok, 1 = Err.
+///   - Exports the entry as `[async-lift-stackful]wasi:cli/run@…#run`; the
+///     `result<_, _>` discriminant (0 = Ok, 1 = Err) travels through
+///     `task.return`.
 ///
 /// Memory layout (shared with the host via the lowered import):
 ///   [0  .. 16]  reserved (was fd_write scratch in the WASI P1 era; kept for
@@ -72,21 +72,23 @@ pub(super) fn heap_layout(data_len: usize) -> (u32, u32) {
 // The imports section starts with the five `wasi:cli/stdout` canonical
 // builtins at indices 0..4, followed by every `extern Wasm` declaration
 // from the user program (sorted alphabetically by
-// `interface@version#fn-name`), followed by the async-runtime waitable
-// intrinsics. Compiled functions start right after that block, so their
-// indices depend on how many extern imports the program has.
-// `WasmGen` populates the dynamic offsets below in `new()`.
+// `interface@version#fn-name`, each followed by the stream builtins it
+// drains through — `ExternImport::import_slots`), followed by the
+// async-runtime waitable intrinsics. Compiled functions start right
+// after that block, so their indices depend on how many extern imports
+// the program has. `WasmGen` populates the dynamic offsets below in
+// `new()`.
 //
 // `print_str` stitches these five into the canonical-ABI sequence for
 // writing a byte buffer to stdout (see `build_print_str`).
+/// The core import module the stdout builtins live under.
+const STDOUT_MODULE: &str = "wasi:cli/stdout@0.3.0-rc-2026-03-15";
 const FN_STDOUT_WRITE_VIA_STREAM: u32 = 0; // (i32) -> i32
 const FN_STDOUT_STREAM_NEW: u32 = 1; // () -> i64
 const FN_STDOUT_STREAM_WRITE: u32 = 2; // (i32, i32, i32) -> i32
 const FN_STDOUT_STREAM_DROP_WRITABLE: u32 = 3; // (i32) -> ()
 const FN_STDOUT_FUTURE_DROP_READABLE: u32 = 4; // (i32) -> ()
-const FN_STDOUT_STREAM_READ: u32 = 5; // (i32, i32, i32) -> i32
-const FN_STDOUT_STREAM_DROP_READABLE: u32 = 6; // (i32) -> ()
-const FIRST_EXTERN_IMPORT_FN: u32 = 7; // first index of a user `extern Wasm` import
+const FIRST_EXTERN_IMPORT_FN: u32 = 5; // first index of a user `extern Wasm` import
 
 // ── HTTP-mode import indices ─────────────────────────────────────────
 // In HTTP encoder mode (`http_mode`, see `compile_http`) the import
@@ -157,10 +159,9 @@ const TY_HANDLE_RETURN: u32 = 7; // () → (i32)
 const TY_USER_START: u32 = 8; // first dynamic user type
 
 // ── Global index constants ──────────────────────────────────────────────────────────
-// The bump pointer is now an *imported* mutable global so it can be shared
-// between the user core module and the component wrapper's `cabi_realloc`
-// helper. Both bump from the same pointer, which keeps Canon-allocated heap
-// data and host-allocated string returns in a single coherent heap.
+// The bump pointer `$alloc` and `cabi_realloc` share, which keeps
+// Canon-allocated heap data and host-allocated string returns in a
+// single coherent heap.
 const GLOBAL_BUMP_PTR: u32 = 0;
 
 struct WasmGen<'m> {
@@ -202,17 +203,15 @@ struct WasmGen<'m> {
     extern_imports: Vec<ExternImport>,
 
     // Dynamic function indices in the core module's index space. These are
-    // computed in `new()` once `extern_imports.len()` is known. After the
-    // imports block (host.print + N externs + 5 waitable intrinsics),
-    // defined functions follow at index `1 + N + 5`.
+    // computed in `new()` once the extern import slots are known. After
+    // the imports block (5 stdout builtins + N extern slots + 7
+    // intrinsics), defined functions follow.
     //
     // The waitable intrinsics implement the canonical-ABI async-wait
     // sequence emitted by `emit_async_call` for the not-Returned status
-    // path. They're imported as `canon:async/waitable.<name>` (a
-    // compiler-synthesised module-import name); `component::wrap` builds
-    // a synthetic core instance from the canon section that exports the
-    // matching functions. They're imported unconditionally so the import
-    // section is shape-stable regardless of program content.
+    // path. They're imported under `$root` by the names `wit-component`
+    // gives the canon intrinsics, unconditionally, so the import section
+    // is shape-stable regardless of program content.
     //
     // `task.return` is grouped here too — it's needed by `run`'s async
     // stackful lift to deliver the `result<_, _>` value (since async
@@ -273,14 +272,10 @@ struct WasmGen<'m> {
 impl<'m> WasmGen<'m> {
     fn new(ast: &'m OModule) -> Self {
         let extern_imports = collect_extern_imports(ast);
-        let n_externs = extern_imports.len() as u32;
-        // Function-index layout after `(1 host.print + N externs)`:
-        //   waitable intrinsics (5)
-        //   defined functions (print_str, print_int, print_bool, alloc,
-        //                       start/run, user functions...)
-        // After 5 stdout canonical-builtin imports (FN_STDOUT_*) at
-        // indices 0..4 and N extern Wasm imports at 5..5+N, the next
-        // block is the 6 waitable+task intrinsics, then the defined
+        let n_externs: u32 = extern_imports.iter().map(ExternImport::import_slots).sum();
+        // After the 5 stdout canonical-builtin imports (FN_STDOUT_*) at
+        // indices 0..4 and the N extern Wasm import slots at 5..5+N, the
+        // next block is the 7 waitable+task intrinsics, then the defined
         // functions follow.
         let base_waitable = FIRST_EXTERN_IMPORT_FN + n_externs; // = 5 + N
         let base_defined = base_waitable + 7; // skip the 7 waitable+task imports
@@ -604,6 +599,9 @@ impl<'m> WasmGen<'m> {
                 indirect_return: ext.indirect_return.clone(),
                 bare_result: ext.bare_result,
                 is_async: ext.is_async,
+                stream_read_fn: ext.stream_read_fn,
+                stream_drop_readable_fn: ext.stream_drop_readable_fn,
+                future_drop_readable_fn: ext.future_drop_readable_fn,
             };
             self.func_table.insert(key, info.clone());
 
@@ -690,6 +688,9 @@ impl<'m> WasmGen<'m> {
                     indirect_return: None,
                     bare_result: false,
                     is_async: false,
+                    stream_read_fn: None,
+                    stream_drop_readable_fn: None,
+                    future_drop_readable_fn: None,
                 };
                 if is_self_ctor(func) {
                     // Constructor families: several `Self`-renamed bodies
@@ -806,13 +807,9 @@ fn param_component_names(func: &crate::ast::FunctionDef) -> Vec<String> {
     components
 }
 
-/// Emits the raw core WASM module — used by the Component Model wrapper.
-/// The second element is the static string pool's byte length, which the
-/// wrapper needs to size the shared memory-provider module (`heap_layout`).
-fn generate_core_module(module: &OModule) -> (Vec<u8>, usize) {
-    let mut gen = WasmGen::new(module);
-    let core = gen.compile();
-    (core, gen.strings.data.len())
+/// Emits the raw core WASM module — what `component::wrap_cli` wraps.
+fn generate_core_module(module: &OModule) -> Vec<u8> {
+    WasmGen::new(module).compile()
 }
 
 /// Returns whether the program has a free function returning `Response`
@@ -838,14 +835,12 @@ fn has_http_entry(module: &OModule) -> bool {
 /// It is validated with `wasmparser` before being returned.
 pub fn generate(module: &OModule) -> Vec<u8> {
     // Branch on the entry-point's world (see the entry-point rule,
-    // docs/src/spec/functions.md). CLI entries flow through the existing
-    // hand-rolled `wasm-encoder` pipeline; HTTP entries route to a
-    // separate codegen path that delegates type-section emission to
-    // `wit-component` (the resource + variant surface in
-    // `wasi:http/types` is too large to maintain by hand).
+    // docs/src/spec/functions.md): a CLI entry implements the world
+    // synthesized from its imports, an HTTP entry the vendored
+    // `wasi:http/service` world; `wit-component` wraps both.
     //
-    // The checker has already validated which entry shape applies
-    // (slice 1a); this dispatch is the authoritative entry-world router.
+    // The checker has already validated which entry shape applies;
+    // this dispatch is the authoritative entry-world router.
     if has_http_entry(module) {
         let bytes = component::wrap_http_service(module);
         validate(&bytes);
@@ -860,19 +855,13 @@ pub fn generate(module: &OModule) -> Vec<u8> {
         return bytes;
     }
 
-    let (core, str_data_len) = generate_core_module(module);
-    let externs = collect_extern_imports(module);
-    // Run the async-inference fixpoint so the component wrapper can
-    // surface async metadata in the emitted WIT and — once async lowering
-    // lands — attach `CanonicalOption::Async` to the right lifts/lowers.
-    let async_set = crate::codegen::async_analysis::analyse(module);
-    let bytes = component::wrap(&core, &externs, &async_set, str_data_len);
+    let core = generate_core_module(module);
+    let bytes = component::wrap_cli(module, &core);
     validate(&bytes);
     bytes
 }
 
-/// Returns the WIT world description that accompanies the compiled `.wasm`.
+/// Returns the WIT world the compiled `.wasm` implements.
 pub fn generate_wit(module: &OModule) -> String {
-    let async_set = crate::codegen::async_analysis::analyse(module);
-    component::generate_wit(module, &async_set)
+    component::world_wit(module)
 }

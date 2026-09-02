@@ -353,6 +353,11 @@ pub(super) struct FuncInfo {
     /// is read out of the ret-area after the call. See
     /// `emit_async_call` for the full sequence.
     pub(super) is_async: bool,
+    /// The stream builtins a `ByteStream` extern drains through — see
+    /// `ExternImport`. `None` for everything else.
+    pub(super) stream_read_fn: Option<u32>,
+    pub(super) stream_drop_readable_fn: Option<u32>,
+    pub(super) future_drop_readable_fn: Option<u32>,
 }
 
 // ── String table ──────────────────────────────────────────────────────────────

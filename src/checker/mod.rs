@@ -802,7 +802,7 @@ pub fn codegen_gap_errors(
         // and build. The vendored WIT is the only place the shape shows.
         if let Some(ext) = &func.extern_wasm {
             if crate::codegen::vendored_extern_uses_async_value(&ext.path)
-                && crate::codegen::vendored_extern_byte_stream_return(&ext.path).is_none()
+                && !crate::codegen::vendored_extern_returns_byte_stream(&ext.path)
             {
                 errors.push(gap_error(
                     &GAP_STREAM,
@@ -3694,9 +3694,7 @@ fn effective_call_arity(args: &[Expr]) -> usize {
 ///
 /// `Stream<T>` is **not** peeled. A function returning `Stream<T>` is
 /// producing a stream value that downstream combinators (`map`, `take`,
-/// `concat`, …) operate on directly. Stream consumption (auto-iteration)
-/// is handled at call sites via `.each` / `.next` recognition in
-/// `async_analysis::expr_has_async_trigger`, not by type-peel here.
+/// `concat`, …) operate on directly.
 fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
     match ty {
         TypeExpr::Named { name, generics, .. } => {
