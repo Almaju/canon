@@ -843,9 +843,6 @@ pub(crate) fn emit_type_expr(ty: &TypeExpr) -> String {
         TypeExpr::Repeat { ty, count, .. } => {
             format!("{}^{}", emit_type_in_postfix(ty), count)
         }
-        TypeExpr::Spread { ty, .. } => {
-            format!("{}^*", emit_type_in_postfix(ty))
-        }
         TypeExpr::Function {
             generic_params,
             params,
@@ -879,7 +876,7 @@ fn emit_type_in_product(ty: &TypeExpr) -> String {
     }
 }
 
-/// Wraps compound types in parens when they appear before `^N` or `^*`.
+/// Wraps compound types in parens when they appear before `^N`.
 fn emit_type_in_postfix(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Union { .. } | TypeExpr::Product { .. } | TypeExpr::Function { .. } => {
@@ -1755,11 +1752,6 @@ mod tests {
     }
 
     #[test]
-    fn test_type_def_spread() {
-        assert_format("Bytes = Byte^*\n", "Bytes = Byte^*\n");
-    }
-
-    #[test]
     fn test_sorts_free_functions() {
         assert_format(
             "beta = () => Unit {\n    \"b\".print()\n}\n\nalpha = () => Unit {\n    \"a\".print()\n}\n",
@@ -1840,7 +1832,7 @@ mod tests {
     #[test]
     fn test_idempotent_types() {
         assert_idempotent(
-            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nBytes = Byte^*\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) => Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
+            "Bit = One + Zero\n\nBirthday = String\n\nBool = False + True\n\nByte = Bit^8\n\nOrd = Equal + Greater + Less\n\nUsername = String\n\nUser = Birthday * Username\n\nOtherUser = User\n\nmain = (Stdout) => Unit {\n    \"type definitions parsed\".print(Stdout)\n}\n",
         );
     }
 

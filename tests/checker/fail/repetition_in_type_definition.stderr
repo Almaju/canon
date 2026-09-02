@@ -1,1 +1,0 @@
-error[tests/checker/fail/repetition_in_type_definition.can:3:8]: `Byte` repeats a type in its definition: repetition (`T^N`, `T^*`) is a constructor-input shape (`Int^2 => Ord`); a type holds a `List<T>` instead

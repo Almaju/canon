@@ -313,7 +313,7 @@ impl Expander {
                     self.rewrite_type(f, binding);
                 }
             }
-            TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
+            TypeExpr::Repeat { ty, .. } => {
                 self.rewrite_type(ty, binding);
             }
             TypeExpr::Function {

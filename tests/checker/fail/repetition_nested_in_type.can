@@ -1,0 +1,8 @@
+Channel = Int
+
+Pixel = Channel^3 * String
+
+Unit => Program {
+    1 -> Pixel(2 * 3 * "x")
+    "nested" -> Print
+}
