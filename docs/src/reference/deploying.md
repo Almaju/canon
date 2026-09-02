@@ -52,11 +52,12 @@ host with matching p3 support can instantiate it:
   clocks / random interfaces.
 
 One caveat during the transition: programs using `canon:builtins/*`
-bridge interfaces (currently the legacy HTTP-client/filesystem/JSON
-host helpers; the skip list in `canon install` and the At-a-Glance
-table mark them) run only under `canon run` until their `wasi:*`
+bridge interfaces (currently the filesystem and JSON-float host
+helpers; the skip list in `canon install` and the At-a-Glance table
+mark them) run only under `canon run` until their `wasi:*`
 replacements land. Programs that stick to `canon` cli, clocks,
-random, and the HTTP handler surface are fully portable.
+random, the HTTP client and the HTTP handler surface are fully
+portable.
 
 ## Publishing a library
 

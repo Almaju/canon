@@ -1,0 +1,34 @@
+Fetched = Body
+
+Body * Method * RequestHeaders * Url => Result<Fetched, HttpError> {
+    Url
+        -> Authority
+        -> Sent(Body * Method * Url -> PathWithQuery * RequestHeaders * Url -> Scheme)?
+        -> Fetched
+}
+
+Sent => Result<Fetched, HttpError> {
+    Sent -> ByteAt(1) -> Eq(48) -> (
+        * False {
+            Sent -> ByteAt(1) -> Eq(50) -> (
+                * False {
+                    HttpError(`HTTP {Sent -> Substring(From(1) * To(3))}: {
+                        Sent -> Substring(From(5) * Sent -> Length -> To)
+                    }`)
+                        -> Err
+                }
+                * True { Sent -> Substring(From(5) * Sent -> Length -> To) -> Fetched -> Ok }
+            )
+        }
+        * True {
+            HttpError(`transport error-code {Sent -> Substring(From(2) * To(3))}: {
+                Sent -> Substring(From(5) * Sent -> Length -> To)
+            }`)
+                -> Err
+        }
+    )
+}
+
+Url => Result<Fetched, HttpError> {
+    Body("") -> Fetched(Method("GET") * RequestHeaders("") * Url)
+}

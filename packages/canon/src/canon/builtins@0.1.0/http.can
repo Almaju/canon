@@ -1,9 +1,0 @@
-Fetched = Body
-
-Body * Method * RequestHeaders * Url => Result<Fetched, HttpError> {
-    "fetch"
-}
-
-Url => Result<Fetched, HttpError> {
-    Body("") -> Fetched(Method("GET") * RequestHeaders("") * Url)
-}
