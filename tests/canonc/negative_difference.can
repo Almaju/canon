@@ -1,0 +1,5 @@
+Answer = Int
+
+Unit => Answer {
+    0 -> Difference(9)
+}

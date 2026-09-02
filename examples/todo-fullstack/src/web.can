@@ -2,7 +2,7 @@ AddForm = ElAttr
 
 ClearButton = Button
 
-Init = AddedTodo
+Init = Todos
 
 LoadButton = ElAttr
 
@@ -29,8 +29,8 @@ Todos => Html {
 }
 
 Unit => Init {
-    Title("check the canon backend")
-        -> AddedTodo(Title("build the canon frontend") -> AddedTodo(Todos("")))
+    List(False() -> Todo(Title("build the canon frontend")) * False() -> Todo(Title("check the canon backend")))
+        -> Todos
 }
 
 Unit => LoadButton {
@@ -48,17 +48,17 @@ Todos * String => Update {
         }
         * "Clea" { Todos -> Cleared }
         * "Dele" {
-            String
-                -> Substring(From(8) * String -> Length -> To)
-                -> ParsedNum
-                -> RemovedAt(Todos)
+            String -> Substring(From(8) * String -> Length -> To) -> Int -> (
+                * Err<MalformedInt> { Todos }
+                * Ok<Int> { Int -> RemovedAt(Todos) }
+            )
         }
-        * "Load" { String -> Substring(From(6) * String -> Length -> To) -> Todos }
+        * "Load" { String -> Substring(From(6) * String -> Length -> To) -> Wire -> Todos }
         * "Togg" {
-            String
-                -> Substring(From(8) * String -> Length -> To)
-                -> ParsedNum
-                -> ToggledAt(Todos)
+            String -> Substring(From(8) * String -> Length -> To) -> Int -> (
+                * Err<MalformedInt> { Todos }
+                * Ok<Int> { Int -> ToggledAt(Todos) }
+            )
         }
         * Prefix { Todos }
     )

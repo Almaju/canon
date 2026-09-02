@@ -97,6 +97,10 @@ as deferred until build-time composition lands.
 A dependency is a Canon package vendored under
 `deps/<ns>/<name>@<version>/`. **The directory tree is the lockfile**:
 the version pin is the directory name. There is no `canon.lock`.
+`canon add <git-url>@<tag>` vendors a package's `src/` there from a
+git tag (`https://github.com/acme/greet@v1.2.0` lands under
+`deps/acme/greet@1.2.0/`); publishing a package is pushing a tag, and
+removing a dependency is deleting its directory.
 
 ## Workspaces
 

@@ -1,0 +1,1 @@
+error[tests/checker/fail/builtin_arg_int_takes_int.can:2:5]: `Sum` on `Int` takes `Int`, not `String`

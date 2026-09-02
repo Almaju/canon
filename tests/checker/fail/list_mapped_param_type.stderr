@@ -1,0 +1,1 @@
+error[tests/checker/fail/list_mapped_param_type.can:2:5]: `Mapped` on `List<String>` binds each element as `String`, not `Int`

@@ -1,0 +1,25 @@
+Acc = String
+
+Unit => Program {
+    List(3 * 1 * 2)
+        -> Sorted
+        -> Mapped((Int) => String { Int -> String })
+        -> Folded(Acc("") * (Acc * String) => Acc { `{Acc}{String}` })
+        -> Print
+    List("pear" * "apple" * "fig") -> Sorted -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    List(2.5 * 0.5 * 1.5) -> Sorted -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<Float> => Unit { Float -> Print }
+    )
+    List(9)
+        -> Sorted
+        -> Length
+        -> Print
+    List(5 * 4 * 3 * 2 * 1) -> Sorted -> At(1) -> (
+        * None { "none" -> Print }
+        * Some<Int> { Int -> Print }
+    )
+}

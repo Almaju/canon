@@ -1,0 +1,10 @@
+Answer = Int
+
+Unit => Answer {
+    7
+        -> Sum(5)
+        -> Product(3)
+        -> Difference(4)
+        -> Quotient(2)
+        -> Remainder(7)
+}

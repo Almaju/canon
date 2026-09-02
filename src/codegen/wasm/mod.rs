@@ -43,8 +43,8 @@ mod ty;
 mod web;
 
 use extern_imports::{
-    classify_return, collect_extern_imports, func_input_types, is_self_ctor, ExternImport,
-    IndirectReturnShape, ParamKind,
+    collect_extern_imports, func_input_types, is_self_ctor, ExternImport, IndirectReturnShape,
+    ParamKind,
 };
 use http::generate_http_core_module;
 use strings::{extra_locals_decl, max_arm_depth, FuncInfo, LocalScope, StringTable};
@@ -257,6 +257,9 @@ struct WasmGen<'m> {
     /// kinds match (both tag 0 at offset 0); in any other context
     /// (e.g. `main`), `?` extracts unconditionally as before.
     cur_fn_early_return: Option<&'static str>,
+    /// Compiling the CLI entry's body, and it returns `Result` / `Option`:
+    /// `?` delivers the error result instead of returning a value.
+    entry_fails: bool,
     /// HTTP encoder mode: the module is self-contained (own memory,
     /// own bump global, exported `cabi_realloc`), imports follow
     /// `wit-component` naming conventions, and the entry export is
@@ -311,6 +314,7 @@ impl<'m> WasmGen<'m> {
             fn_list_concat: base_defined + 6,
             fn_user_start: base_defined + 7,
             cur_fn_early_return: None,
+            entry_fails: false,
             http_mode: false,
         }
     }
@@ -550,7 +554,7 @@ impl<'m> WasmGen<'m> {
             // The Canon-side result type depends on the indirect-return
             // shape: a bare `String` return is `Ty::Str`, while a
             // `Result<Ok, Err>` (both string-aliased) becomes
-            // `Ty::NamedPtrStr("Result", ok_name, err_name)` so `?` and
+            // `Ty::NamedPtrOf("Result", ok_name, err_name)` so `?` and
             // dispatch arms can extract the string payload with the right
             // Canon-level type on either branch.
             let surface_result_ty = match &ext.indirect_return {
@@ -565,9 +569,9 @@ impl<'m> WasmGen<'m> {
                     }
                 }
                 Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
-                    Ty::NamedPtrStr("Result".to_string(), ok_name.clone(), err_name.clone())
+                    Ty::NamedPtrOf("Result".to_string(), ok_name.clone(), err_name.clone())
                 }
-                Some(IndirectReturnShape::OptionString) => Ty::NamedPtrStr(
+                Some(IndirectReturnShape::OptionString) => Ty::NamedPtrOf(
                     "Option".to_string(),
                     "String".to_string(),
                     "String".to_string(),
@@ -640,33 +644,29 @@ impl<'m> WasmGen<'m> {
                 let params = self.func_wasm_params(func);
                 let results = self.func_wasm_results(func);
                 let type_idx = self.get_or_add_wasm_type(&params, &results);
-                // Surface result type: classify `Result<String-aliased,
-                // String-aliased>` returns the same way as externs so
-                // `?` and dispatch arms can extract string payloads via
-                // the `Ty::NamedPtrStr` path. The function body itself
+                // Surface result type: a `Result<A, B>` / `Option<A>`
+                // return keeps its payload type names so `?` and
+                // dispatch arms read the payload back in its own shape
+                // via the `Ty::NamedPtrOf` path. The function body itself
                 // returns an i32 pointer (via `build_result_ok` /
-                // `build_result_err`) whose memory layout matches the
-                // extern indirect-return area (tag at +0, ptr at +4,
-                // len at +8), so no calling-convention change is needed
-                // — only the type label.
-                let result_ty = match classify_return(&func.return_ty, &results, &self.type_defs) {
-                    Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) => {
-                        Ty::NamedPtrStr("Result".to_string(), ok_name, err_name)
-                    }
-                    // `Option<String-alias>` bodies keep the payload's
-                    // string-ness in the surface type so `?` extracts a
-                    // (ptr, len) pair instead of misreading the slot as
-                    // one i64. Dispatch is unaffected — it keys on the
-                    // container name, exactly like the Result case.
-                    Some(IndirectReturnShape::OptionString) => {
-                        let payload = match &func.return_ty {
-                            TypeExpr::Named { generics, .. } if !generics.is_empty() => {
-                                named_type_name(&generics[0])
-                                    .unwrap_or_else(|| "String".to_string())
-                            }
-                            _ => "String".to_string(),
-                        };
-                        Ty::NamedPtrStr("Option".to_string(), payload.clone(), payload)
+                // `build_option_some`) whose memory layout matches the
+                // extern indirect-return area (tag at +0, payload at +4),
+                // so no calling-convention change is needed — only the
+                // type label.
+                let result_ty = match resolve_alias_structural(&func.return_ty, &self.type_defs) {
+                    TypeExpr::Named { name, generics, .. }
+                        if (name == "Result" && generics.len() == 2)
+                            || (name == "Option" && generics.len() == 1) =>
+                    {
+                        let ok = named_type_name(&generics[0]);
+                        let err = generics
+                            .get(1)
+                            .and_then(named_type_name)
+                            .or_else(|| ok.clone());
+                        match (ok, err) {
+                            (Some(ok), Some(err)) => Ty::NamedPtrOf(name.clone(), ok, err),
+                            _ => self.resolve_return_ty(func),
+                        }
                     }
                     _ => self.resolve_return_ty(func),
                 };

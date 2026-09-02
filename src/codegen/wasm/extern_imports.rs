@@ -476,7 +476,7 @@ pub(super) enum IndirectReturnShape {
     /// discriminant (0=ok, 1=err); bytes 4–7 the payload ptr; bytes 8–11
     /// the payload len. After the call the codegen flips the discriminant
     /// Canon's alphabetical convention (Err=0, Ok=1) and pushes the
-    /// area pointer as `Ty::NamedPtrStr(union, ok_name, err_name)`. The
+    /// area pointer as `Ty::NamedPtrOf(union, ok_name, err_name)`. The
     /// three names preserve Canon-level types through `?` and dispatch
     /// so subsequent method calls find their externs (e.g. `.read()`
     /// after `Path(…).File()?`) and the Err arm of a `match` can type

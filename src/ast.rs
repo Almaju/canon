@@ -828,7 +828,11 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     // List
     ("Mapped", "map"),
     ("Filtered", "filter"),
+    ("Folded", "fold"),
     ("Taken", "take"),
+    ("Skipped", "skip"),
+    ("Reversed", "reverse"),
+    ("Sorted", "sort"),
     ("First", "first"),
     ("At", "get"),
     ("Appended", "append"),

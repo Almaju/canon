@@ -162,8 +162,10 @@ the HTTP entry's `Request => Response { ... }` in anonymity:
 | `Request => Response`, `Request => Result<Response, _>` | `wasi:http/service` | `wasi:http/handler.handle` |
 
 The CLI entry's shape is the ABI's: `wasi:cli/run.run` takes nothing
-and reports only success/failure. The argument vector is fetched, not
-passed -- `Args()` (`= List<String>`, from `canon`, bound from
+and reports only success/failure. A `Result` / `Option` entry that ends
+on `Err` / `None`, or whose `?` meets one, reports failure: a string
+payload is printed and the process exits 1. The argument vector is
+fetched, not passed -- `Args()` (`= List<String>`, from `canon`, bound from
 `wasi:cli/environment#get-arguments`) reads `argv` from any body -- and
 an exact exit code is the hard `Exited(n)`
 (`wasi:cli/exit#exit-with-code`) escape hatch.

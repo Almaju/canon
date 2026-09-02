@@ -1,0 +1,1 @@
+error[tests/checker/fail/builtin_arg_string_takes_string.can:2:5]: `Joined` on `String` takes `String`, not `Int`

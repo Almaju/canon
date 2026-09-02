@@ -162,6 +162,28 @@ Unit => Program {
 same underlying type, so the values must be tagged), 1-based and
 inclusive at both ends: this prints `canon`.
 
+## Splitting: `Split`, `Lines`
+
+```canon
+Unit => Program {
+    "a,b,c"
+        -> Split(Separator(","))
+        -> Length
+        -> Print
+    Lines("first\nsecond") -> Reversed -> First -> (
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
+    )
+}
+```
+
+`Split` cuts a string at every occurrence of its `Separator` into a
+`List<String>` (both `= String`, so the separator is tagged); adjacent
+separators leave an empty element, and a string with no separator is a
+one-element list. `Lines` is `Split` at `"\n"`. Both are pure Canon over
+`Substring`, so a very long input pays a quadratic copy — fine for
+configuration files and wire formats, not for logs.
+
 ## Encodings: `Base64`, `Hex`
 
 ```canon
@@ -187,15 +209,25 @@ digits decode fine; encoding always emits lowercase.
 
 ```canon
 Unit => Program {
-    Url("http://example.com")?
+    Url("https://example.com")?
         -> Fetched?
+        -> Print
+    Body("{\"q\":1}")
+        -> Fetched(
+            Method("POST")
+            * RequestHeaders("content-type: application/json")
+            * Url("https://example.com/search")?
+        )?
         -> Print
 }
 ```
 
-`Url(s)` validates (scheme, non-empty host); `url -> Fetched?` is a
-blocking GET returning the body. TLS and async lowering arrive with
-the `wasi:http/outgoing-handler` migration.
+`Url(s)` validates (scheme, non-empty host). `url -> Fetched?` is a
+GET; the four-input form takes the `Method`, the `RequestHeaders` as
+`name: value` lines, and the `Body`. HTTP and HTTPS both work. A 2xx
+answers with the response body; any other status is the `HttpError`
+(`HTTP 404 Not Found: …`), as is a transport failure. The request
+blocks; async lowering arrives with the `wasi:http` client migration.
 
 ## `Json`
 

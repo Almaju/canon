@@ -1,0 +1,1 @@
+error[tests/checker/fail/product_newtype_lone_arg.can:10:5]: cannot construct `Parsed`: expected 2 argument(s) (`Age * Name`), found 1

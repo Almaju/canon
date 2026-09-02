@@ -1,0 +1,5 @@
+Answer = String
+
+Unit => Answer {
+    `{3 -> Sum(1)}`
+}

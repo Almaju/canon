@@ -1,0 +1,31 @@
+Area = Int
+
+Circle = Int
+
+Shape = Circle + Square
+
+Shapes = List<Shape>
+
+Square = Int
+
+Shape => Area {
+    Shape -> (
+        * Circle { Circle -> Product(3) }
+        * Square { Square -> Product(Square) }
+    )
+}
+
+Unit => Shapes {
+    List(Circle(2) -> Shape * Square(3) -> Shape)
+}
+
+Unit => Program {
+    Shapes() -> Mapped((Shape) => Area { Shape -> Area }) -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<Area> => Unit { Area -> Print }
+    )
+    Shapes() -> At(1) -> (
+        * None { "none" -> Print }
+        * Some<Shape> { Shape -> Area -> Print }
+    )
+}

@@ -1,0 +1,5 @@
+Unit => Program {
+    "hi"
+        -> Joined(3)
+        -> Print
+}

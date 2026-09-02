@@ -1,6 +1,7 @@
-Seeded = AddedTodo
+Seeded = Wire
 
 Unit => Seeded {
-    Title("write a todo of your own")
-        -> AddedTodo(Title("load todos from the canon server") -> AddedTodo(Todos("")))
+    List(False() -> Todo(Title("load todos from the canon server")) * False() -> Todo(Title("write a todo of your own")))
+        -> Todos
+        -> Wire
 }

@@ -2,136 +2,75 @@ AddedTodo = Todos
 
 Cleared = Todos
 
-FirstLine = String
-
-ParsedNum = Int
+Done = Bool
 
 RemovedAt = Todos
 
 RenderedItems = Html
 
-RestLines = String
+Todo = Done * Title
 
-Todos = String
+Todos = List<Todo>
 
 ToggledAt = Todos
 
 Title * Todos => AddedTodo {
-    Todos(`{Todos.String}0|{Title.String}\n`)
+    Todos
+        -> Appended(False() -> Todo(Title))
+        -> Todos
 }
 
 Todos => Cleared {
-    Todos.String -> Length -> Eq(0) -> (
-        * False {
-            Todos.String -> ByteAt(1) -> Eq(49) -> (
-                * False {
-                    Todos(`{Todos.String -> FirstLine}\n{
-                        Todos.String
-                            -> RestLines
-                            -> Todos
-                            -> Cleared
-                            -> String
-                    }`)
-                }
-                * True { Todos.String -> RestLines -> Todos -> Cleared }
-            )
-        }
-        * True { Todos }
-    )
-}
-
-String => FirstLine {
-    String -> Length -> Eq(0) -> (
-        * False {
-            String -> ByteAt(1) -> Eq(10) -> (
-                * False {
-                    String
-                        -> Substring(From(1) * To(1))
-                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> FirstLine)
-                }
-                * True { "" }
-            )
-        }
-        * True { "" }
-    )
-}
-
-String => ParsedNum {
-    String -> Length -> Eq(0) -> (
-        * False {
-            String
-                -> Substring(From(1) * String -> Length -> Difference(1) -> To)
-                -> ParsedNum
-                -> Product(10)
-                -> Sum(String -> ByteAt(String -> Length) -> Difference(48))
-        }
-        * True { 0 }
-    )
+    Todos
+        -> Filtered((Todo) => Bool { Todo.Done -> Not })
+        -> Todos
 }
 
 Int * Todos => RemovedAt {
-    Todos.String -> Length -> Eq(0) -> (
-        * False {
+    Todos -> First -> (
+        * None { Todos }
+        * Some<Todo> {
             Int -> Eq(1) -> (
                 * False {
-                    Todos(`{Todos.String -> FirstLine}\n{
-                        Int
-                            -> Difference(1)
-                            -> RemovedAt(Todos.String -> RestLines -> Todos)
-                            -> String
-                    }`)
+                    List(Todo)
+                        -> Joined(Int -> Difference(1) -> RemovedAt(Todos -> Skipped(1) -> Todos))
+                        -> Todos
                 }
-                * True { Todos.String -> RestLines -> Todos }
+                * True { Todos -> Skipped(1) -> Todos }
             )
         }
-        * True { Todos }
     )
 }
 
 Int * Todos => RenderedItems {
-    Todos.String -> Length -> Eq(0) -> (
-        * False {
+    Todos -> First -> (
+        * None { Html("") }
+        * Some<Todo> {
             Int
-                -> RenderedItem(Todos.String -> FirstLine -> Line)
+                -> RenderedItem(Todo)
                 -> String
-                -> Joined(Int -> Sum(1) -> RenderedItems(Todos.String -> RestLines -> Todos) -> String)
+                -> Joined(Int -> Sum(1) -> RenderedItems(Todos -> Skipped(1) -> Todos) -> String)
                 -> Html
         }
-        * True { Html("") }
-    )
-}
-
-String => RestLines {
-    String -> Length -> Eq(0) -> (
-        * False {
-            String -> ByteAt(1) -> Eq(10) -> (
-                * False { String -> Substring(From(2) * String -> Length -> To) -> RestLines }
-                * True { String -> Substring(From(2) * String -> Length -> To) }
-            )
-        }
-        * True { "" }
     )
 }
 
 Int * Todos => ToggledAt {
-    Todos.String -> Length -> Eq(0) -> (
-        * False {
+    Todos -> First -> (
+        * None { Todos }
+        * Some<Todo> {
             Int -> Eq(1) -> (
                 * False {
-                    Todos(`{Todos.String -> FirstLine}\n{
-                        Int
-                            -> Difference(1)
-                            -> ToggledAt(Todos.String -> RestLines -> Todos)
-                            -> String
-                    }`)
+                    List(Todo)
+                        -> Joined(Int -> Difference(1) -> ToggledAt(Todos -> Skipped(1) -> Todos))
+                        -> Todos
                 }
                 * True {
-                    Todos(`{Todos.String -> FirstLine -> Line -> Flipped -> String}\n{
-                        Todos.String -> RestLines
-                    }`)
+                    List(Todo.Done -> Not -> Done -> Todo(Todo.Title))
+                        -> Joined(Todos -> Skipped(1))
+                        -> Todos
                 }
             )
         }
-        * True { Todos }
     )
 }

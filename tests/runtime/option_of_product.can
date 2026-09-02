@@ -7,12 +7,14 @@ Name = String
 User = Age * Name
 
 Unit => Found {
-    User(Age(7) * Name("zoe")) -> Some
+    Age(7)
+        -> User(Name("zoe"))
+        -> Some
 }
 
 Unit => Program {
     Found() -> (
         * None { "none" -> Print }
-        * Some<User> { User -> Name -> Print }
+        * Some<User> { User.Name -> Print }
     )
 }

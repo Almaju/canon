@@ -99,12 +99,12 @@ same PR; never open standalone docs-sync PRs.
 | `src/lexer/` | Tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | AST construction (`parser.rs`) |
 | `src/checker/` | Type checker + sort-order validation |
-| `src/codegen/` | WebAssembly component gen (`wasm/mod.rs`, `wasm/component.rs`, `async_analysis.rs`) |
+| `src/codegen/` | WebAssembly component gen (`wasm/compile.rs` lowers expressions, `wasm/mod.rs` assembles the core module, `wasm/component.rs` wraps it, `async_analysis.rs`) |
 | `src/ast.rs` | AST node definitions |
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading + reference resolution |
 | `src/bindgen/` | WIT → Canon source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
-| `src/main.rs` | CLI entry (`run`, `build`, `check` (`--fix`), `doc`, `test`, `inspect`, `bindgen`, `install`, `publish`, `lsp`, `upgrade`, `use`) |
+| `src/main.rs` | CLI entry (`run`, `build`, `check` (`--fix`), `doc`, `test`, `inspect`, `bindgen`, `install`, `add`, `publish`, `lsp`, `upgrade`, `use`) |
 | `src/doc.rs` | `canon doc` — the generated API reference. Parses a package's `src/` raw (not through `resolve_new_syntax`, which rewrites declarations into their codegen shape) and renders a static site: a page per type with its definition, its constructors, and every constructor accepting it. The stdlib's is deployed at `/doc/api/`. |
 | `src/playground.rs` | The compiler's own browser entry (`wasm32-unknown-unknown`, `[profile.playground]`) — `canon_format`/`canon_compile` over a byte buffer, driven by `docs/assets/canon-play.js`. No imports; the stdlib is already in the binary |
 | `src/webhost.rs` | Web target's browser side — generated JS host, `index.html` shell, static server for `canon run` |
@@ -182,6 +182,7 @@ tests/
   runtime/<name>.can           # must run to completion (exit 0)
   runtime/<name>.stdout        # golden: exact captured stdout
   canon/<name>_test.can        # `X = TestResult` newtypes + `Unit => X` ctors
+  canonc/<name>.can            # canonc's subset, ending in `Unit => Answer`; both compilers must agree
   common/mod.rs                # shared harness helpers
   *_fixtures.rs / canon_tests.rs / checker_api.rs  # per-layer harnesses
 ```
@@ -194,6 +195,7 @@ Pick the layer by **what the test observes**:
 | checker rejects with a specific error | `tests/checker/fail/<name>.can` + `.stderr` |
 | program runs end-to-end, prints exactly this | `tests/runtime/<name>.can` + `.stdout` |
 | an expression / stdlib fn produces the right value | `tests/canon/<file>_test.can` |
+| the self-hosted compiler agrees with the reference | `tests/canonc/<name>.can` (`canonc_differential.rs`) |
 | the parser handles an edge case | `tests/checker/ok/<name>.can` |
 | a compiler API under unusual input | `tests/checker_api.rs` (keep rare) |
 
@@ -411,7 +413,7 @@ treatment in `docs/src/spec/types-only.md`.
   triple (two files) is a **fullstack package**: `canon run` serves bundle +
   handler from one process/origin, `canon build` writes both into `build/`. A
   **workspace** is a dir whose immediate subdirs include packages. **External
-  imports** = the `wit/` dir; **dependencies** = `deps/<ns>/<name>@<ver>/`. The
+  imports** = the `wit/` dir; **dependencies** = `deps/<ns>/<name>@<ver>/`, vendored by `canon add <git-url>@<tag>` (the tag is the version; the directory is the lockfile). The
   **project root** is the nearest ancestor with a structural marker (`src/` with
   `.can` files, `wit/`, `bindgen/`, `deps/`) — `src/install.rs`. Each `bindgen/`
   has an `_install.toml` sidecar (staleness detection only; committed for

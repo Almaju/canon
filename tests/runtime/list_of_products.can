@@ -1,0 +1,37 @@
+Age = Int
+
+Name = String
+
+User = Age * Name
+
+Users = List<User>
+
+Unit => Users {
+    List(Age(1) -> User(Name("ann")) * Age(2) -> User(Name("bob")))
+}
+
+Unit => Program {
+    Users()
+        -> Length
+        -> Print
+    Users() -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<User> => Unit { User.Name -> Print }
+    )
+    Users() -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<User> => Unit { User.Age -> Print }
+    )
+    Users() -> Mapped((User) => Name { User.Name }) -> At(1) -> (
+        * None => Unit { "none" -> Print }
+        * Some<Name> => Unit { Name -> Print }
+    )
+    Users()
+        -> Filtered((User) => Bool { User.Age -> Eq(2) })
+        -> Length
+        -> Print
+    Users() -> Appended(Age(3) -> User(Name("cy"))) -> At(3) -> (
+        * None { "none" -> Print }
+        * Some<User> { User.Name -> Print }
+    )
+}

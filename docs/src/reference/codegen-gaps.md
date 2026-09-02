@@ -14,23 +14,21 @@ This page is the canonical list. The checker's `CODEGEN_GAPS` table
 reasons (`src/bindgen/emit.rs`) mirror the unbindable WIT shapes, and tests
 pin both to this page, so the list stays in one place.
 
-## compound `List<T>` / `Option<T>` payloads
+## compound `List<T>` / `Option<T>` payloads in bindings
 
-Scalar and `String` payloads lower fully: `List<String>` shares the
-canonical layout, 64-bit scalars share Canon's 8-byte list stride, narrower
-scalars from `wasi:` bindings (`list<u8>` from `wasi:random`, for example)
-are read back per-width using the vendored WIT, and `At(i)` / `First` /
-`Mapped` / `Filtered` / `Taken` chains work on all of them. `At(i)` and
-`First` yield `Option<T>`, so a `String` element reaches the value level
-through `?` (or a `Some<String>` arm) — the option carries the element's
-`(ptr, len)` pair, not a scalar. Compound payloads — products, unions
-(other than `Bool`, which erases to a scalar), and nested containers — do
-not fit the 8-byte element slot, so declaring, constructing, or dispatching
-on a `List` / `Option` of one is rejected wherever it appears: binding
-returns, plain signatures, `List(…)` literals, `-> Some`, `Mapped` lambdas,
-and `Some<T>` dispatch arms. Outside the `wasi:` namespace, narrow element
-widths are unknowable at codegen time, so `canon install` also skips those
-bindings.
+Inside a Canon program every payload lowers: a product, union, or nested
+container is one pointer (or a `(ptr, len)` pair) in the 8-byte element
+slot, so `List<Todo>`, `Option<Todo>`, `List<List<Int>>`, `Mapped` lambdas
+producing products, and `Some<Todo>` dispatch arms all build and run. What
+does not lower is the canonical-ABI side: a WIT `list<record>` or
+`option<variant>` lays its payload out inline, and the binding decoder only
+reads back scalar and `String` payloads (64-bit scalars share Canon's
+8-byte stride; narrower scalars from `wasi:` bindings, `list<u8>` from
+`wasi:random` for example, are read per-width using the vendored WIT). So a
+binding whose signature carries a compound `List` / `Option` payload —
+directly or behind its minted result newtype — is rejected. Outside the
+`wasi:` namespace, narrow element widths are unknowable at codegen time, so
+`canon install` also skips those bindings.
 
 ## extern imports in the `wasi:http/service` world
 

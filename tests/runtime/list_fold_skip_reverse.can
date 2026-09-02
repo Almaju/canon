@@ -1,0 +1,33 @@
+Acc = String
+
+Total = Int
+
+Unit => Program {
+    List(1 * 2 * 3 * 4)
+        -> Folded(Total(0) * (Int * Total) => Total { Total -> Sum(Int) })
+        -> Print
+    List("a" * "b" * "c")
+        -> Folded(Acc("") * (Acc * String) => Acc { Acc -> Joined(String) })
+        -> Print
+    List(1 * 2 * 3)
+        -> Skipped(1)
+        -> Length
+        -> Print
+    List(1 * 2 * 3) -> Skipped(1) -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
+    )
+    List(7)
+        -> Skipped(1)
+        -> Skipped(1)
+        -> Length
+        -> Print
+    List(1 * 2 * 3) -> Reversed -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
+    )
+    List("x" * "y") -> Reversed -> At(1) -> (
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
+    )
+}
