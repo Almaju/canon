@@ -1,0 +1,5 @@
+Sent = String
+
+Authority * Body * Method * PathWithQuery * RequestHeaders * Scheme => Result<Sent, HttpError> {
+    "send"
+}

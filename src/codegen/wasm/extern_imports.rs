@@ -154,6 +154,14 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
                         ok_name: ok_name.clone(),
                         err_name: err_name.clone(),
                     });
+                } else if ext.path == component::WASI_HTTP_CLIENT_SEND {
+                    // The one request/response round trip codegen fuses:
+                    // the six strings become a `request`, `send` runs
+                    // async, and the response drains to `"NNN body"`.
+                    indirect_return = Some(IndirectReturnShape::HttpSend {
+                        ok_name: ok_name.clone(),
+                        err_name: err_name.clone(),
+                    });
                 }
             }
             match &mut indirect_return {
@@ -220,6 +228,15 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             results = vec![ValType::I32];
         }
 
+        // `send` is `async func`, and the fused sequence hands it the
+        // request handle and a ret-area pointer itself: the async lower
+        // of `(request) -> result<…>`.
+        let http_send = matches!(indirect_return, Some(IndirectReturnShape::HttpSend { .. }));
+        if http_send {
+            params = vec![ValType::I32, ValType::I32];
+            results = vec![ValType::I32];
+        }
+        let is_async = ext.is_async || http_send;
         raw.push(ExternImport {
             full_path: ext.path.clone(),
             component_namespace: component_ns,
@@ -232,7 +249,7 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             narrow_result_signed,
             indirect_return,
             bare_result,
-            is_async: ext.is_async,
+            is_async,
             func_idx: 0, // filled in below after sorting
             stream_read_fn: None,
             stream_drop_readable_fn: None,
@@ -255,22 +272,144 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             e.stream_read_fn = Some(next);
             e.stream_drop_readable_fn = Some(next + 1);
             e.future_drop_readable_fn = Some(next + 2);
-            next += 3;
         }
+        next += e.import_slots() - 1;
     }
     raw
 }
 
 impl ExternImport {
     /// How many core imports this extern occupies: itself, plus the
-    /// three stream builtins a `ByteStream` return drains through.
+    /// three stream builtins a `ByteStream` return drains through, or
+    /// the `wasi:http/types` functions and builtins the fused `send`
+    /// sequence calls (`HTTP_SEND_IMPORTS`).
     pub(super) fn import_slots(&self) -> u32 {
-        if self.stream_read_fn.is_some() {
-            4
-        } else {
-            1
+        match self.indirect_return {
+            Some(IndirectReturnShape::ByteStream { .. }) => 4,
+            Some(IndirectReturnShape::HttpSend { .. }) => 1 + HTTP_SEND_IMPORTS.len() as u32,
+            _ => 1,
         }
     }
+}
+
+/// The `wasi:http/types` imports the fused `send` sequence calls, in
+/// the order they follow `[async-lower]send` in the import section;
+/// `HttpSendImport` names each one's offset. Each carries the core
+/// signature `wit-component` expects for it.
+pub(super) const HTTP_SEND_IMPORTS: &[(&str, &[ValType], &[ValType])] = &[
+    ("[constructor]fields", &[], &[ValType::I32]),
+    ("[method]fields.append", &[ValType::I32; 6], &[]),
+    ("[static]request.new", &[ValType::I32; 7], &[]),
+    ("[stream-new-0][static]request.new", &[], &[ValType::I64]),
+    (
+        "[stream-write-0][static]request.new",
+        &[ValType::I32; 3],
+        &[ValType::I32],
+    ),
+    (
+        "[stream-drop-writable-0][static]request.new",
+        &[ValType::I32],
+        &[],
+    ),
+    ("[future-new-1][static]request.new", &[], &[ValType::I64]),
+    (
+        "[future-write-1][static]request.new",
+        &[ValType::I32; 2],
+        &[ValType::I32],
+    ),
+    (
+        "[future-drop-writable-1][static]request.new",
+        &[ValType::I32],
+        &[],
+    ),
+    (
+        "[future-drop-readable-2][static]request.new",
+        &[ValType::I32],
+        &[],
+    ),
+    (
+        "[method]request.set-method",
+        &[ValType::I32; 4],
+        &[ValType::I32],
+    ),
+    (
+        "[method]request.set-scheme",
+        &[ValType::I32; 5],
+        &[ValType::I32],
+    ),
+    (
+        "[method]request.set-authority",
+        &[ValType::I32; 4],
+        &[ValType::I32],
+    ),
+    (
+        "[method]request.set-path-with-query",
+        &[ValType::I32; 4],
+        &[ValType::I32],
+    ),
+    (
+        "[method]response.get-status-code",
+        &[ValType::I32],
+        &[ValType::I32],
+    ),
+    ("[static]response.consume-body", &[ValType::I32; 3], &[]),
+    (
+        "[future-new-0][static]response.consume-body",
+        &[],
+        &[ValType::I64],
+    ),
+    (
+        "[future-write-0][static]response.consume-body",
+        &[ValType::I32; 2],
+        &[ValType::I32],
+    ),
+    (
+        "[future-drop-writable-0][static]response.consume-body",
+        &[ValType::I32],
+        &[],
+    ),
+    (
+        "[stream-read-1][static]response.consume-body",
+        &[ValType::I32; 3],
+        &[ValType::I32],
+    ),
+    (
+        "[stream-drop-readable-1][static]response.consume-body",
+        &[ValType::I32],
+        &[],
+    ),
+    (
+        "[future-drop-readable-2][static]response.consume-body",
+        &[ValType::I32],
+        &[],
+    ),
+];
+
+/// Offsets into `HTTP_SEND_IMPORTS`, from the `send` import's index + 1.
+#[derive(Clone, Copy)]
+pub(super) enum HttpSendImport {
+    FieldsNew = 0,
+    FieldsAppend,
+    RequestNew,
+    ContentsNew,
+    ContentsWrite,
+    ContentsDropWritable,
+    TrailersNew,
+    TrailersWrite,
+    TrailersDropWritable,
+    TransmitDropReadable,
+    SetMethod,
+    SetScheme,
+    SetAuthority,
+    SetPathWithQuery,
+    GetStatusCode,
+    ConsumeBody,
+    ResFutureNew,
+    ResFutureWrite,
+    ResFutureDropWritable,
+    BodyRead,
+    BodyDropReadable,
+    BodyTrailersDropReadable,
 }
 
 /// True if `func` is a Self-renamed constructor (parsed from
@@ -551,6 +690,16 @@ pub(super) enum IndirectReturnShape {
     /// `ResultStringString` does, so `?` and dispatch see an ordinary
     /// fallible string.
     ByteStream { ok_name: String, err_name: String },
+    /// `wasi:http/client`'s `send`, fused: the extern takes
+    /// `Authority * Body * Method * PathWithQuery * RequestHeaders *
+    /// Scheme` and codegen builds the `request` resource, sends it
+    /// (async), and drains the `response` into `"NNN body"` — the
+    /// three status digits, a space, the body — or, for a transport
+    /// failure, `"0NN message"` with the `error-code` case number. The
+    /// stdlib turns that into `Result<Fetched, HttpError>` in Canon.
+    /// Return area: the 32-byte `result<response, error-code>` (payload
+    /// at +8: `error-code` has an `option<u64>` case).
+    HttpSend { ok_name: String, err_name: String },
     ListScalar {
         prim: wasm_encoder::PrimitiveValType,
     },
@@ -604,6 +753,7 @@ impl IndirectReturnShape {
             IndirectReturnShape::ListString => 8,
             IndirectReturnShape::ListScalar { .. } => 8,
             IndirectReturnShape::ByteStream { .. } => 8,
+            IndirectReturnShape::HttpSend { .. } => 32,
             IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }

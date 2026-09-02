@@ -1,0 +1,16 @@
+Authority = String
+
+Url => Authority {
+    Url -> AfterScheme -> SplitAt(Separator("/")) -> Eq(0) -> (
+        * False {
+            Url
+                -> AfterScheme
+                -> Substring(
+                    From(1)
+                    * Url -> AfterScheme -> SplitAt(Separator("/")) -> Difference(1) -> To
+                )
+                -> Authority
+        }
+        * True { Url -> AfterScheme -> Authority }
+    )
+}
