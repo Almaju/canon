@@ -1,0 +1,31 @@
+Sgr = Int
+
+Style = Black
+  + Blue
+  + Bold
+  + Cyan
+  + Dim
+  + Green
+  + Italic
+  + Magenta
+  + Red
+  + Underline
+  + White
+  + Yellow
+
+Style => Sgr {
+    Style -> (
+        * Black { 30 }
+        * Blue { 34 }
+        * Bold { 1 }
+        * Cyan { 36 }
+        * Dim { 2 }
+        * Green { 32 }
+        * Italic { 3 }
+        * Magenta { 35 }
+        * Red { 31 }
+        * Underline { 4 }
+        * White { 37 }
+        * Yellow { 33 }
+    )
+}

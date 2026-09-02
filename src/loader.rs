@@ -269,11 +269,12 @@ fn single_string_body(block: &Block) -> Option<String> {
 // Bundled packages
 // ---------------------------------------------------------------------------
 //
-// The shipped packages (`canon`, `canon/wasi`, …) are baked into the
-// compiler binary at build time by `build.rs`, which walks `packages/` and
-// emits a flat registry as `bundled_packages.rs`. The registry replaces what
-// used to be hand-maintained `STDLIB` and `WASI_BINDINGS` arrays — drop a new
-// file under `packages/<ns>/<pkg>/` and the next `cargo build` picks it up.
+// The shipped packages are baked into the compiler binary at build time by
+// `build.rs`, which walks `packages/` and emits a flat registry as
+// `bundled_packages.rs` — drop a new file under `packages/<ns>/<pkg>/` and
+// the next `cargo build` picks it up. Only the prelude (`canon`) is reached
+// by name resolution; every other bundled package is a source for
+// `canon add`, which vendors it into a project's `deps/`.
 
 /// One package shipped with the compiler.
 #[derive(Debug, Clone, Copy)]
@@ -302,6 +303,11 @@ pub struct BundledFile {
 }
 
 include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
+
+/// The one bundled package every program sees without vendoring it: the
+/// standard library. Its names are global; the other bundled packages'
+/// names reach a program only through its `deps/` tree.
+pub const PRELUDE: &str = "canon";
 
 /// Find a bundled package by its canonical name (`"canon"`).
 pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
@@ -1015,7 +1021,7 @@ fn expr_uses_json_machinery(expr: &Expr) -> bool {
 //      `bindgen/`, `target/`, and hidden directories;
 //   2. the project's `bindgen/` tree, by declared name;
 //   3. the project's `deps/` tree (vendored packages), by declared name;
-//   4. the bundled packages (`canon`), by declared name.
+//   4. the prelude (the bundled package `canon`), by declared name.
 //
 // The non-local roots are *declaration-indexed* rather than
 // filename-matched because binding files declare functions whose names
@@ -1355,7 +1361,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
         found.push(Found::Local(path));
     }
 
-    // 4. Bundled packages. Wrapper (`src/`) declarations shadow the
+    // 4. The prelude. Wrapper (`src/`) declarations shadow the
     //    package's own bindgen substrate — that split is an internal
     //    layering detail of the package, not a user-visible ambiguity.
     for (pkg, file) in bundled_decl_matches(name, false) {
@@ -1684,6 +1690,9 @@ fn bundled_decl_index() -> &'static HashMap<String, Vec<(usize, usize)>> {
     INDEX.get_or_init(|| {
         let mut map: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         for (pi, pkg) in BUNDLED_PACKAGES.iter().enumerate() {
+            if pkg.name != PRELUDE {
+                continue;
+            }
             for (fi, file) in pkg.files.iter().enumerate() {
                 for name in declared_names_of_source(file.source) {
                     let entry = map.entry(name).or_default();
@@ -1781,7 +1790,7 @@ pub(crate) fn bundled_wrapper_items() -> &'static [Item] {
     static ITEMS: OnceLock<Vec<Item>> = OnceLock::new();
     ITEMS.get_or_init(|| {
         let mut items = Vec::new();
-        for pkg in BUNDLED_PACKAGES {
+        for pkg in BUNDLED_PACKAGES.iter().filter(|p| p.name == PRELUDE) {
             for file in pkg.files {
                 if urn_base_for_bundled_path(file.path).is_some() {
                     continue;
