@@ -1,0 +1,20 @@
+Answer = Int
+
+Area = Int
+
+Height = Int
+
+Rect = Height * Width
+
+Width = Int
+
+Unit => Answer {
+    Height(3)
+        -> Rect(Width(4))
+        -> Area
+        -> Sum(0)
+}
+
+Rect => Area {
+    Rect.Height -> Product(Rect.Width)
+}

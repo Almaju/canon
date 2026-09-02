@@ -1,0 +1,8 @@
+Answer = Int
+
+Unit => Answer {
+    1 -> Lt(2) -> (
+        * False { 0 }
+        * True { 7 }
+    )
+}
