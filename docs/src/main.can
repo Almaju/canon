@@ -93,6 +93,7 @@ Page => Content {
         * "numerics" { Numerics() -> Html }
         * "ordering" { Ordering() -> Html }
         * "overview" { Overview() -> Html }
+        * "packages" { Packages() -> Html }
         * "philosophy" { Philosophy() -> Html }
         * "pipes" { Page -> Tour(Pipes() -> Html -> Lesson) }
         * "play" { Play() }
@@ -350,6 +351,7 @@ Model => Side {
                 {Model.Page -> NavItem(Slug("installation") * Label("Installation"))}
                 {Model.Page -> NavItem(Slug("building-and-running") * Label("The canon CLI"))}
                 {Model.Page -> NavItem(Slug("stdlib") * Label("Standard Library"))}
+                {Model.Page -> NavItem(Slug("packages") * Label("Packages"))}
                 {Model.Page -> NavItem(Slug("builtins") * Label("Builtins"))}
                 {Model.Page -> NavItem(Slug("web-target") * Label("The Web Target"))}
                 {Model.Page -> NavItem(Slug("wasi") * Label("WASI Interfaces"))}

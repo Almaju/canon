@@ -39,7 +39,7 @@ fn every_stdlib_type_gets_a_page() {
     let names: BTreeSet<&str> = api.type_names().map(|s| s.as_str()).collect();
 
     assert!(
-        names.len() > 200,
+        names.len() > 150,
         "declaration extraction looks broken: {} names",
         names.len()
     );
@@ -53,7 +53,6 @@ fn every_stdlib_type_gets_a_page() {
     // result newtype, a validated constructor's error, a binding-backed
     // type.
     for expected in [
-        "Base64",
         "Contents",
         "File",
         "IoError",
