@@ -1,0 +1,8 @@
+Answer = String
+
+Unit => Answer {
+    "b" -> (
+        * "a" { "first" }
+        * String { "other" }
+    )
+}

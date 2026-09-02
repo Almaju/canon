@@ -1,0 +1,5 @@
+Answer = String
+
+Unit => Answer {
+    `{"canonical" -> Substring(1 * 5)}!`
+}

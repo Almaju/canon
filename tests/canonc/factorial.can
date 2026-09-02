@@ -1,0 +1,14 @@
+Answer = Int
+
+Factorial = Int
+
+Unit => Answer {
+    Factorial(6) -> Sum(0)
+}
+
+Int => Factorial {
+    Int -> Le(1) -> (
+        * False { Int -> Product(Int -> Difference(1) -> Factorial) }
+        * True { 1 }
+    )
+}

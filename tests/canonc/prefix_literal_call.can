@@ -1,0 +1,11 @@
+Answer = Int
+
+Twice = Int
+
+Unit => Answer {
+    Twice(21) -> Sum(Twice(0))
+}
+
+Int => Twice {
+    Int -> Product(2)
+}
