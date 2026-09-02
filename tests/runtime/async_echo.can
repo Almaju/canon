@@ -1,3 +1,0 @@
-Unit => Program {
-    Echo("hello async") -> Print
-}

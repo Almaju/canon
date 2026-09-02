@@ -78,11 +78,6 @@ interface http {
 interface json {
     from-float: func(value: f64) -> string;
 }
-
-interface strings {
-    echo: async func(input: string) -> string;
-    slow-echo: async func(input: string) -> string;
-}
 ";
 
 /// The core-module import namespace for `wasi:http/types` functions and

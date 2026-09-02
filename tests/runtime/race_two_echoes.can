@@ -1,5 +1,0 @@
-Unit => Program {
-    SlowEcho("first")
-        -> Race(SlowEcho("second"))
-        -> Print
-}

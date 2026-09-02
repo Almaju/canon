@@ -4042,7 +4042,18 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::Call(self.fn_waitable_set_wait));
         f.instruction(&Instruction::Drop);
 
-        // event_handle = load i32 at par_event_ptr+0 → tmp_i32
+        // event_handle = load i32 at par_event_ptr+0 → tmp_i32; the
+        // state beside it must be `RETURNED` (2) — a subtask reports
+        // `STARTED` first, and that event is not a result.
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Const(2));
+        f.instruction(&Instruction::I32Ne);
+        f.instruction(&Instruction::BrIf(0));
         f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
         f.instruction(&Instruction::I32Load(MemArg {
             offset: 0,
@@ -4100,6 +4111,9 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
 
         match &elem_ty {
+            // A `List<Unit>`: two empty slots — `alloc` hands out
+            // zeroed memory.
+            Ty::Unit => {}
             Ty::Str | Ty::NamedStr(_) => {
                 // slot 0 ← (ptr,len) at par_retarea_a +0/+4
                 self.copy_str_pair(f, scope.alloc_ptr(), 0, scope.par_retarea_a(), 0);
@@ -4142,8 +4156,8 @@ impl<'m> WasmGen<'m> {
     /// the *first* event, cancel the loser, drop everything, and return
     /// the winner's result decoded from its ret-area.
     ///
-    /// Today only `Ty::Str` / `Ty::NamedStr` element shapes are decoded;
-    /// other shapes trap.
+    /// Today only string and unit results are decoded; other shapes
+    /// trap.
     pub(super) fn compile_race(
         &mut self,
         args: &[Expr],
@@ -4189,11 +4203,23 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::I32Const(0));
         f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
 
-        // One wait, then identify the winner.
+        // Wait until one subtask has returned (an earlier event only
+        // says it started), then identify the winner.
+        f.instruction(&Instruction::Loop(BlockType::Empty));
         f.instruction(&Instruction::LocalGet(scope.par_set()));
         f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
         f.instruction(&Instruction::Call(self.fn_waitable_set_wait));
         f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Const(2));
+        f.instruction(&Instruction::I32Ne);
+        f.instruction(&Instruction::BrIf(0));
+        f.instruction(&Instruction::End);
 
         // Read event handle into tmp_i32, set seen_a = (handle == subtask_a).
         f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
@@ -4263,6 +4289,7 @@ impl<'m> WasmGen<'m> {
                 }));
                 elem_ty
             }
+            Ty::Unit => elem_ty,
             _ => {
                 f.instruction(&Instruction::Unreachable);
                 elem_ty

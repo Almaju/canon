@@ -29,6 +29,7 @@ Unit => Program {
     Mark() -> Print
     Random() -> Print
     Now() -> Print
+    Slept(1000000)
 }
 ```
 
@@ -37,7 +38,9 @@ arithmetic and comparison work directly — the name is the WASI
 interface's own `mark` type). `Random()` draws from the WASI CSPRNG.
 `Now()` is the RFC 3339 wall-clock time, formatted by a calendar
 conversion written in pure Canon — the host provides only the `Unix()`
-clock reading.
+clock reading. `Slept(nanoseconds)` waits on the monotonic clock; it is
+asynchronous at the boundary, so `Slept(1) -> Parallel(Slept(2))` and
+`-> Race(…)` compose it like any other future.
 
 ## Dates: `Date`, `Weekday`, `Hour`, `Minute`, `Second`
 
