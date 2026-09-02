@@ -148,6 +148,9 @@ fn web_counter_full_loop() {
     std::fs::create_dir_all(&workdir).unwrap();
     let src_path = workdir.join("counter.can");
     std::fs::write(&src_path, COUNTER_SRC).unwrap();
+    // The element vocabulary is the `canon/ui` package; a loose file
+    // resolves it through the `deps/` tree beside it.
+    canon::add::add(&workdir, "canon/ui").expect("vendor canon/ui");
 
     let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
     let out = Command::new(&canon_bin)

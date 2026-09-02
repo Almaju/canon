@@ -70,7 +70,7 @@ is a `\xNN` escape outside `00`-`7F` (a `String` is always valid UTF-8,
 so a lone non-ASCII byte can't be spelled as a single escape).
 There are no raw string literals.
 
-A `String` is `Byte^*` interpreted as UTF-8. Indexing (`ByteAt`) yields
+A `String` is a byte sequence interpreted as UTF-8. Indexing (`ByteAt`) yields
 bytes, not code points. Higher-level text operations are stdlib
 constructors, not language built-ins.
 

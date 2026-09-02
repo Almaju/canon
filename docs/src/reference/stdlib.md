@@ -69,6 +69,26 @@ fields. `Weekday` is ISO — Monday is `1`, Sunday is `7`. `Hour` /
 `Minute` / `Second` are the wall-clock time of day, in UTC like
 everything else here.
 
+## Standard input: `Stdin`
+
+```canon
+Unit => Result<Program, IoError> {
+    Stdin()?
+        -> Lines
+        -> Length
+        -> Print
+    Unit() -> Ok
+}
+```
+
+`Stdin()` reads standard input to its end and hands it back as one
+string, so a filter is `Stdin()? -> Lines -> …` and the shell's pipe
+does the streaming. It is the `wasi:cli/stdin` stream, drained at the
+boundary: a binding whose WIT returns `tuple<stream<u8>, future<result<_,
+error-code>>>` surfaces in Canon as an ordinary fallible string, which
+is the one `Stream` shape the code generator lowers (see the [codegen
+gaps](./codegen-gaps.md)).
+
 ## Files: `File`, `Path`, `Contents`, `IoError`
 
 ```canon
@@ -186,27 +206,6 @@ separators leave an empty element, and a string with no separator is a
 one-element list. `Lines` is `Split` at `"\n"`. Both are pure Canon over
 `Substring`, so a very long input pays a quadratic copy — fine for
 configuration files and wire formats, not for logs.
-
-## Encodings: `Base64`, `Hex`
-
-```canon
-Unit => Result<Program, MalformedBase64> {
-    Base64Encoded("Canon") -> Print
-    Base64("Q2Fub24=")
-        -> Base64Decoded?
-        -> Print
-    HexEncoded("Canon") -> Print
-    Unit() -> Ok
-}
-```
-
-`Base64Encoded` / `HexEncoded` encode a string's bytes — RFC 4648
-base64 with padding, lowercase hex octets — in pure Canon. Decoding is
-the validating direction: tag the received text (`Base64(s)` /
-`Hex(s)`) and pipe `-> Base64Decoded?` / `-> HexDecoded?`; bad length,
-characters outside the alphabet, or padding before the end are the
-module's `MalformedBase64` / `MalformedHex` error. Uppercase hex
-digits decode fine; encoding always emits lowercase.
 
 ## HTTP Client: `Url`, `Fetched`
 

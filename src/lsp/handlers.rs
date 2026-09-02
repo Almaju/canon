@@ -405,9 +405,8 @@ fn builtin_hover(name: &str) -> Option<String> {
         // Core numeric / text types
         "Int"    => "```canon\nInt\n```\nA 64-bit signed integer.",
         "Float"  => "```canon\nFloat\n```\nA 64-bit floating-point number.",
-        "String" => "```canon\nString = Byte^*\n```\nA UTF-8 string.",
+        "String" => "```canon\nString\n```\nA UTF-8 string.",
         "Byte"   => "```canon\nByte\n```\nA single byte (u8).",
-        "Bytes"  => "```canon\nBytes = Byte^*\n```\nA byte sequence.",
         // Unit / Never
         "Unit"  => "```canon\nUnit\n```\nThe singleton type with exactly one value: `Unit`.",
         "Never" => "```canon\nNever\n```\nThe uninhabited type: a function returning `Never` does not return.",
@@ -436,7 +435,6 @@ fn builtin_hover(name: &str) -> Option<String> {
         "Network"    => "```canon\nNetwork\n```\nCapability for network I/O (suspending; makes the function async).",
 
         "Stderr"     => "```canon\nStderr\n```\nCapability for writing to stderr (non-suspending).",
-        "Stdin"      => "```canon\nStdin\n```\nCapability for reading from stdin (non-suspending).",
         "Stdout"     => "```canon\nStdout\n```\nCapability for writing to stdout (non-suspending).",
         _ => return None,
     };
@@ -543,9 +541,6 @@ pub(super) fn format_type_expr(ty: &TypeExpr) -> String {
         }
         TypeExpr::Repeat { ty, count, .. } => {
             format!("{}^{}", format_type_expr(ty), count)
-        }
-        TypeExpr::Spread { ty, .. } => {
-            format!("{}^*", format_type_expr(ty))
         }
         TypeExpr::Function {
             params, return_ty, ..

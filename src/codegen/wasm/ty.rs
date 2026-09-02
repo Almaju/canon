@@ -224,7 +224,7 @@ pub(super) fn resolve_name_val_types(
             // `HttpServer<S>` and `HttpClient` are *value types* with state,
             // not capability markers — they're flat-scalar/string aliases
             // declared in the stdlib (`std/http-server-wasm.can`).
-            "Stdout" | "Stderr" | "Stdin" | "Network" | "Clock" | "Filesystem" => vec![],
+            "Stdout" | "Stderr" | "Network" | "Clock" | "Filesystem" => vec![],
             _ => {
                 if let Some(body) = type_defs.get(name) {
                     return match body {
@@ -301,6 +301,16 @@ impl Ty {
     }
 }
 
+/// Byte size of a value of this repr when stored as a field.
+pub(super) fn repr_byte_size(repr: &Ty) -> u32 {
+    match repr {
+        Ty::I64 | Ty::F64 => 8,
+        Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => 4,
+        Ty::Str | Ty::NamedStr(_) | Ty::List => 8,
+        Ty::Unit => 0,
+    }
+}
+
 // ── Local scope ───────────────────────────────────────────────────────────────
 
 pub(super) fn ret_area_size_for(ty: &Ty) -> u32 {
@@ -345,7 +355,7 @@ impl<'m> WasmGen<'m> {
             // See `resolve_name_val_types::go` for the rationale on which
             // names belong here — only true ambient-effect capabilities,
             // not value types like `HttpServer<S>`.
-            "Stdout" | "Stderr" | "Stdin" | "Network" | "Clock" | "Filesystem" => Ty::Unit,
+            "Stdout" | "Stderr" | "Network" | "Clock" | "Filesystem" => Ty::Unit,
             // `Map` / `Set` are NOT here — they are pure-Canon stdlib
             // unions whose repr resolves through `type_defs` below.
             "List" => Ty::List,
@@ -407,12 +417,7 @@ impl<'m> WasmGen<'m> {
 
     /// Byte size of a value when stored as a FIELD inside a product/union struct.
     pub(super) fn field_byte_size(&self, name: &str) -> u32 {
-        match self.resolve_repr(name) {
-            Ty::I64 | Ty::F64 => 8,
-            Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => 4,
-            Ty::Str | Ty::NamedStr(_) | Ty::List => 8,
-            Ty::Unit => 0,
-        }
+        repr_byte_size(&self.resolve_repr(name))
     }
 
     /// Field layout for a product type (name → payload byte size used for offsets).
@@ -421,18 +426,34 @@ impl<'m> WasmGen<'m> {
         let Some(body) = self.type_defs.get(product_name) else {
             return vec![];
         };
-        let TypeExpr::Product { fields, .. } = body else {
-            return vec![];
-        };
         let mut layout = Vec::new();
         let mut offset = 0u32;
-        for f in fields {
-            if let TypeExpr::Named { name, .. } = f {
-                let repr = self.resolve_repr(name);
-                let size = self.field_byte_size(name);
-                layout.push((name.clone(), repr, offset));
-                offset += size;
+        match body {
+            TypeExpr::Product { fields, .. } => {
+                for f in fields {
+                    if let TypeExpr::Named { name, .. } = f {
+                        let repr = self.resolve_repr(name);
+                        let size = self.field_byte_size(name);
+                        layout.push((name.clone(), repr, offset));
+                        offset += size;
+                    }
+                }
             }
+            // `T^N`: N components of one type, named `1` … `N` — the
+            // positional reads `.1` … `.N` find them, and construction's
+            // by-type routing never matches a digit, so values fill the
+            // slots in order.
+            TypeExpr::Repeat { ty, count, .. } => {
+                if let TypeExpr::Named { name, .. } = ty.as_ref() {
+                    let repr = self.resolve_repr(name);
+                    let size = self.field_byte_size(name);
+                    for i in 1..=*count {
+                        layout.push((i.to_string(), repr.clone(), offset));
+                        offset += size;
+                    }
+                }
+            }
+            _ => {}
         }
         layout
     }
@@ -441,15 +462,11 @@ impl<'m> WasmGen<'m> {
     pub(super) fn variant_payload_size(&self, variant_name: &str) -> u32 {
         if let Some(body) = self.type_defs.get(variant_name) {
             match body {
-                TypeExpr::Product { fields, .. } => {
-                    let mut total = 0u32;
-                    for f in fields {
-                        if let TypeExpr::Named { name, .. } = f {
-                            total += self.field_byte_size(name);
-                        }
-                    }
-                    total
-                }
+                TypeExpr::Product { .. } | TypeExpr::Repeat { .. } => self
+                    .product_field_layout(variant_name)
+                    .iter()
+                    .map(|(_, repr, _)| repr_byte_size(repr))
+                    .sum(),
                 TypeExpr::Named { name, .. } => self.field_byte_size(name),
                 _ => 0,
             }

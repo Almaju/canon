@@ -1,0 +1,5 @@
+Table = Html
+
+String => Table {
+    Html(`<table>{String}</table>`)
+}

@@ -1,0 +1,5 @@
+A = Html
+
+Href * String => A {
+    Html(`<a href="{Href -> Escaped}">{String}</a>`)
+}

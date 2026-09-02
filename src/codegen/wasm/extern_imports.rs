@@ -3,25 +3,19 @@
 //! Walks the module for extern declarations, parses their paths, derives
 //! core WASM signatures (WIT-informed where the vendored WIT is known),
 //! and classifies indirect-return shapes. The resolved [`ExternImport`]
-//! list feeds both codegen and the component wrapper.
+//! list feeds both codegen and the program's world.
 use super::*;
 
 /// Splits an `extern Wasm` path of the form
 /// `"namespace:package/interface@version#fn-name"` into
-/// `(component_namespace, core_namespace, fn_name)`.
+/// `(namespace, fn_name)`.
 ///
 ///   - `component_namespace` keeps the `@version` suffix; it is the name
 ///     wasmtime matches against the linker.
-///   - `core_namespace` strips the version; it is the import-module name we
-///     use inside the core wasm module (purely an internal contract).
 ///   - `fn_name` is everything after `#`.
-pub(super) fn parse_extern_path(path: &str) -> Option<(String, String, String)> {
+pub(super) fn parse_extern_path(path: &str) -> Option<(String, String)> {
     let (iface, fn_name) = path.split_once('#')?;
-    let core_ns = match iface.split_once('@') {
-        Some((before_version, _version)) => before_version.to_string(),
-        None => iface.to_string(),
-    };
-    Some((iface.to_string(), core_ns, fn_name.to_string()))
+    Some((iface.to_string(), fn_name.to_string()))
 }
 
 pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
@@ -32,7 +26,7 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         let Some(ext) = &func.extern_wasm else {
             continue;
         };
-        let Some((component_ns, core_ns, fn_name)) = parse_extern_path(&ext.path) else {
+        let Some((component_ns, fn_name)) = parse_extern_path(&ext.path) else {
             continue;
         };
         // Validate the signature: flat-scalar or string params + (flat-scalar
@@ -149,6 +143,19 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         // not `list<s64>`) — both the component-level import type and the
         // decode stride must match it.
         if component_ns.starts_with("wasi:") {
+            // A byte stream hides behind a fallible string: the Canon
+            // signature says `Result<Stdin, IoError>`, the vendored WIT
+            // says `tuple<stream<u8>, future<result<_, error-code>>>`.
+            if let Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) =
+                &indirect_return
+            {
+                if component::vendored_extern_returns_byte_stream(&ext.path) {
+                    indirect_return = Some(IndirectReturnShape::ByteStream {
+                        ok_name: ok_name.clone(),
+                        err_name: err_name.clone(),
+                    });
+                }
+            }
             match &mut indirect_return {
                 Some(IndirectReturnShape::OptionScalar { prim }) => {
                     if let Some(p) = component::vendored_extern_option_payload(&ext.path) {
@@ -216,7 +223,6 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         raw.push(ExternImport {
             full_path: ext.path.clone(),
             component_namespace: component_ns,
-            core_namespace: core_ns,
             fn_name,
             params,
             results,
@@ -228,17 +234,43 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             bare_result,
             is_async: ext.is_async,
             func_idx: 0, // filled in below after sorting
+            stream_read_fn: None,
+            stream_drop_readable_fn: None,
+            future_drop_readable_fn: None,
         });
     }
     raw.sort_by(|a, b| {
-        a.core_namespace
-            .cmp(&b.core_namespace)
+        a.component_namespace
+            .cmp(&b.component_namespace)
             .then(a.fn_name.cmp(&b.fn_name))
     });
-    for (i, e) in raw.iter_mut().enumerate() {
-        e.func_idx = FIRST_EXTERN_IMPORT_FN + i as u32;
+    let mut next = FIRST_EXTERN_IMPORT_FN;
+    for e in raw.iter_mut() {
+        e.func_idx = next;
+        next += 1;
+        if matches!(
+            e.indirect_return,
+            Some(IndirectReturnShape::ByteStream { .. })
+        ) {
+            e.stream_read_fn = Some(next);
+            e.stream_drop_readable_fn = Some(next + 1);
+            e.future_drop_readable_fn = Some(next + 2);
+            next += 3;
+        }
     }
     raw
+}
+
+impl ExternImport {
+    /// How many core imports this extern occupies: itself, plus the
+    /// three stream builtins a `ByteStream` return drains through.
+    pub(super) fn import_slots(&self) -> u32 {
+        if self.stream_read_fn.is_some() {
+            4
+        } else {
+            1
+        }
+    }
 }
 
 /// True if `func` is a Self-renamed constructor (parsed from
@@ -510,6 +542,15 @@ pub(super) enum IndirectReturnShape {
     /// as-is; narrower elements are re-packed into a fresh Canon list,
     /// widening each element per the WIT signedness (`f32` promotes to
     /// `f64`).
+    /// `tuple<stream<u8>, future<result<_, error-code>>>` return — the
+    /// shape `wasi:cli/stdin`'s `read-via-stream` and its filesystem
+    /// and socket siblings share. Return area: 8 bytes, the readable
+    /// stream handle at +0 and the completion future at +4. The decode
+    /// drains the stream to its end into one contiguous string, drops
+    /// both handles, and builds the same 12-byte `Result` struct
+    /// `ResultStringString` does, so `?` and dispatch see an ordinary
+    /// fallible string.
+    ByteStream { ok_name: String, err_name: String },
     ListScalar {
         prim: wasm_encoder::PrimitiveValType,
     },
@@ -562,6 +603,7 @@ impl IndirectReturnShape {
             }
             IndirectReturnShape::ListString => 8,
             IndirectReturnShape::ListScalar { .. } => 8,
+            IndirectReturnShape::ByteStream { .. } => 8,
             IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }
@@ -579,10 +621,6 @@ pub(super) struct ExternImport {
     /// Multiple functions can share the same `component_namespace` — they end
     /// up as members of the same imported instance.
     pub(super) component_namespace: String,
-    /// Core-module import-module name, e.g. `"wasi:random/random"` (no
-    /// version). Multiple `ExternImport`s sharing this name are all served by
-    /// the same synthetic core instance built inside the component wrapper.
-    pub(super) core_namespace: String,
     /// Function name within the interface, e.g. `"get-random-u64"`.
     pub(super) fn_name: String,
     /// Core WASM signature after any indirect-return transformation:
@@ -620,12 +658,16 @@ pub(super) struct ExternImport {
     /// lowering uses `CanonicalOption::Async`, which collapses the core
     /// signature to `(i32, i32) -> i32` regardless of the original flat
     /// shape — see the async-rewrite branch in `collect_extern_imports`.
-    /// The component wrapper still uses `component_params` and
-    /// `indirect_return` to compute the WIT-level function type and to
-    /// attach the right `Memory` / `Realloc` canonical options.
     pub(super) is_async: bool,
     /// Final function index assigned inside the core module's function index
     /// space (after the stdout canonical-builtin imports but before any
     /// compiled function).
     pub(super) func_idx: u32,
+    /// A `ByteStream` return drains the stream at the boundary through
+    /// the canonical builtins typed for *this* function
+    /// (`[stream-read-0]<fn>`, `[stream-drop-readable-0]<fn>`,
+    /// `[future-drop-readable-1]<fn>`), imported right after it.
+    pub(super) stream_read_fn: Option<u32>,
+    pub(super) stream_drop_readable_fn: Option<u32>,
+    pub(super) future_drop_readable_fn: Option<u32>,
 }

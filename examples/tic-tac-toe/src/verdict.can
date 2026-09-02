@@ -1,0 +1,18 @@
+Verdict = String
+
+Board => Verdict {
+    Board -> Won(Piece("X")) -> (
+        * False {
+            Board -> Won(Piece("O")) -> (
+                * False {
+                    Board -> Free -> Eq(0) -> (
+                        * False { "Your move. You are X." }
+                        * True { "A draw." }
+                    )
+                }
+                * True { "The computer wins." }
+            )
+        }
+        * True { "You win!" }
+    )
+}

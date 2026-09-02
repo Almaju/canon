@@ -158,68 +158,84 @@
   }
 
   // ── the host ──────────────────────────────────────────────────────
-  // Everything a Canon CLI component imports at the core level. The
-  // waitable set is the async canonical ABI; nothing here ever suspends,
-  // because a program that genuinely blocks is reaching for a WASI
-  // interface the browser has none of — and that lands on the stub below
-  // with its name in the message.
-  function hostImports(provider, sink, state) {
-    var memory = provider.exports.memory;
+  // Everything a Canon CLI component imports at the core level, under
+  // the names `wit-component` gives them: an interface's functions
+  // under `<iface>@<version>`, the stream builtins a function's
+  // streams need beside it (`[stream-new-0]write-via-stream`), and the
+  // task intrinsics under `$root`. The waitable set is the async
+  // canonical ABI; nothing here ever suspends, because a program that
+  // genuinely blocks is reaching for a WASI interface the browser has
+  // none of — and that lands on the stub below with its name in the
+  // message.
+  var VERSION = "@0.3.0-rc-2026-03-15";
+
+  function hostImports(program, sink, state) {
     var dec = new TextDecoder();
+    var memory = function () { return program.instance.exports.memory; };
 
     // Hand a string back through a canonical-ABI return area: the bytes
     // go in guest memory via its own allocator, and the (ptr, len) pair
     // goes where the caller asked for it.
     function returnString(text, retptr) {
       var bytes = new TextEncoder().encode(text);
-      var ptr = provider.exports.cabi_realloc(0, 0, 1, bytes.length);
-      new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
-      var view = new DataView(memory.buffer);
+      var ptr = program.instance.exports.cabi_realloc(0, 0, 1, bytes.length);
+      new Uint8Array(memory().buffer, ptr, bytes.length).set(bytes);
+      var view = new DataView(memory().buffer);
       view.setInt32(retptr, ptr, true);
       view.setInt32(retptr + 4, bytes.length, true);
     }
 
-    function stream(isErr) {
-      return {
-        "write-via-stream": function () { return 1; },
-        "stream-new": function () { return (2n << 32n) | 1n; },
-        "stream-write": function (writer, ptr, len) {
-          sink(dec.decode(new Uint8Array(memory.buffer, Number(ptr), Number(len))), isErr);
-          return 0;
-        },
-        "stream-drop-writable": function () { return 0; },
-        "future-drop-readable": function () { return 0; },
-      };
-    }
-    return {
-      "wasi:cli/stdout": stream(false),
-      "wasi:cli/stderr": stream(true),
-      // A playground program has no command line and no working
-      // directory; both lower to an empty list.
-      "wasi:cli/environment": {
-        "get-arguments": function () { return 0; },
-        "get-initial-cwd": function () { return 0; },
+    var imports = {};
+    imports["wasi:cli/stdout" + VERSION] = {
+      "write-via-stream": function () { return 1; },
+      "[stream-new-0]write-via-stream": function () { return (2n << 32n) | 1n; },
+      "[stream-write-0]write-via-stream": function (writer, ptr, len) {
+        sink(dec.decode(new Uint8Array(memory().buffer, Number(ptr), Number(len))), false);
+        return 0;
       },
-      "wasi:cli/exit": {
-        "exit-with-code": function (code) { state.exitCode = Number(code); },
+      "[stream-drop-writable-0]write-via-stream": function () { return 0; },
+      "[future-drop-readable-1]write-via-stream": function () { return 0; },
+    };
+    // The browser has no stdin: a read ends the stream at once
+    // (`DROPPED`, no bytes), so `Stdin()` is the empty string.
+    imports["wasi:cli/stdin" + VERSION] = {
+      "read-via-stream": function (retptr) {
+        var view = new DataView(memory().buffer);
+        view.setInt32(retptr, 1, true);
+        view.setInt32(retptr + 4, 1, true);
       },
-      "canon:async/waitable": {
-        "set-new": function () { return 1; },
-        "join": function () { return 0; },
-        "set-wait": function () { return 0; },
-        "set-drop": function () { return 0; },
-        "subtask-drop": function () { return 0; },
-        "task-return": function () { return 0; },
-        "subtask-cancel": function () { return 0; },
-      },
-      // The one thing Canon can't express in Canon: shortest-round-trip
-      // decimal for an f64 (`host_builtin_json` in src/runtime.rs).
-      "canon:builtins/json": {
-        "from-float": function (value, retptr) {
-          returnString(jsonFloat(value), retptr);
-        },
+      "[stream-read-0]read-via-stream": function () { return 1; },
+      "[stream-drop-readable-0]read-via-stream": function () { return 0; },
+      "[future-drop-readable-1]read-via-stream": function () { return 0; },
+    };
+    // A playground program has no command line and no working
+    // directory; both lower to an empty list.
+    imports["wasi:cli/environment" + VERSION] = {
+      "get-arguments": function () { return 0; },
+      "get-initial-cwd": function () { return 0; },
+    };
+    imports["wasi:cli/exit" + VERSION] = {
+      "exit-with-code": function (code) { state.exitCode = Number(code); },
+    };
+    imports["$root"] = {
+      "[waitable-set-new]": function () { return 1; },
+      "[waitable-join]": function () { return 0; },
+      "[waitable-set-wait]": function () { return 0; },
+      "[waitable-set-drop]": function () { return 0; },
+      "[subtask-drop]": function () { return 0; },
+      "[subtask-cancel]": function () { return 0; },
+    };
+    imports["[export]wasi:cli/run" + VERSION] = {
+      "[task-return]run": function () { return 0; },
+    };
+    // The one thing Canon can't express in Canon: shortest-round-trip
+    // decimal for an f64 (`host_builtin_json` in src/runtime.rs).
+    imports["canon:builtins/json@0.1.0"] = {
+      "from-float": function (value, retptr) {
+        returnString(jsonFloat(value), retptr);
       },
     };
+    return imports;
   }
 
   // Matches the native host byte for byte, which JS does not do on its
@@ -240,44 +256,35 @@
   }
 
   function run(component, sink) {
+    // The program is the one core module that owns memory; the others
+    // are the import shims wit-component puts beside it, which a host
+    // answering every import directly has no use for.
     var mods = coreModules(component);
     return Promise.all(mods.map(function (m) { return WebAssembly.compile(m); }))
       .then(function (compiled) {
-        // Identify the two modules by what they say about themselves
-        // rather than by position: the provider owns memory, the program
-        // imports it.
-        var provider = null;
-        var program = null;
-        compiled.forEach(function (m) {
-          var importsMemory = WebAssembly.Module.imports(m).some(function (im) {
-            return im.kind === "memory";
-          });
-          if (importsMemory) program = m;
-          else if (WebAssembly.Module.exports(m).some(function (ex) { return ex.kind === "memory"; }))
-            provider = m;
+        var program = compiled.filter(function (m) {
+          return WebAssembly.Module.exports(m).some(function (ex) { return ex.kind === "memory"; });
         });
-        if (!provider || !program)
+        if (program.length !== 1)
           throw new Error("unexpected component shape: " + compiled.length + " core modules");
-
-        var providerInst = new WebAssembly.Instance(provider, {});
-        var state = { exitCode: null };
-        var known = hostImports(providerInst, sink, state);
-        var imports = {};
-        WebAssembly.Module.imports(program).forEach(function (im) {
-          imports[im.module] = imports[im.module] || {};
-          if (im.module === "env") {
-            imports.env[im.name] = providerInst.exports[im.name];
-            return;
-          }
-          var have = known[im.module] && known[im.module][im.name];
-          imports[im.module][im.name] = have || function () {
-            throw new Error(im.module + "." + im.name + " is not available in the browser");
-          };
-        });
-
-        new WebAssembly.Instance(program, imports).exports.run();
-        return state;
+        return program[0];
+      })
+      .then(function (module) {
+      var state = { exitCode: null };
+      var program = { instance: null };
+      var known = hostImports(program, sink, state);
+      var imports = {};
+      WebAssembly.Module.imports(module).forEach(function (im) {
+        imports[im.module] = imports[im.module] || {};
+        var have = known[im.module] && known[im.module][im.name];
+        imports[im.module][im.name] = have || function () {
+          throw new Error(im.module + "." + im.name + " is not available in the browser");
+        };
       });
+      program.instance = new WebAssembly.Instance(module, imports);
+      program.instance.exports["[async-lift-stackful]wasi:cli/run" + VERSION + "#run"]();
+      return state;
+    });
   }
 
   function compileAndRun(source, sink) {

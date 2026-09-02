@@ -1,3 +1,4 @@
+pub mod add;
 pub mod ast;
 pub mod bindgen;
 pub mod checker;

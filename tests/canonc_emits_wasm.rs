@@ -573,15 +573,15 @@ fn canonc_compiles_a_call_to_another_declaration() {
     // declaration in the same file, resolved through a table of every
     // declared name built before any body is parsed — so a call can
     // point forward as well as back.
-    let source = "Int => Double { Int -> Product(2) }\n\nInt => Quad { Int -> Double -> Double }\n";
+    let source = "Double = Int\n\nQuad = Int\n\nInt => Double { Int -> Product(2) }\n\nInt => Quad { Int -> Double -> Double }\n";
     assert_eq!(canonc_apply("quad.can", source, "quad", Some(5)), 20);
 
     let forward =
-        "Int => Quad { Int -> Double -> Double }\n\nInt => Double { Int -> Product(2) }\n";
+        "Double = Int\n\nQuad = Int\n\nInt => Quad { Int -> Double -> Double }\n\nInt => Double { Int -> Product(2) }\n";
     assert_eq!(canonc_apply("fwd.can", forward, "quad", Some(5)), 20);
 
     // A call is an operand too, so it composes with the arithmetic.
-    let mixed = "Int => Double { Int -> Product(2) }\n\nInt => Odd { Int -> Double -> Sum(1) }\n";
+    let mixed = "Double = Int\n\nOdd = Int\n\nInt => Double { Int -> Product(2) }\n\nInt => Odd { Int -> Double -> Sum(1) }\n";
     assert_eq!(canonc_apply("odd.can", mixed, "odd", Some(3)), 7);
 
     // The same for a string in hand: past the string operations, a name

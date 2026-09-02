@@ -1,0 +1,15 @@
+Seed = Int
+
+String => Seed {
+    String -> Length -> Eq(0) -> (
+        * False {
+            String
+                -> Substring(From(1) * String -> Length -> Difference(1) -> To)
+                -> Seed
+                -> Product(31)
+                -> Sum(String -> ByteAt(String -> Length))
+                -> Remainder(2147483648)
+        }
+        * True { 0 }
+    )
+}

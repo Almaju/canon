@@ -1,0 +1,5 @@
+El = Html
+
+String * Tag => El {
+    Html(`<{Tag}>{String}</{Tag}>`)
+}

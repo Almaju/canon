@@ -1,0 +1,18 @@
+StyledNestsAttributeAroundColor = TestResult
+
+StyledWrapsTextInEscapes = TestResult
+
+Unit => StyledNestsAttributeAroundColor {
+    "hi"
+        -> Styled(Red())
+        -> Styled(Bold())
+        -> Eq("\u001B[1m\u001B[31mhi\u001B[0m\u001B[0m")
+        -> TestResult
+}
+
+Unit => StyledWrapsTextInEscapes {
+    "ok"
+        -> Styled(Green())
+        -> Eq("\u001B[32mok\u001B[0m")
+        -> TestResult
+}

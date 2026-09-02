@@ -1,0 +1,5 @@
+Stdin = String
+
+Unit => Result<Stdin, IoError> {
+    "read-via-stream"
+}

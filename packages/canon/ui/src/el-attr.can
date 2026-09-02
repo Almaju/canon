@@ -1,0 +1,5 @@
+ElAttr = Html
+
+Attr * String * Tag => ElAttr {
+    Html(`<{Tag} {Attr}>{String}</{Tag}>`)
+}

@@ -1,0 +1,15 @@
+Index = Int
+
+Nth = Int
+
+Nth * Board * Cursor => Index {
+    Board -> ByteAt(Cursor) -> Eq(46) -> (
+        * False { Nth -> Index(Board * Cursor -> Sum(1) -> Cursor) }
+        * True {
+            Nth -> Eq(1) -> (
+                * False { Nth -> Difference(1) -> Nth -> Index(Board * Cursor -> Sum(1) -> Cursor) }
+                * True { Cursor -> Index }
+            )
+        }
+    )
+}

@@ -1,0 +1,5 @@
+Td = Html
+
+String => Td {
+    Html(`<td>{String}</td>`)
+}

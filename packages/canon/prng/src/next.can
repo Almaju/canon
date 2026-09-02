@@ -1,0 +1,8 @@
+Next = Seed
+
+Seed => Next {
+    Seed
+        -> Product(1103515245)
+        -> Sum(12345)
+        -> Remainder(2147483648)
+}

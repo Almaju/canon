@@ -1,0 +1,33 @@
+BelowUsesTheHighBits = TestResult
+
+NextIsDeterministic = TestResult
+
+SeedHashesText = TestResult
+
+SeedOfEmptyTextIsZero = TestResult
+
+Unit => BelowUsesTheHighBits {
+    Seed(1103527590)
+        -> Below(Bound(6))
+        -> Eq(2)
+        -> TestResult
+}
+
+Unit => NextIsDeterministic {
+    Seed(1)
+        -> Next
+        -> Eq(1103527590)
+        -> TestResult
+}
+
+Unit => SeedHashesText {
+    Seed("ab")
+        -> Eq(3105)
+        -> TestResult
+}
+
+Unit => SeedOfEmptyTextIsZero {
+    Seed("")
+        -> Eq(0)
+        -> TestResult
+}

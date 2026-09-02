@@ -1,0 +1,35 @@
+Pairs = List<String>
+
+Param = String
+
+Pairs * Key => Option<Param> {
+    Pairs -> First -> (
+        * None { None() }
+        * Some<String> {
+            String -> Length -> Gt(Key -> Length) -> (
+                * False { Pairs -> Skipped(1) -> Pairs -> Param(Key) }
+                * True {
+                    String -> Substring(From(1) * Key -> Length -> Sum(1) -> To) -> Eq(`{Key}=`) -> (
+                        * False { Pairs -> Skipped(1) -> Pairs -> Param(Key) }
+                        * True {
+                            String
+                                -> Substring(
+                                    Key -> Length -> Sum(2) -> From
+                                    * String -> Length -> To
+                                )
+                                -> Param
+                                -> Some
+                        }
+                    )
+                }
+            )
+        }
+    )
+}
+
+Query * Key => Option<Param> {
+    Query
+        -> Split(Separator("&"))
+        -> Pairs
+        -> Param(Key)
+}

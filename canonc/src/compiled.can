@@ -400,6 +400,10 @@ Run = Int
 
 Sameroot = Bool
 
+Scalarparam = Bool
+
+Scalarroot = Bool
+
 Scratch = Int
 
 Scrutinee = Text
@@ -447,6 +451,8 @@ Tag = Int
 Tagging = String
 
 Tail = Tokens
+
+Takes = Bool
 
 Text = String
 
@@ -964,18 +970,27 @@ Argkind * Callparams * Code * Ender * Opcode * Outer * Params * Kind * Tables * 
 Code * Ender * Kind * Name * Params * Tables * Tokens * Wanted => Callslot {
     Tables.Names -> Slot(Seen(0) * Wanted) -> Lt(0) -> (
         * False {
-            Tokens
-                -> Callargs(
-                    Argkind(2)
-                    * Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams
-                    * Code(`{Code}{Kind -> Argpark(Params -> Argslot(Tables) -> Argbase -> Parkslot(Argindex(0) * Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams * Kind * Tables) * Tables)}`)
-                    * Ender
-                    * Opcode(`10{Tables.Names -> Slot(Seen(0) * Wanted) -> Sum(3) -> Emitted}`)
-                    * Tables -> Outer
-                    * Params
-                    * Name -> Kind
-                    * Tables -> Pushed
-                )
+            Kind
+                -> Takes(
+                    Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams
+                    * Tables
+                ) -> (
+                * False { Tokens -> Relabel(Code * Ender * Kind * Name * Params * Tables) }
+                * True {
+                    Tokens
+                        -> Callargs(
+                            Argkind(2)
+                            * Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams
+                            * Code(`{Code}{Kind -> Argpark(Params -> Argslot(Tables) -> Argbase -> Parkslot(Argindex(0) * Tables.Names -> Paramsat(Tables.Names -> Slot(Seen(0) * Wanted) -> Seen) -> Callparams * Kind * Tables) * Tables)}`)
+                            * Ender
+                            * Opcode(`10{Tables.Names -> Slot(Seen(0) * Wanted) -> Sum(3) -> Emitted}`)
+                            * Tables -> Outer
+                            * Params
+                            * Name -> Kind
+                            * Tables -> Pushed
+                        )
+                }
+            )
         }
         * True { Tokens -> Relabel(Code * Ender * Kind * Name * Params * Tables) }
     )
@@ -2573,14 +2588,30 @@ Ender * Name * Params * Tables * Tokens => Prefixlparen {
                             Cons.Tail -> Body(Ender(41) * Params * Tables) -> (
                                 * Bad { Bad -> Parsed }
                                 * Good {
-                                    Good.After
-                                        -> Chain(
-                                            Good.Code -> Code
-                                            * Ender
-                                            * Name -> Kind
-                                            * Params
-                                            * Tables
-                                        )
+                                    Tables.Names -> Slot(Seen(0) * Name -> Wanted) -> Lt(0) -> (
+                                        * False {
+                                            Good.After
+                                                -> Callslot(
+                                                    Good.Code -> Code
+                                                    * Ender
+                                                    * Good.Kind -> Kind
+                                                    * Name
+                                                    * Params
+                                                    * Tables
+                                                    * Name -> Wanted
+                                                )
+                                        }
+                                        * True {
+                                            Good.After
+                                                -> Chain(
+                                                    Good.Code -> Code
+                                                    * Ender
+                                                    * Name -> Kind
+                                                    * Params
+                                                    * Tables
+                                                )
+                                        }
+                                    )
                                 }
                             )
                         }
@@ -2897,6 +2928,25 @@ Kind * Name * Tables => Sameroot {
         -> Eq(Tables.Whole -> Rootname(Depthleft(8) * Name -> Wanted))
 }
 
+Params * Tables => Scalarparam {
+    Params -> (
+        * Paramcons {
+            Tables.Whole -> Rootname(Depthleft(8) * Paramcons.Paramhead -> Wanted) -> Scalarroot -> (
+                * False { Paramcons.Paramtail -> Params -> Scalarparam(Tables) }
+                * True { True() }
+            )
+        }
+        * Paramnil { False() }
+    )
+}
+
+Rootname => Scalarroot {
+    Rootname -> Eq("Int") -> (
+        * False { Rootname -> Eq("Bool") }
+        * True { True() }
+    )
+}
+
 Params * Tables => Scratch {
     Params
         -> Paramtypes(Tables)
@@ -3157,6 +3207,13 @@ Scratch * Unionsize * Variantindex * Wide => Tagging {
                     -> Emitted
             }36020820{Scratch -> Sum(2) -> Emitted}`
         }
+    )
+}
+
+Callparams * Kind * Tables => Takes {
+    Kind -> Eq("") -> (
+        * False { Kind -> Recvat(Callparams -> Params * Tables) -> Ge(0) }
+        * True { Callparams -> Params -> Scalarparam(Tables) }
     )
 }
 

@@ -1,0 +1,5 @@
+Div = Html
+
+String => Div {
+    Html(`<div>{String}</div>`)
+}

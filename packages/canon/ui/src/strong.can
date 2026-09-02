@@ -1,0 +1,5 @@
+Strong = Html
+
+String => Strong {
+    Html(`<strong>{String}</strong>`)
+}

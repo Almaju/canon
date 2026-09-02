@@ -1,0 +1,11 @@
+Filled = Bool
+
+Line = String
+
+Line * Board * Piece => Filled {
+    Board
+        -> ByteAt(Line -> ByteAt(1) -> Difference(48))
+        -> Eq(Piece -> ByteAt(1))
+        -> And(Board -> ByteAt(Line -> ByteAt(2) -> Difference(48)) -> Eq(Piece -> ByteAt(1)))
+        -> And(Board -> ByteAt(Line -> ByteAt(3) -> Difference(48)) -> Eq(Piece -> ByteAt(1)))
+}

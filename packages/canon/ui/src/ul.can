@@ -1,0 +1,5 @@
+Ul = Html
+
+String => Ul {
+    Html(`<ul>{String}</ul>`)
+}

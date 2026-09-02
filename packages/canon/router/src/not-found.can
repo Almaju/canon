@@ -1,0 +1,7 @@
+NotFound = Response
+
+Unit => NotFound {
+    Status(404)
+        -> TextResponse("not found")
+        -> NotFound
+}

@@ -91,6 +91,9 @@ pub struct SymbolTable {
     /// named list carries, so the list builtins can check what they are
     /// handed against it.
     pub list_elem_of: HashMap<String, String>,
+    /// `Rgb = Channel^3` records `Rgb -> (Channel, 3)`: a fixed-size
+    /// positional product, built from N values and read as `.1` … `.N`.
+    pub repetitions: HashMap<String, (String, u64)>,
     /// Commands, keyed `(receiver, message)`: `Map * Insert => Map`
     /// registers `("Map", "Insert")`. A value pipes into its message
     /// (`map -> Insert(…)`) to apply it.
@@ -632,7 +635,7 @@ fn collect_type_names(ty: &TypeExpr, out: &mut HashSet<String>) {
                 collect_type_names(f, out);
             }
         }
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => collect_type_names(ty, out),
+        TypeExpr::Repeat { ty, .. } => collect_type_names(ty, out),
         TypeExpr::Function {
             params, return_ty, ..
         } => {
@@ -849,7 +852,9 @@ pub fn codegen_gap_errors(
         // host that has the real shape — a build that passed both check
         // and build. The vendored WIT is the only place the shape shows.
         if let Some(ext) = &func.extern_wasm {
-            if crate::codegen::vendored_extern_uses_async_value(&ext.path) {
+            if crate::codegen::vendored_extern_uses_async_value(&ext.path)
+                && !crate::codegen::vendored_extern_returns_byte_stream(&ext.path)
+            {
                 errors.push(gap_error(
                     &GAP_STREAM,
                     &format!(
@@ -955,9 +960,7 @@ fn compound_payload_walk<'a>(
         TypeExpr::Union { variants: tys, .. } | TypeExpr::Product { fields: tys, .. } => tys
             .iter()
             .find_map(|t| compound_payload_walk(t, type_defs, visited)),
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
-            compound_payload_walk(ty, type_defs, visited)
-        }
+        TypeExpr::Repeat { ty, .. } => compound_payload_walk(ty, type_defs, visited),
         TypeExpr::Function {
             params, return_ty, ..
         } => params
@@ -1229,6 +1232,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     //     but the unwrap form exists for cases where the explicit step
     //     reads more clearly.
     let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
+    let mut repetitions: HashMap<String, (String, u64)> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             // A parameterized typedef's fields only mean something per
@@ -1261,6 +1265,17 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                     // still has a single field named `Option`. See the language spec
                     // § "Newtypes Are 1-Component Products".
                     product_fields.insert(td.name.name.clone(), vec![name.clone()]);
+                }
+                TypeExpr::Repeat { ty, count, .. } => {
+                    // `T^N` is the N-fold product: N components of one
+                    // type, positional by definition.
+                    if let Some(elem) = ty.simple_name() {
+                        product_fields.insert(
+                            td.name.name.clone(),
+                            vec![elem.to_string(); *count as usize],
+                        );
+                        repetitions.insert(td.name.name.clone(), (elem.to_string(), *count));
+                    }
                 }
                 _ => {}
             }
@@ -1542,6 +1557,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         free_funcs,
         aliases,
         list_elem_of,
+        repetitions,
         messages,
         type_parts,
     }
@@ -1742,18 +1758,23 @@ fn check_literal_form_ceremony(name: &str, args: &[Expr], errors: &mut Vec<Canon
 }
 
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
-    // `T^N` binds positional components of a constructor's input; a
-    // type definition has no value-level lowering for it, so a program
-    // could declare a `Byte = Bit^8` it can never build.
-    if let Some(span) = repetition_in(&td.body) {
-        errors.push(CanonError::CheckError {
-            message: format!(
-                "`{}` repeats a type in its definition: repetition (`T^N`, `T^*`) is a \
-                 constructor-input shape (`Int^2 => Ord`); a type holds a `List<T>` instead",
-                td.name.name
-            ),
-            span,
-        });
+    // `T^N` is a type of its own only at the top of a definition
+    // (`Rgb = Channel^3`); nested inside a product or a union it has no
+    // name to construct or read through.
+    match &td.body {
+        TypeExpr::Repeat { .. } => check_repetition_shape(&td.body, errors),
+        body => {
+            if let Some(span) = repetition_in(body) {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{}` nests a repetition: give it its own name (`Rgb = Channel^3`) \
+                         and use that",
+                        td.name.name
+                    ),
+                    span,
+                });
+            }
+        }
     }
     // Types are PascalCase. A camelCase type alias only means something
     // in a binding file, where `apply_bindings` has already rewritten it
@@ -1938,7 +1959,7 @@ fn check_function(
     check_type_expr(&func.return_ty, symbols, &generic_scope, errors);
     for param in &func.params {
         check_type_expr(&param.ty, symbols, &generic_scope, errors);
-        check_repetition_param_shape(&param.ty, errors);
+        check_repetition_shape(&param.ty, errors);
     }
 
     if let Some(recv) = &func.receiver {
@@ -2202,7 +2223,7 @@ fn check_type_expr(
                 check_type_expr(f, symbols, generic_scope, errors);
             }
         }
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => {
+        TypeExpr::Repeat { ty, .. } => {
             check_type_expr(ty, symbols, generic_scope, errors);
         }
         TypeExpr::Function {
@@ -2365,11 +2386,11 @@ fn contextual_arm_annotations_expr(
     }
 }
 
-/// The span of the first `T^N` / `T^*` anywhere inside a type
-/// expression, or `None`.
+/// The span of the first `T^N` anywhere inside a type expression, or
+/// `None`.
 fn repetition_in(ty: &TypeExpr) -> Option<Span> {
     match ty {
-        TypeExpr::Repeat { span, .. } | TypeExpr::Spread { span, .. } => Some(*span),
+        TypeExpr::Repeat { span, .. } => Some(*span),
         TypeExpr::Named { generics, .. } => generics.iter().find_map(repetition_in),
         TypeExpr::Union { variants: tys, .. } | TypeExpr::Product { fields: tys, .. } => {
             tys.iter().find_map(repetition_in)
@@ -2383,32 +2404,22 @@ fn repetition_in(ty: &TypeExpr) -> Option<Span> {
     }
 }
 
-/// Validate a repetition parameter's shape: the count must be at least
-/// 2 (`T^1` is ceremony around a plain `T`, `T^0` is `Unit`), and the
-/// Kleene star has no parameter lowering — `T^*` values arrive as
-/// `List<T>`.
-fn check_repetition_param_shape(ty: &TypeExpr, errors: &mut Vec<CanonError>) {
+/// Validate a repetition's shape: the count must be at least 2 (`T^1`
+/// is ceremony around a plain `T`, `T^0` is `Unit`).
+fn check_repetition_shape(ty: &TypeExpr, errors: &mut Vec<CanonError>) {
     match ty {
         TypeExpr::Repeat { count, span, .. } if *count < 2 => {
             errors.push(CanonError::CheckError {
                 message: format!(
-                    "repetition input `^{count}` needs a count of at least 2 — a single \
+                    "repetition `^{count}` needs a count of at least 2 — a single \
                      component is a plain type"
                 ),
                 span: *span,
             });
         }
-        TypeExpr::Spread { span, .. } => {
-            errors.push(CanonError::CheckError {
-                message: "`T^*` is not a parameter shape: an unbounded sequence arrives as \
-                          `List<T>`"
-                    .to_string(),
-                span: *span,
-            });
-        }
         TypeExpr::Product { fields, .. } => {
             for f in fields {
-                check_repetition_param_shape(f, errors);
+                check_repetition_shape(f, errors);
             }
         }
         _ => {}
@@ -3397,6 +3408,22 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         return;
                     }
                 }
+                // A value of a repetition type (`Rgb = Channel^3`) reads
+                // its components the same way.
+                check_expr(receiver, scope, symbols, errors);
+                let recv_ty = expr_type_name_in_scope(receiver, symbols);
+                if let Some((elem, count)) = repetition_of(&recv_ty, symbols) {
+                    if idx < 1 || idx > count {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "positional access `.{idx}` is out of range: `{recv_ty}` is \
+                                 `{elem}^{count}`, components `.1` … `.{count}`"
+                            ),
+                            span: *span,
+                        });
+                    }
+                    return;
+                }
                 errors.push(CanonError::CheckError {
                     message: format!(
                         "positional access `.{}` applies only to repetition parameters \
@@ -3755,6 +3782,19 @@ fn check_builtin_args(
     }
 }
 
+/// The element type and count behind a repetition type, through the
+/// receiver's alias chain (`Pixel = Rgb`, `Rgb = Channel^3`).
+fn repetition_of(name: &str, symbols: &SymbolTable) -> Option<(String, u64)> {
+    let mut current = name;
+    for _ in 0..20 {
+        if let Some((elem, count)) = symbols.repetitions.get(current) {
+            return Some((elem.clone(), *count));
+        }
+        current = symbols.aliases.get(current)?;
+    }
+    None
+}
+
 /// The product a construction of `name` builds and the fields it has to
 /// supply: `name` itself, or — for a newtype of a product (`Parsed =
 /// Todo`, itself a one-field entry in `product_fields`) — the product it
@@ -3859,9 +3899,7 @@ fn effective_call_arity(args: &[Expr]) -> usize {
 ///
 /// `Stream<T>` is **not** peeled. A function returning `Stream<T>` is
 /// producing a stream value that downstream combinators (`map`, `take`,
-/// `concat`, …) operate on directly. Stream consumption (auto-iteration)
-/// is handled at call sites via `.each` / `.next` recognition in
-/// `async_analysis::expr_has_async_trigger`, not by type-peel here.
+/// `concat`, …) operate on directly.
 fn method_return_summary(ty: &TypeExpr) -> (String, Option<String>) {
     match ty {
         TypeExpr::Named { name, generics, .. } => {
@@ -4089,7 +4127,10 @@ fn check_product_construction_types(
     span: Span,
     errors: &mut Vec<CanonError>,
 ) {
-    if field_types.len() < 2 || args.len() != field_types.len() {
+    if field_types.len() < 2
+        || args.len() != field_types.len()
+        || symbols.repetitions.contains_key(type_name)
+    {
         return;
     }
     let arg_types: Vec<String> = args
@@ -4432,9 +4473,13 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             // repeated parameter, the index is in range) is scope
             // information checked in `check_expr`.
             if field.name.parse::<u64>().is_ok() {
-                return match receiver.as_ref() {
+                let recv_ty = match receiver.as_ref() {
                     Expr::Ident(recv_ident) => recv_ident.name.clone(),
-                    _ => "<unknown>".to_string(),
+                    other => expr_type_name_in_scope(other, symbols),
+                };
+                return match repetition_of(&recv_ty, symbols) {
+                    Some((elem, _)) => elem,
+                    None => recv_ty,
                 };
             }
             // If this is a zero-arg builtin method used without parens, return

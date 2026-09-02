@@ -1,0 +1,11 @@
+TextResponse = Response
+
+String => TextResponse {
+    Status(200) -> TextResponse(String)
+}
+
+Status * String => TextResponse {
+    String
+        -> Body
+        -> Response(Headers().set("content-type" * "text/plain; charset=utf-8") * Status)
+}

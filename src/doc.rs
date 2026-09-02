@@ -527,7 +527,7 @@ fn references(ty: &TypeExpr, name: &str) -> bool {
         } => n == name || generics.iter().any(|g| references(g, name)),
         TypeExpr::Union { variants, .. } => variants.iter().any(|v| references(v, name)),
         TypeExpr::Product { fields, .. } => fields.iter().any(|f| references(f, name)),
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => references(ty, name),
+        TypeExpr::Repeat { ty, .. } => references(ty, name),
         TypeExpr::Function {
             params, return_ty, ..
         } => params.iter().any(|p| references(p, name)) || references(return_ty, name),

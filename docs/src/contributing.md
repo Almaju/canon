@@ -18,8 +18,8 @@ Three kinds of files live under `docs/src/`:
   plain Markdown file (this one is `docs/src/contributing.md`).
   Referencing the PascalCase name a file kebab-cases to (`Contributing`
   → `contributing.md`) loads its contents as a `Markdown` value, which
-  the standard library's [Markdown renderer](reference/markdown-renderer.md)
-  turns into `Html`. Markdown stays in `.md` files, never in Canon string
+  the [`canon/markdown` renderer](reference/markdown-renderer.md)
+  (vendored under `docs/deps/`) turns into `Html`. Markdown stays in `.md` files, never in Canon string
   literals.
 - **`main.can`** — the app shell. It holds the router (a dispatch on the
   page name), the top bar, the sidebar, and the `init` / `view` /

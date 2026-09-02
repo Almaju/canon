@@ -3,12 +3,9 @@
 //! - `Future<T>` and `Stream<T>` are recognised as built-in generic types.
 //! - `auto_await::transform` rewrites Future-typed receivers as
 //!   `Expr::Await(receiver)` before the checker runs.
-//! - `async_analysis::analyse` correctly identifies the set of suspending
-//!   functions via direct triggers + bottom-up call-graph propagation.
 
 use canon::ast::{resolve_new_syntax, Expr, Item, Module};
 use canon::checker::{self, auto_await};
-use canon::codegen::async_analysis;
 use canon::lexer::Scanner;
 use canon::parser::Parser;
 
@@ -378,133 +375,6 @@ main = () => Unit {
     assert_eq!(
         total, 0,
         "arg passed where param expects `Future<T>` must NOT gain an Await"
-    );
-}
-
-#[test]
-fn async_analysis_seeds_extern_async_functions() {
-    // A function whose return is `Future<T>` is a direct async trigger
-    // — its caller must become suspending too.
-    let source = r#"
-SlowRead = String
-
-Filesystem => Future<SlowRead> {
-    "slow-read"
-}
-
-main = (Filesystem) => Unit {
-    SlowRead(Filesystem).print()
-}
-"#;
-    let m = parse(source);
-    let set = async_analysis::analyse(&m);
-    // The string-anchored binding is normalised into a `Self`-constructor
-    // on its minted result type, so the function-table key is
-    // `(Some("SlowRead"), "Self")`. `main` is special-cased by
-    // the parser and keeps `(None, "main")` regardless of its params.
-    assert!(
-        set.contains(&(Some("SlowRead".to_string()), "Self".to_string())),
-        "SlowRead (returning Future) should be in the async set; got: {:?}",
-        set.iter().collect::<Vec<_>>()
-    );
-    assert!(
-        set.contains(&(None, "main".to_string())),
-        "main should be in the async set (transitively calls SlowRead); got: {:?}",
-        set.iter().collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn async_analysis_propagates_through_call_graph() {
-    // a → b → Fetched, where Fetched is extern async. All three should be
-    // suspending.
-    let source = r#"
-Fetched = String
-
-Filesystem => Future<Fetched> {
-    "fetched"
-}
-
-b = (Filesystem) => String {
-    Fetched(Filesystem)
-}
-
-a = (Filesystem) => String {
-    b(Filesystem)
-}
-
-main = (Filesystem) => Unit {
-    a(Filesystem).print()
-}
-"#;
-    let m = parse(source);
-    let set = async_analysis::analyse(&m);
-    // The extern's key is its `Self`-constructor `(Some("Fetched"), "Self")`;
-    // each bodied non-`main` function takes `Filesystem` as its first
-    // param, so its key is `(Some("Filesystem"), <name>)`. `main` keeps
-    // `(None, ...)`.
-    assert!(
-        set.contains(&(Some("Fetched".to_string()), "Self".to_string())),
-        "Fetched (returning Future) should be in the async set; got set: {:?}",
-        set.iter().collect::<Vec<_>>()
-    );
-    for name in &["a", "b"] {
-        let key = (Some("Filesystem".to_string()), name.to_string());
-        assert!(
-            set.contains(&key),
-            "{} should be suspending (transitive call to extern async); got set: {:?}",
-            name,
-            set.iter().collect::<Vec<_>>()
-        );
-    }
-    assert!(
-        set.contains(&(None, "main".to_string())),
-        "main should be suspending (transitive call to extern async); got set: {:?}",
-        set.iter().collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn async_analysis_leaves_sync_functions_alone() {
-    // No async triggers anywhere → empty async set.
-    let source = r#"
-double = (Int) => Int {
-    Int.mul(2)
-}
-
-main = (Stdout) => Unit {
-    "hello".print(Stdout)
-}
-"#;
-    let m = parse(source);
-    let set = async_analysis::analyse(&m);
-    assert!(
-        set.is_empty(),
-        "no extern async / Future / Stream in the program — async set should be empty; got: {:?}",
-        set.iter().collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn async_analysis_with_no_extern_async_returns_empty_for_sync_extern() {
-    // A non-`.async` extern (synchronous) should not poison the async set.
-    let source = r#"
-SyncRead = String
-
-Filesystem => SyncRead {
-    "sync-read"
-}
-
-main = (Filesystem) => Unit {
-    SyncRead(Filesystem).print()
-}
-"#;
-    let m = parse(source);
-    let set = async_analysis::analyse(&m);
-    assert!(
-        set.is_empty(),
-        "sync externs should not trigger async inference; got: {:?}",
-        set.iter().collect::<Vec<_>>()
     );
 }
 

@@ -421,8 +421,8 @@ impl<'m> WasmGen<'m> {
     /// - `future.drop-readable` discards the unused completion handle.
     ///
     /// All five canonical builtins are imported from `wasi:cli/stdout`
-    /// (a private module-import name the component wrapper backs with a
-    /// synthetic core instance — see `component::wrap`).
+    /// under `wit-component`'s names for a function's stream and future
+    /// builtins (`[stream-new-0]write-via-stream`, …).
     pub(super) fn build_print_str(&self) -> Function {
         // Locals declared in order:
         //   0..1 — params (ptr, len)
@@ -698,13 +698,10 @@ impl<'m> WasmGen<'m> {
     /// src++, n--), so they must be set up by the caller and not
     /// relied on after the call returns.
     ///
-    /// This exists as a stand-in for `memory.copy` (bulk-memory
-    /// proposal) because the component wrapper in `component::wrap`
-    /// currently doesn't propagate the bulk-memory feature through
-    /// to the synthesised core instance, so emitting `MemoryCopy`
-    /// directly fails component validation. A future PR can swap
-    /// this for `memory.copy` once the wrapper signs off on the
-    /// feature — the call sites in `concat` won't need to change.
+    /// A stand-in for `memory.copy` (bulk-memory proposal), which the
+    /// playground's browser host and the web target would also have
+    /// to accept; the call sites in `concat` won't change when it
+    /// takes over.
     pub(super) fn emit_byte_copy_loop(&self, scope: &LocalScope, f: &mut Function) {
         // Wasm structured control: outer block (break target),
         // inner loop (continue target).
@@ -1187,11 +1184,9 @@ impl<'m> WasmGen<'m> {
                 // to a struct laid out by `build_product_value`. Read
                 // back from the matching byte offset.
                 if let Ty::NamedPtr(product_name) = &recv_ty {
-                    if self
-                        .type_defs
-                        .get(product_name)
-                        .is_some_and(|t| matches!(t, TypeExpr::Product { .. }))
-                    {
+                    if self.type_defs.get(product_name).is_some_and(|t| {
+                        matches!(t, TypeExpr::Product { .. } | TypeExpr::Repeat { .. })
+                    }) {
                         if let Some(ty) =
                             self.load_product_field(product_name, &field.name, scope, f)
                         {
@@ -1669,7 +1664,7 @@ impl<'m> WasmGen<'m> {
                 if self.type_defs.contains_key(name) {
                     let body = self.type_defs.get(name).cloned().unwrap();
                     return match &body {
-                        TypeExpr::Product { .. } => {
+                        TypeExpr::Product { .. } | TypeExpr::Repeat { .. } => {
                             // Product type. Two surface shapes reach here:
                             //   * `Name(a * b * c)` — one arg, an
                             //     `Expr::ProductValue` whose fields are
@@ -2571,7 +2566,7 @@ impl<'m> WasmGen<'m> {
         let layout = self.product_field_layout(product_name);
         let total_size: u32 = layout
             .iter()
-            .map(|(name, _, _)| self.field_byte_size(name))
+            .map(|(_, repr, _)| repr_byte_size(repr))
             .sum::<u32>()
             .max(4); // `alloc` expects a non-zero size.
 
@@ -3667,6 +3662,105 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr(product)
             }
+            IndirectReturnShape::ByteStream {
+                ok_name, err_name, ..
+            } => {
+                // invariant: `collect_extern_imports` allocates the three
+                // builtins for every `ByteStream` extern.
+                let (stream_read_fn, stream_drop_readable_fn, future_drop_readable_fn) = (
+                    info.stream_read_fn
+                        .expect("byte-stream extern has a stream-read builtin"),
+                    info.stream_drop_readable_fn
+                        .expect("byte-stream extern has a stream-drop-readable builtin"),
+                    info.future_drop_readable_fn
+                        .expect("byte-stream extern has a future-drop-readable builtin"),
+                );
+                // Drain the stream at +0 to its end. Chunks land back to
+                // back: the running position is the read target, and the
+                // bump pointer is reset to it before each further
+                // allocation so the next chunk's room starts exactly
+                // there (the allocator's own 8-byte rounding only moves
+                // where a *later* value goes). No user code runs, so the
+                // scratch locals are safe: `tmp_i32` = stream,
+                // `tmp_i32_b` = future, `addr_scratch` = start, `rbool`
+                // = position, `lit_scrut_ptr` = the packed read status
+                // `(count << 4) | code`.
+                const CHUNK: i32 = 65536;
+                let mem32 = |offset: u64| MemArg {
+                    offset,
+                    align: 2,
+                    memory_index: 0,
+                };
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(mem32(0)));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Load(mem32(4)));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Const(CHUNK));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalTee(scope.addr_scratch()));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(CHUNK));
+                f.instruction(&Instruction::Call(stream_read_fn));
+                f.instruction(&Instruction::LocalTee(scope.lit_scrut_ptr()));
+                // `BLOCKED` (all ones) never comes back from a sync
+                // read; treat it as the end rather than as a count.
+                f.instruction(&Instruction::I32Const(-1));
+                f.instruction(&Instruction::I32Eq);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                f.instruction(&Instruction::I32Const(4));
+                f.instruction(&Instruction::I32ShrU);
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // Done on any code but `COMPLETED`, or on an empty read.
+                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                f.instruction(&Instruction::I32Const(15));
+                f.instruction(&Instruction::I32And);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
+                f.instruction(&Instruction::I32Const(4));
+                f.instruction(&Instruction::I32ShrU);
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+                f.instruction(&Instruction::I32Const(CHUNK + 8));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::Drop);
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::Call(stream_drop_readable_fn));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::Call(future_drop_readable_fn));
+                // The `Result`: tag 1 (Ok), then the string's ptr and len.
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Store(mem32(0)));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::I32Store(mem32(4)));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::I32Sub);
+                f.instruction(&Instruction::I32Store(mem32(8)));
+                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
+            }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
                 // Flip the WIT discriminant (byte 0) into Canon's tag
                 // convention by XOR-ing with 1, and store back as a full
@@ -3863,9 +3957,10 @@ impl<'m> WasmGen<'m> {
     // codegen emits a non-blocking async call for each arg (capturing
     // subtask handle + ret-area into named locals), then runs the
     // canonical-ABI multi-subtask wait sequence in the same function.
-    // No host bridge is involved — the `canon:async/waitable` canon
-    // intrinsics (`set-new`, `join`, `set-wait`, `set-drop`,
-    // `subtask-drop`, `subtask-cancel`) handle everything.
+    // No host bridge is involved — the `$root` canon intrinsics
+    // (`waitable-set-new`, `waitable-join`, `waitable-set-wait`,
+    // `waitable-set-drop`, `subtask-drop`, `subtask-cancel`) handle
+    // everything.
 
     /// Compile a single `parallel`/`race` argument as a non-blocking
     /// async call. The arg must be a `MethodCall` or `Constructor` that
@@ -6994,6 +7089,7 @@ impl<'m> WasmGen<'m> {
             &[ValType::I32, ValType::I32, ValType::I32],
             &[ValType::I32, ValType::I32, ValType::I32],
         );
+        let ty_cabi_realloc = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
 
         let mut m = Module::new();
 
@@ -7031,39 +7127,41 @@ impl<'m> WasmGen<'m> {
         m.section(&types);
 
         // ── Import section ───────────────────────────────────────────────────
-        // The component wrapper provides:
-        //   - wasi:cli/stdout.{write-via-stream, stream-new, stream-write,
-        //         stream-drop-writable, future-drop-readable}: the five
-        //         canonical-ABI builtins `print_str` stitches into the
-        //         native WASI P3 stdout sequence.
-        //   - one function per user `extern Wasm` declaration (sorted)
-        //   - canon:async/waitable.*: 6 canonical async/task helpers
-        //   - env.memory, env.bump_ptr: shared linear memory + bump
-        //         pointer used by `$alloc` and the host's `cabi_realloc`.
+        // Named the way `wit-component` reads a core module against its
+        // world (`component::wrap_cli`): an interface's functions live
+        // under `<iface>@<version>`, the canonical builtins a function's
+        // streams and futures need are `[stream-new-N]<fn>` and kin
+        // beside it, an async import is `[async-lower]<fn>`, and the
+        // task intrinsics sit under `$root`.
+        //   - wasi:cli/stdout: `write-via-stream` and the four builtins
+        //         `print_str` stitches into the native WASI P3 stdout
+        //         sequence.
+        //   - one slot group per user `extern Wasm` declaration (sorted)
+        //   - the 7 waitable/task intrinsics
         let mut imports = ImportSection::new();
         imports.import(
-            "wasi:cli/stdout",
+            STDOUT_MODULE,
             "write-via-stream",
             EntityType::Function(TY_STDOUT_WRITE_VIA_STREAM),
         );
         imports.import(
-            "wasi:cli/stdout",
-            "stream-new",
+            STDOUT_MODULE,
+            "[stream-new-0]write-via-stream",
             EntityType::Function(TY_STDOUT_STREAM_NEW),
         );
         imports.import(
-            "wasi:cli/stdout",
-            "stream-write",
+            STDOUT_MODULE,
+            "[stream-write-0]write-via-stream",
             EntityType::Function(TY_STDOUT_STREAM_WRITE),
         );
         imports.import(
-            "wasi:cli/stdout",
-            "stream-drop-writable",
+            STDOUT_MODULE,
+            "[stream-drop-writable-0]write-via-stream",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         imports.import(
-            "wasi:cli/stdout",
-            "future-drop-readable",
+            STDOUT_MODULE,
+            "[future-drop-readable-1]write-via-stream",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         for ext in &self.extern_imports {
@@ -7073,73 +7171,71 @@ impl<'m> WasmGen<'m> {
                 // invariant: `assign_func_indices` registers every extern
                 // import's (params, results) signature in `user_type_map`.
                 .expect("extern import type was added during assign_func_indices");
+            let name = if ext.is_async {
+                format!("[async-lower]{}", ext.fn_name)
+            } else {
+                ext.fn_name.clone()
+            };
             imports.import(
-                &ext.core_namespace,
-                &ext.fn_name,
+                &ext.component_namespace,
+                &name,
                 EntityType::Function(type_idx),
             );
+            if ext.stream_read_fn.is_some() {
+                imports.import(
+                    &ext.component_namespace,
+                    &format!("[stream-read-0]{}", ext.fn_name),
+                    EntityType::Function(TY_STDOUT_STREAM_WRITE), // (i32, i32, i32) -> (i32)
+                );
+                imports.import(
+                    &ext.component_namespace,
+                    &format!("[stream-drop-readable-0]{}", ext.fn_name),
+                    EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
+                );
+                imports.import(
+                    &ext.component_namespace,
+                    &format!("[future-drop-readable-1]{}", ext.fn_name),
+                    EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
+                );
+            }
         }
-        // Waitable intrinsics — see field doc on `fn_waitable_*`. The
-        // synthetic core instance built in `component::wrap` (from a
-        // canon section emitting `waitable-set.new`, `waitable.join`,
-        // `waitable-set.wait`, `waitable-set.drop`, `subtask.drop`)
-        // satisfies these. Names are kebab-case to match the canon
-        // operator names.
+        // Waitable intrinsics — see field doc on `fn_waitable_*`.
         imports.import(
-            "canon:async/waitable",
-            "set-new",
+            "$root",
+            "[waitable-set-new]",
             EntityType::Function(TY_HANDLE_RETURN), // () -> i32
         );
         imports.import(
-            "canon:async/waitable",
-            "join",
+            "$root",
+            "[waitable-join]",
             EntityType::Function(TY_PRINT_STR), // (i32, i32) -> ()
         );
         imports.import(
-            "canon:async/waitable",
-            "set-wait",
+            "$root",
+            "[waitable-set-wait]",
             EntityType::Function(ty_waitable_set_wait), // (i32, i32) -> i32
         );
         imports.import(
-            "canon:async/waitable",
-            "set-drop",
+            "$root",
+            "[waitable-set-drop]",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         imports.import(
-            "canon:async/waitable",
-            "subtask-drop",
+            "$root",
+            "[subtask-drop]",
+            EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
+        );
+        // `task.return` for the async-stackful `run` lift: the bare
+        // `result` discriminant.
+        imports.import(
+            &format!("[export]{}", component::WASI_CLI_RUN),
+            "[task-return]run",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
         imports.import(
-            "canon:async/waitable",
-            "task-return",
-            EntityType::Function(TY_PRINT_BOOL), // (i32) -> () — result<_,_> tag
-        );
-        imports.import(
-            "canon:async/waitable",
-            "subtask-cancel",
+            "$root",
+            "[subtask-cancel]",
             EntityType::Function(ty_subtask_cancel), // (i32) -> (i32)
-        );
-        imports.import(
-            "env",
-            "memory",
-            EntityType::Memory(MemoryType {
-                minimum: 2,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
-        // Shared bump pointer for $alloc and the host-side `cabi_realloc`.
-        imports.import(
-            "env",
-            "bump_ptr",
-            EntityType::Global(GlobalType {
-                val_type: ValType::I32,
-                mutable: true,
-                shared: false,
-            }),
         );
         m.section(&imports);
 
@@ -7163,21 +7259,45 @@ impl<'m> WasmGen<'m> {
         for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
+        funcs.function(ty_cabi_realloc); // cabi_realloc, appended last
         m.section(&funcs);
 
-        // ── Memory section ───────────────────────────────────────────────────────────────
-        // We import the memory rather than declaring our own — the component
-        // wrapper instantiates a tiny "memory provider" core module first so
-        // that the canonical-ABI lowers (which need a memory option) can
-        // reference it before this module is instantiated.
-
-        // ── Global section ─────────────────────────────────────────────────────────────────
-        // Empty — the bump_ptr global is imported, not defined here.
+        // ── Memory / globals: self-contained ─────────────────────────
+        // Sized to fit the static string pool — see `heap_layout`.
+        let (heap_start, min_pages) = heap_layout(self.strings.data.len());
+        let mut memories = MemorySection::new();
+        memories.memory(MemoryType {
+            minimum: min_pages as u64,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        m.section(&memories);
+        let mut globals = GlobalSection::new();
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &ConstExpr::i32_const(heap_start as i32),
+        );
+        m.section(&globals);
 
         // ── Export section ─────────────────────────────────────────────────────────────
-        // The Component Model wrapper lifts `run` as `wasi:cli/run.run`.
+        // `wit-component` lifts the entry as `wasi:cli/run.run`,
+        // async-stackful: the core signature is `() -> ()` and the
+        // result travels through `task.return`.
+        let cabi_realloc_idx = self.fn_user_start + self.compiled_user_funcs.len() as u32;
         let mut exports = ExportSection::new();
-        exports.export("run", ExportKind::Func, self.fn_start);
+        exports.export("memory", ExportKind::Memory, 0);
+        exports.export("cabi_realloc", ExportKind::Func, cabi_realloc_idx);
+        exports.export(
+            &format!("[async-lift-stackful]{}#run", component::WASI_CLI_RUN),
+            ExportKind::Func,
+            self.fn_start,
+        );
         m.section(&exports);
 
         // ── Code section ─────────────────────────────────────────────────────────────
@@ -7200,6 +7320,7 @@ impl<'m> WasmGen<'m> {
             let compiled = self.build_user_function(&func);
             codes.function(&compiled);
         }
+        codes.function(&self.build_cabi_realloc());
         m.section(&codes);
 
         // ── Data section ──────────────────────────────────────────────────────

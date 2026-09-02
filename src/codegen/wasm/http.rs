@@ -338,13 +338,17 @@ impl<'m> WasmGen<'m> {
         f
     }
 
-    /// HTTP mode: the module owns its allocator, so `cabi_realloc` is
-    /// defined here (same bump global `$alloc` uses) instead of living
-    /// in the component wrapper's memory-provider module.
-    /// `old_ptr`/`old_size` are ignored — one-pass bump, never frees.
+    /// `cabi_realloc`: the canonical ABI's allocator, the same bump
+    /// pointer `$alloc` advances. `old_ptr`/`old_size` are ignored —
+    /// one-pass bump, never frees.
+    ///
+    ///   aligned = (bump + align - 1) & -align
+    ///   bump = aligned + new_size, growing memory when that passes its
+    ///   end (returning a pointer beyond memory is what the canonical
+    ///   ABI rejects as `realloc return: beyond end of memory`)
+    ///   return aligned
     pub(super) fn build_cabi_realloc(&self) -> Function {
-        let mut f = Function::new([(1, ValType::I32)]); // local 4: aligned
-                                                        // aligned = (bump + align - 1) & -align
+        let mut f = Function::new([(2, ValType::I32)]); // local 4: aligned, local 5: end
         f.instruction(&Instruction::GlobalGet(0));
         f.instruction(&Instruction::LocalGet(2));
         f.instruction(&Instruction::I32Add);
@@ -355,10 +359,29 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::I32Sub);
         f.instruction(&Instruction::I32And);
         f.instruction(&Instruction::LocalTee(4));
-        // bump = aligned + new_size
         f.instruction(&Instruction::LocalGet(3));
         f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalTee(5));
         f.instruction(&Instruction::GlobalSet(0));
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::MemorySize(0));
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::I32Shl);
+        f.instruction(&Instruction::I32GtU);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        // pages = (end - mem_bytes + 65535) >> 16
+        f.instruction(&Instruction::LocalGet(5));
+        f.instruction(&Instruction::MemorySize(0));
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::I32Shl);
+        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::I32Const(65535));
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::I32Const(16));
+        f.instruction(&Instruction::I32ShrU);
+        f.instruction(&Instruction::MemoryGrow(0));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::End);
         f.instruction(&Instruction::LocalGet(4));
         f.instruction(&Instruction::End);
         f
@@ -371,9 +394,7 @@ impl<'m> WasmGen<'m> {
     /// exported `cabi_realloc`, imports named per `wit-component`'s
     /// mangling conventions (stdout intrinsics hang off
     /// `write-via-stream`, http intrinsics off `[static]response.new`),
-    /// and the entry exported as `wasi:http/handler@…#handle`. The
-    /// hand-rolled component path (`compile()` + `component::wrap`)
-    /// stays in place for the CLI world.
+    /// and the entry exported as `wasi:http/handler@…#handle`.
     pub(super) fn compile_http(&mut self) -> Vec<u8> {
         use crate::ast::{entry_world_of, EntryWorld};
 
@@ -462,7 +483,6 @@ impl<'m> WasmGen<'m> {
         m.section(&types);
 
         // ── Import section (indices fixed — see FN_HTTP_*) ───────────
-        const STDOUT_MODULE: &str = "wasi:cli/stdout@0.3.0-rc-2026-03-15";
         let mut imports = ImportSection::new();
         imports.import(
             STDOUT_MODULE,

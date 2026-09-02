@@ -1,0 +1,5 @@
+Button = Html
+
+Msg * String => Button {
+    Html(`<button data-msg="{Msg}">{String}</button>`)
+}
