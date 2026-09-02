@@ -801,7 +801,9 @@ pub fn codegen_gap_errors(
         // host that has the real shape — a build that passed both check
         // and build. The vendored WIT is the only place the shape shows.
         if let Some(ext) = &func.extern_wasm {
-            if crate::codegen::vendored_extern_uses_async_value(&ext.path) {
+            if crate::codegen::vendored_extern_uses_async_value(&ext.path)
+                && crate::codegen::vendored_extern_byte_stream_return(&ext.path).is_none()
+            {
                 errors.push(gap_error(
                     &GAP_STREAM,
                     &format!(

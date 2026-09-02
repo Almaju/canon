@@ -188,6 +188,57 @@ fn wit_prim(resolve: &wit_parser::Resolve, t: &wit_parser::Type) -> Option<Primi
 /// Inner `None` entries are non-primitive shapes (strings, options,
 /// …) the caller should leave to the existing lowering. Outer `None`
 /// when the URN doesn't resolve (unknown interface or function).
+/// The `error-code` cases of a `wasi:*` extern whose vendored WIT
+/// returns `tuple<stream<u8>, future<result<_, error-code>>>` and takes
+/// no stream or future — the one async-value shape codegen lowers, by
+/// draining the stream into a string (`IndirectReturnShape::ByteStream`).
+/// `None` for any other signature.
+pub fn vendored_extern_byte_stream_return(urn: &str) -> Option<Vec<String>> {
+    use wit_parser::TypeDefKind as K;
+    let (resolve, func) = vendored_func(urn)?;
+    if func
+        .params
+        .iter()
+        .any(|p| wit_mentions_async_value(resolve, &p.ty))
+    {
+        return None;
+    }
+    let chase = |mut t: wit_parser::Type| {
+        for _ in 0..20 {
+            let wit_parser::Type::Id(id) = t else {
+                return None;
+            };
+            match &resolve.types[id].kind {
+                K::Type(inner) => t = *inner,
+                _ => return Some(id),
+            }
+        }
+        None
+    };
+    let K::Tuple(tuple) = &resolve.types[chase(*func.result.as_ref()?)?].kind else {
+        return None;
+    };
+    let [stream, future] = tuple.types.as_slice() else {
+        return None;
+    };
+    let K::Stream(Some(wit_parser::Type::U8)) = &resolve.types[chase(*stream)?].kind else {
+        return None;
+    };
+    let K::Future(Some(result)) = &resolve.types[chase(*future)?].kind else {
+        return None;
+    };
+    let K::Result(result) = &resolve.types[chase(*result)?].kind else {
+        return None;
+    };
+    if result.ok.is_some() {
+        return None;
+    }
+    let K::Enum(codes) = &resolve.types[chase(result.err?)?].kind else {
+        return None;
+    };
+    Some(codes.cases.iter().map(|c| c.name.clone()).collect())
+}
+
 pub(super) type ExternPrimSig = (
     Vec<Option<PrimitiveValType>>,
     Option<Option<PrimitiveValType>>,
@@ -608,6 +659,47 @@ pub(super) fn wrap(
                         next_local_ty += 1;
                         Some(idx)
                     }
+                    Some(IndirectReturnShape::ByteStream { error_cases, .. }) => {
+                        // The same define-then-export chain as the stdout
+                        // instance above, ending in the tuple the function
+                        // returns: `error-code` and the `result` over it
+                        // must be named, the stream and future reference
+                        // them through their exported aliases.
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .enum_type(error_cases.iter().map(String::as_str));
+                        let code = next_local_ty;
+                        iface_ty.export("error-code", ComponentTypeRef::Type(TypeBounds::Eq(code)));
+                        let named_code = code + 1;
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .result(None, Some(ComponentValType::Type(named_code)));
+                        let result = named_code + 1;
+                        iface_ty.export(
+                            "read-result",
+                            ComponentTypeRef::Type(TypeBounds::Eq(result)),
+                        );
+                        let named_result = result + 1;
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .stream(Some(ComponentValType::Primitive(PrimitiveValType::U8)));
+                        let stream = named_result + 1;
+                        iface_ty
+                            .ty()
+                            .defined_type()
+                            .future(Some(ComponentValType::Type(named_result)));
+                        let future = stream + 1;
+                        iface_ty.ty().defined_type().tuple([
+                            ComponentValType::Type(stream),
+                            ComponentValType::Type(future),
+                        ]);
+                        let tuple = future + 1;
+                        next_local_ty = tuple + 1;
+                        Some(tuple)
+                    }
                     Some(IndirectReturnShape::ScalarRecord {
                         wit_name, fields, ..
                     }) => {
@@ -859,6 +951,12 @@ pub(super) fn wrap(
         canon.stream_write(stream_u8_type_idx, [CanonicalOption::Memory(0)]);
         canon.stream_drop_writable(stream_u8_type_idx);
         canon.future_drop_readable(future_result_type_idx);
+        // The read pair, for draining a `stream<u8>` a binding returned
+        // (`IndirectReturnShape::ByteStream`). A sync `stream.read`
+        // blocks until it has made progress or the stream ended, so the
+        // drain loop needs no waitable-set.
+        canon.stream_read(stream_u8_type_idx, [CanonicalOption::Memory(0)]);
+        canon.stream_drop_readable(stream_u8_type_idx);
         c.section(&canon);
     }
 
@@ -892,6 +990,8 @@ pub(super) fn wrap(
     let stream_write_core_fn: u32 = waitable_set_new_core_fn + 8;
     let stream_drop_writable_core_fn: u32 = waitable_set_new_core_fn + 9;
     let future_drop_readable_core_fn: u32 = waitable_set_new_core_fn + 10;
+    let stream_read_core_fn: u32 = waitable_set_new_core_fn + 11;
+    let stream_drop_readable_core_fn: u32 = waitable_set_new_core_fn + 12;
 
     // ── 8. Synthetic core instances, one per import-module ──────────
     // The user core module's `(import "<core-namespace>" "<fn>" ...)` clauses
@@ -925,6 +1025,12 @@ pub(super) fn wrap(
                 "future-drop-readable",
                 ExportKind::Func,
                 future_drop_readable_core_fn,
+            ),
+            ("stream-read", ExportKind::Func, stream_read_core_fn),
+            (
+                "stream-drop-readable",
+                ExportKind::Func,
+                stream_drop_readable_core_fn,
             ),
         ]);
         // one synthetic instance per extern interface
@@ -1009,9 +1115,9 @@ pub(super) fn wrap(
     //   lowered write-via-stream(1),
     //   N lowered externs (2..2+N),
     //   7 waitable+task canon intrinsics (2+N..9+N),
-    //   4 stream/future canon builtins (9+N..13+N),
-    // it's `13 + N`.
-    let run_core_fn: u32 = 13 + externs.len() as u32;
+    //   6 stream/future canon builtins (9+N..15+N),
+    // it's `15 + N`.
+    let run_core_fn: u32 = 15 + externs.len() as u32;
 
     // ── 11. Lift it as the typed `wasi:cli/run.run` ─────────────────────
     // Async-stackful lift — the core function's wasm signature is
