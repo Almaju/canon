@@ -1,0 +1,1 @@
+error[tests/checker/fail/list_append_element_type.can:2:5]: `Appended` on `List<Int>` takes `Int`, not `String`

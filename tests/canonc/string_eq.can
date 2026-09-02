@@ -1,0 +1,13 @@
+Answer = Int
+
+Unit => Answer {
+    "abc" -> Eq("abc") -> (
+        * False { 0 }
+        * True {
+            "abc" -> Eq("abd") -> (
+                * False { 42 }
+                * True { 1 }
+            )
+        }
+    )
+}

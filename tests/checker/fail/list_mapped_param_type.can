@@ -1,0 +1,6 @@
+Unit => Program {
+    List("a" * "b") -> Mapped((Int) => Int { Int -> Sum(1) }) -> At(1) -> (
+        * None { "none" -> Print }
+        * Some<Int> { Int -> Print }
+    )
+}

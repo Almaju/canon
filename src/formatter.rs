@@ -12,7 +12,28 @@ use crate::parser::Parser;
 const MAX_WIDTH: usize = 100;
 
 /// Format a Canon source string, returning the canonically formatted version.
+///
+/// Canonical form is a fixpoint of the emitter: a rewrite can expose
+/// another (folding `"x" -> Joined("y")` inside a format-string hole
+/// leaves a hole holding one literal, which then folds into the text),
+/// so a source that changed is formatted again until it stops changing.
+/// A source already in canonical form costs one pass.
 pub fn format(source: &str) -> Result<String> {
+    let mut out = format_once(source)?;
+    if out == source {
+        return Ok(out);
+    }
+    for _ in 0..8 {
+        let again = format_once(&out)?;
+        if again == out {
+            break;
+        }
+        out = again;
+    }
+    Ok(out)
+}
+
+fn format_once(source: &str) -> Result<String> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);

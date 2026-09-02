@@ -1,0 +1,5 @@
+Unit => Program {
+    1
+        -> Sum("x")
+        -> Print
+}

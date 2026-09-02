@@ -1,0 +1,7 @@
+Answer = String
+
+Unit => Answer {
+    "cano"
+        -> Length
+        -> String
+}

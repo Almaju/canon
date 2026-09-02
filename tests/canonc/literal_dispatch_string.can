@@ -1,0 +1,8 @@
+Answer = Int
+
+Unit => Answer {
+    "b" -> (
+        * "a" { 1 }
+        * String { 2 }
+    )
+}

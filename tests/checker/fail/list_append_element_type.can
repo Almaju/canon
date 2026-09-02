@@ -1,0 +1,6 @@
+Unit => Program {
+    List(1 * 2)
+        -> Appended("x")
+        -> Length
+        -> Print
+}

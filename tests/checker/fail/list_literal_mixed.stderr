@@ -1,0 +1,1 @@
+error[tests/checker/fail/list_literal_mixed.can:2:5]: list elements must share one type: `Int` and `String`

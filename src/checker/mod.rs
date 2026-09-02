@@ -87,6 +87,10 @@ pub struct SymbolTable {
     /// on `Path` (which is `Path = String`) resolves through to `String`'s
     /// `print` method without anyone having to redeclare it for `Path`.
     pub aliases: HashMap<String, String>,
+    /// `Todos = List<Todo>` records `Todos -> Todo`: the element type a
+    /// named list carries, so the list builtins can check what they are
+    /// handed against it.
+    pub list_elem_of: HashMap<String, String>,
 }
 
 pub struct MethodSig {
@@ -1391,10 +1395,16 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // (which live under `variant_of["None"] == "Option"`) by walking
     // through the alias.
     let mut aliases: HashMap<String, String> = HashMap::new();
+    let mut list_elem_of: HashMap<String, String> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
-            if let TypeExpr::Named { name, .. } = &td.body {
+            if let TypeExpr::Named { name, generics, .. } = &td.body {
                 aliases.insert(td.name.name.clone(), name.clone());
+                if name == "List" {
+                    if let [TypeExpr::Named { name: elem, .. }] = generics.as_slice() {
+                        list_elem_of.insert(td.name.name.clone(), elem.clone());
+                    }
+                }
             }
         }
     }
@@ -1456,6 +1466,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         standalone_types,
         free_funcs,
         aliases,
+        list_elem_of,
     }
 }
 
@@ -2634,6 +2645,9 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 });
             }
             check_literal_form_ceremony(&name.name, args, errors);
+            if name.name == "List" {
+                check_list_literal_elements(args, symbols, *span, errors);
+            }
             if args.is_empty() && !is_variant && !matches_free_func {
                 let is_zero_data_builtin = ZERO_DATA_BUILTINS.contains(&name.name.as_str());
                 let has_zero_arg_ctor = symbols
@@ -2796,6 +2810,17 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         );
                     }
                 }
+            }
+            if known {
+                check_builtin_args(
+                    receiver,
+                    &recv_ty,
+                    &method.name,
+                    args,
+                    symbols,
+                    *span,
+                    errors,
+                );
             }
             if is_piped_construction && !has_alias_method {
                 // A scalar newtype (`Greeting = String`) or a bare
@@ -3282,6 +3307,242 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
     }
 }
 
+/// The element type a list-typed expression carries, when its syntax
+/// says: a `List(…)` literal's first element, a `Mapped` lambda's return
+/// type, the receiver of a transform that keeps the element type, or a
+/// named list (`Todos = List<Todo>`) reached through the alias chain.
+/// `None` when the checker cannot tell — every check built on it stays
+/// silent then.
+fn list_elem_type(expr: &Expr, symbols: &SymbolTable) -> Option<String> {
+    match expr {
+        Expr::Constructor { name, args, .. } if name.name == "List" => {
+            let first = flatten_product_args(args).first()?;
+            let ty = expr_type_name_in_scope(first, symbols);
+            (ty != "<unknown>").then_some(ty)
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } if !symbols.methods.keys().any(|(_, m)| m == &method.name) => {
+            match crate::ast::builtin_method_alias(&method.name).unwrap_or(&method.name) {
+                "map" => match args.first() {
+                    Some(Expr::Lambda {
+                        return_ty: TypeExpr::Named { name, .. },
+                        ..
+                    }) => Some(name.clone()),
+                    _ => None,
+                },
+                "filter" | "take" | "skip" | "reverse" | "append" | "concat" => {
+                    list_elem_type(receiver, symbols)
+                }
+                _ => named_list_elem(&expr_type_name_in_scope(expr, symbols), symbols),
+            }
+        }
+        other => named_list_elem(&expr_type_name_in_scope(other, symbols), symbols),
+    }
+}
+
+/// The element type behind a list newtype, through its alias chain.
+fn named_list_elem(name: &str, symbols: &SymbolTable) -> Option<String> {
+    let mut current = name;
+    for _ in 0..20 {
+        if let Some(elem) = symbols.list_elem_of.get(current) {
+            return Some(elem.clone());
+        }
+        current = symbols.aliases.get(current)?;
+    }
+    None
+}
+
+/// A call's arguments with a lone product flattened to its components.
+fn flatten_product_args(args: &[Expr]) -> &[Expr] {
+    match args {
+        [Expr::ProductValue { fields, .. }] => fields,
+        other => other,
+    }
+}
+
+/// Every element of a `List(…)` literal shares one type: the slots all
+/// have the same 8-byte layout, so a mixed list builds and then reads
+/// one element's bytes as another's shape.
+fn check_list_literal_elements(
+    args: &[Expr],
+    symbols: &SymbolTable,
+    span: Span,
+    errors: &mut Vec<CanonError>,
+) {
+    let types: Vec<String> = flatten_product_args(args)
+        .iter()
+        .map(|e| expr_type_name_in_scope(e, symbols))
+        .filter(|t| t != "<unknown>")
+        .collect();
+    let Some(first) = types.first() else {
+        return;
+    };
+    if let Some(other) = types.iter().find(|t| !widens_to(t, first, symbols)) {
+        errors.push(CanonError::CheckError {
+            message: format!("list elements must share one type: `{first}` and `{other}`"),
+            span,
+        });
+    }
+}
+
+/// Type-check the argument of a builtin against what the receiver's
+/// primitive makes it take. Codegen compiles an argument in the shape
+/// its own type has and the builtin consumes it in the shape it expects,
+/// so a mismatch is invalid wasm at best (`1 -> Sum("x")`) and a silently
+/// dropped operand at worst (`"hi" -> Joined(3)`). A user or stdlib
+/// declaration of the same name owns the call and is typed by method
+/// lookup; an argument whose type the checker cannot name is let
+/// through.
+fn check_builtin_args(
+    receiver: &Expr,
+    recv_ty: &str,
+    method: &str,
+    args: &[Expr],
+    symbols: &SymbolTable,
+    span: Span,
+    errors: &mut Vec<CanonError>,
+) {
+    if symbols.methods.keys().any(|(_, m)| m == method) {
+        return;
+    }
+    let canonical = crate::ast::builtin_method_alias(method).unwrap_or(method);
+    let root = symbols.resolve_alias(recv_ty);
+    let args = flatten_product_args(args);
+    let expect = |arg: &Expr, wanted: &str, errors: &mut Vec<CanonError>| {
+        let got = expr_type_name_in_scope(arg, symbols);
+        if got != "<unknown>" && !widens_to(&got, wanted, symbols) {
+            errors.push(CanonError::CheckError {
+                message: format!("`{method}` on `{recv_ty}` takes `{wanted}`, not `{got}`"),
+                span,
+            });
+        }
+    };
+    match (root, canonical, args) {
+        ("Int" | "Float", "add" | "sub" | "mul" | "div" | "rem" | "eq" | "lt", [a]) => {
+            expect(a, root, errors)
+        }
+        ("String", "concat" | "eq" | "lt", [a]) => expect(a, "String", errors),
+        ("String", "byteAt", [a]) | ("List", "take" | "skip" | "get", [a]) => {
+            expect(a, "Int", errors)
+        }
+        ("List", "append", [a]) => {
+            if let Some(elem) = list_elem_type(receiver, symbols) {
+                let got = expr_type_name_in_scope(a, symbols);
+                if got != "<unknown>" && !widens_to(&got, &elem, symbols) {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{method}` on `List<{elem}>` takes `{elem}`, not `{got}`"
+                        ),
+                        span,
+                    });
+                }
+            }
+        }
+        ("List", "concat", [a]) => {
+            let got = expr_type_name_in_scope(a, symbols);
+            if got != "<unknown>" && symbols.resolve_alias(&got) != "List" {
+                errors.push(CanonError::CheckError {
+                    message: format!("`{method}` on `{recv_ty}` takes `List`, not `{got}`"),
+                    span,
+                });
+            } else if let (Some(mine), Some(theirs)) = (
+                list_elem_type(receiver, symbols),
+                list_elem_type(a, symbols),
+            ) {
+                if !widens_to(&mine, &theirs, symbols) {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{method}` on `List<{mine}>` takes a `List<{mine}>`, not `List<{theirs}>`"
+                        ),
+                        span,
+                    });
+                }
+            }
+        }
+        (
+            "List",
+            "map" | "filter",
+            [Expr::Lambda {
+                params, return_ty, ..
+            }],
+        ) => {
+            if let (Some(elem), [param]) = (list_elem_type(receiver, symbols), params.as_slice()) {
+                if let TypeExpr::Named { name, .. } = &param.ty {
+                    if !widens_to(name, &elem, symbols) {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{method}` on `List<{elem}>` binds each element as `{elem}`, not `{name}`"
+                            ),
+                            span,
+                        });
+                    }
+                }
+            }
+            if canonical == "filter" {
+                if let TypeExpr::Named { name, .. } = return_ty {
+                    if symbols.resolve_alias(name) != "Bool" {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{method}` keeps the elements its lambda answers `Bool` for; it returns `{name}`"
+                            ),
+                            span,
+                        });
+                    }
+                }
+            }
+        }
+        ("List", "fold", [a, b]) => {
+            let (lambda, init) = match (a, b) {
+                (l @ Expr::Lambda { .. }, i) | (i, l @ Expr::Lambda { .. }) => (l, i),
+                _ => return,
+            };
+            let Expr::Lambda {
+                params, return_ty, ..
+            } = lambda
+            else {
+                return;
+            };
+            let TypeExpr::Named { name: acc, .. } = return_ty else {
+                return;
+            };
+            expect(init, acc, errors);
+            let [param] = params.as_slice() else {
+                return;
+            };
+            let TypeExpr::Product { fields, .. } = &param.ty else {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{method}` takes a lambda over the accumulator and one element: `({acc} * T) => {acc} {{ … }}`"
+                    ),
+                    span,
+                });
+                return;
+            };
+            let names: Vec<&str> = fields.iter().filter_map(|f| f.simple_name()).collect();
+            let Some(elem) = list_elem_type(receiver, symbols) else {
+                return;
+            };
+            let binds_elem = names
+                .iter()
+                .any(|n| *n != acc.as_str() && widens_to(n, &elem, symbols));
+            if names.len() == 2 && !binds_elem {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{method}` on `List<{elem}>` binds each element as `{elem}`: the lambda takes `({} * {})`",
+                        names[0], names[1]
+                    ),
+                    span,
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
 /// The product a construction of `name` builds and the fields it has to
 /// supply: `name` itself, or — for a newtype of a product (`Parsed =
 /// Todo`, itself a one-field entry in `product_fields`) — the product it
@@ -3296,7 +3557,11 @@ fn product_fields_of(name: &str, symbols: &SymbolTable) -> Option<(String, Vec<S
                 return Some((current.to_string(), fields.clone()));
             }
         }
-        if symbols.methods.keys().any(|(_, m)| m == current) {
+        if symbols
+            .methods
+            .keys()
+            .any(|(r, m)| m == current || (r == current && m == "Self"))
+        {
             return None;
         }
         current = symbols.aliases.get(current)?;
