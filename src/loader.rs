@@ -1173,7 +1173,7 @@ fn collect_ty_refs(ty: &TypeExpr, skip: &HashSet<&str>, out: &mut Refs) {
                 collect_ty_refs(f, skip, out);
             }
         }
-        TypeExpr::Repeat { ty, .. } | TypeExpr::Spread { ty, .. } => collect_ty_refs(ty, skip, out),
+        TypeExpr::Repeat { ty, .. } => collect_ty_refs(ty, skip, out),
         TypeExpr::Function {
             generic_params,
             params,

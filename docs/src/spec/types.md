@@ -96,19 +96,40 @@ Rules:
 - **Multi-step chains** unwrap one step at a time: with `A = B` and
   `B = C`, reach the bottom via `aValue.B.C`.
 
-## Repetition (`^N`, `^*`)
+## Repetition (`^N`)
 
 `T^N` is the N-fold product `T * T * ... * T`, accessed positionally
-(`byte.1`, `byte.2`); `T^*` is the Kleene star, zero or more `T`s,
-completing the semiring reading: sums, products, exponents.
+(`rgb.1`, `rgb.2`): the exponent of the semiring reading -- sums,
+products, exponents. There is no `T^*`: an unbounded sequence is a
+`List<T>`.
 
-Where `T^N` works today is **constructor inputs**: `Int^2 => Ord` binds
-two positional `Int` components, reached as `Int.1` / `Int.2` in the
-body (a bare `Int` reference is an error -- position is the identity),
-and bound positionally at call sites (`3 -> Ord(5)`: the receiver is
-`.1`). See [Functions § The Binding Rule](./functions.md#the-binding-rule)
-and the stdlib's `Ord` for the reference use. Inside a *type
-definition* repetition is an error: a type holds a `List<T>`.
+A repetition is a type of its own at the top of a definition:
+
+```canon
+Channel = Int
+
+Rgb = Channel^3
+```
+
+`Rgb(2 * 5 * 8)` builds one, the values filling `.1`, `.2`, `.3` in
+the order written, and a body over an `Rgb` reads them back as `Rgb.1`
+… `Rgb.3` (`.4` is a checker error). Position *is* the identity of a
+component, so a repetition is exempt from by-type construction and from
+alphabetical ordering, and `Rgb(255 * 0 * 128)` is as readable as its
+domain. Use it where order is the honest semantic -- colour channels,
+coordinates (`Point = Float^2`), address octets; where components mean
+different things, name them (`User = Birthday * Username`). Nested
+inside a product or a union a repetition has no name to construct or
+read through, so `Pixel = Channel^3 * Alpha` is an error: give the
+repetition its own name and use that.
+
+The same shape is a **constructor input**: `Int^2 => Ord` binds two
+positional `Int` components, reached as `Int.1` / `Int.2` in the body
+(a bare `Int` reference is an error), and bound positionally at call
+sites (`3 -> Ord(5)`: the receiver is `.1`). See [Functions § The
+Binding Rule](./functions.md#the-binding-rule) and the stdlib's `Ord`
+for the reference use. A count below 2 is an error either way: `T^1`
+is a plain `T`.
 
 `List<T>` is itself compiler-supplied, not derived from `T^*` --
 `List(...)` is its value-level constructor, and `T` is any type: a

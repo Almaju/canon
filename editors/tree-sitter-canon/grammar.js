@@ -85,9 +85,9 @@ module.exports = grammar({
 
     _type_postfix: ($) => choice($.repeat_type, $._type_atom),
 
-    // Byte^8    Bytes = Byte^*
+    // Byte^8
     repeat_type: ($) =>
-      seq($._type_atom, "^", field("count", choice($.integer_literal, "*"))),
+      seq($._type_atom, "^", field("count", $.integer_literal)),
 
     _type_atom: ($) => choice($.named_type, $.param_list),
 

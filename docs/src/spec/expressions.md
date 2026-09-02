@@ -4,7 +4,7 @@
 
 Type-level, tightest first:
 
-1. `T^N`, `T^*`: postfix repetition / Kleene star
+1. `T^N`: postfix repetition
 2. `T<...>`: generic application
 3. `*`: product
 4. `+`: union
@@ -502,7 +502,6 @@ literals power the [web target](../reference/web-target.md)'s `view`.
 | `+` | union (sum) |
 | `*` | product (type-level and value-level) |
 | `T^N` | fixed repetition |
-| `T^*` | unbounded repetition (Kleene star) |
 | `<T>` | generic parameter |
 | `.` | field access — reads a component (dot-*calls* survive only for camelCase FFI bindings) |
 | `-> ( )` | dispatch: pipe the scrutinee into an arm group |
