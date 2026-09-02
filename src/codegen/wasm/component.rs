@@ -71,14 +71,14 @@ interface filesystem {
     write: func(contents: string, path: string) -> result<string, string>;
 }
 
-interface http {
-    fetch: func(body: string, method: string, headers: string, url: string) -> result<string, string>;
-}
-
 interface json {
     from-float: func(value: f64) -> string;
 }
 ";
+
+/// The `wasi:http/client` function codegen fuses into one round trip
+/// (`IndirectReturnShape::HttpSend`).
+pub(super) const WASI_HTTP_CLIENT_SEND: &str = "wasi:http/client@0.3.0-rc-2026-03-15#send";
 
 /// The core-module import namespace for `wasi:http/types` functions and
 /// intrinsics. This is the `<iface>@<ver>` name `wit-component` matches
@@ -386,6 +386,13 @@ fn program_world_wit(module: &OModule) -> String {
         .map(|ext| ext.component_namespace)
         .collect();
     imports.push(STDOUT_INTERFACE.to_string());
+    // The fused `send` builds its request through `wasi:http/types`.
+    if imports
+        .iter()
+        .any(|i| WASI_HTTP_CLIENT_SEND.starts_with(i.as_str()))
+    {
+        imports.push(WASI_HTTP_TYPES_MODULE.to_string());
+    }
     imports.sort();
     imports.dedup();
     let mut out = String::from("package canon:program;\n\nworld program {\n");
@@ -465,8 +472,8 @@ fn extern_wit(ext: &ExternImport) -> String {
             out.push_str("    }\n");
             Some(wit_name.clone())
         }
-        // Only the vendored WIT produces this shape.
-        Some(IndirectReturnShape::ByteStream { .. }) => None,
+        // Only the vendored WIT produces these shapes.
+        Some(IndirectReturnShape::ByteStream { .. } | IndirectReturnShape::HttpSend { .. }) => None,
         None if ext.bare_result => Some("result".to_string()),
         None => ext
             .component_result

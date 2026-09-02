@@ -58,15 +58,23 @@ drops both handles, and hands back the same `Result` struct a
 `result<string, string>` return produces. `?` and dispatch never see a
 stream.
 
+`wasi:http/client`'s `send` is the other lowering, fused into one round
+trip: the stdlib binding takes the request as strings (`Authority *
+Body * Method * PathWithQuery * RequestHeaders * Scheme`), codegen
+builds the `request` resource through `wasi:http/types`, writes the
+body into its stream while the async `send` is in flight, and drains
+the response body the same way `Stdin` drains — so `Url -> Fetched?`
+imports only the standard interfaces.
+
 Everything else about streams is still the gap: a `stream<T>` of any
-other element type, a stream or future in a *parameter* (`write-via-stream`,
-`send`), a `future` returned on its own, `Stream<T>` written in a Canon
-signature, and streaming rather than draining — which is what the
-`wasi:http` client's response bodies and the handler request body below
-wait on. Any such binding is a checker error; `canon install` skips the
-WIT shapes it cannot spell. Draining was chosen over a `Stream<T>` value
-because every consumer the stdlib has wants the whole input as a string,
-and the drain costs nothing the consumer would not have paid.
+other element type, a stream or future in a *parameter* of a binding
+spelled by hand (`write-via-stream`), a `future` returned on its own,
+`Stream<T>` written in a Canon signature, and streaming rather than
+draining — which is what the handler request body below waits on. Any
+such binding is a checker error; `canon install` skips the WIT shapes
+it cannot spell. Draining was chosen over a `Stream<T>` value because
+every consumer the stdlib has wants the whole input as a string, and
+the drain costs nothing the consumer would not have paid.
 
 ## HTTP handler request headers and body
 

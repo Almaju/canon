@@ -1,0 +1,7 @@
+AfterScheme = String
+
+Url => AfterScheme {
+    Url
+        -> Substring(Url -> SchemeEnd -> Sum(1) -> From * Url -> Length -> To)
+        -> AfterScheme
+}

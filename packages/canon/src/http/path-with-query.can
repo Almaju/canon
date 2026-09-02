@@ -1,0 +1,16 @@
+PathWithQuery = String
+
+Url => PathWithQuery {
+    Url -> AfterScheme -> SplitAt(Separator("/")) -> Eq(0) -> (
+        * False {
+            Url
+                -> AfterScheme
+                -> Substring(
+                    Url -> AfterScheme -> SplitAt(Separator("/")) -> From
+                    * Url -> AfterScheme -> Length -> To
+                )
+                -> PathWithQuery
+        }
+        * True { PathWithQuery("/") }
+    )
+}

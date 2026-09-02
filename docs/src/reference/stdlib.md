@@ -228,8 +228,11 @@ Unit => Program {
 GET; the four-input form takes the `Method`, the `RequestHeaders` as
 `name: value` lines, and the `Body`. HTTP and HTTPS both work. A 2xx
 answers with the response body; any other status is the `HttpError`
-(`HTTP 404 Not Found: …`), as is a transport failure. The request
-blocks; async lowering arrives with the `wasi:http` client migration.
+(`HTTP 404: …`, the body after the colon), and a transport failure is
+`transport error-code NN: …` with the `wasi:http` `error-code` case
+number. The request goes out through `wasi:http/client` — the
+component imports the standard interface and any WASI HTTP host can
+serve it — and the chain waits for the response.
 
 ## `Json`
 

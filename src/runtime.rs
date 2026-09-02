@@ -17,13 +17,12 @@
 
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
-use std::future::Future;
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 
-use wasmtime_wasi::{TrappableError, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
-use wasmtime_wasi_http::p3::{RequestOptions, WasiHttpCtxView, WasiHttpHooks, WasiHttpView};
+use wasmtime_wasi_http::p3::{WasiHttpCtxView, WasiHttpHooks, WasiHttpView};
 use wasmtime_wasi_http::WasiHttpCtx;
 
 /// Per-store state — owns the WASI context and the component resource
@@ -61,44 +60,11 @@ impl WasiHttpView for State {
     }
 }
 
-/// Canon's `WasiHttpHooks` implementation.
-///
-/// Canon programs reach the network through the `canon:builtins/http`
-/// bridge (see `host_builtin_http`), which sends with the crate's
-/// `default_send_request`. A guest calling `wasi:http/client.send`
-/// directly is out-of-band until that interface lowers, so the hook
-/// returns `internal-error` rather than mask the gap with a silently
-/// routed request.
+/// Canon's `WasiHttpHooks`: the crate's defaults — a guest's
+/// `wasi:http/client.send` goes out through `default_send_request`.
 struct CanonHttpHooks;
 
-impl WasiHttpHooks for CanonHttpHooks {
-    fn send_request(
-        &mut self,
-        _request: http::Request<UnsyncBoxBody<Bytes, ErrorCode>>,
-        _options: Option<RequestOptions>,
-        _fut: Box<dyn Future<Output = Result<(), ErrorCode>> + Send>,
-    ) -> Box<
-        dyn Future<
-                Output = Result<
-                    (
-                        http::Response<UnsyncBoxBody<Bytes, ErrorCode>>,
-                        Box<dyn Future<Output = Result<(), ErrorCode>> + Send>,
-                    ),
-                    TrappableError<ErrorCode>,
-                >,
-            > + Send,
-    > {
-        Box::new(async {
-            Err(ErrorCode::InternalError(Some(
-                "wasi:http/client outbound requests are not routed by the \
-                 Canon runtime yet: use `canon:builtins/http` (via \
-                 `canon/Url`) for now"
-                    .to_string(),
-            ))
-            .into())
-        })
-    }
-}
+impl WasiHttpHooks for CanonHttpHooks {}
 
 impl State {
     fn new(ctx: WasiCtx) -> Self {
@@ -327,7 +293,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
     host_builtin_filesystem::add_to_linker(&mut linker)?;
-    host_builtin_http::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
 
     Ok(linker)
@@ -663,91 +628,6 @@ mod host_builtin_filesystem {
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
         canon::builtins::filesystem::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-}
-
-/// `canon:builtins/http` — one blocking outbound request, sent through
-/// `wasmtime-wasi-http`'s own outbound sender (hyper, with TLS from its
-/// `default-send-request` feature). The Canon side spells the request
-/// as `Body * Method * RequestHeaders * Url`; the WIT keeps that order.
-/// A 2xx answers with the body; anything else, and every transport
-/// failure, is the error string. This bridge retires when the
-/// `wasi:http` client interface lowers (the `Stream<T>` gap).
-mod host_builtin_http {
-    use super::State;
-    use bytes::Bytes;
-    use http_body_util::{BodyExt, Full};
-    use wasmtime::component::{HasSelf, Linker};
-    use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface http {
-                /// One request. Headers are `name: value` lines. Answers
-                /// the response body on 2xx, an error message otherwise.
-                fetch: func(body: string, method: string, headers: string, url: string) -> result<string, string>;
-            }
-            world host-shim {
-                import http;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::http::Host for State {
-        fn fetch(
-            &mut self,
-            body: String,
-            method: String,
-            headers: String,
-            url: String,
-        ) -> Result<String, String> {
-            let handle = tokio::runtime::Handle::current();
-            tokio::task::block_in_place(|| handle.block_on(send(body, method, headers, url)))
-        }
-    }
-
-    async fn send(
-        body: String,
-        method: String,
-        headers: String,
-        url: String,
-    ) -> Result<String, String> {
-        let mut request = http::Request::builder()
-            .method(method.as_str())
-            .uri(url.as_str());
-        for line in headers.lines() {
-            if let Some((name, value)) = line.split_once(':') {
-                request = request.header(name.trim(), value.trim());
-            }
-        }
-        let request = request
-            .body(
-                Full::new(Bytes::from(body))
-                    .map_err(|never: std::convert::Infallible| -> ErrorCode { match never {} }),
-            )
-            .map_err(|e| e.to_string())?;
-        let (response, _done) = wasmtime_wasi_http::p3::default_send_request(request, None)
-            .await
-            .map_err(|e| e.to_string())?;
-        let status = response.status();
-        let bytes = response
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| e.to_string())?
-            .to_bytes();
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        if status.is_success() {
-            Ok(text)
-        } else {
-            Err(format!("HTTP {status}: {text}"))
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::http::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
     }
 }
 
