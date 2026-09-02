@@ -144,7 +144,8 @@ canon run hello.can
 | Path | Description |
 |------|-------------|
 | [`src/`](src/) | The `canon` compiler (lexer, parser, checker, codegen) |
-| [`packages/canon/`](packages/canon/) | Standard library (Canon wrappers over generated WASI bindings) |
+| [`packages/canon/`](packages/canon/) | Standard library — the prelude (Canon wrappers over generated WASI bindings) |
+| [`packages/canon/<name>/`](packages/canon/) | Ecosystem packages, vendored into a project with `canon add canon/<name>` |
 | [`docs/`](docs/) | Documentation site (a Canon web app; see `docs/src/`) |
 | [`examples/`](examples/) | Example `.can` programs |
 | [`tests/`](tests/) | Integration tests |

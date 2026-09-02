@@ -1,0 +1,5 @@
+Styled = String
+
+String * Style => Styled {
+    `\u001B[{Style -> Sgr -> String}m{String}\u001B[0m`
+}
