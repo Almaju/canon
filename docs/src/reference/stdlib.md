@@ -209,15 +209,25 @@ digits decode fine; encoding always emits lowercase.
 
 ```canon
 Unit => Program {
-    Url("http://example.com")?
+    Url("https://example.com")?
         -> Fetched?
+        -> Print
+    Body("{\"q\":1}")
+        -> Fetched(
+            Method("POST")
+            * RequestHeaders("content-type: application/json")
+            * Url("https://example.com/search")?
+        )?
         -> Print
 }
 ```
 
-`Url(s)` validates (scheme, non-empty host); `url -> Fetched?` is a
-blocking GET returning the body. TLS and async lowering arrive with
-the `wasi:http/outgoing-handler` migration.
+`Url(s)` validates (scheme, non-empty host). `url -> Fetched?` is a
+GET; the four-input form takes the `Method`, the `RequestHeaders` as
+`name: value` lines, and the `Body`. HTTP and HTTPS both work. A 2xx
+answers with the response body; any other status is the `HttpError`
+(`HTTP 404 Not Found: …`), as is a transport failure. The request
+blocks; async lowering arrives with the `wasi:http` client migration.
 
 ## `Json`
 

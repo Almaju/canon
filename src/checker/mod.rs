@@ -1626,6 +1626,19 @@ fn check_literal_form_ceremony(name: &str, args: &[Expr], errors: &mut Vec<Canon
 }
 
 fn check_type_def(td: &TypeDef, symbols: &SymbolTable, errors: &mut Vec<CanonError>) {
+    // `T^N` binds positional components of a constructor's input; a
+    // type definition has no value-level lowering for it, so a program
+    // could declare a `Byte = Bit^8` it can never build.
+    if let Some(span) = repetition_in(&td.body) {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{}` repeats a type in its definition: repetition (`T^N`, `T^*`) is a \
+                 constructor-input shape (`Int^2 => Ord`); a type holds a `List<T>` instead",
+                td.name.name
+            ),
+            span,
+        });
+    }
     // Types are PascalCase. A camelCase type alias only means something
     // in a binding file, where `apply_bindings` has already rewritten it
     // into an extern function before the checker runs.
@@ -2233,6 +2246,24 @@ fn contextual_arm_annotations_expr(
             }
         }
         _ => {}
+    }
+}
+
+/// The span of the first `T^N` / `T^*` anywhere inside a type
+/// expression, or `None`.
+fn repetition_in(ty: &TypeExpr) -> Option<Span> {
+    match ty {
+        TypeExpr::Repeat { span, .. } | TypeExpr::Spread { span, .. } => Some(*span),
+        TypeExpr::Named { generics, .. } => generics.iter().find_map(repetition_in),
+        TypeExpr::Union { variants: tys, .. } | TypeExpr::Product { fields: tys, .. } => {
+            tys.iter().find_map(repetition_in)
+        }
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => params
+            .iter()
+            .chain([return_ty.as_ref()])
+            .find_map(repetition_in),
     }
 }
 

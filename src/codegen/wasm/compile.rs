@@ -838,11 +838,34 @@ impl<'m> WasmGen<'m> {
                 .as_ref()
                 .map_or(0, |func| max_arm_depth(&func.body)),
         ));
+        // A `Result` / `Option` entry fails when its value is `Err` /
+        // `None`: `?` inside it delivers the error result straight away
+        // (`entry_fails`), and the value it ends on is checked the same
+        // way. Either prints a string payload and exits 1.
+        self.entry_fails = main_func
+            .as_ref()
+            .map(|func| self.resolve_return_ty(func))
+            .is_some_and(|ret| matches!(ret.canon_name(), Some("Result" | "Option")));
         let result_ty = main_func
             .as_ref()
             .map(|func| self.compile_block_return(&func.body, &scope, &mut f));
-        if let Some(ty) = result_ty {
-            self.drop_value(ty, &mut f);
+        let entry_fails = std::mem::take(&mut self.entry_fails);
+        // The error type the entry declares (`Result<Program, IoError>`),
+        // for printing the payload it ends on.
+        let declared_err = main_func
+            .as_ref()
+            .and_then(|func| match &func.return_ty {
+                TypeExpr::Named { generics, .. } => generics.get(1).and_then(named_type_name),
+                _ => None,
+            })
+            .unwrap_or_else(|| "Unit".to_string());
+        match result_ty {
+            Some(Ty::NamedPtrOf(_, _, _) | Ty::NamedPtr(_)) if entry_fails => {
+                f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+                self.emit_entry_failure(&declared_err, &scope, &mut f);
+            }
+            Some(ty) => self.drop_value(ty, &mut f),
+            None => {}
         }
         // Deliver the run `result` discriminant to the component-level
         // caller via `task.return` (0 = ok). This must precede `End` and
@@ -853,6 +876,32 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::Call(self.fn_task_return));
         f.instruction(&Instruction::End);
         f
+    }
+
+    /// With the container in `alloc_ptr`: when its tag is `Err` / `None`,
+    /// print a string payload (typed `err_name`) and leave the entry with
+    /// the error result. Falls through on `Ok` / `Some`.
+    fn emit_entry_failure(&mut self, err_name: &str, scope: &LocalScope, f: &mut Function) {
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::If(BlockType::Empty));
+        let payload = match err_name {
+            "String" => Ty::Str,
+            n => self.resolve_repr(n),
+        };
+        if payload.is_str_like() {
+            self.load_payload_at(scope.alloc_ptr(), 4, &payload, f);
+            self.emit_print(payload, scope, f);
+        }
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::Call(self.fn_task_return));
+        f.instruction(&Instruction::Return);
+        f.instruction(&Instruction::End);
     }
 
     pub(super) fn build_user_function(&mut self, func: &FunctionDef) -> Function {
@@ -1181,11 +1230,14 @@ impl<'m> WasmGen<'m> {
                 //     `(ptr, len)` pair at offsets 4 and 8.
                 //   - `Ty::NamedPtr("Result"|"Option")` → `i64` at offset 4 (legacy).
                 match &inner_ty {
-                    Ty::NamedPtrOf(container, ok_name, _) => {
+                    Ty::NamedPtrOf(container, ok_name, err_name) => {
                         let container = container.clone();
                         let ok_name = ok_name.clone();
+                        let err_name = err_name.clone();
                         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
-                        if self.cur_fn_early_return == Some(container.as_str()) {
+                        if self.entry_fails {
+                            self.emit_entry_failure(&err_name, scope, f);
+                        } else if self.cur_fn_early_return == Some(container.as_str()) {
                             // tag == 0 (Err) → return the Result as-is.
                             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                             f.instruction(&Instruction::I32Load(MemArg {
@@ -1214,7 +1266,9 @@ impl<'m> WasmGen<'m> {
                     }
                     Ty::NamedPtr(n) if n == "Result" || n == "Option" => {
                         f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
-                        if self.cur_fn_early_return == Some(n.as_str()) {
+                        if self.entry_fails {
+                            self.emit_entry_failure("Unit", scope, f);
+                        } else if self.cur_fn_early_return == Some(n.as_str()) {
                             f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                             f.instruction(&Instruction::I32Load(MemArg {
                                 offset: 0,

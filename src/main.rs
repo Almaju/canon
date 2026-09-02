@@ -41,6 +41,7 @@ fn main() {
         "bindgen" => cmd_bindgen(&rest),
         "install" => cmd_install(&rest),
         "publish" => cmd_publish(&rest),
+        "add" => cmd_add(&rest),
         "lsp" => canon::lsp::run(),
         "upgrade" => cmd_upgrade(&rest),
         "use" => toolchain::cmd_use(&rest),
@@ -90,6 +91,9 @@ fn print_help() {
     println!(
         "                            Generate Canon bindings from a WIT package or WASM component"
     );
+    println!("  add <git-url>@<tag>       Vendor a Canon package from a git tag into");
+    println!("                            `deps/<owner>/<name>@<version>/` — the directory");
+    println!("                            is the lockfile; delete it to remove the dependency.");
     println!("  install [target]          Materialize the WIT sources under `<target>/wit/`");
     println!(
         "                            into `<target>/bindgen/`. Target defaults to the current directory."
@@ -1172,6 +1176,85 @@ fn cmd_doc(args: &[String]) {
 /// hand its component to `wkg oci push`. The compiler owns no registry
 /// client: wkg (wasm-pkg-tools) is the ecosystem's publisher, and the
 /// shell-out keeps it that way.
+/// `canon add <git-url>@<tag>`: clone the tag and vendor the package's
+/// `src/` under `deps/<owner>/<name>@<version>/`. Publishing a
+/// dependency is pushing a tag; consuming one is this. There is no
+/// registry, manifest, or lockfile — the directory is the pin, and
+/// removing a dependency is deleting it.
+fn cmd_add(args: &[String]) {
+    let Some(source) = args.first().filter(|a| !a.starts_with('-')) else {
+        eprintln!("Usage: canon add <git-url>@<tag>");
+        eprintln!("       e.g. canon add https://github.com/acme/greet@v1.0.0");
+        process::exit(1);
+    };
+    let Some((url, tag)) = source
+        .rsplit_once('@')
+        .filter(|(u, t)| !u.is_empty() && !t.is_empty())
+    else {
+        eprintln!("error: `canon add` takes `<git-url>@<tag>`: the tag is the version pin");
+        process::exit(1);
+    };
+    let version = tag.trim_start_matches('v');
+    let mut segments = url
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .rsplit(['/', ':'])
+        .filter(|s| !s.is_empty());
+    let (Some(name), Some(owner)) = (segments.next(), segments.next()) else {
+        eprintln!("error: `{url}` names no `<owner>/<name>` — the last two path segments are the package's");
+        process::exit(1);
+    };
+    let Some(git) = which("git") else {
+        eprintln!("error: `canon add` clones with `git`, which is not on PATH");
+        process::exit(1);
+    };
+    let cwd = env::current_dir().expect("cwd");
+    let root = canon::install::find_project_root(&cwd).unwrap_or(cwd);
+    let dest = root
+        .join("deps")
+        .join(owner)
+        .join(format!("{name}@{version}"));
+    if dest.exists() {
+        eprintln!("error: `{}` is already vendored", dest.display());
+        process::exit(1);
+    }
+    let clone = env::temp_dir().join(format!("canon-add-{}", process::id()));
+    let _ = fs::remove_dir_all(&clone);
+    let cloned = process::Command::new(&git)
+        .args(["clone", "--quiet", "--depth", "1", "--branch", tag, url])
+        .arg(&clone)
+        .output();
+    match cloned {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            eprintln!(
+                "error: could not clone `{url}` at `{tag}`:\n{}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+            process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("error: failed to run `git`: {e}");
+            process::exit(1);
+        }
+    }
+    let src = clone.join("src");
+    if !src.is_dir() {
+        let _ = fs::remove_dir_all(&clone);
+        eprintln!("error: `{url}` is not a Canon package: no `src/` at `{tag}`");
+        process::exit(1);
+    }
+    fs::create_dir_all(&dest).expect("create deps dir");
+    for entry in fs::read_dir(&src).expect("read src") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) == Some("can") {
+            fs::copy(&path, dest.join(path.file_name().unwrap())).expect("copy source");
+        }
+    }
+    let _ = fs::remove_dir_all(&clone);
+    println!("Added {owner}/{name}@{version} under {}", dest.display());
+}
+
 fn cmd_publish(args: &[String]) {
     let Some(reference) = args.first().filter(|a| !a.starts_with('-')).cloned() else {
         eprintln!("Usage: canon publish <oci-ref> [target] [-p name]");

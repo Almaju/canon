@@ -257,6 +257,9 @@ struct WasmGen<'m> {
     /// kinds match (both tag 0 at offset 0); in any other context
     /// (e.g. `main`), `?` extracts unconditionally as before.
     cur_fn_early_return: Option<&'static str>,
+    /// Compiling the CLI entry's body, and it returns `Result` / `Option`:
+    /// `?` delivers the error result instead of returning a value.
+    entry_fails: bool,
     /// HTTP encoder mode: the module is self-contained (own memory,
     /// own bump global, exported `cabi_realloc`), imports follow
     /// `wit-component` naming conventions, and the entry export is
@@ -311,6 +314,7 @@ impl<'m> WasmGen<'m> {
             fn_list_concat: base_defined + 6,
             fn_user_start: base_defined + 7,
             cur_fn_early_return: None,
+            entry_fails: false,
             http_mode: false,
         }
     }

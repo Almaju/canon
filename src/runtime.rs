@@ -63,18 +63,12 @@ impl WasiHttpView for State {
 
 /// Canon's `WasiHttpHooks` implementation.
 ///
-/// We disable wasmtime-wasi-http's `default-send-request` feature (which
-/// pulls in rustls + webpki + tokio-rustls), so the hook's outbound
-/// `send_request` becomes required rather than defaulted. Today Canon
-/// programs use the `canon:builtins/http` host bridge for outbound HTTP
-/// (see `host_builtin_http`), so a guest calling `wasi:http/client.send`
-/// is out-of-band — we return `internal-error` rather than mask the
-/// architectural gap with a silently routed request.
-///
-/// When `wasi:http/client` migration lands (replacing the
-/// `canon:builtins/http` bridge), this hook becomes a real outbound
-/// client — either by re-enabling `default-send-request` or by routing
-/// through a hyper client of our own.
+/// Canon programs reach the network through the `canon:builtins/http`
+/// bridge (see `host_builtin_http`), which sends with the crate's
+/// `default_send_request`. A guest calling `wasi:http/client.send`
+/// directly is out-of-band until that interface lowers, so the hook
+/// returns `internal-error` rather than mask the gap with a silently
+/// routed request.
 struct CanonHttpHooks;
 
 impl WasiHttpHooks for CanonHttpHooks {
@@ -737,24 +731,27 @@ mod host_builtin_filesystem {
     }
 }
 
-/// `canon:builtins/http` — a minimal blocking HTTP GET. Written against
-/// `std::net::TcpStream` to avoid pulling in an HTTP client dependency.
-/// Only handles `http://`/`https://` URLs of the shape `scheme://host/path`,
-/// returns the response body on 2xx, otherwise an empty string. Until the
-/// codegen lowers `result<string, error>`, this is the cleanest shape.
+/// `canon:builtins/http` — one blocking outbound request, sent through
+/// `wasmtime-wasi-http`'s own outbound sender (hyper, with TLS from its
+/// `default-send-request` feature). The Canon side spells the request
+/// as `Body * Method * RequestHeaders * Url`; the WIT keeps that order.
+/// A 2xx answers with the body; anything else, and every transport
+/// failure, is the error string. This bridge retires when the
+/// `wasi:http` client interface lowers (the `Stream<T>` gap).
 mod host_builtin_http {
     use super::State;
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
+    use bytes::Bytes;
+    use http_body_util::{BodyExt, Full};
     use wasmtime::component::{HasSelf, Linker};
+    use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
 
     wasmtime::component::bindgen!({
         inline: "
             package canon:builtins@0.1.0;
             interface http {
-                /// HTTP GET on a previously-parsed `Url`. Returns the
-                /// response body or an error message.
-                fetch: func(url: string) -> result<string, string>;
+                /// One request. Headers are `name: value` lines. Answers
+                /// the response body on 2xx, an error message otherwise.
+                fetch: func(body: string, method: string, headers: string, url: string) -> result<string, string>;
             }
             world host-shim {
                 import http;
@@ -764,39 +761,54 @@ mod host_builtin_http {
     });
 
     impl canon::builtins::http::Host for State {
-        fn fetch(&mut self, url: String) -> Result<String, String> {
-            http_get(&url).ok_or_else(|| format!("HTTP GET failed for {url}"))
+        fn fetch(
+            &mut self,
+            body: String,
+            method: String,
+            headers: String,
+            url: String,
+        ) -> Result<String, String> {
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::block_in_place(|| handle.block_on(send(body, method, headers, url)))
         }
     }
 
-    fn http_get(url: &str) -> Option<String> {
-        let (host, path) = parse_http_url(url)?;
-        let mut stream = TcpStream::connect((host.as_str(), 80)).ok()?;
-        let request = format!(
-            "GET {} HTTP/1.0\r\nHost: {}\r\nUser-Agent: canon/0.1\r\nConnection: close\r\nAccept: */*\r\n\r\n",
-            path, host
-        );
-        stream.write_all(request.as_bytes()).ok()?;
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).ok()?;
-        let text = String::from_utf8_lossy(&response).into_owned();
-        // Split off headers from body.
-        let (_, body) = text.split_once("\r\n\r\n")?;
-        Some(body.to_string())
-    }
-
-    /// Parses a bare `http://host[:port]/path` URL into `(host, path)`. HTTPS
-    /// is rejected (TLS isn't included). Returns `None` for malformed input.
-    fn parse_http_url(url: &str) -> Option<(String, String)> {
-        let rest = url.strip_prefix("http://")?;
-        let (host, path) = match rest.find('/') {
-            Some(i) => (&rest[..i], &rest[i..]),
-            None => (rest, "/"),
-        };
-        if host.is_empty() {
-            return None;
+    async fn send(
+        body: String,
+        method: String,
+        headers: String,
+        url: String,
+    ) -> Result<String, String> {
+        let mut request = http::Request::builder()
+            .method(method.as_str())
+            .uri(url.as_str());
+        for line in headers.lines() {
+            if let Some((name, value)) = line.split_once(':') {
+                request = request.header(name.trim(), value.trim());
+            }
         }
-        Some((host.to_string(), path.to_string()))
+        let request = request
+            .body(
+                Full::new(Bytes::from(body))
+                    .map_err(|never: std::convert::Infallible| -> ErrorCode { match never {} }),
+            )
+            .map_err(|e| e.to_string())?;
+        let (response, _done) = wasmtime_wasi_http::p3::default_send_request(request, None)
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = response.status();
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| e.to_string())?
+            .to_bytes();
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        if status.is_success() {
+            Ok(text)
+        } else {
+            Err(format!("HTTP {status}: {text}"))
+        }
     }
 
     pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {

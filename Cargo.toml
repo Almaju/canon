@@ -59,7 +59,7 @@ tokio         = { version = "1", features = ["rt-multi-thread", "macros", "time"
 # The outbound request path can be re-enabled when we wire `wasi:http/client`
 # imports for the Canon HTTP client (which is currently the
 # `canon:builtins/http` bridge).
-wasmtime-wasi-http = { version = "45", default-features = false, features = ["p3"] }
+wasmtime-wasi-http = { version = "45", default-features = false, features = ["p3", "default-send-request"] }
 
 # hyper-side HTTP. `hyper` provides the wire protocol, `hyper-util` the
 # tokio glue (`TokioIo`, server-side conn auto-detect). `http-body-util`

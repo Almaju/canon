@@ -107,9 +107,8 @@ two positional `Int` components, reached as `Int.1` / `Int.2` in the
 body (a bare `Int` reference is an error -- position is the identity),
 and bound positionally at call sites (`3 -> Ord(5)`: the receiver is
 `.1`). See [Functions § The Binding Rule](./functions.md#the-binding-rule)
-and the stdlib's `Ord` for the reference use. A `T^N` component inside
-a *type definition* is accepted structurally but has no value-level
-lowering yet.
+and the stdlib's `Ord` for the reference use. Inside a *type
+definition* repetition is an error: a type holds a `List<T>`.
 
 `List<T>` is itself compiler-supplied, not derived from `T^*` --
 `List(...)` is its value-level constructor, and `T` is any type: a

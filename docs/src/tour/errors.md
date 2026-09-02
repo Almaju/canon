@@ -12,7 +12,8 @@ happen is visible as a `?` at the exact call that can fail.
 To *handle* a failure instead of propagating it, dispatch — `Result`
 and `Option` are ordinary unions. Note the entry's return type: `?` can
 only short-circuit into a signature that can carry the failure, so
-honesty about failure goes all the way to the top.
+honesty about failure goes all the way to the top — and a failure that
+reaches the entry prints its message and exits 1.
 
 ```canon,run
 Unit => Result<Program, MalformedInt> {

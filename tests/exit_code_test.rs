@@ -166,3 +166,48 @@ fn args_reach_argv() {
 
     let _ = std::fs::remove_dir_all(&workdir);
 }
+
+#[test]
+fn a_result_entry_fails_on_err() {
+    // A `Result` entry that hits `Err` — through `?` or as its final
+    // value — prints the error's string payload and exits 1, instead of
+    // discarding the result and exiting 0.
+    let workdir = std::env::temp_dir().join(format!("canon_result_entry_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+
+    let via_try = workdir.join("via_try.can");
+    std::fs::write(
+        &via_try,
+        "Unit => Result<Program, MalformedInt> {\n    Int(\"nope\")? -> Print\n    Unit() -> Ok\n}\n",
+    )
+    .unwrap();
+    let out = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&via_try)
+        .output()
+        .expect("canon run spawns");
+    assert_eq!(out.status.code(), Some(1), "`?` on Err exits 1");
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("invalid integer"),
+        "the error payload is printed, got:\n{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    let final_err = workdir.join("final_err.can");
+    std::fs::write(
+        &final_err,
+        "Unit => Result<Program, MalformedInt> {\n    \"start\" -> Print\n    MalformedInt(\"ended badly\") -> Err\n}\n",
+    )
+    .unwrap();
+    let out = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&final_err)
+        .output()
+        .expect("canon run spawns");
+    assert_eq!(out.status.code(), Some(1), "an Err final value exits 1");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "start\nended badly"
+    );
+}
