@@ -106,6 +106,7 @@ given.
 | `Skipped` | `Int` | everything after the first *n* elements |
 | `Taken` | `Int` | the first *n* elements |
 | `Reversed` | — | `List<T>` |
+| `Sorted` | — | `List<T>` in ascending `Lt` order; `T` is `Int`, `Float`, or `String` |
 | `Appended` | `T` | `List<T>` with the element at the end |
 | `Joined` | `List<T>` | the receiver followed by the argument |
 | `Mapped` | `(T) => U { … }` | `List<U>` |

@@ -1728,7 +1728,7 @@ impl<'m> WasmGen<'m> {
             "Joined" | "Substring" => Some("String".to_string()),
             // List transforms preserve list-ness; a fold yields its
             // accumulator, the lambda's declared return type.
-            "Mapped" | "Appended" | "Skipped" | "Reversed" => Some("List".to_string()),
+            "Mapped" | "Appended" | "Skipped" | "Reversed" | "Sorted" => Some("List".to_string()),
             "Folded" => crate::checker::fold_result_type(method, args),
             "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Minimum" | "Maximum"
             | "Negated" => self.infer_ctor_arg_type_name(receiver),
@@ -2782,7 +2782,8 @@ impl<'m> WasmGen<'m> {
                         return named_type_name(return_ty);
                     }
                 }
-                "Filtered" | "Taken" | "Skipped" | "Reversed" | "Appended" | "Joined" => {
+                "Filtered" | "Taken" | "Skipped" | "Reversed" | "Sorted" | "Appended"
+                | "Joined" => {
                     return self.list_elem_name(inner);
                 }
                 _ => {}
@@ -3024,24 +3025,23 @@ impl<'m> WasmGen<'m> {
                 }
             }
         }
+        // A member is the call only when the receiver and the arguments
+        // fill its inputs: `Model -> Update` with `Model * Msg => Update`
+        // is the documented zero-argument relabel, not that call short an
+        // input (which emitted with the wrong stack shape). A member with
+        // no recorded inputs (a repetition head) keeps the lookup.
+        let fits = |info: &FuncInfo| {
+            info.input_types.is_empty() || info.input_types.len() == 1 + args.len()
+        };
         for alias in candidate_types {
             let key = (Some(alias), method.to_string());
-            if let Some(info) = self.func_table.get(&key).cloned() {
+            if let Some(info) = self.func_table.get(&key).filter(|i| fits(i)).cloned() {
                 return self.emit_func_table_call(&info, args, scope, f);
             }
         }
-        if type_name.is_none() {
-            if let Some(info) = self.func_table.get(&(None, method.to_string())).cloned() {
-                return self.emit_func_table_call(&info, args, scope, f);
-            }
-        }
-
-        // Also try without type name (free functions used as methods)
         let free_key = (None, method.to_string());
-        if type_name.is_some() {
-            if let Some(info) = self.func_table.get(&free_key).cloned() {
-                return self.emit_func_table_call(&info, args, scope, f);
-            }
+        if let Some(info) = self.func_table.get(&free_key).filter(|i| fits(i)).cloned() {
+            return self.emit_func_table_call(&info, args, scope, f);
         }
 
         // No user/stdlib function matched — normalize the types-only
@@ -5164,6 +5164,152 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::I32Sub);
                 Ty::List
             }
+            ("sort", Ty::List) => {
+                // Insertion sort over a fresh copy of the slots (a list
+                // is a value; the source may be shared), ordering by the
+                // element's own `Lt`: `i64.lt_s` / `f64.lt` for scalars,
+                // `fn_str_cmp` for strings. No user code runs, so the
+                // scratch locals are safe: `tmp_i32` = n, `tmp_i32_b` =
+                // src then j, `addr_scratch` = dst, `rbool` = i,
+                // `tmp_i64` = the slot being moved. Stack: [ptr, len].
+                let elem = self
+                    .list_elem_name(receiver)
+                    .map(|n| self.resolve_repr(&n))
+                    .unwrap_or(Ty::I64);
+                let mem64 = MemArg {
+                    offset: 0,
+                    align: 3,
+                    memory_index: 0,
+                };
+                let mem32 = |offset: u64| MemArg {
+                    offset,
+                    align: 2,
+                    memory_index: 0,
+                };
+                // dst + j*8 - back*8
+                let slot_j = |f: &mut Function, back: i32| {
+                    f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                    f.instruction(&Instruction::I32Const(back));
+                    f.instruction(&Instruction::I32Sub);
+                    f.instruction(&Instruction::I32Const(8));
+                    f.instruction(&Instruction::I32Mul);
+                    f.instruction(&Instruction::I32Add);
+                };
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // n
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // src
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.addr_scratch())); // dst
+                                                                             // Copy: dst[i] = src[i].
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32GeU);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::I32Mul);
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::I64Load(mem64));
+                f.instruction(&Instruction::I64Store(mem64));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
+                // for i in 1..n: j = i; while j > 0 && dst[j] < dst[j-1]: swap, j -= 1
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32GeU);
+                f.instruction(&Instruction::BrIf(1));
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // j = i
+                f.instruction(&Instruction::Block(BlockType::Empty));
+                f.instruction(&Instruction::Loop(BlockType::Empty));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                // dst[j] < dst[j-1]?
+                match &elem {
+                    Ty::F64 => {
+                        slot_j(f, 0);
+                        f.instruction(&Instruction::F64Load(mem64));
+                        slot_j(f, 1);
+                        f.instruction(&Instruction::F64Load(mem64));
+                        f.instruction(&Instruction::F64Lt);
+                    }
+                    Ty::Str | Ty::NamedStr(_) => {
+                        slot_j(f, 0);
+                        f.instruction(&Instruction::I32Load(mem32(0)));
+                        slot_j(f, 0);
+                        f.instruction(&Instruction::I32Load(mem32(4)));
+                        slot_j(f, 1);
+                        f.instruction(&Instruction::I32Load(mem32(0)));
+                        slot_j(f, 1);
+                        f.instruction(&Instruction::I32Load(mem32(4)));
+                        f.instruction(&Instruction::Call(self.fn_str_cmp));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32LtS);
+                    }
+                    _ => {
+                        slot_j(f, 0);
+                        f.instruction(&Instruction::I64Load(mem64));
+                        slot_j(f, 1);
+                        f.instruction(&Instruction::I64Load(mem64));
+                        f.instruction(&Instruction::I64LtS);
+                    }
+                }
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                // swap
+                slot_j(f, 0);
+                f.instruction(&Instruction::I64Load(mem64));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i64()));
+                slot_j(f, 0);
+                slot_j(f, 1);
+                f.instruction(&Instruction::I64Load(mem64));
+                f.instruction(&Instruction::I64Store(mem64));
+                slot_j(f, 1);
+                f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+                f.instruction(&Instruction::I64Store(mem64));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Sub);
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Add);
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                Ty::List
+            }
             ("reverse", Ty::List) => {
                 // Copy the raw 8-byte slots into a fresh list back to
                 // front. No user code runs, so the scratch locals are
@@ -6252,7 +6398,7 @@ impl<'m> WasmGen<'m> {
                     .vars
                     .insert(bound_name, (base_scope.rbool(), payload_ty));
             }
-            Ty::Ptr | Ty::NamedPtr(_) => {
+            Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => {
                 // Boxed product payload (auto-boxed by
                 // `build_union_value` for multi-field product variants,
                 // or a single pointer payload): the union stores one
@@ -6277,15 +6423,6 @@ impl<'m> WasmGen<'m> {
                 // same slots a string payload uses.
                 self.load_payload_at(base_scope.alloc_ptr(), 4, &payload_ty, f);
                 f.instruction(&Instruction::LocalSet(base_scope.arm_payload_ptr() + 1));
-                f.instruction(&Instruction::LocalSet(base_scope.arm_payload_ptr()));
-                scope
-                    .vars
-                    .insert(bound_name, (base_scope.arm_payload_ptr(), payload_ty));
-            }
-            Ty::NamedPtrOf(_, _, _) => {
-                // A container payload (`Option<Result<…>>`) is one
-                // pointer at +4, like a product.
-                self.load_payload_at(base_scope.alloc_ptr(), 4, &payload_ty, f);
                 f.instruction(&Instruction::LocalSet(base_scope.arm_payload_ptr()));
                 scope
                     .vars

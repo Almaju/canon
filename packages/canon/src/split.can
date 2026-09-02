@@ -1,0 +1,56 @@
+Cut = Int
+
+Lines = List<String>
+
+Position = Int
+
+Separator = String
+
+Split = List<String>
+
+SplitAt = Int
+
+Position * Separator * String => Cut {
+    Position -> Sum(Separator -> Length) -> Difference(1) -> Gt(String -> Length) -> (
+        * False {
+            String
+                -> Substring(
+                    Position -> From
+                    * Position -> Sum(Separator -> Length) -> Difference(1) -> To
+                )
+                -> Eq(Separator) -> (
+                * False { Position -> Sum(1) -> Position -> Cut(Separator * String) }
+                * True { Position -> Cut }
+            )
+        }
+        * True { 0 }
+    )
+}
+
+String => Lines {
+    String
+        -> Split(Separator("\n"))
+        -> Lines
+}
+
+Separator * String => Split {
+    Separator -> Length -> Eq(0) -> (
+        * False {
+            String -> SplitAt(Separator) -> Eq(0) -> (
+                * False {
+                    List(String -> Substring(From(1) * String -> SplitAt(Separator) -> Difference(1) -> To))
+                        -> Joined(String -> Substring(String -> SplitAt(Separator) -> Sum(Separator -> Length) -> From * String -> Length -> To) -> Split(Separator))
+                        -> Split
+                }
+                * True { List(String) -> Split }
+            )
+        }
+        * True { List(String) -> Split }
+    )
+}
+
+Separator * String => SplitAt {
+    Position(1)
+        -> Cut(Separator * String)
+        -> SplitAt
+}

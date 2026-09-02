@@ -99,7 +99,7 @@ same PR; never open standalone docs-sync PRs.
 | `src/lexer/` | Tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | AST construction (`parser.rs`) |
 | `src/checker/` | Type checker + sort-order validation |
-| `src/codegen/` | WebAssembly component gen (`wasm/mod.rs`, `wasm/component.rs`, `async_analysis.rs`) |
+| `src/codegen/` | WebAssembly component gen (`wasm/compile.rs` lowers expressions, `wasm/mod.rs` assembles the core module, `wasm/component.rs` wraps it, `async_analysis.rs`) |
 | `src/ast.rs` | AST node definitions |
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading + reference resolution |
@@ -182,6 +182,7 @@ tests/
   runtime/<name>.can           # must run to completion (exit 0)
   runtime/<name>.stdout        # golden: exact captured stdout
   canon/<name>_test.can        # `X = TestResult` newtypes + `Unit => X` ctors
+  canonc/<name>.can            # canonc's subset, ending in `Unit => Answer`; both compilers must agree
   common/mod.rs                # shared harness helpers
   *_fixtures.rs / canon_tests.rs / checker_api.rs  # per-layer harnesses
 ```
@@ -194,6 +195,7 @@ Pick the layer by **what the test observes**:
 | checker rejects with a specific error | `tests/checker/fail/<name>.can` + `.stderr` |
 | program runs end-to-end, prints exactly this | `tests/runtime/<name>.can` + `.stdout` |
 | an expression / stdlib fn produces the right value | `tests/canon/<file>_test.can` |
+| the self-hosted compiler agrees with the reference | `tests/canonc/<name>.can` (`canonc_differential.rs`) |
 | the parser handles an edge case | `tests/checker/ok/<name>.can` |
 | a compiler API under unusual input | `tests/checker_api.rs` (keep rare) |
 

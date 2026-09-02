@@ -1,5 +1,0 @@
-Answer = String
-
-Unit => Answer {
-    "xy"
-}

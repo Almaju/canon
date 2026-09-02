@@ -3334,7 +3334,7 @@ fn list_elem_type(expr: &Expr, symbols: &SymbolTable) -> Option<String> {
                     }) => Some(name.clone()),
                     _ => None,
                 },
-                "filter" | "take" | "skip" | "reverse" | "append" | "concat" => {
+                "filter" | "take" | "skip" | "reverse" | "sort" | "append" | "concat" => {
                     list_elem_type(receiver, symbols)
                 }
                 _ => named_list_elem(&expr_type_name_in_scope(expr, symbols), symbols),
@@ -3428,6 +3428,20 @@ fn check_builtin_args(
         ("String", "concat" | "eq" | "lt", [a]) => expect(a, "String", errors),
         ("String", "byteAt", [a]) | ("List", "take" | "skip" | "get", [a]) => {
             expect(a, "Int", errors)
+        }
+        ("List", "sort", []) => {
+            // The order is the element's own (`Lt`), which only scalars
+            // and strings have.
+            if let Some(elem) = list_elem_type(receiver, symbols) {
+                if scalar_primitive_root(symbols, &elem).is_none() {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{method}` orders by `Lt`, which `{elem}` has no; sort a list of `Int`, `Float`, or `String`"
+                        ),
+                        span,
+                    });
+                }
+            }
         }
         ("List", "append", [a]) => {
             if let Some(elem) = list_elem_type(receiver, symbols) {
@@ -3781,6 +3795,7 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("take", 1)
                 | ("skip", 1)
                 | ("reverse", 0)
+                | ("sort", 0)
                 | ("append", 1)
                 | ("concat", 1)
                 | ("Json", 0)
@@ -4289,7 +4304,7 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("String", "length" | "byteAt") => "Int".to_string(),
         ("String", "eq" | "lt") => "Bool".to_string(),
         ("List", "length") => "Int".to_string(),
-        ("List", "map" | "filter" | "take" | "skip" | "reverse") => "List".to_string(),
+        ("List", "map" | "filter" | "take" | "skip" | "reverse" | "sort") => "List".to_string(),
         ("List", "first") => "Option".to_string(),
         ("List", "get") => "Option".to_string(),
         ("List", "append" | "concat") => "List".to_string(),

@@ -1,30 +1,10 @@
-FirstLine = String
-
 Line = String
 
 Parsed = Todo
 
 RenderedItem = Html
 
-RestLines = String
-
 Wire = String
-
-String => FirstLine {
-    String -> Length -> Eq(0) -> (
-        * False {
-            String -> ByteAt(1) -> Eq(10) -> (
-                * False {
-                    String
-                        -> Substring(From(1) * To(1))
-                        -> Joined(String -> Substring(From(2) * String -> Length -> To) -> FirstLine)
-                }
-                * True { "" }
-            )
-        }
-        * True { "" }
-    )
-}
 
 Todo => Line {
     Todo.Done -> (
@@ -56,27 +36,12 @@ Int * Todo => RenderedItem {
     )
 }
 
-String => RestLines {
-    String -> Length -> Eq(0) -> (
-        * False {
-            String -> ByteAt(1) -> Eq(10) -> (
-                * False { String -> Substring(From(2) * String -> Length -> To) -> RestLines }
-                * True { String -> Substring(From(2) * String -> Length -> To) }
-            )
-        }
-        * True { "" }
-    )
-}
-
 Wire => Todos {
-    Wire.String -> Length -> Eq(0) -> (
-        * False {
-            List(Wire.String -> FirstLine -> Line -> Parsed)
-                -> Joined(Wire.String -> RestLines -> Wire -> Todos)
-                -> Todos
-        }
-        * True { List() -> Todos }
-    )
+    Wire.String
+        -> Lines
+        -> Filtered((String) => Bool { String -> Length -> Gt(0) })
+        -> Mapped((String) => Parsed { String -> Line -> Parsed })
+        -> Todos
 }
 
 Todos => Wire {

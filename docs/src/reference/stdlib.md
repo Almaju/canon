@@ -162,6 +162,28 @@ Unit => Program {
 same underlying type, so the values must be tagged), 1-based and
 inclusive at both ends: this prints `canon`.
 
+## Splitting: `Split`, `Lines`
+
+```canon
+Unit => Program {
+    "a,b,c"
+        -> Split(Separator(","))
+        -> Length
+        -> Print
+    Lines("first\nsecond") -> Reversed -> First -> (
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
+    )
+}
+```
+
+`Split` cuts a string at every occurrence of its `Separator` into a
+`List<String>` (both `= String`, so the separator is tagged); adjacent
+separators leave an empty element, and a string with no separator is a
+one-element list. `Lines` is `Split` at `"\n"`. Both are pure Canon over
+`Substring`, so a very long input pays a quadratic copy — fine for
+configuration files and wire formats, not for logs.
+
 ## Encodings: `Base64`, `Hex`
 
 ```canon

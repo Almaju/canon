@@ -1,9 +1,10 @@
 # Loops Without Loops
 
 Canon has no loop keyword. Iteration is either an operation on a
-collection — `Mapped` takes a lambda, which is the same arrow written
-inline with its full signature — or plain **recursion**, with dispatch
-supplying the base case.
+collection — `Mapped`, `Filtered`, and `Folded` take a lambda, which is
+the same arrow written inline with its full signature (the whole list
+vocabulary is on the [Builtins](../reference/builtins.md) page) — or
+plain **recursion**, with dispatch supplying the base case.
 
 `Chain` is a union that contains itself, so `Len` calls itself on the
 rest of the chain until dispatch reaches the `Stop` arm. Base case,

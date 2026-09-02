@@ -1,0 +1,37 @@
+Unit => Program {
+    "a,b,,c"
+        -> Split(Separator(","))
+        -> Length
+        -> Print
+    "a,b,,c" -> Split(Separator(",")) -> At(2) -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    "a,b,,c" -> Split(Separator(",")) -> At(3) -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Length -> Print }
+    )
+    "one::two::three" -> Split(Separator("::")) -> Reversed -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    "solo"
+        -> Split(Separator(","))
+        -> Length
+        -> Print
+    ""
+        -> Split(Separator(","))
+        -> Length
+        -> Print
+    "x"
+        -> Split(Separator(""))
+        -> Length
+        -> Print
+    Lines("first\nsecond\n")
+        -> Length
+        -> Print
+    Lines("first\nsecond\n") -> At(2) -> (
+        * None { "none" -> Print }
+        * Some<String> { String -> Print }
+    )
+}
