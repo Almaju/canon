@@ -1538,7 +1538,7 @@ impl Parser {
 }
 
 fn span_join(a: Span, b: Span) -> Span {
-    Span::new(a.start.min(b.start), a.end.max(b.end), a.line, a.column)
+    Span::new(a.start.min(b.start), a.end.max(b.end), a.line, a.column).with_file(a.file)
 }
 
 /// Accumulator used while parsing a JSON literal: collects pre-encoded

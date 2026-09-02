@@ -88,16 +88,24 @@ pub struct Scanner<'a> {
     pos: usize,
     line: u32,
     column: u32,
+    /// Stamped on every token's span — see `error::file_id`.
+    file: u32,
 }
 
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
+        Self::in_file(source, 0)
+    }
+
+    /// A scanner whose spans name `file`.
+    pub fn in_file(source: &'a str, file: u32) -> Self {
         Self {
             source,
             bytes: source.as_bytes(),
             pos: 0,
             line: 1,
             column: 1,
+            file,
         }
     }
 
@@ -230,7 +238,8 @@ impl<'a> Scanner<'a> {
                     continue;
                 }
                 self.bump_raw(); // consume the `{`
-                let span = Span::new(start_pos, self.pos, start_line, start_col);
+                let span =
+                    Span::new(start_pos, self.pos, start_line, start_col).with_file(self.file);
                 return Ok((
                     Token {
                         kind: TokenKind::HtmlText,
@@ -273,7 +282,8 @@ impl<'a> Scanner<'a> {
                     }
                     state.tag = None;
                     if state.depth == 0 {
-                        let span = Span::new(start_pos, self.pos, start_line, start_col);
+                        let span = Span::new(start_pos, self.pos, start_line, start_col)
+                            .with_file(self.file);
                         return Ok((
                             Token {
                                 kind: TokenKind::HtmlEnd,
@@ -322,7 +332,8 @@ impl<'a> Scanner<'a> {
                         }
                         state.depth -= 1;
                         if state.depth == 0 {
-                            let span = Span::new(start_pos, self.pos, start_line, start_col);
+                            let span = Span::new(start_pos, self.pos, start_line, start_col)
+                                .with_file(self.file);
                             return Ok((
                                 Token {
                                     kind: TokenKind::HtmlEnd,
@@ -507,7 +518,7 @@ impl<'a> Scanner<'a> {
             }
         };
 
-        let span = Span::new(start_pos, self.pos, start_line, start_col);
+        let span = Span::new(start_pos, self.pos, start_line, start_col).with_file(self.file);
         Ok(Token { kind, lexeme, span })
     }
 
@@ -721,7 +732,8 @@ impl<'a> Scanner<'a> {
             match b {
                 b'`' => {
                     self.bump_raw(); // consume the closing backtick
-                    let span = Span::new(start_pos, self.pos, start_line, start_col);
+                    let span =
+                        Span::new(start_pos, self.pos, start_line, start_col).with_file(self.file);
                     return Ok((
                         Token {
                             kind: TokenKind::FmtEnd,
@@ -739,7 +751,8 @@ impl<'a> Scanner<'a> {
                         continue;
                     }
                     self.bump_raw(); // consume the `{`
-                    let span = Span::new(start_pos, self.pos, start_line, start_col);
+                    let span =
+                        Span::new(start_pos, self.pos, start_line, start_col).with_file(self.file);
                     return Ok((
                         Token {
                             kind: TokenKind::FmtText,

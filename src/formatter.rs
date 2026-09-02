@@ -33,16 +33,15 @@ pub fn format(source: &str) -> Result<String> {
 /// first place `source` diverges from its canonical form, or `None`
 /// when the source is already canonical. A source that fails to parse
 /// also returns `None`: the pipeline owns the better-located parse
-/// diagnostic. `path` names the offending file in multi-file loads.
-pub fn format_error(source: &str, path: &str) -> Option<CanonError> {
+/// diagnostic. `file` is the offending file's id (`error::file_id`).
+pub fn format_error(source: &str, file: u32) -> Option<CanonError> {
     let canonical = format(source).ok()?;
     if canonical == source {
         return None;
     }
     Some(CanonError::FormatError {
         message: "not canonically formatted: run `canon check --fix`".to_string(),
-        path: path.to_string(),
-        span: divergence_span(source, &canonical),
+        span: divergence_span(source, &canonical).with_file(file),
     })
 }
 

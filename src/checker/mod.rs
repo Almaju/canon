@@ -144,7 +144,7 @@ pub fn check_loaded(loaded: &crate::loader::LoadResult) -> Vec<CanonError> {
         .iter()
         .filter(|src| src.path.extension().and_then(|e| e.to_str()) != Some("md"))
         .filter_map(|src| {
-            crate::formatter::format_error(&src.source, &src.path.display().to_string())
+            crate::formatter::format_error(&src.source, crate::loader::file_id_of(&src.path))
         })
         .collect();
     errors.extend(loaded.expand_errors.iter().cloned());

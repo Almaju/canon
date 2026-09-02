@@ -36,14 +36,14 @@ fn scratch(name: &str) -> PathBuf {
 fn canonical_source_has_no_format_error() {
     let canonical = format(UNFORMATTED).expect("fixture parses");
     assert!(
-        format_error(&canonical, "main.can").is_none(),
+        format_error(&canonical, 0).is_none(),
         "canonical form must be a fixpoint"
     );
 }
 
 #[test]
 fn divergence_is_a_format_error_spanning_the_first_differing_line() {
-    let err = format_error(UNFORMATTED, "main.can").expect("unformatted source yields an error");
+    let err = format_error(UNFORMATTED, 0).expect("unformatted source yields an error");
     assert!(
         err.to_string().starts_with("format error"),
         "formatting is its own compiler phase, got: {}",
@@ -62,7 +62,7 @@ fn divergence_is_a_format_error_spanning_the_first_differing_line() {
 fn unparseable_source_defers_to_the_checker() {
     // A parse error is the checker pipeline's diagnostic to report,
     // with its precise location — format_error stays silent.
-    assert!(format_error("Unit => Program {", "main.can").is_none());
+    assert!(format_error("Unit => Program {", 0).is_none());
 }
 
 #[test]

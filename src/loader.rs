@@ -220,7 +220,8 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
             extract_receiver_from_params(new_params)
         };
 
-        let body_span = Span::new(td.span.end, td.span.end, td.span.line, td.span.column);
+        let body_span = Span::new(td.span.end, td.span.end, td.span.line, td.span.column)
+            .with_file(td.span.file);
         // Async detection: a `Future<T>` return type marks the function
         // as async at the canonical-ABI level. We *unwrap* the Future
         // here so `func.return_ty` carries the WIT-canonical return
@@ -583,7 +584,7 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         bindgen_dir: None,
     };
     let dir = path.parent().unwrap_or_else(|| Path::new(""));
-    let entry_items_start = load_entry_source(source, dir, &mut ctx)?;
+    let entry_items_start = load_entry_source(source, dir, &mut ctx, file_id_of(path))?;
     let mut module = Module {
         items: ctx.items,
         span: Span::default(),
@@ -642,7 +643,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         path: canonical.to_path_buf(),
         source: source.clone(),
     });
-    let entry_items_start = load_entry_source(&source, dir, &mut ctx)?;
+    let entry_items_start = load_entry_source(&source, dir, &mut ctx, file_id_of(&canonical))?;
     let span = Span::default();
     let mut module = Module {
         items: ctx.items,
@@ -667,8 +668,8 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
 /// entry file's own items begin. Used by the checker to scope per-file
 /// ordering rules to user-authored code. The entry file is never a
 /// bindgen file by construction, so no URN patching applies.
-fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx) -> Result<usize> {
-    let mut scanner = Scanner::new(source);
+fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx, file: u32) -> Result<usize> {
+    let mut scanner = Scanner::in_file(source, file);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let mut module = parser.parse()?;
@@ -1962,7 +1963,15 @@ fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
         path.parent().unwrap_or_else(|| Path::new(".")),
         deps_pkg.as_ref(),
         ctx,
+        file_id_of(path),
     )
+}
+
+/// The id spans lexed from `path` carry (`error::file_id` over the
+/// path as displayed) — the one place a path becomes an id, so the
+/// loader and the format phase agree on it.
+pub fn file_id_of(path: &Path) -> u32 {
+    crate::error::file_id(&path.display().to_string())
 }
 
 /// A file's vendored-package context (it lives under `deps/` or the
@@ -2083,8 +2092,9 @@ fn load_source(
     dir: &Path,
     deps_pkg: Option<&DepsPkg>,
     ctx: &mut LoadCtx,
+    file: u32,
 ) -> Result<()> {
-    let mut scanner = Scanner::new(source);
+    let mut scanner = Scanner::in_file(source, file);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let mut module = parser.parse()?;
@@ -2149,7 +2159,10 @@ fn parsed_bundled_items(current: &'static BundledFile) -> Result<Vec<Item>> {
         return Ok(items.clone());
     }
 
-    let mut scanner = Scanner::new(current.source);
+    let mut scanner = Scanner::in_file(
+        current.source,
+        crate::error::file_id(&format!("canon/{}", current.path)),
+    );
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     let mut module = parser.parse()?;

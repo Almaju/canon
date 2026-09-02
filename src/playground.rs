@@ -130,11 +130,14 @@ fn render(errors: &[crate::error::CanonError]) -> String {
         .iter()
         .map(|err| {
             let span = err.span();
-            let path = match err {
-                crate::error::CanonError::FormatError { path, .. } => path.as_str(),
-                _ => ENTRY,
-            };
-            format!("{path}:{}:{}: {}", span.line, span.column, err.message())
+            let path = crate::error::file_path(span.file);
+            format!(
+                "{}:{}:{}: {}",
+                path.as_deref().unwrap_or(ENTRY),
+                span.line,
+                span.column,
+                err.message()
+            )
         })
         .collect::<Vec<_>>()
         .join("\n")

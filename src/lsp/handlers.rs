@@ -222,6 +222,7 @@ impl LspServer {
                         end: 0,
                         line,
                         column: col,
+                        file: 0,
                     },
                 )
             });
@@ -836,6 +837,7 @@ fn find_definition_in_imports(
             end: 0,
             line: 1,
             column: 1,
+            file: 0,
         };
         return Some((path_to_uri(&file_path), top));
     }

@@ -2355,15 +2355,13 @@ fn shell_escape(s: &str) -> String {
 
 fn print_error(file_path: &str, err: &CanonError) {
     let span = err.span();
-    // Format errors carry the offending file themselves — in a
-    // multi-file load their span points into that file, not the entry.
-    let path = match err {
-        CanonError::FormatError { path, .. } => path.as_str(),
-        _ => file_path,
-    };
+    // The span names the file it points into — in a multi-file load
+    // that is whichever file was lexed, not the entry. `file_path` is
+    // the fallback for a span from no file.
+    let path = canon::error::file_path(span.file);
     eprintln!(
         "error[{}:{}:{}]: {}",
-        path,
+        path.as_deref().unwrap_or(file_path),
         span.line,
         span.column,
         err.message()

@@ -116,7 +116,7 @@ fn check_source(source: &str, file_path: &str) -> Vec<CanonError> {
     // The compiler's format phase, over the open buffer: a divergence
     // from canonical form is a compile error, so the editor shows it
     // like any other diagnostic.
-    if let Some(err) = crate::formatter::format_error(source, file_path) {
+    if let Some(err) = crate::formatter::format_error(source, crate::error::file_id(file_path)) {
         errors.push(err);
     }
     errors
