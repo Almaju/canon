@@ -7566,10 +7566,10 @@ impl<'m> WasmGen<'m> {
                     .insert(bound_name, (base_scope.arm_payload_ptr(), payload_ty));
             }
             Ty::I64 => {
-                // Load i64 at +4 into tmp_i64 and bind the arm's name
-                // to that local. Variant payloads of `Int` user-newtype
-                // (or the primitive directly) use the same 8-byte slot
-                // at offset 4 of the union struct — see
+                // Load i64 at +4 into the depth's dedicated i64 and
+                // bind the arm's name to it. Variant payloads of `Int`
+                // user-newtype (or the primitive directly) use the same
+                // 8-byte slot at offset 4 of the union struct — see
                 // `build_union_value` and `store_value_at_offset`.
                 f.instruction(&Instruction::LocalGet(base_scope.alloc_ptr()));
                 f.instruction(&Instruction::I64Load(MemArg {
@@ -7577,38 +7577,38 @@ impl<'m> WasmGen<'m> {
                     align: 3,
                     memory_index: 0,
                 }));
-                f.instruction(&Instruction::LocalSet(base_scope.tmp_i64()));
+                f.instruction(&Instruction::LocalSet(base_scope.arm_payload_i64()));
                 scope
                     .vars
-                    .insert(bound_name, (base_scope.tmp_i64(), payload_ty));
+                    .insert(bound_name, (base_scope.arm_payload_i64(), payload_ty));
             }
             Ty::F64 => {
-                // Same slot as I64, but through the f64-typed scratch —
-                // wasm locals are monomorphic, so a `Float` payload
-                // can't be bound to `tmp_i64`.
+                // Same slot as I64, through the f64-typed local — wasm
+                // locals are monomorphic.
                 f.instruction(&Instruction::LocalGet(base_scope.alloc_ptr()));
                 f.instruction(&Instruction::F64Load(MemArg {
                     offset: 4,
                     align: 3,
                     memory_index: 0,
                 }));
-                f.instruction(&Instruction::LocalSet(base_scope.tmp_f64()));
+                f.instruction(&Instruction::LocalSet(base_scope.arm_payload_f64()));
                 scope
                     .vars
-                    .insert(bound_name, (base_scope.tmp_f64(), payload_ty));
+                    .insert(bound_name, (base_scope.arm_payload_f64(), payload_ty));
             }
             Ty::I32 => {
-                // Bool / discriminant-style payload at +4.
+                // Bool / discriminant-style payload at +4, in the
+                // pointer pair's first slot.
                 f.instruction(&Instruction::LocalGet(base_scope.alloc_ptr()));
                 f.instruction(&Instruction::I32Load(MemArg {
                     offset: 4,
                     align: 2,
                     memory_index: 0,
                 }));
-                f.instruction(&Instruction::LocalSet(base_scope.rbool()));
+                f.instruction(&Instruction::LocalSet(base_scope.arm_payload_ptr()));
                 scope
                     .vars
-                    .insert(bound_name, (base_scope.rbool(), payload_ty));
+                    .insert(bound_name, (base_scope.arm_payload_ptr(), payload_ty));
             }
             Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => {
                 // Boxed product payload (auto-boxed by

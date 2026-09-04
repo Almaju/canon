@@ -1,12 +1,16 @@
 DecimalAdvanced = DecimalState
 
+DecimalAppended = DecimalEmitted
+
+DecimalCount = Int
+
 DecimalDenominator = Limbs
 
-DecimalEmitted = String
+DecimalEmitted = DecimalCount * DecimalText
 
 DecimalEven = Bool
 
-DecimalGenerated = String
+DecimalGenerated = DecimalAppended
 
 DecimalLower = Limbs
 
@@ -22,13 +26,18 @@ DecimalPrepared = DecimalState
 
 DecimalRaised = DecimalState
 
-DecimalReaching = Bool
+DecimalReaching = LimbsBelow
 
 DecimalRendered = DecimalPlaced
 
-DecimalRounded = String
+DecimalRounded = DecimalDigit
 
-DecimalState = DecimalDenominator * DecimalEven * DecimalLower * DecimalNumerator * DecimalPlace * DecimalUpper
+DecimalState = DecimalDenominator
+  * DecimalEven
+  * DecimalLower
+  * DecimalNumerator
+  * DecimalPlace
+  * DecimalUpper
 
 DecimalStep = DecimalState * LimbsDivided
 
@@ -36,9 +45,11 @@ DecimalStepped = DecimalStep
 
 DecimalTenfold = DecimalState
 
+DecimalText = String
+
 DecimalUpper = Limbs
 
-DecimalWithin = Bool
+DecimalWithin = LimbsBelow
 
 DecimalZeros = String
 
@@ -65,6 +76,13 @@ DecimalStep => DecimalAdvanced {
         )
 }
 
+DecimalDigit * DecimalEmitted => DecimalAppended {
+    DecimalEmitted.DecimalCount
+        -> Sum(1)
+        -> DecimalCount
+        -> DecimalEmitted(DecimalText(`{DecimalEmitted.DecimalText}{DecimalDigit}`))
+}
+
 FloatParts => DecimalEven {
     FloatParts.FloatMantissa
         -> Remainder(2)
@@ -76,23 +94,36 @@ DecimalEmitted * DecimalStep => DecimalGenerated {
         * False {
             DecimalStep -> DecimalReaching -> (
                 * False {
-                    DecimalEmitted(`{DecimalEmitted}{DecimalStep.LimbsDivided.LimbDigit -> DecimalDigit}`)
+                    DecimalStep.LimbsDivided.LimbDigit
+                        -> DecimalDigit
+                        -> DecimalAppended(DecimalEmitted)
                         -> DecimalGenerated(DecimalStep -> DecimalAdvanced -> DecimalTenfold -> DecimalStepped)
                 }
-                * True { `{DecimalEmitted}{DecimalStep.LimbsDivided.LimbDigit -> Sum(1) -> DecimalDigit}` }
+                * True {
+                    DecimalStep.LimbsDivided.LimbDigit
+                        -> Sum(1)
+                        -> DecimalDigit
+                        -> DecimalAppended(DecimalEmitted)
+                }
             )
         }
         * True {
             DecimalStep -> DecimalReaching -> (
-                * False { `{DecimalEmitted}{DecimalStep.LimbsDivided.LimbDigit -> DecimalDigit}` }
-                * True { `{DecimalEmitted}{DecimalStep -> DecimalRounded}` }
+                * False {
+                    DecimalStep.LimbsDivided.LimbDigit
+                        -> DecimalDigit
+                        -> DecimalAppended(DecimalEmitted)
+                }
+                * True { DecimalStep -> DecimalRounded -> DecimalAppended(DecimalEmitted) }
             )
         }
     )
 }
 
 DecimalState => DecimalGenerated {
-    DecimalEmitted("") -> DecimalGenerated(DecimalState -> DecimalTenfold -> DecimalStepped)
+    DecimalCount(0)
+        -> DecimalEmitted(DecimalText(""))
+        -> DecimalGenerated(DecimalState -> DecimalTenfold -> DecimalStepped)
 }
 
 DecimalState => DecimalLowered {
@@ -102,19 +133,29 @@ DecimalState => DecimalLowered {
     )
 }
 
-DecimalGenerated * DecimalPlace => DecimalPlaced {
+DecimalEmitted * DecimalPlace => DecimalPlaced {
     DecimalPlace -> Lt(1) -> (
         * False {
-            DecimalPlace -> Lt(DecimalGenerated -> Length) -> (
-                * False { `{DecimalGenerated}{DecimalPlace -> Difference(DecimalGenerated -> Length) -> DecimalZeros}` }
+            DecimalPlace -> Lt(DecimalEmitted.DecimalCount) -> (
+                * False {
+                    `{DecimalEmitted.DecimalText}{
+                        DecimalPlace
+                            -> Difference(DecimalEmitted.DecimalCount)
+                            -> DecimalZeros
+                    }`
+                }
                 * True {
-                    `{DecimalGenerated -> Substring(From(1) * DecimalPlace -> To)}.{
-                        DecimalGenerated -> Substring(DecimalPlace -> Sum(1) -> From * DecimalGenerated -> Length -> To)
+                    `{DecimalEmitted.DecimalText -> Substring(From(1) * DecimalPlace -> To)}.{
+                        DecimalEmitted.DecimalText
+                            -> Substring(
+                                DecimalPlace -> Sum(1) -> From
+                                * DecimalEmitted.DecimalCount -> To
+                            )
                     }`
                 }
             )
         }
-        * True { `0.{0 -> Difference(DecimalPlace) -> DecimalZeros}{DecimalGenerated}` }
+        * True { `0.{0 -> Difference(DecimalPlace) -> DecimalZeros}{DecimalEmitted.DecimalText}` }
     )
 }
 
@@ -123,25 +164,23 @@ FloatParts => DecimalPrepared {
         * False {
             FloatParts -> FloatUnequal -> (
                 * False {
-                    FloatParts
-                        -> DecimalEven
+                    DecimalPlace(0)
                         -> DecimalState(
-                            FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalLower
+                            FloatParts -> DecimalEven
+                            * FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalLower
                             * FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalUpper
                             * FloatParts.FloatExponent -> Sum(1) -> LimbShift -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
                             * Limbs(2) -> DecimalDenominator
-                            * DecimalPlace(0)
                         )
                 }
                 * True {
-                    FloatParts
-                        -> DecimalEven
+                    DecimalPlace(0)
                         -> DecimalState(
-                            FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalLower
+                            FloatParts -> DecimalEven
+                            * FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalLower
                             * FloatParts.FloatExponent -> Sum(1) -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalUpper
                             * FloatParts.FloatExponent -> Sum(2) -> LimbShift -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
                             * Limbs(4) -> DecimalDenominator
-                            * DecimalPlace(0)
                         )
                 }
             )
@@ -155,11 +194,11 @@ FloatParts => DecimalPrepared {
                         -> LimbsShifted(Limbs(1))
                         -> DecimalDenominator
                         -> DecimalState(
-                            FloatParts -> DecimalEven
+                            DecimalPlace(0)
+                            * FloatParts -> DecimalEven
                             * LimbShift(1) -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
                             * Limbs(1) -> DecimalLower
                             * Limbs(1) -> DecimalUpper
-                            * DecimalPlace(0)
                         )
                 }
                 * True {
@@ -169,11 +208,11 @@ FloatParts => DecimalPrepared {
                         -> LimbsShifted(Limbs(1))
                         -> DecimalDenominator
                         -> DecimalState(
-                            FloatParts -> DecimalEven
+                            DecimalPlace(0)
+                            * FloatParts -> DecimalEven
                             * LimbShift(2) -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
                             * Limbs(1) -> DecimalLower
                             * Limbs(2) -> DecimalUpper
-                            * DecimalPlace(0)
                         )
                 }
             )
@@ -202,12 +241,17 @@ DecimalState => DecimalRaised {
 
 DecimalState => DecimalReaching {
     DecimalState.DecimalEven -> (
-        * False { DecimalState.DecimalDenominator -> LimbsBelow(DecimalState.DecimalNumerator -> LimbsTotal(DecimalState.DecimalUpper)) }
+        * False {
+            DecimalState.DecimalDenominator
+                -> LimbsBelow(DecimalState.DecimalNumerator -> LimbsTotal(DecimalState.DecimalUpper))
+        }
         * True {
             DecimalState.DecimalNumerator
                 -> LimbsTotal(DecimalState.DecimalUpper)
-                -> LimbsBelow(DecimalState.DecimalDenominator)
-                -> Not
+                -> LimbsBelow(DecimalState.DecimalDenominator) -> (
+                * False { True() }
+                * True { False() }
+            )
         }
     )
 }
@@ -221,8 +265,10 @@ DecimalStep => DecimalReaching {
         * True {
             DecimalStep.LimbsDivided.LimbsLeftover
                 -> LimbsTotal(DecimalStep.DecimalState.DecimalUpper)
-                -> LimbsBelow(DecimalStep.DecimalState.DecimalDenominator)
-                -> Not
+                -> LimbsBelow(DecimalStep.DecimalState.DecimalDenominator) -> (
+                * False { True() }
+                * True { False() }
+            )
         }
     )
 }
@@ -243,9 +289,8 @@ DecimalStep => DecimalRounded {
 }
 
 DecimalTenfold => DecimalStepped {
-    LimbSteps(0)
-        -> LimbsStepped(DecimalTenfold.DecimalState.DecimalNumerator * DecimalTenfold.DecimalState.DecimalDenominator)
-        -> DecimalStep(DecimalTenfold)
+    DecimalTenfold
+        -> DecimalStep(LimbSteps(0) -> LimbsStepped(DecimalTenfold.DecimalState.DecimalNumerator * DecimalTenfold.DecimalState.DecimalDenominator))
 }
 
 DecimalState => DecimalTenfold {
@@ -261,8 +306,17 @@ DecimalState => DecimalTenfold {
 
 DecimalStep => DecimalWithin {
     DecimalStep.DecimalState.DecimalEven -> (
-        * False { DecimalStep.LimbsDivided.LimbsLeftover -> LimbsBelow(DecimalStep.DecimalState.DecimalLower) }
-        * True { DecimalStep.DecimalState.DecimalLower -> LimbsBelow(DecimalStep.LimbsDivided.LimbsLeftover) -> Not }
+        * False {
+            DecimalStep.LimbsDivided.LimbsLeftover
+                -> LimbsBelow(DecimalStep.DecimalState.DecimalLower)
+        }
+        * True {
+            DecimalStep.DecimalState.DecimalLower
+                -> LimbsBelow(DecimalStep.LimbsDivided.LimbsLeftover) -> (
+                * False { True() }
+                * True { False() }
+            )
+        }
     )
 }
 
@@ -277,14 +331,24 @@ FloatExponent * Float => FloatNormalized {
     Float -> Lt(4503599627370496.0) -> (
         * False {
             Float -> Lt(9007199254740992.0) -> (
-                * False { FloatExponent -> Sum(1) -> FloatExponent -> FloatNormalized(Float -> Quotient(2.0)) }
-                * True { FloatExponent -> FloatParts(Float -> Int -> FloatMantissa) }
+                * False {
+                    FloatExponent
+                        -> Sum(1)
+                        -> FloatExponent
+                        -> FloatNormalized(Float -> Quotient(2.0))
+                }
+                * True { Float -> Int -> FloatMantissa -> FloatParts(FloatExponent) }
             )
         }
         * True {
             FloatExponent -> Sum(1074) -> Eq(0) -> (
-                * False { FloatExponent -> Difference(1) -> FloatExponent -> FloatNormalized(Float -> Product(2.0)) }
-                * True { FloatParts(FloatExponent * Float -> Int -> FloatMantissa) }
+                * False {
+                    FloatExponent
+                        -> Difference(1)
+                        -> FloatExponent
+                        -> FloatNormalized(Float -> Product(2.0))
+                }
+                * True { Float -> Int -> FloatMantissa -> FloatParts(FloatExponent) }
             )
         }
     )
@@ -295,10 +359,10 @@ Float => FloatNormalized {
 }
 
 FloatParts => FloatUnequal {
-    FloatParts.FloatMantissa
-        -> Eq(4503599627370496)
-        -> And(FloatParts.FloatExponent -> Sum(1074) -> Gt(0))
-        -> FloatUnequal
+    FloatParts.FloatMantissa -> Eq(4503599627370496) -> (
+        * False { False() }
+        * True { 0 -> Lt(FloatParts.FloatExponent -> Sum(1074)) }
+    )
 }
 
 Float => Magnitude {
