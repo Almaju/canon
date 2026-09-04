@@ -37,12 +37,9 @@ An HTTP handler program (`Request => Response`) may import only
 else (`Parallel` / `Race` still work — they are compiler builtins emitted
 inline, not imports). The restriction applies to the externs a handler can
 *reach*: the loader is file-granular, but codegen compiles the reachable
-set, so a binding's unreached siblings are neither linked nor reported. A
-JSON literal with interpolation holes still trips this — a hole lowers
-through the whole `Encoded` family, whose `Float` member is the
-`canon:builtins/json` bridge — while `-> Json` over strings reaches no
-such member and works. HTML and format-string interpolation lower without
-a bridge and work in handlers.
+set, so a binding's unreached siblings are neither linked nor reported.
+JSON, HTML and format-string interpolation are pure Canon and work in
+handlers.
 
 ## `Stream<T>` lowering and streaming response bodies
 

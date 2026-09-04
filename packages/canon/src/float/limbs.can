@@ -1,0 +1,198 @@
+Limb = Int
+
+LimbBase = Int
+
+LimbBorrow = Int
+
+LimbCarry = Int
+
+LimbDigit = Int
+
+LimbFactor = Int
+
+LimbIndex = Int
+
+LimbShift = Int
+
+LimbSteps = Int
+
+Limbs = List<Int>
+
+LimbsBelow = Bool
+
+LimbsBelowFrom = Bool
+
+LimbsDivided = LimbDigit * LimbsLeftover
+
+LimbsLeftover = Limbs
+
+LimbsMinus = Limbs
+
+LimbsMultiplied = Limbs
+
+LimbsReduced = Limbs
+
+LimbsShifted = Limbs
+
+LimbsStepped = LimbsDivided
+
+LimbsSummed = Limbs
+
+LimbsTimes = Limbs
+
+LimbsTotal = Limbs
+
+LimbsTrimmed = Limbs
+
+LimbIndex * Limbs => Limb {
+    Limbs -> At(LimbIndex) -> (
+        * None { 0 }
+        * Some<Int> { Int }
+    )
+}
+
+Unit => LimbBase {
+    1073741824
+}
+
+Int => Limbs {
+    Int -> Eq(0) -> (
+        * False {
+            List(Int -> Remainder(LimbBase()))
+                -> Joined(Int -> Quotient(LimbBase()) -> Limbs)
+                -> Limbs
+        }
+        * True { List() }
+    )
+}
+
+Limbs^2 => LimbsBelow {
+    Limbs.1 -> Length -> Eq(Limbs.2 -> Length) -> (
+        * False { Limbs.1 -> Length -> Lt(Limbs.2 -> Length) }
+        * True { Limbs.1 -> Length -> LimbIndex -> LimbsBelowFrom(Limbs.1 * Limbs.2) }
+    )
+}
+
+LimbIndex * Limbs^2 => LimbsBelowFrom {
+    LimbIndex -> Eq(0) -> (
+        * False {
+            LimbIndex -> Limb(Limbs.1) -> Eq(LimbIndex -> Limb(Limbs.2)) -> (
+                * False { LimbIndex -> Limb(Limbs.1) -> Lt(LimbIndex -> Limb(Limbs.2)) }
+                * True {
+                    LimbIndex
+                        -> Difference(1)
+                        -> LimbIndex
+                        -> LimbsBelowFrom(Limbs.1 * Limbs.2)
+                }
+            )
+        }
+        * True { False() }
+    )
+}
+
+Limbs^2 => LimbsMinus {
+    LimbBorrow(0)
+        -> LimbsReduced(LimbIndex(1) * Limbs.1 * Limbs.2)
+        -> Limbs
+        -> LimbsTrimmed
+        -> LimbsMinus
+}
+
+LimbCarry * LimbFactor * LimbIndex * Limbs => LimbsMultiplied {
+    LimbIndex -> Gt(Limbs -> Length) -> And(LimbCarry -> Eq(0)) -> (
+        * False {
+            List(LimbIndex -> Limb(Limbs) -> Product(LimbFactor) -> Sum(LimbCarry) -> Remainder(LimbBase()))
+                -> Joined(LimbIndex -> Limb(Limbs) -> Product(LimbFactor) -> Sum(LimbCarry) -> Quotient(LimbBase()) -> LimbCarry -> LimbsMultiplied(LimbFactor * LimbIndex -> Sum(1) -> LimbIndex * Limbs))
+        }
+        * True { List() }
+    )
+}
+
+LimbBorrow * LimbIndex * Limbs^2 => LimbsReduced {
+    LimbIndex -> Gt(Limbs.1 -> Length) -> (
+        * False {
+            LimbIndex
+                -> Limb(Limbs.1)
+                -> Difference(LimbIndex -> Limb(Limbs.2))
+                -> Difference(LimbBorrow)
+                -> Lt(0) -> (
+                * False {
+                    List(LimbIndex -> Limb(Limbs.1) -> Difference(LimbIndex -> Limb(Limbs.2)) -> Difference(LimbBorrow))
+                        -> Joined(LimbBorrow(0) -> LimbsReduced(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
+                }
+                * True {
+                    List(LimbIndex -> Limb(Limbs.1) -> Difference(LimbIndex -> Limb(Limbs.2)) -> Difference(LimbBorrow) -> Sum(LimbBase()))
+                        -> Joined(LimbBorrow(1) -> LimbsReduced(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
+                }
+            )
+        }
+        * True { List() }
+    )
+}
+
+LimbShift * Limbs => LimbsShifted {
+    LimbShift -> Eq(0) -> (
+        * False {
+            LimbShift -> Lt(30) -> (
+                * False {
+                    List(0)
+                        -> Joined(Limbs)
+                        -> Limbs
+                        -> LimbsShifted(LimbShift -> Difference(30) -> LimbShift)
+                }
+                * True {
+                    LimbFactor(2)
+                        -> LimbsTimes(Limbs)
+                        -> LimbsShifted(LimbShift -> Difference(1) -> LimbShift)
+                }
+            )
+        }
+        * True { Limbs }
+    )
+}
+
+LimbSteps * Limbs^2 => LimbsStepped {
+    Limbs.1 -> LimbsBelow(Limbs.2) -> (
+        * False {
+            LimbSteps
+                -> Sum(1)
+                -> LimbSteps
+                -> LimbsStepped(Limbs.1 -> LimbsMinus(Limbs.2) * Limbs.2)
+        }
+        * True { LimbSteps -> LimbDigit -> LimbsDivided(Limbs.1 -> LimbsLeftover) }
+    )
+}
+
+LimbCarry * LimbIndex * Limbs^2 => LimbsSummed {
+    LimbIndex
+        -> Gt(Limbs.1 -> Length)
+        -> And(LimbIndex -> Gt(Limbs.2 -> Length))
+        -> And(LimbCarry -> Eq(0)) -> (
+        * False {
+            List(LimbIndex -> Limb(Limbs.1) -> Sum(LimbIndex -> Limb(Limbs.2)) -> Sum(LimbCarry) -> Remainder(LimbBase()))
+                -> Joined(LimbIndex -> Limb(Limbs.1) -> Sum(LimbIndex -> Limb(Limbs.2)) -> Sum(LimbCarry) -> Quotient(LimbBase()) -> LimbCarry -> LimbsSummed(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
+        }
+        * True { List() }
+    )
+}
+
+LimbFactor * Limbs => LimbsTimes {
+    LimbCarry(0)
+        -> LimbsMultiplied(LimbFactor * LimbIndex(1) * Limbs)
+        -> Limbs
+        -> LimbsTimes
+}
+
+Limbs^2 => LimbsTotal {
+    LimbCarry(0)
+        -> LimbsSummed(LimbIndex(1) * Limbs.1 * Limbs.2)
+        -> Limbs
+        -> LimbsTotal
+}
+
+Limbs => LimbsTrimmed {
+    Limbs -> Length -> LimbIndex -> Limb(Limbs) -> Eq(0) -> And(Limbs -> Length -> Gt(0)) -> (
+        * False { Limbs }
+        * True { Limbs -> Taken(Limbs -> Length -> Difference(1)) -> Limbs -> LimbsTrimmed }
+    )
+}
