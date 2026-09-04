@@ -693,7 +693,7 @@ fn emit_function(func: &FunctionDef) -> String {
     let mut out = String::new();
 
     // An anonymous constructor drops every parenthesis around its input:
-    // `Request => Response`, the product `Todos * String => Update`, and
+    // `Request => Response`, the product `Todos * Msg => Todos`, and
     // the nullary `Unit => Program` (the single-value type is the name of
     // "no input"). The declaration arrow `=>` binds looser than the type
     // operators, so the input reads back unambiguously — the one case

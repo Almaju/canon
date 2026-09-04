@@ -1,0 +1,2 @@
+error[tests/checker/fail/newtype_arithmetic_erases.can:15:5]: no method `Item` on type `Int` with 1 argument(s)
+error[tests/checker/fail/newtype_arithmetic_erases.can:15:5]: `Item` expects a `String`, found `Int`

@@ -368,14 +368,14 @@ pub fn entry_world_of(ty: &TypeExpr) -> Option<EntryWorld> {
 ///
 ///   - **view** — `Model => Html`: renders the model.
 ///   - **init** — `Unit => Init` where `Init = Model`: the initial model.
-///   - **update** — `Model * Msg => Update` where `Update = Model`: the
-///     reducer. `Init` / `Update` are model-alias marker newtypes that
-///     give `init` and `update` distinct constructor keys (both would
-///     otherwise be `(Model, Self)`).
+///   - **update** — `Model * Msg => Model`: the model's command for the
+///     stdlib `Msg`, the message the host delivers. `Init` is a
+///     model-alias marker newtype that gives `init` a constructor key of
+///     its own (it would otherwise be the model's nullary constructor).
 ///
-/// `Model` is the user's own type; `Html` / `Init` / `Update` are the
-/// distinguishing types. `WebEntry` carries the `func_table` key of each
-/// so codegen resolves them without re-scanning.
+/// `Model` is the user's own type; `Html` / `Init` / `Msg` are the
+/// distinguishing types. `WebEntry` carries the lookup key of each so
+/// codegen resolves them without re-scanning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebEntry {
     /// The model type name — `view`'s receiver as written in source.
@@ -502,7 +502,7 @@ pub fn find_web_entry(items: &[Item]) -> Option<WebEntry> {
     // the receiver being a user type is necessary but not sufficient. The
     // real view is the candidate whose receiver is also the model of a
     // complete init/update triple; a helper like `Markdown => Html` has
-    // no `Unit => Init` / `Model * Msg => Update`, so it drops out.
+    // no `Unit => Init` / `Model * Msg => Model`, so it drops out.
     let candidate_views: Vec<&&FunctionDef> = fns
         .iter()
         .filter(|f| {
@@ -971,8 +971,8 @@ pub fn resolve_new_syntax(module: &mut Module) {
                             span: func.name.span,
                         };
                         // A multi-input constructor parses its input product
-                        // as ONE Product param (`Inserted = (Map * String *
-                        // Value) -> …`). Trait impls split that product via
+                        // as ONE Product param (`Map * Key => Contains`).
+                        // Trait impls split that product via
                         // `extract_receiver_from_params`; constructors keep
                         // no runtime receiver, so flatten it into one param
                         // per component here — downstream (wasm param

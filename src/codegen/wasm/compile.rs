@@ -1779,8 +1779,18 @@ impl<'m> WasmGen<'m> {
             // accumulator, the lambda's declared return type.
             "Mapped" | "Appended" | "Skipped" | "Reversed" | "Sorted" => Some("List".to_string()),
             "Folded" => crate::checker::fold_result_type(method, args),
-            "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Minimum" | "Maximum"
-            | "Negated" => self.infer_ctor_arg_type_name(receiver),
+            // The base's operation with the base's result: `Width ->
+            // Difference(1)` is an `Int` (the checker's
+            // `expr_type_name_in_scope` agrees), so binding it to a
+            // `Width` slot takes a relabel.
+            "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" => self
+                .infer_ctor_arg_type_name(receiver)
+                .map(|r| self.resolve_repr(&r))
+                .and_then(|repr| match repr {
+                    Ty::I64 => Some("Int".to_string()),
+                    Ty::F64 => Some("Float".to_string()),
+                    _ => None,
+                }),
             _ => None,
         }
     }
@@ -1795,6 +1805,13 @@ impl<'m> WasmGen<'m> {
             {
                 Some(field.name.clone())
             }
+            // A repetition component (`Limbs.1`) is one `Limbs`.
+            Expr::FieldAccess {
+                receiver, field, ..
+            } if field.name.parse::<u64>().is_ok() => match receiver.as_ref() {
+                Expr::Ident(id) => Some(id.name.clone()),
+                _ => None,
+            },
             // A method chain's static type comes from the callee's
             // registered result type — this is what lets a pipe hang off
             // a chain (`Map() -> Insert(…) -> Keys`). Builtin
@@ -3195,11 +3212,8 @@ impl<'m> WasmGen<'m> {
         // A member is the call only when the receiver and the arguments
         // fill its inputs: `list -> Todos` beside `Wire => Todos` is the
         // documented zero-argument relabel, not that call short an
-        // input (which emitted with the wrong stack shape). A member with
-        // no recorded inputs (a repetition head) keeps the lookup.
-        let fits = |info: &FuncInfo| {
-            info.input_types.is_empty() || info.input_types.len() == 1 + args.len()
-        };
+        // input (which emitted with the wrong stack shape).
+        let fits = |info: &FuncInfo| info.input_types.len() == 1 + args.len();
         for alias in candidate_types {
             let key = (Some(alias), method.to_string());
             if let Some(info) = self.func_table.get(&key).filter(|i| fits(i)).cloned() {
@@ -8419,7 +8433,13 @@ fn syntactic_type_name(e: &Expr) -> Option<&str> {
     match e {
         Expr::Constructor { name, .. } => Some(&name.name),
         Expr::Ident(id) => Some(&id.name),
-        Expr::FieldAccess { field, .. } => Some(&field.name),
+        // A repetition component (`Limbs.1`) is one `Limbs`.
+        Expr::FieldAccess {
+            receiver, field, ..
+        } => match (field.name.parse::<u64>().is_ok(), receiver.as_ref()) {
+            (true, Expr::Ident(id)) => Some(&id.name),
+            _ => Some(&field.name),
+        },
         Expr::MethodCall {
             method,
             piped: true,

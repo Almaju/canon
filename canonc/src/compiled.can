@@ -584,6 +584,7 @@ Params * Tables => Argslot {
         -> Scratch(Tables)
         -> Sum(9)
         -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36))
+        -> Argslot
 }
 
 Argindex * Argkind * Callparams * Code * Ender * Opcode * Outer * Params * Kind * Tables * Tokens => Argument {
@@ -1036,6 +1037,7 @@ Params * Tables => Cellslot {
         -> Scratch(Tables)
         -> Sum(7)
         -> Sum(Tables.Binds -> Bindsdepth(Sofardeep(0)) -> Product(36))
+        -> Cellslot
 }
 
 Code * Ender * Params * Kind * Tables * Tokens => Chain {

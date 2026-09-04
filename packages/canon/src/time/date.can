@@ -103,16 +103,20 @@ Unix => Hour {
     Unix
         -> Remainder(86400)
         -> Quotient(3600)
+        -> Hour
 }
 
 Unix => Minute {
     Unix
         -> Quotient(60)
         -> Remainder(60)
+        -> Minute
 }
 
 Unix => Second {
-    Unix -> Remainder(60)
+    Unix
+        -> Remainder(60)
+        -> Second
 }
 
 Unix => Weekday {
@@ -121,4 +125,5 @@ Unix => Weekday {
         -> Sum(3)
         -> Remainder(7)
         -> Sum(1)
+        -> Weekday
 }
