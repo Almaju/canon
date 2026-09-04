@@ -1797,7 +1797,7 @@ impl<'m> WasmGen<'m> {
             }
             // A method chain's static type comes from the callee's
             // registered result type — this is what lets a pipe hang off
-            // a chain (`Map().Inserted("a", "1") -> Keys`). Builtin
+            // a chain (`Map() -> Insert(…) -> Keys`). Builtin
             // methods aren't in `func_table`, so chains ending in them
             // still return `None` and the call falls through to the
             // pre-pipe routing paths.
@@ -3193,8 +3193,8 @@ impl<'m> WasmGen<'m> {
             }
         }
         // A member is the call only when the receiver and the arguments
-        // fill its inputs: `Model -> Update` with `Model * Msg => Update`
-        // is the documented zero-argument relabel, not that call short an
+        // fill its inputs: `list -> Todos` beside `Wire => Todos` is the
+        // documented zero-argument relabel, not that call short an
         // input (which emitted with the wrong stack shape). A member with
         // no recorded inputs (a repetition head) keeps the lookup.
         let fits = |info: &FuncInfo| {

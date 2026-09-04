@@ -2513,7 +2513,7 @@ fn check_block(
     // return when either type's alias chain reaches the other — a body
     // producing `Html` satisfies `-> Button` where `Button = Html` (the
     // underlying flows into the alias slot), and a body producing
-    // `Inserted` (`Inserted = Map`) satisfies `-> Map`.
+    // `Rest` (`Rest = Map`) satisfies `-> Map`.
     let alias_compatible = |from: &str, to: &str| -> bool {
         let mut cur = from.to_string();
         for _ in 0..20 {

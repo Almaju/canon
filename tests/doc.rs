@@ -218,8 +218,8 @@ fn a_module_page_lists_its_declarations() {
     let map = fs::read_to_string(out.join("module/map.html")).expect("map module page");
     assert!(map.contains("Declarations"), "no declaration list");
     assert!(
-        map.contains("<a href=\"../type/Map.html\">Map</a> * <a href=\"../type/Key.html\">Key</a> * <a href=\"../type/Value.html\">Value</a> =&gt; <a href=\"../type/Inserted.html\">Inserted</a>"),
-        "`Map * Key * Value => Inserted` is missing from map's declarations"
+        map.contains("<a href=\"../type/Map.html\">Map</a> * <a href=\"../type/Insert.html\">Insert</a> =&gt; <a href=\"../type/Map.html\">Map</a>"),
+        "`Map * Insert => Map` is missing from map's declarations"
     );
 }
 

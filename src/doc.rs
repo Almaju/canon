@@ -256,8 +256,8 @@ fn is_fallible(ty: &TypeExpr) -> bool {
     matches!(ty, TypeExpr::Named { name, .. } if name == "Result")
 }
 
-/// The declaration form, as the source writes it: `Map * String * Value
-/// => Inserted`, or `Unit => Now` for a nullary constructor.
+/// The declaration form, as the source writes it: `Map * Key =>
+/// Contains`, or `Unit => Now` for a nullary constructor.
 fn declaration_form(decl: &DeclDoc) -> String {
     let inputs = if decl.inputs.is_empty() {
         "Unit".to_string()
