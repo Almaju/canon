@@ -732,7 +732,7 @@ pub const GAP_COMPOUND_PAYLOAD: CodegenGap = CodegenGap {
 
 /// Extern imports the `wasi:http/service` world can't satisfy. A handler
 /// program may import only `wasi:http/types`; any other loaded binding —
-/// reached by a call or pulled in by a JSON-interpolation bridge — has no
+/// reached by a call — has no
 /// host to link against.
 pub const GAP_HTTP_WORLD_IMPORTS: CodegenGap = CodegenGap {
     title: "extern imports in the `wasi:http/service` world",
@@ -834,9 +834,7 @@ pub fn codegen_gap_errors(
     // `wasi:http/service` world: mirror `WasmGen::new_http`, which links the
     // import block and rejects anything the world can't satisfy. Codegen is
     // handed the pruned module (`prune_to_reachable`), so an unreached
-    // sibling binding is not in that block and must not be reported here —
-    // a handler that encodes strings as JSON never reaches the float
-    // bridge, and rejecting it would fail a program that builds.
+    // sibling binding is not in that block and must not be reported here.
     if let Some(entry) = http_entry {
         let allowed = |path: &str| {
             crate::ast::HTTP_WORLD_IMPORT_PREFIXES

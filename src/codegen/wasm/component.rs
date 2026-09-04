@@ -8,7 +8,7 @@
 //! interfaces its extern imports name (`program_world_wit`) and exports
 //! `wasi:cli/run`; an HTTP program implements the vendored
 //! `wasi:http/service` world. The resulting `.wasm` imports only WASI
-//! interfaces (and, until they retire, the `canon:builtins` bridges),
+//! interfaces,
 //! so it is portable to any compliant WASI P3 runtime.
 //!
 //! ## Canonical stdout stream sequence
@@ -59,17 +59,6 @@ const WIT_WASI_CLI: &str = include_str!("../../../packages/canon/wit/wasi/cli.wi
 const WIT_WASI_RANDOM: &str = include_str!("../../../packages/canon/wit/wasi/random.wit");
 const WIT_WASI_HTTP: &str = include_str!("../../../packages/canon/wit/wasi/http.wit");
 
-/// The `canon:builtins` host bridges the runtime still fulfils (see the
-/// `host_builtin_*` modules in `src/runtime.rs`). Each retires as the
-/// WASI interface behind it lowers; the last one takes this with it.
-const WIT_CANON_BUILTINS: &str = "
-package canon:builtins@0.1.0;
-
-interface json {
-    from-float: func(value: f64) -> string;
-}
-";
-
 /// The `wasi:http/client` function codegen fuses into one round trip
 /// (`IndirectReturnShape::HttpSend`).
 pub(super) const WASI_HTTP_CLIENT_SEND: &str = "wasi:http/client@0.3.0-rc-2026-03-15#send";
@@ -115,7 +104,6 @@ pub(super) fn vendored_resolve() -> &'static wit_parser::Resolve {
             ("random.wit", WIT_WASI_RANDOM),
             ("cli.wit", WIT_WASI_CLI),
             ("http.wit", WIT_WASI_HTTP),
-            ("canon-builtins.wit", WIT_CANON_BUILTINS),
         ] {
             resolve
                 .push_source(name, source)

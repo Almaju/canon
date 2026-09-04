@@ -2,21 +2,15 @@ DecimalDigit = String
 
 Decimals = String
 
-Fraction = String
-
 Ge = Bool
 
 Gt = Bool
 
 Le = Bool
 
-Magnitude = String
-
 Ne = Bool
 
 Padded = String
-
-Scaled = Int
 
 Width = Int
 
@@ -36,13 +30,6 @@ Int => Decimals {
     )
 }
 
-Int * Width => Fraction {
-    Int -> Remainder(10) -> Eq(0) -> (
-        * False { Int -> Padded(Width) }
-        * True { Int -> Quotient(10) -> Fraction(Width -> Difference(1) -> Width) }
-    )
-}
-
 String^2 => Ge {
     String.2 -> Lt(String.1) -> (
         * False { String.1 -> Eq(String.2) }
@@ -58,34 +45,6 @@ String^2 => Le {
     String.1 -> Lt(String.2) -> (
         * False { String.1 -> Eq(String.2) }
         * True { True() }
-    )
-}
-
-Float => Magnitude {
-    Float -> Difference(Float) -> Eq(0.0) -> (
-        * False { "Inf" }
-        * True {
-            Float -> Lt(9223372036854776000.0) -> (
-                * False { "9223372036854775807" }
-                * True {
-                    Float -> Scaled -> Lt(1000000) -> (
-                        * False { Float -> Int -> Sum(1) -> String }
-                        * True {
-                            Float -> Scaled -> Eq(0) -> (
-                                * False {
-                                    `{Float -> Int -> String}.{
-                                        Float
-                                            -> Scaled
-                                            -> Fraction(Width(6))
-                                    }`
-                                }
-                                * True { Float -> Int -> String }
-                            )
-                        }
-                    )
-                }
-            )
-        }
     )
 }
 
@@ -113,14 +72,6 @@ Int * Width => Padded {
     )
 }
 
-Float => Scaled {
-    Float
-        -> Difference(Float -> Int -> Float)
-        -> Product(1000000.0)
-        -> Sum(0.5)
-        -> Int
-}
-
 Bool => String {
     Bool -> (
         * False { "False" }
@@ -132,9 +83,24 @@ Float => String {
     Float -> Eq(Float) -> (
         * False { "NaN" }
         * True {
-            Float -> Lt(0.0) -> (
-                * False { Float -> Magnitude }
-                * True { `-{0.0 -> Difference(Float) -> Magnitude}` }
+            Float -> Difference(Float) -> Eq(0.0) -> (
+                * False {
+                    Float -> Lt(0.0) -> (
+                        * False { "Inf" }
+                        * True { "-Inf" }
+                    )
+                }
+                * True {
+                    Float -> Eq(0.0) -> (
+                        * False {
+                            Float -> Lt(0.0) -> (
+                                * False { Float -> Magnitude }
+                                * True { `-{0.0 -> Difference(Float) -> Magnitude}` }
+                            )
+                        }
+                        * True { "0" }
+                    )
+                }
             )
         }
     )

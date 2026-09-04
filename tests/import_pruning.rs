@@ -45,35 +45,6 @@ fn pruned_externs(src: &str) -> Vec<String> {
 }
 
 #[test]
-fn json_call_drops_the_unreached_float_bridge() {
-    // `-> Json` over a list of strings loads `canon/std/Json`, whose
-    // float member is host-backed. No call site can reach that member,
-    // so the bridge has no business in the component.
-    let externs =
-        pruned_externs("Unit => Program {\n    Args()\n        -> Json\n        -> Print\n}\n");
-    assert!(
-        !externs.iter().any(|p| p.contains("canon:builtins/json")),
-        "the float bridge is unreachable from a string encode, got: {externs:?}"
-    );
-}
-
-#[test]
-fn json_literal_hole_keeps_the_float_encoder() {
-    // A hole lowers to `-> Encoded`, and the family is selected by the
-    // hole's runtime type — so every member stays reachable, the
-    // host-backed `Float` one included. This is the residue that
-    // retiring `from-float` removes; until then, pin it honestly.
-    let externs = pruned_externs(
-        "Labeled = Json\n\nInt => Labeled {\n    {\"answer\":Int}\n}\n\n\
-         Unit => Program {\n    Labeled(42) -> Print\n}\n",
-    );
-    assert!(
-        externs.iter().any(|p| p.contains("canon:builtins/json")),
-        "an interpolating literal reaches the whole `Encoded` family, got: {externs:?}"
-    );
-}
-
-#[test]
 fn print_of_an_int_keeps_the_string_renderer() {
     // `Print` renders through the `String` family without naming it, so
     // a purely syntactic reachability walk drops the renderer and

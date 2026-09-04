@@ -7,8 +7,7 @@ one of your own types is a compile error.
 
 Each module exposes a single primary type, written in ordinary Canon
 over [binding-file](../spec/compilation.md) declarations against
-standard [WASI](https://github.com/WebAssembly/WASI) interfaces or
-temporary `canon:builtins/*` host bridges — see
+standard [WASI](https://github.com/WebAssembly/WASI) interfaces — see
 [Using WASI Interfaces](./wasi.md) for the layering. Idiomatic code
 only ever reaches the wrappers below.
 
@@ -160,10 +159,13 @@ code for [recursive types](../spec/types.md#recursive-types).
 
 ## Conversions: `Int`, `Byte`, `Case`
 
-The infallible directions are pure Canon in `string.can` — `String(42)`
-is `"42"` by digit recursion, and `String(2.5)` / `String(True())`
-render the same way (`Print` goes through the same constructors); the
-fallible direction is a validated constructor in pure Canon:
+The infallible directions are pure Canon — `String(42)` is `"42"` by
+digit recursion in `string.can`, `String(2.5)` is the shortest decimal
+that reads back as the same `Float` (`float/`: Burger–Dybvig over a
+bignum of 30-bit limbs; never exponent notation, `NaN`, `Inf`, `-Inf`
+spelled so), and `String(True())` renders the same way (`Print` goes
+through the same constructors); the fallible direction is a validated
+constructor in pure Canon:
 
 ```text
 Int = (String) => Result<Int, MalformedInt>
@@ -266,8 +268,9 @@ Unit => Result<Program, MalformedJson> {
   and work in every world, including HTTP handlers.
 - **Interpolated** members convert at runtime via `-> Encoded`
   (`Encoded = Json`, family members for `Bool`, `Float`, `Int`,
-  `String`; newtype chains follow to their base member). The `Float`
-  member is host-backed, which the HTTP world can't satisfy yet.
+  `String`; newtype chains follow to their base member). `Float`
+  renders its shortest round-trip decimal; `NaN` and the infinities
+  render as `null`.
 - `Json("…")` validates a *runtime-built* string (full JSON grammar,
   pure Canon); feeding it a static literal the literal form can
   express is a checker error — the literal is the one spelling.

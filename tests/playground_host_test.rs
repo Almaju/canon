@@ -28,7 +28,6 @@ const HOSTED: &[&str] = &[
     "$root.[waitable-set-new]",
     "$root.[waitable-set-wait]",
     "[export]wasi:cli/run@0.3.0-rc-2026-03-15.[task-return]run",
-    "canon:builtins/json@0.1.0.from-float",
     "wasi:cli/environment@0.3.0-rc-2026-03-15.get-arguments",
     "wasi:cli/environment@0.3.0-rc-2026-03-15.get-initial-cwd",
     "wasi:cli/exit@0.3.0-rc-2026-03-15.exit-with-code",

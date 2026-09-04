@@ -1,0 +1,107 @@
+FloatDenormalIsExact = TestResult
+
+FloatFractionIsShortest = TestResult
+
+FloatHalfIsShortest = TestResult
+
+FloatIntegralDropsPoint = TestResult
+
+FloatLargeHasNoExponent = TestResult
+
+FloatNegativeKeepsSign = TestResult
+
+FloatPowerOfTwoBoundary = TestResult
+
+FloatSmallHasNoExponent = TestResult
+
+FloatSumIsShortest = TestResult
+
+FloatThirdIsSeventeenDigits = TestResult
+
+FloatZeroIsZero = TestResult
+
+Halved = Float
+
+Unit => FloatDenormalIsExact {
+    1074
+        -> Halved(1.0)
+        -> String
+        -> Length
+        -> Eq(326)
+        -> TestResult
+}
+
+Unit => FloatFractionIsShortest {
+    String(0.1)
+        -> Eq("0.1")
+        -> TestResult
+}
+
+Unit => FloatHalfIsShortest {
+    String(2.5)
+        -> Eq("2.5")
+        -> TestResult
+}
+
+Unit => FloatIntegralDropsPoint {
+    String(13.0)
+        -> Eq("13")
+        -> TestResult
+}
+
+Unit => FloatLargeHasNoExponent {
+    String(123456789012345680000.0)
+        -> Eq("123456789012345680000")
+        -> TestResult
+}
+
+Unit => FloatNegativeKeepsSign {
+    0.0
+        -> Difference(19.99)
+        -> String
+        -> Eq("-19.99")
+        -> TestResult
+}
+
+Unit => FloatPowerOfTwoBoundary {
+    String(9007199254740992.0)
+        -> Eq("9007199254740992")
+        -> TestResult
+}
+
+Unit => FloatSmallHasNoExponent {
+    String(0.000123)
+        -> Eq("0.000123")
+        -> TestResult
+}
+
+Unit => FloatSumIsShortest {
+    0.1
+        -> Sum(0.2)
+        -> String
+        -> Eq("0.30000000000000004")
+        -> TestResult
+}
+
+Unit => FloatThirdIsSeventeenDigits {
+    1.0
+        -> Quotient(3.0)
+        -> String
+        -> Eq("0.3333333333333333")
+        -> TestResult
+}
+
+Unit => FloatZeroIsZero {
+    0.0
+        -> Difference(0.0)
+        -> String
+        -> Eq("0")
+        -> TestResult
+}
+
+Int * Float => Halved {
+    Int -> Eq(0) -> (
+        * False { Int -> Difference(1) -> Halved(Float -> Quotient(2.0)) }
+        * True { Float -> Halved }
+    )
+}

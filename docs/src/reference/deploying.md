@@ -51,12 +51,9 @@ host with matching p3 support can instantiate it:
 - **CLI components** need `wasi:cli/run` plus the standard cli /
   clocks / random interfaces.
 
-One caveat during the transition: a program that renders a `Float`
-into JSON imports the `canon:builtins/json` bridge (the one host helper
-left; the skip list in `canon install` and the At-a-Glance table mark
-it) and runs only under `canon run` until that lowering lands.
-Everything else — cli, clocks, random, files, the HTTP client and the
-HTTP handler surface — is fully portable. File access goes through
+Every import is a standard `wasi:*` interface — cli, clocks, random,
+files, the HTTP client and the HTTP handler surface — so a component
+runs on any host that provides them. File access goes through
 `wasi:filesystem` preopens: an absolute path opens under the preopen
 named `/`, a relative one under `.` (`canon run` offers both); another
 host decides what a component may see.

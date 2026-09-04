@@ -17,9 +17,7 @@ WIT world : my-app/build/my-app.wit
 ```
 
 - **`.wasm`**: a WASI Preview 3 component. Its imports are standard
-  `wasi:*` interfaces, plus, transitionally, `canon:builtins/*` host
-  bridges for surfaces whose canonical-ABI shape isn't ready; these run
-  only under `canon run`.
+  `wasi:*` interfaces and nothing else.
 - **`.wit`**: the component's world, a human- and tool-readable
   statement of everything it imports and exports.
 
@@ -167,10 +165,7 @@ has no privileged mechanism:
 
 Idiomatic code imports only `canon/...`. A direct import of a raw
 binding works (everything is public) but gives up the curated naming
-and discipline. Where a `wasi:*` interface isn't yet expressible through
-the canonical ABI, the binding temporarily points at a
-`canon:builtins/*` bridge fulfilled by `canon run`; the wrapper API
-doesn't change when the bridge is later swapped for the real interface.
+and discipline.
 
 ## Inspecting the Pipeline
 

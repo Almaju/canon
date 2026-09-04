@@ -1,0 +1,56 @@
+Counted = List<Int>
+
+Halved = Float
+
+Kept = Bool
+
+Pair = List<Int>
+
+Second = Option<Int>
+
+Int => Counted {
+    List(Int) -> At(1) -> (
+        * None { List() }
+        * Some<Int> { List(0) -> Joined(List(Int)) }
+    )
+}
+
+Float => Halved {
+    List(Float) -> At(1) -> (
+        * None { 0.0 }
+        * Some<Float> {
+            List(0) -> Joined(List(1)) -> Pair -> Second -> (
+                * None { 0.0 }
+                * Some<Int> { Float -> Quotient(2.0) }
+            )
+        }
+    )
+}
+
+Bool => Kept {
+    List(Bool) -> At(1) -> (
+        * None { False() }
+        * Some<Bool> {
+            List(0) -> Joined(List(1)) -> Pair -> Second -> (
+                * None { False() }
+                * Some<Int> { Bool }
+            )
+        }
+    )
+}
+
+Pair => Second {
+    Pair -> At(2)
+}
+
+Unit => Program {
+    Counted(5) -> Pair -> Second -> (
+        * None => Unit { "none" -> Print }
+        * Some<Int> => Unit { Int -> Print }
+    )
+    Halved(5.0) -> Print
+    True()
+        -> Kept
+        -> String
+        -> Print
+}
