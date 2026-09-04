@@ -39,7 +39,7 @@ Int => Decimals {
 Int * Width => Fraction {
     Int -> Remainder(10) -> Eq(0) -> (
         * False { Int -> Padded(Width) }
-        * True { Int -> Quotient(10) -> Fraction(Width -> Difference(1)) }
+        * True { Int -> Quotient(10) -> Fraction(Width -> Difference(1) -> Width) }
     )
 }
 

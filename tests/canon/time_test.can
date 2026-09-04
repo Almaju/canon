@@ -23,6 +23,7 @@ Civil => LeapDayDate {
         -> Eq(29)
         -> And(Civil.Month -> Eq(2))
         -> And(Civil.Year -> Eq(2000))
+        -> LeapDayDate
 }
 
 NowDecodesEpoch = TestResult
@@ -105,6 +106,7 @@ Unix => TimeOfDayParts {
         -> Eq(12)
         -> And(Unix -> Minute -> Eq(34))
         -> And(Unix -> Second -> Eq(56))
+        -> TimeOfDayParts
 }
 
 UnixDecodesTimeOfDay = TestResult

@@ -25,7 +25,7 @@ Int * Pos * String => Result<Digits, MalformedInt> {
                     Int
                         -> Product(10)
                         -> Sum(String -> ByteAt(Pos) -> Difference(48))
-                        -> Digits(Pos -> Sum(1) * String)
+                        -> Digits(Pos -> Sum(1) -> Pos * String)
                 }
             )
         }

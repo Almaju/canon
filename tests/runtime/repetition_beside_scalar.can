@@ -1,0 +1,37 @@
+Halves = Int
+
+Limbs = List<Int>
+
+Longer = Bool
+
+Steps = Int
+
+Steps * Limbs^2 => Halves {
+    Limbs.1 -> Longer(Limbs.2) -> (
+        * False { Steps -> Halves }
+        * True {
+            Steps
+                -> Sum(1)
+                -> Steps
+                -> Halves(Limbs.1 -> Taken(Limbs.1 -> Length -> Quotient(2)) -> Limbs * Limbs.2)
+        }
+    )
+}
+
+Limbs^2 => Longer {
+    Limbs.1
+        -> Length
+        -> Gt(Limbs.2 -> Length)
+        -> Longer
+}
+
+Unit => Program {
+    Steps(0)
+        -> Halves(List(1 * 2 * 3 * 4 * 5 * 6 * 7 * 8) * List(1))
+        -> Print
+    List(1 * 2 * 3)
+        -> Limbs
+        -> Longer(List(1))
+        -> String
+        -> Print
+}
