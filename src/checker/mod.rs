@@ -4199,7 +4199,24 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             {
                 return method.name.clone();
             }
-            method_return_type(&recv_ty, &method.name)
+            // A builtin on a newtype receiver is the base's operation
+            // with the base's result: `Limbs -> Length` with `Limbs =
+            // List<Int>` is the list's `Length`, and `Unix ->
+            // Remainder(60)` is an `Int` — a relabel (`-> Second`) gives
+            // it a name again. Walk the alias chain to the base the
+            // table knows.
+            let mut current = recv_ty.as_str();
+            for _ in 0..20 {
+                let ty = method_return_type(current, &method.name);
+                if ty != "<unknown>" {
+                    return ty;
+                }
+                match symbols.aliases.get(current) {
+                    Some(next) => current = next.as_str(),
+                    None => break,
+                }
+            }
+            "<unknown>".to_string()
         }
         Expr::Match { arms, .. } => arms
             .first()

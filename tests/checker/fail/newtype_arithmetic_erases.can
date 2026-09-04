@@ -1,0 +1,19 @@
+Index = Int
+
+Item = String
+
+Items = List<String>
+
+Index * Items => Item {
+    Items -> At(Index) -> (
+        * None { "" }
+        * Some<String> { String }
+    )
+}
+
+Unit => Program {
+    Index(1)
+        -> Sum(1)
+        -> Item(List("a" * "b"))
+        -> Print
+}

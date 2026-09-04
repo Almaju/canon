@@ -87,7 +87,9 @@ Rules:
 
 - **Operation inheritance.** Functions whose input product mentions `B`
   accept an `A` through the alias chain (`Greeting("hi") -> Print`).
-  A family member declared on `A` shadows the inherited one.
+  A family member declared on `A` shadows the inherited one. An
+  inherited operation is `B`'s, result included: `Unix -> Remainder(60)`
+  is an `Int`, and a relabel (`-> Second`) names it again.
 - **Substitutability.** A value of `A` may be passed where `B` is
   expected, without unwrapping. The reverse also holds at construction:
   `A(b)` wraps a `B`.

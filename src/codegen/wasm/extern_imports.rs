@@ -596,10 +596,10 @@ pub(super) fn func_wasm_params_for(
 
 /// The type names of a function's input components, in parameter order:
 /// one per input a call site supplies. Mirrors `func_wasm_params_for`'s
-/// receiver rule, and flattens a product parameter into its components.
-/// A component whose type isn't a plain name contributes nothing, which
-/// makes the list shorter than the input count and so opts the callee
-/// out of by-type binding.
+/// receiver rule, flattens a product parameter into its components, and
+/// spells a `T^N` repetition as N inputs of `T`. A component whose type
+/// isn't a plain name contributes nothing, which makes the list shorter
+/// than the input count and so opts the callee out of by-type binding.
 pub(super) fn func_input_types(func: &FunctionDef) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(recv) = &func.receiver {
@@ -615,6 +615,11 @@ pub(super) fn func_input_types(func: &FunctionDef) -> Vec<String> {
                     if let TypeExpr::Named { name, .. } = field {
                         out.push(name.clone());
                     }
+                }
+            }
+            TypeExpr::Repeat { ty, count, .. } => {
+                if let TypeExpr::Named { name, .. } = ty.as_ref() {
+                    out.extend(std::iter::repeat_n(name.clone(), *count as usize));
                 }
             }
             _ => {}
