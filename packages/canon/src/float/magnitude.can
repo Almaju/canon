@@ -28,8 +28,6 @@ DecimalRaised = DecimalState
 
 DecimalReaching = LimbsBelow
 
-DecimalRendered = DecimalPlaced
-
 DecimalRounded = DecimalDigit
 
 DecimalState = DecimalDenominator
@@ -159,6 +157,12 @@ DecimalEmitted * DecimalPlace => DecimalPlaced {
     )
 }
 
+DecimalState => DecimalPlaced {
+    DecimalState
+        -> DecimalGenerated
+        -> DecimalPlaced(DecimalState.DecimalPlace)
+}
+
 FloatParts => DecimalPrepared {
     FloatParts.FloatExponent -> Lt(0) -> (
         * False {
@@ -273,12 +277,6 @@ DecimalStep => DecimalReaching {
     )
 }
 
-DecimalState => DecimalRendered {
-    DecimalState
-        -> DecimalGenerated
-        -> DecimalPlaced(DecimalState.DecimalPlace)
-}
-
 DecimalStep => DecimalRounded {
     DecimalStep.LimbsDivided.LimbsLeftover
         -> LimbsShifted(LimbShift(1))
@@ -371,5 +369,5 @@ Float => Magnitude {
         -> DecimalPrepared
         -> DecimalRaised
         -> DecimalLowered
-        -> DecimalRendered
+        -> DecimalPlaced
 }
