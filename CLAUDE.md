@@ -94,7 +94,7 @@ same PR; never open standalone docs-sync PRs.
 | Path | Description |
 |---|---|
 | `.github/` | CI workflows (docs deploy, release pipeline) |
-| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (Elm triple) rendering `src/*.md` via the `canon/markdown` renderer (`docs/deps/`); `canon build docs` → `docs/build/` (wasm + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` and `assets/canon-play.js` are injected by the deploy for progressive enhancement (highlighting, the playground page, click-to-run on ` ```canon,run ` snippets). `landing/index.html` is the marketing page. Deploy puts landing at root, app under `/doc/`, and the stdlib's `canon doc` output under `/doc/api/`. |
+| `docs/` | Documentation site. `src/main.can` + `src/styles.can` are a Canon web app (Elm triple) rendering `src/*.md` via the `canon/markdown` renderer (`docs/deps/`); `canon build docs` → `docs/build/` (wasm + `canon-web.js` host + `index.html`). `assets/docs-enhance.js` and `assets/canon-play.js` are injected by the deploy for progressive enhancement (highlighting, the playground page, click-to-run on ` ```canon,run ` snippets). `landing/index.html` is the marketing page. Deploy puts landing at root, app under `/doc/`, and `canon doc packages` (the prelude and every package) under `/doc/api/`. |
 | `src/` | Compiler source (Rust) |
 | `src/lexer/` | Tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | AST construction (`parser.rs`) |
@@ -106,7 +106,7 @@ same PR; never open standalone docs-sync PRs.
 | `src/bindgen/` | WIT → Canon source emitter (`naming.rs`, `emit.rs`, `mod.rs`) |
 | `src/main.rs` | CLI entry (`run`, `build`, `check` (`--fix`), `doc`, `test`, `inspect`, `bindgen`, `install`, `add`, `publish`, `lsp`, `upgrade`, `use`) |
 | `src/add.rs` | `canon add` — vendors a package to `deps/<ns>/<name>@<version>/`, replacing another version: a bundled `<ns>/<name>` at the toolchain's version, or `<git-url>@<tag>` cloned at the tag. |
-| `src/doc.rs` | `canon doc` — the generated API reference. Parses a package's `src/` raw (not through `resolve_new_syntax`, which rewrites declarations into their codegen shape) and renders a static site: a page per type with its definition, its constructors, and every constructor accepting it. The stdlib's is deployed at `/doc/api/`. |
+| `src/doc.rs` | `canon doc` — the generated API reference. Parses a package's `src/` raw (not through `resolve_new_syntax`, which rewrites declarations into their codegen shape) and renders a static site: a page per type with its definition, its constructors, and every constructor accepting it; a page per module with its declarations. A directory of packages renders as one site with an index (`canon doc packages`, deployed at `/doc/api/`). |
 | `src/playground.rs` | The compiler's own browser entry (`wasm32-unknown-unknown`, `[profile.playground]`) — `canon_format`/`canon_compile` over a byte buffer, driven by `docs/assets/canon-play.js`. No imports; the stdlib is already in the binary |
 | `src/webhost.rs` | Web target's browser side — generated JS host, `index.html` shell, static server for `canon run` |
 | `src/lib.rs` | Public crate modules |

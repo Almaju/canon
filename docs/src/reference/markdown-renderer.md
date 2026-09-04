@@ -34,7 +34,7 @@ Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 ```canon
 Unit => Result<Program, IoError> {
     Path("notes.md")
-        -> File?
+        -> File
         -> Read?
         -> Markdown
         -> Html

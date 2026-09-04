@@ -15,7 +15,7 @@ the value *is* the permission:
 ```canon
 Unit => Program {
     Path("./data.json")
-        -> File?
+        -> File
         -> Read?
         -> Print
 }
@@ -133,9 +133,9 @@ order; `a -> Race(b)` returns the first and cancels the loser. There is no
 bare call form: `Parallel(a * b)` is a compile error. The auto-await
 rule fires when the composed future is consumed, still with no keyword.
 
-(The runtime fixtures exercise these through `SlowEcho`, a
-string-anchored foreign binding to the async test bridge;
-`Parallel`/`Race` themselves are the language surface.)
+(The runtime fixtures exercise these through `Slept`, the binding to
+`wasi:clocks`' asynchronous `wait-for`; `Parallel`/`Race` themselves
+are the language surface.)
 
 **Cancellation** has no primitive. It is a consequence of composition:
 `Race` cancels its losing branch; dropping a `Stream<T>` mid-iteration

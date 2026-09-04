@@ -1152,24 +1152,28 @@ fn cmd_build(args: &[String]) {
     }
 }
 
-/// `canon doc [package]` — render a package's API reference to
-/// `<package>/build/doc/`.
+/// `canon doc [target]` — the generated API reference.
 ///
 /// Documentation is per *package*, so this resolves the target by
 /// package shape alone (a `src/` tree of `.can` files) instead of
 /// through the entry scan `build`/`run` use: a library has no entry,
-/// and a library is the main thing anyone documents. A directory whose
-/// immediate subdirectories are packages docs each of them.
+/// and a library is the main thing anyone documents. A package renders
+/// into its own `build/doc/`; any other directory renders every package
+/// under it — found the way `build.rs` finds the bundled ones, a
+/// directory with `src/` named by its path — as one site with an index,
+/// into `<target>/build/doc/`.
 fn cmd_doc(args: &[String]) {
     let mut target: Option<&str> = None;
     for arg in args {
         match arg.as_str() {
             "--help" | "-h" => {
-                println!("Usage: canon doc [package]");
+                println!("Usage: canon doc [target]");
                 println!();
-                println!("Renders every type in the package — its definition, the");
+                println!("Renders every type in a package — its definition, the");
                 println!("constructors that produce it, and the constructors that accept");
                 println!("it — as a cross-linked static site in `<package>/build/doc/`.");
+                println!("A directory of packages renders them all as one site, with an");
+                println!("index, into `<target>/build/doc/`.");
                 return;
             }
             other if other.starts_with('-') => {
@@ -1194,56 +1198,103 @@ fn cmd_doc(args: &[String]) {
         process::exit(1);
     }
 
-    let mut packages: Vec<PathBuf> = Vec::new();
-    if canon::install::has_can_file(&path.join("src")) {
-        packages.push(path.to_path_buf());
-    } else {
-        let mut members: Vec<PathBuf> = fs::read_dir(path)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| canon::install::has_can_file(&p.join("src")))
-            .collect();
-        members.sort();
-        packages = members;
-    }
-    if packages.is_empty() {
-        eprintln!(
-            "error: `{}` is not a Canon package (no `src/` tree of `.can` files) \
-             and none of its subdirectories is one",
-            arg
-        );
-        process::exit(1);
-    }
+    let build = |name: &str, pkg: &Path| match canon::doc::build(name, &pkg.join("src")) {
+        Ok(api) => api,
+        Err((file, err)) => {
+            print_error(&file.to_string_lossy(), &err);
+            process::exit(1);
+        }
+    };
+    let report = |api: &canon::doc::Api, pages: usize, out: &Path| {
+        println!(
+            "{}: {} pages ({} types, {} modules) -> {}",
+            api.package,
+            pages,
+            api.type_names().count(),
+            api.modules.len(),
+            out.display()
+        )
+    };
+    let out_dir = path.join("build").join("doc");
 
-    for pkg in &packages {
-        let name = pkg
+    if canon::install::has_can_file(&path.join("src")) {
+        let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| arg.to_string());
-        let api = match canon::doc::build(&name, &pkg.join("src")) {
-            Ok(api) => api,
-            Err((file, err)) => {
-                print_error(&file.to_string_lossy(), &err);
-                process::exit(1);
-            }
-        };
-        let out_dir = pkg.join("build").join("doc");
+        let api = build(&name, path);
         match canon::doc::render(&api, &out_dir) {
-            Ok(pages) => println!(
-                "{}: {} pages ({} types, {} modules) -> {}",
-                name,
-                pages,
-                api.type_names().count(),
-                api.modules.len(),
-                out_dir.display()
-            ),
+            Ok(pages) => report(&api, pages, &out_dir),
             Err(e) => {
                 eprintln!("error: could not write `{}`: {}", out_dir.display(), e);
                 process::exit(1);
             }
         }
+        return;
+    }
+
+    let mut packages: Vec<(String, PathBuf)> = Vec::new();
+    collect_packages(path, path, &mut packages);
+    packages.sort();
+    if packages.is_empty() {
+        eprintln!(
+            "error: `{}` is not a Canon package (no `src/` tree of `.can` files) \
+             and holds none",
+            arg
+        );
+        process::exit(1);
+    }
+    let apis: Vec<canon::doc::Api> = packages
+        .iter()
+        .map(|(name, pkg)| build(name, pkg))
+        .collect();
+    match canon::doc::render_site(&apis, &out_dir) {
+        Ok(pages) => {
+            for api in &apis {
+                println!(
+                    "{}: {} types, {} modules",
+                    api.package,
+                    api.type_names().count(),
+                    api.modules.len()
+                );
+            }
+            println!(
+                "{} packages, {} pages -> {}",
+                apis.len(),
+                pages,
+                out_dir.display()
+            );
+        }
+        Err(e) => {
+            eprintln!("error: could not write `{}`: {}", out_dir.display(), e);
+            process::exit(1);
+        }
+    }
+}
+
+/// Every package under `dir`, named by its path from `root`: a
+/// directory with `.can` files under `src/` is one, and the walk
+/// continues into everything but a package's own trees.
+fn collect_packages(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+    if dir != root && canon::install::has_can_file(&dir.join("src")) {
+        let name = dir
+            .strip_prefix(root)
+            .unwrap_or(dir)
+            .to_string_lossy()
+            .replace('\\', "/");
+        out.push((name, dir.to_path_buf()));
+    }
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !path.is_dir()
+            || name.starts_with('.')
+            || ["src", "bindgen", "wit", "build", "deps"].contains(&name.as_ref())
+        {
+            continue;
+        }
+        collect_packages(root, &path, out);
     }
 }
 

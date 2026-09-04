@@ -149,12 +149,20 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             if let Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) =
                 &indirect_return
             {
-                if component::vendored_extern_returns_byte_stream(&ext.path) {
-                    indirect_return = Some(IndirectReturnShape::ByteStream {
-                        ok_name: ok_name.clone(),
-                        err_name: err_name.clone(),
-                    });
-                }
+                // The fused round trips first: their WIT also carries a
+                // stream, which the byte-stream probe would claim.
+                let (ok_name, err_name) = (ok_name.clone(), err_name.clone());
+                indirect_return = if ext.path == component::WASI_HTTP_CLIENT_SEND {
+                    Some(IndirectReturnShape::HttpSend { ok_name, err_name })
+                } else if ext.path == component::WASI_FS_READ {
+                    Some(IndirectReturnShape::FileRead { ok_name, err_name })
+                } else if ext.path == component::WASI_FS_WRITE {
+                    Some(IndirectReturnShape::FileWrite { ok_name, err_name })
+                } else if component::vendored_extern_returns_byte_stream(&ext.path) {
+                    Some(IndirectReturnShape::ByteStream { ok_name, err_name })
+                } else {
+                    indirect_return
+                };
             }
             match &mut indirect_return {
                 Some(IndirectReturnShape::OptionScalar { prim }) => {
@@ -220,6 +228,27 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             results = vec![ValType::I32];
         }
 
+        // A fused sequence calls its own import with the core signature
+        // the WIT gives it, not the one the Canon spelling implies:
+        // `send` is the async lower of `(request) -> result<…>`, the
+        // file streams are `descriptor` methods taking an offset.
+        let mut is_async = ext.is_async;
+        match indirect_return {
+            Some(IndirectReturnShape::HttpSend { .. }) => {
+                params = vec![ValType::I32, ValType::I32];
+                results = vec![ValType::I32];
+                is_async = true;
+            }
+            Some(IndirectReturnShape::FileRead { .. }) => {
+                params = vec![ValType::I32, ValType::I64, ValType::I32];
+                results = vec![];
+            }
+            Some(IndirectReturnShape::FileWrite { .. }) => {
+                params = vec![ValType::I32, ValType::I32, ValType::I64];
+                results = vec![ValType::I32];
+            }
+            _ => {}
+        }
         raw.push(ExternImport {
             full_path: ext.path.clone(),
             component_namespace: component_ns,
@@ -232,7 +261,7 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             narrow_result_signed,
             indirect_return,
             bare_result,
-            is_async: ext.is_async,
+            is_async,
             func_idx: 0, // filled in below after sorting
             stream_read_fn: None,
             stream_drop_readable_fn: None,
@@ -255,22 +284,287 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
             e.stream_read_fn = Some(next);
             e.stream_drop_readable_fn = Some(next + 1);
             e.future_drop_readable_fn = Some(next + 2);
-            next += 3;
         }
+        next += e.import_slots() - 1;
     }
     raw
 }
 
 impl ExternImport {
-    /// How many core imports this extern occupies: itself, plus the
-    /// three stream builtins a `ByteStream` return drains through.
     pub(super) fn import_slots(&self) -> u32 {
-        if self.stream_read_fn.is_some() {
-            4
-        } else {
-            1
+        match &self.indirect_return {
+            Some(IndirectReturnShape::ByteStream { .. }) => 4,
+            Some(shape) => 1 + fused_imports(shape).len() as u32,
+            None => 1,
         }
     }
+}
+
+/// One import a fused sequence calls: its core module, its name, and
+/// the core signature `wit-component` expects for it.
+#[derive(Clone, Copy)]
+pub(super) struct FusedImport {
+    pub(super) module: &'static str,
+    pub(super) name: &'static str,
+    pub(super) params: &'static [ValType],
+    pub(super) results: &'static [ValType],
+}
+
+const fn fused(
+    module: &'static str,
+    name: &'static str,
+    params: &'static [ValType],
+    results: &'static [ValType],
+) -> FusedImport {
+    FusedImport {
+        module,
+        name,
+        params,
+        results,
+    }
+}
+
+/// The imports a fused sequence calls, in the order they follow the
+/// extern's own import in the import section; the `*Import` enums name
+/// each one's offset. Empty for a shape that fuses nothing.
+pub(super) fn fused_imports(shape: &IndirectReturnShape) -> &'static [FusedImport] {
+    match shape {
+        IndirectReturnShape::HttpSend { .. } => HTTP_SEND_IMPORTS,
+        IndirectReturnShape::FileRead { .. } => FILE_READ_IMPORTS,
+        IndirectReturnShape::FileWrite { .. } => FILE_WRITE_IMPORTS,
+        _ => &[],
+    }
+}
+
+const HTTP_TYPES: &str = component::WASI_HTTP_TYPES_MODULE;
+const FS_TYPES: &str = component::WASI_FS_TYPES_MODULE;
+const FS_PREOPENS: &str = component::WASI_FS_PREOPENS_MODULE;
+const I32X1: &[ValType] = &[ValType::I32];
+const I32X2: &[ValType] = &[ValType::I32; 2];
+const I32X3: &[ValType] = &[ValType::I32; 3];
+const I64X1: &[ValType] = &[ValType::I64];
+
+const HTTP_SEND_IMPORTS: &[FusedImport] = &[
+    fused(HTTP_TYPES, "[constructor]fields", &[], I32X1),
+    fused(HTTP_TYPES, "[method]fields.append", &[ValType::I32; 6], &[]),
+    fused(HTTP_TYPES, "[static]request.new", &[ValType::I32; 7], &[]),
+    fused(HTTP_TYPES, "[stream-new-0][static]request.new", &[], I64X1),
+    fused(
+        HTTP_TYPES,
+        "[stream-write-0][static]request.new",
+        I32X3,
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[stream-drop-writable-0][static]request.new",
+        I32X1,
+        &[],
+    ),
+    fused(HTTP_TYPES, "[future-new-1][static]request.new", &[], I64X1),
+    fused(
+        HTTP_TYPES,
+        "[future-write-1][static]request.new",
+        I32X2,
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[future-drop-writable-1][static]request.new",
+        I32X1,
+        &[],
+    ),
+    fused(
+        HTTP_TYPES,
+        "[future-drop-readable-2][static]request.new",
+        I32X1,
+        &[],
+    ),
+    fused(
+        HTTP_TYPES,
+        "[method]request.set-method",
+        &[ValType::I32; 4],
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[method]request.set-scheme",
+        &[ValType::I32; 5],
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[method]request.set-authority",
+        &[ValType::I32; 4],
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[method]request.set-path-with-query",
+        &[ValType::I32; 4],
+        I32X1,
+    ),
+    fused(HTTP_TYPES, "[method]response.get-status-code", I32X1, I32X1),
+    fused(HTTP_TYPES, "[static]response.consume-body", I32X3, &[]),
+    fused(
+        HTTP_TYPES,
+        "[future-new-0][static]response.consume-body",
+        &[],
+        I64X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[future-write-0][static]response.consume-body",
+        I32X2,
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[future-drop-writable-0][static]response.consume-body",
+        I32X1,
+        &[],
+    ),
+    fused(
+        HTTP_TYPES,
+        "[stream-read-1][static]response.consume-body",
+        I32X3,
+        I32X1,
+    ),
+    fused(
+        HTTP_TYPES,
+        "[stream-drop-readable-1][static]response.consume-body",
+        I32X1,
+        &[],
+    ),
+    fused(
+        HTTP_TYPES,
+        "[future-drop-readable-2][static]response.consume-body",
+        I32X1,
+        &[],
+    ),
+];
+
+/// Opening a file is shared by both file sequences: the preopened
+/// root, then the async `open-at` (its six flat params travel through
+/// memory), then the descriptor is dropped again.
+const FILE_OPEN_IMPORTS: [FusedImport; 3] = [
+    fused(FS_PREOPENS, "get-directories", I32X1, &[]),
+    fused(
+        FS_TYPES,
+        "[async-lower][method]descriptor.open-at",
+        I32X2,
+        I32X1,
+    ),
+    fused(FS_TYPES, "[resource-drop]descriptor", I32X1, &[]),
+];
+
+const FILE_READ_IMPORTS: &[FusedImport] = &[
+    FILE_OPEN_IMPORTS[0],
+    FILE_OPEN_IMPORTS[1],
+    FILE_OPEN_IMPORTS[2],
+    fused(
+        FS_TYPES,
+        "[stream-read-0][method]descriptor.read-via-stream",
+        I32X3,
+        I32X1,
+    ),
+    fused(
+        FS_TYPES,
+        "[stream-drop-readable-0][method]descriptor.read-via-stream",
+        I32X1,
+        &[],
+    ),
+    fused(
+        FS_TYPES,
+        "[future-drop-readable-1][method]descriptor.read-via-stream",
+        I32X1,
+        &[],
+    ),
+];
+
+const FILE_WRITE_IMPORTS: &[FusedImport] = &[
+    FILE_OPEN_IMPORTS[0],
+    FILE_OPEN_IMPORTS[1],
+    FILE_OPEN_IMPORTS[2],
+    fused(
+        FS_TYPES,
+        "[stream-new-0][method]descriptor.write-via-stream",
+        &[],
+        I64X1,
+    ),
+    fused(
+        FS_TYPES,
+        "[stream-write-0][method]descriptor.write-via-stream",
+        I32X3,
+        I32X1,
+    ),
+    fused(
+        FS_TYPES,
+        "[stream-drop-writable-0][method]descriptor.write-via-stream",
+        I32X1,
+        &[],
+    ),
+    fused(
+        FS_TYPES,
+        "[future-read-1][method]descriptor.write-via-stream",
+        I32X2,
+        I32X1,
+    ),
+    fused(
+        FS_TYPES,
+        "[future-drop-readable-1][method]descriptor.write-via-stream",
+        I32X1,
+        &[],
+    ),
+];
+
+/// Offsets into `FILE_READ_IMPORTS` / `FILE_WRITE_IMPORTS` (the first
+/// three are shared), from the extern's own index + 1.
+#[derive(Clone, Copy)]
+pub(super) enum FileImport {
+    GetDirectories = 0,
+    OpenAt,
+    DescriptorDrop,
+    // read
+    BodyRead,
+    BodyDropReadable,
+    BodyTrailersDropReadable,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum FileWriteImport {
+    ContentsNew = 3,
+    ContentsWrite,
+    ContentsDropWritable,
+    DoneRead,
+    DoneDropReadable,
+}
+
+/// Offsets into `HTTP_SEND_IMPORTS`, from the `send` import's index + 1.
+#[derive(Clone, Copy)]
+pub(super) enum HttpSendImport {
+    FieldsNew = 0,
+    FieldsAppend,
+    RequestNew,
+    ContentsNew,
+    ContentsWrite,
+    ContentsDropWritable,
+    TrailersNew,
+    TrailersWrite,
+    TrailersDropWritable,
+    TransmitDropReadable,
+    SetMethod,
+    SetScheme,
+    SetAuthority,
+    SetPathWithQuery,
+    GetStatusCode,
+    ConsumeBody,
+    ResFutureNew,
+    ResFutureWrite,
+    ResFutureDropWritable,
+    BodyRead,
+    BodyDropReadable,
+    BodyTrailersDropReadable,
 }
 
 /// True if `func` is a Self-renamed constructor (parsed from
@@ -551,6 +845,29 @@ pub(super) enum IndirectReturnShape {
     /// `ResultStringString` does, so `?` and dispatch see an ordinary
     /// fallible string.
     ByteStream { ok_name: String, err_name: String },
+    /// `wasi:http/client`'s `send`, fused: the extern takes
+    /// `Authority * Body * Method * PathWithQuery * RequestHeaders *
+    /// Scheme` and codegen builds the `request` resource, sends it
+    /// (async), and drains the `response` into `"NNN body"` — the
+    /// three status digits, a space, the body — or, for a transport
+    /// failure, `"0NN message"` with the `error-code` case number. The
+    /// stdlib turns that into `Result<Fetched, HttpError>` in Canon.
+    /// Return area: the 32-byte `result<response, error-code>` (payload
+    /// at +8: `error-code` has an `option<u64>` case).
+    HttpSend { ok_name: String, err_name: String },
+    /// `wasi:filesystem`'s `read-via-stream`, fused: the extern takes
+    /// the path, codegen opens it under the preopened root (`open-at`,
+    /// async) and drains the stream, as `ByteStream` drains. The `Err`
+    /// arm is the `error-code` case number, two digits, then a space
+    /// and the `other` case's message when there is one; the stdlib
+    /// names the case in Canon. Return area: `open-at`'s
+    /// `result<descriptor, error-code>`, 24 bytes.
+    FileRead { ok_name: String, err_name: String },
+    /// `wasi:filesystem`'s `write-via-stream`, fused: open with create
+    /// and truncate, write the contents through a fresh stream, read
+    /// the completion future. `Ok` carries the path back; `Err` is
+    /// spelled as for `FileRead`.
+    FileWrite { ok_name: String, err_name: String },
     ListScalar {
         prim: wasm_encoder::PrimitiveValType,
     },
@@ -604,6 +921,8 @@ impl IndirectReturnShape {
             IndirectReturnShape::ListString => 8,
             IndirectReturnShape::ListScalar { .. } => 8,
             IndirectReturnShape::ByteStream { .. } => 8,
+            IndirectReturnShape::HttpSend { .. } => 32,
+            IndirectReturnShape::FileRead { .. } | IndirectReturnShape::FileWrite { .. } => 24,
             IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }

@@ -43,8 +43,8 @@ mod ty;
 mod web;
 
 use extern_imports::{
-    collect_extern_imports, func_input_types, is_self_ctor, ExternImport, IndirectReturnShape,
-    ParamKind,
+    collect_extern_imports, func_input_types, fused_imports, is_self_ctor, ExternImport,
+    FileImport, FileWriteImport, HttpSendImport, IndirectReturnShape, ParamKind,
 };
 use http::generate_http_core_module;
 use strings::{extra_locals_decl, max_arm_depth, FuncInfo, LocalScope, StringTable};
@@ -587,9 +587,12 @@ impl<'m> WasmGen<'m> {
                 }
                 Some(IndirectReturnShape::ListString) => Ty::List,
                 Some(IndirectReturnShape::ListScalar { .. }) => Ty::List,
-                Some(IndirectReturnShape::ByteStream {
-                    ok_name, err_name, ..
-                }) => Ty::NamedPtrOf("Result".to_string(), ok_name.clone(), err_name.clone()),
+                Some(
+                    IndirectReturnShape::ByteStream { ok_name, err_name }
+                    | IndirectReturnShape::HttpSend { ok_name, err_name }
+                    | IndirectReturnShape::FileRead { ok_name, err_name }
+                    | IndirectReturnShape::FileWrite { ok_name, err_name },
+                ) => Ty::NamedPtrOf("Result".to_string(), ok_name.clone(), err_name.clone()),
                 Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
                     Ty::NamedPtr(product.clone())
                 }
@@ -734,10 +737,13 @@ impl<'m> WasmGen<'m> {
                 // `compile_constructor`, silently dropping the body.
                 // Every param component registers (not just the first):
                 // commutative calling lets any component be the
-                // receiver, and for a constructor family the per-param
-                // keys are what keep members distinct — the checker
-                // guards that no two members collide on a component
-                // type.
+                // receiver. For a constructor family the members are
+                // told apart by their *first* input (the checker guards
+                // that no two share one), and the canonical call pipes
+                // that input, so a member owns its first component's key
+                // outright and only fills the others when nothing else
+                // has — `Url -> Fetched` finds `Url => Fetched` even
+                // though `Body * … * Url => Fetched` names `Url` too.
                 if is_self_ctor(func) {
                     let recv_name = func
                         .receiver
@@ -745,11 +751,15 @@ impl<'m> WasmGen<'m> {
                         .map(|r| r.name.clone())
                         .unwrap_or_default();
                     let components = param_component_names(func);
-                    for param_name in components {
+                    for (i, param_name) in components.into_iter().enumerate() {
                         let commutative_key = (Some(param_name), recv_name.clone());
-                        self.func_table
-                            .entry(commutative_key)
-                            .or_insert_with(|| info.clone());
+                        if i == 0 {
+                            self.func_table.insert(commutative_key, info.clone());
+                        } else {
+                            self.func_table
+                                .entry(commutative_key)
+                                .or_insert_with(|| info.clone());
+                        }
                     }
                 }
                 self.compiled_user_funcs.push((idx, type_idx, func.clone()));

@@ -29,7 +29,11 @@ fn tmpdir(name: &str) -> PathBuf {
 }
 
 fn api() -> doc::Api {
-    doc::build("canon", &std_src())
+    package_api("canon", &std_src())
+}
+
+fn package_api(name: &str, src: &Path) -> doc::Api {
+    doc::build(name, src)
         .unwrap_or_else(|(path, err)| panic!("canon doc failed on {}: {:?}", path.display(), err))
 }
 
@@ -118,15 +122,15 @@ fn a_type_page_carries_its_definition_constructors_and_pipe_menu() {
     // A fallible constructor renders in both directions: declaration
     // form where it is declared, call form (with `?`) where it is
     // reached by a pipe.
+    let read = fs::read_to_string(out.join("type/Read.html")).expect("Read page");
+    assert!(
+        read.contains("=&gt; Result&lt;"),
+        "Read's fallible constructor is missing its declaration form"
+    );
     let file = fs::read_to_string(out.join("type/File.html")).expect("File page");
     assert!(
-        file.contains("=&gt; Result&lt;"),
-        "File's fallible constructor is missing its declaration form"
-    );
-    let path = fs::read_to_string(out.join("type/Path.html")).expect("Path page");
-    assert!(
-        path.contains("-&gt; <a href=\"../type/File.html\">File</a>?"),
-        "`Path -> File?` missing from Path's pipe menu"
+        file.contains("-&gt; <a href=\"../type/Read.html\">Read</a>?"),
+        "`File -> Read?` missing from File's pipe menu"
     );
 }
 
@@ -200,4 +204,66 @@ fn hrefs(html: &str) -> Vec<String> {
         .filter(|h| !h.starts_with("http") && !h.starts_with('#'))
         .map(|h| h.split('#').next().unwrap_or(h).to_string())
         .collect()
+}
+
+/// A module page is the export list a reader scans to learn what a
+/// file offers: every declaration in declaration form, each name a
+/// link to the constructed type.
+#[test]
+fn a_module_page_lists_its_declarations() {
+    let out = tmpdir("module");
+    let api = api();
+    doc::render(&api, &out).expect("render");
+
+    let map = fs::read_to_string(out.join("module/map.html")).expect("map module page");
+    assert!(map.contains("Declarations"), "no declaration list");
+    assert!(
+        map.contains("<a href=\"../type/Map.html\">Map</a> * <a href=\"../type/Key.html\">Key</a> * <a href=\"../type/Value.html\">Value</a> =&gt; <a href=\"../type/Inserted.html\">Inserted</a>"),
+        "`Map * Key * Value => Inserted` is missing from map's declarations"
+    );
+}
+
+/// `canon doc` over a directory of packages renders them as one site:
+/// each under its own path with a link back up, an index listing them,
+/// and one search over every package's types.
+#[test]
+fn a_directory_of_packages_renders_as_one_site() {
+    let out = tmpdir("site");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages");
+    let apis = vec![
+        package_api("canon", &root.join("canon/src")),
+        package_api("canon/ansi", &root.join("canon/ansi/src")),
+    ];
+    doc::render_site(&apis, &out).expect("render site");
+
+    let index = fs::read_to_string(out.join("index.html")).expect("site index");
+    assert!(
+        index.contains("href=\"canon/index.html\""),
+        "prelude missing from the index"
+    );
+    assert!(
+        index.contains("href=\"canon/ansi/index.html\""),
+        "canon/ansi missing from the index"
+    );
+
+    let styled = fs::read_to_string(out.join("canon/ansi/type/Styled.html")).expect("Styled page");
+    assert!(
+        styled.contains("href=\"../../../index.html\">&#8592; all packages"),
+        "a package page links back to the site index"
+    );
+    assert!(
+        styled.contains("<a href=\"../type/String.html\">String</a> * <a href=\"../type/Style.html\">Style</a> =&gt; <a href=\"../type/Styled.html\">Styled</a>")
+            || styled.contains("String * <a href=\"../type/Style.html\">Style</a> =&gt; <a href=\"../type/Styled.html\">Styled</a>"),
+        "Styled's constructor is missing:\n{styled}"
+    );
+
+    let search = fs::read_to_string(out.join("search.js")).expect("site search");
+    assert!(
+        search.contains("[\"canon/ansi\", \"Style\"]"),
+        "search index lacks canon/ansi"
+    );
+    assert!(
+        search.contains("[\"canon\", \"Map\"]"),
+        "search index lacks the prelude"
+    );
 }

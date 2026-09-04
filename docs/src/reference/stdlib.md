@@ -16,7 +16,7 @@ Every type name `canon` declares is global — a type of the same
 name in your own project is a compile error — so the complete set,
 internal helpers included, is worth checking before you name a type.
 That list is the index of the [generated API
-reference](api/index.html), which `canon doc` derives from the
+reference](api/canon/index.html), which `canon doc` derives from the
 stdlib source itself and therefore cannot drift from it. This page is
 the prose the generator has no way to write.
 
@@ -29,6 +29,7 @@ Unit => Program {
     Mark() -> Print
     Random() -> Print
     Now() -> Print
+    Slept(1000000)
 }
 ```
 
@@ -37,7 +38,9 @@ arithmetic and comparison work directly — the name is the WASI
 interface's own `mark` type). `Random()` draws from the WASI CSPRNG.
 `Now()` is the RFC 3339 wall-clock time, formatted by a calendar
 conversion written in pure Canon — the host provides only the `Unix()`
-clock reading.
+clock reading. `Slept(nanoseconds)` waits on the monotonic clock; it is
+asynchronous at the boundary, so `Slept(1) -> Parallel(Slept(2))` and
+`-> Race(…)` compose it like any other future.
 
 ## Dates: `Date`, `Weekday`, `Hour`, `Minute`, `Second`
 
@@ -96,14 +99,14 @@ Unit => Program {
     Contents("hello from canon")
         -> Written(Path("/tmp/greeting.txt"))?
         -> Path
-        -> File?
+        -> File
         -> Read?
         -> Print
 }
 ```
 
 ```text
-File = (Path) => Result<File, IoError>
+File = String
 
 Read = String
 
@@ -114,7 +117,10 @@ Written = Path
 Contents * Path => Result<Written, IoError>
 ```
 
-`path -> File?` opens; `file -> Read?` reads the whole contents;
+`path -> File` names the file; `file -> Read?` opens it and reads the
+whole contents through `wasi:filesystem` (an `IoError` is the
+interface's `error-code` case, `no-entry` for a missing file, and a
+relative path is relative to the working directory);
 `contents -> Written(path)?` creates or truncates and returns the path
 as evidence — so a write chains straight into a re-open, as above.
 
@@ -228,8 +234,11 @@ Unit => Program {
 GET; the four-input form takes the `Method`, the `RequestHeaders` as
 `name: value` lines, and the `Body`. HTTP and HTTPS both work. A 2xx
 answers with the response body; any other status is the `HttpError`
-(`HTTP 404 Not Found: …`), as is a transport failure. The request
-blocks; async lowering arrives with the `wasi:http` client migration.
+(`HTTP 404: …`, the body after the colon), and a transport failure is
+`transport error-code NN: …` with the `wasi:http` `error-code` case
+number. The request goes out through `wasi:http/client` — the
+component imports the standard interface and any WASI HTTP host can
+serve it — and the chain waits for the response.
 
 ## `Json`
 

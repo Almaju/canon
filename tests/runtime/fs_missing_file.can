@@ -1,0 +1,6 @@
+Unit => Program {
+    Path("/tmp/canon-fs-never-written.txt") -> File -> Read -> (
+        * Err<IoError> { IoError -> Print }
+        * Ok<Read> { Read -> Print }
+    )
+}

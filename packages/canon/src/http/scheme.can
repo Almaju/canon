@@ -1,0 +1,7 @@
+Scheme = String
+
+Url => Scheme {
+    Url
+        -> Substring(From(1) * Url -> SchemeEnd -> Difference(3) -> To)
+        -> Scheme
+}

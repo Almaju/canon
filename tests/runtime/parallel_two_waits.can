@@ -1,0 +1,6 @@
+Unit => Program {
+    Slept(1)
+        -> Parallel(Slept(2))
+        -> Length
+        -> Print
+}

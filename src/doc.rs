@@ -372,8 +372,12 @@ fn linkify(sig: &str, api: &Api, root: &str) -> String {
 }
 
 /// The page shell every page shares: the sidebar (module tree) and the
-/// search box the flat index feeds.
-fn page(api: &Api, root: &str, title: &str, body: &str) -> String {
+/// search box the flat index feeds. `site` is the path from the page to
+/// the site index when the package is rendered as part of one.
+fn page(api: &Api, root: &str, site: Option<&str>, title: &str, body: &str) -> String {
+    let up = site
+        .map(|s| format!("<a class=\"up\" href=\"{s}index.html\">&#8592; all packages</a>\n"))
+        .unwrap_or_default();
     let mut nav = String::new();
     for m in &api.modules {
         nav.push_str(&format!(
@@ -388,7 +392,7 @@ fn page(api: &Api, root: &str, title: &str, body: &str) -> String {
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
          <title>{doctitle}</title>\n\
          <link rel=\"stylesheet\" href=\"{root}style.css\">\n</head>\n<body>\n\
-         <aside class=\"side\">\n\
+         <aside class=\"side\">\n{up}\
          <a class=\"brand\" href=\"{root}index.html\"><b>&#10033;</b> {pkg}</a>\n\
          <input class=\"search\" type=\"search\" placeholder=\"Search types…\" \
          aria-label=\"Search types\" autocomplete=\"off\">\n\
@@ -403,6 +407,7 @@ fn page(api: &Api, root: &str, title: &str, body: &str) -> String {
         },
         pkg = escape(&api.package),
         root = root,
+        up = up,
         nav = nav,
         body = body,
     )
@@ -449,8 +454,9 @@ fn decl_list(api: &Api, root: &str, heading: &str, decls: &[&DeclDoc], call: boo
     out
 }
 
-fn type_page(api: &Api, name: &str, doc: &TypeDoc) -> String {
+fn type_page(api: &Api, site: Option<&str>, name: &str, doc: &TypeDoc) -> String {
     let root = "../";
+    let site = site.map(|s| format!("{root}{s}"));
     let mut body = format!(
         "<h1><span class=\"kind\">type</span> {}</h1>\n",
         escape(name)
@@ -516,7 +522,7 @@ fn type_page(api: &Api, name: &str, doc: &TypeDoc) -> String {
     body.push_str(&decl_list(api, root, "Constructors", &constructors, false));
     body.push_str(&decl_list(api, root, "Pipes into", &piped, true));
     body.push_str(&decl_list(api, root, "Also accepted by", &used, false));
-    page(api, root, name, &body)
+    page(api, root, site.as_deref(), name, &body)
 }
 
 /// Whether `name` appears anywhere inside `ty`, generics included.
@@ -534,9 +540,10 @@ fn references(ty: &TypeExpr, name: &str) -> bool {
     }
 }
 
-fn module_page(api: &Api, module: &ModuleDoc) -> String {
+fn module_page(api: &Api, site: Option<&str>, module: &ModuleDoc) -> String {
     let depth = module.path.matches('/').count() + 1;
     let root = "../".repeat(depth);
+    let site = site.map(|s| format!("{root}{s}"));
     let mut body = format!(
         "<h1><span class=\"kind\">module</span> {}</h1>\n",
         escape(&module.path)
@@ -563,10 +570,19 @@ fn module_page(api: &Api, module: &ModuleDoc) -> String {
         }
         body.push_str("</ul>\n");
     }
-    page(api, &root, &module.path, &body)
+    // The module's declarations in declaration form — the export list a
+    // reader scans to learn what a file offers, each name linking to the
+    // constructed type's page.
+    let declared: Vec<&DeclDoc> = api
+        .decls
+        .iter()
+        .filter(|d| d.module == module.path)
+        .collect();
+    body.push_str(&decl_list(api, &root, "Declarations", &declared, false));
+    page(api, &root, site.as_deref(), &module.path, &body)
 }
 
-fn index_page(api: &Api) -> String {
+fn index_page(api: &Api, site: Option<&str>) -> String {
     let root = "";
     let mut body = format!(
         "<h1><span class=\"kind\">package</span> {}</h1>\n\
@@ -602,7 +618,7 @@ fn index_page(api: &Api) -> String {
         ));
     }
     body.push_str("</ul>\n");
-    page(api, root, &api.package, &body)
+    page(api, root, site, &api.package, &body)
 }
 
 /// Dark-first, in the docs site's palette — the generated `canon`
@@ -640,6 +656,7 @@ code, .sig, pre { font-family: var(--mono); }
   letter-spacing: .04em; color: var(--fg); padding: 4px 10px 16px;
 }
 .brand b { color: var(--accent); margin-right: .4em; }
+.up { display: block; padding: 0 10px 8px; font-size: 12.5px; color: var(--dim); }
 .search {
   width: 100%; background: var(--panel); color: var(--fg); border: 1px solid var(--line);
   border-radius: 7px; padding: 7px 10px; font: 13px/1.4 var(--sans); outline: none;
@@ -736,17 +753,21 @@ pub fn render(api: &Api, out_dir: &Path) -> std::io::Result<usize> {
     if out_dir.exists() {
         fs::remove_dir_all(out_dir)?;
     }
+    render_into(api, out_dir, None)
+}
+
+fn render_into(api: &Api, out_dir: &Path, site: Option<&str>) -> std::io::Result<usize> {
     fs::create_dir_all(out_dir.join("type"))?;
 
     fs::write(out_dir.join("style.css"), STYLE_CSS)?;
     fs::write(out_dir.join("search.js"), search_js(api))?;
-    fs::write(out_dir.join("index.html"), index_page(api))?;
+    fs::write(out_dir.join("index.html"), index_page(api, site))?;
     let mut pages = 1;
 
     for (name, doc) in &api.types {
         fs::write(
             out_dir.join("type").join(format!("{}.html", name)),
-            type_page(api, name, doc),
+            type_page(api, site, name, doc),
         )?;
         pages += 1;
     }
@@ -755,8 +776,105 @@ pub fn render(api: &Api, out_dir: &Path) -> std::io::Result<usize> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(path, module_page(api, module))?;
+        fs::write(path, module_page(api, site, module))?;
         pages += 1;
     }
     Ok(pages)
+}
+
+/// Render several packages as one site: each under `<out_dir>/<name>/`
+/// with a link back up, and an index listing them. Returns the number
+/// of pages written.
+pub fn render_site(apis: &[Api], out_dir: &Path) -> std::io::Result<usize> {
+    if out_dir.exists() {
+        fs::remove_dir_all(out_dir)?;
+    }
+    fs::create_dir_all(out_dir)?;
+    let mut pages = 1;
+    for api in apis {
+        let up = "../".repeat(api.package.matches('/').count() + 1);
+        pages += render_into(api, &out_dir.join(&api.package), Some(&up))?;
+    }
+    fs::write(out_dir.join("style.css"), STYLE_CSS)?;
+    fs::write(out_dir.join("search.js"), site_search_js(apis))?;
+    fs::write(out_dir.join("index.html"), site_index_page(apis))?;
+    Ok(pages)
+}
+
+/// The site index: every package with its size, and the search over
+/// all of their types.
+fn site_index_page(apis: &[Api]) -> String {
+    let mut list = String::new();
+    for api in apis {
+        list.push_str(&format!(
+            "<li><a href=\"{p}/index.html\">{p}</a> <span class=\"meta\">{t} type{ts}, {m} module{ms}</span></li>",
+            p = escape(&api.package),
+            t = api.types.len(),
+            ts = if api.types.len() == 1 { "" } else { "s" },
+            m = api.modules.len(),
+            ms = if api.modules.len() == 1 { "" } else { "s" },
+        ));
+    }
+    format!(
+        "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
+         <title>canon packages</title>\n\
+         <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n\
+         <aside class=\"side\">\n\
+         <a class=\"brand\" href=\"index.html\"><b>&#10033;</b> packages</a>\n\
+         <input class=\"search\" type=\"search\" placeholder=\"Search types…\" \
+         aria-label=\"Search types\" autocomplete=\"off\">\n\
+         <ul class=\"results\" hidden></ul>\n\
+         <div class=\"sec\">Packages</div>\n<ul class=\"tree\">{tree}</ul>\n\
+         </aside>\n<main class=\"main\">\
+         <h1><span class=\"kind\">packages</span> canon</h1>\n\
+         <p class=\"meta\">The prelude and the packages that ship beside it. Canon has no \
+         comments, so each reference is the declaration surface: every type, what constructs \
+         it, and what it pipes into.</p>\n\
+         <h2>Packages</h2>\n<ul class=\"index\">{list}</ul>\n\
+         </main>\n<script src=\"search.js\"></script>\n</body>\n</html>\n",
+        tree = apis
+            .iter()
+            .map(|a| format!(
+                "<li><a href=\"{p}/index.html\">{p}</a></li>",
+                p = escape(&a.package)
+            ))
+            .collect::<String>(),
+        list = list,
+    )
+}
+
+/// The site-wide search index: `[package, type]` pairs, matched on the
+/// type name and shown with the package they belong to.
+fn site_search_js(apis: &[Api]) -> String {
+    let entries: Vec<String> = apis
+        .iter()
+        .flat_map(|a| {
+            a.types
+                .keys()
+                .map(move |n| format!("[\"{}\", \"{}\"]", a.package, n))
+        })
+        .collect();
+    format!(
+        r#""use strict";
+// generated by `canon doc`; do not edit
+(function () {{
+  const ENTRIES = [{entries}];
+  const root = document.currentScript.src.replace(/search\.js$/, "");
+  const box = document.querySelector(".search");
+  const out = document.querySelector(".results");
+  if (!box || !out) return;
+  box.addEventListener("input", function () {{
+    const q = box.value.trim().toLowerCase();
+    if (!q) {{ out.hidden = true; out.innerHTML = ""; return; }}
+    const hits = ENTRIES.filter(([, n]) => n.toLowerCase().includes(q)).slice(0, 40);
+    out.innerHTML = hits
+      .map(([p, n]) => `<li><a href="${{root}}${{p}}/type/${{n}}.html">${{n}} <span class="meta">${{p}}</span></a></li>`)
+      .join("");
+    out.hidden = hits.length === 0;
+  }});
+}})();
+"#,
+        entries = entries.join(", ")
+    )
 }

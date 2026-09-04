@@ -7,7 +7,8 @@ name. Everything else is a package: vendored under `deps/` by
 reached by name like anything else once it is there, and invisible
 until then. Packages are pure Canon over the prelude and independent
 of one another; `canon add` alone lists the ones that ship with the
-toolchain. This page is the prose for each.
+toolchain. This page is the prose for each; the generated [API
+reference](api/index.html) is the declaration surface of every one.
 
 ---
 

@@ -65,25 +65,28 @@ const WIT_WASI_HTTP: &str = include_str!("../../../packages/canon/wit/wasi/http.
 const WIT_CANON_BUILTINS: &str = "
 package canon:builtins@0.1.0;
 
-interface filesystem {
-    open-file: func(path: string) -> result<string, string>;
-    read: func(file: string) -> result<string, string>;
-    write: func(contents: string, path: string) -> result<string, string>;
-}
-
-interface http {
-    fetch: func(body: string, method: string, headers: string, url: string) -> result<string, string>;
-}
-
 interface json {
     from-float: func(value: f64) -> string;
 }
-
-interface strings {
-    echo: async func(input: string) -> string;
-    slow-echo: async func(input: string) -> string;
-}
 ";
+
+/// The `wasi:http/client` function codegen fuses into one round trip
+/// (`IndirectReturnShape::HttpSend`).
+pub(super) const WASI_HTTP_CLIENT_SEND: &str = "wasi:http/client@0.3.0-rc-2026-03-15#send";
+/// The `wasi:filesystem` stream functions codegen fuses with opening
+/// the file (`IndirectReturnShape::FileRead` / `FileWrite`).
+pub(super) const WASI_FS_READ: &str =
+    "wasi:filesystem/types@0.3.0-rc-2026-03-15#[method]descriptor.read-via-stream";
+pub(super) const WASI_FS_WRITE: &str =
+    "wasi:filesystem/types@0.3.0-rc-2026-03-15#[method]descriptor.write-via-stream";
+pub(super) const WASI_FS_TYPES_MODULE: &str = "wasi:filesystem/types@0.3.0-rc-2026-03-15";
+pub(super) const WASI_FS_PREOPENS_MODULE: &str = "wasi:filesystem/preopens@0.3.0-rc-2026-03-15";
+
+/// Is `urn` a binding codegen fuses into a whole sequence — one whose
+/// WIT carries streams the checker would otherwise reject?
+pub fn extern_is_fused(urn: &str) -> bool {
+    urn == WASI_HTTP_CLIENT_SEND || urn == WASI_FS_READ || urn == WASI_FS_WRITE
+}
 
 /// The core-module import namespace for `wasi:http/types` functions and
 /// intrinsics. This is the `<iface>@<ver>` name `wit-component` matches
@@ -391,6 +394,18 @@ fn program_world_wit(module: &OModule) -> String {
         .map(|ext| ext.component_namespace)
         .collect();
     imports.push(STDOUT_INTERFACE.to_string());
+    // The fused sequences reach further than their own interface: the
+    // request is built through `wasi:http/types`, a file is opened
+    // under a `wasi:filesystem/preopens` root.
+    if imports
+        .iter()
+        .any(|i| WASI_HTTP_CLIENT_SEND.starts_with(i.as_str()))
+    {
+        imports.push(WASI_HTTP_TYPES_MODULE.to_string());
+    }
+    if imports.iter().any(|i| i == WASI_FS_TYPES_MODULE) {
+        imports.push(WASI_FS_PREOPENS_MODULE.to_string());
+    }
     imports.sort();
     imports.dedup();
     let mut out = String::from("package canon:program;\n\nworld program {\n");
@@ -470,8 +485,13 @@ fn extern_wit(ext: &ExternImport) -> String {
             out.push_str("    }\n");
             Some(wit_name.clone())
         }
-        // Only the vendored WIT produces this shape.
-        Some(IndirectReturnShape::ByteStream { .. }) => None,
+        // Only the vendored WIT produces these shapes.
+        Some(
+            IndirectReturnShape::ByteStream { .. }
+            | IndirectReturnShape::HttpSend { .. }
+            | IndirectReturnShape::FileRead { .. }
+            | IndirectReturnShape::FileWrite { .. },
+        ) => None,
         None if ext.bare_result => Some("result".to_string()),
         None => ext
             .component_result

@@ -17,13 +17,12 @@
 
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
-use std::future::Future;
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 
-use wasmtime_wasi::{TrappableError, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
-use wasmtime_wasi_http::p3::{RequestOptions, WasiHttpCtxView, WasiHttpHooks, WasiHttpView};
+use wasmtime_wasi_http::p3::{WasiHttpCtxView, WasiHttpHooks, WasiHttpView};
 use wasmtime_wasi_http::WasiHttpCtx;
 
 /// Per-store state — owns the WASI context and the component resource
@@ -61,44 +60,11 @@ impl WasiHttpView for State {
     }
 }
 
-/// Canon's `WasiHttpHooks` implementation.
-///
-/// Canon programs reach the network through the `canon:builtins/http`
-/// bridge (see `host_builtin_http`), which sends with the crate's
-/// `default_send_request`. A guest calling `wasi:http/client.send`
-/// directly is out-of-band until that interface lowers, so the hook
-/// returns `internal-error` rather than mask the gap with a silently
-/// routed request.
+/// Canon's `WasiHttpHooks`: the crate's defaults — a guest's
+/// `wasi:http/client.send` goes out through `default_send_request`.
 struct CanonHttpHooks;
 
-impl WasiHttpHooks for CanonHttpHooks {
-    fn send_request(
-        &mut self,
-        _request: http::Request<UnsyncBoxBody<Bytes, ErrorCode>>,
-        _options: Option<RequestOptions>,
-        _fut: Box<dyn Future<Output = Result<(), ErrorCode>> + Send>,
-    ) -> Box<
-        dyn Future<
-                Output = Result<
-                    (
-                        http::Response<UnsyncBoxBody<Bytes, ErrorCode>>,
-                        Box<dyn Future<Output = Result<(), ErrorCode>> + Send>,
-                    ),
-                    TrappableError<ErrorCode>,
-                >,
-            > + Send,
-    > {
-        Box::new(async {
-            Err(ErrorCode::InternalError(Some(
-                "wasi:http/client outbound requests are not routed by the \
-                 Canon runtime yet: use `canon:builtins/http` (via \
-                 `canon/Url`) for now"
-                    .to_string(),
-            ))
-            .into())
-        })
-    }
-}
+impl WasiHttpHooks for CanonHttpHooks {}
 
 impl State {
     fn new(ctx: WasiCtx) -> Self {
@@ -326,9 +292,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // canonical-ABI shapes (resources, async, streams) become available
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
-    host_builtin_string::add_to_linker(&mut linker)?;
-    host_builtin_filesystem::add_to_linker(&mut linker)?;
-    host_builtin_http::add_to_linker(&mut linker)?;
     host_builtin_json::add_to_linker(&mut linker)?;
 
     Ok(linker)
@@ -348,6 +311,14 @@ fn build_state(args: &[&str]) -> State {
         .inherit_env()
         .inherit_network()
         .allow_ip_name_lookup(true);
+    // The host filesystem as the process sees it — `canon run` is a
+    // developer's tool: `/` for absolute paths, the working directory
+    // as `.` for relative ones (codegen picks the preopen by name).
+    builder
+        .preopened_dir("/", "/", DirPerms::all(), FilePerms::all())
+        .expect("the root directory opens")
+        .preopened_dir(".", ".", DirPerms::all(), FilePerms::all())
+        .expect("the working directory opens");
     if !args.is_empty() {
         builder.args(args);
     }
@@ -603,217 +574,6 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
         .header(http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
         .body(body)
         .expect("static response builder shape is valid")
-}
-
-/// `canon:builtins/string` — async host echoes. String *transforms*
-/// (case mapping, escaping) are pure Canon in `canon` now; the two
-/// functions left here exist only to exercise the guest-side async
-/// canonical-ABI call sequence from tests.
-mod host_builtin_string {
-    use super::State;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface strings {
-                echo: async func(input: string) -> string;
-                slow-echo: async func(input: string) -> string;
-            }
-            world host-shim {
-                import strings;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::strings::Host for State {}
-
-    // Async functions go on the `HostWithStore` trait, with an
-    // `Accessor<T, Self>` first arg instead of `&mut self`. These two
-    // exist purely to exercise the guest-side async canonical-ABI call
-    // sequence from tests.
-    impl canon::builtins::strings::HostWithStore for HasSelf<State> {
-        async fn echo<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
-            input: String,
-        ) -> String {
-            // Used by `tests/runtime/async_echo.can` to exercise the
-            // guest-side async call sequence (alloc ret-area, call,
-            // check status, decode result). The Future completes
-            // immediately so the guest's sync-completion fast path
-            // hits the `Returned` branch.
-            input
-        }
-
-        async fn slow_echo<U: Send>(
-            _accessor: &wasmtime::component::Accessor<U, Self>,
-            input: String,
-        ) -> String {
-            // Used by `tests/runtime/async_slow_echo.can` to exercise
-            // the *async-suspend* path of `emit_async_call`: the host
-            // future yields before producing a result, so wasmtime has
-            // to return a Started subtask handle to the guest. The
-            // guest's generated code then enters the waitable-set.wait
-            // block, blocks until this future resolves, and reads the
-            // result out of the ret-area. A 1ms sleep is enough to
-            // force at least one Pending poll on essentially every
-            // executor.
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-            input
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::strings::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-}
-
-/// `canon:builtins/filesystem` — minimal filesystem operations exposed as
-/// `string → string` functions. Errors are reported as empty strings
-/// (`""`) until the codegen learns to lower `result<string, error>`. The
-/// host has full POSIX-style access; sandboxing happens at the WASI level
-/// for everything else.
-mod host_builtin_filesystem {
-    use super::State;
-    use std::fs;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface filesystem {
-                /// Open a file by path. Returns the path string back as the
-                /// `File` handle on success, or a diagnostic message on
-                /// failure. The handle is just the path — actual reading
-                /// happens in `read`.
-                open-file: func(path: string) -> result<string, string>;
-
-                /// Read the contents of a previously-opened `File`. Takes
-                /// the same string handle returned by `open-file`.
-                read: func(file: string) -> result<string, string>;
-
-                /// Write `contents` to the file at `path`, creating it if
-                /// absent and truncating if present. Returns the path back
-                /// on success so call sites can keep chaining
-                /// (`.write(...)?.File()?.read()?`).
-                write: func(contents: string, path: string) -> result<string, string>;
-            }
-            world host-shim {
-                import filesystem;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::filesystem::Host for State {
-        fn open_file(&mut self, path: String) -> Result<String, String> {
-            if std::path::Path::new(&path).is_file() {
-                Ok(path)
-            } else {
-                Err(format!("file not found: {path}"))
-            }
-        }
-
-        fn read(&mut self, file: String) -> Result<String, String> {
-            fs::read_to_string(&file).map_err(|e| e.to_string())
-        }
-
-        fn write(&mut self, contents: String, path: String) -> Result<String, String> {
-            fs::write(&path, contents.as_bytes())
-                .map(|_| path)
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::filesystem::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
-}
-
-/// `canon:builtins/http` — one blocking outbound request, sent through
-/// `wasmtime-wasi-http`'s own outbound sender (hyper, with TLS from its
-/// `default-send-request` feature). The Canon side spells the request
-/// as `Body * Method * RequestHeaders * Url`; the WIT keeps that order.
-/// A 2xx answers with the body; anything else, and every transport
-/// failure, is the error string. This bridge retires when the
-/// `wasi:http` client interface lowers (the `Stream<T>` gap).
-mod host_builtin_http {
-    use super::State;
-    use bytes::Bytes;
-    use http_body_util::{BodyExt, Full};
-    use wasmtime::component::{HasSelf, Linker};
-    use wasmtime_wasi_http::p3::bindings::http::types::ErrorCode;
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface http {
-                /// One request. Headers are `name: value` lines. Answers
-                /// the response body on 2xx, an error message otherwise.
-                fetch: func(body: string, method: string, headers: string, url: string) -> result<string, string>;
-            }
-            world host-shim {
-                import http;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::http::Host for State {
-        fn fetch(
-            &mut self,
-            body: String,
-            method: String,
-            headers: String,
-            url: String,
-        ) -> Result<String, String> {
-            let handle = tokio::runtime::Handle::current();
-            tokio::task::block_in_place(|| handle.block_on(send(body, method, headers, url)))
-        }
-    }
-
-    async fn send(
-        body: String,
-        method: String,
-        headers: String,
-        url: String,
-    ) -> Result<String, String> {
-        let mut request = http::Request::builder()
-            .method(method.as_str())
-            .uri(url.as_str());
-        for line in headers.lines() {
-            if let Some((name, value)) = line.split_once(':') {
-                request = request.header(name.trim(), value.trim());
-            }
-        }
-        let request = request
-            .body(
-                Full::new(Bytes::from(body))
-                    .map_err(|never: std::convert::Infallible| -> ErrorCode { match never {} }),
-            )
-            .map_err(|e| e.to_string())?;
-        let (response, _done) = wasmtime_wasi_http::p3::default_send_request(request, None)
-            .await
-            .map_err(|e| e.to_string())?;
-        let status = response.status();
-        let bytes = response
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| e.to_string())?
-            .to_bytes();
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        if status.is_success() {
-            Ok(text)
-        } else {
-            Err(format!("HTTP {status}: {text}"))
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::http::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
 }
 
 /// `canon:builtins/json` — the one JSON builder Canon can't express:
