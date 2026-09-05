@@ -2891,7 +2891,9 @@ Depthleft * Tokens * Wanted => Rootname {
 }
 
 Tables * Wanted => Rootrhs {
-    Tables.Whole -> Rhstokens(Tables.Whole -> Rootname(Depthleft(8) * Wanted) -> Wanted)
+    Tables.Whole
+        -> Rhstokens(Tables.Whole -> Rootname(Depthleft(8) * Wanted) -> Wanted)
+        -> Rootrhs
 }
 
 Depthleft * Rhstokens * Tokens * Wanted => Rootstep {

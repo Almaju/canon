@@ -10,4 +10,5 @@ Board * Piece => Won {
         -> Or(Line("369") -> Filled(Board * Piece))
         -> Or(Line("159") -> Filled(Board * Piece))
         -> Or(Line("357") -> Filled(Board * Piece))
+        -> Won
 }

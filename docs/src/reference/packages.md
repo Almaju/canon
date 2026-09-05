@@ -139,6 +139,7 @@ String => Card {
         -> Joined(Href("/more") -> A("read more"))
         -> Div
         -> Classed(Class("card"))
+        -> Card
 }
 
 Unit => Program {

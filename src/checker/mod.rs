@@ -91,6 +91,10 @@ pub struct SymbolTable {
     /// named list carries, so the list builtins can check what they are
     /// handed against it.
     pub list_elem_of: HashMap<String, String>,
+    /// `MaybeValue = Option<Int>` records `MaybeValue -> Int`, and
+    /// `Parsed = Result<Node, Fail>` records `Parsed -> Node`: the
+    /// payload `?` extracts from a value of the named type.
+    pub payload_of: HashMap<String, String>,
     /// `Rgb = Channel^3` records `Rgb -> (Channel, 3)`: a fixed-size
     /// positional product, built from N values and read as `.1` … `.N`.
     pub repetitions: HashMap<String, (String, u64)>,
@@ -1481,6 +1485,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // through the alias.
     let mut aliases: HashMap<String, String> = HashMap::new();
     let mut list_elem_of: HashMap<String, String> = HashMap::new();
+    let mut payload_of: HashMap<String, String> = HashMap::new();
     let mut type_parts: HashMap<String, Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
@@ -1492,6 +1497,11 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 if name == "List" {
                     if let [TypeExpr::Named { name: elem, .. }] = generics.as_slice() {
                         list_elem_of.insert(td.name.name.clone(), elem.clone());
+                    }
+                }
+                if matches!(name.as_str(), "Option" | "Result") {
+                    if let Some(TypeExpr::Named { name: payload, .. }) = generics.first() {
+                        payload_of.insert(td.name.name.clone(), payload.clone());
                     }
                 }
             }
@@ -1556,6 +1566,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         free_funcs,
         aliases,
         list_elem_of,
+        payload_of,
         repetitions,
         messages,
         type_parts,
@@ -2866,7 +2877,11 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             ..
         } => {
             check_expr_type_args(&method.name, type_args, errors);
+            let errors_before_receiver = errors.len();
             check_expr(receiver, scope, symbols, errors);
+            // A receiver that failed its own check has no type to name;
+            // reporting that again would only echo the first error.
+            let receiver_reported = errors.len() > errors_before_receiver;
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
             // Message application: `map -> Insert(Key("a") * Value("1"))`
             // builds the message from what rides in the parentheses and
@@ -2987,12 +3002,20 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             let known = is_concurrent_combinator
                 || (is_piped_construction && construction_takes_args)
                 || has_alias_method;
-            if !known {
+            if !(known || (recv_ty == "<unknown>" && receiver_reported)) {
                 errors.push(CanonError::CheckError {
-                    message: format!(
-                        "no method `{}` on type `{}` with {} argument(s)",
-                        method.name, recv_ty, effective_arity
-                    ),
+                    message: if recv_ty == "<unknown>" {
+                        format!(
+                            "the value piped into `{}` has no type the checker can name here — \
+                             give it one with a relabel (`-> Type`) before the pipe",
+                            method.name
+                        )
+                    } else {
+                        format!(
+                            "no method `{}` on type `{}` with {} argument(s)",
+                            method.name, recv_ty, effective_arity
+                        )
+                    },
                     span: *span,
                 });
             } else if is_piped_construction {
@@ -3977,7 +4000,9 @@ fn method_known_via_aliases(
 }
 
 fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
-    if receiver_ty == "<unknown>" || receiver_ty == "Self" {
+    // A receiver the checker cannot type accepts nothing: what it
+    // cannot see, codegen cannot lower faithfully (accepted = implemented).
+    if receiver_ty == "Self" {
         return true;
     }
     // Types-only vocabulary (`Print`/`Sum`/`Joined`/…) maps to the
@@ -4319,18 +4344,30 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                 return expr_type_name_in_scope(receiver, symbols);
             }
             let recv_ty = expr_type_name_in_scope(receiver, symbols);
-            if let Some(sig) = symbols.message_sig(&recv_ty, &method.name) {
-                return sig.return_ty.clone();
-            }
-            if let Some(sig) = symbols.methods.get(&(recv_ty.clone(), method.name.clone())) {
-                return sig.return_ty.clone();
-            }
-            if let Some(canonical) = crate::ast::builtin_method_alias(&method.name) {
+            // A declared member is found on the receiver's type or any
+            // ancestor on its alias chain, the way `method_known_via_aliases`
+            // accepts the call: `LimbsLeftover -> LimbsBelow(…)` with
+            // `LimbsLeftover = Limbs` is the member declared on `Limbs`.
+            let canonical = crate::ast::builtin_method_alias(&method.name);
+            let mut current = recv_ty.as_str();
+            for _ in 0..20 {
+                if let Some(sig) = symbols.message_sig(current, &method.name) {
+                    return sig.return_ty.clone();
+                }
                 if let Some(sig) = symbols
                     .methods
-                    .get(&(recv_ty.clone(), canonical.to_string()))
+                    .get(&(current.to_string(), method.name.clone()))
                 {
                     return sig.return_ty.clone();
+                }
+                if let Some(sig) = canonical
+                    .and_then(|c| symbols.methods.get(&(current.to_string(), c.to_string())))
+                {
+                    return sig.return_ty.clone();
+                }
+                match symbols.aliases.get(current) {
+                    Some(next) => current = next.as_str(),
+                    None => break,
                 }
             }
             // A list relabelled into a declared list newtype (`list ->
@@ -4393,6 +4430,18 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                     None => break,
                 }
             }
+            // A pipe into a declared type that no member takes is the
+            // relabel `Streamed -> Read`, and a pipe into a variant tags
+            // the value (`Unit() -> Ok` is a `Result`) — the same rule
+            // the `Constructor` arm applies to `Read(streamed)`.
+            if args.is_empty() {
+                if let Some(parent) = symbols.variant_of.get(&method.name) {
+                    return parent.clone();
+                }
+                if symbols.types.contains(&method.name) {
+                    return method.name.clone();
+                }
+            }
             "<unknown>".to_string()
         }
         Expr::Match { arms, .. } => arms
@@ -4403,6 +4452,24 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             })
             .unwrap_or_else(|| "<unknown>".to_string()),
         Expr::Try { inner, .. } => {
+            // The payload a named `Option<T>` / `Result<T, _>` alias
+            // carries (`MaybeValue = Option<Int>`), reached along the
+            // inner expression's alias chain — the fallback every
+            // branch below ends in.
+            let aliased_payload = || {
+                let ty = expr_type_name_in_scope(inner, symbols);
+                let mut current = ty.as_str();
+                for _ in 0..20 {
+                    if let Some(payload) = symbols.payload_of.get(current) {
+                        return payload.clone();
+                    }
+                    match symbols.aliases.get(current) {
+                        Some(next) => current = next.as_str(),
+                        None => break,
+                    }
+                }
+                "<unknown>".to_string()
+            };
             // `?` extracts the Ok/Some payload. We compute its type by
             // either inspecting the inner constructor directly (`Ok(x)?`)
             // or, for a method call returning `Result<X, _>` / `Option<X>`,
@@ -4442,17 +4509,25 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                             }
                         }
                     }
-                    "<unknown>".to_string()
+                    aliased_payload()
                 }
                 Expr::MethodCall {
                     receiver, method, ..
                 } => {
+                    // `list -> At(n)?` / `list -> First?` hands back an
+                    // element, typed from the list: a literal's first
+                    // element, or a declared list newtype's element.
+                    if matches!(
+                        crate::ast::builtin_method_alias(&method.name),
+                        Some("get" | "first")
+                    ) {
+                        if let Some(elem) = list_elem_type(receiver, symbols) {
+                            return elem;
+                        }
+                    }
                     let recv_ty = expr_type_name_in_scope(receiver, symbols);
                     if let Some(sig) = symbols.message_sig(&recv_ty, &method.name) {
-                        return sig
-                            .result_ok_ty
-                            .clone()
-                            .unwrap_or_else(|| "<unknown>".to_string());
+                        return sig.result_ok_ty.clone().unwrap_or_else(aliased_payload);
                     }
                     let mut current = recv_ty.as_str();
                     for _ in 0..20 {
@@ -4470,9 +4545,9 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                             None => break,
                         }
                     }
-                    "<unknown>".to_string()
+                    aliased_payload()
                 }
-                _ => "<unknown>".to_string(),
+                _ => aliased_payload(),
             }
         }
         Expr::Lambda { return_ty, .. } => match return_ty {
@@ -4574,6 +4649,8 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
             "Unit".to_string()
         }
         ("Int", "add" | "sub" | "mul" | "div" | "rem") => "Int".to_string(),
+        ("Float", "Int") => "Int".to_string(),
+        ("Int", "Float") => "Float".to_string(),
         ("Float", "add" | "sub" | "mul" | "div" | "rem") => "Float".to_string(),
         ("Int", "eq" | "lt") => "Bool".to_string(),
         ("Float", "eq" | "lt") => "Bool".to_string(),
