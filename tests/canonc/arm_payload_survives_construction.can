@@ -1,0 +1,35 @@
+Answer = Int
+
+Area = Int
+
+Box = Height * Width
+
+Circle = Int
+
+Height = Int
+
+Shape = Circle + Square
+
+Square = Int
+
+Volume = Int
+
+Width = Int
+
+Unit => Answer {
+    Circle(5)
+        -> Shape
+        -> Area
+        -> Answer
+}
+
+Shape => Area {
+    Shape -> (
+        * Circle { Height(3) -> Box(Width(2)) -> Volume -> Sum(Circle) }
+        * Square { Square }
+    )
+}
+
+Box => Volume {
+    Box.Height -> Product(Box.Width)
+}
