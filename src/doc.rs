@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::ast::{Item, TypeExpr};
+use crate::ast::{Expr, FormatLitPart, HtmlLitPart, Item, JsonLitPart, MatchArm, TypeExpr};
 use crate::error::CanonError;
 use crate::formatter::emit_type_expr;
 use crate::lexer::Scanner;
@@ -63,12 +63,27 @@ struct DeclDoc {
     module: String,
 }
 
+/// One test, read as an example: Canon has no comments, so a package's
+/// `*_test.can` files are the worked examples its reference can show.
+/// A test is `Name = TestResult` plus `Unit => Name { … }`; the name
+/// reads as a sentence (`StyledWrapsTextInEscapes`) and captions the
+/// body, which appears on the page of every type it names.
+struct ExampleDoc {
+    name: String,
+    caption: String,
+    /// The constructor's body, as written, dedented.
+    body: String,
+    /// Types of this package the body names.
+    refs: BTreeSet<String>,
+}
+
 /// Everything `canon doc` renders for one package.
 pub struct Api {
     pub package: String,
     pub modules: Vec<ModuleDoc>,
     types: BTreeMap<String, TypeDoc>,
     decls: Vec<DeclDoc>,
+    examples: Vec<ExampleDoc>,
 }
 
 impl Api {
@@ -77,6 +92,171 @@ impl Api {
     pub fn type_names(&self) -> impl Iterator<Item = &String> {
         self.types.keys()
     }
+
+    /// How many tests the package's reference shows as examples.
+    pub fn example_count(&self) -> usize {
+        self.examples.len()
+    }
+}
+
+/// `StyledWrapsTextInEscapes` → `Styled wraps text in escapes`: a word
+/// starts at each uppercase letter that follows a lowercase letter or
+/// digit, and every word but the first is lowercased.
+fn caption(name: &str) -> String {
+    let mut words: Vec<String> = Vec::new();
+    let chars: Vec<char> = name.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        let starts_word = i == 0
+            || (c.is_ascii_uppercase() && chars[i - 1].is_ascii_lowercase())
+            || (c.is_ascii_uppercase() && chars[i - 1].is_ascii_digit());
+        if starts_word {
+            words.push(String::new());
+        }
+        words.last_mut().expect("a word is open").push(c);
+    }
+    words
+        .iter()
+        .enumerate()
+        .map(|(i, w)| {
+            if i == 0 {
+                w.clone()
+            } else {
+                w.to_ascii_lowercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The type names an expression mentions: constructors, piped
+/// constructors and methods, and bare identifiers — which in Canon
+/// name a value by its type.
+fn expr_names(expr: &Expr, out: &mut BTreeSet<String>) {
+    match expr {
+        Expr::Ident(id) => {
+            out.insert(id.name.clone());
+        }
+        Expr::Constructor { name, args, .. } => {
+            out.insert(name.name.clone());
+            args.iter().for_each(|a| expr_names(a, out));
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            out.insert(method.name.clone());
+            expr_names(receiver, out);
+            args.iter().for_each(|a| expr_names(a, out));
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_names(scrutinee, out);
+            for MatchArm { param_ty, body, .. } in arms {
+                collect_type_names(param_ty, out);
+                body.exprs.iter().for_each(|e| expr_names(e, out));
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => expr_names(inner, out),
+        Expr::Lambda { params, body, .. } => {
+            params.iter().for_each(|p| collect_type_names(&p.ty, out));
+            body.exprs.iter().for_each(|e| expr_names(e, out));
+        }
+        Expr::ProductValue { fields, .. } => fields.iter().for_each(|f| expr_names(f, out)),
+        Expr::FieldAccess { receiver, .. } => expr_names(receiver, out),
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    expr_names(e, out);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
+                    expr_names(e, out);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
+                    expr_names(e, out);
+                }
+            }
+        }
+        Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
+    }
+}
+
+fn collect_type_names(ty: &TypeExpr, out: &mut BTreeSet<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            out.insert(name.clone());
+            generics.iter().for_each(|g| collect_type_names(g, out));
+        }
+        TypeExpr::Union { variants, .. } => {
+            variants.iter().for_each(|v| collect_type_names(v, out))
+        }
+        TypeExpr::Product { fields, .. } => fields.iter().for_each(|f| collect_type_names(f, out)),
+        TypeExpr::Repeat { ty, .. } => collect_type_names(ty, out),
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => {
+            params.iter().for_each(|p| collect_type_names(p, out));
+            collect_type_names(return_ty, out);
+        }
+    }
+}
+
+/// A constructor body's source, the braces and one level of indentation
+/// dropped.
+fn body_source(source: &str, func: &crate::ast::FunctionDef) -> String {
+    let raw = &source[func.body.span.start..func.body.span.end];
+    let inner = raw
+        .trim()
+        .strip_prefix('{')
+        .and_then(|r| r.strip_suffix('}'))
+        .unwrap_or(raw);
+    inner
+        .trim_matches('\n')
+        .lines()
+        .map(|l| l.strip_prefix("    ").unwrap_or(l))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The examples in one test file: every `Unit => Name` whose `Name`
+/// the file declares as a `TestResult` newtype.
+fn examples_of(source: &str, items: &[Item]) -> Vec<ExampleDoc> {
+    let tests: BTreeSet<&str> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) if td.body.simple_name() == Some("TestResult") => {
+                Some(td.name.name.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Function(f) if tests.contains(f.name.name.as_str()) => {
+                let mut refs = BTreeSet::new();
+                f.body.exprs.iter().for_each(|e| expr_names(e, &mut refs));
+                refs.remove(f.name.name.as_str());
+                Some(ExampleDoc {
+                    name: f.name.name.clone(),
+                    caption: caption(&f.name.name),
+                    body: body_source(source, f),
+                    refs,
+                })
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// PascalCase is the type namespace; camelCase names are binding-file
@@ -114,7 +294,8 @@ fn decl_inputs(params: &[crate::ast::Param], receiver: Option<&str>) -> Vec<Type
 /// walk is the whole package by definition.
 ///
 /// Only `src/` is walked. `bindgen/` is derived and shadowed by `src/`,
-/// the same rule the loader applies.
+/// the same rule the loader applies. A `*_test.can` file is not a
+/// module: its tests are the package's examples.
 pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
     let mut paths = Vec::new();
     collect_can_files(root, &mut paths);
@@ -128,6 +309,7 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
     // nowhere else. Collected here and filed after the walk, so a
     // variant that *is* declared elsewhere keeps its own module.
     let mut variants: Vec<(String, String)> = Vec::new();
+    let mut examples: Vec<ExampleDoc> = Vec::new();
 
     for path in &paths {
         let module = module_path(root, path);
@@ -146,6 +328,10 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
         })()
         .map_err(|err| (path.clone(), err))?;
 
+        if module.ends_with("_test") {
+            examples.extend(examples_of(&source, &items));
+            continue;
+        }
         module_types.entry(module.clone()).or_default();
         for item in items {
             match item {
@@ -220,11 +406,35 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
         })
         .collect();
 
+    // An example belongs to the type its name starts with — a test is
+    // named for what it asserts (`MapKeysSorted` is about `Map`), and
+    // that reading keeps a test that merely pipes through `Json` off
+    // the `Json` page. A name that starts with no type of the package
+    // falls back to every type it mentions, the prelude's `Eq` and
+    // `TestResult` excluded.
+    for e in &mut examples {
+        let subject = types
+            .keys()
+            .filter(|t| {
+                e.name
+                    .strip_prefix(t.as_str())
+                    .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
+            })
+            .max_by_key(|t| t.len())
+            .cloned();
+        match subject {
+            Some(t) => e.refs = BTreeSet::from([t]),
+            None => e.refs.retain(|n| types.contains_key(n)),
+        }
+    }
+    examples.sort_by(|a, b| a.caption.cmp(&b.caption));
+
     Ok(Api {
         package: package.to_string(),
         modules,
         types,
         decls,
+        examples,
     })
 }
 
@@ -522,6 +732,24 @@ fn type_page(api: &Api, site: Option<&str>, name: &str, doc: &TypeDoc) -> String
     body.push_str(&decl_list(api, root, "Constructors", &constructors, false));
     body.push_str(&decl_list(api, root, "Pipes into", &piped, true));
     body.push_str(&decl_list(api, root, "Also accepted by", &used, false));
+
+    // The package's tests that name this type, each captioned by its
+    // name: the worked examples a comment-free language still has.
+    let examples: Vec<&ExampleDoc> = api
+        .examples
+        .iter()
+        .filter(|e| e.refs.contains(name))
+        .collect();
+    if !examples.is_empty() {
+        body.push_str("<h2>Examples</h2>\n");
+        for e in examples {
+            body.push_str(&format!(
+                "<h3 class=\"ex\">{}</h3>\n<pre class=\"def\"><code>{}</code></pre>\n",
+                escape(&e.caption),
+                linkify(&e.body, api, root)
+            ));
+        }
+    }
     page(api, root, site.as_deref(), name, &body)
 }
 
@@ -586,12 +814,14 @@ fn index_page(api: &Api, site: Option<&str>) -> String {
     let root = "";
     let mut body = format!(
         "<h1><span class=\"kind\">package</span> {}</h1>\n\
-         <p class=\"meta\">{} types across {} modules. Canon has no comments, so \
-         this reference is the declaration surface: every type, what constructs \
-         it, and what it pipes into.</p>\n",
+         <p class=\"meta\">{} types across {} modules, with {} examples from the \
+         package's tests. Canon has no comments, so this reference is the \
+         declaration surface: every type, what constructs it, and what it pipes \
+         into.</p>\n",
         escape(&api.package),
         api.types.len(),
-        api.modules.len()
+        api.modules.len(),
+        api.examples.len()
     );
 
     body.push_str("<h2>Modules</h2>\n<ul class=\"index\">");
@@ -685,6 +915,8 @@ h2 {
   text-transform: uppercase; color: var(--accent); margin: 2.4em 0 .6em;
 }
 .kind { color: var(--dim); font-weight: 400; }
+h3.ex { font-size: 14px; font-weight: 600; color: var(--fg); margin: 1.6em 0 0; }
+h3.ex + .def { margin-top: .5em; }
 .meta { color: var(--dim); font-size: 13px; }
 
 .def {
