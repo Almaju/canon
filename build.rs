@@ -173,6 +173,16 @@ fn collect_ow_files(root: &Path, dir: &Path, out: &mut Vec<DiscoveredFile>) {
         if path.is_dir() {
             collect_ow_files(root, &path, out);
         } else if path.extension().and_then(|s| s.to_str()) == Some("can") {
+            // A package's tests (`*_test.can`) are its examples, not its
+            // surface: `canon doc` reads them, `canon add` does not copy
+            // them.
+            if path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.ends_with("_test.can"))
+            {
+                continue;
+            }
             let rel = path
                 .strip_prefix(root)
                 .expect("file under root")
