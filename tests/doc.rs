@@ -213,18 +213,18 @@ fn hrefs(html: &str) -> Vec<String> {
 fn tests_render_as_examples_on_the_types_they_name() {
     let out = tmpdir("examples");
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/router/src");
-    let api = package_api("canon/router", &root);
-    doc::render(&api, &out).expect("render");
+    let router = package_api("canon/router", &root);
+    doc::render(&router, &out).expect("render");
 
     assert!(
-        !api.modules.iter().any(|m| m.path.ends_with("_test")),
+        !router.modules.iter().any(|m| m.path.ends_with("_test")),
         "a test file became a module: {:?}",
-        api.modules.iter().map(|m| &m.path).collect::<Vec<_>>()
+        router.modules.iter().map(|m| &m.path).collect::<Vec<_>>()
     );
     assert!(
-        api.example_count() >= 5,
+        router.example_count() >= 5,
         "examples: {}",
-        api.example_count()
+        router.example_count()
     );
 
     let segments = fs::read_to_string(out.join("type/Segments.html")).expect("Segments page");
@@ -246,6 +246,23 @@ fn tests_render_as_examples_on_the_types_they_name() {
     assert!(
         !query.contains("Segments keep order"),
         "an example landed on a type it does not name"
+    );
+
+    // A test belongs to the type its name starts with, not to every type
+    // it passes through: the Map tests compare via `-> Json`.
+    let out = tmpdir("examples_prelude");
+    let prelude = api();
+    doc::render(&prelude, &out).expect("render");
+    let map = fs::read_to_string(out.join("type/Map.html")).expect("Map page");
+    assert!(map.contains("Map keys sorted"), "Map's own test is missing");
+    let json = fs::read_to_string(out.join("type/Json.html")).expect("Json page");
+    assert!(
+        !json.contains("Map keys sorted"),
+        "a Map test landed on the Json page"
+    );
+    assert!(
+        json.contains("Json accepts array"),
+        "Json's own test is missing"
     );
 }
 
