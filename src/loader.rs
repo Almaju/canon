@@ -96,8 +96,8 @@ pub fn apply_bindings(items: &mut [Item], seed_urn: Option<&str>) {
         // to `resolve_new_syntax`: that pass only renames a constructor
         // whose target type is declared in the *same* file, but a binding
         // routinely constructs a type owned by a sibling wrapper
-        // (`Float => Json` lives in the json binding; `Json` is declared
-        // in the json wrapper). Doing it unconditionally here is what
+        // (`Float => Number` in a binding beside the type's wrapper).
+        // Doing it unconditionally here is what
         // makes the extern register its commutative `(Param, Type)` key
         // (see `is_self_ctor` in codegen), so `Float -> Json` at a call
         // site resolves to the extern instead of a bare newtype wrap.

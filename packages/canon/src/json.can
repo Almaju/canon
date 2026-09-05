@@ -285,7 +285,10 @@ Bool => Encoded {
 }
 
 Float => Encoded {
-    Float -> Number
+    Float -> Difference(Float) -> Eq(0.0) -> (
+        * False { "null" }
+        * True { Float -> String }
+    )
 }
 
 Int => Encoded {

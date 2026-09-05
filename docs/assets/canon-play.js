@@ -173,18 +173,6 @@
     var dec = new TextDecoder();
     var memory = function () { return program.instance.exports.memory; };
 
-    // Hand a string back through a canonical-ABI return area: the bytes
-    // go in guest memory via its own allocator, and the (ptr, len) pair
-    // goes where the caller asked for it.
-    function returnString(text, retptr) {
-      var bytes = new TextEncoder().encode(text);
-      var ptr = program.instance.exports.cabi_realloc(0, 0, 1, bytes.length);
-      new Uint8Array(memory().buffer, ptr, bytes.length).set(bytes);
-      var view = new DataView(memory().buffer);
-      view.setInt32(retptr, ptr, true);
-      view.setInt32(retptr + 4, bytes.length, true);
-    }
-
     var imports = {};
     imports["wasi:cli/stdout" + VERSION] = {
       "write-via-stream": function () { return 1; },
@@ -228,31 +216,7 @@
     imports["[export]wasi:cli/run" + VERSION] = {
       "[task-return]run": function () { return 0; },
     };
-    // The one thing Canon can't express in Canon: shortest-round-trip
-    // decimal for an f64 (`host_builtin_json` in src/runtime.rs).
-    imports["canon:builtins/json@0.1.0"] = {
-      "from-float": function (value, retptr) {
-        returnString(jsonFloat(value), retptr);
-      },
-    };
     return imports;
-  }
-
-  // Matches the native host byte for byte, which JS does not do on its
-  // own: `String(v)` switches to exponent notation outside 1e-6..1e21,
-  // where Rust's f64 Display never does, and it renders -0 as "0". So
-  // take JS's shortest-round-trip digits and place the point by hand.
-  function jsonFloat(value) {
-    // JSON has no spelling for these; the native host emits null too.
-    if (!isFinite(value)) return "null";
-    if (Object.is(value, -0)) return "-0";
-    var sign = value < 0 ? "-" : "";
-    var parts = Math.abs(value).toExponential().split("e");
-    var digits = parts[0].replace(".", "");
-    var point = Number(parts[1]) + 1; // digits before the decimal point
-    if (point <= 0) return sign + "0." + "0".repeat(-point) + digits;
-    if (point >= digits.length) return sign + digits + "0".repeat(point - digits.length);
-    return sign + digits.slice(0, point) + "." + digits.slice(point);
   }
 
   function run(component, sink) {

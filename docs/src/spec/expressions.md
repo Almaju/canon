@@ -446,10 +446,9 @@ Int => Label {
 Static members (strings, numbers, `true`/`false`/`null`, nested static
 literals) bake into a constant at parse time, so a fully static literal
 imposes no imports and works in every world. Layout is canonical like
-all Canon code: no spaces after `:` or `,`. The `Encoded` family's
-`Float` member is host-backed (`canon:builtins/json`), which the HTTP
-world cannot satisfy yet -- an interpolating handler fails at build with
-an error naming the unsatisfiable import.
+all Canon code: no spaces after `:` or `,`. A `Float` member renders
+its shortest round-trip decimal; `NaN` and the infinities, which JSON
+cannot spell, render as `null`.
 
 ### HTML Literals
 

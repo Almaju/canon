@@ -7,13 +7,9 @@
 //! through wasmtime's own host implementations via `wasmtime_wasi::p3`.
 //!
 //! Output is reached natively through `wasi:cli/stdout` (the codegen
-//! emits the canonical-ABI stream sequence around `write-via-stream`);
-//! no `canon:host/console` bridge is registered. The few remaining
-//! `canon:builtins/*` bridges are genuine host boundaries (HTTP,
-//! filesystem, float formatting) or extern/async-ABI test fixtures —
-//! string processing that used to live here (URL validation, JSON
-//! escaping / field extraction / decoding, RFC-3339 formatting, case
-//! mapping) is pure Canon in `canon` now.
+//! emits the canonical-ABI stream sequence around `write-via-stream`).
+//! Nothing beyond WASI is linked: string processing, float formatting
+//! and JSON are pure Canon in `canon`.
 
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
@@ -292,7 +288,6 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
     // canonical-ABI shapes (resources, async, streams) become available
     // in the codegen. The `.print` builtin is compiled directly against
     // `wasi:cli/stdout` — no host bridge needed for output.
-    host_builtin_json::add_to_linker(&mut linker)?;
 
     Ok(linker)
 }
@@ -303,7 +298,7 @@ fn build_linker(engine: &Engine) -> wasmtime::Result<Linker<State>> {
 /// `args` becomes the program's `argv` when non-empty; stdio, env, and
 /// network access are inherited from the host process so users see
 /// printed output and the program can resolve hostnames /
-/// `canon:builtins/http` outbound calls.
+/// `wasi:http/client` requests.
 fn build_state(args: &[&str]) -> State {
     let mut builder = WasiCtxBuilder::new();
     builder
@@ -574,48 +569,4 @@ fn error_response(err: ErrorCode) -> http::Response<UnsyncBoxBody<Bytes, ErrorCo
         .header(http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
         .body(body)
         .expect("static response builder shape is valid")
-}
-
-/// `canon:builtins/json` — the one JSON builder Canon can't express:
-/// float formatting. Everything else (validation, escaping, field
-/// extraction, string decoding, int/bool rendering) is pure Canon in
-/// `canon/json.can` now. Shortest-round-trip decimal rendering of an
-/// f64 is genuinely numeric machinery (Grisu/Ryū territory), so it stays
-/// a host bridge.
-mod host_builtin_json {
-    use super::State;
-    use wasmtime::component::{HasSelf, Linker};
-
-    wasmtime::component::bindgen!({
-        inline: "
-            package canon:builtins@0.1.0;
-            interface json {
-                /// Render a 64-bit float as a JSON number. NaN and ±Inf
-                /// (which JSON cannot represent) are emitted as `null`.
-                from-float: func(value: f64) -> string;
-            }
-            world host-shim {
-                import json;
-            }
-        ",
-        require_store_data_send: true,
-    });
-
-    impl canon::builtins::json::Host for State {
-        fn from_float(&mut self, value: f64) -> String {
-            if value.is_nan() || value.is_infinite() {
-                // JSON has no spelling for these — null is the
-                // serde-compatible fallback.
-                "null".to_string()
-            } else {
-                // `to_string` on f64 produces a shortest-round-trip
-                // decimal, which is always valid JSON.
-                value.to_string()
-            }
-        }
-    }
-
-    pub fn add_to_linker(linker: &mut Linker<State>) -> wasmtime::Result<()> {
-        canon::builtins::json::add_to_linker::<_, HasSelf<State>>(linker, |state| state)
-    }
 }

@@ -16,8 +16,9 @@ use super::*;
 ///   pc+6        (i32): tmp_i32_b     — second scratch i32
 ///   pc+7, pc+8  (i32): arm_payload_ptr (+1) — bound arm payload
 ///                       (outermost dispatch only; a dispatch nested
-///                       inside an arm body binds into the tail pairs
-///                       from pc+32 on, one pair per extra level)
+///                       inside an arm body binds into the tail slots
+///                       from pc+39 on, four per extra level: the i32
+///                       pair, then arm_payload_i64, then arm_payload_f64)
 ///   pc+9, pc+10 (i32): str_scratch_ptr (+1) — string-builtin scratch
 ///   pc+11..pc+18 (i32): par_subtask_a/b, par_retarea_a/b, par_set,
 ///                       par_event_ptr, par_seen_a/b — parallel/race state.
@@ -66,21 +67,39 @@ impl LocalScope {
         self.param_count + 6
     }
     /// Adjacent pair of i32s holding the (ptr, len) of a string payload
-    /// bound inside a match arm. Adjacency matters: `push_local` for
+    /// bound inside a match arm — or, in the first slot alone, a
+    /// pointer or `Bool` payload. Adjacency matters: `push_local` for
     /// `Ty::Str` pushes `LocalGet(idx)` followed by `LocalGet(idx + 1)`,
     /// so the two slots must sit at consecutive indices.
     ///
-    /// One pair per dispatch depth: a tokenizer's `* Name` arm sits
+    /// One set per dispatch depth: a tokenizer's `* Name` arm sits
     /// inside a `* Cons` arm and still reads `Cons.Tail`, so a single
     /// shared pair would have the inner bind erase the outer name. The
-    /// outermost dispatch keeps the historical fixed slot, so a
+    /// outermost dispatch keeps the historical fixed slots, so a
     /// function whose dispatches never nest declares no extra locals;
-    /// deeper levels take the tail pairs `extra_locals_decl` reserves
-    /// from `max_arm_depth`.
+    /// deeper levels take the tail slots `extra_locals_decl` reserves
+    /// from `max_arm_depth` — four per level, this pair first.
     pub(super) fn arm_payload_ptr(&self) -> u32 {
         match self.arm_depth {
             0 => self.param_count + 7,
-            d => self.param_count + 37 + 2 * (d - 1),
+            d => self.param_count + 39 + 4 * (d - 1),
+        }
+    }
+    /// i64 holding an `Int` payload bound inside a match arm. Dedicated
+    /// like the pointer pair: the arm body's own scratch (`tmp_i64` is
+    /// what `List(…)` stages elements through) must not overwrite the
+    /// name the arm bound.
+    pub(super) fn arm_payload_i64(&self) -> u32 {
+        match self.arm_depth {
+            0 => self.param_count + 37,
+            d => self.param_count + 41 + 4 * (d - 1),
+        }
+    }
+    /// f64 sibling of `arm_payload_i64` for a `Float` payload.
+    pub(super) fn arm_payload_f64(&self) -> u32 {
+        match self.arm_depth {
+            0 => self.param_count + 38,
+            d => self.param_count + 42 + 4 * (d - 1),
         }
     }
     /// Adjacent pair of i32s reserved as scratch for string-shaped
@@ -227,8 +246,8 @@ impl LocalScope {
 
 /// Deepest chain of dispatches nested inside one another's arm bodies
 /// (`0` when the block holds none, `1` for a flat dispatch). Each level
-/// past the first needs its own `arm_payload_ptr` pair — see that
-/// accessor — so this is what sizes a function's tail locals.
+/// past the first needs its own `arm_payload_*` slots — see those
+/// accessors — so this is what sizes a function's tail locals.
 pub(super) fn max_arm_depth(block: &Block) -> u32 {
     block.exprs.iter().map(expr_arm_depth).max().unwrap_or(0)
 }
@@ -306,10 +325,13 @@ pub(super) fn extra_locals_decl(arm_depth: u32) -> Vec<(u32, ValType)> {
         (1, ValType::I64), // fold_acc_i64 (list.fold accumulator)
         (1, ValType::F64), // fold_acc_f64
         (2, ValType::I32), // fold_acc_ptr, fold_acc_ptr + 1 (len)
+        (1, ValType::I64), // arm_payload_i64 (outermost dispatch)
+        (1, ValType::F64), // arm_payload_f64 (outermost dispatch)
     ];
-    let extra_pairs = arm_depth.saturating_sub(1);
-    if extra_pairs > 0 {
-        decl.push((2 * extra_pairs, ValType::I32));
+    for _ in 1..arm_depth {
+        decl.push((2, ValType::I32)); // arm_payload_ptr (+1) for this depth
+        decl.push((1, ValType::I64)); // arm_payload_i64
+        decl.push((1, ValType::F64)); // arm_payload_f64
     }
     decl
 }

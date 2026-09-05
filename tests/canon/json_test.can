@@ -74,9 +74,19 @@ Unit => EncodedFalse {
 
 EncodedFloat = TestResult
 
+EncodedInfinityIsNull = TestResult
+
 Unit => EncodedFloat {
     Encoded(1.5)
         -> Eq("1.5")
+        -> TestResult
+}
+
+Unit => EncodedInfinityIsNull {
+    1.0
+        -> Quotient(0.0)
+        -> Encoded
+        -> Eq("null")
         -> TestResult
 }
 
