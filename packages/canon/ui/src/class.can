@@ -1,1 +1,5 @@
 Class = String
+
+Html * Class => Html {
+    Html -> ClassAt(Class * Html -> TagEnd(Offset(1)))
+}
