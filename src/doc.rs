@@ -69,6 +69,7 @@ struct DeclDoc {
 /// reads as a sentence (`StyledWrapsTextInEscapes`) and captions the
 /// body, which appears on the page of every type it names.
 struct ExampleDoc {
+    name: String,
     caption: String,
     /// The constructor's body, as written, dedented.
     body: String,
@@ -247,6 +248,7 @@ fn examples_of(source: &str, items: &[Item]) -> Vec<ExampleDoc> {
                 f.body.exprs.iter().for_each(|e| expr_names(e, &mut refs));
                 refs.remove(f.name.name.as_str());
                 Some(ExampleDoc {
+                    name: f.name.name.clone(),
                     caption: caption(&f.name.name),
                     body: body_source(source, f),
                     refs,
@@ -404,10 +406,26 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
         })
         .collect();
 
-    // An example belongs on the pages of the types it names — the ones
-    // this package declares, not the prelude's `Eq` or `TestResult`.
+    // An example belongs to the type its name starts with — a test is
+    // named for what it asserts (`MapKeysSorted` is about `Map`), and
+    // that reading keeps a test that merely pipes through `Json` off
+    // the `Json` page. A name that starts with no type of the package
+    // falls back to every type it mentions, the prelude's `Eq` and
+    // `TestResult` excluded.
     for e in &mut examples {
-        e.refs.retain(|n| types.contains_key(n));
+        let subject = types
+            .keys()
+            .filter(|t| {
+                e.name
+                    .strip_prefix(t.as_str())
+                    .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
+            })
+            .max_by_key(|t| t.len())
+            .cloned();
+        match subject {
+            Some(t) => e.refs = BTreeSet::from([t]),
+            None => e.refs.retain(|n| types.contains_key(n)),
+        }
     }
     examples.sort_by(|a, b| a.caption.cmp(&b.caption));
 
