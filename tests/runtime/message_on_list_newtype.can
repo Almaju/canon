@@ -1,0 +1,24 @@
+Bag = List<Int>
+
+Grow = Int
+
+Total = Int
+
+Bag * Grow => Bag {
+    List(Grow)
+        -> Joined(Bag)
+        -> Bag
+}
+
+Bag => Total {
+    Bag -> Folded(Total(0) * (Int * Total) => Total { Total -> Sum(Int) })
+}
+
+Unit => Program {
+    List(1)
+        -> Bag
+        -> Grow(2)
+        -> Total
+        -> String
+        -> Print
+}

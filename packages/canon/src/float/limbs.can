@@ -12,11 +12,11 @@ LimbFactor = Int
 
 LimbIndex = Int
 
-LimbShift = Int
-
 LimbSteps = Int
 
 Limbs = List<Int>
+
+LimbsAdd = LimbCarry * LimbIndex * LimbsPlus
 
 LimbsBelow = Bool
 
@@ -28,19 +28,17 @@ LimbsLeftover = Limbs
 
 LimbsMinus = Limbs
 
-LimbsMultiplied = Limbs
+LimbsMultiply = LimbCarry * LimbFactor * LimbIndex
 
-LimbsReduced = Limbs
+LimbsPlus = Limbs
 
-LimbsShifted = Limbs
+LimbsReduce = LimbBorrow * LimbIndex * LimbsMinus
+
+LimbsShift = Int
 
 LimbsStepped = LimbsDivided
 
-LimbsSummed = Limbs
-
-LimbsTimes = Limbs
-
-LimbsTotal = Limbs
+LimbsTimes = Int
 
 LimbIndex * Limbs => Limb {
     Limbs -> At(LimbIndex) -> (
@@ -62,6 +60,84 @@ Int => Limbs {
         }
         * True { List() }
     )
+}
+
+Limbs * LimbsAdd => Limbs {
+    Limbs -> At(LimbsAdd.LimbIndex) -> (
+        * None {
+            LimbsAdd.LimbsPlus -> At(LimbsAdd.LimbIndex) -> (
+                * None { LimbsAdd.LimbCarry -> Limbs }
+                * Some<Int> {
+                    List(Int -> Sum(LimbsAdd.LimbCarry) -> Remainder(LimbBase()))
+                        -> Joined(Limbs -> LimbsAdd(Int -> Sum(LimbsAdd.LimbCarry) -> Quotient(LimbBase()) -> LimbCarry * LimbsAdd.LimbIndex -> Sum(1) -> LimbIndex * LimbsAdd.LimbsPlus))
+                }
+            )
+        }
+        * Some<Int> {
+            List(Int -> Sum(LimbsAdd.LimbIndex -> Limb(LimbsAdd.LimbsPlus)) -> Sum(LimbsAdd.LimbCarry) -> Remainder(LimbBase()))
+                -> Joined(Limbs -> LimbsAdd(Int -> Sum(LimbsAdd.LimbIndex -> Limb(LimbsAdd.LimbsPlus)) -> Sum(LimbsAdd.LimbCarry) -> Quotient(LimbBase()) -> LimbCarry * LimbsAdd.LimbIndex -> Sum(1) -> LimbIndex * LimbsAdd.LimbsPlus))
+        }
+    )
+}
+
+Limbs * LimbsMinus => Limbs {
+    Limbs -> LimbsReduce(LimbBorrow(0) * LimbIndex(1) * LimbsMinus)
+}
+
+Limbs * LimbsMultiply => Limbs {
+    Limbs -> At(LimbsMultiply.LimbIndex) -> (
+        * None { LimbsMultiply.LimbCarry -> Limbs }
+        * Some<Int> {
+            List(Int -> Product(LimbsMultiply.LimbFactor) -> Sum(LimbsMultiply.LimbCarry) -> Remainder(LimbBase()))
+                -> Joined(Limbs -> LimbsMultiply(Int -> Product(LimbsMultiply.LimbFactor) -> Sum(LimbsMultiply.LimbCarry) -> Quotient(LimbBase()) -> LimbCarry * LimbsMultiply.LimbFactor * LimbsMultiply.LimbIndex -> Sum(1) -> LimbIndex))
+        }
+    )
+}
+
+Limbs * LimbsPlus => Limbs {
+    Limbs -> LimbsAdd(LimbCarry(0) * LimbIndex(1) * LimbsPlus)
+}
+
+Limbs * LimbsReduce => Limbs {
+    Limbs -> At(LimbsReduce.LimbIndex) -> (
+        * None { List() }
+        * Some<Int> {
+            Int
+                -> Difference(LimbsReduce.LimbIndex -> Limb(LimbsReduce.LimbsMinus))
+                -> Difference(LimbsReduce.LimbBorrow)
+                -> Lt(0) -> (
+                * False {
+                    List(Int -> Difference(LimbsReduce.LimbIndex -> Limb(LimbsReduce.LimbsMinus)) -> Difference(LimbsReduce.LimbBorrow))
+                        -> Joined(Limbs -> LimbsReduce(LimbBorrow(0) * LimbsReduce.LimbIndex -> Sum(1) -> LimbIndex * LimbsReduce.LimbsMinus))
+                }
+                * True {
+                    List(Int -> Difference(LimbsReduce.LimbIndex -> Limb(LimbsReduce.LimbsMinus)) -> Difference(LimbsReduce.LimbBorrow) -> Sum(LimbBase()))
+                        -> Joined(Limbs -> LimbsReduce(LimbBorrow(1) * LimbsReduce.LimbIndex -> Sum(1) -> LimbIndex * LimbsReduce.LimbsMinus))
+                }
+            )
+        }
+    )
+}
+
+Limbs * LimbsShift => Limbs {
+    LimbsShift -> Eq(0) -> (
+        * False {
+            LimbsShift -> Lt(30) -> (
+                * False {
+                    List(0)
+                        -> Joined(Limbs)
+                        -> Limbs
+                        -> LimbsShift(LimbsShift -> Difference(30))
+                }
+                * True { Limbs -> LimbsTimes(2) -> LimbsShift(LimbsShift -> Difference(1)) }
+            )
+        }
+        * True { Limbs }
+    )
+}
+
+Limbs * LimbsTimes => Limbs {
+    Limbs -> LimbsMultiply(LimbCarry(0) * LimbsTimes -> LimbFactor * LimbIndex(1))
 }
 
 Limbs^2 => LimbsBelow {
@@ -109,62 +185,6 @@ LimbIndex * LimbsBelow * Limbs^2 => LimbsBelowFrom {
     )
 }
 
-Limbs^2 => LimbsMinus {
-    LimbBorrow(0)
-        -> LimbsReduced(LimbIndex(1) * Limbs.1 * Limbs.2)
-        -> Limbs
-        -> LimbsMinus
-}
-
-LimbCarry * LimbFactor * LimbIndex * Limbs => LimbsMultiplied {
-    Limbs -> At(LimbIndex) -> (
-        * None { LimbCarry -> Limbs }
-        * Some<Int> {
-            List(Int -> Product(LimbFactor) -> Sum(LimbCarry) -> Remainder(LimbBase()))
-                -> Joined(Int -> Product(LimbFactor) -> Sum(LimbCarry) -> Quotient(LimbBase()) -> LimbCarry -> LimbsMultiplied(LimbFactor * LimbIndex -> Sum(1) -> LimbIndex * Limbs))
-        }
-    )
-}
-
-LimbBorrow * LimbIndex * Limbs^2 => LimbsReduced {
-    Limbs.1 -> At(LimbIndex) -> (
-        * None { List() }
-        * Some<Int> {
-            Int -> Difference(LimbIndex -> Limb(Limbs.2)) -> Difference(LimbBorrow) -> Lt(0) -> (
-                * False {
-                    List(Int -> Difference(LimbIndex -> Limb(Limbs.2)) -> Difference(LimbBorrow))
-                        -> Joined(LimbBorrow(0) -> LimbsReduced(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
-                }
-                * True {
-                    List(Int -> Difference(LimbIndex -> Limb(Limbs.2)) -> Difference(LimbBorrow) -> Sum(LimbBase()))
-                        -> Joined(LimbBorrow(1) -> LimbsReduced(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
-                }
-            )
-        }
-    )
-}
-
-LimbShift * Limbs => LimbsShifted {
-    LimbShift -> Eq(0) -> (
-        * False {
-            LimbShift -> Lt(30) -> (
-                * False {
-                    List(0)
-                        -> Joined(Limbs)
-                        -> Limbs
-                        -> LimbsShifted(LimbShift -> Difference(30) -> LimbShift)
-                }
-                * True {
-                    LimbFactor(2)
-                        -> LimbsTimes(Limbs)
-                        -> LimbsShifted(LimbShift -> Difference(1) -> LimbShift)
-                }
-            )
-        }
-        * True { Limbs }
-    )
-}
-
 LimbSteps * Limbs^2 => LimbsStepped {
     Limbs.1 -> LimbsBelow(Limbs.2) -> (
         * False {
@@ -175,36 +195,4 @@ LimbSteps * Limbs^2 => LimbsStepped {
         }
         * True { LimbSteps -> LimbDigit -> LimbsDivided(Limbs.1 -> LimbsLeftover) }
     )
-}
-
-LimbCarry * LimbIndex * Limbs^2 => LimbsSummed {
-    Limbs.1 -> At(LimbIndex) -> (
-        * None {
-            Limbs.2 -> At(LimbIndex) -> (
-                * None { LimbCarry -> Limbs }
-                * Some<Int> {
-                    List(Int -> Sum(LimbCarry) -> Remainder(LimbBase()))
-                        -> Joined(Int -> Sum(LimbCarry) -> Quotient(LimbBase()) -> LimbCarry -> LimbsSummed(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
-                }
-            )
-        }
-        * Some<Int> {
-            List(Int -> Sum(LimbIndex -> Limb(Limbs.2)) -> Sum(LimbCarry) -> Remainder(LimbBase()))
-                -> Joined(Int -> Sum(LimbIndex -> Limb(Limbs.2)) -> Sum(LimbCarry) -> Quotient(LimbBase()) -> LimbCarry -> LimbsSummed(LimbIndex -> Sum(1) -> LimbIndex * Limbs.1 * Limbs.2))
-        }
-    )
-}
-
-LimbFactor * Limbs => LimbsTimes {
-    LimbCarry(0)
-        -> LimbsMultiplied(LimbFactor * LimbIndex(1) * Limbs)
-        -> Limbs
-        -> LimbsTimes
-}
-
-Limbs^2 => LimbsTotal {
-    LimbCarry(0)
-        -> LimbsSummed(LimbIndex(1) * Limbs.1 * Limbs.2)
-        -> Limbs
-        -> LimbsTotal
 }
