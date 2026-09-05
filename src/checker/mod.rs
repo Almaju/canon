@@ -456,7 +456,7 @@ fn check_sorted_named(
     for window in items.windows(2) {
         let (prev, _) = window[0];
         let (next, span) = window[1];
-        if next < prev {
+        if crate::ast::plain_name(next) < crate::ast::plain_name(prev) {
             errors.push(CanonError::CheckError {
                 message: format!(
                     "{}s must be in alphabetical order: `{}` should come before `{}`",
@@ -1998,7 +1998,7 @@ fn check_function(
 }
 
 fn starts_lowercase(name: &str) -> bool {
-    name.chars().next().is_some_and(char::is_lowercase)
+    !crate::ast::is_type_name(name)
 }
 
 /// Resolves a scrutinee's static type down to the union it dispatches on,

@@ -411,6 +411,8 @@ struct LoadCtx {
     /// bundled file path (`pkg.name + "/" + file.path`).
     seen_bundled: HashSet<String>,
     items: Vec<Item>,
+    /// The package each entry of `items` came from, index for index.
+    origins: Vec<Origin>,
     /// Every top-level name (type or function) defined by an item loaded
     /// so far — plus the names of the file currently being processed,
     /// which are registered *before* its references are resolved so that
@@ -432,6 +434,10 @@ struct LoadCtx {
     /// redefine the prelude type). Keeping the type view separate avoids a
     /// constructor of `Html` suppressing the `html.can` auto-load.
     defined_types: HashSet<String>,
+    /// `defined_types` for each vendored package, by its name: a
+    /// dependency's own type declarations, which its files resolve to
+    /// before anything outside the package.
+    dep_types: HashMap<String, HashSet<String>>,
     /// Lazily-built recursive file-stem indexes for local project trees,
     /// keyed by the directory the scan was rooted at. See
     /// `local_stem_index`.
@@ -573,9 +579,11 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
         items: Vec::new(),
+        origins: Vec::new(),
         defined: HashSet::new(),
         defined_bundled: HashSet::new(),
         defined_types: HashSet::new(),
+        dep_types: HashMap::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
@@ -595,6 +603,7 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         items: ctx.items,
         span: Span::default(),
     };
+    qualify_shadowed(&mut module.items, &ctx.origins)?;
     unnamed_decl_error(&module, &ctx.unnamed_decls)?;
     let expand_errors = crate::monomorph::expand(&mut module);
     crate::checker::auto_await::transform(&mut module);
@@ -627,9 +636,11 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
         items: Vec::new(),
+        origins: Vec::new(),
         defined: HashSet::new(),
         defined_bundled: HashSet::new(),
         defined_types: HashSet::new(),
+        dep_types: HashMap::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
@@ -655,6 +666,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         items: ctx.items,
         span,
     };
+    qualify_shadowed(&mut module.items, &ctx.origins)?;
     // Generic instantiation, then auto-await: insert implicit
     // `Expr::Await` nodes wherever a `Future<T>` value is used in a
     // position that expects `T`. Both run before the checker so type
@@ -684,14 +696,14 @@ fn load_entry_source(source: &str, dir: &Path, ctx: &mut LoadCtx, file: u32) -> 
     resolve_new_syntax(&mut module);
 
     let other_items = module.items;
-    register_defined_names(&other_items, ctx);
+    register_defined_names(&other_items, ctx, &Origin::Local);
     inject_json_prelude(&other_items, ctx)?;
     inject_html_prelude(&other_items, ctx)?;
     inject_int_prelude(&other_items, ctx)?;
     inject_string_prelude(&other_items, ctx)?;
-    discover_references(&other_items, dir, ctx)?;
+    discover_references(&other_items, dir, &Origin::Local, ctx)?;
     let start = ctx.items.len();
-    ctx.items.extend(other_items);
+    ctx.extend_items(other_items, Origin::Local);
     Ok(start)
 }
 
@@ -1087,30 +1099,31 @@ fn is_undiscoverable(name: &str) -> bool {
 /// Register every top-level name `items` defines into `ctx.defined`.
 /// Called *before* the same items' references are resolved so that
 /// self-references and mutually-referencing files terminate.
-fn register_defined_names(items: &[Item], ctx: &mut LoadCtx) {
-    for item in items {
-        match item {
-            Item::TypeDef(td) => {
-                ctx.defined.insert(td.name.name.clone());
-                ctx.defined_types.insert(td.name.name.clone());
-            }
-            Item::Function(f) => {
-                ctx.defined.insert(f.name.name.clone());
-            }
-        }
-    }
-}
-
-/// `register_defined_names` for a bundled file: the same registration,
-/// plus provenance — see `LoadCtx::defined_bundled`.
-fn register_bundled_defined_names(items: &[Item], ctx: &mut LoadCtx) {
-    register_defined_names(items, ctx);
+fn register_defined_names(items: &[Item], ctx: &mut LoadCtx, origin: &Origin) {
     for item in items {
         let name = match item {
             Item::TypeDef(td) => &td.name.name,
             Item::Function(f) => &f.name.name,
         };
-        ctx.defined_bundled.insert(name.clone());
+        ctx.defined.insert(name.clone());
+        match origin {
+            Origin::Bundled(_) => {
+                ctx.defined_bundled.insert(name.clone());
+            }
+            Origin::Local => {
+                if let Item::TypeDef(_) = item {
+                    ctx.defined_types.insert(name.clone());
+                }
+            }
+            Origin::Dep(pkg) => {
+                if let Item::TypeDef(_) = item {
+                    ctx.dep_types
+                        .entry(pkg.clone())
+                        .or_default()
+                        .insert(name.clone());
+                }
+            }
+        }
     }
 }
 
@@ -1228,12 +1241,7 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
             // reached through its own unique capability, never the
             // shared leaf name.
             if let Expr::Ident(id) = receiver.as_ref() {
-                if id
-                    .name
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_ascii_uppercase())
-                {
+                if crate::ast::is_type_name(&id.name) {
                     add_ref(&id.name, id.span, skip, out);
                 }
             }
@@ -1281,6 +1289,12 @@ fn collect_expr_refs(expr: &Expr, skip: &HashSet<&str>, out: &mut Refs) {
             }
         }
         Expr::FieldAccess { receiver, .. } => collect_expr_refs(receiver, skip, out),
+        // A bare identifier is a parameter, already named by the
+        // signature — unless it is package-qualified, which names a
+        // declaration in another package.
+        Expr::Ident(id) if crate::ast::qualified_name(&id.name).is_some() => {
+            add_ref(&id.name, id.span, skip, out);
+        }
         Expr::JsonLit { parts, .. } => {
             for p in parts {
                 if let JsonLitPart::Interp(e) = p {
@@ -1325,21 +1339,105 @@ impl Found {
 /// `dir` is the referencing file's directory — the root of the local
 /// search. Loading a discovered file recursively discovers *its*
 /// references, so a single type reference pulls in the whole closure.
-fn discover_references(items: &[Item], dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
+fn discover_references(
+    items: &[Item],
+    dir: &Path,
+    origin: &Origin,
+    ctx: &mut LoadCtx,
+) -> Result<()> {
     let mut refs = Refs::new();
     for item in items {
         collect_item_refs(item, &mut refs);
     }
     for (name, span) in refs {
-        if is_undiscoverable(&name) || ctx.is_declared_locally(&name) {
+        if let Some((pkg, plain)) = crate::ast::qualified_name(&name) {
+            resolve_qualified(pkg, plain, span, ctx)?;
             continue;
         }
-        resolve_reference(&name, span, dir, ctx)?;
+        if is_undiscoverable(&name) || ctx.declares(origin, &name) {
+            continue;
+        }
+        resolve_reference(&name, span, dir, origin, ctx)?;
     }
     Ok(())
 }
 
-fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> Result<()> {
+/// Load what `pkg.name` names: the declaration of `name` inside the
+/// package called `pkg` — the prelude, or a vendored dependency by
+/// the name segment of its `deps/<ns>/<name>@<version>/` directory.
+fn resolve_qualified(pkg: &str, name: &str, span: Span, ctx: &mut LoadCtx) -> Result<()> {
+    if pkg == PRELUDE {
+        let candidates = bundled_decl_matches(name, false);
+        if candidates.is_empty() {
+            return Err(CanonError::CheckError {
+                message: format!("the standard library declares no `{name}` (in `{pkg}.{name}`)"),
+                span,
+            });
+        }
+        for (bundled, file) in candidates {
+            let key = format!("{}/{}", bundled.name, file.path);
+            if ctx.seen_bundled.insert(key) {
+                load_bundled_source(bundled, file, ctx)?;
+            }
+        }
+        return Ok(());
+    }
+    let deps_dir = ctx.deps_dir.clone();
+    let paths: Vec<PathBuf> = ctx
+        .deps_decl_matches(name)
+        .into_iter()
+        .filter(|path| {
+            deps_dir
+                .as_deref()
+                .and_then(|root| vendored_pkg_for_file(path, root).ok().flatten())
+                .and_then(|p| p.qualifier)
+                .is_some_and(|q| q == pkg)
+        })
+        .collect();
+    if paths.is_empty() {
+        let vendored = deps_dir.as_deref().is_some_and(|root| {
+            fs::read_dir(root)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .any(|ns| {
+                    fs::read_dir(ns.path())
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .any(|dir| {
+                            dir.file_name()
+                                .to_string_lossy()
+                                .split_once('@')
+                                .is_some_and(|(n, _)| n == pkg)
+                        })
+                })
+        });
+        return Err(CanonError::CheckError {
+            message: if vendored {
+                format!("package `{pkg}` declares no `{name}` (in `{pkg}.{name}`)")
+            } else {
+                format!(
+                    "`{pkg}.{name}` names a package that is not vendored: `{pkg}` is neither \
+                     the standard library (`canon`) nor a `deps/<ns>/{pkg}@<version>/`"
+                )
+            },
+            span,
+        });
+    }
+    for path in paths {
+        load_into(&path, ctx)?;
+    }
+    Ok(())
+}
+
+fn resolve_reference(
+    name: &str,
+    span: Span,
+    dir: &Path,
+    origin: &Origin,
+    ctx: &mut LoadCtx,
+) -> Result<()> {
     let mut found: Vec<Found> = Vec::new();
 
     // 1. Local tree — name → file convention.
@@ -1385,6 +1483,65 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
         }
     }
 
+    // How each candidate declares the name: a type definition, or only
+    // constructor-family members for a type declared elsewhere.
+    let mut profiles: Vec<Option<NameDeclProfile>> = Vec::new();
+    if unique.len() > 1 {
+        profiles = unique
+            .iter()
+            .map(|f| match f {
+                Found::Local(p) => fs::read_to_string(p)
+                    .ok()
+                    .and_then(|src| name_decl_profile(&src, name)),
+                Found::Bundled(_, file) => name_decl_profile(file.source, name),
+            })
+            .collect();
+        // The type resolves within the referencing package first: its
+        // own definition shadows every other package's. Across packages
+        // there is no precedence — a type two foreign packages define
+        // is reached only by its qualified spelling. Family members
+        // load from every package: they construct whichever type wins.
+        let packages: Vec<Origin> = unique.iter().map(|f| ctx.package_of(f)).collect();
+        let defines_type = |i: usize| {
+            profiles[i]
+                .as_ref()
+                .is_some_and(|p| !p.type_bodies.is_empty())
+        };
+        if (0..unique.len()).any(|i| packages[i] == *origin && defines_type(i)) {
+            let mut own = Vec::new();
+            let mut own_profiles = Vec::new();
+            for (i, (f, p)) in unique.into_iter().zip(profiles).enumerate() {
+                if packages[i] == *origin {
+                    own.push(f);
+                    own_profiles.push(p);
+                }
+            }
+            unique = own;
+            profiles = own_profiles;
+        } else {
+            let mut definers: Vec<&Origin> = Vec::new();
+            for (i, p) in packages.iter().enumerate() {
+                if defines_type(i) && !definers.contains(&p) {
+                    definers.push(p);
+                }
+            }
+            if definers.len() > 1 {
+                let spellings: Vec<String> = definers
+                    .iter()
+                    .map(|p| format!("{}.{name}", p.qualifier()))
+                    .collect();
+                return Err(CanonError::CheckError {
+                    message: format!(
+                        "`{name}` is ambiguous: more than one package declares it — write \
+                         the package-qualified name (`{}`)",
+                        spellings.join("` or `")
+                    ),
+                    span,
+                });
+            }
+        }
+    }
+
     // Every candidate already loaded means this reference was resolved
     // by files currently mid-load (mutual references) — the name lands
     // in the module either way, so there's nothing to do. A *partially*
@@ -1419,13 +1576,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             Ok(())
         }
         1 => match unique.remove(0) {
-            Found::Local(p) => {
-                let canonical = p.canonicalize().map_err(|err| CanonError::CheckError {
-                    message: format!("could not resolve `{}`: {}", p.display(), err),
-                    span,
-                })?;
-                load_into(&canonical, ctx)
-            }
+            Found::Local(p) => load_into(&p, ctx),
             Found::Bundled(pkg, file) => {
                 let key = format!("{}/{}", pkg.name, file.path);
                 if ctx.seen_bundled.insert(key) {
@@ -1445,15 +1596,6 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             // (duplicate (receiver, name, first-input) definitions) reports
             // real conflicts. Type names never multi-resolve: two type
             // definitions sharing a name stay a hard ambiguity error.
-            let profiles: Vec<Option<NameDeclProfile>> = unique
-                .iter()
-                .map(|f| match f {
-                    Found::Local(p) => fs::read_to_string(p)
-                        .ok()
-                        .and_then(|src| name_decl_profile(&src, name)),
-                    Found::Bundled(_, file) => name_decl_profile(file.source, name),
-                })
-                .collect();
             let compatible = profiles.iter().all(|p| p.is_some()) && {
                 // Type declarations under the name must all share one
                 // canonical spelling (`Length = Int` in two files is one
@@ -1468,18 +1610,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             if compatible {
                 for f in unique {
                     match f {
-                        Found::Local(p) => {
-                            let canonical =
-                                p.canonicalize().map_err(|err| CanonError::CheckError {
-                                    message: format!(
-                                        "could not resolve `{}`: {}",
-                                        p.display(),
-                                        err
-                                    ),
-                                    span,
-                                })?;
-                            load_into(&canonical, ctx)?;
-                        }
+                        Found::Local(p) => load_into(&p, ctx)?,
                         Found::Bundled(pkg, file) => {
                             let key = format!("{}/{}", pkg.name, file.path);
                             if ctx.seen_bundled.insert(key) {
@@ -1493,9 +1624,8 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             let labels: Vec<String> = unique.iter().map(Found::label).collect();
             Err(CanonError::CheckError {
                 message: format!(
-                    "`{}` is ambiguous: it resolves to `{}` (names are globally unique \
-                     across a project, its dependencies, and the standard library — \
-                     rename one side)",
+                    "`{}` is declared differently by `{}` (names are unique within a \
+                     package — rename one side)",
                     name,
                     labels.join("`, `"),
                 ),
@@ -1568,21 +1698,44 @@ impl LoadCtx {
         index.get(name).and_then(|paths| paths.first()).cloned()
     }
 
-    /// Whether a reference to `name` needs no discovery: a type declared
-    /// by a file already loaded, or a method (a camelCase binding). A
-    /// constructor declares nothing but its bodies — `Model => Html` in
-    /// the entry still needs the file that declares `Html`, the prelude's
-    /// or a sibling's — so a function's PascalCase name never counts. A
-    /// prelude declaration never counts either: a constructor family
-    /// spans files, and a member loaded early must not hide its
-    /// siblings (see `defined_bundled`).
-    fn is_declared_locally(&self, name: &str) -> bool {
-        if self.defined_bundled.contains(name) {
-            return false;
-        }
-        self.defined_types.contains(name)
+    /// Whether a reference to `name` from a file of `origin` needs no
+    /// discovery: a type the same package already declared, or a
+    /// method (a camelCase binding). A constructor declares nothing but
+    /// its bodies — `Model => Html` in the entry still needs the file
+    /// that declares `Html`, the prelude's or a sibling's — so a
+    /// function's PascalCase name never counts. A prelude declaration
+    /// never counts either: a constructor family spans files, and a
+    /// member loaded early must not hide its siblings (see
+    /// `defined_bundled`).
+    fn declares(&self, origin: &Origin, name: &str) -> bool {
+        let own_type = match origin {
+            Origin::Local => self.defined_types.contains(name),
+            Origin::Dep(pkg) => self.dep_types.get(pkg).is_some_and(|t| t.contains(name)),
+            Origin::Bundled(_) => false,
+        };
+        own_type
             || (self.defined.contains(name)
-                && !name.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
+                && !self.defined_bundled.contains(name)
+                && !crate::ast::is_type_name(name))
+    }
+
+    /// The package a resolved candidate belongs to.
+    fn package_of(&self, found: &Found) -> Origin {
+        match found {
+            Found::Bundled(pkg, _) => Origin::Bundled(pkg.name),
+            Found::Local(path) => self
+                .deps_dir
+                .as_deref()
+                .and_then(|root| vendored_pkg_for_file(path, root).ok().flatten())
+                .and_then(|p| p.qualifier)
+                .map_or(Origin::Local, Origin::Dep),
+        }
+    }
+
+    fn extend_items(&mut self, items: Vec<Item>, origin: Origin) {
+        self.origins
+            .extend(std::iter::repeat_n(origin, items.len()));
+        self.items.extend(items);
     }
 
     fn deps_decl_matches(&mut self, name: &str) -> Vec<PathBuf> {
@@ -1773,9 +1926,11 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
         seen: HashSet::new(),
         seen_bundled: HashSet::new(),
         items: Vec::new(),
+        origins: Vec::new(),
         defined: HashSet::new(),
         defined_bundled: HashSet::new(),
         defined_types: HashSet::new(),
+        dep_types: HashMap::new(),
         local_stems: HashMap::new(),
         bindgen_decls: None,
         deps_decls: None,
@@ -1786,11 +1941,11 @@ pub fn load_import_closure(items: &[Item], dir: &Path) -> Vec<Item> {
         deps_dir,
         bindgen_dir,
     };
-    register_defined_names(items, &mut ctx);
+    register_defined_names(items, &mut ctx, &Origin::Local);
     let _ = inject_json_prelude(items, &mut ctx);
     let _ = inject_html_prelude(items, &mut ctx);
     let _ = inject_string_prelude(items, &mut ctx);
-    let _ = discover_references(items, dir, &mut ctx);
+    let _ = discover_references(items, dir, &Origin::Local, &mut ctx);
     ctx.items
 }
 
@@ -1855,8 +2010,7 @@ fn discover_bundled_references(
         })
         .collect();
     for (name, span) in refs {
-        if own.contains(name.as_str()) || is_undiscoverable(&name) || ctx.is_declared_locally(&name)
-        {
+        if own.contains(name.as_str()) || is_undiscoverable(&name) {
             continue;
         }
         let candidates = bundled_decl_matches(&name, referrer_is_bindgen);
@@ -1961,33 +2115,46 @@ fn markdown_asset_source(path: &Path, content: &str) -> String {
     format!("{name} = Markdown\n\nUnit => {name} {{\n    \"{lit}\" -> Markdown\n}}\n")
 }
 
+/// Load a discovered file. `path` is the path discovery found it under
+/// — a vendored package's file keeps its `deps/<ns>/<name>@<version>/`
+/// identity even when that directory is a symlink elsewhere — and the
+/// canonical path is what `seen` deduplicates on.
 fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
-    if !ctx.seen.insert(path.to_path_buf()) {
+    let canonical = path.canonicalize().map_err(|err| CanonError::CheckError {
+        message: format!("could not resolve `{}`: {}", path.display(), err),
+        span: Span::default(),
+    })?;
+    if !ctx.seen.insert(canonical.clone()) {
         return Ok(());
     }
-    let raw = fs::read_to_string(path).map_err(|err| CanonError::CheckError {
+    let raw = fs::read_to_string(&canonical).map_err(|err| CanonError::CheckError {
         message: format!("could not read `{}`: {}", path.display(), err),
         span: Span::default(),
     })?;
     // A `.md` file isn't Canon source — it's a Markdown document loaded
     // as a `Markdown` value. Synthesize the module that binds it.
-    let source_is_markdown = path.extension().and_then(|e| e.to_str()) == Some("md");
+    let source_is_markdown = canonical.extension().and_then(|e| e.to_str()) == Some("md");
     let source = if source_is_markdown {
-        markdown_asset_source(path, &raw)
+        markdown_asset_source(&canonical, &raw)
     } else {
         raw
     };
     ctx.local_sources.push(LoadedSource {
-        path: path.to_path_buf(),
+        path: canonical.clone(),
         source: source.clone(),
     });
     let deps_pkg = deps_pkg_for_file(path, ctx)?;
+    let origin = match deps_pkg.as_ref().and_then(|p| p.qualifier.clone()) {
+        Some(name) => Origin::Dep(name),
+        None => Origin::Local,
+    };
     load_source(
         &source,
-        path.parent().unwrap_or_else(|| Path::new(".")),
+        canonical.parent().unwrap_or_else(|| Path::new(".")),
         deps_pkg.as_ref(),
+        origin,
         ctx,
-        file_id_of(path),
+        file_id_of(&canonical),
     )?;
     // The synthesized module is nothing but a `Markdown` value, so the
     // renderer package is the one thing it can be missing — name it,
@@ -2021,6 +2188,10 @@ struct DepsPkg {
     /// package, so only top-level files are binding files; files in
     /// nested directories are ordinary vendored source and get `None`.
     urn_base: Option<String>,
+    /// The package's name segment — its qualifier in `name.Type` —
+    /// for a file under `deps/`; the project's own `bindgen/` is not a
+    /// package of its own.
+    qualifier: Option<String>,
 }
 
 /// True for a lowercase-kebab package namespace or name segment
@@ -2048,12 +2219,17 @@ fn valid_pkg_version(version: &str) -> bool {
 /// vendor layout is an error here, with nothing left for file contents
 /// to get wrong. Returns `None` for ordinary project files.
 fn deps_pkg_for_file(path: &Path, ctx: &LoadCtx) -> Result<Option<DepsPkg>> {
-    for root in [ctx.deps_dir.as_deref(), ctx.bindgen_dir.as_deref()]
-        .into_iter()
-        .flatten()
-    {
+    if let Some(root) = ctx.deps_dir.as_deref() {
         if let Some(pkg) = vendored_pkg_for_file(path, root)? {
             return Ok(Some(pkg));
+        }
+    }
+    if let Some(root) = ctx.bindgen_dir.as_deref() {
+        if let Some(pkg) = vendored_pkg_for_file(path, root)? {
+            return Ok(Some(DepsPkg {
+                qualifier: None,
+                ..pkg
+            }));
         }
     }
     Ok(None)
@@ -2102,7 +2278,10 @@ fn vendored_pkg_for_file(path: &Path, root: &Path) -> Result<Option<DepsPkg>> {
         let stem = components[2].trim_end_matches(".can").replace('_', "-");
         format!("{ns}:{name}/{stem}@{version}")
     });
-    Ok(Some(DepsPkg { urn_base }))
+    Ok(Some(DepsPkg {
+        urn_base,
+        qualifier: Some(name.to_string()),
+    }))
 }
 
 /// Derive the binding-base URN a *bundled* file's package-relative path
@@ -2129,6 +2308,7 @@ fn load_source(
     source: &str,
     dir: &Path,
     deps_pkg: Option<&DepsPkg>,
+    origin: Origin,
     ctx: &mut LoadCtx,
     file: u32,
 ) -> Result<()> {
@@ -2146,12 +2326,12 @@ fn load_source(
     resolve_new_syntax(&mut module);
 
     let other_items = module.items;
-    register_defined_names(&other_items, ctx);
+    register_defined_names(&other_items, ctx, &origin);
     inject_json_prelude(&other_items, ctx)?;
     inject_html_prelude(&other_items, ctx)?;
     inject_string_prelude(&other_items, ctx)?;
-    discover_references(&other_items, dir, ctx)?;
-    ctx.items.extend(other_items);
+    discover_references(&other_items, dir, &origin, ctx)?;
+    ctx.extend_items(other_items, origin);
     Ok(())
 }
 
@@ -2159,19 +2339,19 @@ fn load_source(
 /// against the bundled registry only — the bundle is in-memory, so
 /// there are no local-disk roots to search.
 fn load_bundled_source(
-    _pkg: &'static BundledPackage,
+    pkg: &'static BundledPackage,
     current: &'static BundledFile,
     ctx: &mut LoadCtx,
 ) -> Result<()> {
     let other_items = parsed_bundled_items(current)?;
-    register_bundled_defined_names(&other_items, ctx);
+    register_defined_names(&other_items, ctx, &Origin::Bundled(pkg.name));
     // Stdlib files render through `-> String` too (`web/html.can`'s
     // escaping, `time/now.can`'s padding) — the same prelude rule
     // applies to them. `seen_bundled` already holds `string.can`'s own
     // key by the time its items get here, so this terminates.
     inject_string_prelude(&other_items, ctx)?;
     discover_bundled_references(&other_items, current, ctx)?;
-    ctx.items.extend(other_items);
+    ctx.extend_items(other_items, Origin::Bundled(pkg.name));
     Ok(())
 }
 
@@ -2214,6 +2394,285 @@ fn parsed_bundled_items(current: &'static BundledFile) -> Result<Vec<Item>> {
     let items = module.items;
     cache.lock().unwrap().insert(key, items.clone());
     Ok(items)
+}
+
+// ---------------------------------------------------------------------------
+// Package-qualified names
+// ---------------------------------------------------------------------------
+//
+// A name resolves within its own package before anything outside it,
+// so a project's `Key` shadows the prelude's. The loaded module is one
+// flat item list, though, and the checker keys everything by name — so
+// once every file is in, each declaration the module holds under a
+// contested name is given one internal spelling: the project's keeps
+// the plain name, and a foreign package's becomes its qualified name,
+// `canon.Key`, exactly as a reference spells it. References follow:
+// inside the package that declares it and from any other foreign
+// package that reaches it. A qualified spelling written for a name
+// nothing shadows is an error — the plain name is the one form.
+
+/// Where an item came from: the project itself (its `src/` and
+/// `bindgen/`), a bundled package, or a vendored dependency by name.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Origin {
+    Local,
+    Bundled(&'static str),
+    Dep(String),
+}
+
+impl Origin {
+    /// The package's spelling in a qualified name.
+    fn qualifier(&self) -> &str {
+        match self {
+            Origin::Local => "",
+            Origin::Bundled(name) => name.rsplit('/').next().unwrap_or(name),
+            Origin::Dep(name) => name,
+        }
+    }
+}
+
+fn qualify_shadowed(items: &mut [Item], origins: &[Origin]) -> Result<()> {
+    let mut declared: HashMap<&Origin, HashSet<&str>> = HashMap::new();
+    for (item, origin) in items.iter().zip(origins) {
+        if let Item::TypeDef(td) = item {
+            declared
+                .entry(origin)
+                .or_default()
+                .insert(td.name.name.as_str());
+        }
+    }
+    let declarers = |name: &str| -> Vec<&Origin> {
+        let mut out: Vec<&Origin> = declared
+            .iter()
+            .filter(|(_, names)| names.contains(name))
+            .map(|(origin, _)| *origin)
+            .collect();
+        out.sort_by_key(|o| o.qualifier().to_string());
+        out
+    };
+    // The internal spelling of `name` as `origin` declares it.
+    let internal = |origin: &Origin, name: &str| -> String {
+        if *origin == Origin::Local || declarers(name).len() < 2 {
+            name.to_string()
+        } else {
+            format!("{}.{name}", origin.qualifier())
+        }
+    };
+    let mut renames: HashMap<&Origin, HashMap<String, String>> = HashMap::new();
+    for (item, origin) in items.iter().zip(origins) {
+        let mut names: Refs = Refs::new();
+        collect_item_refs(item, &mut names);
+        if let Item::TypeDef(td) = item {
+            names.insert(td.name.name.clone(), td.name.span);
+        }
+        for (name, span) in names {
+            if let Some((pkg, plain)) = crate::ast::qualified_name(&name) {
+                let Some(target) = declarers(plain)
+                    .into_iter()
+                    .find(|o| o.qualifier() == pkg)
+                    .cloned()
+                else {
+                    return Err(CanonError::CheckError {
+                        message: format!("`{pkg}` declares no `{plain}` (in `{name}`)"),
+                        span,
+                    });
+                };
+                if internal(&target, plain) != name {
+                    return Err(CanonError::CheckError {
+                        message: format!(
+                            "`{name}`: nothing shadows `{plain}`, so the plain name is its \
+                             one spelling — write `{plain}`"
+                        ),
+                        span,
+                    });
+                }
+                continue;
+            }
+            if *origin == Origin::Local {
+                continue;
+            }
+            let own = declared
+                .get(origin)
+                .is_some_and(|d| d.contains(name.as_str()));
+            let target = if own {
+                origin.clone()
+            } else {
+                let foreign: Vec<&Origin> = declarers(&name)
+                    .into_iter()
+                    .filter(|o| **o != Origin::Local && *o != origin)
+                    .collect();
+                match foreign.as_slice() {
+                    [one] => (*one).clone(),
+                    _ => continue,
+                }
+            };
+            let spelling = internal(&target, &name);
+            if spelling != name {
+                renames.entry(origin).or_default().insert(name, spelling);
+            }
+        }
+    }
+    for (item, origin) in items.iter_mut().zip(origins) {
+        if let Some(map) = renames.get(origin) {
+            rename_item(item, map);
+        }
+    }
+    Ok(())
+}
+
+fn rename_item(item: &mut Item, map: &HashMap<String, String>) {
+    let rename = |id: &mut Ident| {
+        if let Some(to) = map.get(&id.name) {
+            id.name = to.clone();
+        }
+    };
+    match item {
+        Item::TypeDef(td) => {
+            rename(&mut td.name);
+            rename_ty(&mut td.body, map);
+        }
+        Item::Function(f) => {
+            if let Some(r) = &mut f.receiver {
+                rename(r);
+            }
+            rename(&mut f.name);
+            for p in &mut f.params {
+                rename_ty(&mut p.ty, map);
+            }
+            rename_ty(&mut f.return_ty, map);
+            for e in &mut f.body.exprs {
+                rename_expr(e, map);
+            }
+        }
+    }
+}
+
+fn rename_ty(ty: &mut TypeExpr, map: &HashMap<String, String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            if let Some(to) = map.get(name) {
+                *name = to.clone();
+            }
+            for g in generics {
+                rename_ty(g, map);
+            }
+        }
+        TypeExpr::Union { variants: tys, .. } | TypeExpr::Product { fields: tys, .. } => {
+            for t in tys {
+                rename_ty(t, map);
+            }
+        }
+        TypeExpr::Repeat { ty, .. } => rename_ty(ty, map),
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                rename_ty(p, map);
+            }
+            rename_ty(return_ty, map);
+        }
+    }
+}
+
+fn rename_expr(expr: &mut Expr, map: &HashMap<String, String>) {
+    let rename = |id: &mut Ident| {
+        if let Some(to) = map.get(&id.name) {
+            id.name = to.clone();
+        }
+    };
+    match expr {
+        Expr::Ident(id) => rename(id),
+        Expr::Constructor {
+            name,
+            type_args,
+            args,
+            ..
+        } => {
+            rename(name);
+            for t in type_args {
+                rename_ty(t, map);
+            }
+            for a in args {
+                rename_expr(a, map);
+            }
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            ..
+        } => {
+            rename_expr(receiver, map);
+            rename(method);
+            for t in type_args {
+                rename_ty(t, map);
+            }
+            for a in args {
+                rename_expr(a, map);
+            }
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            rename_expr(scrutinee, map);
+            for arm in arms {
+                rename_ty(&mut arm.param_ty, map);
+                rename_ty(&mut arm.return_ty, map);
+                for e in &mut arm.body.exprs {
+                    rename_expr(e, map);
+                }
+            }
+        }
+        Expr::Try { inner, .. } | Expr::Await { inner, .. } => rename_expr(inner, map),
+        Expr::Lambda {
+            params,
+            return_ty,
+            body,
+            ..
+        } => {
+            for p in params {
+                rename_ty(&mut p.ty, map);
+            }
+            rename_ty(return_ty, map);
+            for e in &mut body.exprs {
+                rename_expr(e, map);
+            }
+        }
+        Expr::ProductValue { fields, .. } => {
+            for f in fields {
+                rename_expr(f, map);
+            }
+        }
+        Expr::FieldAccess {
+            receiver, field, ..
+        } => {
+            rename_expr(receiver, map);
+            rename(field);
+        }
+        Expr::JsonLit { parts, .. } => {
+            for p in parts {
+                if let JsonLitPart::Interp(e) = p {
+                    rename_expr(e, map);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for p in parts {
+                if let HtmlLitPart::Interp(e) = p {
+                    rename_expr(e, map);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for p in parts {
+                if let FormatLitPart::Interp(e) = p {
+                    rename_expr(e, map);
+                }
+            }
+        }
+        Expr::StringLit { .. } | Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
+    }
 }
 
 // ---------------------------------------------------------------------------

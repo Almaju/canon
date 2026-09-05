@@ -1,0 +1,1 @@
+error[tests/checker/fail/qualified_unknown_package.can:2:5]: `acme.Greeting` names a package that is not vendored: `acme` is neither the standard library (`canon`) nor a `deps/<ns>/acme@<version>/`

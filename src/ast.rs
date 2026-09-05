@@ -912,6 +912,40 @@ pub fn constructed_type_name(ty: &TypeExpr) -> Option<String> {
     }
 }
 
+/// Whether `name` is a type name: PascalCase, or a package-qualified
+/// PascalCase name (`canon.Key`) — the package's name as written, a
+/// dot, the type. A name that is neither is a camelCase FFI alias.
+pub fn is_type_name(name: &str) -> bool {
+    name.rsplit('.')
+        .next()
+        .and_then(|last| last.chars().next())
+        .is_some_and(char::is_uppercase)
+}
+
+/// The `(package, name)` halves of a package-qualified name, `None`
+/// for a plain one.
+pub fn qualified_name(name: &str) -> Option<(&str, &str)> {
+    name.split_once('.')
+}
+
+/// `text` with a leading package qualifier removed: the key everything
+/// alphabetical sorts by, so `canon.Key` takes `Key`'s place. Accepts
+/// a rendered expression as well as a name (`canon.Key("a")`).
+pub fn plain_name(text: &str) -> &str {
+    let Some((pkg, rest)) = text.split_once('.') else {
+        return text;
+    };
+    let is_pkg = pkg.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && pkg
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if is_pkg && rest.chars().next().is_some_and(char::is_uppercase) {
+        rest
+    } else {
+        text
+    }
+}
+
 /// Post-parse transformation: resolve PascalCase function definitions.
 /// - If the name matches a TypeDef in the same module → it's a validated constructor
 ///   (set receiver = type name, rename to "Self")
@@ -950,73 +984,66 @@ pub fn resolve_new_syntax(module: &mut Module) {
                     }
                 }
             }
-            if func.receiver.is_none() && func.name.name != "main" {
-                let is_pascal = func
-                    .name
-                    .name
-                    .chars()
-                    .next()
-                    .is_some_and(char::is_uppercase);
-                if is_pascal {
-                    if type_names.contains(&func.name.name) {
-                        // Constructor (including zero-arg): set receiver to type name, rename to "Self"
-                        let recv_name = func.name.name.clone();
-                        let recv_span = func.name.span;
-                        func.receiver = Some(Ident {
-                            name: recv_name,
-                            span: recv_span,
-                        });
-                        func.name = Ident {
-                            name: "Self".to_string(),
-                            span: func.name.span,
-                        };
-                        // A multi-input constructor parses its input product
-                        // as ONE Product param (`Map * Key => Contains`).
-                        // Trait impls split that product via
-                        // `extract_receiver_from_params`; constructors keep
-                        // no runtime receiver, so flatten it into one param
-                        // per component here — downstream (wasm param
-                        // lowering, local-scope registration, commutative
-                        // keying) only understands `Named` params.
-                        if func.params.len() == 1 {
-                            if let TypeExpr::Product { fields, .. } = &func.params[0].ty {
-                                func.params = fields
-                                    .iter()
-                                    .map(|f| Param {
-                                        ty: f.clone(),
-                                        span: f.span(),
-                                    })
-                                    .collect();
-                            }
+            if func.receiver.is_none() && func.name.name != "main" && is_type_name(&func.name.name)
+            {
+                if type_names.contains(&func.name.name) {
+                    // Constructor (including zero-arg): set receiver to type name, rename to "Self"
+                    let recv_name = func.name.name.clone();
+                    let recv_span = func.name.span;
+                    func.receiver = Some(Ident {
+                        name: recv_name,
+                        span: recv_span,
+                    });
+                    func.name = Ident {
+                        name: "Self".to_string(),
+                        span: func.name.span,
+                    };
+                    // A multi-input constructor parses its input product
+                    // as ONE Product param (`Map * Key => Contains`).
+                    // Trait impls split that product via
+                    // `extract_receiver_from_params`; constructors keep
+                    // no runtime receiver, so flatten it into one param
+                    // per component here — downstream (wasm param
+                    // lowering, local-scope registration, commutative
+                    // keying) only understands `Named` params.
+                    if func.params.len() == 1 {
+                        if let TypeExpr::Product { fields, .. } = &func.params[0].ty {
+                            func.params = fields
+                                .iter()
+                                .map(|f| Param {
+                                    ty: f.clone(),
+                                    span: f.span(),
+                                })
+                                .collect();
                         }
-                    } else if func.anonymous
-                        && entry_world_of(&func.return_ty) == Some(EntryWorld::Http)
-                    {
-                        // `(Request) -> Response { … }` — an anonymous HTTP
-                        // entry. Mirror the parser's named-entry guard: keep
-                        // it a free function so entry selection sees it,
-                        // instead of extracting `Request` as a receiver.
-                    } else if func.anonymous
-                        && entry_world_of(&func.return_ty) == Some(EntryWorld::Cli)
-                        && func.params.is_empty()
-                    {
-                        // Anonymous CLI entry `Unit => Program { … }` (the
-                        // `Unit` param was already stripped above), selected
-                        // by its world-shaped return like the HTTP handler.
-                        // Rename to the canonical `main` so entry selection,
-                        // the ordering exemption, and codegen's `$start`
-                        // inlining all recognize it with zero other changes.
-                        func.name = Ident {
-                            name: "main".to_string(),
-                            span: func.name.span,
-                        };
-                    } else if !func.params.is_empty() {
-                        // Trait impl: extract first component as receiver
-                        let old_params = std::mem::take(&mut func.params);
-                        let (receiver, new_params) = extract_receiver_from_params(old_params);
-                        func.receiver = receiver;
-                        func.params = new_params;
                     }
+                } else if func.anonymous
+                    && entry_world_of(&func.return_ty) == Some(EntryWorld::Http)
+                {
+                    // `(Request) -> Response { … }` — an anonymous HTTP
+                    // entry. Mirror the parser's named-entry guard: keep
+                    // it a free function so entry selection sees it,
+                    // instead of extracting `Request` as a receiver.
+                } else if func.anonymous
+                    && entry_world_of(&func.return_ty) == Some(EntryWorld::Cli)
+                    && func.params.is_empty()
+                {
+                    // Anonymous CLI entry `Unit => Program { … }` (the
+                    // `Unit` param was already stripped above), selected
+                    // by its world-shaped return like the HTTP handler.
+                    // Rename to the canonical `main` so entry selection,
+                    // the ordering exemption, and codegen's `$start`
+                    // inlining all recognize it with zero other changes.
+                    func.name = Ident {
+                        name: "main".to_string(),
+                        span: func.name.span,
+                    };
+                } else if !func.params.is_empty() {
+                    // Trait impl: extract first component as receiver
+                    let old_params = std::mem::take(&mut func.params);
+                    let (receiver, new_params) = extract_receiver_from_params(old_params);
+                    func.receiver = receiver;
+                    func.params = new_params;
                 }
             }
         }

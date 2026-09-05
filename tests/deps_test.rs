@@ -181,14 +181,41 @@ fn a_binding_hiding_a_wit_stream_is_rejected() {
 }
 
 #[test]
-fn deps_and_local_resolution_is_ambiguous() {
-    // A local file and a vendored dep both implement `Shouted` on
-    // `String`. Both load (function names may co-resolve); the
-    // duplicate-definition guard reports the actual conflict.
-    let msgs = check_errors("fail_ambiguous");
-    assert!(
-        msgs.iter()
-            .any(|m| m.contains("duplicate constructor: `Shouted` already has a constructor whose first input is `String`")),
-        "expected a duplicate-function error, got: {msgs:?}"
+fn a_local_type_shadows_a_vendored_one() {
+    // A local file and a vendored dep both declare `Shouted`. The
+    // project's declaration wins unqualified; the dep's is reached as
+    // `greet.Shouted` — the package's name, a dot, the type.
+    let out = run_canon_subcommand("run", &entry("ok_shadowed"), &[]);
+    assert_eq!(
+        out.exit_code,
+        Some(0),
+        "canon run failed.\nstdout:\n{}\nstderr:\n{}",
+        out.stdout,
+        out.stderr
     );
+    assert_eq!(out.stdout, "hello?\nhello!\n");
+}
+
+#[test]
+fn two_vendored_packages_declaring_a_type_need_qualification() {
+    // Two dependencies declare `Shouted` and the project declares none:
+    // there is no precedence between packages, so the plain name is
+    // ambiguous and the error names both qualified spellings…
+    let msg = load_error("fail_two_packages");
+    assert!(
+        msg.contains("`Shouted` is ambiguous")
+            && msg.contains("`greet.Shouted`")
+            && msg.contains("`loud.Shouted`"),
+        "expected the two qualified spellings, got: {msg}"
+    );
+    // …and each qualified spelling reaches its own package.
+    let out = run_canon_subcommand("run", &entry("ok_two_packages"), &[]);
+    assert_eq!(
+        out.exit_code,
+        Some(0),
+        "canon run failed.\nstdout:\n{}\nstderr:\n{}",
+        out.stdout,
+        out.stderr
+    );
+    assert_eq!(out.stdout, "hello!\nhello!!\n");
 }

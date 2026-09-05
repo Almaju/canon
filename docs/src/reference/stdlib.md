@@ -11,13 +11,13 @@ standard [WASI](https://github.com/WebAssembly/WASI) interfaces — see
 [Using WASI Interfaces](./wasi.md) for the layering. Idiomatic code
 only ever reaches the wrappers below.
 
-Every type name `canon` declares is global — a type of the same
-name in your own project is a compile error — so the complete set,
-internal helpers included, is worth checking before you name a type.
-That list is the index of the [generated API
-reference](api/canon/index.html), which `canon doc` derives from the
-stdlib source itself and therefore cannot drift from it. This page is
-the prose the generator has no way to write.
+Every type name `canon` declares is in scope without an import. Your
+own declaration of the same name shadows it, and the prelude's is then
+reached as `canon.Name` ([qualified names](../spec/modules.md#qualified-names)).
+The complete set, internal helpers included, is the index of the
+[generated API reference](api/canon/index.html), which `canon doc`
+derives from the stdlib source itself and therefore cannot drift from
+it. This page is the prose the generator has no way to write.
 
 ---
 

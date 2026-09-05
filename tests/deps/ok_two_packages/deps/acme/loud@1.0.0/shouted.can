@@ -1,0 +1,5 @@
+Shouted = String
+
+String => Shouted {
+    `{String}!!`
+}

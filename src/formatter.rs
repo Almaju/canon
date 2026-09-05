@@ -482,7 +482,7 @@ fn canon_expr(e: &Expr) -> Expr {
             // All-computed inputs bind by type (distinct field types —
             // the product rule), so the order is free: sort for
             // determinism, pipe the first, parens hold the rest.
-            inputs.sort_by_key(emit_inline);
+            inputs.sort_by_key(|input| crate::ast::plain_name(&emit_inline(input)).to_string());
             let subject = inputs.remove(0);
             make_pipe(subject, name.clone(), type_args.clone(), inputs, *span)
         }
@@ -514,7 +514,7 @@ fn canon_expr(e: &Expr) -> Expr {
             // camelCase methods are FFI resource-method calls at the
             // boundary (`.path()`, `.set()`); `->` only pipes into
             // PascalCase constructors, so leave these as dot-calls.
-            if !method.name.chars().next().is_some_and(char::is_uppercase) {
+            if !crate::ast::is_type_name(&method.name) {
                 return Expr::MethodCall {
                     receiver: Box::new(canon_expr(receiver)),
                     method: method.clone(),
@@ -593,6 +593,8 @@ fn flush_sorted_segment<'a>(segment: &mut Vec<&'a Item>, out: &mut Vec<&'a Item>
         Item::TypeDef(td) => td.name.name.clone(),
         _ => String::new(),
     });
+    // A package-qualified name sorts as its plain name would.
+    let plain = |name: &str| crate::ast::plain_name(name).to_string();
     let mut funcs: Vec<&'a Item> = segment
         .iter()
         .copied()
@@ -600,10 +602,10 @@ fn flush_sorted_segment<'a>(segment: &mut Vec<&'a Item>, out: &mut Vec<&'a Item>
         .collect();
     funcs.sort_by_key(|i| match i {
         Item::Function(f) => (
-            f.name.name.clone(),
+            plain(&f.name.name),
             f.receiver
                 .as_ref()
-                .map(|r| r.name.clone())
+                .map(|r| plain(&r.name))
                 .unwrap_or_default(),
         ),
         _ => (String::new(), String::new()),
@@ -772,8 +774,7 @@ fn first_atom_is_bare_named(ty: &TypeExpr) -> bool {
 }
 
 fn emit_fn_params(func: &FunctionDef) -> String {
-    let first_char = func.name.name.chars().next().unwrap_or('a');
-    let is_pascal = first_char.is_uppercase();
+    let is_pascal = crate::ast::is_type_name(&func.name.name);
     let is_main = func.name.name == "main";
 
     if is_pascal || is_main {
@@ -994,7 +995,7 @@ fn emit_inline(expr: &Expr) -> String {
 /// the binding boundary, so those keep the dot.
 fn method_pipe_name(name: &str) -> Option<&str> {
     let piped = builtin_pipe_name(name);
-    if piped.chars().next().is_some_and(|c| c.is_uppercase()) {
+    if crate::ast::is_type_name(piped) {
         Some(piped)
     } else {
         None
@@ -1505,7 +1506,7 @@ fn emit_args_inline(out: &mut String, args: &[Expr]) {
 /// stable regardless of the order the author wrote the fields.
 fn emit_product_fields_sorted(out: &mut String, fields: &[Expr]) {
     let mut parts: Vec<String> = fields.iter().map(emit_inline).collect();
-    parts.sort();
+    parts.sort_by_key(|part| crate::ast::plain_name(part).to_string());
     out.push_str(&parts.join(" * "));
 }
 
@@ -1604,7 +1605,11 @@ fn arm_sort_key(arm: &MatchArm) -> (u8, i64, String) {
     match &arm.literal {
         Some(ArmLiteral::Int(v)) => (0, *v, String::new()),
         Some(ArmLiteral::Str(s)) => (0, 0, s.clone()),
-        None => (1, 0, emit_type_expr(&arm.param_ty)),
+        None => (
+            1,
+            0,
+            crate::ast::plain_name(&emit_type_expr(&arm.param_ty)).to_string(),
+        ),
     }
 }
 

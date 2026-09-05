@@ -1,0 +1,1 @@
+error[tests/checker/fail/qualified_declaration.can:1:1]: `canon.Key` is package-qualified: a declaration takes a plain name — the qualified spelling reaches a package's declaration, never makes one

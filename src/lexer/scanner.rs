@@ -533,6 +533,28 @@ impl<'a> Scanner<'a> {
             self.pos += 1;
             self.column += 1;
         }
+        // A package-qualified name is one token: the package's name as
+        // written (lowercase, kebab-case), a dot, a PascalCase type
+        // (`canon.Key`, `http-kit.Node`). Nothing else puts a lowercase
+        // word before `.Upper`, so the shape is the whole test.
+        if self.bytes[start_pos].is_ascii_lowercase() {
+            let b = &self.bytes;
+            let mut p = self.pos;
+            while p + 1 < b.len() && b[p] == b'-' && b[p + 1].is_ascii_lowercase() {
+                p += 1;
+                while p < b.len() && (b[p].is_ascii_lowercase() || b[p].is_ascii_digit()) {
+                    p += 1;
+                }
+            }
+            if p + 1 < b.len() && b[p] == b'.' && b[p + 1].is_ascii_uppercase() {
+                p += 1;
+                while p < b.len() && is_ident_continue(b[p]) {
+                    p += 1;
+                }
+                self.column += (p - self.pos) as u32;
+                self.pos = p;
+            }
+        }
         let lex = self.source[start_pos..self.pos].to_string();
         (TokenKind::Ident, lex)
     }

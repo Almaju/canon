@@ -33,14 +33,47 @@ loader searches:
 | the project's `deps/` tree | vendored packages, by declared name |
 | the bundled packages (`canon`) | by declared name; the stdlib's hand-written wrappers shadow its internal bindgen substrate |
 
-**Ambiguity is a hard error, not a precedence.** A name that resolves
-in more than one location fails the build naming every candidate --
-there is no shadowing, so names are globally unique across a project,
-its dependency closure, and the standard library. A name that resolves
+**A package's own declaration comes first; between packages there is
+no precedence.** A type the referencing package declares shadows the
+same name in every other package, so a project is free to name its
+types without consulting the standard library's list. A type two
+*other* packages declare (the prelude and a dependency, or two
+dependencies) is ambiguous, and the error names the spellings that
+reach each one. Constructor families are exempt: a file's `Model =>
+Html` constructs whichever `Html` its package resolves to, and members
+load from every package that declares one. A name that resolves
 nowhere is left for the checker, which reports the undefined name with
 full type context -- unless a file in the tree *declares* that name
 without being reachable under it, which the loader reports directly:
 the fix is the file's name, not the call site the checker would point at.
+
+## Qualified Names
+
+A shadowed or ambiguous declaration is reached by its
+**package-qualified name**: the package's name as written -- `canon`
+for the standard library, the `<name>` of `deps/<ns>/<name>@<version>/`
+for a dependency -- a dot, and the type:
+
+```canon
+Key = Int
+
+Unit => Program {
+    Key(7) -> Print
+    Map()
+        -> Insert(canon.Key("a") * Value("1"))
+        -> Keys
+        -> Json
+        -> Print
+}
+```
+
+The qualified spelling is one token, usable wherever a type name is:
+in a signature, a product, a dispatch pattern, a pipe target, or a
+constructor call. It reaches a declaration and never makes one --
+`canon.Key = Int` is a parse error -- and it is the *only* spelling
+of a shadowed name: `canon.Padded` when nothing shadows `Padded` is an
+error, because the plain name is the one form. Alphabetical order
+places a qualified name where its plain name would go.
 
 A resolved reference brings the type **with its constructor and
 methods** (no wildcards, no aliasing -- there is nothing to write).

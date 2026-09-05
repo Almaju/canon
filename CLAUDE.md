@@ -379,8 +379,14 @@ treatment in `docs/src/spec/types-only.md`.
 - **No `use` keyword — imports are automatic.** A reference resolves name → file:
   the file's own directory tree (`kebab(Name).can` or `kebab(name)/main.can`,
   recursive, skipping `deps/`/`bindgen/`), then the project `bindgen/`, `deps/`,
-  and bundled packages by declared name. Resolving in >1 place is a hard error (no
-  shadowing); nowhere is left to the checker. Machinery: `src/loader.rs`.
+  and bundled packages by declared name. A type the referencing package declares
+  shadows every other package's; a type two *other* packages declare is an
+  ambiguity error. The shadowed one is reached by its **package-qualified name**
+  (`canon.Key`, `greet.Shouted` — the package's name as written, a dot, the type;
+  one lexer token), the only spelling of a shadowed name (qualifying an
+  unshadowed name is an error). The loader gives such a declaration that
+  spelling internally (`qualify_shadowed`), so the checker never sees two
+  types under one name. Nowhere is left to the checker. Machinery: `src/loader.rs`.
 - **Indexing is 1-based** everywhere (`ByteAt(1)`, `-> At(1)`, `.1`);
   `substring(a, b)` is inclusive both ends. Deliberate — don't "fix" to 0-based.
 - **Pipeline:** source → lexer → parser → checker (format phase + semantics) →
@@ -390,7 +396,7 @@ treatment in `docs/src/spec/types-only.md`.
   `wit-component` produce the `.wasm` in-process; `canon run` executes it on
   embedded wasmtime.
 - **Standard library** is layered but ships as one bundled package, `canon` —
-  the prelude, whose names are global. Anything a program can live without
+  the prelude, whose names need no import. Anything a program can live without
   is an ecosystem package under `packages/canon/<name>/`, reached only through
   `canon add`. Keep the prelude to what every program needs.
   It declares WIT deps by vendoring under `wit/`; `canon install` materializes

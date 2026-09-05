@@ -1,0 +1,1 @@
+error[tests/checker/fail/qualified_not_shadowed.can:2:5]: `canon.Padded`: nothing shadows `Padded`, so the plain name is its one spelling — write `Padded`

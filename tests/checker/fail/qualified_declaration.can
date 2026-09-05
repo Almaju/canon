@@ -1,0 +1,5 @@
+canon.Key = Int
+
+Unit => Program {
+    "x" -> Print
+}

@@ -5,8 +5,9 @@ becomes a program.
 
 A **reference is an import**: mentioning a name the file doesn't define
 loads the file that does — the project tree first, then bindings,
-dependencies, and the bundled standard library. A name that resolves in
-two places is a hard error, so there is no shadowing to learn. A
+dependencies, and the bundled standard library. Your own declaration
+shadows a package's, which `canon.Name` still reaches; two packages
+declaring the same type is a hard error until you qualify it. A
 **directory is a package**, `wit/` its external imports, `deps/` its
 dependencies. There is no manifest and no reserved filename.
 
