@@ -206,6 +206,49 @@ fn hrefs(html: &str) -> Vec<String> {
         .collect()
 }
 
+/// A package's tests are its examples: each appears on the page of every
+/// type it names, captioned by the test's name read as a sentence, and
+/// the test file is not a module of the reference.
+#[test]
+fn tests_render_as_examples_on_the_types_they_name() {
+    let out = tmpdir("examples");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/router/src");
+    let api = package_api("canon/router", &root);
+    doc::render(&api, &out).expect("render");
+
+    assert!(
+        !api.modules.iter().any(|m| m.path.ends_with("_test")),
+        "a test file became a module: {:?}",
+        api.modules.iter().map(|m| &m.path).collect::<Vec<_>>()
+    );
+    assert!(
+        api.example_count() >= 5,
+        "examples: {}",
+        api.example_count()
+    );
+
+    let segments = fs::read_to_string(out.join("type/Segments.html")).expect("Segments page");
+    assert!(
+        segments.contains("<h2>Examples</h2>"),
+        "no examples section"
+    );
+    assert!(
+        segments.contains("<h3 class=\"ex\">Segments keep order</h3>"),
+        "the test's name is not its caption"
+    );
+    assert!(
+        segments.contains(
+            "<a href=\"../type/Segments.html\">Segments</a>(&quot;/notes/12&quot;) -&gt; At(2)"
+        ),
+        "the test body is not shown, linkified"
+    );
+    let query = fs::read_to_string(out.join("type/Query.html")).expect("Query page");
+    assert!(
+        !query.contains("Segments keep order"),
+        "an example landed on a type it does not name"
+    );
+}
+
 /// A module page is the export list a reader scans to learn what a
 /// file offers: every declaration in declaration form, each name a
 /// link to the constructed type.

@@ -183,7 +183,8 @@ tests/
   checker/fail/<name>.stderr   # golden: exact expected stderr
   runtime/<name>.can           # must run to completion (exit 0)
   runtime/<name>.stdout        # golden: exact captured stdout
-  canon/<name>_test.can        # `X = TestResult` newtypes + `Unit => X` ctors
+  canon/<name>_test.can        # language tests: `X = TestResult` newtypes + `Unit => X` ctors
+packages/<ns>/<pkg>/src/<name>_test.can  # a package's own tests — `canon doc` shows them as its examples
   canonc/<name>.can            # canonc's subset, ending in `Unit => Answer`; both compilers must agree
   common/mod.rs                # shared harness helpers
   *_fixtures.rs / canon_tests.rs / checker_api.rs  # per-layer harnesses
@@ -196,7 +197,8 @@ Pick the layer by **what the test observes**:
 | checker accepts this source | `tests/checker/ok/<name>.can` |
 | checker rejects with a specific error | `tests/checker/fail/<name>.can` + `.stderr` |
 | program runs end-to-end, prints exactly this | `tests/runtime/<name>.can` + `.stdout` |
-| an expression / stdlib fn produces the right value | `tests/canon/<file>_test.can` |
+| a language feature produces the right value | `tests/canon/<file>_test.can` |
+| a prelude or package constructor produces the right value | `packages/canon/[<pkg>/]src/<file>_test.can` (the package's examples in `canon doc`) |
 | the self-hosted compiler agrees with the reference | `tests/canonc/<name>.can` (`canonc_differential.rs`) |
 | the parser handles an edge case | `tests/checker/ok/<name>.can` |
 | a compiler API under unusual input | `tests/checker_api.rs` (keep rare) |
@@ -204,7 +206,8 @@ Pick the layer by **what the test observes**:
 **Adding a test:** drop the `.can` file in the right dir — the harness discovers
 it. For `fail/` and `runtime/`, run `just update-fixtures` to generate the
 sibling golden, then review and commit both. For a canon test, add a
-`TestResult` newtype + its `Unit => X` constructor to any `tests/canon/*_test.can`
+`TestResult` newtype + its `Unit => X` constructor to a `*_test.can` file
+(`tests/canon/` for the language, the package's `src/` for its own surface)
 (discovery is by that shape; the name is a type named for the behaviour it
 asserts, reported `[ ok ] SumAddsOperands`).
 
@@ -231,6 +234,14 @@ Unit => SumAddsOperands {
 - `canon test <dir>` runs every `*_test.can` in **one process** (shared stdlib
   parse + one wasmtime engine); `<file>` keeps the single-file path. A per-file
   compile failure is isolated. `just test-can` is the local-iteration view.
+- **A package's tests are its documentation.** `canon doc` reads every
+  `*_test.can` under `src/` as examples: a test's name is its caption
+  (`StyledWrapsTextInEscapes` → "Styled wraps text in escapes") and its body
+  appears on the page of every type it names. Name tests as the sentence a
+  reader should see. `build.rs` leaves test files out of the bundle, so
+  `canon add` never vendors them. The prelude's tree is testable in place: a
+  local file that is a bundled file's source loads as the bundled file
+  (`bundled_twin` in `src/loader.rs`).
 
 **Examples are not tests.** `examples/` holds readable programs that demonstrate
 real-world usage (HTTP servers, file I/O, JSON, randomness — non-deterministic by

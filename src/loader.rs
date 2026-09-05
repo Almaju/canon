@@ -309,6 +309,46 @@ include!(concat!(env!("OUT_DIR"), "/bundled_packages.rs"));
 /// names reach a program only through its `deps/` tree.
 pub const PRELUDE: &str = "canon";
 
+/// The prelude file whose source `path` is, when the compiler runs
+/// beside its own source tree: `BundledFile::abs_path` is where
+/// `build.rs` read the file, so a local candidate at that path is the
+/// bundled file itself, not a second declaration of its names. The
+/// prelude's tree is then checked and tested in place like any package
+/// — its bindings still lifted, its versioned paths still URNs, because
+/// the bundled copy is the one that loads. Only the prelude: a bundled
+/// file resolves its references against the prelude alone, so an
+/// ecosystem package's tree loads as the local files it is.
+fn bundled_twin(path: &Path) -> Option<(&'static BundledPackage, &'static BundledFile)> {
+    static TWINS: OnceLock<HashMap<PathBuf, (usize, usize)>> = OnceLock::new();
+    let twins = TWINS.get_or_init(|| {
+        let mut map = HashMap::new();
+        for (pi, pkg) in BUNDLED_PACKAGES.iter().enumerate() {
+            if pkg.name != PRELUDE {
+                continue;
+            }
+            for (fi, file) in pkg.files.iter().enumerate() {
+                if let Ok(abs) = Path::new(file.abs_path).canonicalize() {
+                    map.insert(abs, (pi, fi));
+                }
+                // A `src/` file shadows its `bindgen/` twin in the bundle
+                // (`build.rs`); on disk both exist, so the shadowed file
+                // is the shadowing one too.
+                let shadowed = Path::new(file.abs_path)
+                    .to_string_lossy()
+                    .strip_suffix(&format!("/src/{}", file.path))
+                    .map(|root| format!("{root}/bindgen/{}", file.path));
+                if let Some(abs) = shadowed.and_then(|p| Path::new(&p).canonicalize().ok()) {
+                    map.entry(abs).or_insert((pi, fi));
+                }
+            }
+        }
+        map
+    });
+    let canonical = path.canonicalize().ok()?;
+    let &(pi, fi) = twins.get(&canonical)?;
+    Some((&BUNDLED_PACKAGES[pi], &BUNDLED_PACKAGES[pi].files[fi]))
+}
+
 /// Find a bundled package by its canonical name (`"canon"`).
 pub fn bundled_package(name: &str) -> Option<&'static BundledPackage> {
     BUNDLED_PACKAGES.iter().find(|p| p.name == name)
@@ -1368,7 +1408,18 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
 
     // De-duplicate: a path can be reachable through more than one root
     // (e.g. a deps file is also inside the referencing file's tree when
-    // the referencing file itself lives under `deps/`).
+    // the referencing file itself lives under `deps/`), and a local
+    // file that is a bundled file's own source is that bundled file.
+    let found: Vec<Found> = found
+        .into_iter()
+        .map(|f| match f {
+            Found::Local(p) => match bundled_twin(&p) {
+                Some((pkg, file)) => Found::Bundled(pkg, file),
+                None => Found::Local(p),
+            },
+            bundled => bundled,
+        })
+        .collect();
     let mut unique: Vec<Found> = Vec::new();
     let mut seen_labels: HashSet<String> = HashSet::new();
     for f in found {
@@ -1962,6 +2013,13 @@ fn markdown_asset_source(path: &Path, content: &str) -> String {
 }
 
 fn load_into(path: &Path, ctx: &mut LoadCtx) -> Result<()> {
+    if let Some((pkg, file)) = bundled_twin(path) {
+        let key = format!("{}/{}", pkg.name, file.path);
+        if ctx.seen_bundled.insert(key) {
+            load_bundled_source(pkg, file, ctx)?;
+        }
+        return Ok(());
+    }
     if !ctx.seen.insert(path.to_path_buf()) {
         return Ok(());
     }
