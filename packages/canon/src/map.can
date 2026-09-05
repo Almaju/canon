@@ -1,6 +1,6 @@
 Contains = Bool
 
-Inserted = Map
+Insert = Key * Value
 
 Key = String
 
@@ -12,7 +12,7 @@ Map = Empty + Node
 
 Node = Key * Rest * Value
 
-Removed = Map
+Remove = String
 
 Rest = Map
 
@@ -24,19 +24,6 @@ Map * Key => Contains {
     Map -> Value(Key) -> (
         * None { False() }
         * Some<Value> { True() }
-    )
-}
-
-Map * Key * Value => Inserted {
-    Map -> (
-        * Empty { Empty() -> Node(Key * Value) }
-        * Node {
-            Key -> Ord(Node.Key) -> (
-                * Equal { Node.Rest -> Node(Key * Value) }
-                * Greater { Node.Key -> Node(Node.Rest -> Inserted(Key * Value) * Node.Value) }
-                * Less { Map -> Node(Key * Value) }
-            )
-        }
     )
 }
 
@@ -54,20 +41,33 @@ Map => Length {
     )
 }
 
-Unit => Map {
-    Empty()
+Map * Insert => Map {
+    Map -> (
+        * Empty { Empty() -> Node(Insert.Key * Insert.Value) }
+        * Node {
+            Insert.Key -> Ord(Node.Key) -> (
+                * Equal { Node.Rest -> Node(Insert.Key * Insert.Value) }
+                * Greater { Node.Key -> Node(Node.Rest -> Insert(Insert) * Node.Value) }
+                * Less { Map -> Node(Insert.Key * Insert.Value) }
+            )
+        }
+    )
 }
 
-Map * Key => Removed {
+Map * Remove => Map {
     Map -> (
         * Empty { Empty() }
         * Node {
-            Node.Key -> Eq(Key) -> (
-                * False { Node.Key -> Node(Node.Rest -> Removed(Key) * Node.Value) }
+            Node.Key -> Eq(Remove) -> (
+                * False { Node.Key -> Node(Node.Rest -> Remove(Remove) * Node.Value) }
                 * True { Node.Rest }
             )
         }
     )
+}
+
+Unit => Map {
+    Empty()
 }
 
 Map * Key => Option<Value> {

@@ -1,0 +1,63 @@
+Bead = String
+
+Clear = Unit
+
+Drop = String
+
+Knot = Bead * More
+
+More = Sack
+
+Put = String
+
+Sack = Hollow + Knot
+
+Sack => List<Bead> {
+    Sack -> (
+        * Hollow { List() }
+        * Knot { List(Knot.Bead) -> Joined(Knot.More -> List) }
+    )
+}
+
+Sack * Clear => Sack {
+    Hollow()
+}
+
+Sack * Drop => Sack {
+    Sack -> (
+        * Hollow { Hollow() }
+        * Knot {
+            Knot.Bead -> Eq(Drop) -> (
+                * False { Knot.Bead -> Knot(Knot.More -> Drop(Drop)) }
+                * True { Knot.More }
+            )
+        }
+    )
+}
+
+Sack * Put => Sack {
+    Sack -> (
+        * Hollow { Hollow() -> Knot(Put) }
+        * Knot { Knot.Bead -> Knot(Knot.More -> Put(Put)) }
+    )
+}
+
+Unit => Sack {
+    Hollow()
+}
+
+Unit => Program {
+    Sack()
+        -> Put("a")
+        -> Put("b")
+        -> Drop("a")
+        -> List
+        -> Json
+        -> Print
+    Sack()
+        -> Put("a")
+        -> Clear
+        -> List
+        -> Json
+        -> Print
+}

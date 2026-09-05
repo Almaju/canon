@@ -256,8 +256,8 @@ fn is_fallible(ty: &TypeExpr) -> bool {
     matches!(ty, TypeExpr::Named { name, .. } if name == "Result")
 }
 
-/// The declaration form, as the source writes it: `Map * String * Value
-/// => Inserted`, or `Unit => Now` for a nullary constructor.
+/// The declaration form, as the source writes it: `Map * Key =>
+/// Contains`, or `Unit => Now` for a nullary constructor.
 fn declaration_form(decl: &DeclDoc) -> String {
     let inputs = if decl.inputs.is_empty() {
         "Unit".to_string()
@@ -271,15 +271,37 @@ fn declaration_form(decl: &DeclDoc) -> String {
     format!("{} => {}", inputs, emit_type_expr(&decl.return_ty))
 }
 
+/// A command's message: the one input beside the type the declaration
+/// gives back (`Map * Insert => Map` → `Insert`). The language spec,
+/// § Functions: a command is applied by piping the value into it.
+fn command_message(decl: &DeclDoc) -> Option<&TypeExpr> {
+    let [a, b] = decl.inputs.as_slice() else {
+        return None;
+    };
+    match (
+        a.simple_name() == Some(&decl.name),
+        b.simple_name() == Some(&decl.name),
+    ) {
+        (true, false) => Some(b),
+        (false, true) => Some(a),
+        _ => None,
+    }
+}
+
 /// The call form, as a user writes it: values flow through the pipe and
 /// the remaining inputs sit in the parens (CLAUDE.md, § canonical call
-/// form). A fallible result takes the `?` that unwraps it.
+/// form). A fallible result takes the `?` that unwraps it. A command
+/// pipes into its message, the parens holding the message value.
 fn call_form(decl: &DeclDoc) -> String {
     let fallible = if is_fallible(&decl.return_ty) {
         "?"
     } else {
         ""
     };
+    if let Some(message) = command_message(decl) {
+        let message = emit_type_expr(message);
+        return format!("{} -> {message}({message}){fallible}", decl.name);
+    }
     match decl.inputs.split_first() {
         None => format!("{}(){}", decl.name, fallible),
         Some((first, [])) => format!("{} -> {}{}", emit_type_expr(first), decl.name, fallible),
@@ -477,12 +499,19 @@ fn type_page(api: &Api, site: Option<&str>, name: &str, doc: &TypeDoc) -> String
 
     // Constructors produce this type; the pipe menu consumes it. The
     // second is the list with no hand-written equivalent.
+    // A command constructs its own receiver, so it belongs to the pipe
+    // menu, not the constructor list.
     let pipes_in = |d: &DeclDoc| d.inputs.first().and_then(TypeExpr::simple_name) == Some(name);
-    let constructors: Vec<&DeclDoc> = api.decls.iter().filter(|d| d.name == name).collect();
+    let is_command = |d: &DeclDoc| d.name == name && command_message(d).is_some();
+    let constructors: Vec<&DeclDoc> = api
+        .decls
+        .iter()
+        .filter(|d| d.name == name && !is_command(d))
+        .collect();
     let piped: Vec<&DeclDoc> = api
         .decls
         .iter()
-        .filter(|d| d.name != name && pipes_in(d))
+        .filter(|d| (d.name != name && pipes_in(d)) || is_command(d))
         .collect();
     let used: Vec<&DeclDoc> = api
         .decls

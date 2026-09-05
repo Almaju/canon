@@ -1,0 +1,14 @@
+Reply = Unit
+
+Board * Reply => Board {
+    Board -> Over -> (
+        * False {
+            Board
+                -> Place(
+                    Piece("O")
+                    * Board -> Seed -> Next -> Below(Board -> Free -> Bound) -> Sum(1) -> Nth -> Index(Board * Cursor(1)) -> Square
+                )
+        }
+        * True { Board }
+    )
+}

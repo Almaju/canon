@@ -1,0 +1,11 @@
+Box = Int
+
+Box * String => Box {
+    Box
+}
+
+Unit => Program {
+    Box(1)
+        -> String
+        -> Print
+}

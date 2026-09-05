@@ -31,8 +31,6 @@ fn fullstack_serves_bundle_and_backend_on_one_address() {
 
 Model = String
 
-Update = Model
-
 Model => Html {
     <p>{Model}</p>
 }
@@ -41,10 +39,8 @@ Unit => Init {
     Model("hello") -> Init
 }
 
-Model * String => Update {
-    String
-        -> Model
-        -> Update
+Model * Msg => Model {
+    Msg -> Model
 }
 "#,
     )

@@ -1,0 +1,14 @@
+Box = Int
+
+Reset = Unit
+
+Box * Reset => Box {
+    Box(0)
+}
+
+Unit => Program {
+    Box(1)
+        -> Reset(2)
+        -> String
+        -> Print
+}

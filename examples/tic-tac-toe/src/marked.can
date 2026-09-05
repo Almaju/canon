@@ -1,8 +1,0 @@
-Marked = Board
-
-Int * Board * Piece => Marked {
-    Board
-        -> Substring(From(1) * Int -> Difference(1) -> To)
-        -> Joined(Piece)
-        -> Joined(Board -> Substring(Int -> Sum(1) -> From * To(9)))
-}

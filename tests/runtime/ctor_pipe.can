@@ -18,11 +18,11 @@ Unit => Program {
         -> Sum(1)
         -> Print
     Map()
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("a") * Value("1"))
         -> Keys
         -> Json
         -> Print
-    Map() -> Inserted(Key("k") * Value("v")) -> Value("k") -> (
+    Map() -> Insert(Key("k") * Value("v")) -> Value("k") -> (
         * None { "none" -> Print }
         * Some<String> { String -> Print }
     )

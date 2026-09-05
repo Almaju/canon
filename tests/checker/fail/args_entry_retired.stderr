@@ -1,4 +1,4 @@
 error[tests/checker/fail/args_entry_retired.can:1:9]: unknown type `Exit`
 error[tests/checker/fail/args_entry_retired.can:2:5]: no method `Exit` on type `Int` with 0 argument(s)
-error[tests/checker/fail/args_entry_retired.can:0:0]: no entry point defined: expected a CLI entry (`Unit => Program`), an HTTP handler (`Request => Response`), or a web-app triple (a `Model => Html` view with its `Unit => Init` and `Model * Msg => Update` constructors).
+error[tests/checker/fail/args_entry_retired.can:0:0]: no entry point defined: expected a CLI entry (`Unit => Program`), an HTTP handler (`Request => Response`), or a web-app triple (a `Model => Html` view with its `Unit => Init` and `Model * Msg => Model` constructors).
 error[tests/checker/fail/args_entry_retired.can:1:1]: `Args => Exit` is no longer an entry: write `Unit => Program` and fetch the argument vector with `Args()`. An exact exit code is `Exited(n)`; a fallible entry returns `Result<Program, _>`.

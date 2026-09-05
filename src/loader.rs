@@ -1439,7 +1439,7 @@ fn resolve_reference(name: &str, span: Span, dir: &Path, ctx: &mut LoadCtx) -> R
             // § Types-Only Canon,
             // name-resolution rule 4): several files may declare the same
             // *function* name — one implementation per receiver type, like
-            // `Inserted` on `Map` in map.can and on `Set` in set.can. A
+            // `Length` on `Map` in map.can and on `Set` in set.can. A
             // reference to such a name loads every declaring file; call
             // sites select by receiver, and the checker's coherence guard
             // (duplicate (receiver, name, first-input) definitions) reports

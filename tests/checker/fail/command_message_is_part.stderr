@@ -1,0 +1,1 @@
+error[tests/checker/fail/command_message_is_part.can:7:7]: `Lid` is a part of `Box`, so it cannot be its message: a message is a type of its own, named for the operation (`Insert = Key * Value`)

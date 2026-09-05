@@ -1,0 +1,15 @@
+Box = Int
+
+Lid = Int
+
+Wall = Int
+
+Box * Lid * Wall => Box {
+    Box
+}
+
+Unit => Program {
+    Box(1)
+        -> String
+        -> Print
+}

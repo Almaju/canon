@@ -1,0 +1,13 @@
+Play = Int
+
+Board * Play => Board {
+    Board -> Over -> (
+        * False {
+            Board -> ByteAt(Play) -> Eq(46) -> (
+                * False { Board }
+                * True { Board -> Place(Piece("X") * Play -> Square) -> Reply }
+            )
+        }
+        * True { Board }
+    )
+}

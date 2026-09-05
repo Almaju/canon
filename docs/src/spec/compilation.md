@@ -33,7 +33,7 @@ world:
 |---|---|---|
 | `Unit => Program` | `wasi:cli/command` | `wasi:cli/run.run` |
 | `Request => Response` | `wasi:http/service` | `wasi:http/handler.handle` |
-| `Model => Html` triple (+ `Unit => Init`, `Model * Msg => Update`) | browser ([web target](../reference/web-target.md)) | core module + JS host |
+| `Model => Html` triple (+ `Unit => Init`, `Model * Msg => Model`) | browser ([web target](../reference/web-target.md)) | core module + JS host |
 
 The CLI and HTTP entries are lifted async-stackful, letting nested
 suspending calls yield through the canonical ABI. The web target emits a

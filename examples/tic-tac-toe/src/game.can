@@ -1,6 +1,17 @@
 Init = Board
 
-Update = Board
+Board * Msg => Board {
+    Msg -> Substring(From(1) * To(5)) -> (
+        * "Play:" {
+            Msg -> Substring(From(6) * Msg -> Length -> To) -> Int -> (
+                * Err<MalformedInt> { Board }
+                * Ok<Int> { Board -> Play(Int) }
+            )
+        }
+        * "Reset" { Board(".........") }
+        * String { Board }
+    )
+}
 
 Board => Html {
     <div class="game">
@@ -14,17 +25,4 @@ Board => Html {
 
 Unit => Init {
     Board(".........")
-}
-
-Board * String => Update {
-    String -> Substring(From(1) * To(5)) -> (
-        * "Play:" {
-            String -> Substring(From(6) * String -> Length -> To) -> Int -> (
-                * Err<MalformedInt> { Board }
-                * Ok<Int> { Int -> Played(Board) }
-            )
-        }
-        * "Reset" { Board(".........") }
-        * String { Board }
-    )
 }

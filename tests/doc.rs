@@ -111,7 +111,7 @@ fn a_type_page_carries_its_definition_constructors_and_pipe_menu() {
     // The payload: what a `Map` pipes into, in call form. No
     // hand-written page can keep this list honest.
     assert!(map.contains("Pipes into"), "Map has no pipe menu");
-    for piped in ["Inserted", "Keys", "Length", "Removed", "Values"] {
+    for piped in ["Insert", "Keys", "Length", "Remove", "Values"] {
         assert!(
             map.contains(&format!(">{}</a>(", piped)) || map.contains(&format!(">{}</a>", piped)),
             "`Map -> {}` missing from Map's pipe menu",
@@ -218,8 +218,8 @@ fn a_module_page_lists_its_declarations() {
     let map = fs::read_to_string(out.join("module/map.html")).expect("map module page");
     assert!(map.contains("Declarations"), "no declaration list");
     assert!(
-        map.contains("<a href=\"../type/Map.html\">Map</a> * <a href=\"../type/Key.html\">Key</a> * <a href=\"../type/Value.html\">Value</a> =&gt; <a href=\"../type/Inserted.html\">Inserted</a>"),
-        "`Map * Key * Value => Inserted` is missing from map's declarations"
+        map.contains("<a href=\"../type/Map.html\">Map</a> * <a href=\"../type/Insert.html\">Insert</a> =&gt; <a href=\"../type/Map.html\">Map</a>"),
+        "`Map * Insert => Map` is missing from map's declarations"
     );
 }
 

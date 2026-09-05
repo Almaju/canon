@@ -14,29 +14,28 @@ approximates, Canon states natively:
 
 ```text
 Init = Model                     # marker: the initial model
-Update = Model                   # marker: the model after one message
 
 Model => Html { ... }              # view -- a pure render
 Unit => Init { ... }               # init -- the whole app state, initially
-Model * Msg => Update { ... }      # update -- a pure fold over messages
+Model * Msg => Model { ... }       # update -- the model's command, a fold over messages
 ```
 
 All three are anonymous, type-selected constructors -- no names. `Model`
-is any user type, `Msg` the message type (`String` today). `Init` and
-`Update` are **model-alias marker newtypes** (`Init = Model`,
-`Update = Model`); they exist because `init` and `update` both produce
-the model and would otherwise collide on one constructor key -- the
-markers give each a distinct type. `Html` resolves to
+is any user type, `Msg` the message type (`Msg = String` from
+`canon/web`, what the host delivers). `Init` is a **model-alias marker
+newtype** (`Init = Model`): `init` produces the model from nothing and
+would otherwise be the model's nullary constructor. `update` is the
+model's one command ([Functions § Declaration](../spec/functions.md)),
+applied to the current model with each message. `Html` resolves to
 `canon/web/Html` automatically.
 
 Detection is **by shape**: the `view` is the sole `Model => Html` whose
 receiver is a user type (a primitive receiver marks a stdlib
 conversion like `Escaped` instead); from its model, `init` is the
-unique nullary
-constructor whose result aliases the model and `update` the unique
-two-input constructor whose first input is the model. When the triple is
-present -- and no CLI or HTTP entry competes, which the checker rejects as
-mixed worlds -- the program is a web app.
+unique nullary constructor whose result aliases the model and `update`
+the model's unique command. When the triple is present -- and no CLI or
+HTTP entry competes, which the checker rejects as mixed worlds -- the
+program is a web app.
 
 ## What gets emitted
 

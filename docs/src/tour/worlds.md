@@ -17,7 +17,7 @@ may return a world type:
 |---|---|
 | `Unit => Program` | a CLI command |
 | `Request => Response` | an HTTP service |
-| `Model => Html` + `Unit => Init` + `Model * Msg => Update` | a browser app |
+| `Model => Html` + `Unit => Init` + `Model * Msg => Model` | a browser app |
 
 The CLI entry takes nothing, because `wasi:cli/run.run` takes nothing:
 the argument vector is *fetched*, not passed, so `Args()` reads `argv`

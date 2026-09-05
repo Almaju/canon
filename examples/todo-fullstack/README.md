@@ -29,7 +29,7 @@ both artifacts into `build/`.
 
 | File | Role |
 |---|---|
-| `src/todos.can` | **Shared.** The `Todos` wire/state encoding (newline-separated `flag\|title` lines), its operations as result newtypes (`AddedTodo`, `Cleared`, `RemovedAt`, `ToggledAt`), the list renderer, and the pure-Canon string helpers they need. Compiled into *both* wasm binaries. |
+| `src/todos.can` | **Shared.** The `Todos` wire/state encoding (newline-separated `flag\|title` lines), its commands as messages (`Add`, `Clear`, `Delete`, `Toggle`), the list renderer, and the pure-Canon string helpers they need. Compiled into *both* wasm binaries. |
 | `src/line.can` | **Shared.** One todo line: the `Flipped` toggle and the `<li>` renderer with its `Toggle:`/`Delete:` message buttons. |
 | `src/title.can` | **Shared.** The `Title` newtype. |
 | `src/seeded.can` | **Shared.** The seed list the server serves. |

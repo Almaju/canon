@@ -56,8 +56,6 @@ Tabs = Html
 
 Tour = Html
 
-Update = Model
-
 Model => Body {
     Model.Query -> Eq("") -> (
         * False { Model.Query -> Results }
@@ -88,6 +86,7 @@ Page => Content {
         * "lexical-structure" { LexicalStructure() -> Html }
         * "literal-dispatch" { Page -> Tour(LiteralDispatch() -> Html -> Lesson) }
         * "markdown-renderer" { MarkdownRenderer() -> Html }
+        * "messages" { Page -> Tour(Messages() -> Html -> Lesson) }
         * "modules" { Modules() -> Html }
         * "newtypes" { Page -> Tour(Newtypes() -> Html -> Lesson) }
         * "numerics" { Numerics() -> Html }
@@ -98,7 +97,6 @@ Page => Content {
         * "pipes" { Page -> Tour(Pipes() -> Html -> Lesson) }
         * "play" { Play() }
         * "recursion" { Page -> Tour(Recursion() -> Html -> Lesson) }
-        * "result-newtypes" { Page -> Tour(ResultNewtypes() -> Html -> Lesson) }
         * "stdlib" { Stdlib() -> Html }
         * "testing" { Page -> Tour(Testing() -> Html -> Lesson) }
         * "types" { Types() -> Html }
@@ -128,6 +126,14 @@ Model => Html {
 
 Unit => Init {
     Page("introduction") -> Model(Query(""))
+}
+
+Model * Msg => Model {
+    Msg -> Substring(From(1) * To(4)) -> (
+        * "Find" { Model.Page -> Model(Msg -> Substring(From(6) * Msg -> Length -> To) -> Query) }
+        * "Nav:" { Msg -> Substring(From(5) * Msg -> Length -> To) -> Page -> Model(Query("")) }
+        * String { Model }
+    )
 }
 
 Page * Slug * Label => NavItem {
@@ -182,8 +188,8 @@ Page => Pager {
         }
         * "errors" {
             Html(`<nav class="pager">{
-                Slug("result-newtypes")
-                    -> Prev(Label("Naming What Happened"))
+                Slug("messages")
+                    -> Prev(Label("Commands Are Messages"))
                     -> String
             }{Slug("validated-constructors") -> Next(Label("Constructors That Check")) -> String}</nav>`)
         }
@@ -204,6 +210,13 @@ Page => Pager {
                     -> String
             }{Slug("recursion") -> Next(Label("Loops Without Loops")) -> String}</nav>`)
         }
+        * "messages" {
+            Html(`<nav class="pager">{
+                Slug("recursion")
+                    -> Prev(Label("Loops Without Loops"))
+                    -> String
+            }{Slug("errors") -> Next(Label("Failure Is a Value")) -> String}</nav>`)
+        }
         * "newtypes" {
             Html(`<nav class="pager">{Slug("pipes") -> Prev(Label("Three Symbols")) -> String}{
                 Slug("format-strings")
@@ -223,14 +236,7 @@ Page => Pager {
                 Slug("literal-dispatch")
                     -> Prev(Label("Dispatch on Literals"))
                     -> String
-            }{Slug("result-newtypes") -> Next(Label("Naming What Happened")) -> String}</nav>`)
-        }
-        * "result-newtypes" {
-            Html(`<nav class="pager">{
-                Slug("recursion")
-                    -> Prev(Label("Loops Without Loops"))
-                    -> String
-            }{Slug("errors") -> Next(Label("Failure Is a Value")) -> String}</nav>`)
+            }{Slug("messages") -> Next(Label("Commands Are Messages")) -> String}</nav>`)
         }
         * "testing" {
             Html(`<nav class="pager">{
@@ -296,7 +302,7 @@ Page => Rail {
         {Page -> RailDot(Slug("dispatch") * Index(7))}
         {Page -> RailDot(Slug("literal-dispatch") * Index(8))}
         {Page -> RailDot(Slug("recursion") * Index(9))}
-        {Page -> RailDot(Slug("result-newtypes") * Index(10))}
+        {Page -> RailDot(Slug("messages") * Index(10))}
         {Page -> RailDot(Slug("errors") * Index(11))}
         {Page -> RailDot(Slug("validated-constructors") * Index(12))}
         {Page -> RailDot(Slug("capabilities") * Index(13))}
@@ -330,11 +336,11 @@ Page => Section {
         * "format-strings" { Section("tour") }
         * "hello" { Section("tour") }
         * "literal-dispatch" { Section("tour") }
+        * "messages" { Section("tour") }
         * "newtypes" { Section("tour") }
         * "pipes" { Section("tour") }
         * "play" { Section("play") }
         * "recursion" { Section("tour") }
-        * "result-newtypes" { Section("tour") }
         * "testing" { Section("tour") }
         * "validated-constructors" { Section("tour") }
         * "worlds" { Section("tour") }
@@ -430,12 +436,4 @@ Page * Lesson => Tour {
         <div class="tour-doc">{Page -> Rail}{Lesson}</div>
         <div class="tour-pane">{Pane()}</div>
     </div>
-}
-
-Model * Msg => Update {
-    Msg -> Substring(From(1) * To(4)) -> (
-        * "Find" { Model.Page -> Model(Msg -> Substring(From(6) * Msg -> Length -> To) -> Query) }
-        * "Nav:" { Msg -> Substring(From(5) * Msg -> Length -> To) -> Page -> Model(Query("")) }
-        * String { Model }
-    )
 }

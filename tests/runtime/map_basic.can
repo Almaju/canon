@@ -1,58 +1,55 @@
 Unit => Program {
-    Map()
-        -> Inserted(Key("b") * Value("banana"))
-        -> Inserted(Key("a") * Value("apple"))
-        -> Value("a") -> (
+    Map() -> Insert(Key("b") * Value("banana")) -> Insert(Key("a") * Value("apple")) -> Value("a") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map() -> Inserted(Key("k") * Value("v1")) -> Inserted(Key("k") * Value("v2")) -> Value("k") -> (
+    Map() -> Insert(Key("k") * Value("v1")) -> Insert(Key("k") * Value("v2")) -> Value("k") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map() -> Inserted(Key("a") * Value("1")) -> Value("missing") -> (
+    Map() -> Insert(Key("a") * Value("1")) -> Value("missing") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
         -> Length
         -> Print
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
-        -> Removed("a")
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Remove("a")
         -> Length
         -> Print
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
         -> Keys
         -> Json
         -> Print
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Inserted(Key("b") * Value("2"))
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
         -> Values
         -> Json
         -> Print
     Map()
-        -> Inserted(Key("a") * Value("1"))
-        -> Removed("missing")
+        -> Insert(Key("a") * Value("1"))
+        -> Remove("missing")
         -> Length
         -> Print
     Map()
-        -> Inserted(Key("b") * Value("2"))
-        -> Inserted(Key("c") * Value("3"))
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Insert(Key("c") * Value("3"))
+        -> Insert(Key("a") * Value("1"))
         -> Keys
         -> Json
         -> Print
     Map()
-        -> Inserted(Key("b") * Value("2"))
-        -> Inserted(Key("c") * Value("3"))
-        -> Inserted(Key("a") * Value("1"))
+        -> Insert(Key("b") * Value("2"))
+        -> Insert(Key("c") * Value("3"))
+        -> Insert(Key("a") * Value("1"))
         -> Values
         -> Json
         -> Print

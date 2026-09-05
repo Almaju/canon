@@ -95,7 +95,7 @@ constructors whose first input is a `Map`, and that is a question only
 the compiler can answer completely:
 
 ```text
-Map -> Inserted(String * Value)
+Map -> Insert(Key * Value)
 Map -> Keys
 Map -> Value(String) → Option<Value>
 ```

@@ -140,8 +140,8 @@ impl Parser {
             return self.parse_paren_free_ctor(first_ident, start_span);
         }
 
-        // Parens-free product/union/repetition input: `Todos * String
-        // => Update { … }`, `Int^2 => Ord { … }`. The declaration
+        // Parens-free product/union/repetition input: `Todos * Msg
+        // => Todos { … }`, `Int^2 => Ord { … }`. The declaration
         // arrow `=>` binds looser than the type operators `*` / `+` /
         // `^`, so the leading ident starts a compound input type.
         // Rewind to re-include it, parse the whole input type, then

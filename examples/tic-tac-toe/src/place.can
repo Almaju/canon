@@ -1,0 +1,10 @@
+Place = Piece * Square
+
+Square = Int
+
+Board * Place => Board {
+    Board
+        -> Substring(From(1) * Place.Square -> Difference(1) -> To)
+        -> Joined(Place.Piece)
+        -> Joined(Board -> Substring(Place.Square -> Sum(1) -> From * To(9)))
+}

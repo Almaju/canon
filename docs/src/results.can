@@ -109,9 +109,9 @@ Query => Hits {
     }{
         Query
             -> Hit(
-                Slug("result-newtypes")
-                * Label("Tour: Naming What Happened")
-                * ResultNewtypes() -> String -> Text
+                Slug("messages")
+                * Label("Tour: Commands Are Messages")
+                * Messages() -> String -> Text
             )
             -> String
     }{
