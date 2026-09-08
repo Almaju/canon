@@ -42,7 +42,8 @@ fn check_package(name: &str, files: &[(&str, &str)]) -> (Option<i32>, String) {
 const MAIN: &str =
     "Unit => Program {\n    Greeting(\"hi\")\n        -> Loud\n        -> Print\n}\n";
 const GREETING: &str = "Greeting = String\n";
-const LOUD: &str = "Loud = String\n\nGreeting => Loud {\n    Greeting -> Uppercased\n}\n";
+const LOUD: &str =
+    "Loud = String\n\nGreeting => Loud {\n    Greeting\n        -> Uppercased\n        -> Loud\n}\n";
 
 #[test]
 fn an_unreachable_file_is_named_along_with_the_rename_that_fixes_it() {

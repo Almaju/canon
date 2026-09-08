@@ -5,4 +5,5 @@ Board => Over {
         -> Won(Piece("X"))
         -> Or(Board -> Won(Piece("O")))
         -> Or(Board -> Free -> Eq(0))
+        -> Over
 }

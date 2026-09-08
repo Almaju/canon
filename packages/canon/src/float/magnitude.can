@@ -367,4 +367,5 @@ Float => Magnitude {
         -> DecimalLift
         -> DecimalDrop
         -> DecimalPlaced
+        -> Magnitude
 }

@@ -365,6 +365,7 @@ Int * String => IsBlockStart {
         -> Or(Int -> IsOrdered(String))
         -> Or(Int -> IsQuote(String))
         -> Or(Int -> IsTable(String))
+        -> IsBlockStart
 }
 
 Int * String => IsFence {

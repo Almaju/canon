@@ -495,6 +495,7 @@ Int * String => ParsedArray {
         -> Sum(1)
         -> AfterWs(String)
         -> ParsedArrayItems(String)
+        -> ParsedArray
 }
 
 Int * String => ParsedArrayItems {
@@ -563,6 +564,7 @@ Int * String => ParsedFracExp {
     Int
         -> ParsedFrac(String)
         -> ParsedExpAfter(String)
+        -> ParsedFracExp
 }
 
 Int * String => ParsedIntPart {
@@ -624,6 +626,7 @@ Int * String => ParsedObject {
         -> Sum(1)
         -> AfterWs(String)
         -> ParsedObjectItems(String)
+        -> ParsedObject
 }
 
 ParseStep * String => ParsedObjectColon {
@@ -702,6 +705,7 @@ Int * String => ParsedValue {
     Int
         -> AfterWs(String)
         -> DispatchedValue(String)
+        -> ParsedValue
 }
 
 Result * Prefix => Result<Prefixed, MalformedJson> {
@@ -867,6 +871,7 @@ String => Validated {
     1
         -> ParsedValue(String)
         -> CheckedTrailing(String)
+        -> Validated
 }
 
 Utf8Three = Utf8

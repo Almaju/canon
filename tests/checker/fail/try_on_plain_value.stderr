@@ -1,0 +1,1 @@
+error[tests/checker/fail/try_on_plain_value.can:4:5]: the value piped into `Print` has no type the checker can name here — give it one with a relabel (`-> Type`) before the pipe

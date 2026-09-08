@@ -2,7 +2,7 @@ Unit => Result<Program, IoError> {
     Args()
         -> At(1)?
         -> Path
-        -> File?
+        -> File
         -> Read?
         -> Compiled
         -> Print

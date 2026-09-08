@@ -1,0 +1,5 @@
+Width = Int
+
+Unit => Program {
+    Width(3)? -> Print
+}
