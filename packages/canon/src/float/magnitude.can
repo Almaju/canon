@@ -1,20 +1,24 @@
 DecimalAdvanced = DecimalState
 
-DecimalAppended = DecimalEmitted
-
 DecimalCount = Int
 
 DecimalDenominator = Limbs
+
+DecimalDrop = Unit
+
+DecimalEmit = DecimalDigit
 
 DecimalEmitted = DecimalCount * DecimalText
 
 DecimalEven = Bool
 
-DecimalGenerated = DecimalAppended
+DecimalGenerate = DecimalStep
+
+DecimalGenerated = DecimalEmitted
+
+DecimalLift = Unit
 
 DecimalLower = Limbs
-
-DecimalLowered = DecimalState
 
 DecimalNumerator = Limbs
 
@@ -23,8 +27,6 @@ DecimalPlace = Int
 DecimalPlaced = String
 
 DecimalPrepared = DecimalState
-
-DecimalRaised = DecimalState
 
 DecimalReaching = LimbsBelow
 
@@ -41,7 +43,7 @@ DecimalStep = DecimalState * LimbsDivided
 
 DecimalStepped = DecimalStep
 
-DecimalTenfold = DecimalState
+DecimalTenfold = Unit
 
 DecimalText = String
 
@@ -74,11 +76,40 @@ DecimalStep => DecimalAdvanced {
         )
 }
 
-DecimalDigit * DecimalEmitted => DecimalAppended {
+DecimalEmitted * DecimalEmit => DecimalEmitted {
     DecimalEmitted.DecimalCount
         -> Sum(1)
         -> DecimalCount
-        -> DecimalEmitted(DecimalText(`{DecimalEmitted.DecimalText}{DecimalDigit}`))
+        -> DecimalEmitted(DecimalText(`{DecimalEmitted.DecimalText}{DecimalEmit}`))
+}
+
+DecimalEmitted * DecimalGenerate => DecimalEmitted {
+    DecimalGenerate.DecimalStep -> DecimalWithin -> (
+        * False {
+            DecimalGenerate.DecimalStep -> DecimalReaching -> (
+                * False {
+                    DecimalEmitted
+                        -> DecimalEmit(DecimalGenerate.DecimalStep.LimbsDivided.LimbDigit -> DecimalDigit)
+                        -> DecimalGenerate(DecimalGenerate.DecimalStep -> DecimalAdvanced -> DecimalTenfold -> DecimalStepped)
+                }
+                * True {
+                    DecimalEmitted
+                        -> DecimalEmit(DecimalGenerate.DecimalStep.LimbsDivided.LimbDigit -> Sum(1) -> DecimalDigit)
+                }
+            )
+        }
+        * True {
+            DecimalGenerate.DecimalStep -> DecimalReaching -> (
+                * False {
+                    DecimalEmitted
+                        -> DecimalEmit(DecimalGenerate.DecimalStep.LimbsDivided.LimbDigit -> DecimalDigit)
+                }
+                * True {
+                    DecimalEmitted -> DecimalEmit(DecimalGenerate.DecimalStep -> DecimalRounded)
+                }
+            )
+        }
+    )
 }
 
 FloatParts => DecimalEven {
@@ -87,48 +118,11 @@ FloatParts => DecimalEven {
         -> Eq(0)
 }
 
-DecimalEmitted * DecimalStep => DecimalGenerated {
-    DecimalStep -> DecimalWithin -> (
-        * False {
-            DecimalStep -> DecimalReaching -> (
-                * False {
-                    DecimalStep.LimbsDivided.LimbDigit
-                        -> DecimalDigit
-                        -> DecimalAppended(DecimalEmitted)
-                        -> DecimalGenerated(DecimalStep -> DecimalAdvanced -> DecimalTenfold -> DecimalStepped)
-                }
-                * True {
-                    DecimalStep.LimbsDivided.LimbDigit
-                        -> Sum(1)
-                        -> DecimalDigit
-                        -> DecimalAppended(DecimalEmitted)
-                }
-            )
-        }
-        * True {
-            DecimalStep -> DecimalReaching -> (
-                * False {
-                    DecimalStep.LimbsDivided.LimbDigit
-                        -> DecimalDigit
-                        -> DecimalAppended(DecimalEmitted)
-                }
-                * True { DecimalStep -> DecimalRounded -> DecimalAppended(DecimalEmitted) }
-            )
-        }
-    )
-}
-
 DecimalState => DecimalGenerated {
     DecimalCount(0)
         -> DecimalEmitted(DecimalText(""))
-        -> DecimalGenerated(DecimalState -> DecimalTenfold -> DecimalStepped)
-}
-
-DecimalState => DecimalLowered {
-    DecimalState -> DecimalTenfold -> DecimalReaching -> (
-        * False { DecimalState -> DecimalTenfold -> DecimalLowered }
-        * True { DecimalState }
-    )
+        -> DecimalGenerate(DecimalState -> DecimalTenfold -> DecimalStepped)
+        -> DecimalGenerated
 }
 
 DecimalEmitted * DecimalPlace => DecimalPlaced {
@@ -171,9 +165,9 @@ FloatParts => DecimalPrepared {
                     DecimalPlace(0)
                         -> DecimalState(
                             FloatParts -> DecimalEven
-                            * FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalLower
-                            * FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalUpper
-                            * FloatParts.FloatExponent -> Sum(1) -> LimbShift -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
+                            * Limbs(1) -> LimbsShift(FloatParts.FloatExponent) -> DecimalLower
+                            * Limbs(1) -> LimbsShift(FloatParts.FloatExponent) -> DecimalUpper
+                            * FloatParts.FloatMantissa -> Limbs -> LimbsShift(FloatParts.FloatExponent -> Sum(1)) -> DecimalNumerator
                             * Limbs(2) -> DecimalDenominator
                         )
                 }
@@ -181,9 +175,9 @@ FloatParts => DecimalPrepared {
                     DecimalPlace(0)
                         -> DecimalState(
                             FloatParts -> DecimalEven
-                            * FloatParts.FloatExponent -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalLower
-                            * FloatParts.FloatExponent -> Sum(1) -> LimbShift -> LimbsShifted(Limbs(1)) -> DecimalUpper
-                            * FloatParts.FloatExponent -> Sum(2) -> LimbShift -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
+                            * Limbs(1) -> LimbsShift(FloatParts.FloatExponent) -> DecimalLower
+                            * Limbs(1) -> LimbsShift(FloatParts.FloatExponent -> Sum(1)) -> DecimalUpper
+                            * FloatParts.FloatMantissa -> Limbs -> LimbsShift(FloatParts.FloatExponent -> Sum(2)) -> DecimalNumerator
                             * Limbs(4) -> DecimalDenominator
                         )
                 }
@@ -192,29 +186,25 @@ FloatParts => DecimalPrepared {
         * True {
             FloatParts -> FloatUnequal -> (
                 * False {
-                    1
-                        -> Difference(FloatParts.FloatExponent)
-                        -> LimbShift
-                        -> LimbsShifted(Limbs(1))
+                    Limbs(1)
+                        -> LimbsShift(1 -> Difference(FloatParts.FloatExponent))
                         -> DecimalDenominator
                         -> DecimalState(
                             DecimalPlace(0)
                             * FloatParts -> DecimalEven
-                            * LimbShift(1) -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
+                            * FloatParts.FloatMantissa -> Limbs -> LimbsShift(1) -> DecimalNumerator
                             * Limbs(1) -> DecimalLower
                             * Limbs(1) -> DecimalUpper
                         )
                 }
                 * True {
-                    2
-                        -> Difference(FloatParts.FloatExponent)
-                        -> LimbShift
-                        -> LimbsShifted(Limbs(1))
+                    Limbs(1)
+                        -> LimbsShift(2 -> Difference(FloatParts.FloatExponent))
                         -> DecimalDenominator
                         -> DecimalState(
                             DecimalPlace(0)
                             * FloatParts -> DecimalEven
-                            * LimbShift(2) -> LimbsShifted(FloatParts.FloatMantissa -> Limbs) -> DecimalNumerator
+                            * FloatParts.FloatMantissa -> Limbs -> LimbsShift(2) -> DecimalNumerator
                             * Limbs(1) -> DecimalLower
                             * Limbs(2) -> DecimalUpper
                         )
@@ -224,34 +214,15 @@ FloatParts => DecimalPrepared {
     )
 }
 
-DecimalState => DecimalRaised {
-    DecimalState -> DecimalReaching -> (
-        * False { DecimalState }
-        * True {
-            DecimalState.DecimalDenominator
-                -> LimbsTimes(LimbFactor(10))
-                -> DecimalDenominator
-                -> DecimalState(
-                    DecimalState.DecimalEven
-                    * DecimalState.DecimalLower
-                    * DecimalState.DecimalNumerator
-                    * DecimalState.DecimalPlace -> Sum(1) -> DecimalPlace
-                    * DecimalState.DecimalUpper
-                )
-                -> DecimalRaised
-        }
-    )
-}
-
 DecimalState => DecimalReaching {
     DecimalState.DecimalEven -> (
         * False {
             DecimalState.DecimalDenominator
-                -> LimbsBelow(DecimalState.DecimalNumerator -> LimbsTotal(DecimalState.DecimalUpper))
+                -> LimbsBelow(DecimalState.DecimalNumerator -> LimbsPlus(DecimalState.DecimalUpper))
         }
         * True {
             DecimalState.DecimalNumerator
-                -> LimbsTotal(DecimalState.DecimalUpper)
+                -> LimbsPlus(DecimalState.DecimalUpper)
                 -> LimbsBelow(DecimalState.DecimalDenominator) -> (
                 * False { True() }
                 * True { False() }
@@ -264,11 +235,11 @@ DecimalStep => DecimalReaching {
     DecimalStep.DecimalState.DecimalEven -> (
         * False {
             DecimalStep.DecimalState.DecimalDenominator
-                -> LimbsBelow(DecimalStep.LimbsDivided.LimbsLeftover -> LimbsTotal(DecimalStep.DecimalState.DecimalUpper))
+                -> LimbsBelow(DecimalStep.LimbsDivided.LimbsLeftover -> LimbsPlus(DecimalStep.DecimalState.DecimalUpper))
         }
         * True {
             DecimalStep.LimbsDivided.LimbsLeftover
-                -> LimbsTotal(DecimalStep.DecimalState.DecimalUpper)
+                -> LimbsPlus(DecimalStep.DecimalState.DecimalUpper)
                 -> LimbsBelow(DecimalStep.DecimalState.DecimalDenominator) -> (
                 * False { True() }
                 * True { False() }
@@ -279,27 +250,53 @@ DecimalStep => DecimalReaching {
 
 DecimalStep => DecimalRounded {
     DecimalStep.LimbsDivided.LimbsLeftover
-        -> LimbsShifted(LimbShift(1))
+        -> LimbsShift(1)
         -> LimbsBelow(DecimalStep.DecimalState.DecimalDenominator) -> (
         * False { DecimalStep.LimbsDivided.LimbDigit -> Sum(1) -> DecimalDigit }
         * True { DecimalStep.LimbsDivided.LimbDigit -> DecimalDigit }
     )
 }
 
-DecimalTenfold => DecimalStepped {
-    DecimalTenfold
-        -> DecimalStep(LimbSteps(0) -> LimbsStepped(DecimalTenfold.DecimalState.DecimalNumerator * DecimalTenfold.DecimalState.DecimalDenominator))
+DecimalState * DecimalDrop => DecimalState {
+    DecimalState -> DecimalTenfold -> DecimalReaching -> (
+        * False { DecimalState -> DecimalTenfold -> DecimalDrop }
+        * True { DecimalState }
+    )
 }
 
-DecimalState => DecimalTenfold {
+DecimalState * DecimalLift => DecimalState {
+    DecimalState -> DecimalReaching -> (
+        * False { DecimalState }
+        * True {
+            DecimalState.DecimalDenominator
+                -> LimbsTimes(10)
+                -> DecimalDenominator
+                -> DecimalState(
+                    DecimalState.DecimalEven
+                    * DecimalState.DecimalLower
+                    * DecimalState.DecimalNumerator
+                    * DecimalState.DecimalPlace -> Sum(1) -> DecimalPlace
+                    * DecimalState.DecimalUpper
+                )
+                -> DecimalLift
+        }
+    )
+}
+
+DecimalState * DecimalTenfold => DecimalState {
     DecimalState.DecimalDenominator
         -> DecimalState(
             DecimalState.DecimalEven
-            * DecimalState.DecimalLower -> LimbsTimes(LimbFactor(10)) -> DecimalLower
-            * DecimalState.DecimalNumerator -> LimbsTimes(LimbFactor(10)) -> DecimalNumerator
+            * DecimalState.DecimalLower -> LimbsTimes(10) -> DecimalLower
+            * DecimalState.DecimalNumerator -> LimbsTimes(10) -> DecimalNumerator
             * DecimalState.DecimalPlace -> Difference(1) -> DecimalPlace
-            * DecimalState.DecimalUpper -> LimbsTimes(LimbFactor(10)) -> DecimalUpper
+            * DecimalState.DecimalUpper -> LimbsTimes(10) -> DecimalUpper
         )
+}
+
+DecimalState => DecimalStepped {
+    DecimalState
+        -> DecimalStep(LimbSteps(0) -> LimbsStepped(DecimalState.DecimalNumerator * DecimalState.DecimalDenominator))
 }
 
 DecimalStep => DecimalWithin {
@@ -367,7 +364,7 @@ Float => Magnitude {
     Float
         -> FloatNormalized
         -> DecimalPrepared
-        -> DecimalRaised
-        -> DecimalLowered
+        -> DecimalLift
+        -> DecimalDrop
         -> DecimalPlaced
 }

@@ -206,6 +206,66 @@ fn hrefs(html: &str) -> Vec<String> {
         .collect()
 }
 
+/// A package's tests are its examples: each appears on the page of every
+/// type it names, captioned by the test's name read as a sentence, and
+/// the test file is not a module of the reference.
+#[test]
+fn tests_render_as_examples_on_the_types_they_name() {
+    let out = tmpdir("examples");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packages/canon/router/src");
+    let router = package_api("canon/router", &root);
+    doc::render(&router, &out).expect("render");
+
+    assert!(
+        !router.modules.iter().any(|m| m.path.ends_with("_test")),
+        "a test file became a module: {:?}",
+        router.modules.iter().map(|m| &m.path).collect::<Vec<_>>()
+    );
+    assert!(
+        router.example_count() >= 5,
+        "examples: {}",
+        router.example_count()
+    );
+
+    let segments = fs::read_to_string(out.join("type/Segments.html")).expect("Segments page");
+    assert!(
+        segments.contains("<h2>Examples</h2>"),
+        "no examples section"
+    );
+    assert!(
+        segments.contains("<h3 class=\"ex\">Segments keep order</h3>"),
+        "the test's name is not its caption"
+    );
+    assert!(
+        segments.contains(
+            "<a href=\"../type/Segments.html\">Segments</a>(&quot;/notes/12&quot;) -&gt; At(2)"
+        ),
+        "the test body is not shown, linkified"
+    );
+    let query = fs::read_to_string(out.join("type/Query.html")).expect("Query page");
+    assert!(
+        !query.contains("Segments keep order"),
+        "an example landed on a type it does not name"
+    );
+
+    // A test belongs to the type its name starts with, not to every type
+    // it passes through: the Map tests compare via `-> Json`.
+    let out = tmpdir("examples_prelude");
+    let prelude = api();
+    doc::render(&prelude, &out).expect("render");
+    let map = fs::read_to_string(out.join("type/Map.html")).expect("Map page");
+    assert!(map.contains("Map keys sorted"), "Map's own test is missing");
+    let json = fs::read_to_string(out.join("type/Json.html")).expect("Json page");
+    assert!(
+        !json.contains("Map keys sorted"),
+        "a Map test landed on the Json page"
+    );
+    assert!(
+        json.contains("Json accepts array"),
+        "Json's own test is missing"
+    );
+}
+
 /// A module page is the export list a reader scans to learn what a
 /// file offers: every declaration in declaration form, each name a
 /// link to the constructed type.

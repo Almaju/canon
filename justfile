@@ -51,6 +51,8 @@ update-fixtures:
 # file (`cargo run -- test tests/canon/foo_test.can`) to iterate on one.
 test-can: build
     cargo run --quiet -- test tests/canon
+    cargo run --quiet -- test packages/canon/src
+    for d in packages/canon/*/src; do cargo run --quiet -- test "$d"; done
 
 # Run every example program under examples/ and report pass / fail / skip.
 #

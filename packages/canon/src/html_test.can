@@ -6,6 +6,8 @@ EscapedRendersInt = TestResult
 
 EscapedReplacesMetachars = TestResult
 
+Wrapped = Html
+
 Unit => EscapedEscapesString {
     Escaped("<b>")
         -> Eq("&lt;b&gt;")
@@ -13,7 +15,7 @@ Unit => EscapedEscapesString {
 }
 
 Unit => EscapedPassesThroughHtml {
-    Div("hi")
+    Wrapped()
         -> Escaped
         -> Eq("<div>hi</div>")
         -> TestResult
@@ -29,4 +31,8 @@ Unit => EscapedReplacesMetachars {
     Escaped("a<b>&\"c")
         -> Eq("a&lt;b&gt;&amp;&quot;c")
         -> TestResult
+}
+
+Unit => Wrapped {
+    <div>hi</div>
 }

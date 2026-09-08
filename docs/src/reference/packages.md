@@ -8,7 +8,8 @@ reached by name like anything else once it is there, and invisible
 until then. Packages are pure Canon over the prelude and independent
 of one another; `canon add` alone lists the ones that ship with the
 toolchain. This page is the prose for each; the generated [API
-reference](api/index.html) is the declaration surface of every one.
+reference](api/index.html) is the declaration surface of every one,
+with the package's tests as the examples on each type's page.
 
 ---
 
@@ -137,7 +138,7 @@ String => Card {
         -> Joined(String -> Escaped -> P)
         -> Joined(Href("/more") -> A("read more"))
         -> Div
-        -> Classed(Class("card"))
+        -> Class("card")
 }
 
 Unit => Program {
@@ -151,8 +152,8 @@ One constructor per element, each `= Html` and named after its tag:
 `Tr`, `Ul`, and `El` / `ElAttr` for any other tag. Content is inserted
 as written — pipe user text through the prelude's `Escaped` first; the
 attribute newtypes (`Href`, `Src`, `Alt`, `Placeholder`) escape
-themselves. `Classed(Class(…))` adds a class to any element's opening
-tag. The [web target](./web-target.md#events)'s wiring is built in:
+themselves. `Class` is a message: `-> Class("card")` adds a class to
+any element's opening tag. The [web target](./web-target.md#events)'s wiring is built in:
 `Button` and `Form` take the `Msg` they send, `Input` takes one to
 report its value.
 
