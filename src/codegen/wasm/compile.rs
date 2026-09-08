@@ -1800,9 +1800,7 @@ impl<'m> WasmGen<'m> {
             Expr::Ident(ident) => Some(ident.name.clone()),
             // Newtype unwrap (`x.String`) — a PascalCase field names the
             // component's type, which *is* the value's type.
-            Expr::FieldAccess { field, .. }
-                if field.name.chars().next().is_some_and(char::is_uppercase) =>
-            {
+            Expr::FieldAccess { field, .. } if crate::ast::is_type_name(&field.name) => {
                 Some(field.name.clone())
             }
             // A repetition component (`Limbs.1`) is one `Limbs`.
@@ -3065,7 +3063,7 @@ impl<'m> WasmGen<'m> {
         // with no func body) needs the construction route.
         let is_ctor_name = (!is_builtin_op
             && !has_func_body
-            && method.chars().next().is_some_and(char::is_uppercase)
+            && crate::ast::is_type_name(method)
             && (self.type_defs.contains_key(method)
                 || self.variant_parent.contains_key(method)
                 || matches!(method, "Some" | "None" | "Ok" | "Err")))

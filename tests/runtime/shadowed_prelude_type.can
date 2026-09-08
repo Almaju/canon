@@ -1,0 +1,15 @@
+Key = Int
+
+Unit => Program {
+    Key(7)
+        -> Sum(1)
+        -> Print
+    canon.Key("k") -> Print
+    Map()
+        -> Insert(canon.Key("a") * Value("1"))
+        -> Insert(canon.Key("b") * Value("2"))
+        -> Keys
+        -> Json
+        -> Print
+    canon.Key("b") -> Print
+}

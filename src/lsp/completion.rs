@@ -277,7 +277,7 @@ fn collect_candidates(items: &[Item]) -> Vec<Candidate> {
                 // `main` is the entry (no one pipes into it); camelCase
                 // is the FFI boundary, reached through PascalCase
                 // result newtypes.
-                if label == "main" || !label.starts_with(|c: char| c.is_ascii_uppercase()) {
+                if label == "main" || !crate::ast::is_type_name(&label) {
                     continue;
                 }
                 let mut inputs = Vec::new();

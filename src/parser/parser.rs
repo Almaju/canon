@@ -131,6 +131,18 @@ impl Parser {
             name: first.lexeme.clone(),
             span: first.span,
         };
+        // `canon.Key = …` would declare into another package: a
+        // qualified name only ever *reaches* a declaration.
+        if first.lexeme.contains('.') && self.check(TokenKind::Eq) {
+            return Err(CanonError::ParseError {
+                message: format!(
+                    "`{}` is package-qualified: a declaration takes a plain name — \
+                     the qualified spelling reaches a package's declaration, never makes one",
+                    first.lexeme
+                ),
+                span: first.span,
+            });
+        }
 
         // Parens-free single-input anonymous constructor: `Request =>
         // Response { … }`. A bare type name followed directly by the
@@ -1490,7 +1502,7 @@ impl Parser {
     }
 
     fn is_pascal_case_str(s: &str) -> bool {
-        s.chars().next().is_some_and(char::is_uppercase)
+        crate::ast::is_type_name(s)
     }
 
     fn is_at_end(&self) -> bool {

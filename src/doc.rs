@@ -263,7 +263,7 @@ fn examples_of(source: &str, items: &[Item]) -> Vec<ExampleDoc> {
 /// FFI aliases (the language spec, § Types-Only Canon) and declare no
 /// type, so they carry no documentation.
 fn is_type_name(name: &str) -> bool {
-    name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+    crate::ast::is_type_name(name)
 }
 
 /// A constructor's inputs as the source wrote them. A multi-input

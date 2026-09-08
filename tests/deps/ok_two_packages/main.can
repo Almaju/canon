@@ -1,0 +1,4 @@
+Unit => Program {
+    greet.Shouted("hello") -> Print
+    loud.Shouted("hello") -> Print
+}
