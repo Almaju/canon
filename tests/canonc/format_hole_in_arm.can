@@ -1,0 +1,23 @@
+Answer = String
+
+Circle = Int
+
+Label = String
+
+Shape = Circle + Square
+
+Square = Int
+
+Unit => Answer {
+    Circle(7)
+        -> Shape
+        -> Label
+        -> Answer
+}
+
+Shape => Label {
+    Shape -> (
+        * Circle { `circle {Circle}` }
+        * Square { `square {Square}` }
+    )
+}

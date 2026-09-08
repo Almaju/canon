@@ -3177,9 +3177,26 @@ impl<'m> WasmGen<'m> {
         // *static* type from the receiver's syntactic shape (see
         // `syntactic_type_name`). Tried first so newtype-typed shapes
         // still resolve.
-        let static_recv_type: Option<String> = syntactic_type_name(receiver)
-            .filter(|name| self.type_defs.contains_key(*name))
-            .map(str::to_string);
+        // A message application carries its receiver's type, not the
+        // message's: after `limbs -> LimbsShift(1)` the value is still
+        // a `Limbs`, and reading the chain as a `LimbsShift` (an `Int`
+        // newtype) would send the next lookup down `Int`'s alias chain.
+        let message_recv_type = match receiver {
+            Expr::MethodCall {
+                receiver: inner,
+                method: message,
+                ..
+            } => self
+                .infer_ctor_arg_type_name(inner)
+                .and_then(|r| self.message_target(&r, &message.name))
+                .map(|(target, _)| target),
+            _ => None,
+        };
+        let static_recv_type: Option<String> = message_recv_type.or_else(|| {
+            syntactic_type_name(receiver)
+                .filter(|name| self.type_defs.contains_key(*name))
+                .map(str::to_string)
+        });
         let mut candidate_types: Vec<String> = Vec::new();
         if let Some(st) = &static_recv_type {
             // A name that is both a union variant and a newtype has two

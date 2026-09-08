@@ -1,0 +1,7 @@
+ClassAt = Class * TagEnd
+
+Html * ClassAt => Html {
+    Html(`{Html -> Substring(From(1) * ClassAt.TagEnd -> Difference(1) -> To)} class="{
+        ClassAt.Class -> Escaped
+    }"{Html -> Substring(ClassAt.TagEnd -> From * Html -> Length -> To)}`)
+}

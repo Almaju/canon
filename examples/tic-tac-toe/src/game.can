@@ -19,7 +19,7 @@ Board => Html {
         <h1>Tic-tac-toe</h1>
         <p class="verdict">{Board -> Verdict}</p>
         <div class="grid">{Cursor(1) -> Cells(Board)}</div>
-        {Msg("Reset") -> Button("Play again") -> Classed(Class("reset"))}
+        {Msg("Reset") -> Button("Play again") -> Class("reset")}
     </div>
 }
 

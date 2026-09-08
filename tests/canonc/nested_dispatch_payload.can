@@ -1,0 +1,34 @@
+Answer = Int
+
+Circle = Int
+
+Inner = Left + Right
+
+Left = Int
+
+Right = Int
+
+Scored = Int
+
+Shape = Circle + Square
+
+Square = Int
+
+Unit => Answer {
+    Circle(7)
+        -> Shape
+        -> Scored
+        -> Answer
+}
+
+Shape => Scored {
+    Shape -> (
+        * Circle {
+            Left(2) -> Inner -> (
+                * Left { Left -> Product(100) -> Sum(Circle) }
+                * Right { Right }
+            )
+        }
+        * Square { Square }
+    )
+}

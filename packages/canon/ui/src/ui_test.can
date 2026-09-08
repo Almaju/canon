@@ -2,9 +2,9 @@ ALinksHref = TestResult
 
 ButtonWiresMsg = TestResult
 
-ClassedInsertsIntoOpeningTag = TestResult
+ClassInsertsIntoOpeningTag = TestResult
 
-ClassedKeepsExistingAttributes = TestResult
+ClassKeepsExistingAttributes = TestResult
 
 DivWrapsContent = TestResult
 
@@ -42,17 +42,17 @@ Unit => ButtonWiresMsg {
         -> TestResult
 }
 
-Unit => ClassedInsertsIntoOpeningTag {
+Unit => ClassInsertsIntoOpeningTag {
     Div("hi")
-        -> Classed(Class("card"))
+        -> Class("card")
         -> Eq("<div class=\"card\">hi</div>")
         -> TestResult
 }
 
-Unit => ClassedKeepsExistingAttributes {
+Unit => ClassKeepsExistingAttributes {
     Msg("go")
         -> Button("x")
-        -> Classed(Class("cta"))
+        -> Class("cta")
         -> Eq("<button class=\"cta\" data-msg=\"go\">x</button>")
         -> TestResult
 }

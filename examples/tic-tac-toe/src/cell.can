@@ -2,7 +2,7 @@ Cell = Html
 
 Cursor * Board => Cell {
     Board -> ByteAt(Cursor) -> (
-        * 46 { Msg(`Play:{Cursor}`) -> Button("") -> Classed(Class("cell")) }
+        * 46 { Msg(`Play:{Cursor}`) -> Button("") -> Class("cell") }
         * 79 { <button class="cell taken" disabled>O</button> }
         * Int { <button class="cell taken" disabled>X</button> }
     )
