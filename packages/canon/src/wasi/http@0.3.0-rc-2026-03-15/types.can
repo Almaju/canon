@@ -8,6 +8,8 @@ Response = Handle
 
 Response = (Body * Headers * Status) => Response
 
+body = (Request) => Stream<String>
+
 method = (Request) => String
 
 path = (Request) => Option<String>

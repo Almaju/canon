@@ -140,7 +140,8 @@ Unit => Result<Program, IoError> {
 ```
 
 Producers: `Stdin()` and `file -> Read` (both `Result`s whose `Ok` is
-the stream) and `list -> Stream` over a `List<String>`. Consumers:
+the stream), `Request.body()` in an HTTP handler, and `list -> Stream`
+over a `List<String>`. Consumers:
 `-> First` pulls one chunk as an `Option<String>`; `-> Folded(init *
 lambda)` pulls every chunk into an accumulator, as a list's `Folded`
 does; `-> String` drains the rest into one string. Transforms:

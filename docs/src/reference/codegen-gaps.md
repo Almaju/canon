@@ -43,7 +43,8 @@ handlers.
 
 ## `Stream<T>` beyond `Stream<String>` and streaming response bodies
 
-`Stream<String>` is a value: `Stdin()` and `file -> Read` produce one, a
+`Stream<String>` is a value: `Stdin()`, `file -> Read` and
+`Request.body()` produce one, a
 `List<String>` becomes one with `-> Stream`, and `First`, `Folded`,
 `Mapped`, `Taken` and the drain into a `String` consume it — see
 [Streams](../spec/effects-and-async.md#streams). Its lowering is a
@@ -75,19 +76,19 @@ element is not a `String` (`List(1 * 2) -> Stream`, a `Mapped` lambda
 answering an `Int`), a `stream<T>` of any other element type in a
 binding's WIT, a stream or future in a *parameter* of a binding spelled
 by hand (`wasi:cli/stdout`'s `write-via-stream`), a `future` returned on
-its own, the HTTP client's body streamed rather than drained, and
-streaming rather than draining the handler request body below. Any such
+its own, the HTTP client's body streamed rather than drained, and a
+streamed response body. Any such
 program is a checker error; `canon install` skips the WIT shapes it
 cannot spell.
 
-## HTTP handler request headers and body
+## HTTP handler request headers
 
-Not rejected — not expressible. `method()` and `path()` land, but the
-stdlib exposes no accessor for the request headers or body, so no accepted
-program can reach the missing lowering. The vendored WIT and the embedded
-runtime already carry both (`get-headers`, `consume-body`); wiring them into
-codegen and restoring a `body` binding in `canon`'s `wasi:http` wrapper
-is the future PR.
+Not rejected — not expressible. `method()`, `path()` and `body()` land
+(`Request.body()` is the request body as a `Stream<String>`, consumed
+through `consume-body`), but the stdlib exposes no accessor for the
+request headers, so no accepted program can reach the missing lowering.
+The vendored WIT and the embedded runtime already carry `get-headers`;
+wiring it into codegen and the `wasi:http` wrapper is the future PR.
 
 ## WIT shapes `canon install` skips
 

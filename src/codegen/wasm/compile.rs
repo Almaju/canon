@@ -3731,7 +3731,7 @@ impl<'m> WasmGen<'m> {
                     drop_future_fn: info
                         .future_drop_readable_fn
                         .expect("byte-stream extern has a future-drop-readable builtin"),
-                    drop_descriptor_fn: None,
+                    third: stream::Third::Nothing,
                 };
                 // The stream at +0 and its future at +4 become a `Host`
                 // stage, the `Ok` of the same `Result` struct a
@@ -4158,7 +4158,9 @@ impl<'m> WasmGen<'m> {
                 read_fn: imp(FileImport::BodyRead),
                 drop_stream_fn: imp(FileImport::BodyDropReadable),
                 drop_future_fn: imp(FileImport::BodyTrailersDropReadable),
-                drop_descriptor_fn: Some(imp(FileImport::DescriptorDrop)),
+                third: stream::Third::Descriptor {
+                    drop_fn: imp(FileImport::DescriptorDrop),
+                },
             },
             scope.tmp_i32_b(),
             scope.par_event_ptr(),
@@ -6920,6 +6922,62 @@ impl<'m> WasmGen<'m> {
             // web-app messages — no 10-arm union dispatch at every call
             // site. Static cases map to interned strings; `other`
             // passes its payload through verbatim.
+            ("body", Ty::NamedPtr(ref n)) if n == "Request" && self.http_mode => {
+                // Stack: [request]. `consume-body` moves the request —
+                // the `handle` wrapper reads the flag and skips its
+                // drop — and hands back the body stream and the
+                // trailers future; the `res` future it takes is
+                // resolved to `ok` when the stream ends.
+                let mem32 = |offset: u64| MemArg {
+                    offset,
+                    align: 2,
+                    memory_index: 0,
+                };
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_CONSUMED as i32));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Store(mem32(0)));
+                f.instruction(&Instruction::Call(FN_HTTP_RES_FUTURE_NEW));
+                f.instruction(&Instruction::LocalTee(scope.tmp_i64()));
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(scope.par_seen_a()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+                f.instruction(&Instruction::I64Const(32));
+                f.instruction(&Instruction::I64ShrU);
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(scope.par_seen_b()));
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.par_set()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.par_seen_a()));
+                f.instruction(&Instruction::LocalGet(scope.par_set()));
+                f.instruction(&Instruction::Call(FN_HTTP_CONSUME_BODY));
+                f.instruction(&Instruction::LocalGet(scope.par_set()));
+                f.instruction(&Instruction::I32Load(mem32(0)));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::LocalGet(scope.par_set()));
+                f.instruction(&Instruction::I32Load(mem32(4)));
+                f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
+                self.emit_host_stream(
+                    stream::Stage::Host {
+                        read_fn: FN_HTTP_BODY_READ,
+                        drop_stream_fn: FN_HTTP_BODY_DROP_READABLE,
+                        drop_future_fn: FN_HTTP_BODY_TRAILERS_DROP_READABLE,
+                        third: stream::Third::Settled {
+                            write_fn: FN_HTTP_RES_FUTURE_WRITE,
+                            drop_fn: FN_HTTP_RES_FUTURE_DROP_WRITABLE,
+                            ok_at: MEM_HTTP_TRAILERS_ZERO,
+                        },
+                    },
+                    scope.tmp_i32_b(),
+                    scope.par_event_ptr(),
+                    Some(scope.par_seen_b()),
+                    scope,
+                    f,
+                );
+                Ty::NamedPtr("Stream".to_string())
+            }
             ("method", Ty::NamedPtr(ref n)) if n == "Request" && self.http_mode => {
                 // Stack: [request].
                 f.instruction(&Instruction::I32Const(12));

@@ -113,7 +113,18 @@ const FN_HTTP_TASK_RETURN: u32 = 16; // [task-return]handle
 const FN_HTTP_GET_PATH: u32 = 17; // [method]request.get-path-with-query (i32,i32) -> ()
 const FN_HTTP_FIELDS_APPEND: u32 = 18; // [method]fields.append (i32 x6) -> ()
 const FN_HTTP_GET_METHOD: u32 = 19; // [method]request.get-method (i32,i32) -> ()
-const HTTP_BASE_DEFINED: u32 = 20;
+// `[static]request.consume-body` and the intrinsics its `res` future
+// (index 0), body stream (1) and trailers future (2) need — the
+// request body as a `Stream<String>` (`compile_builtin_method`'s
+// `body` arm).
+const FN_HTTP_CONSUME_BODY: u32 = 20; // (i32 request, i32 res-reader, i32 ret) -> ()
+const FN_HTTP_RES_FUTURE_NEW: u32 = 21; // [future-new-0]…  () -> i64
+const FN_HTTP_RES_FUTURE_WRITE: u32 = 22; // [future-write-0]… (i32,i32) -> i32
+const FN_HTTP_RES_FUTURE_DROP_WRITABLE: u32 = 23; // [future-drop-writable-0]… (i32) -> ()
+const FN_HTTP_BODY_READ: u32 = 24; // [stream-read-1]… (i32,i32,i32) -> i32
+const FN_HTTP_BODY_DROP_READABLE: u32 = 25; // [stream-drop-readable-1]… (i32) -> ()
+const FN_HTTP_BODY_TRAILERS_DROP_READABLE: u32 = 26; // [future-drop-readable-2]… (i32) -> ()
+const HTTP_BASE_DEFINED: u32 = 27;
 
 // ── Web-mode import indices ──────────────────────────────────────────
 // In web encoder mode (`compile_web`, see the web target, docs/src/reference/web-target.md) the import
@@ -135,7 +146,8 @@ const MEM_HTTP_BODY_PTR: u32 = 4;
 const MEM_HTTP_BODY_LEN: u32 = 8;
 const MEM_HTTP_TRAILERS_WRITER: u32 = 12;
 const MEM_HTTP_RET: u32 = 16; // response.new tuple ret
-const MEM_HTTP_TRAILERS_ZERO: u32 = 40; // `ok(none)` — all zero bytes, never written
+const MEM_HTTP_TRAILERS_ZERO: u32 = 40; // `ok(none)`, 16 bytes — all zero, never written
+const MEM_HTTP_BODY_CONSUMED: u32 = 56; // 1 once `body` moved the request into `consume-body`
 
 // ── Type index constants (pre-defined) ──────────────────────────────
 const TY_PRINT_STR: u32 = 0; // (i32,i32) → ()  — print_str body / waitable.join
