@@ -15,22 +15,28 @@
 //!     canonical `stream.read`, the handles dropped at its end.
 //!   - `Taken` — at most N chunks of an inner stage.
 //!   - `Map` — each chunk of an inner stage through an inlined lambda.
+//!   - `Unfold` — a seed stepped by an inlined lambda answering the next
+//!     chunk and seed, or `None` at the end.
 //!
-//! A `Map` stage is one function per lambda site (Canon lambdas are
-//! non-capturing, so the body compiles in the stage's own frame with the
-//! chunk bound to its parameter); the other kinds are one function per
-//! module, or per extern for `Host`, deduplicated by `Stage::same`.
+//! A `Map` or `Unfold` stage is one function per lambda site (Canon
+//! lambdas are non-capturing, so the body compiles in the stage's own
+//! frame with the chunk or seed bound to its parameter); the other kinds
+//! are one function per module, or per extern for `Host`, deduplicated
+//! by `Stage::same`.
 use std::borrow::Cow;
 
 use wasm_encoder::{ElementSection, Elements, RefType, TableSection, TableType};
 
 use super::*;
 
-/// Stage layout: the table slot, three cells, 8 bytes of padding.
+/// Stage layout: the table slot, three cells, and 8 bytes holding an
+/// `Unfold` stage's seed (an `i64`/`f64`, one pointer, or a string's
+/// `(ptr, len)`).
 const OFF_SLOT: u64 = 0;
 const OFF_A: u64 = 4;
 const OFF_B: u64 = 8;
 const OFF_C: u64 = 12;
+const OFF_SEED: u32 = 16;
 const STAGE_SIZE: i32 = 24;
 /// One host read's room, matching the drains' chunk.
 const CHUNK: i32 = 65536;
@@ -53,6 +59,15 @@ pub(super) enum Stage {
     /// A = the inner stage; `param` binds each chunk in `body`.
     Map {
         param: String,
+        body: Block,
+        site: crate::error::Span,
+    },
+    /// The seed cell holds the seed, which `param` binds in `body`;
+    /// the body answers `Option<step>`, the product of the chunk and
+    /// the next seed.
+    Unfold {
+        param: String,
+        step: String,
         body: Block,
         site: crate::error::Span,
     },
@@ -83,7 +98,8 @@ impl Stage {
             | (Stage::List, Stage::List)
             | (Stage::Taken, Stage::Taken) => true,
             (Stage::Host { read_fn: a, .. }, Stage::Host { read_fn: b, .. }) => a == b,
-            (Stage::Map { site: a, .. }, Stage::Map { site: b, .. }) => a == b,
+            (Stage::Map { site: a, .. }, Stage::Map { site: b, .. })
+            | (Stage::Unfold { site: a, .. }, Stage::Unfold { site: b, .. }) => a == b,
             _ => false,
         }
     }
@@ -196,7 +212,7 @@ impl<'m> WasmGen<'m> {
             arm_depth: 0,
         };
         let arm_depth = match stage {
-            Stage::Map { body, .. } => max_arm_depth(body),
+            Stage::Map { body, .. } | Stage::Unfold { body, .. } => max_arm_depth(body),
             _ => 0,
         };
         let mut f = Function::new(extra_locals_decl(arm_depth));
@@ -300,9 +316,88 @@ impl<'m> WasmGen<'m> {
                 }
                 f.instruction(&Instruction::I32Const(1));
             }
+            Stage::Unfold {
+                param, step, body, ..
+            } => {
+                let seed_repr = self.resolve_repr(param);
+                let (chunk, seed) = self.unfold_fields(param, step);
+                self.load_payload_at(0, OFF_SEED, &seed_repr, &mut f);
+                self.bind_elem(&seed_repr, &scope, &mut f);
+                let inner = self.lambda_elem_scope(param, &seed_repr, &scope);
+                let saved = (self.cur_fn_early_return.take(), self.entry_fails);
+                self.entry_fails = false;
+                let out_ty = self.compile_block_return(body, &inner, &mut f);
+                (self.cur_fn_early_return, self.entry_fails) = saved;
+                if !matches!(out_ty, Ty::NamedPtr(_) | Ty::NamedPtrOf(..)) {
+                    // Checker-rejected shape: keep the frame valid.
+                    self.drop_value(out_ty, &mut f);
+                    f.instruction(&Instruction::I32Const(0));
+                }
+                // `None` is the end; `Some` holds the step, whose chunk
+                // is the answer and whose seed goes back into the cell.
+                f.instruction(&Instruction::LocalTee(scope.rbool()));
+                f.instruction(&Instruction::I32Load(mem32(0)));
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::If(BlockType::Empty));
+                self.emit_mark_done(&mut f);
+                emit_end_return(&mut f);
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::I32Load(mem32(4)));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                self.load_payload_at(scope.rbool(), chunk, &Ty::Str, &mut f);
+                f.instruction(&Instruction::LocalSet(scope.rlen()));
+                f.instruction(&Instruction::LocalSet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(0));
+                self.load_payload_at(scope.rbool(), seed, &seed_repr, &mut f);
+                self.store_payload_at_offset(OFF_SEED, &seed_repr, &scope, &mut f);
+                f.instruction(&Instruction::LocalGet(scope.rptr()));
+                f.instruction(&Instruction::LocalGet(scope.rlen()));
+                f.instruction(&Instruction::I32Const(1));
+            }
         }
         f.instruction(&Instruction::End);
         f
+    }
+
+    /// The byte offsets of an unfold step's chunk and seed inside the
+    /// `step` product: the seed is the field the `param` type names
+    /// (through either's alias chain), the chunk the other one.
+    fn unfold_fields(&self, param: &str, step: &str) -> (u32, u32) {
+        let layout = self.product_field_layout(step);
+        let is_seed = |name: &str| {
+            name == param
+                || self.collect_alias_chain(name).iter().any(|a| a == param)
+                || self.collect_alias_chain(param).iter().any(|a| a == name)
+        };
+        let seed = layout
+            .iter()
+            .find(|(name, _, _)| is_seed(name))
+            .map(|(_, _, off)| *off)
+            .unwrap_or(0);
+        let chunk = layout
+            .iter()
+            .find(|(_, repr, off)| repr.is_str_like() && *off != seed)
+            .map(|(_, _, off)| *off)
+            .unwrap_or(0);
+        (chunk, seed)
+    }
+
+    /// Move the value on the stack into the element locals for its repr
+    /// — what `lambda_elem_scope` binds a parameter to.
+    fn bind_elem(&self, repr: &Ty, scope: &LocalScope, f: &mut Function) {
+        match repr {
+            Ty::I64 => f.instruction(&Instruction::LocalSet(scope.map_elem_i64())),
+            Ty::F64 => f.instruction(&Instruction::LocalSet(scope.map_elem_f64())),
+            Ty::Str | Ty::NamedStr(_) | Ty::List => {
+                f.instruction(&Instruction::LocalSet(scope.map_elem_ptr() + 1));
+                f.instruction(&Instruction::LocalSet(scope.map_elem_ptr()))
+            }
+            Ty::I32 | Ty::Ptr | Ty::NamedPtr(_) | Ty::NamedPtrOf(_, _, _) => {
+                f.instruction(&Instruction::LocalSet(scope.map_elem_ptr()))
+            }
+            Ty::Unit => f,
+        };
     }
 
     /// Rewrite the stage's slot to `Done`.
@@ -566,6 +661,53 @@ impl<'m> WasmGen<'m> {
             scope,
             f,
         );
+        Ty::NamedPtr("Stream".to_string())
+    }
+
+    /// `seed -> Unfolded((Seed) => Option<Step> { … })`: an `Unfold`
+    /// stage seeded with the value on the stack; the lambda compiles
+    /// into the stage function. The checker has fixed the lambda's
+    /// shape; any other argument leaves the seed dropped.
+    pub(super) fn compile_unfolded(
+        &mut self,
+        seed_ty: Ty,
+        lambda: &Expr,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let shape = match lambda {
+            Expr::Lambda {
+                params,
+                return_ty: TypeExpr::Named { name, generics, .. },
+                body,
+                span,
+            } if name == "Option" => match (params.as_slice(), generics.as_slice()) {
+                ([param], [step]) => match (&param.ty, named_type_name(step)) {
+                    (TypeExpr::Named { name: param, .. }, Some(step)) => {
+                        Some((param.clone(), step, body.clone(), *span))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((param, step, body, site)) = shape else {
+            self.drop_value(seed_ty, f);
+            f.instruction(&Instruction::I32Const(0));
+            return Ty::NamedPtr("Stream".to_string());
+        };
+        let slot = self.stream_stage(Stage::Unfold {
+            param,
+            step,
+            body,
+            site,
+        });
+        self.save_to_scratch(seed_ty.clone(), scope, f);
+        self.emit_new_stage(slot, [None, None, None], scope, f);
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        self.load_from_scratch(&seed_ty, scope, f);
+        self.store_payload_at_offset(OFF_SEED, &seed_ty, scope, f);
         Ty::NamedPtr("Stream".to_string())
     }
 

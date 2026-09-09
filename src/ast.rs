@@ -857,6 +857,8 @@ const BUILTIN_ALIASES: &[(&str, &str)] = &[
     ("First", "first"),
     ("At", "get"),
     ("Appended", "append"),
+    // Stream
+    ("Unfolded", "unfold"),
     // Concurrency combinators
     ("Parallel", "parallel"),
     ("Race", "race"),

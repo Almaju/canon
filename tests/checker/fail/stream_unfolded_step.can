@@ -1,0 +1,8 @@
+Counter = Int
+
+Unit => Program {
+    Counter(1)
+        -> Unfolded((Counter) => Option<Counter> { Counter -> Sum(1) -> Counter -> Some })
+        -> String
+        -> Print
+}

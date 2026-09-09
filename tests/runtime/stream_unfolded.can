@@ -1,0 +1,28 @@
+Counter = Int
+
+Head = String
+
+Line = String
+
+Rest = String
+
+Split = Head * Rest
+
+Step = Counter * Line
+
+Unit => Program {
+    Counter(1)
+        -> Unfolded((Counter) => Option<Step> { Counter -> Lt(4) -> ( * False { None() } * True { Line(`{Counter},`) -> Step(Counter -> Sum(1) -> Counter) -> Some }) })
+        -> String
+        -> Print
+    Counter(1)
+        -> Unfolded((Counter) => Option<Step> { Line(`{Counter}`) -> Step(Counter -> Sum(1) -> Counter) -> Some })
+        -> Taken(5)
+        -> String
+        -> Print
+    Rest("abc")
+        -> Unfolded((Rest) => Option<Split> { Rest -> Length -> Eq(0) -> ( * False { Rest -> Substring(From(1) * To(1)) -> Head -> Split(Rest -> Substring(From(2) * Rest -> Length -> To) -> Rest) -> Some } * True { None() }) })
+        -> Mapped((Head) => Line { Line(`[{Head}]`) })
+        -> String
+        -> Print
+}
