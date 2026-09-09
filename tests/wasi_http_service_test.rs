@@ -409,7 +409,12 @@ fn wasi_http_service_request_body() {
             &response[..response.len().min(200)]
         );
         let (_, echoed) = response.split_once("\r\n\r\n").unwrap_or(("", ""));
-        assert_eq!(echoed, body, "expected the body back, got {} bytes", echoed.len());
+        assert_eq!(
+            echoed,
+            body,
+            "expected the body back, got {} bytes",
+            echoed.len()
+        );
     }
 
     let _ = child.kill();

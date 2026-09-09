@@ -64,7 +64,9 @@ pub(super) enum Stage {
 pub(super) enum Third {
     Nothing,
     /// The file descriptor the stream reads, dropped.
-    Descriptor { drop_fn: u32 },
+    Descriptor {
+        drop_fn: u32,
+    },
     /// The writer of the `res` future a body was consumed with:
     /// resolved to `ok` (the eight zero bytes at `ok_at`), then dropped.
     Settled {
