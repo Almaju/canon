@@ -36,7 +36,7 @@ EscapedByte = String
 
 EscapedMeaning = String
 
-EscapedTail = String
+EscapedSpan = String
 
 Field = Json
 
@@ -296,7 +296,7 @@ Int => Encoded {
 }
 
 String => Encoded {
-    `"{1 -> EscapedTail(String)}"`
+    `"{String -> EscapedSpan(From(1) * String -> Length -> To)}"`
 }
 
 Int => EscapeChar {
@@ -350,13 +350,17 @@ Int => EscapedMeaning {
     )
 }
 
-Int * String => EscapedTail {
-    Int -> Gt(String -> Length) -> (
+From * String * To => EscapedSpan {
+    To -> Lt(From) -> (
         * False {
-            String
-                -> ByteAt(Int)
-                -> EscapedByte
-                -> Joined(Int -> Sum(1) -> EscapedTail(String))
+            From -> Eq(To) -> (
+                * False {
+                    From
+                        -> EscapedSpan(From -> Sum(To) -> Quotient(2) -> To * String)
+                        -> Joined(From -> Sum(To) -> Quotient(2) -> Sum(1) -> From -> EscapedSpan(String * To))
+                }
+                * True { String -> ByteAt(From) -> EscapedByte }
+            )
         }
         * True { "" }
     )
