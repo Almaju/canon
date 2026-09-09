@@ -36,6 +36,7 @@ const HOSTED: &[&str] = &[
     "wasi:cli/stdin@0.3.0-rc-2026-03-15.[stream-read-0]read-via-stream",
     "wasi:cli/stdin@0.3.0-rc-2026-03-15.read-via-stream",
     "wasi:cli/stdout@0.3.0-rc-2026-03-15.[future-drop-readable-1]write-via-stream",
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15.[future-read-1]write-via-stream",
     "wasi:cli/stdout@0.3.0-rc-2026-03-15.[stream-drop-writable-0]write-via-stream",
     "wasi:cli/stdout@0.3.0-rc-2026-03-15.[stream-new-0]write-via-stream",
     "wasi:cli/stdout@0.3.0-rc-2026-03-15.[stream-write-0]write-via-stream",
