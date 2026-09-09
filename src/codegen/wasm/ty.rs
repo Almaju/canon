@@ -26,6 +26,28 @@ pub(super) fn resolves_to_string(ty: &TypeExpr, type_defs: &HashMap<String, Type
     chase(name, type_defs, 0)
 }
 
+/// True when `ty` is `Stream<…>` or an alias chain ending at one
+/// (`Stdin = Stream<String>`).
+pub(super) fn resolves_to_stream(ty: &TypeExpr, type_defs: &HashMap<String, TypeExpr>) -> bool {
+    let mut current = ty;
+    for _ in 0..20 {
+        let TypeExpr::Named { name, generics, .. } = current else {
+            return false;
+        };
+        if name == "Stream" {
+            return true;
+        }
+        if !generics.is_empty() {
+            return false;
+        }
+        match type_defs.get(name) {
+            Some(next) => current = next,
+            None => return false,
+        }
+    }
+    false
+}
+
 /// Resolves a type expression to the scalar primitive it represents at
 /// the component-model boundary, walking user alias chains: `Int` (and
 /// the stdlib `Int`-alias `Byte`) → `s64`, `Float` → `f64`, `Bool` →
@@ -359,7 +381,8 @@ impl<'m> WasmGen<'m> {
             // `Map` / `Set` are NOT here — they are pure-Canon stdlib
             // unions whose repr resolves through `type_defs` below.
             "List" => Ty::List,
-            "Option" | "Result" => Ty::NamedPtr(name.to_string()),
+            // A stream is a pointer to its stage — see `stream`.
+            "Option" | "Result" | "Stream" => Ty::NamedPtr(name.to_string()),
             _ => {
                 if let Some(body) = self.type_defs.get(name).cloned() {
                     match &body {

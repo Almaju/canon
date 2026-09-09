@@ -1,0 +1,1 @@
+error[tests/checker/fail/stream_into_string_newtype.can:8:5]: `Compiled` expects a `String`, found a stream: drain it with `-> String`, or pull a chunk with `-> First`, before constructing

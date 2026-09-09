@@ -1,10 +1,11 @@
-//! `Stdin()` drains `wasi:cli/stdin`'s byte stream into one string.
+//! `Stdin()` is `wasi:cli/stdin`'s byte stream as a `Stream<String>`.
 //!
 //! The binding's WIT shape is `tuple<stream<u8>, future<result<_,
-//! error-code>>>`; Canon spells it `Unit => Result<Stdin, IoError>` and
-//! codegen reads the stream to its end at the boundary
-//! (`IndirectReturnShape::ByteStream`). These pin the drain against real
-//! pipes: a few lines, an input longer than one read chunk, and nothing.
+//! error-code>>>`; Canon spells it `Unit => Result<Stdin, IoError>` with
+//! `Stdin = Stream<String>`, and codegen reads a chunk per pull
+//! (`stream::Stage::Host`). These pin the stream against real pipes:
+//! drained whole, pulled chunk by chunk, an input longer than one read,
+//! and nothing.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -43,11 +44,12 @@ fn run_with_stdin(name: &str, program: &str, input: &[u8]) -> String {
 }
 
 const LINES: &str = "Unit => Result<Program, IoError> {
-    Stdin()? -> Lines -> Sorted -> First -> (
+    Stdin()? -> String -> Lines -> Sorted -> First -> (
         * None => Unit { \"empty\" -> Print }
         * Some<String> => Unit { String -> Print }
     )
     Stdin()?
+        -> String
         -> Lines
         -> Length
         -> Print
@@ -57,6 +59,7 @@ const LINES: &str = "Unit => Result<Program, IoError> {
 
 const LENGTH: &str = "Unit => Result<Program, IoError> {
     Stdin()?
+        -> String
         -> Length
         -> Print
     Unit() -> Ok
@@ -82,4 +85,52 @@ fn stdin_longer_than_one_chunk_is_read_whole() {
 #[test]
 fn empty_stdin_is_the_empty_string() {
     assert_eq!(run_with_stdin("empty", LENGTH, b""), "0\n");
+}
+
+const UPPER: &str = "Unit => Result<Program, IoError> {
+    Stdin()?
+        -> Mapped((String) => Uppercased { String -> Uppercased })
+        -> String
+        -> Print
+    Unit() -> Ok
+}
+";
+
+const FIRST_CHUNK: &str = "Unit => Result<Program, IoError> {
+    Stdin()? -> Taken(1) -> First -> (
+        * None => Unit { \"none\" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    Unit() -> Ok
+}
+";
+
+const TOTAL: &str = "Total = Int
+
+Unit => Result<Program, IoError> {
+    Stdin()?
+        -> Folded(Total(0) * (String * Total) => Total { Total -> Sum(String -> Length) -> Total })
+        -> Print
+    Unit() -> Ok
+}
+";
+
+#[test]
+fn stdin_chunks_map_before_the_drain() {
+    assert_eq!(
+        run_with_stdin("upper", UPPER, b"hello\nworld"),
+        "HELLO\nWORLD\n"
+    );
+}
+
+#[test]
+fn stdin_pulls_one_chunk_at_a_time() {
+    assert_eq!(run_with_stdin("first", FIRST_CHUNK, b"hi"), "hi\n");
+    assert_eq!(run_with_stdin("first-empty", FIRST_CHUNK, b""), "none\n");
+}
+
+#[test]
+fn stdin_folds_over_every_chunk() {
+    let input = vec![b'x'; 300_000];
+    assert_eq!(run_with_stdin("total", TOTAL, &input), "300000\n");
 }

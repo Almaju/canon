@@ -2,6 +2,8 @@ DecimalDigit = String
 
 Decimals = String
 
+Drained = String
+
 Ge = Bool
 
 Gt = Bool
@@ -111,4 +113,12 @@ Int => String {
         * False { 0 -> Difference(Int) -> Decimals }
         * True { `-{Int -> Decimals}` }
     )
+}
+
+(Stream<String>) => String {
+    Stream
+        -> Folded(
+            Drained("")
+            * (Drained * String) => Drained { Drained -> Joined(String) -> Drained }
+        )
 }

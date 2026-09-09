@@ -143,15 +143,14 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         // not `list<s64>`) — both the component-level import type and the
         // decode stride must match it.
         if component_ns.starts_with("wasi:") {
-            // A byte stream hides behind a fallible string: the Canon
-            // signature says `Result<Stdin, IoError>`, the vendored WIT
-            // says `tuple<stream<u8>, future<result<_, error-code>>>`.
-            if let Some(IndirectReturnShape::ResultStringString { ok_name, err_name }) =
-                &indirect_return
-            {
+            // A byte stream hides behind a fallible value: the Canon
+            // signature says `Result<Stdin, IoError>` with `Stdin =
+            // Stream<String>`, the vendored WIT says `tuple<stream<u8>,
+            // future<result<_, error-code>>>`; the fused round trips
+            // spell their result as strings.
+            if let Some((ok_name, err_name)) = fallible_return_names(&func.return_ty, &type_defs) {
                 // The fused round trips first: their WIT also carries a
                 // stream, which the byte-stream probe would claim.
-                let (ok_name, err_name) = (ok_name.clone(), err_name.clone());
                 indirect_return = if ext.path == component::WASI_HTTP_CLIENT_SEND {
                     Some(IndirectReturnShape::HttpSend { ok_name, err_name })
                 } else if ext.path == component::WASI_FS_READ {
@@ -686,6 +685,27 @@ pub(super) fn classify_return(
         return Some(IndirectReturnShape::String);
     }
     None
+}
+
+/// The arm names of a `Result<A, B>` return whose `A` is a string or a
+/// stream and whose `B` is a string — the shapes the fused sequences
+/// and the byte-stream drain produce. `None` for any other return.
+fn fallible_return_names(
+    return_ty: &TypeExpr,
+    type_defs: &HashMap<String, TypeExpr>,
+) -> Option<(String, String)> {
+    let TypeExpr::Named { name, generics, .. } = resolve_alias_structural(return_ty, type_defs)
+    else {
+        return None;
+    };
+    let [ok, err] = generics.as_slice() else {
+        return None;
+    };
+    let fits = name == "Result"
+        && (resolves_to_string(ok, type_defs) || resolves_to_stream(ok, type_defs))
+        && resolves_to_string(err, type_defs);
+    fits.then(|| (named_type_name(ok)?, named_type_name(err)?).into())
+        .flatten()
 }
 
 /// True when an extern's return type is `Result<A, B>` with both arms

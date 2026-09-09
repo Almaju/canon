@@ -1,4 +1,4 @@
-Stdin = String
+Stdin = Stream<String>
 
 Unit => Result<Stdin, IoError> {
     "read-via-stream"

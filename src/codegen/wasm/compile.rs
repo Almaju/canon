@@ -927,8 +927,10 @@ impl<'m> WasmGen<'m> {
 
     /// Collect every name in a type's alias chain. For `Json = String`,
     /// returns `["Json", "String"]`. For a base type like `String`,
-    /// returns `["String"]`. Bounded by `resolve_repr_depth`'s 20-step
-    /// guard so a malformed cycle can't infinite-loop.
+    /// returns `["String"]`. A generic alias ends the chain at its base
+    /// (`Stdin = Stream<String>` is `["Stdin", "Stream"]`), as the
+    /// checker's alias map does. Bounded by `resolve_repr_depth`'s
+    /// 20-step guard so a malformed cycle can't infinite-loop.
     pub(super) fn collect_alias_chain(&self, name: &str) -> Vec<String> {
         let mut out = vec![name.to_string()];
         let mut current = name.to_string();
@@ -943,7 +945,11 @@ impl<'m> WasmGen<'m> {
                 ..
             } = &body
             {
+                if out.iter().any(|n| n == next) {
+                    break;
+                }
                 if !generics.is_empty() {
+                    out.push(next.clone());
                     break;
                 }
                 if out.iter().any(|n| n == next) {
@@ -3715,25 +3721,21 @@ impl<'m> WasmGen<'m> {
             } => {
                 // invariant: `collect_extern_imports` allocates the three
                 // builtins for every `ByteStream` extern.
-                let (stream_read_fn, stream_drop_readable_fn, future_drop_readable_fn) = (
-                    info.stream_read_fn
+                let stage = stream::Stage::Host {
+                    read_fn: info
+                        .stream_read_fn
                         .expect("byte-stream extern has a stream-read builtin"),
-                    info.stream_drop_readable_fn
+                    drop_stream_fn: info
+                        .stream_drop_readable_fn
                         .expect("byte-stream extern has a stream-drop-readable builtin"),
-                    info.future_drop_readable_fn
+                    drop_future_fn: info
+                        .future_drop_readable_fn
                         .expect("byte-stream extern has a future-drop-readable builtin"),
-                );
-                // Drain the stream at +0 to its end. Chunks land back to
-                // back: the running position is the read target, and the
-                // bump pointer is reset to it before each further
-                // allocation so the next chunk's room starts exactly
-                // there (the allocator's own 8-byte rounding only moves
-                // where a *later* value goes). No user code runs, so the
-                // scratch locals are safe: `tmp_i32` = stream,
-                // `tmp_i32_b` = future, `addr_scratch` = start, `rbool`
-                // = position, `lit_scrut_ptr` = the packed read status
-                // `(count << 4) | code`.
-                const CHUNK: i32 = 65536;
+                    drop_descriptor_fn: None,
+                };
+                // The stream at +0 and its future at +4 become a `Host`
+                // stage, the `Ok` of the same `Result` struct a
+                // `result<string, string>` return produces.
                 let mem32 = |offset: u64| MemArg {
                     offset,
                     align: 2,
@@ -3745,68 +3747,8 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
                 f.instruction(&Instruction::I32Load(mem32(4)));
                 f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
-                f.instruction(&Instruction::I32Const(CHUNK));
-                f.instruction(&Instruction::Call(self.fn_alloc));
-                f.instruction(&Instruction::LocalTee(scope.addr_scratch()));
-                f.instruction(&Instruction::LocalSet(scope.rbool()));
-                f.instruction(&Instruction::Block(BlockType::Empty));
-                f.instruction(&Instruction::Loop(BlockType::Empty));
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::I32Const(CHUNK));
-                f.instruction(&Instruction::Call(stream_read_fn));
-                f.instruction(&Instruction::LocalTee(scope.lit_scrut_ptr()));
-                // `BLOCKED` (all ones) never comes back from a sync
-                // read; treat it as the end rather than as a count.
-                f.instruction(&Instruction::I32Const(-1));
-                f.instruction(&Instruction::I32Eq);
-                f.instruction(&Instruction::BrIf(1));
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
-                f.instruction(&Instruction::I32Const(4));
-                f.instruction(&Instruction::I32ShrU);
-                f.instruction(&Instruction::I32Add);
-                f.instruction(&Instruction::LocalSet(scope.rbool()));
-                // Done on any code but `COMPLETED`, or on an empty read.
-                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
-                f.instruction(&Instruction::I32Const(15));
-                f.instruction(&Instruction::I32And);
-                f.instruction(&Instruction::BrIf(1));
-                f.instruction(&Instruction::LocalGet(scope.lit_scrut_ptr()));
-                f.instruction(&Instruction::I32Const(4));
-                f.instruction(&Instruction::I32ShrU);
-                f.instruction(&Instruction::I32Eqz);
-                f.instruction(&Instruction::BrIf(1));
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
-                f.instruction(&Instruction::I32Const(CHUNK + 8));
-                f.instruction(&Instruction::Call(self.fn_alloc));
-                f.instruction(&Instruction::Drop);
-                f.instruction(&Instruction::Br(0));
-                f.instruction(&Instruction::End);
-                f.instruction(&Instruction::End);
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::GlobalSet(GLOBAL_BUMP_PTR));
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-                f.instruction(&Instruction::Call(stream_drop_readable_fn));
-                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
-                f.instruction(&Instruction::Call(future_drop_readable_fn));
-                // The `Result`: tag 1 (Ok), then the string's ptr and len.
-                f.instruction(&Instruction::I32Const(12));
-                f.instruction(&Instruction::Call(self.fn_alloc));
-                f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
-                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Store(mem32(0)));
-                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
-                f.instruction(&Instruction::I32Store(mem32(4)));
-                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
-                f.instruction(&Instruction::LocalGet(scope.rbool()));
-                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
-                f.instruction(&Instruction::I32Sub);
-                f.instruction(&Instruction::I32Store(mem32(8)));
-                f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+                self.emit_host_stream(stage, scope.tmp_i32(), scope.tmp_i32_b(), None, scope, f);
+                self.build_result_ok(Ty::NamedPtr("Stream".to_string()), scope, f);
                 Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
             }
             IndirectReturnShape::ResultStringString { ok_name, err_name } => {
@@ -4170,7 +4112,6 @@ impl<'m> WasmGen<'m> {
         scope: &LocalScope,
         f: &mut Function,
     ) -> Ty {
-        const CHUNK: i32 = 65536;
         let imp = |i: FileImport| read_fn + 1 + i as u32;
         let mem32 = |offset: u64| MemArg {
             offset,
@@ -4208,28 +4149,25 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::LocalGet(scope.par_set()));
         f.instruction(&Instruction::I32Load(mem32(4)));
         f.instruction(&Instruction::LocalSet(scope.par_event_ptr()));
-        f.instruction(&Instruction::I32Const(CHUNK + 8));
-        f.instruction(&Instruction::Call(self.fn_alloc));
-        f.instruction(&Instruction::LocalTee(scope.addr_scratch()));
-        f.instruction(&Instruction::LocalSet(scope.rptr()));
-        self.emit_drain_stream(
-            imp(FileImport::BodyRead),
+        // The `Ok` payload is a `Host` stage over the stream, which
+        // drops the descriptor with the handles at its end. The
+        // stage's pointer takes the string's place in `addr_scratch`,
+        // with a zero length beside it.
+        self.emit_host_stream(
+            stream::Stage::Host {
+                read_fn: imp(FileImport::BodyRead),
+                drop_stream_fn: imp(FileImport::BodyDropReadable),
+                drop_future_fn: imp(FileImport::BodyTrailersDropReadable),
+                drop_descriptor_fn: Some(imp(FileImport::DescriptorDrop)),
+            },
             scope.tmp_i32_b(),
-            scope.rptr(),
-            scope.par_set(),
+            scope.par_event_ptr(),
+            Some(scope.tmp_i32()),
+            scope,
             f,
         );
-        f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
-        f.instruction(&Instruction::Call(imp(FileImport::BodyDropReadable)));
-        f.instruction(&Instruction::LocalGet(scope.par_event_ptr()));
-        f.instruction(&Instruction::Call(imp(
-            FileImport::BodyTrailersDropReadable,
-        )));
-        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
-        f.instruction(&Instruction::Call(imp(FileImport::DescriptorDrop)));
-        f.instruction(&Instruction::LocalGet(scope.rptr()));
-        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
-        f.instruction(&Instruction::I32Sub);
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::I32Const(0));
         f.instruction(&Instruction::LocalSet(scope.rlen()));
         f.instruction(&Instruction::Else);
         self.emit_file_error(scope, f);
@@ -5523,7 +5461,7 @@ impl<'m> WasmGen<'m> {
     /// The reserved `(i32,i32,i32) -> (i32,i32,i32)` block type that
     /// carries the `(src, dst, remaining)` trio through the
     /// `compile_list_map` / `compile_list_filter` loops.
-    fn list_loop_trio_ty(&self) -> u32 {
+    pub(super) fn list_loop_trio_ty(&self) -> u32 {
         self.user_type_map
             .get(&(
                 vec![ValType::I32, ValType::I32, ValType::I32],
@@ -5581,7 +5519,12 @@ impl<'m> WasmGen<'m> {
 
     /// The scope a list-lambda body compiles in: the parameter's whole
     /// alias chain bound to the element local for its repr.
-    fn lambda_elem_scope(&self, elem_name: &str, elem_repr: &Ty, scope: &LocalScope) -> LocalScope {
+    pub(super) fn lambda_elem_scope(
+        &self,
+        elem_name: &str,
+        elem_repr: &Ty,
+        scope: &LocalScope,
+    ) -> LocalScope {
         let elem_local = match elem_repr {
             Ty::I64 => scope.map_elem_i64(),
             Ty::F64 => scope.map_elem_f64(),
@@ -5795,7 +5738,7 @@ impl<'m> WasmGen<'m> {
     /// parameter whose component naming the lambda's return type (or
     /// aliasing to it) is the accumulator and whose other component is
     /// the element. `None` when the argument has any other shape.
-    fn inline_fold_lambda<'e>(
+    pub(super) fn inline_fold_lambda<'e>(
         &self,
         args: &'e [Expr],
     ) -> Option<(&'e Expr, String, String, Block)> {
@@ -5841,7 +5784,7 @@ impl<'m> WasmGen<'m> {
 
     /// Store the value on the stack into the fold-accumulator locals
     /// for its repr; `bind_fold_acc` is the read side.
-    fn store_fold_acc(&self, ty: &Ty, scope: &LocalScope, f: &mut Function) {
+    pub(super) fn store_fold_acc(&self, ty: &Ty, scope: &LocalScope, f: &mut Function) {
         match ty {
             Ty::I64 => f.instruction(&Instruction::LocalSet(scope.fold_acc_i64())),
             Ty::F64 => f.instruction(&Instruction::LocalSet(scope.fold_acc_f64())),
@@ -6068,6 +6011,34 @@ impl<'m> WasmGen<'m> {
         // reached after the func_table lookup missed, so a user/stdlib
         // function of the same name always wins first.
         let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
+        // A stream's consumers and transforms — see `stream`. The
+        // lambdas inline like the list ones: `Mapped` into its stage
+        // function, `Folded` into the pull loop.
+        if self.is_stream_ty(&recv_ty) {
+            match method {
+                "first" => return self.compile_stream_next(scope, f),
+                "take" => return self.compile_stream_take(args, scope, f),
+                "map" => {
+                    if let Some(Expr::Lambda {
+                        params, body, span, ..
+                    }) = args.first()
+                    {
+                        if let [param] = params.as_slice() {
+                            if let TypeExpr::Named { name, .. } = &param.ty {
+                                return self.compile_stream_map(name, body, *span, scope, f);
+                            }
+                        }
+                    }
+                }
+                "fold" => {
+                    if let Some((init, acc_name, elem_name, body)) = self.inline_fold_lambda(args) {
+                        return self
+                            .compile_stream_fold(init, &acc_name, &elem_name, &body, scope, f);
+                    }
+                }
+                _ => {}
+            }
+        }
         match (method, &recv_ty) {
             // ── Int arithmetic ────────────────────────────────────────────────
             ("add", Ty::I64) => {
@@ -6712,6 +6683,7 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
                 Ty::List
             }
+            ("Stream", Ty::List) => self.compile_list_to_stream(scope, f),
             ("fold", Ty::List) => {
                 // `list -> Folded(init * (Acc * Elem) => Acc { … })`:
                 // the lambda's return type names the accumulator, the
@@ -8181,6 +8153,40 @@ impl<'m> WasmGen<'m> {
                 self.get_or_add_wasm_type(import.params, import.results);
             }
         }
+        // The stream stage type, and `$stream_next`'s index: after the
+        // user functions and `cabi_realloc`. Both are needed by the
+        // bodies, which compile next.
+        let stage_ty = self.get_or_add_wasm_type(&[ValType::I32], &[ValType::I32; 3]);
+        self.fn_stream_next = self.fn_user_start + self.compiled_user_funcs.len() as u32 + 1;
+
+        // ── Code section ─────────────────────────────────────────────────────────────
+        // Built before the module's sections are written: a body
+        // registers the stream stages it pulls through, and the function
+        // section counts them.
+        let mut codes = CodeSection::new();
+        codes.function(&self.build_print_str());
+        codes.function(&self.build_alloc());
+        codes.function(&self.build_start());
+        codes.function(&self.build_list_to_json_array());
+        codes.function(&self.build_str_cmp());
+        codes.function(&self.build_list_append());
+        codes.function(&self.build_list_concat());
+        // User functions — one body per `compiled_user_funcs` entry, in
+        // func-index order (matches the function section below exactly).
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
+        for func in ordered_funcs {
+            let compiled = self.build_user_function(&func);
+            codes.function(&compiled);
+        }
+        codes.function(&self.build_cabi_realloc());
+        codes.function(&self.build_stream_next());
+        for stage in self.build_stream_bodies() {
+            codes.function(&stage);
+        }
 
         let mut m = Module::new();
 
@@ -8356,8 +8362,13 @@ impl<'m> WasmGen<'m> {
         for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
-        funcs.function(ty_cabi_realloc); // cabi_realloc, appended last
+        funcs.function(ty_cabi_realloc); // cabi_realloc
+        funcs.function(stage_ty); // $stream_next, then the stages
+        for _ in &self.stream_stages {
+            funcs.function(stage_ty);
+        }
         m.section(&funcs);
+        m.section(&self.stream_table_section());
 
         // ── Memory / globals: self-contained ─────────────────────────
         // Sized to fit the static string pool — see `heap_layout`.
@@ -8396,28 +8407,7 @@ impl<'m> WasmGen<'m> {
             self.fn_start,
         );
         m.section(&exports);
-
-        // ── Code section ─────────────────────────────────────────────────────────────
-        let mut codes = CodeSection::new();
-        codes.function(&self.build_print_str());
-        codes.function(&self.build_alloc());
-        codes.function(&self.build_start());
-        codes.function(&self.build_list_to_json_array());
-        codes.function(&self.build_str_cmp());
-        codes.function(&self.build_list_append());
-        codes.function(&self.build_list_concat());
-        // User functions — one body per `compiled_user_funcs` entry, in
-        // func-index order (matches the function section above exactly).
-        let ordered_funcs: Vec<FunctionDef> = self
-            .compiled_user_funcs
-            .iter()
-            .map(|(_, _, func)| func.clone())
-            .collect();
-        for func in ordered_funcs {
-            let compiled = self.build_user_function(&func);
-            codes.function(&compiled);
-        }
-        codes.function(&self.build_cabi_realloc());
+        m.section(&self.stream_element_section());
         m.section(&codes);
 
         // ── Data section ──────────────────────────────────────────────────────

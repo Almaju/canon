@@ -28,7 +28,7 @@ Output:
 <h1>Canon Docs</h1><p>Rendered by Canon itself.</p><h2>Why</h2><p>The docs compile through the same pipeline as programs.</p>
 ```
 
-Because `File` reads a document as a `String` (see [Using WASI
+Because a file's `Read` stream drains to a `String` (see [Using WASI
 Interfaces](./wasi.md)), a whole file renders at runtime in one pipe:
 
 ```canon
@@ -36,6 +36,7 @@ Unit => Result<Program, IoError> {
     Path("notes.md")
         -> File
         -> Read?
+        -> String
         -> Markdown
         -> Html
         -> Print

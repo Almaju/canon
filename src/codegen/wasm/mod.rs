@@ -38,6 +38,7 @@ pub(crate) mod component;
 mod extern_imports;
 mod http;
 mod literals;
+mod stream;
 mod strings;
 mod ty;
 mod web;
@@ -256,6 +257,14 @@ struct WasmGen<'m> {
     /// with the second list's slots after the first's.
     fn_list_concat: u32,
     fn_user_start: u32,
+    /// `$stream_next`, defined after the user functions (and
+    /// `cabi_realloc` where there is one); the stage functions follow
+    /// it in slot order — see `stream`.
+    fn_stream_next: u32,
+    /// The stream stages the compiled bodies pull through, by table
+    /// slot. Slot 0 is `Done`, so the table and `$stream_next` always
+    /// exist.
+    stream_stages: Vec<stream::Stage>,
     /// `Some("Result")` / `Some("Option")` while compiling the body
     /// of a function whose declared return type is that shape (one
     /// i32 pointer at the core level). Gates `?`'s early return: an
@@ -316,6 +325,8 @@ impl<'m> WasmGen<'m> {
             fn_list_append: base_defined + 5,
             fn_list_concat: base_defined + 6,
             fn_user_start: base_defined + 7,
+            fn_stream_next: 0,
+            stream_stages: vec![stream::Stage::Done],
             cur_fn_early_return: None,
             entry_fails: false,
             http_mode: false,

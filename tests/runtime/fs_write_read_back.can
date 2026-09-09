@@ -3,5 +3,6 @@ Unit => Program {
         -> Written(Path("/tmp/canon-fs-write-test.txt"))?
         -> File
         -> Read?
+        -> String
         -> Print
 }

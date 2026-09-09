@@ -41,44 +41,44 @@ set, so a binding's unreached siblings are neither linked nor reported.
 JSON, HTML and format-string interpolation are pure Canon and work in
 handlers.
 
-## `Stream<T>` lowering and streaming response bodies
+## `Stream<T>` beyond `Stream<String>` and streaming response bodies
 
-One stream shape lowers: a `wasi:*` binding whose WIT returns
+`Stream<String>` is a value: `Stdin()` and `file -> Read` produce one, a
+`List<String>` becomes one with `-> Stream`, and `First`, `Folded`,
+`Mapped`, `Taken` and the drain into a `String` consume it — see
+[Streams](../spec/effects-and-async.md#streams). Its lowering is a
+pull-based stage struct: a `wasi:*` binding whose WIT returns
 `tuple<stream<u8>, future<result<_, error-code>>>` and takes no stream
 or future — `wasi:cli/stdin`'s `read-via-stream`, and the filesystem and
-socket functions of the same shape. Canon has no surface for `stream` or
-`future`, so the binding is spelled as an ordinary fallible string
-(`Unit => Result<Stdin, IoError>`); the code generator imports the
-canonical-ABI `stream.read` and `stream.drop-readable` builtins, drains
-the stream to its end into one contiguous string at the call boundary,
-drops both handles, and hands back the same `Result` struct a
-`result<string, string>` return produces. `?` and dispatch never see a
-stream.
+socket functions of the same shape — is spelled `Unit => Result<Stdin,
+IoError>` with `Stdin = Stream<String>`, and the code generator imports
+the canonical-ABI `stream.read` and `stream.drop-readable` builtins,
+reads a chunk per pull, and drops both handles at the end.
 
-`wasi:http/client`'s `send` is the other lowering, fused into one round
-trip: the stdlib binding takes the request as strings (`Authority *
-Body * Method * PathWithQuery * RequestHeaders * Scheme`), codegen
-builds the `request` resource through `wasi:http/types`, writes the
-body into its stream while the async `send` is in flight, and drains
-the response body the same way `Stdin` drains — so `Url -> Fetched?`
-imports only the standard interfaces.
+`wasi:http/client`'s `send` is fused into one round trip: the stdlib
+binding takes the request as strings (`Authority * Body * Method *
+PathWithQuery * RequestHeaders * Scheme`), codegen builds the `request`
+resource through `wasi:http/types`, writes the body into its stream
+while the async `send` is in flight, and drains the response body into
+the `Fetched` string — so `Url -> Fetched?` imports only the standard
+interfaces.
 
 `wasi:filesystem`'s `read-via-stream` and `write-via-stream` are fused
 the same way: the stdlib binding takes the path (and the contents),
 codegen opens the file under the first preopened directory (`open-at`,
-async), then drains the read stream or writes the contents into a
-fresh stream and reads the completion future.
+async), then hands back the read stream as a `Stream<String>` — the
+descriptor is dropped with it at its end — or writes the contents into
+a fresh stream and reads the completion future.
 
-Everything else about streams is still the gap: a `stream<T>` of any
-other element type, a stream or future in a *parameter* of a binding
-spelled by hand (`wasi:cli/stdout`'s `write-via-stream`), a `future`
-returned on its own,
-`Stream<T>` written in a Canon signature, and streaming rather than
-draining — which is what the handler request body below waits on. Any
-such binding is a checker error; `canon install` skips the WIT shapes
-it cannot spell. Draining was chosen over a `Stream<T>` value because
-every consumer the stdlib has wants the whole input as a string, and
-the drain costs nothing the consumer would not have paid.
+Everything else about streams is still the gap: a `Stream<T>` whose
+element is not a `String` (`List(1 * 2) -> Stream`, a `Mapped` lambda
+answering an `Int`), a `stream<T>` of any other element type in a
+binding's WIT, a stream or future in a *parameter* of a binding spelled
+by hand (`wasi:cli/stdout`'s `write-via-stream`), a `future` returned on
+its own, the HTTP client's body streamed rather than drained, and
+streaming rather than draining the handler request body below. Any such
+program is a checker error; `canon install` skips the WIT shapes it
+cannot spell.
 
 ## HTTP handler request headers and body
 
