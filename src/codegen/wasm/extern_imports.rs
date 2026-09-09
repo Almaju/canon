@@ -157,7 +157,12 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
                     Some(IndirectReturnShape::FileRead { ok_name, err_name })
                 } else if ext.path == component::WASI_FS_WRITE {
                     Some(IndirectReturnShape::FileWrite { ok_name, err_name })
-                } else if ext.path == component::WASI_CLI_STDOUT_WRITE {
+                } else if ext.path == component::WASI_CLI_STDOUT_WRITE
+                    && func
+                        .params
+                        .first()
+                        .is_some_and(|p| resolves_to_stream(&p.ty, &type_defs))
+                {
                     Some(IndirectReturnShape::StreamWrite { ok_name, err_name })
                 } else if component::vendored_extern_returns_byte_stream(&ext.path) {
                     Some(IndirectReturnShape::ByteStream { ok_name, err_name })

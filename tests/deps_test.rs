@@ -164,18 +164,17 @@ fn two_vendored_versions_are_rejected() {
 
 #[test]
 fn a_binding_hiding_a_wit_stream_is_rejected() {
-    // Canon has no surface for `stream` or `future`, so a binding to
-    // `wasi:cli/stdout`'s `func(data: stream<u8>) -> future<…>` is
-    // spelled `String => Result<Piped, IoError>` and reads as an
-    // ordinary string function. Codegen would type the import from that
-    // signature and the component would fail to instantiate against a
-    // host carrying the real shape — after passing both check and
-    // build. The vendored WIT is the only place the shape is visible,
-    // so the gap is caught there.
+    // A binding to `wasi:cli/stdout`'s `func(data: stream<u8>) ->
+    // future<…>` spelled `String => Result<Piped, IoError>` reads as an
+    // ordinary string function; codegen pumps a `Stream<String>` into
+    // that import, so a string where the stage belongs would build and
+    // then read garbage — after passing both check and build. The
+    // vendored WIT is the only place the shape is visible, so the gap
+    // is caught there.
     let msgs = check_errors("fail_stream_binding");
     assert!(
         msgs.iter()
-            .any(|m| m.contains("has a `stream` or `future` in its WIT signature")),
+            .any(|m| m.contains("takes a `stream`, which Canon spells `Stream<String>`")),
         "expected the stream-shape gap error, got: {msgs:?}"
     );
 }

@@ -85,6 +85,12 @@ pub fn extern_is_fused(urn: &str) -> bool {
         || urn == WASI_CLI_STDOUT_WRITE
 }
 
+/// Does `urn` name a binding codegen pumps a `Stream<String>` into —
+/// whose Canon spelling must then take one?
+pub fn extern_takes_stream(urn: &str) -> bool {
+    urn == WASI_CLI_STDOUT_WRITE
+}
+
 /// The core-module import namespace for `wasi:http/types` functions and
 /// intrinsics. This is the `<iface>@<ver>` name `wit-component` matches
 /// import clauses against when componentising.
