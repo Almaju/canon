@@ -2,16 +2,16 @@ Lowercased = String
 
 LowercasedByte = String
 
-LowercasedTail = Lowercased
+LowercasedSpan = Lowercased
 
 Uppercased = String
 
 UppercasedByte = String
 
-UppercasedTail = Uppercased
+UppercasedSpan = Uppercased
 
 String => Lowercased {
-    1 -> LowercasedTail(String)
+    String -> LowercasedSpan(From(1) * String -> Length -> To)
 }
 
 Int => LowercasedByte {
@@ -26,20 +26,24 @@ Int => LowercasedByte {
     )
 }
 
-Int * String => LowercasedTail {
-    Int -> Gt(String -> Length) -> (
+From * String * To => LowercasedSpan {
+    To -> Lt(From) -> (
         * False {
-            String
-                -> ByteAt(Int)
-                -> LowercasedByte
-                -> Joined(Int -> Sum(1) -> LowercasedTail(String))
+            From -> Eq(To) -> (
+                * False {
+                    From
+                        -> LowercasedSpan(From -> Sum(To) -> Quotient(2) -> To * String)
+                        -> Joined(From -> Sum(To) -> Quotient(2) -> Sum(1) -> From -> LowercasedSpan(String * To))
+                }
+                * True { String -> ByteAt(From) -> LowercasedByte }
+            )
         }
         * True { "" }
     )
 }
 
 String => Uppercased {
-    1 -> UppercasedTail(String)
+    String -> UppercasedSpan(From(1) * String -> Length -> To)
 }
 
 Int => UppercasedByte {
@@ -54,13 +58,17 @@ Int => UppercasedByte {
     )
 }
 
-Int * String => UppercasedTail {
-    Int -> Gt(String -> Length) -> (
+From * String * To => UppercasedSpan {
+    To -> Lt(From) -> (
         * False {
-            String
-                -> ByteAt(Int)
-                -> UppercasedByte
-                -> Joined(Int -> Sum(1) -> UppercasedTail(String))
+            From -> Eq(To) -> (
+                * False {
+                    From
+                        -> UppercasedSpan(From -> Sum(To) -> Quotient(2) -> To * String)
+                        -> Joined(From -> Sum(To) -> Quotient(2) -> Sum(1) -> From -> UppercasedSpan(String * To))
+                }
+                * True { String -> ByteAt(From) -> UppercasedByte }
+            )
         }
         * True { "" }
     )
