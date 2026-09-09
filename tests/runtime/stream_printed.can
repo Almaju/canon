@@ -1,0 +1,10 @@
+Unit => Result<Program, IoError> {
+    List("ab" * "c" * "\n")
+        -> Stream
+        -> Printed?
+    List()
+        -> Stream
+        -> Printed?
+    "after" -> Print
+    Unit() -> Ok
+}

@@ -62,6 +62,11 @@ const WIT_WASI_HTTP: &str = include_str!("../../../packages/canon/wit/wasi/http.
 /// The `wasi:http/client` function codegen fuses into one round trip
 /// (`IndirectReturnShape::HttpSend`).
 pub(super) const WASI_HTTP_CLIENT_SEND: &str = "wasi:http/client@0.3.0-rc-2026-03-15#send";
+/// `wasi:cli/stdout`'s `write-via-stream`, the one binding taking a
+/// stream: codegen pumps a `Stream<String>` through the stdout
+/// builtins it already imports (`emit_stream_write`).
+pub(super) const WASI_CLI_STDOUT_WRITE: &str =
+    "wasi:cli/stdout@0.3.0-rc-2026-03-15#write-via-stream";
 /// The `wasi:filesystem` stream functions codegen fuses with opening
 /// the file (`IndirectReturnShape::FileRead` / `FileWrite`).
 pub(super) const WASI_FS_READ: &str =
@@ -74,7 +79,16 @@ pub(super) const WASI_FS_PREOPENS_MODULE: &str = "wasi:filesystem/preopens@0.3.0
 /// Is `urn` a binding codegen fuses into a whole sequence — one whose
 /// WIT carries streams the checker would otherwise reject?
 pub fn extern_is_fused(urn: &str) -> bool {
-    urn == WASI_HTTP_CLIENT_SEND || urn == WASI_FS_READ || urn == WASI_FS_WRITE
+    urn == WASI_HTTP_CLIENT_SEND
+        || urn == WASI_FS_READ
+        || urn == WASI_FS_WRITE
+        || urn == WASI_CLI_STDOUT_WRITE
+}
+
+/// Does `urn` name a binding codegen pumps a `Stream<String>` into —
+/// whose Canon spelling must then take one?
+pub fn extern_takes_stream(urn: &str) -> bool {
+    urn == WASI_CLI_STDOUT_WRITE
 }
 
 /// The core-module import namespace for `wasi:http/types` functions and
@@ -478,7 +492,8 @@ fn extern_wit(ext: &ExternImport) -> String {
             IndirectReturnShape::ByteStream { .. }
             | IndirectReturnShape::HttpSend { .. }
             | IndirectReturnShape::FileRead { .. }
-            | IndirectReturnShape::FileWrite { .. },
+            | IndirectReturnShape::FileWrite { .. }
+            | IndirectReturnShape::StreamWrite { .. },
         ) => None,
         None if ext.bare_result => Some("result".to_string()),
         None => ext

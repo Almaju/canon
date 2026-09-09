@@ -183,6 +183,9 @@
       },
       "[stream-drop-writable-0]write-via-stream": function () { return 0; },
       "[future-drop-readable-1]write-via-stream": function () { return 0; },
+      // A stream written through `Printed` completes at once, with
+      // nothing to report (`DROPPED`, no value): the write succeeded.
+      "[future-read-1]write-via-stream": function () { return 1; },
     };
     // The browser has no stdin: a read ends the stream at once
     // (`DROPPED`, no bytes), so `Stdin()` is the empty string.

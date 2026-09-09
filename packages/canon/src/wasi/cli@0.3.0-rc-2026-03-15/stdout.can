@@ -1,0 +1,5 @@
+Printed = Unit
+
+(Stream<String>) => Result<Printed, IoError> {
+    "write-via-stream"
+}

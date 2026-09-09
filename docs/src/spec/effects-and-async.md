@@ -127,14 +127,10 @@ each host read returns — a chunk is not a line, and may end inside a
 multi-byte character — and a list yields its elements.
 
 ```canon
-Total = Int
-
 Unit => Result<Program, IoError> {
     Stdin()?
         -> Mapped((String) => Uppercased { String -> Uppercased })
-        -> Taken(2)
-        -> Folded(Total(0) * (String * Total) => Total { Total -> Sum(String -> Length) -> Total })
-        -> Print
+        -> Printed?
     Unit() -> Ok
 }
 ```
@@ -144,7 +140,9 @@ the stream), `Request.body()` in an HTTP handler, and `list -> Stream`
 over a `List<String>`. Consumers:
 `-> First` pulls one chunk as an `Option<String>`; `-> Folded(init *
 lambda)` pulls every chunk into an accumulator, as a list's `Folded`
-does; `-> String` drains the rest into one string. Transforms:
+does; `-> String` drains the rest into one string; `-> Printed?` writes
+each chunk to standard output as it is pulled, so the filter above
+never holds more than one chunk. Transforms:
 `-> Mapped(lambda)` applies the lambda to each chunk as it is pulled
 and `-> Taken(n)` stops after `n` chunks. Nothing is read until a
 consumer pulls, and a stream nothing pulls from is never read; the

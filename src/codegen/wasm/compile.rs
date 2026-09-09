@@ -3388,6 +3388,10 @@ impl<'m> WasmGen<'m> {
                 let (ok, err) = (ok_name.clone(), err_name.clone());
                 return self.emit_file_write(info.func_idx, ok, err, scope, f);
             }
+            Some(IndirectReturnShape::StreamWrite { ok_name, err_name }) => {
+                let (ok, err) = (ok_name.clone(), err_name.clone());
+                return self.emit_stream_write(ok, err, scope, f);
+            }
             _ => {}
         }
         if info.is_async {
@@ -3444,7 +3448,8 @@ impl<'m> WasmGen<'m> {
             // Fused before the generic call above.
             IndirectReturnShape::HttpSend { .. }
             | IndirectReturnShape::FileRead { .. }
-            | IndirectReturnShape::FileWrite { .. } => unreachable!("fused above"),
+            | IndirectReturnShape::FileWrite { .. }
+            | IndirectReturnShape::StreamWrite { .. } => unreachable!("fused above"),
             IndirectReturnShape::String => {
                 // (i32 ptr at +0, i32 len at +4) — push both as a string
                 // pair. Use `info.result_ty` so the alias name is
@@ -4175,6 +4180,124 @@ impl<'m> WasmGen<'m> {
         self.emit_file_error(scope, f);
         f.instruction(&Instruction::End);
         self.emit_result_string(scope.par_seen_a(), ok_name, err_name, scope, f)
+    }
+
+    /// The pumped stream write — see `IndirectReturnShape::StreamWrite`.
+    /// On entry the stream's stage sits on the stack; no user code runs
+    /// from here on. The completion is read once the writer is dropped:
+    /// a value that is `err` names its `error-code` case (the `Err`
+    /// string), anything else is `Ok`.
+    pub(super) fn emit_stream_write(
+        &mut self,
+        ok_name: String,
+        err_name: String,
+        scope: &LocalScope,
+        f: &mut Function,
+    ) -> Ty {
+        let mem32 = |offset: u64| MemArg {
+            offset,
+            align: 2,
+            memory_index: 0,
+        };
+        let mem8 = |offset: u64| MemArg {
+            offset,
+            align: 0,
+            memory_index: 0,
+        };
+        let (stage, reader, writer, future) = (
+            scope.par_subtask_a(),
+            scope.par_retarea_a(),
+            scope.par_retarea_b(),
+            scope.par_set(),
+        );
+        f.instruction(&Instruction::LocalSet(stage));
+        f.instruction(&Instruction::Call(FN_STDOUT_STREAM_NEW));
+        f.instruction(&Instruction::LocalTee(scope.tmp_i64()));
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(reader));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i64()));
+        f.instruction(&Instruction::I64Const(32));
+        f.instruction(&Instruction::I64ShrU);
+        f.instruction(&Instruction::I32WrapI64);
+        f.instruction(&Instruction::LocalSet(writer));
+        f.instruction(&Instruction::LocalGet(reader));
+        f.instruction(&Instruction::Call(FN_STDOUT_WRITE_VIA_STREAM));
+        f.instruction(&Instruction::LocalSet(future));
+        // Pull and write until the stream ends; the write status is
+        // dropped, as `print_str` drops it.
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(stage));
+        f.instruction(&Instruction::Call(self.fn_stream_next));
+        f.instruction(&Instruction::LocalSet(scope.rbool()));
+        f.instruction(&Instruction::LocalSet(scope.rlen()));
+        f.instruction(&Instruction::LocalSet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.rbool()));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::BrIf(1));
+        f.instruction(&Instruction::LocalGet(writer));
+        f.instruction(&Instruction::LocalGet(scope.rptr()));
+        f.instruction(&Instruction::LocalGet(scope.rlen()));
+        f.instruction(&Instruction::Call(FN_STDOUT_STREAM_WRITE));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::LocalGet(writer));
+        f.instruction(&Instruction::Call(FN_STDOUT_STREAM_DROP_WRITABLE));
+        // The completion: `(count << 4) | code`, the value at
+        // `addr_scratch` when the count is one — disc byte, then the
+        // `error-code` case.
+        f.instruction(&Instruction::I32Const(8));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.addr_scratch()));
+        f.instruction(&Instruction::LocalGet(future));
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::Call(FN_STDOUT_FUTURE_READ));
+        f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+        f.instruction(&Instruction::LocalGet(future));
+        f.instruction(&Instruction::Call(FN_STDOUT_FUTURE_DROP_READABLE));
+        // The `Result`: tag 0 (Err) only for an `err` value that arrived.
+        f.instruction(&Instruction::I32Const(12));
+        f.instruction(&Instruction::Call(self.fn_alloc));
+        f.instruction(&Instruction::LocalSet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+        f.instruction(&Instruction::I32Const(4));
+        f.instruction(&Instruction::I32ShrU);
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::I32Eq);
+        f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+        f.instruction(&Instruction::I32Load8U(mem8(0)));
+        f.instruction(&Instruction::I32And);
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::I32Store(mem32(0)));
+        // The case name, in the WIT's declaration order
+        // (packages/canon/wit/wasi/cli.wit), stored whether or not it
+        // is read.
+        let cases: Vec<(u32, u32)> = ["io", "illegal-byte-sequence", "pipe"]
+            .iter()
+            .map(|name| self.strings.intern(name))
+            .collect();
+        for (offset, pick) in [(4u64, 0usize), (8, 1)] {
+            let part = |case: usize| [cases[case].0, cases[case].1][pick] as i32;
+            f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+            f.instruction(&Instruction::I32Const(part(0)));
+            f.instruction(&Instruction::I32Const(part(1)));
+            f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+            f.instruction(&Instruction::I32Load8U(mem8(1)));
+            f.instruction(&Instruction::I32Eqz);
+            f.instruction(&Instruction::Select);
+            f.instruction(&Instruction::I32Const(part(2)));
+            f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+            f.instruction(&Instruction::I32Load8U(mem8(1)));
+            f.instruction(&Instruction::I32Const(2));
+            f.instruction(&Instruction::I32LtU);
+            f.instruction(&Instruction::Select);
+            f.instruction(&Instruction::I32Store(mem32(offset)));
+        }
+        f.instruction(&Instruction::LocalGet(scope.alloc_ptr()));
+        Ty::NamedPtrOf("Result".to_string(), ok_name, err_name)
     }
 
     /// The fused file write — see `IndirectReturnShape::FileWrite`. On
@@ -8319,7 +8442,18 @@ impl<'m> WasmGen<'m> {
             "[future-drop-readable-1]write-via-stream",
             EntityType::Function(TY_PRINT_BOOL), // (i32) -> ()
         );
+        imports.import(
+            STDOUT_MODULE,
+            "[future-read-1]write-via-stream",
+            EntityType::Function(ty_waitable_set_wait), // (i32, i32) -> i32
+        );
         for ext in &self.extern_imports.clone() {
+            if matches!(
+                ext.indirect_return,
+                Some(IndirectReturnShape::StreamWrite { .. })
+            ) {
+                continue;
+            }
             let type_idx = *self
                 .user_type_map
                 .get(&(ext.params.clone(), ext.results.clone()))

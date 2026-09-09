@@ -54,7 +54,12 @@ or future — `wasi:cli/stdin`'s `read-via-stream`, and the filesystem and
 socket functions of the same shape — is spelled `Unit => Result<Stdin,
 IoError>` with `Stdin = Stream<String>`, and the code generator imports
 the canonical-ABI `stream.read` and `stream.drop-readable` builtins,
-reads a chunk per pull, and drops both handles at the end.
+reads a chunk per pull, and drops both handles at the end. The one
+binding taking a stream, `wasi:cli/stdout`'s `write-via-stream`
+(`Stream<String> => Result<Printed, IoError>`), is pumped: codegen makes
+a fresh byte stream through the stdout builtins it already imports,
+writes each chunk pulled into it, drops the writer, and reads the
+completion future.
 
 `wasi:http/client`'s `send` is fused into one round trip: the stdlib
 binding takes the request as strings (`Authority * Body * Method *
@@ -74,9 +79,9 @@ a fresh stream and reads the completion future.
 Everything else about streams is still the gap: a `Stream<T>` whose
 element is not a `String` (`List(1 * 2) -> Stream`, a `Mapped` lambda
 answering an `Int`), a `stream<T>` of any other element type in a
-binding's WIT, a stream or future in a *parameter* of a binding spelled
-by hand (`wasi:cli/stdout`'s `write-via-stream`), a `future` returned on
-its own, the HTTP client's body streamed rather than drained, and a
+binding's WIT, a stream or future in a *parameter* of any other
+binding, a `future` returned on its own, the HTTP client's body
+streamed rather than drained, and a
 streamed response body. Any such
 program is a checker error; `canon install` skips the WIT shapes it
 cannot spell.

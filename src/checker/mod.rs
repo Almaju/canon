@@ -857,6 +857,24 @@ pub fn codegen_gap_errors(
         // host that has the real shape — a build that passed both check
         // and build. The vendored WIT is the only place the shape shows.
         if let Some(ext) = &func.extern_wasm {
+            // The one stream parameter codegen pumps has to be spelled
+            // as the stream it is: `String => …` would hand it a
+            // string where a stage belongs.
+            if crate::codegen::extern_takes_stream(&ext.path)
+                && !func
+                    .params
+                    .first()
+                    .is_some_and(|p| type_roots_at(&p.ty, "Stream", &type_defs))
+            {
+                errors.push(gap_error(
+                    &GAP_STREAM,
+                    &format!(
+                        "`{}` takes a `stream`, which Canon spells `Stream<String>`",
+                        ext.path
+                    ),
+                    func.name.span,
+                ));
+            }
             if crate::codegen::vendored_extern_uses_async_value(&ext.path)
                 && !crate::codegen::vendored_extern_returns_byte_stream(&ext.path)
                 && !crate::codegen::extern_is_fused(&ext.path)
@@ -1003,34 +1021,38 @@ fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExp
 
 /// Whether any type in the function's signature (parameters or return)
 /// mentions `ty_name`.
+/// Whether `ty` is `root` or a newtype chain ending at it (`Stdin =
+/// Stream<String>` roots at `Stream`).
+fn type_roots_at(ty: &TypeExpr, root: &str, type_defs: &HashMap<&str, &TypeExpr>) -> bool {
+    let mut current = ty;
+    for _ in 0..20 {
+        let TypeExpr::Named { name, generics, .. } = current else {
+            return false;
+        };
+        if name == root {
+            return true;
+        }
+        if !generics.is_empty() {
+            return false;
+        }
+        match type_defs.get(name.as_str()) {
+            Some(next) => current = next,
+            None => return false,
+        }
+    }
+    false
+}
+
 /// The element of the first `Stream<…>` in a signature whose chain does
 /// not end at `String` — the one element type the runtime carries
 /// (`stream`) — rendered for the diagnostic. `None` when every stream
 /// in the signature is one of strings.
 fn non_string_stream(func: &FunctionDef, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
-    fn roots_at_string(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExpr>) -> bool {
-        let mut current = ty;
-        for _ in 0..20 {
-            match current {
-                TypeExpr::Named { name, generics, .. } if generics.is_empty() => {
-                    if name == "String" {
-                        return true;
-                    }
-                    match type_defs.get(name.as_str()) {
-                        Some(next) => current = next,
-                        None => return false,
-                    }
-                }
-                _ => return false,
-            }
-        }
-        false
-    }
     fn walk(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
         match ty {
             TypeExpr::Named { name, generics, .. } => {
                 if name == "Stream"
-                    && !matches!(generics.as_slice(), [g] if roots_at_string(g, type_defs))
+                    && !matches!(generics.as_slice(), [g] if type_roots_at(g, "String", type_defs))
                 {
                     return Some(match generics.as_slice() {
                         [TypeExpr::Named { name, .. }] => name.clone(),
