@@ -4,6 +4,7 @@ Unit => Result<Program, IoError> {
         -> Path
         -> File
         -> Read?
+        -> String
         -> Compiled
         -> Print
     Unit() -> Ok

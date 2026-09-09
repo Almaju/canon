@@ -2,7 +2,7 @@ FsCode = String
 
 Stored = Path
 
-Streamed = String
+Streamed = Stream<String>
 
 Contents * Path => Result<Stored, FsCode> {
     "[method]descriptor.write-via-stream"

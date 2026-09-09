@@ -17,6 +17,7 @@ Unit => Program {
     Path("./data.json")
         -> File
         -> Read?
+        -> String
         -> Print
 }
 ```
@@ -107,8 +108,8 @@ Unit => Program {
 
 `Url` and `Fetched` return futures; the user writes a flat chain. The
 two keywords other languages build their async story on do not exist in
-the grammar. `Future<T>` and `Stream<T>` appear in **binding signatures
-only**; ordinary code consumes the unwrapped `T`.
+the grammar. `Future<T>` appears in **binding signatures only**;
+ordinary code consumes the unwrapped `T`.
 
 Two precise consequences:
 
@@ -117,6 +118,38 @@ Two precise consequences:
 - **No executor choice.** The runtime is the host's implementation of
   WASI Preview 3's async ABI, fixed by the Component Model, not
   selectable by libraries.
+
+## Streams
+
+A `Stream<String>` is a value that yields its chunks one pull at a time.
+The chunks come from wherever the stream does: a host stream yields what
+each host read returns — a chunk is not a line, and may end inside a
+multi-byte character — and a list yields its elements.
+
+```canon
+Total = Int
+
+Unit => Result<Program, IoError> {
+    Stdin()?
+        -> Mapped((String) => Uppercased { String -> Uppercased })
+        -> Taken(2)
+        -> Folded(Total(0) * (String * Total) => Total { Total -> Sum(String -> Length) -> Total })
+        -> Print
+    Unit() -> Ok
+}
+```
+
+Producers: `Stdin()` and `file -> Read` (both `Result`s whose `Ok` is
+the stream) and `list -> Stream` over a `List<String>`. Consumers:
+`-> First` pulls one chunk as an `Option<String>`; `-> Folded(init *
+lambda)` pulls every chunk into an accumulator, as a list's `Folded`
+does; `-> String` drains the rest into one string. Transforms:
+`-> Mapped(lambda)` applies the lambda to each chunk as it is pulled
+and `-> Taken(n)` stops after `n` chunks. Nothing is read until a
+consumer pulls, and a stream nothing pulls from is never read; the
+host's handles are dropped when the stream ends. `Stream<T>` for any
+other `T` is a checker error — see the [codegen
+gaps](../reference/codegen-gaps.md).
 
 ## Concurrency
 
@@ -138,8 +171,8 @@ rule fires when the composed future is consumed, still with no keyword.
 are the language surface.)
 
 **Cancellation** has no primitive. It is a consequence of composition:
-`Race` cancels its losing branch; dropping a `Stream<T>` mid-iteration
-stops it. To abandon a future, stop using it.
+`Race` cancels its losing branch; a stream nothing pulls from is never
+read. To abandon a future, stop using it.
 
 ## Where Async Is Visible
 

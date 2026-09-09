@@ -24,6 +24,7 @@ Unit => Program {
     Path("./data.json")
         -> File
         -> Read?
+        -> String
         -> Print
 }
 ```

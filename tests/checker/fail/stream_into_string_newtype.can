@@ -1,0 +1,12 @@
+Compiled = String
+
+String => Compiled {
+    `{String}!`
+}
+
+Unit => Program {
+    List("a")
+        -> Stream
+        -> Compiled
+        -> Print
+}

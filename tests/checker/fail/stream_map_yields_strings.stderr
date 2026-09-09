@@ -1,0 +1,1 @@
+error[tests/checker/fail/stream_map_yields_strings.can:2:5]: `Mapped` on a stream yields `String` chunks; the lambda returns `Int`

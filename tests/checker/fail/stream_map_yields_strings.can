@@ -1,0 +1,7 @@
+Unit => Program {
+    List("a")
+        -> Stream
+        -> Mapped((String) => Int { String -> Length })
+        -> String
+        -> Print
+}

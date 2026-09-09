@@ -1,0 +1,1 @@
+error[tests/checker/fail/stream_of_ints.can:2:5]: `Stream` on `List<Int>`: a stream carries `String` chunks, so only a `List<String>` streams

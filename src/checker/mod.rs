@@ -90,7 +90,7 @@ pub struct SymbolTable {
     /// `Todos = List<Todo>` records `Todos -> Todo`: the element type a
     /// named list carries, so the list builtins can check what they are
     /// handed against it.
-    pub list_elem_of: HashMap<String, String>,
+    pub elem_of: HashMap<String, String>,
     /// `MaybeValue = Option<Int>` records `MaybeValue -> Int`, and
     /// `Parsed = Result<Node, Fail>` records `Parsed -> Node`: the
     /// payload `?` extracts from a value of the named type.
@@ -790,10 +790,11 @@ pub const GAP_HTTP_WORLD_IMPORTS: CodegenGap = CodegenGap {
     title: "extern imports in the `wasi:http/service` world",
 };
 
-/// `Stream<T>` lowering and streaming response bodies. Codegen drops imports
-/// whose signatures mention `Stream<T>`, so such programs fail to link.
+/// `Stream<T>` beyond `Stream<String>`, and streaming response bodies.
+/// The runtime carries one element type — a string chunk — so a stream
+/// of anything else has no lowering.
 pub const GAP_STREAM: CodegenGap = CodegenGap {
-    title: "`Stream<T>` lowering and streaming response bodies",
+    title: "`Stream<T>` beyond `Stream<String>` and streaming response bodies",
 };
 
 /// Every codegen gap the checker rejects, in the same order as the doc page.
@@ -840,10 +841,10 @@ pub fn codegen_gap_errors(
         if !reachable.contains(&decl_key(func)) {
             continue;
         }
-        if sig_mentions(func, "Stream") {
+        if let Some(elem) = non_string_stream(func, &type_defs) {
             errors.push(gap_error(
                 &GAP_STREAM,
-                "`Stream<T>` in this signature",
+                &format!("`Stream<{elem}>` in this signature"),
                 func.name.span,
             ));
         }
@@ -1002,13 +1003,57 @@ fn is_scalar_or_string_payload(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExp
 
 /// Whether any type in the function's signature (parameters or return)
 /// mentions `ty_name`.
-fn sig_mentions(func: &FunctionDef, ty_name: &str) -> bool {
-    let mut names = HashSet::new();
-    for p in &func.params {
-        collect_type_names(&p.ty, &mut names);
+/// The element of the first `Stream<…>` in a signature whose chain does
+/// not end at `String` — the one element type the runtime carries
+/// (`stream`) — rendered for the diagnostic. `None` when every stream
+/// in the signature is one of strings.
+fn non_string_stream(func: &FunctionDef, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
+    fn roots_at_string(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExpr>) -> bool {
+        let mut current = ty;
+        for _ in 0..20 {
+            match current {
+                TypeExpr::Named { name, generics, .. } if generics.is_empty() => {
+                    if name == "String" {
+                        return true;
+                    }
+                    match type_defs.get(name.as_str()) {
+                        Some(next) => current = next,
+                        None => return false,
+                    }
+                }
+                _ => return false,
+            }
+        }
+        false
     }
-    collect_type_names(&func.return_ty, &mut names);
-    names.contains(ty_name)
+    fn walk(ty: &TypeExpr, type_defs: &HashMap<&str, &TypeExpr>) -> Option<String> {
+        match ty {
+            TypeExpr::Named { name, generics, .. } => {
+                if name == "Stream"
+                    && !matches!(generics.as_slice(), [g] if roots_at_string(g, type_defs))
+                {
+                    return Some(match generics.as_slice() {
+                        [TypeExpr::Named { name, .. }] => name.clone(),
+                        _ => "…".to_string(),
+                    });
+                }
+                generics.iter().find_map(|g| walk(g, type_defs))
+            }
+            TypeExpr::Union { variants, .. } => variants.iter().find_map(|v| walk(v, type_defs)),
+            TypeExpr::Product { fields, .. } => fields.iter().find_map(|f| walk(f, type_defs)),
+            TypeExpr::Repeat { ty, .. } => walk(ty, type_defs),
+            TypeExpr::Function {
+                params, return_ty, ..
+            } => params
+                .iter()
+                .find_map(|p| walk(p, type_defs))
+                .or_else(|| walk(return_ty, type_defs)),
+        }
+    }
+    func.params
+        .iter()
+        .find_map(|p| walk(&p.ty, type_defs))
+        .or_else(|| walk(&func.return_ty, type_defs))
 }
 
 /// The name a function declaration is reached *by*: its own name, except a
@@ -1484,7 +1529,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     // (which live under `variant_of["None"] == "Option"`) by walking
     // through the alias.
     let mut aliases: HashMap<String, String> = HashMap::new();
-    let mut list_elem_of: HashMap<String, String> = HashMap::new();
+    let mut elem_of: HashMap<String, String> = HashMap::new();
     let mut payload_of: HashMap<String, String> = HashMap::new();
     let mut type_parts: HashMap<String, Vec<String>> = HashMap::new();
     for item in &module.items {
@@ -1494,9 +1539,9 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
             type_parts.insert(td.name.name.clone(), parts.into_iter().collect());
             if let TypeExpr::Named { name, generics, .. } = &td.body {
                 aliases.insert(td.name.name.clone(), name.clone());
-                if name == "List" {
+                if name == "List" || name == "Stream" {
                     if let [TypeExpr::Named { name: elem, .. }] = generics.as_slice() {
-                        list_elem_of.insert(td.name.name.clone(), elem.clone());
+                        elem_of.insert(td.name.name.clone(), elem.clone());
                     }
                 }
                 if matches!(name.as_str(), "Option" | "Result") {
@@ -1565,7 +1610,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         standalone_types,
         free_funcs,
         aliases,
-        list_elem_of,
+        elem_of,
         payload_of,
         repetitions,
         messages,
@@ -3136,6 +3181,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *span,
                             });
+                        } else if recv_terminal == "Stream" {
+                            // A stream is one pointer to its stage, and
+                            // its chunks are what a string constructor
+                            // could take.
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found a stream: drain it with `-> String`, \
+                                     or pull a chunk with `-> First`, before constructing",
+                                    method.name, target_scalar
+                                ),
+                                span: *span,
+                            });
                         } else if !recv_terminal.contains('<')
                             && symbols.variant_of.values().any(|p| p == recv_terminal)
                         {
@@ -3581,9 +3638,8 @@ fn list_elem_type(expr: &Expr, symbols: &SymbolTable) -> Option<String> {
                     }) => Some(name.clone()),
                     _ => None,
                 },
-                "filter" | "take" | "skip" | "reverse" | "sort" | "append" | "concat" => {
-                    list_elem_type(receiver, symbols)
-                }
+                "filter" | "take" | "skip" | "reverse" | "sort" | "append" | "concat"
+                | "Stream" => list_elem_type(receiver, symbols),
                 _ => named_list_elem(&expr_type_name_in_scope(expr, symbols), symbols),
             }
         }
@@ -3595,7 +3651,7 @@ fn list_elem_type(expr: &Expr, symbols: &SymbolTable) -> Option<String> {
 fn named_list_elem(name: &str, symbols: &SymbolTable) -> Option<String> {
     let mut current = name;
     for _ in 0..20 {
-        if let Some(elem) = symbols.list_elem_of.get(current) {
+        if let Some(elem) = symbols.elem_of.get(current) {
             return Some(elem.clone());
         }
         current = symbols.aliases.get(current)?;
@@ -3673,8 +3729,20 @@ fn check_builtin_args(
             expect(a, root, errors)
         }
         ("String", "concat" | "eq" | "lt", [a]) => expect(a, "String", errors),
-        ("String", "byteAt", [a]) | ("List", "take" | "skip" | "get", [a]) => {
-            expect(a, "Int", errors)
+        ("String", "byteAt", [a])
+        | ("List", "take" | "skip" | "get", [a])
+        | ("Stream", "take", [a]) => expect(a, "Int", errors),
+        ("List", "Stream", []) => {
+            if let Some(elem) = list_elem_type(receiver, symbols) {
+                if symbols.resolve_alias(&elem) != "String" {
+                    errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{method}` on `List<{elem}>`: a stream carries `String` chunks, so only a `List<String>` streams"
+                        ),
+                        span,
+                    });
+                }
+            }
         }
         ("List", "sort", []) => {
             // The order is the element's own (`Lt`), which only scalars
@@ -3725,7 +3793,7 @@ fn check_builtin_args(
             }
         }
         (
-            "List",
+            "List" | "Stream",
             "map" | "filter",
             [Expr::Lambda {
                 params, return_ty, ..
@@ -3736,7 +3804,19 @@ fn check_builtin_args(
                     if !widens_to(name, &elem, symbols) {
                         errors.push(CanonError::CheckError {
                             message: format!(
-                                "`{method}` on `List<{elem}>` binds each element as `{elem}`, not `{name}`"
+                                "`{method}` on `{root}<{elem}>` binds each element as `{elem}`, not `{name}`"
+                            ),
+                            span,
+                        });
+                    }
+                }
+            }
+            if root == "Stream" {
+                if let TypeExpr::Named { name, .. } = return_ty {
+                    if symbols.resolve_alias(name) != "String" {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{method}` on a stream yields `String` chunks; the lambda returns `{name}`"
                             ),
                             span,
                         });
@@ -3756,7 +3836,7 @@ fn check_builtin_args(
                 }
             }
         }
-        ("List", "fold", [a, b]) => {
+        ("List" | "Stream", "fold", [a, b]) => {
             let (lambda, init) = match (a, b) {
                 (l @ Expr::Lambda { .. }, i) | (i, l @ Expr::Lambda { .. }) => (l, i),
                 _ => return,
@@ -3793,7 +3873,7 @@ fn check_builtin_args(
             if names.len() == 2 && !binds_elem {
                 errors.push(CanonError::CheckError {
                     message: format!(
-                        "`{method}` on `List<{elem}>` binds each element as `{elem}`: the lambda takes `({} * {})`",
+                        "`{method}` on `{root}<{elem}>` binds each element as `{elem}`: the lambda takes `({} * {})`",
                         names[0], names[1]
                     ),
                     span,
@@ -4059,6 +4139,15 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
                 | ("append", 1)
                 | ("concat", 1)
                 | ("Json", 0)
+                | ("Stream", 0)
+        )
+    {
+        return true;
+    }
+    if receiver_ty == "Stream"
+        && matches!(
+            (method, arg_count),
+            ("first", 0) | ("map", 1) | ("fold", 2) | ("take", 1)
         )
     {
         return true;
@@ -4375,7 +4464,7 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             // the method paths above cannot see when `Todos` also has a
             // constructor family keyed on other inputs.
             if matches!(recv_ty.as_str(), "List" | "<unknown>")
-                && symbols.list_elem_of.contains_key(&method.name)
+                && symbols.elem_of.contains_key(&method.name)
             {
                 return method.name.clone();
             }
@@ -4483,6 +4572,18 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
                     if let Some(sig) = symbols.free_funcs.get(&name.name) {
                         if let Some(ok) = &sig.result_ok_ty {
                             return ok.clone();
+                        }
+                    }
+                    // A nullary member (`Unit => Result<Stdin, IoError>`)
+                    // sits under its type's `Self` key.
+                    if args.is_empty() {
+                        if let Some(sig) = symbols
+                            .methods
+                            .get(&(name.name.clone(), "Self".to_string()))
+                        {
+                            if let Some(ok) = &sig.result_ok_ty {
+                                return ok.clone();
+                            }
                         }
                     }
                     // Method-style constructor invoked as `Name(arg)`
@@ -4663,6 +4764,8 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "get") => "Option".to_string(),
         ("List", "append" | "concat") => "List".to_string(),
         ("List", "Json") => "Json".to_string(),
+        ("List", "Stream") | ("Stream", "map" | "take") => "Stream".to_string(),
+        ("Stream", "first") => "Option".to_string(),
         _ => "<unknown>".to_string(),
     }
 }

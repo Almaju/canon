@@ -1,0 +1,30 @@
+Loud = String
+
+Total = Int
+
+Unit => Program {
+    List("a" * "b" * "c" * "d")
+        -> Stream
+        -> Mapped((String) => Loud { Loud(`{String}!`) })
+        -> Taken(3)
+        -> Folded(Total(0) * (String * Total) => Total { Total -> Sum(String -> Length) -> Total })
+        -> Print
+    List("x" * "y") -> Stream -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    List() -> Stream -> First -> (
+        * None => Unit { "none" -> Print }
+        * Some<String> => Unit { String -> Print }
+    )
+    List("p" * "q")
+        -> Stream
+        -> String
+        -> Print
+    List("p" * "q")
+        -> Stream
+        -> Taken(0)
+        -> String
+        -> Length
+        -> Print
+}

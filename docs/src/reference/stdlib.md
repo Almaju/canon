@@ -76,6 +76,7 @@ everything else here.
 ```canon
 Unit => Result<Program, IoError> {
     Stdin()?
+        -> String
         -> Lines
         -> Length
         -> Print
@@ -83,13 +84,12 @@ Unit => Result<Program, IoError> {
 }
 ```
 
-`Stdin()` reads standard input to its end and hands it back as one
-string, so a filter is `Stdin()? -> Lines -> …` and the shell's pipe
-does the streaming. It is the `wasi:cli/stdin` stream, drained at the
-boundary: a binding whose WIT returns `tuple<stream<u8>, future<result<_,
-error-code>>>` surfaces in Canon as an ordinary fallible string, which
-is the one `Stream` shape the code generator lowers (see the [codegen
-gaps](./codegen-gaps.md)).
+`Stdin()` is standard input as a `Stream<String>` (`Stdin =
+Stream<String>`), the `wasi:cli/stdin` stream pulled a chunk at a
+time. `-> String` drains it to its end, so a filter is `Stdin()? ->
+String -> Lines -> …`; `-> First`, `-> Folded`, `-> Mapped` and
+`-> Taken` work on the chunks as they arrive — see
+[Streams](../spec/effects-and-async.md#streams).
 
 ## Files: `File`, `Path`, `Contents`, `IoError`
 
@@ -100,6 +100,7 @@ Unit => Program {
         -> Path
         -> File
         -> Read?
+        -> String
         -> Print
 }
 ```
@@ -107,7 +108,7 @@ Unit => Program {
 ```text
 File = String
 
-Read = String
+Read = Stream<String>
 
 File => Result<Read, IoError>
 
@@ -116,10 +117,11 @@ Written = Path
 Contents * Path => Result<Written, IoError>
 ```
 
-`path -> File` names the file; `file -> Read?` opens it and reads the
-whole contents through `wasi:filesystem` (an `IoError` is the
-interface's `error-code` case, `no-entry` for a missing file, and a
-relative path is relative to the working directory);
+`path -> File` names the file; `file -> Read?` opens it through
+`wasi:filesystem` and hands back its contents as a `Stream<String>`,
+which `-> String` drains whole (an `IoError` is the interface's
+`error-code` case, `no-entry` for a missing file, and a relative path
+is relative to the working directory);
 `contents -> Written(path)?` creates or truncates and returns the path
 as evidence — so a write chains straight into a re-open, as above.
 

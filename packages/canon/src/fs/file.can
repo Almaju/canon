@@ -1,6 +1,6 @@
 File = String
 
-Read = String
+Read = Stream<String>
 
 File => Result<Read, IoError> {
     File -> Streamed -> (

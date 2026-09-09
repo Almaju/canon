@@ -435,6 +435,8 @@ impl<'m> WasmGen<'m> {
             &[],
         );
         let ty_cabi_realloc = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
+        let stage_ty = self.get_or_add_wasm_type(&[ValType::I32], &[ValType::I32; 3]);
+        self.fn_stream_next = self.fn_user_start + self.compiled_user_funcs.len() as u32 + 1;
 
         // The entry function: the free `(Request) -> Response` the
         // checker validated. Its compiled index feeds the wrapper.
@@ -459,6 +461,30 @@ impl<'m> WasmGen<'m> {
             .get(&(None, entry_name.clone()))
             .map(|info| info.func_idx)
             .unwrap_or_else(|| panic!("HTTP entry `{entry_name}` missing from func table"));
+
+        // ── Code section — built first, see `compile()` ──────────────
+        let mut codes = CodeSection::new();
+        codes.function(&self.build_print_str());
+        codes.function(&self.build_alloc());
+        codes.function(&self.build_http_handle_wrapper(user_fn_idx));
+        codes.function(&self.build_list_to_json_array());
+        codes.function(&self.build_str_cmp());
+        codes.function(&self.build_list_append());
+        codes.function(&self.build_list_concat());
+        let ordered_funcs: Vec<FunctionDef> = self
+            .compiled_user_funcs
+            .iter()
+            .map(|(_, _, func)| func.clone())
+            .collect();
+        for func in ordered_funcs {
+            let compiled = self.build_user_function(&func);
+            codes.function(&compiled);
+        }
+        codes.function(&self.build_cabi_realloc());
+        codes.function(&self.build_stream_next());
+        for stage in self.build_stream_bodies() {
+            codes.function(&stage);
+        }
 
         let mut m = Module::new();
 
@@ -605,8 +631,13 @@ impl<'m> WasmGen<'m> {
         for (_, type_idx, _) in &self.compiled_user_funcs {
             funcs.function(*type_idx);
         }
-        funcs.function(ty_cabi_realloc); // cabi_realloc, appended last
+        funcs.function(ty_cabi_realloc); // cabi_realloc
+        funcs.function(stage_ty); // $stream_next, then the stages
+        for _ in &self.stream_stages {
+            funcs.function(stage_ty);
+        }
         m.section(&funcs);
+        m.section(&self.stream_table_section());
 
         // ── Memory / globals: self-contained ─────────────────────────
         // Sized to fit the static string pool — see `heap_layout`.
@@ -645,26 +676,7 @@ impl<'m> WasmGen<'m> {
             self.fn_start,
         );
         m.section(&exports);
-
-        // ── Code section — order must match the function section ─────
-        let mut codes = CodeSection::new();
-        codes.function(&self.build_print_str());
-        codes.function(&self.build_alloc());
-        codes.function(&self.build_http_handle_wrapper(user_fn_idx));
-        codes.function(&self.build_list_to_json_array());
-        codes.function(&self.build_str_cmp());
-        codes.function(&self.build_list_append());
-        codes.function(&self.build_list_concat());
-        let ordered_funcs: Vec<FunctionDef> = self
-            .compiled_user_funcs
-            .iter()
-            .map(|(_, _, func)| func.clone())
-            .collect();
-        for func in ordered_funcs {
-            let compiled = self.build_user_function(&func);
-            codes.function(&compiled);
-        }
-        codes.function(&self.build_cabi_realloc());
+        m.section(&self.stream_element_section());
         m.section(&codes);
 
         // ── Data ─────────────────────────────────────────────────────
