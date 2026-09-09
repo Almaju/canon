@@ -136,8 +136,29 @@ Unit => Result<Program, IoError> {
 ```
 
 Producers: `Stdin()` and `file -> Read` (both `Result`s whose `Ok` is
-the stream), `Request.body()` in an HTTP handler, and `list -> Stream`
-over a `List<String>`. Consumers:
+the stream), `Request.body()` in an HTTP handler, `list -> Stream` over
+a `List<String>`, and `seed -> Unfolded(lambda)`, which steps any value:
+the lambda takes the seed and answers `Option<Step>`, `Step` a product
+of the chunk and the next seed (told apart by their newtypes), and
+`None` ends the stream —
+
+```canon
+Counter = Int
+
+Line = String
+
+Step = Counter * Line
+
+Unit => Program {
+    Counter(1)
+        -> Unfolded((Counter) => Option<Step> { Line(`{Counter}`) -> Step(Counter -> Sum(1) -> Counter) -> Some })
+        -> Taken(3)
+        -> String
+        -> Print
+}
+```
+
+Consumers:
 `-> First` pulls one chunk as an `Option<String>`; `-> Folded(init *
 lambda)` pulls every chunk into an accumulator, as a list's `Folded`
 does; `-> String` drains the rest into one string; `-> Printed?` writes

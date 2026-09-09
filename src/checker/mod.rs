@@ -3662,10 +3662,51 @@ fn list_elem_type(expr: &Expr, symbols: &SymbolTable) -> Option<String> {
                 },
                 "filter" | "take" | "skip" | "reverse" | "sort" | "append" | "concat"
                 | "Stream" => list_elem_type(receiver, symbols),
+                "unfold" => {
+                    let seed = expr_type_name_in_scope(receiver, symbols);
+                    unfold_step(args.first()?, &seed, symbols).map(|(chunk, _)| chunk)
+                }
                 _ => named_list_elem(&expr_type_name_in_scope(expr, symbols), symbols),
             }
         }
         other => named_list_elem(&expr_type_name_in_scope(other, symbols), symbols),
+    }
+}
+
+/// The `(chunk, seed)` field types of an `Unfolded` lambda's step —
+/// the product its `Option<Step>` return carries, whose one field
+/// names the seed's type `recv_ty` (a `String` seed is told from a
+/// `String` chunk by its newtype) and whose other, `String`-rooted
+/// field is the chunk. `None` for any other shape.
+fn unfold_step(lambda: &Expr, recv_ty: &str, symbols: &SymbolTable) -> Option<(String, String)> {
+    let Expr::Lambda {
+        return_ty:
+            TypeExpr::Named {
+                name: option,
+                generics,
+                ..
+            },
+        ..
+    } = lambda
+    else {
+        return None;
+    };
+    let [TypeExpr::Named { name: step, .. }] = generics.as_slice() else {
+        return None;
+    };
+    if option != "Option" {
+        return None;
+    }
+    let fields = product_fields_of(step, symbols)?.1;
+    let [a, b] = fields.as_slice() else {
+        return None;
+    };
+    let is_string = |f: &str| symbols.resolve_alias(f) == "String";
+    let is_seed = |f: &str| widens_to(f, recv_ty, symbols);
+    match (is_seed(a), is_seed(b)) {
+        (true, false) if is_string(b) => Some((b.clone(), a.clone())),
+        (false, true) if is_string(a) => Some((a.clone(), b.clone())),
+        _ => None,
     }
 }
 
@@ -3856,6 +3897,46 @@ fn check_builtin_args(
                         });
                     }
                 }
+            }
+        }
+        (
+            _,
+            "unfold",
+            [lambda @ Expr::Lambda {
+                params, return_ty, ..
+            }],
+        ) => {
+            // The lambda steps the seed: its parameter is the receiver's
+            // type and it answers `Option<Step>`, `Step` a product of a
+            // `String` chunk and the next seed.
+            if let [param] = params.as_slice() {
+                if let TypeExpr::Named { name, .. } = &param.ty {
+                    if !widens_to(name, recv_ty, symbols) {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{method}` on `{recv_ty}` binds the seed as `{recv_ty}`, not `{name}`"
+                            ),
+                            span,
+                        });
+                    }
+                }
+            }
+            if unfold_step(lambda, recv_ty, symbols).is_none() {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{method}` on `{recv_ty}` takes a lambda answering `Option<Step>`, `Step` a product of a `String` chunk and the next `{recv_ty}` (told apart by their newtypes); it answers `{}`",
+                        match return_ty {
+                            TypeExpr::Named { name, generics, .. } => match generics.first() {
+                                Some(TypeExpr::Named { name: inner, .. }) => {
+                                    format!("{name}<{inner}>")
+                                }
+                                _ => name.clone(),
+                            },
+                            _ => "<unknown>".to_string(),
+                        }
+                    ),
+                    span,
+                });
             }
         }
         ("List" | "Stream", "fold", [a, b]) => {
@@ -4172,6 +4253,10 @@ fn is_known_method(receiver_ty: &str, method: &str, arg_count: usize) -> bool {
             ("first", 0) | ("map", 1) | ("fold", 2) | ("take", 1)
         )
     {
+        return true;
+    }
+    // Any value seeds a stream.
+    if (method, arg_count) == ("unfold", 1) {
         return true;
     }
     // NOTE: `Map` and `Set` have no builtin entries — they are pure
@@ -4786,7 +4871,7 @@ pub(crate) fn method_return_type(receiver_ty: &str, method: &str) -> String {
         ("List", "get") => "Option".to_string(),
         ("List", "append" | "concat") => "List".to_string(),
         ("List", "Json") => "Json".to_string(),
-        ("List", "Stream") | ("Stream", "map" | "take") => "Stream".to_string(),
+        ("List", "Stream") | ("Stream", "map" | "take") | (_, "unfold") => "Stream".to_string(),
         ("Stream", "first") => "Option".to_string(),
         _ => "<unknown>".to_string(),
     }

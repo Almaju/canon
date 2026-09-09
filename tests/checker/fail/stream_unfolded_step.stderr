@@ -1,0 +1,1 @@
+error[tests/checker/fail/stream_unfolded_step.can:4:5]: `Unfolded` on `Counter` takes a lambda answering `Option<Step>`, `Step` a product of a `String` chunk and the next `Counter` (told apart by their newtypes); it answers `Option<Counter>`

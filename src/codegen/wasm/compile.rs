@@ -6136,9 +6136,12 @@ impl<'m> WasmGen<'m> {
         // reached after the func_table lookup missed, so a user/stdlib
         // function of the same name always wins first.
         let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
-        // A stream's consumers and transforms — see `stream`. The
-        // lambdas inline like the list ones: `Mapped` into its stage
-        // function, `Folded` into the pull loop.
+        // A stream's producers, consumers and transforms — see `stream`.
+        // The lambdas inline like the list ones: `Mapped` and `Unfolded`
+        // into their stage functions, `Folded` into the pull loop.
+        if let ("unfold", [lambda]) = (method, args) {
+            return self.compile_unfolded(recv_ty, lambda, scope, f);
+        }
         if self.is_stream_ty(&recv_ty) {
             match method {
                 "first" => return self.compile_stream_next(scope, f),
