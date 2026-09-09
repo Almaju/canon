@@ -88,7 +88,9 @@ Unit => Result<Program, IoError> {
 Stream<String>`), the `wasi:cli/stdin` stream pulled a chunk at a
 time. `-> String` drains it to its end, so a filter is `Stdin()? ->
 String -> Lines -> …`; `-> First`, `-> Folded`, `-> Mapped` and
-`-> Taken` work on the chunks as they arrive — see
+`-> Taken` work on the chunks as they arrive, and `-> Printed?` writes
+them to standard output (`Printed = Unit`, `wasi:cli/stdout`'s
+`write-via-stream`) — see
 [Streams](../spec/effects-and-async.md#streams).
 
 ## Files: `File`, `Path`, `Contents`, `IoError`

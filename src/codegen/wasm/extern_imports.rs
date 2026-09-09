@@ -157,6 +157,8 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
                     Some(IndirectReturnShape::FileRead { ok_name, err_name })
                 } else if ext.path == component::WASI_FS_WRITE {
                     Some(IndirectReturnShape::FileWrite { ok_name, err_name })
+                } else if ext.path == component::WASI_CLI_STDOUT_WRITE {
+                    Some(IndirectReturnShape::StreamWrite { ok_name, err_name })
                 } else if component::vendored_extern_returns_byte_stream(&ext.path) {
                     Some(IndirectReturnShape::ByteStream { ok_name, err_name })
                 } else {
@@ -190,6 +192,10 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
         }
         match (&indirect_return, results.len()) {
             (None, 0) | (None, 1) => {}
+            // `(i32 reader) -> i32 future`: the flat shape the WIT gives
+            // `write-via-stream`, which is what the Canon spelling
+            // (`Stream<String> => Result<Printed, IoError>`) lowers to.
+            (Some(IndirectReturnShape::StreamWrite { .. }), _) => {}
             (Some(_), _) => {
                 // Apply the indirect-return transformation: clear results and
                 // append an `i32` return-area pointer to the params.
@@ -274,6 +280,14 @@ pub(super) fn collect_extern_imports(ast: &OModule) -> Vec<ExternImport> {
     });
     let mut next = FIRST_EXTERN_IMPORT_FN;
     for e in raw.iter_mut() {
+        // `write-via-stream` is already imported for `Print`.
+        if matches!(
+            e.indirect_return,
+            Some(IndirectReturnShape::StreamWrite { .. })
+        ) {
+            e.func_idx = FN_STDOUT_WRITE_VIA_STREAM;
+            continue;
+        }
         e.func_idx = next;
         next += 1;
         if matches!(
@@ -293,6 +307,7 @@ impl ExternImport {
     pub(super) fn import_slots(&self) -> u32 {
         match &self.indirect_return {
             Some(IndirectReturnShape::ByteStream { .. }) => 4,
+            Some(IndirectReturnShape::StreamWrite { .. }) => 0,
             Some(shape) => 1 + fused_imports(shape).len() as u32,
             None => 1,
         }
@@ -687,9 +702,10 @@ pub(super) fn classify_return(
     None
 }
 
-/// The arm names of a `Result<A, B>` return whose `A` is a string or a
-/// stream and whose `B` is a string — the shapes the fused sequences
-/// and the byte-stream drain produce. `None` for any other return.
+/// The arm names of a `Result<A, B>` return whose `A` is a string, a
+/// stream or `Unit` and whose `B` is a string — the shapes the fused
+/// sequences, the byte streams and the stream write produce. `None`
+/// for any other return.
 fn fallible_return_names(
     return_ty: &TypeExpr,
     type_defs: &HashMap<String, TypeExpr>,
@@ -702,7 +718,9 @@ fn fallible_return_names(
         return None;
     };
     let fits = name == "Result"
-        && (resolves_to_string(ok, type_defs) || resolves_to_stream(ok, type_defs))
+        && (resolves_to_string(ok, type_defs)
+            || resolves_to_stream(ok, type_defs)
+            || resolves_to_unit(ok, type_defs))
         && resolves_to_string(err, type_defs);
     fits.then(|| (named_type_name(ok)?, named_type_name(err)?).into())
         .flatten()
@@ -893,6 +911,13 @@ pub(super) enum IndirectReturnShape {
     /// the completion future. `Ok` carries the path back; `Err` is
     /// spelled as for `FileRead`.
     FileWrite { ok_name: String, err_name: String },
+    /// `wasi:cli/stdout`'s `write-via-stream`, pumped: the extern takes
+    /// a `Stream<String>`, codegen makes a fresh byte stream through
+    /// the stdout builtins it already imports, writes each chunk
+    /// pulled into it, drops the writer, and reads the completion
+    /// future. `Err` carries the `error-code` case name. Return area:
+    /// the 8-byte `result<_, error-code>`.
+    StreamWrite { ok_name: String, err_name: String },
     ListScalar {
         prim: wasm_encoder::PrimitiveValType,
     },
@@ -948,6 +973,7 @@ impl IndirectReturnShape {
             IndirectReturnShape::ByteStream { .. } => 8,
             IndirectReturnShape::HttpSend { .. } => 32,
             IndirectReturnShape::FileRead { .. } | IndirectReturnShape::FileWrite { .. } => 24,
+            IndirectReturnShape::StreamWrite { .. } => 8,
             IndirectReturnShape::ScalarRecord { size, .. } => (*size).max(4),
         }
     }

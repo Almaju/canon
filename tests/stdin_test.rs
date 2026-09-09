@@ -5,7 +5,7 @@
 //! `Stdin = Stream<String>`, and codegen reads a chunk per pull
 //! (`stream::Stage::Host`). These pin the stream against real pipes:
 //! drained whole, pulled chunk by chunk, an input longer than one read,
-//! and nothing.
+//! nothing, and pumped straight to stdout through `Printed`.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -28,13 +28,14 @@ fn run_with_stdin(name: &str, program: &str, input: &[u8]) -> String {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn canon run");
-    child
-        .stdin
-        .take()
-        .expect("piped stdin")
-        .write_all(input)
-        .expect("write stdin");
+    // Written from a thread: a program that pumps stdin to stdout
+    // (`Printed`) fills the stdout pipe while the input is still
+    // going in, and `wait_with_output` drains stdout only afterwards.
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let input = input.to_vec();
+    let writer = std::thread::spawn(move || stdin.write_all(&input));
     let out = child.wait_with_output().expect("canon run");
+    writer.join().expect("stdin writer").expect("write stdin");
     assert!(
         out.status.success(),
         "canon run failed:\n{}",
@@ -133,4 +134,36 @@ fn stdin_pulls_one_chunk_at_a_time() {
 fn stdin_folds_over_every_chunk() {
     let input = vec![b'x'; 300_000];
     assert_eq!(run_with_stdin("total", TOTAL, &input), "300000\n");
+}
+
+const PIPE: &str = "Unit => Result<Program, IoError> {
+    Stdin()? -> Printed?
+    Unit() -> Ok
+}
+";
+
+const LOUD_PIPE: &str = "Loud = String
+
+Unit => Result<Program, IoError> {
+    Stdin()?
+        -> Mapped((String) => Loud { Loud(`{String}!`) })
+        -> Printed?
+    Unit() -> Ok
+}
+";
+
+#[test]
+fn stdin_pumps_to_stdout_a_chunk_at_a_time() {
+    let input = vec![b'x'; 300_000];
+    assert_eq!(
+        run_with_stdin("pipe", PIPE, &input).len(),
+        300_000,
+        "every byte comes back, no newline appended"
+    );
+    assert_eq!(run_with_stdin("pipe-empty", PIPE, b""), "");
+    // One small write is one chunk.
+    assert_eq!(
+        run_with_stdin("loud-pipe", LOUD_PIPE, b"hello\nworld"),
+        "hello\nworld!"
+    );
 }

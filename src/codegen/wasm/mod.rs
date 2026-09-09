@@ -4,12 +4,14 @@
 ///
 /// The core module:
 ///   - Owns its linear memory, bump pointer and `cabi_realloc`.
-///   - Imports five canonical-ABI builtins from `"wasi:cli/stdout"` —
+///   - Imports six canonical-ABI builtins from `"wasi:cli/stdout"` —
 ///     `write-via-stream`, `stream-new`, `stream-write`,
-///     `stream-drop-writable`, and `future-drop-readable`. `print_str`
-///     stitches them into the native WASI P3 stdout sequence so the
-///     produced `.wasm` is portable to any compliant Component Model
-///     runtime (no `canon:*` host bridge required for output).
+///     `stream-drop-writable`, `future-drop-readable` and `future-read`.
+///     `print_str` stitches the first five into the native WASI P3
+///     stdout sequence so the produced `.wasm` is portable to any
+///     compliant Component Model runtime (no `canon:*` host bridge
+///     required for output); `Printed` pumps a stream through them and
+///     reads the completion (`emit_stream_write`).
 ///   - Exports the entry as `[async-lift-stackful]wasi:cli/run@…#run`; the
 ///     `result<_, _>` discriminant (0 = Ok, 1 = Err) travels through
 ///     `task.return`.
@@ -70,8 +72,8 @@ pub(super) fn heap_layout(data_len: usize) -> (u32, u32) {
 }
 
 // ── Function index constants ──────────────────────────────────────────────
-// The imports section starts with the five `wasi:cli/stdout` canonical
-// builtins at indices 0..4, followed by every `extern Wasm` declaration
+// The imports section starts with the six `wasi:cli/stdout` canonical
+// builtins at indices 0..5, followed by every `extern Wasm` declaration
 // from the user program (sorted alphabetically by
 // `interface@version#fn-name`, each followed by the stream builtins it
 // drains through — `ExternImport::import_slots`), followed by the
@@ -89,7 +91,8 @@ const FN_STDOUT_STREAM_NEW: u32 = 1; // () -> i64
 const FN_STDOUT_STREAM_WRITE: u32 = 2; // (i32, i32, i32) -> i32
 const FN_STDOUT_STREAM_DROP_WRITABLE: u32 = 3; // (i32) -> ()
 const FN_STDOUT_FUTURE_DROP_READABLE: u32 = 4; // (i32) -> ()
-const FIRST_EXTERN_IMPORT_FN: u32 = 5; // first index of a user `extern Wasm` import
+const FN_STDOUT_FUTURE_READ: u32 = 5; // (i32, i32) -> i32  (CLI mode only)
+const FIRST_EXTERN_IMPORT_FN: u32 = 6; // first index of a user `extern Wasm` import
 
 // ── HTTP-mode import indices ─────────────────────────────────────────
 // In HTTP encoder mode (`http_mode`, see `compile_http`) the import
@@ -223,7 +226,7 @@ struct WasmGen<'m> {
 
     // Dynamic function indices in the core module's index space. These are
     // computed in `new()` once the extern import slots are known. After
-    // the imports block (5 stdout builtins + N extern slots + 7
+    // the imports block (6 stdout builtins + N extern slots + 7
     // intrinsics), defined functions follow.
     //
     // The waitable intrinsics implement the canonical-ABI async-wait
@@ -300,11 +303,11 @@ impl<'m> WasmGen<'m> {
     fn new(ast: &'m OModule) -> Self {
         let extern_imports = collect_extern_imports(ast);
         let n_externs: u32 = extern_imports.iter().map(ExternImport::import_slots).sum();
-        // After the 5 stdout canonical-builtin imports (FN_STDOUT_*) at
-        // indices 0..4 and the N extern Wasm import slots at 5..5+N, the
+        // After the 6 stdout canonical-builtin imports (FN_STDOUT_*) at
+        // indices 0..5 and the N extern Wasm import slots at 6..6+N, the
         // next block is the 7 waitable+task intrinsics, then the defined
         // functions follow.
-        let base_waitable = FIRST_EXTERN_IMPORT_FN + n_externs; // = 5 + N
+        let base_waitable = FIRST_EXTERN_IMPORT_FN + n_externs; // = 6 + N
         let base_defined = base_waitable + 7; // skip the 7 waitable+task imports
                                               // (set-new, join, set-wait,
                                               //  set-drop, subtask-drop,
@@ -615,7 +618,8 @@ impl<'m> WasmGen<'m> {
                     IndirectReturnShape::ByteStream { ok_name, err_name }
                     | IndirectReturnShape::HttpSend { ok_name, err_name }
                     | IndirectReturnShape::FileRead { ok_name, err_name }
-                    | IndirectReturnShape::FileWrite { ok_name, err_name },
+                    | IndirectReturnShape::FileWrite { ok_name, err_name }
+                    | IndirectReturnShape::StreamWrite { ok_name, err_name },
                 ) => Ty::NamedPtrOf("Result".to_string(), ok_name.clone(), err_name.clone()),
                 Some(IndirectReturnShape::ScalarRecord { product, .. }) => {
                     Ty::NamedPtr(product.clone())
