@@ -271,7 +271,9 @@ impl<'m> WasmGen<'m> {
     /// running to perform the blocking body/trailer writes:
     ///
     ///   1. call the user's `(Request) -> Response` function,
-    ///   2. drop the request handle (introspection is slice 2),
+    ///   2. drop the request handle — unless `body` already moved it
+    ///      into `consume-body` (the `MEM_HTTP_BODY_CONSUMED` flag,
+    ///      cleared on entry: the instance outlives one request),
     ///   3. `task.return(ok(response))` — the host starts sending,
     ///   4. sync `stream.write` of the body bytes (blocks until the
     ///      host consumes), then `stream.drop-writable` (ends the
@@ -288,11 +290,19 @@ impl<'m> WasmGen<'m> {
             memory_index: 0,
         };
         let mut f = Function::new([(1, ValType::I32)]); // local 1: response
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_CONSUMED as i32));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Store(mem));
         f.instruction(&Instruction::LocalGet(0));
         f.instruction(&Instruction::Call(user_fn_idx));
         f.instruction(&Instruction::LocalSet(1));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_CONSUMED as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::If(BlockType::Empty));
         f.instruction(&Instruction::LocalGet(0));
         f.instruction(&Instruction::Call(FN_HTTP_REQUEST_DROP));
+        f.instruction(&Instruction::End);
 
         // task.return(ok(response)) — `result<own<response>, error-code>`
         // lowered flat as the joined slots of both arms; the ok arm
@@ -435,6 +445,7 @@ impl<'m> WasmGen<'m> {
             &[],
         );
         let ty_cabi_realloc = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
+        let ty_consume_body = self.get_or_add_wasm_type(&[ValType::I32; 3], &[]);
         let stage_ty = self.get_or_add_wasm_type(&[ValType::I32], &[ValType::I32; 3]);
         self.fn_stream_next = self.fn_user_start + self.compiled_user_funcs.len() as u32 + 1;
 
@@ -616,6 +627,41 @@ impl<'m> WasmGen<'m> {
             http,
             "[method]request.get-method",
             EntityType::Function(TY_PRINT_STR),
+        );
+        imports.import(
+            http,
+            "[static]request.consume-body",
+            EntityType::Function(ty_consume_body),
+        );
+        imports.import(
+            http,
+            "[future-new-0][static]request.consume-body",
+            EntityType::Function(TY_STDOUT_STREAM_NEW),
+        );
+        imports.import(
+            http,
+            "[future-write-0][static]request.consume-body",
+            EntityType::Function(ty_i32x2_to_i32),
+        );
+        imports.import(
+            http,
+            "[future-drop-writable-0][static]request.consume-body",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        imports.import(
+            http,
+            "[stream-read-1][static]request.consume-body",
+            EntityType::Function(TY_STDOUT_STREAM_WRITE),
+        );
+        imports.import(
+            http,
+            "[stream-drop-readable-1][static]request.consume-body",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        imports.import(
+            http,
+            "[future-drop-readable-2][static]request.consume-body",
+            EntityType::Function(TY_PRINT_BOOL),
         );
         m.section(&imports);
 

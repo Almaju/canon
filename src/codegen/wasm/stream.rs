@@ -42,19 +42,37 @@ pub(super) enum Stage {
     List,
     /// A = the inner stage, B = chunks remaining.
     Taken,
-    /// A = the stream handle, B = its completion future, C = the file
-    /// descriptor the stream reads (0 when there is none).
+    /// A = the stream handle, B = its completion future, C = what
+    /// `third` says.
     Host {
         read_fn: u32,
         drop_stream_fn: u32,
         drop_future_fn: u32,
-        drop_descriptor_fn: Option<u32>,
+        third: Third,
     },
     /// A = the inner stage; `param` binds each chunk in `body`.
     Map {
         param: String,
         body: Block,
         site: crate::error::Span,
+    },
+}
+
+/// The third cell of a `Host` stage, settled with the handles at the
+/// stream's end.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Third {
+    Nothing,
+    /// The file descriptor the stream reads, dropped.
+    Descriptor {
+        drop_fn: u32,
+    },
+    /// The writer of the `res` future a body was consumed with:
+    /// resolved to `ok` (the eight zero bytes at `ok_at`), then dropped.
+    Settled {
+        write_fn: u32,
+        drop_fn: u32,
+        ok_at: u32,
     },
 }
 
@@ -244,12 +262,12 @@ impl<'m> WasmGen<'m> {
                 read_fn,
                 drop_stream_fn,
                 drop_future_fn,
-                drop_descriptor_fn,
+                third,
             } => self.emit_host_stage(
                 *read_fn,
                 *drop_stream_fn,
                 *drop_future_fn,
-                *drop_descriptor_fn,
+                *third,
                 &scope,
                 &mut f,
             ),
@@ -304,7 +322,7 @@ impl<'m> WasmGen<'m> {
         read_fn: u32,
         drop_stream_fn: u32,
         drop_future_fn: u32,
-        drop_descriptor_fn: Option<u32>,
+        third: Third,
         scope: &LocalScope,
         f: &mut Function,
     ) {
@@ -316,10 +334,27 @@ impl<'m> WasmGen<'m> {
             f.instruction(&Instruction::LocalGet(0));
             f.instruction(&Instruction::I32Load(mem32(OFF_B)));
             f.instruction(&Instruction::Call(drop_future_fn));
-            if let Some(drop_descriptor_fn) = drop_descriptor_fn {
-                f.instruction(&Instruction::LocalGet(0));
-                f.instruction(&Instruction::I32Load(mem32(OFF_C)));
-                f.instruction(&Instruction::Call(drop_descriptor_fn));
+            match third {
+                Third::Nothing => {}
+                Third::Descriptor { drop_fn } => {
+                    f.instruction(&Instruction::LocalGet(0));
+                    f.instruction(&Instruction::I32Load(mem32(OFF_C)));
+                    f.instruction(&Instruction::Call(drop_fn));
+                }
+                Third::Settled {
+                    write_fn,
+                    drop_fn,
+                    ok_at,
+                } => {
+                    f.instruction(&Instruction::LocalGet(0));
+                    f.instruction(&Instruction::I32Load(mem32(OFF_C)));
+                    f.instruction(&Instruction::I32Const(ok_at as i32));
+                    f.instruction(&Instruction::Call(write_fn));
+                    f.instruction(&Instruction::Drop);
+                    f.instruction(&Instruction::LocalGet(0));
+                    f.instruction(&Instruction::I32Load(mem32(OFF_C)));
+                    f.instruction(&Instruction::Call(drop_fn));
+                }
             }
         };
         f.instruction(&Instruction::I32Const(CHUNK));
@@ -388,20 +423,20 @@ impl<'m> WasmGen<'m> {
     }
 
     /// A `Host` stage over the handles in the given locals — the
-    /// stream, its completion future, and the descriptor it reads when
-    /// there is one. Leaves the stage's pointer in `addr_scratch` and on
-    /// the stack.
+    /// stream, its completion future, and the third cell's when it has
+    /// one. Leaves the stage's pointer in `addr_scratch` and on the
+    /// stack.
     pub(super) fn emit_host_stream(
         &mut self,
         stage: Stage,
         stream: u32,
         future: u32,
-        descriptor: Option<u32>,
+        third: Option<u32>,
         scope: &LocalScope,
         f: &mut Function,
     ) {
         let slot = self.stream_stage(stage);
-        self.emit_new_stage(slot, [Some(stream), Some(future), descriptor], scope, f);
+        self.emit_new_stage(slot, [Some(stream), Some(future), third], scope, f);
     }
 
     /// `stream -> First`: the next chunk as `Option<String>`. The stage

@@ -27,6 +27,7 @@ const TEST_PORT: u16 = 38431;
 const HEADERS_TEST_PORT: u16 = 38432;
 const METHOD_TEST_PORT: u16 = 38433;
 const ROUTER_TEST_PORT: u16 = 38434;
+const BODY_TEST_PORT: u16 = 38435;
 
 #[test]
 fn wasi_http_service_smoke() {
@@ -348,6 +349,79 @@ fn wasi_http_service_router_package() {
     assert!(missing.ends_with("not found"), "got:\n{missing}");
 }
 
+/// Request body: `Request.body()` is the body as a `Stream<String>`
+/// (`consume-body`), pulled inside the handler and drained here into
+/// the response. The instance outlives one request, so the empty and
+/// the long body pin that the next request still finds a fresh one.
+#[test]
+fn wasi_http_service_request_body() {
+    let workdir = std::env::temp_dir().join(format!("canon_wasi_http_body_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let src_path = workdir.join("service.can");
+    std::fs::write(
+        &src_path,
+        r#"Request => Response {
+    Request
+        .body()
+        -> String
+        -> Body
+        -> Response(Headers() * Status(200))
+}
+"#,
+    )
+    .unwrap();
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let addr = format!("127.0.0.1:{BODY_TEST_PORT}");
+    let mut child = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&src_path)
+        .arg("--addr")
+        .arg(&addr)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn `canon run --addr`");
+
+    let start = Instant::now();
+    let mut bound = false;
+    while start.elapsed() < Duration::from_secs(10) {
+        if TcpStream::connect(&addr).is_ok() {
+            bound = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if !bound {
+        let _ = child.kill();
+        panic!("server never bound {addr}");
+    }
+
+    let long = "x".repeat(200_000);
+    for body in ["hello world", "", long.as_str(), "again"] {
+        let response = send_body(&addr, body).unwrap_or_else(|e| {
+            let _ = child.kill();
+            panic!("POST failed: {e}");
+        });
+        assert!(
+            response.starts_with("HTTP/1.1 200"),
+            "expected 200, got:\n{}",
+            &response[..response.len().min(200)]
+        );
+        let (_, echoed) = response.split_once("\r\n\r\n").unwrap_or(("", ""));
+        assert_eq!(
+            echoed,
+            body,
+            "expected the body back, got {} bytes",
+            echoed.len()
+        );
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
 fn send_request(addr: &str) -> std::io::Result<String> {
     send_verb(addr, "GET")
 }
@@ -358,6 +432,21 @@ fn send_verb(addr: &str, verb: &str) -> std::io::Result<String> {
 
 fn send_path(addr: &str, path: &str) -> std::io::Result<String> {
     send_line(addr, &format!("GET {path}"))
+}
+
+fn send_body(addr: &str, body: &str) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect(addr)?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.write_all(
+        format!(
+            "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .as_bytes(),
+    )?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    Ok(response)
 }
 
 fn send_line(addr: &str, request_line: &str) -> std::io::Result<String> {
