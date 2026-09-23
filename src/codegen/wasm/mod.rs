@@ -128,7 +128,10 @@ const FN_HTTP_RES_FUTURE_DROP_WRITABLE: u32 = 23; // [future-drop-writable-0]…
 const FN_HTTP_BODY_READ: u32 = 24; // [stream-read-1]… (i32,i32,i32) -> i32
 const FN_HTTP_BODY_DROP_READABLE: u32 = 25; // [stream-drop-readable-1]… (i32) -> ()
 const FN_HTTP_BODY_TRAILERS_DROP_READABLE: u32 = 26; // [future-drop-readable-2]… (i32) -> ()
-const HTTP_BASE_DEFINED: u32 = 27;
+const FN_HTTP_GET_HEADERS: u32 = 27; // [method]request.get-headers (i32) -> i32
+const FN_HTTP_FIELDS_GET: u32 = 28; // [method]fields.get (i32 x4) -> ()
+const FN_HTTP_FIELDS_DROP: u32 = 29; // [resource-drop]fields (i32) -> ()
+const HTTP_BASE_DEFINED: u32 = 30;
 
 // ── Web-mode import indices ──────────────────────────────────────────
 // In web encoder mode (`compile_web`, see the web target, docs/src/reference/web-target.md) the import

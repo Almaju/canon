@@ -10,6 +10,8 @@ Response = (Body * Headers * Status) => Response
 
 body = (Request) => Stream<String>
 
+header = (Request * String) => Option<String>
+
 method = (Request) => String
 
 path = (Request) => Option<String>

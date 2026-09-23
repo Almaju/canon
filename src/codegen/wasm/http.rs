@@ -446,6 +446,8 @@ impl<'m> WasmGen<'m> {
         );
         let ty_cabi_realloc = self.get_or_add_wasm_type(&[ValType::I32; 4], &[ValType::I32]);
         let ty_consume_body = self.get_or_add_wasm_type(&[ValType::I32; 3], &[]);
+        let ty_get_headers = self.get_or_add_wasm_type(&[ValType::I32], &[ValType::I32]);
+        let ty_fields_get = self.get_or_add_wasm_type(&[ValType::I32; 4], &[]);
         let stage_ty = self.get_or_add_wasm_type(&[ValType::I32], &[ValType::I32; 3]);
         self.fn_stream_next = self.fn_user_start + self.compiled_user_funcs.len() as u32 + 1;
 
@@ -661,6 +663,21 @@ impl<'m> WasmGen<'m> {
         imports.import(
             http,
             "[future-drop-readable-2][static]request.consume-body",
+            EntityType::Function(TY_PRINT_BOOL),
+        );
+        imports.import(
+            http,
+            "[method]request.get-headers",
+            EntityType::Function(ty_get_headers),
+        );
+        imports.import(
+            http,
+            "[method]fields.get",
+            EntityType::Function(ty_fields_get),
+        );
+        imports.import(
+            http,
+            "[resource-drop]fields",
             EntityType::Function(TY_PRINT_BOOL),
         );
         m.section(&imports);

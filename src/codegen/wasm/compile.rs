@@ -7040,6 +7040,70 @@ impl<'m> WasmGen<'m> {
                 f.instruction(&Instruction::LocalGet(scope.rbool()));
                 Ty::NamedPtr("Option".to_string())
             }
+            // `request.header(name)` — `[method]request.get-headers`
+            // hands back an owned `fields`, and `[method]fields.get`
+            // answers `list<field-value>` through a ret area (ptr/len at
+            // +0/+4, each value a `list<u8>` pair). The first value is
+            // the `Some` payload; no value is `None`. Same `Option`
+            // struct as `path`.
+            ("header", Ty::NamedPtr(ref n)) if n == "Request" && self.http_mode => {
+                let mem32 = |offset: u64| MemArg {
+                    offset,
+                    align: 2,
+                    memory_index: 0,
+                };
+                // Stack: [request]. The name is arbitrary user code —
+                // compile it before touching any scratch local.
+                let ty = args
+                    .first()
+                    .map(|a| self.compile_expr(a, scope, f))
+                    .unwrap_or(Ty::Unit);
+                if !ty.is_str_like() {
+                    self.drop_value(ty, f);
+                    f.instruction(&Instruction::I32Const(0));
+                    f.instruction(&Instruction::I32Const(0));
+                }
+                f.instruction(&Instruction::LocalSet(scope.addr_scratch())); // nlen
+                f.instruction(&Instruction::LocalSet(scope.map_elem_ptr())); // nptr
+                f.instruction(&Instruction::Call(FN_HTTP_GET_HEADERS));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32())); // fields
+                f.instruction(&Instruction::I32Const(8));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b())); // ret area
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::LocalGet(scope.map_elem_ptr()));
+                f.instruction(&Instruction::LocalGet(scope.addr_scratch()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::Call(FN_HTTP_FIELDS_GET));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::Call(FN_HTTP_FIELDS_DROP));
+                f.instruction(&Instruction::I32Const(12));
+                f.instruction(&Instruction::Call(self.fn_alloc));
+                f.instruction(&Instruction::LocalSet(scope.rbool()));
+                // tag = (count != 0)
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Load(mem32(4)));
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::I32Ne);
+                f.instruction(&Instruction::LocalTee(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Store(mem32(0)));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::If(BlockType::Empty));
+                // values ptr → the first value's (ptr, len) pair
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                f.instruction(&Instruction::I32Load(mem32(0)));
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32_b()));
+                for off in [0u64, 4] {
+                    f.instruction(&Instruction::LocalGet(scope.rbool()));
+                    f.instruction(&Instruction::LocalGet(scope.tmp_i32_b()));
+                    f.instruction(&Instruction::I32Load(mem32(off)));
+                    f.instruction(&Instruction::I32Store(mem32(off + 4)));
+                }
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::LocalGet(scope.rbool()));
+                Ty::NamedPtr("Option".to_string())
+            }
             // `request.method()` — `[method]request.get-method` returns
             // the WIT `method` variant through a 12-byte ret area (disc
             // byte at +0; the `other(string)` payload at +4/+8). Canon

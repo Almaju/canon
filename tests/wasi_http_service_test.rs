@@ -28,6 +28,7 @@ const HEADERS_TEST_PORT: u16 = 38432;
 const METHOD_TEST_PORT: u16 = 38433;
 const ROUTER_TEST_PORT: u16 = 38434;
 const BODY_TEST_PORT: u16 = 38435;
+const REQUEST_HEADER_TEST_PORT: u16 = 38436;
 
 #[test]
 fn wasi_http_service_smoke() {
@@ -426,6 +427,69 @@ fn send_request(addr: &str) -> std::io::Result<String> {
     send_verb(addr, "GET")
 }
 
+/// Request headers: `Request.header(name)` is the first value of the
+/// named header, `None` when the request doesn't carry it.
+#[test]
+fn wasi_http_service_request_header() {
+    let workdir = std::env::temp_dir().join(format!("canon_wasi_http_rh_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let src_path = workdir.join("service.can");
+    std::fs::write(
+        &src_path,
+        r#"Request => Response {
+    Request.header("authorization") -> (
+        * None { Body("who?") -> Response(Headers() * Status(401)) }
+        * Some<String> { Body(`hello {String}`) -> Response(Headers() * Status(200)) }
+    )
+}
+"#,
+    )
+    .unwrap();
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let addr = format!("127.0.0.1:{REQUEST_HEADER_TEST_PORT}");
+    let mut child = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&src_path)
+        .arg("--addr")
+        .arg(&addr)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn `canon run --addr`");
+
+    let start = Instant::now();
+    let mut bound = false;
+    while start.elapsed() < Duration::from_secs(10) {
+        if TcpStream::connect(&addr).is_ok() {
+            bound = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if !bound {
+        let _ = child.kill();
+        let out = child.wait_with_output().ok();
+        let diag = out
+            .map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
+            .unwrap_or_default();
+        panic!("server never bound {addr}\n{diag}");
+    }
+
+    let carried = send_header(&addr, "Authorization: Bearer abc");
+    let absent = send_verb(&addr, "GET");
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&workdir);
+    let carried = carried.expect("request with the header");
+    let absent = absent.expect("request without the header");
+
+    assert!(carried.starts_with("HTTP/1.1 200"), "got:\n{carried}");
+    assert!(carried.ends_with("hello Bearer abc"), "got:\n{carried}");
+    assert!(absent.starts_with("HTTP/1.1 401"), "got:\n{absent}");
+    assert!(absent.ends_with("who?"), "got:\n{absent}");
+}
+
 fn send_verb(addr: &str, verb: &str) -> std::io::Result<String> {
     send_line(addr, &format!("{verb} /"))
 }
@@ -443,6 +507,18 @@ fn send_body(addr: &str, body: &str) -> std::io::Result<String> {
             body.len()
         )
         .as_bytes(),
+    )?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    Ok(response)
+}
+
+fn send_header(addr: &str, header: &str) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect(addr)?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.write_all(
+        format!("GET / HTTP/1.1\r\nHost: localhost\r\n{header}\r\nConnection: close\r\n\r\n")
+            .as_bytes(),
     )?;
     let mut response = String::new();
     stream.read_to_string(&mut response)?;
