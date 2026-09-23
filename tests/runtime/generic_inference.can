@@ -1,0 +1,34 @@
+Found<V> = Value<V>
+
+Key<K> = K
+
+Pair<K, V> = Key<K> * Value<V>
+
+Shown = String
+
+Value<V> = V
+
+<K, V>(Key<K> * Pair<K, V>) => Option<Found<V>> {
+    Pair.Key -> Eq(Key) -> (
+        * False { None() }
+        * True { Pair.Value -> Found -> Some }
+    )
+}
+
+(Pair<String, Int>) => Shown {
+    Pair -> Found(Key("a")) -> (
+        * None { "absent" }
+        * Some<Found> { Found -> String }
+    )
+}
+
+Unit => Program {
+    Key("a")
+        -> Pair(Value(7))
+        -> Shown
+        -> Print
+    Key("b")
+        -> Pair(Value(7))
+        -> Shown
+        -> Print
+}

@@ -559,13 +559,6 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonErr
                 (td.name.name.clone(), out)
             }
         };
-        // A minted instantiation keeps its schema alive: `Box<Int>`
-        // reaches the `Box` declaration it was expanded from, so a
-        // schema is dead exactly when no instantiation of it is used.
-        if let Some(head) = crate::monomorph::instantiation_head(&name) {
-            let head = head.to_string();
-            refs.entry(name.clone()).or_default().insert(head);
-        }
         if declared.insert(name.clone()) {
             declared_order.push(name.clone());
         }
@@ -577,6 +570,12 @@ pub fn lint_dead_code(module: &Module, entry_items_start: usize) -> Vec<CanonErr
     while let Some(n) = queue.pop() {
         if !reached.insert(n.clone()) {
             continue;
+        }
+        // A minted instantiation keeps its schema alive: `Box<Int>`
+        // reaches the `Box` declaration it was expanded from, so a
+        // schema is dead exactly when no instantiation of it is used.
+        if let Some(head) = crate::monomorph::instantiation_head(&n) {
+            queue.push(head.to_string());
         }
         if let Some(out) = refs.get(&n) {
             for o in out {
@@ -1158,6 +1157,10 @@ pub fn prune_to_reachable(module: &Module, entry_items_start: usize) -> Module {
         .items
         .iter()
         .enumerate()
+        // A generic function is a schema: only its instantiations are
+        // code. (A family reached by inference, `<K, V>(Map<K, V>) =>
+        // Length`, shares its surface name with the copies it mints.)
+        .filter(|(_, item)| !matches!(item, Item::Function(f) if !f.generic_params.is_empty()))
         .filter(|(i, item)| *i >= entry_items_start || reachable.contains(&item_refs(item).0))
         .map(|(_, item)| item.clone())
         .collect();

@@ -638,14 +638,15 @@ pub fn load_text(path: &Path, source: &str) -> Result<LoadResult> {
         bindgen_dir: None,
     };
     let dir = path.parent().unwrap_or_else(|| Path::new(""));
-    let entry_items_start = load_entry_source(source, dir, &mut ctx, file_id_of(path))?;
+    let mut entry_items_start = load_entry_source(source, dir, &mut ctx, file_id_of(path))?;
     let mut module = Module {
         items: ctx.items,
         span: Span::default(),
     };
     qualify_shadowed(&mut module.items, &ctx.origins)?;
     unnamed_decl_error(&module, &ctx.unnamed_decls)?;
-    let expand_errors = crate::monomorph::expand(&mut module);
+    let (expand_errors, minted) = crate::monomorph::expand(&mut module);
+    entry_items_start += minted;
     crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
         module,
@@ -700,7 +701,7 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
         path: canonical.to_path_buf(),
         source: source.clone(),
     });
-    let entry_items_start = load_entry_source(&source, dir, &mut ctx, file_id_of(&canonical))?;
+    let mut entry_items_start = load_entry_source(&source, dir, &mut ctx, file_id_of(&canonical))?;
     let span = Span::default();
     let mut module = Module {
         items: ctx.items,
@@ -712,7 +713,8 @@ pub fn load_module(entry: &Path) -> Result<LoadResult> {
     // position that expects `T`. Both run before the checker so type
     // comparisons see the post-rewrite tree.
     unnamed_decl_error(&module, &ctx.unnamed_decls)?;
-    let expand_errors = crate::monomorph::expand(&mut module);
+    let (expand_errors, minted) = crate::monomorph::expand(&mut module);
+    entry_items_start += minted;
     crate::checker::auto_await::transform(&mut module);
     Ok(LoadResult {
         module,

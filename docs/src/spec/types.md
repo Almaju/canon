@@ -166,28 +166,36 @@ Same<T> = T
 }
 
 Unit => Program {
-    Box<Int>(42)
+    Box(42)
         -> String
         -> Print
-    Same<String>("echo") -> Print
+    Same("echo") -> Print
 }
 ```
 
 - Parameters are PascalCase (a `<` followed by a lowercase letter opens
   an HTML literal), pairwise distinct, and may not shadow a declared
   type.
-- **Uses spell their arguments.** Outside a generic declaration, a
-  generic name is applied in full — `Box<Int>(42)`,
-  `value -> Inserted<String, Int>(…)` — and the argument count must
-  match the declaration; a bare reference is an error. There is no
-  inference from argument types for user generics yet.
+- **Arguments are written where nothing else gives them.** A call
+  takes its type arguments from the values it is handed — the value
+  piped in and the arguments — by matching them against the callee's
+  inputs through their aliases: `Box(42)` is a `Box<Int>`,
+  `store -> Inserted("a" * 1)` binds `K` and `V` from `store`'s type,
+  and `map -> Length` reaches `<K, V>(Map<K, V>) => Length`, whose
+  result type carries no parameter at all. What the values cannot
+  give is written, and written in full: a root with nothing handed
+  (`Store<String, Int>()`) and every signature. Writing arguments the
+  values give is an error — one spelling per call.
 - **A family shares its parameter names.** Inside a generic body, a
   bare reference to a sibling declaration — the zero-data variant, a
   result newtype, the recursive call — resolves each of the sibling's
   parameters through the enclosing declaration's binding by name
   (`Rest<K, V> = Store<K, V>`; an insertion body writes `Store`,
-  `Entry`, `Rest` bare). A sibling whose parameter the binding doesn't
-  cover must be applied explicitly.
+  `Entry`, `Rest` bare).
+- **A generic-typed value keeps its written name.** An input, an arm
+  or a field of type `Map<String, Int>` is still named `Map` in the
+  body, and a dispatch arm fills its arguments from the value it
+  tests (`* Some<Value> { Value }` on an `Option<Value<String>>`).
 - **Instantiation is expansion.** Each distinct application mints a
   concrete copy of the declaration (and, transitively, of everything
   it references) with the parameters substituted; the copy is ordinary
@@ -196,9 +204,10 @@ Unit => Program {
   instantiations are two distinct types: `Store<String, Int>` and
   `Store<Int, String>` coexist with separate variants and layouts.
 
-There is no constraint syntax: a parameter is bounded by the
-operations its uses require, and each instantiation checks them
-concretely.
+A parameter may carry a bound, `<K: Ord>`: the family it names must
+have a member taking the argument, checked where the parameter is
+bound. Without one, a parameter is bounded by the operations its uses
+require, and each instantiation checks them concretely.
 
 ## Recursive Types
 
