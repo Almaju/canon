@@ -163,6 +163,42 @@ pub fn expand(module: &mut Module) -> (Vec<CanonError>, usize) {
     // application. A parameter neither reaches can never be bound, and
     // would survive into codegen as an unresolved name.
     let mut seed_errors: Vec<CanonError> = Vec::new();
+    // A type defined through nothing but aliases of itself (`Bag = Bag`,
+    // `Bag<T> = Bag<T>`) never reaches a representation; expanding one
+    // would never end. Recursion through a union or product is fine.
+    let alias_of: HashMap<&str, &str> = module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) => match &td.body {
+                TypeExpr::Named { name, .. } => Some((td.name.name.as_str(), name.as_str())),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    for item in &module.items {
+        let Item::TypeDef(td) = item else { continue };
+        let start = td.name.name.as_str();
+        let mut cur = start;
+        for _ in 0..=alias_of.len() {
+            match alias_of.get(cur) {
+                Some(&next) if next == start => {
+                    seed_errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{start}` is defined through itself: a type must reach a primitive, \
+                             a product or a union"
+                        ),
+                        span: td.name.span,
+                    });
+                    type_schemas.remove(start);
+                    break;
+                }
+                Some(&next) => cur = next,
+                None => break,
+            }
+        }
+    }
     for members in func_schemas.values() {
         for schema in members {
             let mut mentioned = HashSet::new();

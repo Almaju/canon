@@ -2836,9 +2836,28 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         }
         Expr::StringLit { .. } => {}
         Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
-        Expr::JsonLit { .. } => {}
-        Expr::HtmlLit { .. } => {}
-        Expr::FormatLit { .. } => {}
+        // A hole is an ordinary expression, checked in the scope around it.
+        Expr::JsonLit { parts, .. } => {
+            for part in parts {
+                if let crate::ast::JsonLitPart::Interp(inner) = part {
+                    check_expr(inner, scope, symbols, errors);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for part in parts {
+                if let crate::ast::HtmlLitPart::Interp(inner) = part {
+                    check_expr(inner, scope, symbols, errors);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for part in parts {
+                if let crate::ast::FormatLitPart::Interp(inner) = part {
+                    check_expr(inner, scope, symbols, errors);
+                }
+            }
+        }
         Expr::Constructor {
             name,
             type_args,
