@@ -888,6 +888,16 @@ fn has_http_entry(module: &OModule) -> bool {
 /// declaration in the user program.
 /// It is validated with `wasmparser` before being returned.
 pub fn generate(module: &OModule) -> Vec<u8> {
+    // A generic function is a schema: only its instantiations are code.
+    let module = &OModule {
+        items: module
+            .items
+            .iter()
+            .filter(|item| !matches!(item, Item::Function(f) if !f.generic_params.is_empty()))
+            .cloned()
+            .collect(),
+        span: module.span,
+    };
     // Branch on the entry-point's world (see the entry-point rule,
     // docs/src/spec/functions.md): a CLI entry implements the world
     // synthesized from its imports, an HTTP entry the vendored

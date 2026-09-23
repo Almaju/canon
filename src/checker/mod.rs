@@ -1157,10 +1157,6 @@ pub fn prune_to_reachable(module: &Module, entry_items_start: usize) -> Module {
         .items
         .iter()
         .enumerate()
-        // A generic function is a schema: only its instantiations are
-        // code. (A family reached by inference, `<K, V>(Map<K, V>) =>
-        // Length`, shares its surface name with the copies it mints.)
-        .filter(|(_, item)| !matches!(item, Item::Function(f) if !f.generic_params.is_empty()))
         .filter(|(i, item)| *i >= entry_items_start || reachable.contains(&item_refs(item).0))
         .map(|(_, item)| item.clone())
         .collect();
