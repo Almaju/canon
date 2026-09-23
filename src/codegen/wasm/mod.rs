@@ -155,6 +155,7 @@ const MEM_HTTP_TRAILERS_WRITER: u32 = 12;
 const MEM_HTTP_RET: u32 = 16; // response.new tuple ret
 const MEM_HTTP_TRAILERS_ZERO: u32 = 40; // `ok(none)`, 16 bytes — all zero, never written
 const MEM_HTTP_BODY_CONSUMED: u32 = 56; // 1 once `body` moved the request into `consume-body`
+const MEM_HTTP_BODY_STAGE: u32 = 60; // a `Chunks` body's stream stage (0 = the body is a string)
 
 // ── Type index constants (pre-defined) ──────────────────────────────
 const TY_PRINT_STR: u32 = 0; // (i32,i32) → ()  — print_str body / waitable.join

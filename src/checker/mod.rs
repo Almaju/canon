@@ -790,11 +790,11 @@ pub const GAP_HTTP_WORLD_IMPORTS: CodegenGap = CodegenGap {
     title: "extern imports in the `wasi:http/service` world",
 };
 
-/// `Stream<T>` beyond `Stream<String>`, and streaming response bodies.
+/// `Stream<T>` beyond `Stream<String>`.
 /// The runtime carries one element type — a string chunk — so a stream
 /// of anything else has no lowering.
 pub const GAP_STREAM: CodegenGap = CodegenGap {
-    title: "`Stream<T>` beyond `Stream<String>` and streaming response bodies",
+    title: "`Stream<T>` beyond `Stream<String>`",
 };
 
 /// Every codegen gap the checker rejects, in the same order as the doc page.

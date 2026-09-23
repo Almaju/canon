@@ -484,58 +484,81 @@ async fn dispatch_request(
     });
     let (wasi_req, io_fut) = Request::from_http(req);
 
-    let mut guard = store.lock().await;
     // The whole request lifecycle — calling the guest, converting the
     // returned response resource, and consuming its body — must happen
     // inside one `run_concurrent` scope. The guest's body/trailers
     // reach us through host-side pipe tasks registered on the store,
     // and those tasks are only polled while `run_concurrent` drives
-    // the store. Collecting the body outside the scope would hang
-    // forever on a body channel nobody is feeding.
-    //
-    // Buffering the full body here caps us at non-streaming responses;
-    // when `Stream<T>` response bodies land (streaming, not yet implemented),
-    // this becomes a keep-driving loop that feeds hyper incrementally.
-    let response = guard
-        .run_concurrent(async |store| -> wasmtime::Result<_> {
-            match service.handle(store, wasi_req).await? {
-                Ok(resp) => {
-                    // `into_http` wires the guest's body stream into a
-                    // hyper-compatible body. The `async { Ok(()) }`
-                    // future is the host-side completion signal; we
-                    // have no late-stage processing to report.
-                    let resp = store.with(|mut s| resp.into_http(&mut s, async { Ok(()) }))?;
-                    let (parts, body) = resp.into_parts();
-                    let collected = body
-                        .collect()
-                        .await
-                        .map_err(|e| wasmtime::Error::msg(format!("guest body: {e:?}")))?;
-                    let body = http_body_util::Full::new(collected.to_bytes())
-                        .map_err(|never| match never {})
-                        .boxed_unsync();
-                    Ok(http::Response::from_parts(parts, body))
+    // the store. So the scope runs on its own task: it hands the head
+    // back as soon as the guest returns and keeps driving the store,
+    // forwarding each body frame to hyper as the guest writes it.
+    let (head_tx, head_rx) = tokio::sync::oneshot::channel();
+    let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(8);
+    tokio::spawn(async move {
+        let mut guard = store.lock().await;
+        let outcome = guard
+            .run_concurrent(async move |store| -> wasmtime::Result<()> {
+                match service.handle(store, wasi_req).await? {
+                    Ok(resp) => {
+                        // `into_http` wires the guest's body stream into a
+                        // hyper-compatible body. The `async { Ok(()) }`
+                        // future is the host-side completion signal; we
+                        // have no late-stage processing to report.
+                        let resp = store.with(|mut s| resp.into_http(&mut s, async { Ok(()) }))?;
+                        let (parts, mut body) = resp.into_parts();
+                        let _ = head_tx.send(Ok(parts));
+                        while let Some(frame) = body.frame().await {
+                            let frame = frame.map_err(|e| {
+                                ErrorCode::InternalError(Some(format!("guest body: {e:?}")))
+                            });
+                            if frame_tx.send(frame).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let _ = head_tx.send(Err(err));
+                    }
                 }
-                Err(err) => Ok(error_response(err)),
-            }
-        })
-        .await
-        .and_then(|inner| inner)
-        .map_err(|e| {
+                Ok(())
+            })
+            .await
+            .and_then(|inner| inner);
+        drop(guard);
+        if let Err(e) = outcome {
             // Hyper reports a failed service closure as an opaque
             // "error from user's Service"; log the underlying wasmtime
             // error (trap, missing export, canonical-ABI violation)
             // here where it's still visible.
             eprintln!("canon run --addr: handler dispatch failed: {e:?}");
-            e
-        })?;
+        }
+        // Drive the request-body-processing future to completion so the
+        // guest sees `Ok(())` (body fully consumed) rather than a dangling
+        // future error.
+        let _ = io_fut.await;
+    });
 
-    // Drive the request-body-processing future to completion so the
-    // guest sees `Ok(())` (body fully consumed) rather than a dangling
-    // future error. We discard the outcome — the guest already
-    // returned its response by this point.
-    let _ = io_fut.await;
-
+    let response = match head_rx.await {
+        Ok(Ok(parts)) => http::Response::from_parts(parts, Frames(frame_rx).boxed_unsync()),
+        Ok(Err(err)) => error_response(err),
+        Err(_) => return Err(wasmtime::Error::msg("handler dispatch failed")),
+    };
     Ok(response)
+}
+
+/// A response body fed frame by frame from the task driving the guest.
+struct Frames(tokio::sync::mpsc::Receiver<Result<hyper::body::Frame<Bytes>, ErrorCode>>);
+
+impl hyper::body::Body for Frames {
+    type Data = Bytes;
+    type Error = ErrorCode;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, ErrorCode>>> {
+        self.0.poll_recv(cx)
+    }
 }
 
 /// A static-asset response for fullstack mode — the web bundle's answer

@@ -10,6 +10,8 @@
 //! component. This test drives the whole pipeline over real TCP and
 //! pins that routing split.
 
+mod common;
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -182,5 +184,7 @@ fn get(addr: &str, path: &str) -> std::io::Result<String> {
     stream.flush()?;
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf)?;
-    Ok(String::from_utf8_lossy(&buf).into_owned())
+    Ok(common::unchunked(
+        String::from_utf8_lossy(&buf).into_owned(),
+    ))
 }

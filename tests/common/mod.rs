@@ -224,3 +224,28 @@ pub fn indent(s: &str, prefix: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+/// A raw HTTP/1.1 response with a chunked body rejoined: the head, a
+/// blank line, and the body bytes — how a streamed response reads once
+/// the wire framing is gone. Any other response comes back as is.
+pub fn unchunked(raw: String) -> String {
+    let Some((head, mut rest)) = raw.split_once("\r\n\r\n") else {
+        return raw;
+    };
+    if !head
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
+        return raw;
+    }
+    let mut body = String::new();
+    while let Some((size, after)) = rest.split_once("\r\n") {
+        let size = usize::from_str_radix(size.trim(), 16).unwrap_or(0);
+        if size == 0 || after.len() < size {
+            break;
+        }
+        body.push_str(&after[..size]);
+        rest = after[size..].trim_start_matches("\r\n");
+    }
+    format!("{head}\r\n\r\n{body}")
+}

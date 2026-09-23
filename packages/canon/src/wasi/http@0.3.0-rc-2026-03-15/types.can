@@ -8,6 +8,8 @@ Response = Handle
 
 Response = (Body * Headers * Status) => Response
 
+Response = (Chunks * Headers * Status) => Response
+
 body = (Request) => Stream<String>
 
 header = (Request * String) => Option<String>
