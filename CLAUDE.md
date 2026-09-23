@@ -99,7 +99,7 @@ same PR; never open standalone docs-sync PRs.
 | `src/lexer/` | Tokenization (`scanner.rs`, `token.rs`) |
 | `src/parser/` | AST construction (`parser.rs`) |
 | `src/checker/` | Type checker + sort-order validation |
-| `src/codegen/` | WebAssembly component gen (`wasm/compile.rs` lowers expressions, `wasm/mod.rs` assembles the self-contained core module, `wasm/stream.rs` is the `Stream<String>` runtime (stage structs pulled through a funcref table), `wasm/component.rs` embeds the program's world and lets `wit-component` emit the component) |
+| `src/codegen/` | WebAssembly component gen (`wasm/compile.rs` lowers expressions and method calls — constructors in `construct.rs`, dispatch in `dispatch.rs`, the builtin vocabulary in `builtins.rs`, list lambdas in `lists.rs`, I/O and concurrency in `effects.rs` — `wasm/mod.rs` assembles the self-contained core module, `wasm/stream.rs` is the `Stream<String>` runtime (stage structs pulled through a funcref table), `wasm/component.rs` embeds the program's world and lets `wit-component` emit the component) |
 | `src/ast.rs` | AST node definitions |
 | `src/error.rs` | Error types and spans |
 | `src/loader.rs` | File/module loading + reference resolution |
