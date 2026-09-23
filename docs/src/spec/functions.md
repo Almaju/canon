@@ -96,7 +96,7 @@ A command is reached only through its message: the value pipes into the
 message, and what rides in the parentheses builds it.
 
 ```text
-Map() -> Insert(Key("a") * Value("1")) -> Remove("a")
+Map<String, String>() -> Insert(Key("a") * Value("1")) -> Remove("a")
 todos -> Clear
 Node.Rest -> Insert(Insert)
 ```

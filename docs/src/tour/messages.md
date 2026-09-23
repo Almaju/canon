@@ -3,18 +3,18 @@
 What do you call an operation that takes a `Map` and returns a `Map`?
 In Canon, nothing — functions have no names, and the types of such an
 operation cannot name it either: insert, remove, and update all share
-`Map * String => Map`. So a **command** — an arrow that returns one of
+`Map<K, V> * K => Map<K, V>`. So a **command** — an arrow that returns one of
 its own inputs — takes exactly one other input, its **message**: a type
 declared for the operation, holding whatever it needs.
 
 ```text
-Insert = Key * Value
+Insert<K, V> = Key<K> * Value<V>
 
-Remove = String
+Remove<K> = K
 
-Map * Insert => Map { ... }
+<K: Ord, V>(Insert<K, V> * Map<K, V>) => Map<K, V> { ... }
 
-Map * Remove => Map { ... }
+<K, V>(Map<K, V> * Remove<K>) => Map<K, V> { ... }
 ```
 
 A command is applied by piping the value into its message. The message
@@ -23,7 +23,7 @@ receiver's type, so chaining is free:
 
 ```canon,run
 Unit => Program {
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("a") * Value("1"))
         -> Remove("b")
@@ -39,11 +39,13 @@ app's update a fold over its messages
 ([Worlds](./worlds.md)). A message with no payload is a `Unit` newtype
 (`Clear = Unit`, applied as `-> Clear`), and a message is never a *part*
 of the value it applies to — `Key` is a part of `Map`, so `Map * Key =>
-Map` is rejected: the name must be the operation's own.
+Map` is rejected: the name must be the operation's own. The message's
+type arguments come from what rides in the parentheses (`Remove("b")`
+is a `Remove<String>`), never from the value it is applied to.
 
 Operations that produce something *new* keep naming it by its type, as
 every other constructor does: `Map => Length`, `Map * Key =>
 Option<Value>`. Shared vocabulary needs no coordination either way —
 `Map`, `Set`, `String`, and `List` each declare the same `Length = Int`
 and contribute their own arrow to it, and `Map` and `Set` share the one
-`Remove = String` message.
+`Remove<T> = T` message.

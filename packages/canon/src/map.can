@@ -1,47 +1,47 @@
 Contains = Bool
 
-Insert = Key * Value
+Insert<K, V> = Key<K> * Value<V>
 
-Key = String
+Key<K> = K
 
-Keys = List<Key>
+Keys<K> = List<Key<K>>
 
 Length = Int
 
-Map = Empty + Node
+Map<K, V> = Empty + Node<K, V>
 
-Node = Key * Rest * Value
+Node<K, V> = Key<K> * Rest<K, V> * Value<V>
 
-Remove = String
+Remove<K> = K
 
-Rest = Map
+Rest<K, V> = Map<K, V>
 
-Value = String
+Value<V> = V
 
-Values = List<Value>
+Values<V> = List<Value<V>>
 
-Map * Key => Contains {
+<K, V>(Key<K> * Map<K, V>) => Contains {
     Map -> Value(Key) -> (
         * None { False() }
         * Some<Value> { True() }
     )
 }
 
-Map => Keys {
+<K, V>(Map<K, V>) => Keys<K> {
     Map -> (
         * Empty { List() }
         * Node { List(Node.Key) -> Joined(Node.Rest -> Keys) }
     )
 }
 
-Map => Length {
+<K, V>(Map<K, V>) => Length {
     Map -> (
         * Empty { 0 }
         * Node { Node.Rest -> Length -> Sum(1) }
     )
 }
 
-Map * Insert => Map {
+<K: Ord, V>(Insert<K, V> * Map<K, V>) => Map<K, V> {
     Map -> (
         * Empty { Empty() -> Node(Insert.Key * Insert.Value) }
         * Node {
@@ -54,7 +54,7 @@ Map * Insert => Map {
     )
 }
 
-Map * Remove => Map {
+<K, V>(Map<K, V> * Remove<K>) => Map<K, V> {
     Map -> (
         * Empty { Empty() }
         * Node {
@@ -66,11 +66,11 @@ Map * Remove => Map {
     )
 }
 
-Unit => Map {
+<K, V>(Unit) => Map<K, V> {
     Empty()
 }
 
-Map * Key => Option<Value> {
+<K, V>(Key<K> * Map<K, V>) => Option<Value<V>> {
     Map -> (
         * Empty { None() }
         * Node {
@@ -82,7 +82,7 @@ Map * Key => Option<Value> {
     )
 }
 
-Map => Values {
+<K, V>(Map<K, V>) => Values<V> {
     Map -> (
         * Empty { List() }
         * Node { List(Node.Value) -> Joined(Node.Rest -> Values) }

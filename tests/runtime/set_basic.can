@@ -1,33 +1,33 @@
 Unit => Program {
-    Set()
+    Set<String>()
         -> Add("b")
         -> Add("a")
         -> Add("b")
         -> Length
         -> Print
-    Set()
+    Set<String>()
         -> Add("x")
         -> Contains("x")
         -> Print
-    Set()
+    Set<String>()
         -> Add("x")
         -> Contains("y")
         -> Print
-    Set()
+    Set<String>()
         -> Add("b")
         -> Add("c")
         -> Add("a")
-        -> List
+        -> Items
         -> Json
         -> Print
-    Set()
+    Set<String>()
         -> Add("a")
         -> Add("b")
         -> Remove("a")
-        -> List
+        -> Items
         -> Json
         -> Print
-    Set()
+    Set<String>()
         -> Add("a")
         -> Remove("missing")
         -> Length

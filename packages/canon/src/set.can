@@ -1,46 +1,48 @@
-Add = String
+Add<T> = T
 
 Contains = Bool
 
-Entry = Item * Remaining
+Entry<T> = Item<T> * Remaining<T>
 
-Item = String
+Item<T> = T
+
+Items<T> = List<Item<T>>
 
 Length = Int
 
-Remaining = Set
+Remaining<T> = Set<T>
 
-Remove = String
+Remove<T> = T
 
-Set = Absent + Entry
+Set<T> = Absent + Entry<T>
 
-Set * String => Contains {
+<T>(Set<T> * T) => Contains {
     Set -> (
         * Absent { False() }
         * Entry {
-            Entry.Item -> Eq(String) -> (
-                * False { Entry.Remaining -> Contains(String) }
+            Entry.Item -> Eq(T) -> (
+                * False { Entry.Remaining -> Contains(T) }
                 * True { True() }
             )
         }
     )
 }
 
-Set => Length {
+<T>(Set<T>) => Length {
     Set -> (
         * Absent { 0 }
         * Entry { Entry.Remaining -> Length -> Sum(1) }
     )
 }
 
-Set => List<Item> {
+<T>(Set<T>) => Items<T> {
     Set -> (
         * Absent { List() }
-        * Entry { List(Entry.Item) -> Joined(Entry.Remaining -> List) }
+        * Entry { List(Entry.Item) -> Joined(Entry.Remaining -> Items) }
     )
 }
 
-Set * Add => Set {
+<T: Ord>(Add<T> * Set<T>) => Set<T> {
     Set -> (
         * Absent { Absent() -> Entry(Add) }
         * Entry {
@@ -53,7 +55,7 @@ Set * Add => Set {
     )
 }
 
-Set * Remove => Set {
+<T>(Remove<T> * Set<T>) => Set<T> {
     Set -> (
         * Absent { Absent() }
         * Entry {
@@ -65,6 +67,6 @@ Set * Remove => Set {
     )
 }
 
-Unit => Set {
+<T>(Unit) => Set<T> {
     Absent()
 }

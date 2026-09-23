@@ -1,0 +1,25 @@
+Box = Tag + Wrapped
+
+Found = Bool
+
+Key = String
+
+Tag = Unit
+
+Wrapped = Key
+
+Key * Box => Found {
+    Box -> (
+        * Tag { False() }
+        * Wrapped { Wrapped -> Eq(Key) }
+    )
+}
+
+Unit => Program {
+    Key("a")
+        -> Wrapped
+        -> Box
+        -> Found("a")
+        -> String
+        -> Print
+}

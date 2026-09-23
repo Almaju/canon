@@ -1,7 +1,7 @@
 SetContainsFindsAdd = TestResult
 
 Unit => SetContainsFindsAdd {
-    Set()
+    Set<String>()
         -> Add("x")
         -> Contains("x")
         -> TestResult
@@ -10,7 +10,7 @@ Unit => SetContainsFindsAdd {
 SetContainsFindsAfterRecursingPastEntries = TestResult
 
 Unit => SetContainsFindsAfterRecursingPastEntries {
-    Set()
+    Set<String>()
         -> Add("a")
         -> Add("b")
         -> Add("c")
@@ -21,7 +21,7 @@ Unit => SetContainsFindsAfterRecursingPastEntries {
 SetContainsRejectsAbsent = TestResult
 
 Unit => SetContainsRejectsAbsent {
-    Set()
+    Set<String>()
         -> Add("x")
         -> Contains("y")
         -> Not
@@ -31,7 +31,7 @@ Unit => SetContainsRejectsAbsent {
 SetContainsRejectsAfterRecursingThroughEntries = TestResult
 
 Unit => SetContainsRejectsAfterRecursingThroughEntries {
-    Set()
+    Set<String>()
         -> Add("a")
         -> Add("b")
         -> Add("c")
@@ -43,7 +43,7 @@ Unit => SetContainsRejectsAfterRecursingThroughEntries {
 SetDedupesInserts = TestResult
 
 Unit => SetDedupesInserts {
-    Set()
+    Set<String>()
         -> Add("b")
         -> Add("a")
         -> Add("b")
@@ -55,11 +55,11 @@ Unit => SetDedupesInserts {
 SetListSorted = TestResult
 
 Unit => SetListSorted {
-    Set()
+    Set<String>()
         -> Add("b")
         -> Add("c")
         -> Add("a")
-        -> List
+        -> Items
         -> Json
         -> Eq("[a,b,c]")
         -> TestResult
@@ -68,7 +68,7 @@ Unit => SetListSorted {
 SetRemoveAbsentIsNoOp = TestResult
 
 Unit => SetRemoveAbsentIsNoOp {
-    Set()
+    Set<String>()
         -> Add("a")
         -> Remove("missing")
         -> Length
@@ -79,11 +79,11 @@ Unit => SetRemoveAbsentIsNoOp {
 SetRemoveDropsValue = TestResult
 
 Unit => SetRemoveDropsValue {
-    Set()
+    Set<String>()
         -> Add("a")
         -> Add("b")
         -> Remove("a")
-        -> List
+        -> Items
         -> Json
         -> Eq("[b]")
         -> TestResult
@@ -92,11 +92,11 @@ Unit => SetRemoveDropsValue {
 SetRemoveRecursesPastNonMatchingItem = TestResult
 
 Unit => SetRemoveRecursesPastNonMatchingItem {
-    Set()
+    Set<String>()
         -> Add("a")
         -> Add("b")
         -> Remove("b")
-        -> List
+        -> Items
         -> Json
         -> Eq("[a]")
         -> TestResult

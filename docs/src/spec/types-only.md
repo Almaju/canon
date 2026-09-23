@@ -89,13 +89,13 @@ string -> Substring(From(1) * To(4))           # execute
 - **Accessors** construct the accessed thing: `map -> Value("k")?`
   reads "the Value in this Map at this key, which might not exist."
 - **Commands** (output type = an input type, the one place types
-  underdetermine the operation) take a **message**: `Insert = Key *
-  Value`, `Map * Insert => Map`. Checked, not conventional: an arrow
+  underdetermine the operation) take a **message**: `Insert<K, V> =
+  Key<K> * Value<V>`, `Insert<K, V> * Map<K, V> => Map<K, V>`. Checked, not conventional: an arrow
   constructing one of its inputs must take exactly one other input, a
   declared, non-primitive type that is not a part of the value it
   applies to. A command is reached only by piping the value into its
   message, so chaining is free --
-  `Map() -> Insert(Key("a") * Value("1")) -> Remove("a")` -- and the
+  `Map<String, String>() -> Insert(Key("a") * Value("1")) -> Remove("a")` -- and the
   message is data that can be stored and applied later.
 - **Effects produce evidence**: a write returns `Written = Path`; a
   function accepting `(Written)` requires proof the write happened
