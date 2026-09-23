@@ -1,52 +1,58 @@
 Unit => Program {
-    Map() -> Insert(Key("b") * Value("banana")) -> Insert(Key("a") * Value("apple")) -> Value("a") -> (
+    Map<String, String>()
+        -> Insert(Key("b") * Value("banana"))
+        -> Insert(Key("a") * Value("apple"))
+        -> Value("a") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map() -> Insert(Key("k") * Value("v1")) -> Insert(Key("k") * Value("v2")) -> Value("k") -> (
+    Map<String, String>()
+        -> Insert(Key("k") * Value("v1"))
+        -> Insert(Key("k") * Value("v2"))
+        -> Value("k") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map() -> Insert(Key("a") * Value("1")) -> Value("missing") -> (
+    Map<String, String>() -> Insert(Key("a") * Value("1")) -> Value("missing") -> (
         * None => Unit { "none" -> Print }
         * Some<String> => Unit { String -> Print }
     )
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Length
         -> Print
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Remove("a")
         -> Length
         -> Print
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Keys
         -> Json
         -> Print
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Values
         -> Json
         -> Print
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Remove("missing")
         -> Length
         -> Print
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("c") * Value("3"))
         -> Insert(Key("a") * Value("1"))
         -> Keys
         -> Json
         -> Print
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("c") * Value("3"))
         -> Insert(Key("a") * Value("1"))

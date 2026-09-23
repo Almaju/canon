@@ -82,7 +82,7 @@ The full rule, case by case:
   `1 -> Sum(2)` and `"hello" -> Print` stay pipes. The set shrinks as
   builtins migrate to stdlib newtypes (`Maximum(3 * 5)` already
   constructs).
-- **Zero-input calls stay prefix** -- `Now()`, `Map()`, `None()`.
+- **Zero-input calls stay prefix** -- `Now()`, `Map<String, Int>()`, `None()`.
 - **A wide product argument wraps, one component per line.** A `*`
   continuation may open a line inside a call's parentheses; the
   formatter puts it there when the single line would overflow, and

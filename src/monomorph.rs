@@ -66,6 +66,11 @@ struct Expander {
     /// of each generic-typed input → its instantiated flat name (`Map`
     /// → `Map<String, Int>` for a `(Map<String, Int>) => …` input).
     locals: HashMap<String, String>,
+    /// Message types: the input a command takes beside the value it
+    /// changes (`Insert` in `Insert<K, V> * Map<K, V> => Map<K, V>`). A
+    /// pipe into one keeps the value's type, and its type arguments come
+    /// from the arguments alone.
+    messages: HashSet<String>,
     /// The result type of each call inference resolved to a family
     /// member, by the call name's span — what the member returns, which
     /// may wrap the name the call spells (`Option<Value<String>>`).
@@ -214,6 +219,7 @@ pub fn expand(module: &mut Module) -> (Vec<CanonError>, usize) {
         aliases,
         applications: HashMap::new(),
         locals: HashMap::new(),
+        messages: module.items.iter().filter_map(message_of).collect(),
         call_results: HashMap::new(),
         done: HashSet::new(),
         queue: VecDeque::new(),
@@ -253,6 +259,28 @@ pub fn expand(module: &mut Module) -> (Vec<CanonError>, usize) {
     let minted = ex.minted.len();
     module.items.splice(0..0, ex.minted);
     (ex.errors, minted)
+}
+
+/// The message a command takes: of a declaration's two inputs, the one
+/// that is not the type it constructs (heads compared, so a generic
+/// command counts).
+fn message_of(item: &Item) -> Option<String> {
+    let Item::Function(f) = item else {
+        return None;
+    };
+    let constructed = head_of(constructed(&f.return_ty)?)?;
+    let heads: Vec<&str> = f
+        .receiver
+        .iter()
+        .filter(|_| f.name.name != "Self")
+        .map(|r| r.name.as_str())
+        .chain(f.params.iter().filter_map(|p| head_of(&p.ty)))
+        .collect();
+    match heads.as_slice() {
+        [a, b] if *a == constructed && *b != constructed => Some(b.to_string()),
+        [a, b] if *b == constructed && *a != constructed => Some(a.to_string()),
+        _ => None,
+    }
 }
 
 /// Whether a family member constructs exactly its type's application
@@ -593,7 +621,8 @@ impl Expander {
                 for a in args.iter_mut() {
                     self.rewrite_expr(a, binding);
                 }
-                let handed = self.handed_types(Some(receiver), args);
+                let receiver = (!self.messages.contains(&method.name)).then_some(&**receiver);
+                let handed = self.handed_types(receiver, args);
                 self.resolve_call(&mut method.name, type_args, handed, binding, method.span);
             }
             Expr::Match {
@@ -922,6 +951,11 @@ impl Expander {
                 "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Joined" => {
                     self.static_type(receiver)
                 }
+                name if head_of(&named(name, Vec::new()))
+                    .is_some_and(|h| self.messages.contains(h)) =>
+                {
+                    self.static_type(receiver)
+                }
                 name if crate::ast::is_type_name(name) => {
                     Some(self.structured(&named(name, Vec::new())))
                 }
@@ -961,6 +995,7 @@ impl Expander {
         concrete: &TypeExpr,
         params: &[String],
         binding: &mut HashMap<String, TypeExpr>,
+        loose: bool,
     ) -> bool {
         let TypeExpr::Named {
             name: p_name,
@@ -987,7 +1022,7 @@ impl Expander {
                     if p_args
                         .iter()
                         .zip(generics)
-                        .all(|(p, c)| self.unify(p, c, params, &mut trial))
+                        .all(|(p, c)| self.unify(p, c, params, &mut trial, loose))
                     {
                         *binding = trial;
                         return true;
@@ -996,30 +1031,68 @@ impl Expander {
             }
             match self.unalias(&cur) {
                 Some(next) => cur = next,
-                None => return false,
+                None => break,
             }
         }
-        false
+        // Loosely, the pattern walks its own aliases too: a `Key<K>`
+        // input (`Key<K> = K`) takes a plain `String`.
+        loose
+            && self
+                .unalias_pattern(pattern)
+                .is_some_and(|p| self.unify(&p, concrete, params, binding, loose))
     }
 
-    /// Bind as many of `params` as the handed values reach through
-    /// `patterns`: each value lands in the first unused pattern it fits.
-    /// `Some` once every parameter is bound.
+    /// One alias step of a pattern, its own parameters left in place.
+    fn unalias_pattern(&self, pattern: &TypeExpr) -> Option<TypeExpr> {
+        let TypeExpr::Named { name, generics, .. } = pattern else {
+            return None;
+        };
+        let body = match self.type_schemas.get(name) {
+            Some(td) if td.generic_params.len() == generics.len() => {
+                substitute(&td.body, &make_binding(&td.generic_params, generics))
+            }
+            _ => self.aliases.get(name)?.clone(),
+        };
+        matches!(body, TypeExpr::Named { .. }).then_some(body)
+    }
+
+    /// Bind `params` from the handed values through `patterns`, `Some`
+    /// once every parameter is bound. Values land by their own type first — a pattern naming the
+    /// value's type, not a bare parameter — and only then loosely, where
+    /// a bare parameter or an alias of the value's type takes it. With
+    /// `every`, a value that lands nowhere rejects the member: a call
+    /// hands a member exactly its inputs.
     fn bind_from(
         &self,
         params: &[String],
         patterns: &[TypeExpr],
         values: &[TypeExpr],
+        every: bool,
     ) -> Option<Vec<TypeExpr>> {
         let mut binding = HashMap::new();
         let mut used = vec![false; patterns.len()];
-        for value in values {
-            for (i, pattern) in patterns.iter().enumerate() {
-                if !used[i] && self.unify(pattern, value, params, &mut binding) {
-                    used[i] = true;
-                    break;
+        let mut landed = vec![false; values.len()];
+        for loose in [false, true] {
+            for (v, value) in values.iter().enumerate() {
+                if landed[v] {
+                    continue;
+                }
+                for (i, pattern) in patterns.iter().enumerate() {
+                    let bare = matches!(pattern, TypeExpr::Named { name, generics, .. }
+                        if generics.is_empty() && params.contains(name));
+                    if used[i] || (bare && !loose) {
+                        continue;
+                    }
+                    if self.unify(pattern, value, params, &mut binding, loose) {
+                        used[i] = true;
+                        landed[v] = true;
+                        break;
+                    }
                 }
             }
+        }
+        if every && landed.contains(&false) {
+            return None;
         }
         params.iter().map(|p| binding.get(p).cloned()).collect()
     }
@@ -1036,7 +1109,7 @@ impl Expander {
                 .map(|g| g.name.name.clone())
                 .collect();
             let patterns: Vec<TypeExpr> = schema.params.iter().map(|p| p.ty.clone()).collect();
-            let Some(args) = self.bind_from(&params, &patterns, values) else {
+            let Some(args) = self.bind_from(&params, &patterns, values, true) else {
                 continue;
             };
             let result = substitute(
@@ -1063,12 +1136,16 @@ impl Expander {
             .iter()
             .map(|g| g.name.name.clone())
             .collect();
-        let patterns = match &schema.body {
-            TypeExpr::Product { fields, .. } => fields.clone(),
-            body @ TypeExpr::Named { .. } => vec![body.clone()],
+        // A value already of this type relabels as itself; otherwise the
+        // values fill the body.
+        let itself = named(name, params.iter().map(|p| named(p, Vec::new())).collect());
+        let mut patterns = vec![itself];
+        match &schema.body {
+            TypeExpr::Product { fields, .. } => patterns.extend(fields.iter().cloned()),
+            body @ TypeExpr::Named { .. } => patterns.push(body.clone()),
             _ => return None,
-        };
-        let args = self.bind_from(&params, &patterns, values)?;
+        }
+        let args = self.bind_from(&params, &patterns, values, false)?;
         Some(self.enqueue(name, &args))
     }
 
@@ -1131,7 +1208,12 @@ impl Expander {
                 .insert((span.file, span.start, span.end), result);
             return;
         }
-        if !binding.is_empty() && self.is_generic_decl(name) {
+        // A declaration merged across files keeps one file's parameter
+        // names, so the binding covers it only when those names match.
+        let covered = self
+            .decl_params(name)
+            .is_some_and(|ps| ps.iter().all(|p| binding.contains_key(p)));
+        if covered {
             self.rewrite_expr_name(name, binding, span);
             return;
         }
@@ -1153,6 +1235,7 @@ impl Expander {
             aliases: self.aliases.clone(),
             applications: self.applications.clone(),
             locals: HashMap::new(),
+            messages: self.messages.clone(),
             call_results: HashMap::new(),
             done: HashSet::new(),
             queue: VecDeque::new(),
@@ -1250,13 +1333,11 @@ fn substitute(ty: &TypeExpr, binding: &HashMap<String, TypeExpr>) -> TypeExpr {
 }
 
 fn sort_canonical(ty: &mut TypeExpr) {
+    // A package-qualified name sorts as its plain name would.
+    let key = |t: &TypeExpr| crate::ast::plain_name(&type_expr_canonical(t)).to_string();
     match ty {
-        TypeExpr::Union { variants, .. } => {
-            variants.sort_by_cached_key(type_expr_canonical);
-        }
-        TypeExpr::Product { fields, .. } => {
-            fields.sort_by_cached_key(type_expr_canonical);
-        }
+        TypeExpr::Union { variants, .. } => variants.sort_by_cached_key(key),
+        TypeExpr::Product { fields, .. } => fields.sort_by_cached_key(key),
         _ => {}
     }
 }

@@ -104,7 +104,7 @@ fn a_type_page_carries_its_definition_constructors_and_pipe_menu() {
 
     let map = fs::read_to_string(out.join("type/Map.html")).expect("Map page");
     assert!(
-        map.contains("Map = <a href=\"../type/Empty.html\">Empty</a> + "),
+        map.contains("Map&lt;K, V&gt; = <a href=\"../type/Empty.html\">Empty</a> + "),
         "Map's definition is missing"
     );
     assert!(map.contains("Variants"), "Map's variants are missing");
@@ -278,8 +278,8 @@ fn a_module_page_lists_its_declarations() {
     let map = fs::read_to_string(out.join("module/map.html")).expect("map module page");
     assert!(map.contains("Declarations"), "no declaration list");
     assert!(
-        map.contains("<a href=\"../type/Map.html\">Map</a> * <a href=\"../type/Insert.html\">Insert</a> =&gt; <a href=\"../type/Map.html\">Map</a>"),
-        "`Map * Insert => Map` is missing from map's declarations"
+        map.contains("<a href=\"../type/Insert.html\">Insert</a>&lt;K, V&gt; * <a href=\"../type/Map.html\">Map</a>&lt;K, V&gt; =&gt; <a href=\"../type/Map.html\">Map</a>&lt;K, V&gt;"),
+        "`Insert<K, V> * Map<K, V> => Map<K, V>` is missing from map's declarations"
     );
 }
 

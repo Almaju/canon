@@ -228,9 +228,10 @@ Value = Int
 There is no user-visible `Box<T>`; the compiler chooses the indirection.
 
 The stdlib's `Map` and `Set` (`canon/Map`, `canon/Set`) are
-recursive unions in exactly this shape -- `Map = Empty + Node` with
-`Node = Key * Rest * Value` and `Rest = Map` -- and double as reference
-code for the pattern.
+recursive unions in exactly this shape -- `Map<K, V> = Empty +
+Node<K, V>` with `Node<K, V> = Key<K> * Rest<K, V> * Value<V>` and
+`Rest<K, V> = Map<K, V>` -- and double as reference code for the
+pattern.
 
 ## Validated Constructors
 
@@ -321,8 +322,8 @@ Two escape hatches exist, both deliberate:
   case that recursive builders grow from via `-> Joined(...)` /
   `-> Appended(...)`.
 - A type may declare its own nullary [validated
-  constructor](#validated-constructors): `Unit => Map { Empty() }`
-  in `canon/Map` makes `Map()` the empty map.
+  constructor](#validated-constructors): `<K, V>(Unit) => Map<K, V> {
+  Empty() }` in `canon/Map` makes `Map<String, Int>()` the empty map.
 
 ## No Signature Inference
 

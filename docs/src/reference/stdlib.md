@@ -130,25 +130,25 @@ as evidence — so a write chains straight into a re-open, as above.
 ## Map and Set
 
 Sorted, immutable collections in **pure Canon** — recursive unions
-walked by dispatch and recursion (`String` keys and values until
-stdlib generics land). Every query is a constructor named after what it
+walked by dispatch and recursion, generic over their keys and values
+(`Map<K: Ord, V>`, `Set<T: Ord>`). Every query is a constructor named after what it
 produces and every command a message (`Insert`, `Remove`, `Add`);
 iteration order is alphabetical by key, whatever the insertion order
 (of course it is).
 
 ```canon
 Unit => Program {
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("a") * Value("1"))
         -> Keys
         -> Json
         -> Print
-    Map() -> Insert(Key("k") * Value("v")) -> Value("k") -> (
+    Map<String, String>() -> Insert(Key("k") * Value("v")) -> Value("k") -> (
         * None => Unit { "absent" -> Print }
         * Some<Value> => Unit { Value -> Print }
     )
-    Set()
+    Set<String>()
         -> Add("b")
         -> Add("a")
         -> Add("b")
@@ -157,11 +157,13 @@ Unit => Program {
 }
 ```
 
-Map: messages `Insert` (`= Key * Value`) and `Remove` (`= String`);
+Map: messages `Insert` (`= Key<K> * Value<V>`) and `Remove` (`= K`);
 queries `Value` (lookup, `Option`), `Contains`, `Keys`, `Values`,
-`Length`. Set: messages `Add` and `Remove` (both `= String`, `Remove`
-shared with `Map`); queries `Contains`, `Length`, `List` (members,
-alphabetically). Both double as reference
+`Length`. Set: messages `Add` and `Remove` (both `= T`, `Remove`
+shared with `Map`); queries `Contains`, `Length`, `Items` (members,
+in order). The empty collection is the one place the type arguments
+are written (`Map<String, Int>()`); every call after takes them from
+the value it is handed. Both double as reference
 code for [recursive types](../spec/types.md#recursive-types).
 
 ## Conversions: `Int`, `Byte`, `Case`

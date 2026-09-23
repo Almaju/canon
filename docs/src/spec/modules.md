@@ -59,7 +59,7 @@ Key = Int
 
 Unit => Program {
     Key(7) -> Print
-    Map()
+    Map<String, String>()
         -> Insert(canon.Key("a") * Value("1"))
         -> Keys
         -> Json

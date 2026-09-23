@@ -2536,23 +2536,26 @@ impl<'m> WasmGen<'m> {
             .map(|e| self.infer_ctor_arg_type_name(e))
             .collect();
         let order = self
-            .assign_inputs(input_types, &value_names, true)
-            .or_else(|| self.assign_inputs(input_types, &value_names, false))?;
+            .assign_inputs(input_types, &value_names, Fit::Exact)
+            .or_else(|| self.assign_inputs(input_types, &value_names, Fit::Widens))
+            .or_else(|| self.assign_inputs(input_types, &value_names, Fit::Base))?;
         if order.iter().enumerate().all(|(i, &vi)| i == vi) {
             return None;
         }
         Some(order.into_iter().map(|vi| inputs[vi].clone()).collect())
     }
 
-    /// Bind each declared component to an input index. With
-    /// `exact_only`, a value matches its own type (or its union);
-    /// without, it also matches anything on its alias chain, and a
-    /// component two values could fill fails the whole assignment.
+    /// Bind each declared component to an input index. `Fit::Exact`
+    /// matches a value to its own type (or its union); `Fit::Widens`
+    /// also to anything on its alias chain; `Fit::Base` also to a
+    /// newtype of it — the untagged literal the checker lets fill a
+    /// `Key = String` component (`map -> Contains("a")`). Past `Exact`,
+    /// a component two values could fill fails the whole assignment.
     fn assign_inputs(
         &self,
         input_types: &[String],
         value_names: &[Option<String>],
-        exact_only: bool,
+        fit: Fit,
     ) -> Option<Vec<usize>> {
         let mut used = vec![false; value_names.len()];
         let mut order = Vec::with_capacity(input_types.len());
@@ -2562,13 +2565,15 @@ impl<'m> WasmGen<'m> {
                     !used[vi]
                         && value_names[vi].as_ref().is_some_and(|nm| {
                             self.field_match_score(nm, want) == 2
-                                || (!exact_only
+                                || (fit != Fit::Exact
                                     && self.collect_alias_chain(nm).iter().any(|n| n == want))
+                                || (fit == Fit::Base
+                                    && self.collect_alias_chain(want).iter().any(|n| n == nm))
                         })
                 })
                 .collect();
             let vi = *candidates.first()?;
-            if !exact_only && candidates.len() > 1 {
+            if fit != Fit::Exact && candidates.len() > 1 {
                 return None;
             }
             used[vi] = true;
@@ -8711,4 +8716,12 @@ fn syntactic_type_name(e: &Expr) -> Option<&str> {
         } => Some(&method.name),
         _ => None,
     }
+}
+
+/// How loosely `assign_inputs` lets a value fill a declared component.
+#[derive(Clone, Copy, PartialEq)]
+enum Fit {
+    Exact,
+    Widens,
+    Base,
 }

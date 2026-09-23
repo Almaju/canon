@@ -281,7 +281,7 @@ These are the non-obvious rules the code won't spell out. Together with
   (exact newtype first, then shared base, then declaration order as a floor). So
   `canon check --fix` may sort a constructor's inputs and codegen still routes
   them — **but only when every input carries its type syntactically**.
-  Consequences: same-underlying-type parts (map's `Key`/`Value`, both `String`;
+  Consequences: same-underlying-type parts (a `Map<String, String>`'s `Key`/`Value`;
   `Padded`'s `Int`/`Width`, both `Int`) must be distinct newtypes *and* tagged at
   the call site — `Padded(Width(4))`, `Insert(Key("a") * Value("1"))`. The
   checker rejects a construction where written order would decide an untagged
@@ -348,8 +348,8 @@ treatment in `docs/src/spec/types-only.md`.
   a receiver-carrying one must be a declared shape or a newtype of its return; an
   arrow whose constructed type appears in its own input is a **command** and must
   take exactly one other input, its **message** — a declared non-primitive type
-  that is not a part of the receiver (`Insert = Key * Value`, `Map * Insert =>
-  Map`), applied by piping the value into it (`map -> Insert(…)`; `Clear = Unit`
+  that is not a part of the receiver (`Insert<K, V> = Key<K> * Value<V>`,
+  `Insert<K, V> * Map<K, V> => Map<K, V>`), applied by piping the value into it (`map -> Insert(…)`; `Clear = Unit`
   for a payload-less message, applied as `-> Clear`). Commands live in their own
   tables (`SymbolTable::messages`, codegen `commands`), never in the constructor
   family, and `map -> Map(Insert(…))` is an error. **Shapes are rejected outright** —

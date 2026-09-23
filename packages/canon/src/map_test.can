@@ -1,7 +1,7 @@
 MapContainsFindsKey = TestResult
 
 Unit => MapContainsFindsKey {
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Contains("a")
         -> TestResult
@@ -10,7 +10,7 @@ Unit => MapContainsFindsKey {
 MapContainsRejectsAbsent = TestResult
 
 Unit => MapContainsRejectsAbsent {
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Contains("z")
         -> Not
@@ -20,7 +20,7 @@ Unit => MapContainsRejectsAbsent {
 MapInsertRecursesPastMultipleNonMatchingKeys = TestResult
 
 Unit => MapInsertRecursesPastMultipleNonMatchingKeys {
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("c") * Value("3"))
@@ -34,7 +34,7 @@ Unit => MapInsertRecursesPastMultipleNonMatchingKeys {
 MapKeysSorted = TestResult
 
 Unit => MapKeysSorted {
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("a") * Value("1"))
         -> Keys
@@ -46,7 +46,7 @@ Unit => MapKeysSorted {
 MapLengthCountsKeys = TestResult
 
 Unit => MapLengthCountsKeys {
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("a") * Value("1"))
         -> Length
@@ -57,7 +57,10 @@ Unit => MapLengthCountsKeys {
 MapReinsertOverwrites = TestResult
 
 Unit => MapReinsertOverwrites {
-    Map() -> Insert(Key("a") * Value("1")) -> Insert(Key("a") * Value("2")) -> Value("a") -> (
+    Map<String, String>()
+        -> Insert(Key("a") * Value("1"))
+        -> Insert(Key("a") * Value("2"))
+        -> Value("a") -> (
         * None { Fail("key a should be present") }
         * Some<Value> { Value -> Eq("2") -> TestResult }
     )
@@ -66,7 +69,7 @@ Unit => MapReinsertOverwrites {
 MapRemoveDropsKey = TestResult
 
 Unit => MapRemoveDropsKey {
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Remove("a")
@@ -79,7 +82,7 @@ Unit => MapRemoveDropsKey {
 MapRemoveOnEmptyIsNoOp = TestResult
 
 Unit => MapRemoveOnEmptyIsNoOp {
-    Map()
+    Map<String, String>()
         -> Remove("a")
         -> Length
         -> Eq(0)
@@ -89,7 +92,7 @@ Unit => MapRemoveOnEmptyIsNoOp {
 MapRemoveRecursesPastNonMatchingKey = TestResult
 
 Unit => MapRemoveRecursesPastNonMatchingKey {
-    Map()
+    Map<String, String>()
         -> Insert(Key("a") * Value("1"))
         -> Insert(Key("b") * Value("2"))
         -> Remove("b")
@@ -102,7 +105,7 @@ Unit => MapRemoveRecursesPastNonMatchingKey {
 MapValueAbsent = TestResult
 
 Unit => MapValueAbsent {
-    Map() -> Insert(Key("a") * Value("1")) -> Value("z") -> (
+    Map<String, String>() -> Insert(Key("a") * Value("1")) -> Value("z") -> (
         * None { Pass() }
         * Some<Value> { Fail("key z should be absent") }
     )
@@ -111,7 +114,7 @@ Unit => MapValueAbsent {
 MapValuePresent = TestResult
 
 Unit => MapValuePresent {
-    Map() -> Insert(Key("a") * Value("1")) -> Value("a") -> (
+    Map<String, String>() -> Insert(Key("a") * Value("1")) -> Value("a") -> (
         * None { Fail("key a should be present") }
         * Some<Value> { Value -> Eq("1") -> TestResult }
     )
@@ -120,7 +123,7 @@ Unit => MapValuePresent {
 MapValuesOrderedByKey = TestResult
 
 Unit => MapValuesOrderedByKey {
-    Map()
+    Map<String, String>()
         -> Insert(Key("b") * Value("2"))
         -> Insert(Key("a") * Value("1"))
         -> Values

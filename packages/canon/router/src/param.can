@@ -2,7 +2,7 @@ Pairs = List<String>
 
 Param = String
 
-Pairs * Key => Option<Param> {
+Pairs * Key<String> => Option<Param> {
     Pairs -> First -> (
         * None { None() }
         * Some<String> {
@@ -27,7 +27,7 @@ Pairs * Key => Option<Param> {
     )
 }
 
-Query * Key => Option<Param> {
+Query * Key<String> => Option<Param> {
     Query
         -> Split(Separator("&"))
         -> Pairs
