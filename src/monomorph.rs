@@ -452,6 +452,12 @@ impl Expander {
                     self.rewrite_type(g, binding);
                 }
                 if self.is_generic_decl(name) {
+                    // An argument that is itself a bare generic
+                    // (`Map<Key, String>`) names no type; instantiating
+                    // it would expand without end.
+                    if self.bare_generic_arg(generics, *span) {
+                        return;
+                    }
                     if !generics.is_empty() {
                         let head = std::mem::take(name);
                         *name = self.enqueue(&head, generics);
@@ -529,6 +535,30 @@ impl Expander {
         }
     }
 
+    /// An argument that is itself a bare generic (`Map<Key, String>`)
+    /// names no type; instantiating it would expand without end.
+    fn bare_generic_arg(&mut self, args: &[TypeExpr], span: Span) -> bool {
+        let Some(bare) = args.iter().find_map(|g| match g {
+            TypeExpr::Named { name, generics, .. }
+                if generics.is_empty() && self.is_generic_decl(name) =>
+            {
+                Some(name.clone())
+            }
+            _ => None,
+        }) else {
+            return false;
+        };
+        self.errors.push(CanonError::CheckError {
+            message: format!("generic type `{bare}` needs its type arguments here"),
+            span: args
+                .iter()
+                .map(TypeExpr::span)
+                .find(|s| s.end > 0)
+                .unwrap_or(span),
+        });
+        true
+    }
+
     fn arity_error(&mut self, head: &str, expected: usize, found: usize, span: Span) {
         self.errors.push(CanonError::CheckError {
             message: format!(
@@ -556,6 +586,9 @@ impl Expander {
         }
         for t in type_args.iter_mut() {
             self.rewrite_type(t, binding);
+        }
+        if self.bare_generic_arg(type_args, Span::default()) {
+            return;
         }
         let head = std::mem::take(name);
         *name = self.enqueue(&head, type_args);
@@ -1219,6 +1252,16 @@ impl Expander {
         }
         if let Some(resolved) = self.infer_construction(name, &handed) {
             *name = resolved;
+            return;
+        }
+        if binding.is_empty() && self.is_generic_decl(name) {
+            self.errors.push(CanonError::CheckError {
+                message: format!(
+                    "the values handed to `{name}` don't give its type arguments: write \
+                     them (`{name}<…>`)"
+                ),
+                span,
+            });
             return;
         }
         self.rewrite_expr_name(name, binding, span);

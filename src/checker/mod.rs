@@ -2893,6 +2893,51 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     span: name.span,
                 });
             }
+            // A lone scalar handed to a union with no member taking it
+            // has no variant to become (the piped spelling is checked
+            // with the rest of piped construction).
+            if let [arg] = args.as_slice() {
+                let arg_ty = expr_type_name_in_scope(arg, symbols);
+                let target = symbols.resolve_alias(&name.name);
+                let converted = method_known_via_aliases(&arg_ty, &name.name, 0, symbols);
+                if let Some(arg_scalar) = scalar_primitive_root(symbols, &arg_ty) {
+                    // A scalar newtype built from a different primitive
+                    // (`Acc("")` with `Acc = Int`) has no conversion to
+                    // run: the erasure would hand an `Int` slot a string.
+                    if let Some(target_scalar) = scalar_primitive_root(symbols, &name.name) {
+                        let numeric = matches!(
+                            (target_scalar, arg_scalar),
+                            ("Int", "Float") | ("Float", "Int")
+                        );
+                        if target_scalar != arg_scalar && !numeric && !converted {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`",
+                                    name.name, target_scalar, arg_scalar
+                                ),
+                                span: name.span,
+                            });
+                        }
+                    }
+                    if symbols.variant_of.values().any(|p| p == target) && !converted {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{}` is a union: a `{}` is none of its variants — construct \
+                                 the variant it is",
+                                name.name, arg_scalar
+                            ),
+                            span: name.span,
+                        });
+                    }
+                }
+            }
+            if name.name == "Unit" && !args.is_empty() {
+                errors.push(CanonError::CheckError {
+                    message: "`Unit` takes nothing: it is the one value of its type, `Unit()`"
+                        .to_string(),
+                    span: name.span,
+                });
+            }
             check_literal_form_ceremony(&name.name, args, errors);
             if name.name == "List" {
                 check_list_literal_elements(args, symbols, *span, errors);
@@ -3237,17 +3282,9 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *span,
                             });
-                        } else if !recv_terminal.contains('<')
-                            && symbols.variant_of.values().any(|p| p == recv_terminal)
-                        {
+                        } else if symbols.variant_of.values().any(|p| p == recv_terminal) {
                             // And again for a user union: one pointer at
                             // the value level, with no rendering of it.
-                            // Generic receivers stay in the conservative
-                            // pass-through the branches above already
-                            // reserve for them — `has_alias_method`
-                            // doesn't resolve a constructor declared on
-                            // `Bag<T>` from a `Bag<Int>` call site, so
-                            // firing here would reject a legitimate one.
                             // `Bool` reaches `String` through the stdlib
                             // family, which `has_alias_method` already
                             // took. The erasure fallback handed the
@@ -3264,6 +3301,22 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 span: *span,
                             });
                         }
+                    }
+                } else if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty) {
+                    // The other direction: a scalar piped into a union
+                    // has no variant to become — the erasure fallback
+                    // would hand the union a string or number where its
+                    // tagged pointer belongs.
+                    let target = symbols.resolve_alias(&method.name);
+                    if args.is_empty() && symbols.variant_of.values().any(|p| p == target) {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{}` is a union: a `{}` is none of its variants — construct \
+                                 the variant it is",
+                                method.name, recv_scalar
+                            ),
+                            span: *span,
+                        });
                     }
                 }
             }
