@@ -1,0 +1,1 @@
+error[tests/checker/fail/unit_with_argument.can:2:5]: `Unit` takes nothing: it is the one value of its type, `Unit()`

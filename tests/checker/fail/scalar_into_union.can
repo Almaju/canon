@@ -1,0 +1,6 @@
+Color = Blue + Red
+
+Unit => Program {
+    Color("abcd")
+    "x" -> Print
+}

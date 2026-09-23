@@ -1,0 +1,5 @@
+Total = Int
+
+Unit => Program {
+    `{Total}!` -> Print
+}

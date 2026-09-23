@@ -1,0 +1,1 @@
+error[tests/checker/fail/format_hole_out_of_scope.can:4:7]: `Total` is a type here, not a value: nothing in scope is called `Total`

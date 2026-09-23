@@ -2836,9 +2836,28 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
         }
         Expr::StringLit { .. } => {}
         Expr::IntLit { .. } | Expr::FloatLit { .. } => {}
-        Expr::JsonLit { .. } => {}
-        Expr::HtmlLit { .. } => {}
-        Expr::FormatLit { .. } => {}
+        // A hole is an ordinary expression, checked in the scope around it.
+        Expr::JsonLit { parts, .. } => {
+            for part in parts {
+                if let crate::ast::JsonLitPart::Interp(inner) = part {
+                    check_expr(inner, scope, symbols, errors);
+                }
+            }
+        }
+        Expr::HtmlLit { parts, .. } => {
+            for part in parts {
+                if let crate::ast::HtmlLitPart::Interp(inner) = part {
+                    check_expr(inner, scope, symbols, errors);
+                }
+            }
+        }
+        Expr::FormatLit { parts, .. } => {
+            for part in parts {
+                if let crate::ast::FormatLitPart::Interp(inner) = part {
+                    check_expr(inner, scope, symbols, errors);
+                }
+            }
+        }
         Expr::Constructor {
             name,
             type_args,
@@ -2890,6 +2909,56 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         name.name,
                         did_you_mean(&name.name, symbols)
                     ),
+                    span: name.span,
+                });
+            }
+            // A lone scalar handed to a union with no member taking it
+            // has no variant to become (the piped spelling is checked
+            // with the rest of piped construction).
+            if let [arg] = args.as_slice() {
+                let arg_ty = expr_type_name_in_scope(arg, symbols);
+                let target = symbols.resolve_alias(&name.name);
+                // A name with a body is a call whose inputs are checked as
+                // such; only a bodiless name relabels its argument.
+                let converted = method_known_via_aliases(&arg_ty, &name.name, 0, symbols)
+                    || symbols.methods.keys().any(|(_, m)| m == &name.name)
+                    || symbols.free_funcs.contains_key(&name.name);
+                if let Some(arg_scalar) = scalar_primitive_root(symbols, &arg_ty) {
+                    // A scalar newtype built from a different primitive
+                    // (`Acc("")` with `Acc = Int`) has no conversion to
+                    // run: the erasure would hand an `Int` slot a string.
+                    if let Some(target_scalar) = scalar_primitive_root(symbols, &name.name) {
+                        let numeric = matches!(
+                            (target_scalar, arg_scalar),
+                            ("Int", "Float") | ("Float", "Int")
+                        );
+                        if target_scalar != arg_scalar && !numeric && !converted {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`",
+                                    name.name, target_scalar, arg_scalar
+                                ),
+                                span: name.span,
+                            });
+                        }
+                    }
+                    if let Some(kind) = non_scalar_kind(symbols, &name.name) {
+                        if !converted && !injects_into(&arg_ty, target, symbols) {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` is {kind}: a `{}` can't become one",
+                                    name.name, arg_scalar
+                                ),
+                                span: name.span,
+                            });
+                        }
+                    }
+                }
+            }
+            if name.name == "Unit" && !args.is_empty() {
+                errors.push(CanonError::CheckError {
+                    message: "`Unit` takes nothing: it is the one value of its type, `Unit()`"
+                        .to_string(),
                     span: name.span,
                 });
             }
@@ -3237,17 +3306,9 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *span,
                             });
-                        } else if !recv_terminal.contains('<')
-                            && symbols.variant_of.values().any(|p| p == recv_terminal)
-                        {
+                        } else if symbols.variant_of.values().any(|p| p == recv_terminal) {
                             // And again for a user union: one pointer at
                             // the value level, with no rendering of it.
-                            // Generic receivers stay in the conservative
-                            // pass-through the branches above already
-                            // reserve for them — `has_alias_method`
-                            // doesn't resolve a constructor declared on
-                            // `Bag<T>` from a `Bag<Int>` call site, so
-                            // firing here would reject a legitimate one.
                             // `Bool` reaches `String` through the stdlib
                             // family, which `has_alias_method` already
                             // took. The erasure fallback handed the
@@ -3260,6 +3321,26 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                     "`{}` expects a `{}`, found the union `{}`: dispatch on it \
                                      before constructing",
                                     method.name, target_scalar, recv_terminal
+                                ),
+                                span: *span,
+                            });
+                        }
+                    }
+                } else if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty) {
+                    // The other direction: a scalar piped into a union
+                    // has no variant to become — the erasure fallback
+                    // would hand the union a string or number where its
+                    // tagged pointer belongs.
+                    let target = symbols.resolve_alias(&method.name);
+                    if let Some(kind) = non_scalar_kind(symbols, &method.name) {
+                        let has_body = symbols.methods.keys().any(|(_, m)| m == &method.name)
+                            || symbols.free_funcs.contains_key(&method.name);
+                        if args.is_empty() && !has_body && !injects_into(&recv_ty, target, symbols)
+                        {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` is {kind}: a `{}` can't become one",
+                                    method.name, recv_scalar
                                 ),
                                 span: *span,
                             });
@@ -4051,6 +4132,46 @@ fn product_fields_of(name: &str, symbols: &SymbolTable) -> Option<(String, Vec<S
 /// Whether a value of type `ty` is a `target` through its newtype chain
 /// (`Outer = Tables` makes an `Outer` a `Tables`, and a `Tables` an
 /// `Outer`'s payload either way round).
+/// What a non-scalar type holds, for a scalar that cannot be relabelled
+/// into it: a union's tagged pointer, a container, or `Unit`'s nothing.
+fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
+    // The builtin containers and their variants build from anything
+    // (`List(1)`, `Some(x)`); only a declared name relabels.
+    if !symbols.standalone_types.contains(name) {
+        return None;
+    }
+    let root = symbols.resolve_alias(name);
+    if symbols.variant_of.values().any(|p| p == root) {
+        Some("a union")
+    } else if matches!(root, "List" | "Option" | "Result" | "Stream") {
+        Some("a container")
+    } else if root == "Unit" {
+        Some("`Unit`")
+    } else {
+        None
+    }
+}
+
+/// Whether a value of type `ty` is one of `union`'s variants (through
+/// its aliases) — the injection `Bad -> Parsed` for `Parsed = Bad + Good`.
+fn injects_into(ty: &str, union: &str, symbols: &SymbolTable) -> bool {
+    let mut current = ty;
+    for _ in 0..20 {
+        if symbols
+            .variant_of
+            .get(current)
+            .is_some_and(|p| symbols.resolve_alias(p) == union)
+        {
+            return true;
+        }
+        match symbols.aliases.get(current) {
+            Some(next) => current = next,
+            None => return false,
+        }
+    }
+    false
+}
+
 fn widens_to(ty: &str, target: &str, symbols: &SymbolTable) -> bool {
     let chain = |from: &str| {
         let mut out = vec![from.to_string()];
