@@ -86,15 +86,6 @@ streamed response body. Any such
 program is a checker error; `canon install` skips the WIT shapes it
 cannot spell.
 
-## HTTP handler request headers
-
-Not rejected — not expressible. `method()`, `path()` and `body()` land
-(`Request.body()` is the request body as a `Stream<String>`, consumed
-through `consume-body`), but the stdlib exposes no accessor for the
-request headers, so no accepted program can reach the missing lowering.
-The vendored WIT and the embedded runtime already carry `get-headers`;
-wiring it into codegen and the `wasi:http` wrapper is the future PR.
-
 ## WIT shapes `canon install` skips
 
 Some WIT shapes can't be spotted from Canon source at all — they depend on
