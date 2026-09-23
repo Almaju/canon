@@ -35,10 +35,15 @@ use crate::ast::{
     ArmLiteral, Block, Expr, FunctionDef, Item, MatchArm, Module as OModule, TypeExpr,
 };
 
+mod builtins;
 mod compile;
 pub(crate) mod component;
+mod construct;
+mod dispatch;
+mod effects;
 mod extern_imports;
 mod http;
+mod lists;
 mod literals;
 mod stream;
 mod strings;
