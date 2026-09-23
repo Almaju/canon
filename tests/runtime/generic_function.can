@@ -5,8 +5,8 @@ Same<T> = T
 }
 
 Unit => Program {
-    Same<Int>(7)
+    Same(7)
         -> String
         -> Print
-    Same<String>("echo") -> Print
+    Same("echo") -> Print
 }

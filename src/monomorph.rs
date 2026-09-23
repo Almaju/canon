@@ -56,16 +56,44 @@ struct Expander {
     /// instantiated name still carries the union's arguments so each
     /// instantiation keeps distinct variants.
     zero_data_variants: HashMap<String, Vec<String>>,
-    /// Instantiations already minted (by mangled name).
+    /// Non-generic typedef bodies as written (`Scores = Map<String,
+    /// Int>`), for walking a value's type through its aliases.
+    aliases: HashMap<String, TypeExpr>,
+    /// Minted flat names → the application each spells, so a rewritten
+    /// name reads back as a structured type.
+    applications: HashMap<String, (String, Vec<TypeExpr>)>,
+    /// Inside the declaration or arm being rewritten, the written name
+    /// of each generic-typed input → its instantiated flat name (`Map`
+    /// → `Map<String, Int>` for a `(Map<String, Int>) => …` input).
+    locals: HashMap<String, String>,
+    /// The result type of each call inference resolved to a family
+    /// member, by the call name's span — what the member returns, which
+    /// may wrap the name the call spells (`Option<Value<String>>`).
+    call_results: HashMap<(u32, usize, usize), TypeExpr>,
+    /// Instantiations already minted (by mangled name, or by member key
+    /// for a member reached only through inference).
     done: HashSet<String>,
-    /// Pending (head, concrete args) instantiations.
-    queue: VecDeque<(String, Vec<TypeExpr>)>,
+    /// Pending instantiations.
+    queue: VecDeque<Pending>,
     /// Minted concrete items.
     minted: Vec<Item>,
     errors: Vec<CanonError>,
 }
 
-pub fn expand(module: &mut Module) -> Vec<CanonError> {
+/// A queued instantiation: a type application (`Map<String, Int>`,
+/// which mints the typedef and every member constructing exactly that
+/// type), or one family member reached only by inference at a call site
+/// (`<K, V>(Map<K, V>) => Length`, keyed by its surface and index).
+enum Pending {
+    Type(String, Vec<TypeExpr>),
+    Member(String, usize, Vec<TypeExpr>),
+}
+
+/// Expand every generic application in `module`. Minted items are
+/// prepended — compiler output, outside the entry file's ordering — and
+/// their count is returned with the errors so the caller can shift its
+/// entry-items boundary.
+pub fn expand(module: &mut Module) -> (Vec<CanonError>, usize) {
     let mut type_schemas = HashMap::new();
     let mut func_schemas: HashMap<String, Vec<FunctionDef>> = HashMap::new();
     let mut zero_data_variants = HashMap::new();
@@ -98,18 +126,6 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
             _ => {}
         }
     }
-    // A generic function is reached through the type it constructs:
-    // `instantiate` is driven by type applications, and a call site
-    // names the instantiation by spelling that type
-    // (`-> Inserted<String, Int>(…)`). So its parameters have to appear
-    // in the constructed type — otherwise nothing can ever bind them,
-    // the schema is never expanded, and the parameters survive into
-    // codegen as an unresolved name. Left unchecked that builds an
-    // invalid module from a program the checker accepted.
-    //
-    // Inference from the argument types would lift this; Milestone A
-    // deliberately deferred it (#201), so for now it is an error rather
-    // than a silent trap.
     // Which types satisfy a constraint. `<T: Ord>` is read as "some
     // `Ord` constructor accepts a `T`" — the same by-type routing every
     // call site uses, so a bound needs no new mechanism: it asks whether
@@ -136,41 +152,69 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
         }
     }
 
+    // A member's parameters are bound at a call site by its inputs (the
+    // value piped in and the arguments), or — when it constructs exactly
+    // its type's application (`<K, V>(Unit) => Store<K, V>`) — by that
+    // application. A parameter neither reaches can never be bound, and
+    // would survive into codegen as an unresolved name.
     let mut seed_errors: Vec<CanonError> = Vec::new();
-    for (surface, members) in &func_schemas {
-        if type_schemas.contains_key(surface) {
-            continue;
-        }
+    for members in func_schemas.values() {
         for schema in members {
-            let params: Vec<String> = schema
+            let mut mentioned = HashSet::new();
+            for p in &schema.params {
+                mentioned_names(&p.ty, &mut mentioned);
+            }
+            if is_identity(schema, &type_schemas) {
+                continue;
+            }
+            let unbound: Vec<String> = schema
                 .generic_params
                 .iter()
                 .map(|g| g.name.name.clone())
+                .filter(|p| !mentioned.contains(p))
                 .collect();
+            if unbound.is_empty() {
+                continue;
+            }
+            let surface = crate::checker::decl_key(schema);
             seed_errors.push(CanonError::CheckError {
                 message: format!(
-                    "`{}` declares type parameter(s) `{}` that its constructed type `{}` \
-                     does not carry: a call site names the instantiation through that type, \
-                     so nothing can bind them — declare `{}<{}>`",
+                    "`{}` declares type parameter(s) `{}` that no input carries: a call \
+                     site binds a parameter from the values it passes, so nothing can bind \
+                     these — take them in an input, or construct `{}<{}>`",
                     surface,
-                    params.join("`, `"),
+                    unbound.join("`, `"),
                     surface,
-                    surface,
-                    params.join(", ")
+                    unbound.join(", ")
                 ),
                 span: schema.name.span,
             });
         }
     }
     if type_schemas.is_empty() && func_schemas.is_empty() {
-        return seed_errors;
+        return (seed_errors, 0);
     }
+
+    let aliases: HashMap<String, TypeExpr> = module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::TypeDef(td) if td.generic_params.is_empty() => {
+                Some((td.name.name.clone(), td.body.clone()))
+            }
+            _ => None,
+        })
+        .collect();
 
     let mut ex = Expander {
         constraint_impls,
         type_schemas,
         func_schemas,
         zero_data_variants,
+        aliases,
+        applications: HashMap::new(),
+        locals: HashMap::new(),
+        call_results: HashMap::new(),
         done: HashSet::new(),
         queue: VecDeque::new(),
         minted: Vec::new(),
@@ -193,19 +237,92 @@ pub fn expand(module: &mut Module) -> Vec<CanonError> {
         }
     }
 
-    while let Some((head, args)) = ex.queue.pop_front() {
-        ex.instantiate(&head, &args);
+    while let Some(pending) = ex.queue.pop_front() {
+        match pending {
+            Pending::Type(head, args) => ex.instantiate(&head, &args),
+            Pending::Member(surface, index, args) => ex.instantiate_member(&surface, index, &args),
+        }
     }
 
-    module.items.append(&mut ex.minted);
-    ex.errors
+    // A schema's diagnostic repeats in every instantiation; report it once.
+    let mut seen = HashSet::new();
+    ex.errors.retain(|e| {
+        let s = e.span();
+        seen.insert((e.message().to_string(), s.file, s.start, s.end))
+    });
+    let minted = ex.minted.len();
+    module.items.splice(0..0, ex.minted);
+    (ex.errors, minted)
+}
+
+/// Whether a family member constructs exactly its type's application
+/// with its own parameters in order (`<K, V>(…) => Store<K, V>`), so a
+/// type application binds it.
+fn is_identity(schema: &FunctionDef, type_schemas: &HashMap<String, TypeDef>) -> bool {
+    let surface = crate::checker::decl_key(schema);
+    if !type_schemas.contains_key(&surface) {
+        return false;
+    }
+    let Some(TypeExpr::Named { name, generics, .. }) = constructed(&schema.return_ty) else {
+        return false;
+    };
+    *name == surface
+        && generics.len() == schema.generic_params.len()
+        && generics.iter().zip(&schema.generic_params).all(|(g, p)| {
+            matches!(g, TypeExpr::Named { name, generics, .. } if generics.is_empty() && *name == p.name.name)
+        })
+}
+
+/// The type an arrow constructs, containers peeled (the structured
+/// counterpart of `ast::constructed_type_name`).
+fn constructed(ty: &TypeExpr) -> Option<&TypeExpr> {
+    match ty {
+        TypeExpr::Named { name, generics, .. }
+            if matches!(name.as_str(), "Result" | "Option" | "Future") && !generics.is_empty() =>
+        {
+            constructed(&generics[0])
+        }
+        TypeExpr::Named { .. } => Some(ty),
+        _ => None,
+    }
+}
+
+/// Every name a type expression mentions, at any depth.
+fn mentioned_names(ty: &TypeExpr, out: &mut HashSet<String>) {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            out.insert(name.clone());
+            for g in generics {
+                mentioned_names(g, out);
+            }
+        }
+        TypeExpr::Union { variants, .. } => variants.iter().for_each(|v| mentioned_names(v, out)),
+        TypeExpr::Product { fields, .. } => fields.iter().for_each(|f| mentioned_names(f, out)),
+        TypeExpr::Repeat { ty, .. } => mentioned_names(ty, out),
+        TypeExpr::Function {
+            params, return_ty, ..
+        } => {
+            params.iter().for_each(|p| mentioned_names(p, out));
+            mentioned_names(return_ty, out);
+        }
+    }
+}
+
+fn named(name: &str, generics: Vec<TypeExpr>) -> TypeExpr {
+    TypeExpr::Named {
+        name: name.to_string(),
+        generics,
+        span: Span::default(),
+    }
 }
 
 impl Expander {
+    /// A name that resolves through a binding: a generic type or one
+    /// of its zero-data variants. A family whose surface is not a
+    /// generic type (`<K, V>(Map<K, V>) => Length`) is reached only by
+    /// inference.
     fn is_generic_decl(&self, name: &str) -> bool {
-        self.type_schemas.contains_key(name)
-            || self.func_schemas.contains_key(name)
-            || self.zero_data_variants.contains_key(name)
+        self.type_schemas.contains_key(name) || self.zero_data_variants.contains_key(name)
     }
 
     /// Parameter names a bare reference to `name` needs bound: the
@@ -219,23 +336,40 @@ impl Expander {
                     .collect(),
             );
         }
-        if let Some(fs) = self.func_schemas.get(name) {
-            return fs.first().map(|f| {
-                f.generic_params
-                    .iter()
-                    .map(|g| g.name.name.clone())
-                    .collect()
-            });
-        }
         self.zero_data_variants.get(name).cloned()
     }
 
     fn enqueue(&mut self, head: &str, args: &[TypeExpr]) -> String {
         let key = mangle(head, args);
+        self.applications
+            .insert(key.clone(), (head.to_string(), args.to_vec()));
         if self.done.insert(key.clone()) {
-            self.queue.push_back((head.to_string(), args.to_vec()));
+            self.queue
+                .push_back(Pending::Type(head.to_string(), args.to_vec()));
         }
         key
+    }
+
+    /// Queue one inference-only family member under `args`, returning
+    /// the name its call site spells: the member's constructed type
+    /// rewritten under the binding (`Keys<String>`, or `Length` for a
+    /// non-generic result).
+    fn enqueue_member(&mut self, surface: &str, index: usize, args: &[TypeExpr]) -> String {
+        let schema = self.func_schemas[surface][index].clone();
+        let binding = make_binding(&schema.generic_params, args);
+        let mut target = constructed(&schema.return_ty)
+            .cloned()
+            .unwrap_or_else(|| named(surface, Vec::new()));
+        self.rewrite_type(&mut target, &binding);
+        let key = format!("{surface}#{index}{}", mangle("", args));
+        if self.done.insert(key) {
+            self.queue
+                .push_back(Pending::Member(surface.to_string(), index, args.to_vec()));
+        }
+        match target {
+            TypeExpr::Named { name, .. } => name,
+            _ => surface.to_string(),
+        }
     }
 
     /// Resolve a bare reference to a generic declaration through the
@@ -404,11 +538,24 @@ impl Expander {
         if let Some(recv) = &mut f.receiver {
             self.rewrite_expr_name(&mut recv.name, binding, recv.span);
         }
+        let saved = self.locals.clone();
         for p in &mut f.params {
             self.rewrite_type(&mut p.ty, binding);
+            self.bind_local(&p.ty);
         }
         self.rewrite_type(&mut f.return_ty, binding);
         self.rewrite_block(&mut f.body, binding);
+        self.locals = saved;
+    }
+
+    /// An input of instantiated type is still written by its head
+    /// (`Map` for a `Map<String, Int>` input); record the spelling.
+    fn bind_local(&mut self, ty: &TypeExpr) {
+        if let TypeExpr::Named { name, .. } = ty {
+            if let Some((head, _)) = self.applications.get(name) {
+                self.locals.insert(head.clone(), name.clone());
+            }
+        }
     }
 
     fn rewrite_block(&mut self, block: &mut Block, binding: &HashMap<String, TypeExpr>) {
@@ -419,18 +566,21 @@ impl Expander {
 
     fn rewrite_expr(&mut self, e: &mut Expr, binding: &HashMap<String, TypeExpr>) {
         match e {
-            Expr::Ident(id) => self.rewrite_expr_name(&mut id.name, binding, id.span),
+            Expr::Ident(id) => match self.locals.get(&id.name) {
+                Some(local) => id.name = local.clone(),
+                None => self.rewrite_expr_name(&mut id.name, binding, id.span),
+            },
             Expr::Constructor {
                 name,
                 type_args,
                 args,
                 ..
             } => {
-                self.apply_expr_type_args(&mut name.name, type_args, binding);
-                self.rewrite_expr_name(&mut name.name, binding, name.span);
-                for a in args {
+                for a in args.iter_mut() {
                     self.rewrite_expr(a, binding);
                 }
+                let handed = self.handed_types(None, args);
+                self.resolve_call(&mut name.name, type_args, handed, binding, name.span);
             }
             Expr::MethodCall {
                 receiver,
@@ -440,17 +590,27 @@ impl Expander {
                 ..
             } => {
                 self.rewrite_expr(receiver, binding);
-                self.apply_expr_type_args(&mut method.name, type_args, binding);
-                self.rewrite_expr_name(&mut method.name, binding, method.span);
-                for a in args {
+                for a in args.iter_mut() {
                     self.rewrite_expr(a, binding);
                 }
+                let handed = self.handed_types(Some(receiver), args);
+                self.resolve_call(&mut method.name, type_args, handed, binding, method.span);
             }
             Expr::Match {
                 scrutinee, arms, ..
             } => {
                 self.rewrite_expr(scrutinee, binding);
+                let variants = self
+                    .static_type(scrutinee)
+                    .map(|t| self.variants_of(&t))
+                    .unwrap_or_default();
                 for arm in arms {
+                    if let Some(v) = variants
+                        .iter()
+                        .find(|v| head_of(v) == head_of(&arm.param_ty))
+                    {
+                        complete_arm(&mut arm.param_ty, v, &|n| self.is_generic_decl(n));
+                    }
                     self.rewrite_arm(arm, binding);
                 }
             }
@@ -461,11 +621,14 @@ impl Expander {
                 body,
                 ..
             } => {
+                let saved = self.locals.clone();
                 for p in params {
                     self.rewrite_type(&mut p.ty, binding);
+                    self.bind_local(&p.ty);
                 }
                 self.rewrite_type(return_ty, binding);
                 self.rewrite_block(body, binding);
+                self.locals = saved;
             }
             Expr::ProductValue { fields, .. } => {
                 for f in fields {
@@ -477,6 +640,17 @@ impl Expander {
             } => {
                 self.rewrite_expr(receiver, binding);
                 self.rewrite_expr_name(&mut field.name, binding, field.span);
+                // A field of instantiated type is still written by its
+                // head (`Node.Key` for a `Key<String>` field).
+                let fields = self.static_type(receiver).and_then(|t| self.body_of(&t));
+                if let Some(TypeExpr::Product { fields, .. }) = fields {
+                    if let Some(f) = fields.iter().find(|f| {
+                        matches!(f, TypeExpr::Named { generics, .. } if !generics.is_empty())
+                            && head_of(f) == Some(field.name.as_str())
+                    }) {
+                        field.name = type_expr_canonical(f);
+                    }
+                }
             }
             Expr::JsonLit { parts, .. } => {
                 for p in parts {
@@ -507,7 +681,17 @@ impl Expander {
     fn rewrite_arm(&mut self, arm: &mut MatchArm, binding: &HashMap<String, TypeExpr>) {
         self.rewrite_type(&mut arm.param_ty, binding);
         self.rewrite_type(&mut arm.return_ty, binding);
+        let saved = self.locals.clone();
+        match &arm.param_ty {
+            TypeExpr::Named { name, generics, .. }
+                if matches!(name.as_str(), "Some" | "Ok" | "Err") && generics.len() == 1 =>
+            {
+                self.bind_local(&generics[0].clone());
+            }
+            ty => self.bind_local(&ty.clone()),
+        }
         self.rewrite_block(&mut arm.body, binding);
+        self.locals = saved;
     }
 
     /// Mint the concrete copies for one instantiation: the typedef
@@ -592,6 +776,9 @@ impl Expander {
         }
         if let Some(members) = self.func_schemas.get(head).cloned() {
             for schema in members {
+                if !is_identity(&schema, &self.type_schemas) {
+                    continue;
+                }
                 if schema.generic_params.len() != args.len() {
                     self.arity_error(
                         head,
@@ -601,24 +788,464 @@ impl Expander {
                     );
                     continue;
                 }
-                let binding = make_binding(&schema.generic_params, args);
-                let mut copy = schema.clone();
-                copy.generic_params = Vec::new();
-                // A `Self`-normalized constructor keeps its name — its
-                // identity is the receiver, which `rewrite_function`
-                // renames to the instantiation.
-                if copy.name.name != "Self" {
-                    copy.name = Ident {
-                        name: mangled.clone(),
-                        span: schema.name.span,
-                    };
-                }
-                self.rewrite_function(&mut copy, &binding);
-                self.minted.push(Item::Function(copy));
+                self.mint_member(&schema, args, Some(&mangled));
             }
         }
         // A zero-data variant instantiation mints nothing: it exists
         // only as a name inside its union's instantiated body.
+    }
+
+    fn instantiate_member(&mut self, surface: &str, index: usize, args: &[TypeExpr]) {
+        let schema = self.func_schemas[surface][index].clone();
+        self.check_bounds(surface, args);
+        let name = match constructed(&schema.return_ty) {
+            Some(TypeExpr::Named { name, .. }) if self.is_generic_decl(name) => {
+                let mut target = constructed(&schema.return_ty).cloned();
+                if let Some(t) = &mut target {
+                    self.rewrite_type(t, &make_binding(&schema.generic_params, args));
+                }
+                match target {
+                    Some(TypeExpr::Named { name, .. }) => Some(name),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        self.mint_member(&schema, args, name.as_deref());
+    }
+
+    /// One concrete copy of a family member. A `Self`-normalized
+    /// constructor keeps its name — its identity is the receiver, which
+    /// `rewrite_function` renames to the instantiation; a named one takes
+    /// `name` when its constructed type is generic.
+    fn mint_member(&mut self, schema: &FunctionDef, args: &[TypeExpr], name: Option<&str>) {
+        let binding = make_binding(&schema.generic_params, args);
+        let mut copy = schema.clone();
+        copy.generic_params = Vec::new();
+        if copy.name.name != "Self" {
+            if let Some(name) = name {
+                copy.name = Ident {
+                    name: name.to_string(),
+                    span: schema.name.span,
+                };
+            }
+        }
+        self.rewrite_function(&mut copy, &binding);
+        self.minted.push(Item::Function(copy));
+    }
+
+    // ── Inference ────────────────────────────────────────────────────
+    //
+    // A call that spells no type arguments takes them from the values it
+    // is handed: the value piped in and the arguments. The written
+    // arguments are for what nothing else gives — a root like
+    // `Map<String, Int>()`.
+
+    /// A rewritten type read back structured: minted flat names expand
+    /// to the application they spell, recursively.
+    fn structured(&self, ty: &TypeExpr) -> TypeExpr {
+        match ty {
+            TypeExpr::Named { name, generics, .. } => {
+                if let Some((head, args)) = self.applications.get(name) {
+                    return named(head, args.iter().map(|a| self.structured(a)).collect());
+                }
+                named(name, generics.iter().map(|g| self.structured(g)).collect())
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// One alias step: the type a newtype or alias names, its
+    /// parameters substituted (`Rest<String, Int>` → `Map<String, Int>`).
+    fn unalias(&self, ty: &TypeExpr) -> Option<TypeExpr> {
+        let TypeExpr::Named { name, generics, .. } = ty else {
+            return None;
+        };
+        let body = if let Some(td) = self.type_schemas.get(name) {
+            if td.generic_params.len() != generics.len() {
+                return None;
+            }
+            substitute(&td.body, &make_binding(&td.generic_params, generics))
+        } else {
+            self.aliases.get(name)?.clone()
+        };
+        matches!(body, TypeExpr::Named { .. }).then(|| self.structured(&body))
+    }
+
+    /// A type's body with its parameters substituted, when it is a
+    /// product or union (`Node<String, Int>` → its three fields).
+    fn body_of(&self, ty: &TypeExpr) -> Option<TypeExpr> {
+        let mut cur = self.structured(ty);
+        for _ in 0..20 {
+            let TypeExpr::Named { name, generics, .. } = &cur else {
+                return None;
+            };
+            let body = match self.type_schemas.get(name) {
+                Some(td) if td.generic_params.len() == generics.len() => {
+                    substitute(&td.body, &make_binding(&td.generic_params, generics))
+                }
+                _ => self.aliases.get(name)?.clone(),
+            };
+            match body {
+                TypeExpr::Named { .. } => cur = self.structured(&body),
+                other => return Some(other),
+            }
+        }
+        None
+    }
+
+    /// The static type of a rewritten expression, as far as inference
+    /// needs one: a name is its own type (the only names are type names),
+    /// a literal its primitive, a field its declared type.
+    fn static_type(&self, e: &Expr) -> Option<TypeExpr> {
+        match e {
+            Expr::Ident(id) => Some(self.structured(&named(&id.name, Vec::new()))),
+            Expr::StringLit { .. } | Expr::FormatLit { .. } => Some(named("String", Vec::new())),
+            Expr::IntLit { .. } => Some(named("Int", Vec::new())),
+            Expr::FloatLit { .. } => Some(named("Float", Vec::new())),
+            Expr::Constructor { name, .. } | Expr::MethodCall { method: name, .. }
+                if self.call_results.contains_key(&(
+                    name.span.file,
+                    name.span.start,
+                    name.span.end,
+                )) =>
+            {
+                let s = name.span;
+                Some(self.call_results[&(s.file, s.start, s.end)].clone())
+            }
+            Expr::Constructor { name, .. } if crate::ast::is_type_name(&name.name) => {
+                Some(self.structured(&named(&name.name, Vec::new())))
+            }
+            Expr::MethodCall {
+                receiver, method, ..
+            } => match method.name.as_str() {
+                "Sum" | "Difference" | "Product" | "Quotient" | "Remainder" | "Joined" => {
+                    self.static_type(receiver)
+                }
+                name if crate::ast::is_type_name(name) => {
+                    Some(self.structured(&named(name, Vec::new())))
+                }
+                _ => None,
+            },
+            Expr::FieldAccess {
+                receiver, field, ..
+            } => {
+                let recv = self.static_type(receiver)?;
+                let TypeExpr::Product { fields, .. } = self.body_of(&recv)? else {
+                    return None;
+                };
+                let wanted = self.structured(&named(&field.name, Vec::new()));
+                fields.into_iter().find(|f| {
+                    type_expr_canonical(f) == type_expr_canonical(&wanted)
+                        || head_of(f) == head_of(&wanted)
+                })
+            }
+            Expr::Try { inner, .. } => match self.static_type(inner)? {
+                TypeExpr::Named { name, generics, .. }
+                    if matches!(name.as_str(), "Result" | "Option") && !generics.is_empty() =>
+                {
+                    Some(generics[0].clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Bind `params` in `pattern` so it describes `concrete`, walking the
+    /// concrete side through its aliases. `false` leaves `binding` as it
+    /// was.
+    fn unify(
+        &self,
+        pattern: &TypeExpr,
+        concrete: &TypeExpr,
+        params: &[String],
+        binding: &mut HashMap<String, TypeExpr>,
+    ) -> bool {
+        let TypeExpr::Named {
+            name: p_name,
+            generics: p_args,
+            ..
+        } = pattern
+        else {
+            return false;
+        };
+        if p_args.is_empty() && params.contains(p_name) {
+            return match binding.get(p_name) {
+                Some(bound) => type_expr_canonical(bound) == type_expr_canonical(concrete),
+                None => {
+                    binding.insert(p_name.clone(), concrete.clone());
+                    true
+                }
+            };
+        }
+        let mut cur = concrete.clone();
+        for _ in 0..20 {
+            if let TypeExpr::Named { name, generics, .. } = &cur {
+                if name == p_name && generics.len() == p_args.len() {
+                    let mut trial = binding.clone();
+                    if p_args
+                        .iter()
+                        .zip(generics)
+                        .all(|(p, c)| self.unify(p, c, params, &mut trial))
+                    {
+                        *binding = trial;
+                        return true;
+                    }
+                }
+            }
+            match self.unalias(&cur) {
+                Some(next) => cur = next,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// Bind as many of `params` as the handed values reach through
+    /// `patterns`: each value lands in the first unused pattern it fits.
+    /// `Some` once every parameter is bound.
+    fn bind_from(
+        &self,
+        params: &[String],
+        patterns: &[TypeExpr],
+        values: &[TypeExpr],
+    ) -> Option<Vec<TypeExpr>> {
+        let mut binding = HashMap::new();
+        let mut used = vec![false; patterns.len()];
+        for value in values {
+            for (i, pattern) in patterns.iter().enumerate() {
+                if !used[i] && self.unify(pattern, value, params, &mut binding) {
+                    used[i] = true;
+                    break;
+                }
+            }
+        }
+        params.iter().map(|p| binding.get(p).cloned()).collect()
+    }
+
+    /// The instantiated name a call to `name` without type arguments
+    /// resolves to, when the handed values bind a family member's
+    /// parameters (`map -> Length` → the `Map<K, V>` member).
+    fn infer_member(&mut self, name: &str, values: &[TypeExpr]) -> Option<(String, TypeExpr)> {
+        let members = self.func_schemas.get(name)?.clone();
+        for (index, schema) in members.iter().enumerate() {
+            let params: Vec<String> = schema
+                .generic_params
+                .iter()
+                .map(|g| g.name.name.clone())
+                .collect();
+            let patterns: Vec<TypeExpr> = schema.params.iter().map(|p| p.ty.clone()).collect();
+            let Some(args) = self.bind_from(&params, &patterns, values) else {
+                continue;
+            };
+            let result = substitute(
+                &schema.return_ty,
+                &make_binding(&schema.generic_params, &args),
+            );
+            let resolved = if is_identity(schema, &self.type_schemas) {
+                self.enqueue(name, &args)
+            } else {
+                self.enqueue_member(name, index, &args)
+            };
+            return Some((resolved, result));
+        }
+        None
+    }
+
+    /// The instantiation a construction of generic type `name` without
+    /// type arguments builds, when the handed values bind its parameters
+    /// through its body (`Key("a")` → `Key<String>`).
+    fn infer_construction(&mut self, name: &str, values: &[TypeExpr]) -> Option<String> {
+        let schema = self.type_schemas.get(name)?;
+        let params: Vec<String> = schema
+            .generic_params
+            .iter()
+            .map(|g| g.name.name.clone())
+            .collect();
+        let patterns = match &schema.body {
+            TypeExpr::Product { fields, .. } => fields.clone(),
+            body @ TypeExpr::Named { .. } => vec![body.clone()],
+            _ => return None,
+        };
+        let args = self.bind_from(&params, &patterns, values)?;
+        Some(self.enqueue(name, &args))
+    }
+
+    /// The values a call hands over, typed: the receiver, then each
+    /// argument (a product argument flattened).
+    fn handed_types(&self, receiver: Option<&Expr>, args: &[Expr]) -> Vec<TypeExpr> {
+        let flat: Vec<&Expr> = match args {
+            [Expr::ProductValue { fields, .. }] => fields.iter().collect(),
+            _ => args.iter().collect(),
+        };
+        receiver
+            .into_iter()
+            .chain(flat)
+            .filter_map(|e| self.static_type(e))
+            .collect()
+    }
+
+    /// Resolve a call's name. Explicit type arguments are the root
+    /// spelling; without them a family member the handed values bind
+    /// wins, then the enclosing binding, then a construction the values
+    /// bind.
+    fn resolve_call(
+        &mut self,
+        name: &mut String,
+        type_args: &mut Vec<TypeExpr>,
+        handed: Vec<TypeExpr>,
+        binding: &HashMap<String, TypeExpr>,
+        span: Span,
+    ) {
+        if !type_args.is_empty() {
+            let written: Vec<String> = type_args.iter().map(type_expr_canonical).collect();
+            let head = name.clone();
+            self.apply_expr_type_args(name, type_args, binding);
+            if !handed.is_empty() && !binding.contains_key(&head) {
+                let mut probe = self.clone_for_probe();
+                let inferred = probe
+                    .infer_member(&head, &handed)
+                    .map(|(n, _)| n)
+                    .or_else(|| probe.infer_construction(&head, &handed));
+                if inferred.as_deref() == Some(name.as_str()) {
+                    self.errors.push(CanonError::CheckError {
+                        message: format!(
+                            "`{head}<{}>`: the values handed to `{head}` give its type \
+                             arguments — write `{head}`",
+                            written.join(", ")
+                        ),
+                        span,
+                    });
+                }
+            }
+            return;
+        }
+        if binding.contains_key(name.as_str()) {
+            self.rewrite_expr_name(name, binding, span);
+            return;
+        }
+        if let Some((resolved, result)) = self.infer_member(name, &handed) {
+            *name = resolved;
+            self.call_results
+                .insert((span.file, span.start, span.end), result);
+            return;
+        }
+        if !binding.is_empty() && self.is_generic_decl(name) {
+            self.rewrite_expr_name(name, binding, span);
+            return;
+        }
+        if let Some(resolved) = self.infer_construction(name, &handed) {
+            *name = resolved;
+            return;
+        }
+        self.rewrite_expr_name(name, binding, span);
+    }
+
+    /// A throwaway copy for asking what inference *would* resolve,
+    /// without queueing anything.
+    fn clone_for_probe(&self) -> Expander {
+        Expander {
+            constraint_impls: HashSet::new(),
+            type_schemas: self.type_schemas.clone(),
+            func_schemas: self.func_schemas.clone(),
+            zero_data_variants: self.zero_data_variants.clone(),
+            aliases: self.aliases.clone(),
+            applications: self.applications.clone(),
+            locals: HashMap::new(),
+            call_results: HashMap::new(),
+            done: HashSet::new(),
+            queue: VecDeque::new(),
+            minted: Vec::new(),
+            errors: Vec::new(),
+        }
+    }
+
+    /// The variants a dispatch on `ty` tests, instantiated
+    /// (`Option<Value<String>>` → `None`, `Some<Value<String>>`).
+    fn variants_of(&self, ty: &TypeExpr) -> Vec<TypeExpr> {
+        let ty = self.structured(ty);
+        if let TypeExpr::Named { name, generics, .. } = &ty {
+            match (name.as_str(), generics.as_slice()) {
+                ("Option", [t]) => {
+                    return vec![named("None", Vec::new()), named("Some", vec![t.clone()])]
+                }
+                ("Result", [t, e]) => {
+                    return vec![named("Err", vec![e.clone()]), named("Ok", vec![t.clone()])]
+                }
+                _ => {}
+            }
+        }
+        match self.body_of(&ty) {
+            Some(TypeExpr::Union { variants, .. }) => {
+                variants.iter().map(|v| self.structured(v)).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// Fill the bare generic names of a written arm type from the variant it
+/// tests (`Some<Value>` against `Some<Value<String>>`).
+fn complete_arm(written: &mut TypeExpr, variant: &TypeExpr, generic: &dyn Fn(&str) -> bool) {
+    let (
+        TypeExpr::Named {
+            name: w_name,
+            generics: w_args,
+            ..
+        },
+        TypeExpr::Named {
+            name: v_name,
+            generics: v_args,
+            ..
+        },
+    ) = (&mut *written, variant)
+    else {
+        return;
+    };
+    if w_name != v_name {
+        return;
+    }
+    if w_args.is_empty() && !v_args.is_empty() && generic(w_name) {
+        *w_args = v_args.clone();
+        return;
+    }
+    if w_args.len() == v_args.len() {
+        for (w, v) in w_args.iter_mut().zip(v_args) {
+            complete_arm(w, v, generic);
+        }
+    }
+}
+
+fn head_of(ty: &TypeExpr) -> Option<&str> {
+    match ty {
+        TypeExpr::Named { name, .. } => Some(name.split('<').next().unwrap_or(name)),
+        _ => None,
+    }
+}
+
+fn substitute(ty: &TypeExpr, binding: &HashMap<String, TypeExpr>) -> TypeExpr {
+    match ty {
+        TypeExpr::Named { name, generics, .. } => {
+            if generics.is_empty() {
+                if let Some(t) = binding.get(name) {
+                    return t.clone();
+                }
+            }
+            named(
+                name,
+                generics.iter().map(|g| substitute(g, binding)).collect(),
+            )
+        }
+        TypeExpr::Union { variants, span } => TypeExpr::Union {
+            variants: variants.iter().map(|v| substitute(v, binding)).collect(),
+            span: *span,
+        },
+        TypeExpr::Product { fields, span } => TypeExpr::Product {
+            fields: fields.iter().map(|f| substitute(f, binding)).collect(),
+            span: *span,
+        },
+        other => other.clone(),
     }
 }
 

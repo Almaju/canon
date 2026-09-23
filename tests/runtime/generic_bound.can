@@ -13,8 +13,8 @@ Shown<T> = String
 }
 
 Unit => Program {
-    One<Int>(1)
-        -> Bag<Int>
-        -> Shown<Int>
+    One(1)
+        -> Bag
+        -> Shown
         -> Print
 }

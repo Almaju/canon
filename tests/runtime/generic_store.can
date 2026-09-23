@@ -14,8 +14,8 @@ Value<V> = V
 
 <K, V>(Store<K, V> * K * V) => Inserted<K, V> {
     K
-        -> Key<K>
-        -> Entry<K, V>(Store -> Rest<K, V> * V -> Value<V>)
+        -> Key
+        -> Entry(Store -> Rest * V -> Value)
 }
 
 <K, V>(Store<K, V>) => Size<K, V> {
@@ -31,14 +31,14 @@ Value<V> = V
 
 Unit => Program {
     Store<String, Int>()
-        -> Inserted<String, Int>("a" * 1)
-        -> Inserted<String, Int>("b" * 2)
-        -> Size<String, Int>
+        -> Inserted("a" * 1)
+        -> Inserted("b" * 2)
+        -> Size
         -> String
         -> Print
     Store<Int, String>()
-        -> Inserted<Int, String>(1 * "one")
-        -> Size<Int, String>
+        -> Inserted(1 * "one")
+        -> Size
         -> String
         -> Print
 }

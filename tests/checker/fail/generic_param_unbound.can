@@ -1,8 +1,11 @@
-Box<T> = T
+Count = Int
+
+<T>(Unit) => Count {
+    0
+}
 
 Unit => Program {
-    Box(42)
+    Count()
         -> String
         -> Print
-    Box("generic") -> Print
 }
