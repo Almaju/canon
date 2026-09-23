@@ -1902,6 +1902,12 @@ fn declared_names_of_source(source: &str) -> Vec<String> {
         .collect()
 }
 
+/// Every name the prelude declares, loaded or not — the vocabulary a
+/// misspelt reference is measured against.
+pub(crate) fn prelude_names() -> impl Iterator<Item = &'static str> {
+    bundled_decl_index().keys().map(String::as_str)
+}
+
 /// Global declaration index over every bundled file:
 /// name → (package index, file index) pairs. Built once per process.
 fn bundled_decl_index() -> &'static HashMap<String, Vec<(usize, usize)>> {

@@ -1,0 +1,1 @@
+error[tests/checker/fail/misspelt_pipe.can:2:5]: no method `Prnt` on type `String` with 0 argument(s) — did you mean `Print`?

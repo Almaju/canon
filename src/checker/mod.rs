@@ -2228,7 +2228,7 @@ fn check_type_expr(
                 }
             } else if !symbols.knows_type(name) {
                 errors.push(CanonError::CheckError {
-                    message: format!("unknown type `{}`", name),
+                    message: format!("unknown type `{}`{}", name, did_you_mean(name, symbols)),
                     span: *span,
                 });
             } else if let Some(params) = symbols.generic_types.get(name.as_str()) {
@@ -2873,9 +2873,24 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                 }
                 return;
             }
-            if !symbols.knows_type(&name.name) && !is_variant && !matches_free_func {
+            if crate::ast::is_builtin_pipe_vocabulary(&name.name)
+                && !symbols.knows_type(&name.name)
+                && !matches_free_func
+            {
                 errors.push(CanonError::CheckError {
-                    message: format!("unknown type `{}` in constructor", name.name),
+                    message: format!(
+                        "`{0}` is a builtin and has no prefix form: pipe into it (`… -> {0}`)",
+                        name.name
+                    ),
+                    span: name.span,
+                });
+            } else if !symbols.knows_type(&name.name) && !is_variant && !matches_free_func {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "unknown type `{}` in constructor{}",
+                        name.name,
+                        did_you_mean(&name.name, symbols)
+                    ),
                     span: name.span,
                 });
             }
@@ -3078,9 +3093,17 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             method.name
                         )
                     } else {
+                        let hint = if symbols.knows_type(&method.name)
+                            || symbols.free_funcs.contains_key(&method.name)
+                            || crate::ast::is_builtin_pipe_vocabulary(&method.name)
+                        {
+                            String::new()
+                        } else {
+                            did_you_mean(&method.name, symbols)
+                        };
                         format!(
-                            "no method `{}` on type `{}` with {} argument(s)",
-                            method.name, recv_ty, effective_arity
+                            "no method `{}` on type `{}` with {} argument(s){}",
+                            method.name, recv_ty, effective_arity, hint
                         )
                     },
                     span: *span,
@@ -4427,6 +4450,47 @@ fn check_product_construction_types(
     }
 }
 
+/// ` — did you mean \`X\`?` for the closest name `name` may have been
+/// meant as, or nothing when no name is close. The vocabulary is every
+/// name in scope, every builtin, and every prelude declaration — loaded
+/// or not, since a misspelt reference is exactly the one that loaded
+/// nothing.
+fn did_you_mean(name: &str, symbols: &SymbolTable) -> String {
+    let budget = (name.chars().count() / 3).max(1);
+    let in_scope = symbols
+        .types
+        .iter()
+        .chain(symbols.free_funcs.keys())
+        .chain(symbols.methods.keys().map(|(_, m)| m))
+        .map(String::as_str);
+    let fixed: Vec<&str> = crate::ast::builtin_pipe_vocabulary()
+        .chain(crate::loader::prelude_names())
+        .collect();
+    in_scope
+        .chain(fixed)
+        .filter(|c| *c != name && c.starts_with(|ch: char| ch.is_ascii_uppercase()))
+        .map(|c| (edit_distance(name, c), c))
+        .filter(|(d, _)| *d <= budget)
+        .min()
+        .map(|(_, c)| format!(" — did you mean `{c}`?"))
+        .unwrap_or_default()
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != *cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
 /// The static type name of an expression, or `"<unknown>"` when the
 /// analysis can't see through it. Crate-visible for tooling: LSP
 /// completion types the chain left of the cursor with the same rules
@@ -4449,6 +4513,13 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
         Expr::StringLit { .. } => "String".to_string(),
         Expr::IntLit { .. } => "Int".to_string(),
         Expr::FloatLit { .. } => "Float".to_string(),
+        Expr::Constructor { name, .. }
+            if !symbols.knows_type(&name.name)
+                && !symbols.variant_of.contains_key(&name.name)
+                && !symbols.free_funcs.contains_key(&name.name) =>
+        {
+            "<unknown>".to_string()
+        }
         Expr::Constructor { name, args, .. } => {
             // Variants widen to their parent union (e.g. `Some(x)` typed as
             // `Option`); free-function constructors take their declared

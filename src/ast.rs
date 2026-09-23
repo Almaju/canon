@@ -895,6 +895,11 @@ pub fn is_builtin_pipe_vocabulary(name: &str) -> bool {
     BUILTIN_ALIASES.iter().any(|(pascal, _)| *pascal == name)
 }
 
+/// Every builtin's pipe spelling (`Print`, `Sum`, …).
+pub fn builtin_pipe_vocabulary() -> impl Iterator<Item = &'static str> {
+    BUILTIN_ALIASES.iter().map(|(pascal, _)| *pascal)
+}
+
 /// The type an arrow *constructs*: its return type with the standard
 /// containers peeled — `Result<Url, InvalidUrl>` constructs `Url`,
 /// `Option<Value>` constructs `Value`, `Future<T>` constructs `T`.
