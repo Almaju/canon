@@ -2918,7 +2918,11 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             if let [arg] = args.as_slice() {
                 let arg_ty = expr_type_name_in_scope(arg, symbols);
                 let target = symbols.resolve_alias(&name.name);
-                let converted = method_known_via_aliases(&arg_ty, &name.name, 0, symbols);
+                // A name with a body is a call whose inputs are checked as
+                // such; only a bodiless name relabels its argument.
+                let converted = method_known_via_aliases(&arg_ty, &name.name, 0, symbols)
+                    || symbols.methods.keys().any(|(_, m)| m == &name.name)
+                    || symbols.free_funcs.contains_key(&name.name);
                 if let Some(arg_scalar) = scalar_primitive_root(symbols, &arg_ty) {
                     // A scalar newtype built from a different primitive
                     // (`Acc("")` with `Acc = Int`) has no conversion to
@@ -3329,7 +3333,10 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     // tagged pointer belongs.
                     let target = symbols.resolve_alias(&method.name);
                     if let Some(kind) = non_scalar_kind(symbols, &method.name) {
-                        if args.is_empty() && !injects_into(&recv_ty, target, symbols) {
+                        let has_body = symbols.methods.keys().any(|(_, m)| m == &method.name)
+                            || symbols.free_funcs.contains_key(&method.name);
+                        if args.is_empty() && !has_body && !injects_into(&recv_ty, target, symbols)
+                        {
                             errors.push(CanonError::CheckError {
                                 message: format!(
                                     "`{}` is {kind}: a `{}` can't become one",
