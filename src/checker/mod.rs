@@ -2938,18 +2938,16 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             });
                         }
                     }
-                    if symbols.variant_of.values().any(|p| p == target)
-                        && !converted
-                        && !injects_into(&arg_ty, target, symbols)
-                    {
-                        errors.push(CanonError::CheckError {
-                            message: format!(
-                                "`{}` is a union: a `{}` is none of its variants — construct \
-                                 the variant it is",
-                                name.name, arg_scalar
-                            ),
-                            span: name.span,
-                        });
+                    if let Some(kind) = non_scalar_kind(symbols, &name.name) {
+                        if !converted && !injects_into(&arg_ty, target, symbols) {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` is {kind}: a `{}` can't become one",
+                                    name.name, arg_scalar
+                                ),
+                                span: name.span,
+                            });
+                        }
                     }
                 }
             }
@@ -3330,18 +3328,16 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                     // would hand the union a string or number where its
                     // tagged pointer belongs.
                     let target = symbols.resolve_alias(&method.name);
-                    if args.is_empty()
-                        && symbols.variant_of.values().any(|p| p == target)
-                        && !injects_into(&recv_ty, target, symbols)
-                    {
-                        errors.push(CanonError::CheckError {
-                            message: format!(
-                                "`{}` is a union: a `{}` is none of its variants — construct \
-                                 the variant it is",
-                                method.name, recv_scalar
-                            ),
-                            span: *span,
-                        });
+                    if let Some(kind) = non_scalar_kind(symbols, &method.name) {
+                        if args.is_empty() && !injects_into(&recv_ty, target, symbols) {
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` is {kind}: a `{}` can't become one",
+                                    method.name, recv_scalar
+                                ),
+                                span: *span,
+                            });
+                        }
                     }
                 }
             }
@@ -4129,6 +4125,26 @@ fn product_fields_of(name: &str, symbols: &SymbolTable) -> Option<(String, Vec<S
 /// Whether a value of type `ty` is a `target` through its newtype chain
 /// (`Outer = Tables` makes an `Outer` a `Tables`, and a `Tables` an
 /// `Outer`'s payload either way round).
+/// What a non-scalar type holds, for a scalar that cannot be relabelled
+/// into it: a union's tagged pointer, a container, or `Unit`'s nothing.
+fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
+    // The builtin containers and their variants build from anything
+    // (`List(1)`, `Some(x)`); only a declared name relabels.
+    if !symbols.standalone_types.contains(name) {
+        return None;
+    }
+    let root = symbols.resolve_alias(name);
+    if symbols.variant_of.values().any(|p| p == root) {
+        Some("a union")
+    } else if matches!(root, "List" | "Option" | "Result" | "Stream") {
+        Some("a container")
+    } else if root == "Unit" {
+        Some("`Unit`")
+    } else {
+        None
+    }
+}
+
 /// Whether a value of type `ty` is one of `union`'s variants (through
 /// its aliases) — the injection `Bad -> Parsed` for `Parsed = Bad + Good`.
 fn injects_into(ty: &str, union: &str, symbols: &SymbolTable) -> bool {
