@@ -147,9 +147,21 @@ impl<'m> WasmGen<'m> {
         // ── Phase 1: user expressions (parked on the operand stack —
         // each may be arbitrary user code, so nothing can live in
         // scratch locals until all three are compiled). ──────────────
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_STAGE as i32));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Store(mem));
         if let Some(e) = body_expr {
             let ty = self.compile_expr(e, scope, f);
-            if !ty.is_str_like() {
+            if self.is_stream_ty(&ty) {
+                // A `Chunks` body: the wrapper pulls the stage after
+                // `task.return`; the string slots stay empty.
+                f.instruction(&Instruction::LocalSet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_STAGE as i32));
+                f.instruction(&Instruction::LocalGet(scope.tmp_i32()));
+                f.instruction(&Instruction::I32Store(mem));
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::I32Const(0));
+            } else if !ty.is_str_like() {
                 // Wrong shape — degrade to an empty body.
                 self.drop_value(ty, f);
                 f.instruction(&Instruction::I32Const(0));
@@ -289,7 +301,7 @@ impl<'m> WasmGen<'m> {
             align: 2,
             memory_index: 0,
         };
-        let mut f = Function::new([(1, ValType::I32)]); // local 1: response
+        let mut f = Function::new([(4, ValType::I32)]); // locals 1..4: response, stage, chunk ptr, chunk len
         f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_CONSUMED as i32));
         f.instruction(&Instruction::I32Const(0));
         f.instruction(&Instruction::I32Store(mem));
@@ -318,9 +330,33 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::Call(FN_HTTP_TASK_RETURN));
 
         // ── Post-return: body ────────────────────────────────────────
+        // A string is one write; a `Chunks` stage is pulled and each
+        // chunk written as it comes.
         f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
         f.instruction(&Instruction::I32Load(mem));
         f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_STAGE as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::LocalTee(2));
+        f.instruction(&Instruction::If(BlockType::Empty));
+        f.instruction(&Instruction::Block(BlockType::Empty));
+        f.instruction(&Instruction::Loop(BlockType::Empty));
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::Call(self.fn_stream_next));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::BrIf(1)); // the end: [ptr, len] unwind with the block
+        f.instruction(&Instruction::LocalSet(4));
+        f.instruction(&Instruction::LocalSet(3));
+        f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
+        f.instruction(&Instruction::I32Load(mem));
+        f.instruction(&Instruction::LocalGet(3));
+        f.instruction(&Instruction::LocalGet(4));
+        f.instruction(&Instruction::Call(FN_HTTP_STREAM_WRITE));
+        f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::Br(0));
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::End);
+        f.instruction(&Instruction::Else);
         f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
         f.instruction(&Instruction::I32Load(mem));
         f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_PTR as i32));
@@ -329,6 +365,7 @@ impl<'m> WasmGen<'m> {
         f.instruction(&Instruction::I32Load(mem));
         f.instruction(&Instruction::Call(FN_HTTP_STREAM_WRITE));
         f.instruction(&Instruction::Drop);
+        f.instruction(&Instruction::End);
         f.instruction(&Instruction::I32Const(MEM_HTTP_BODY_WRITER as i32));
         f.instruction(&Instruction::I32Load(mem));
         f.instruction(&Instruction::Call(FN_HTTP_STREAM_DROP_WRITABLE));

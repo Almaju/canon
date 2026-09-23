@@ -163,7 +163,9 @@ Consumers:
 lambda)` pulls every chunk into an accumulator, as a list's `Folded`
 does; `-> String` drains the rest into one string; `-> Printed?` writes
 each chunk to standard output as it is pulled, so the filter above
-never holds more than one chunk. Transforms:
+never holds more than one chunk; and an HTTP handler's
+`Response(Chunks * Headers * Status)`, `Chunks = Stream<String>`,
+sends each chunk as the response body as it is pulled. Transforms:
 `-> Mapped(lambda)` applies the lambda to each chunk as it is pulled
 and `-> Taken(n)` stops after `n` chunks. Nothing is read until a
 consumer pulls, and a stream nothing pulls from is never read; the

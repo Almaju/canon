@@ -41,7 +41,7 @@ set, so a binding's unreached siblings are neither linked nor reported.
 JSON, HTML and format-string interpolation are pure Canon and work in
 handlers.
 
-## `Stream<T>` beyond `Stream<String>` and streaming response bodies
+## `Stream<T>` beyond `Stream<String>`
 
 `Stream<String>` is a value: `Stdin()`, `file -> Read` and
 `Request.body()` produce one, a
@@ -59,7 +59,9 @@ binding taking a stream, `wasi:cli/stdout`'s `write-via-stream`
 (`Stream<String> => Result<Printed, IoError>`), is pumped: codegen makes
 a fresh byte stream through the stdout builtins it already imports,
 writes each chunk pulled into it, drops the writer, and reads the
-completion future.
+completion future. An HTTP handler's `Chunks` response body is pumped the same
+way into the response's contents stream, after `task.return` hands the
+response to the host.
 
 `wasi:http/client`'s `send` is fused into one round trip: the stdlib
 binding takes the request as strings (`Authority * Body * Method *
@@ -80,9 +82,8 @@ Everything else about streams is still the gap: a `Stream<T>` whose
 element is not a `String` (`List(1 * 2) -> Stream`, a `Mapped` lambda
 answering an `Int`), a `stream<T>` of any other element type in a
 binding's WIT, a stream or future in a *parameter* of any other
-binding, a `future` returned on its own, the HTTP client's body
-streamed rather than drained, and a
-streamed response body. Any such
+binding, a `future` returned on its own, and the HTTP client's body
+streamed rather than drained. Any such
 program is a checker error; `canon install` skips the WIT shapes it
 cannot spell.
 

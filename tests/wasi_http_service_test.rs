@@ -13,6 +13,8 @@
 //! response composition are slices 2–3; when they land, this test
 //! grows assertions on echoed request data.
 
+mod common;
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -29,6 +31,7 @@ const METHOD_TEST_PORT: u16 = 38433;
 const ROUTER_TEST_PORT: u16 = 38434;
 const BODY_TEST_PORT: u16 = 38435;
 const REQUEST_HEADER_TEST_PORT: u16 = 38436;
+const STREAMED_BODY_TEST_PORT: u16 = 38437;
 
 #[test]
 fn wasi_http_service_smoke() {
@@ -490,6 +493,76 @@ fn wasi_http_service_request_header() {
     assert!(absent.ends_with("who?"), "got:\n{absent}");
 }
 
+/// Streamed response body: a `Chunks` (`Stream<String>`) body is pulled
+/// after `task.return` and written chunk by chunk — here the request
+/// body, uppercased stage by stage, larger than one host read.
+#[test]
+fn wasi_http_service_streamed_body() {
+    let workdir = std::env::temp_dir().join(format!("canon_wasi_http_sb_{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).unwrap();
+    let src_path = workdir.join("service.can");
+    std::fs::write(
+        &src_path,
+        r#"Request => Response {
+    Request
+        .body()
+        -> Mapped((String) => String { String -> Uppercased })
+        -> Chunks
+        -> Response(Headers() * Status(200))
+}
+"#,
+    )
+    .unwrap();
+
+    let canon_bin = PathBuf::from(env!("CARGO_BIN_EXE_canon"));
+    let addr = format!("127.0.0.1:{STREAMED_BODY_TEST_PORT}");
+    let mut child = Command::new(&canon_bin)
+        .arg("run")
+        .arg(&src_path)
+        .arg("--addr")
+        .arg(&addr)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn `canon run --addr`");
+
+    let start = Instant::now();
+    let mut bound = false;
+    while start.elapsed() < Duration::from_secs(10) {
+        if TcpStream::connect(&addr).is_ok() {
+            bound = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if !bound {
+        let _ = child.kill();
+        let out = child.wait_with_output().ok();
+        let diag = out
+            .map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
+            .unwrap_or_default();
+        panic!("server never bound {addr}\n{diag}");
+    }
+
+    let sent = "abc".repeat(100_000);
+    let response = send_body(&addr, &sent);
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&workdir);
+    let response = response.expect("streamed request");
+
+    assert!(
+        response.starts_with("HTTP/1.1 200"),
+        "got:\n{}",
+        &response[..200.min(response.len())]
+    );
+    assert!(
+        response.ends_with(&sent.to_uppercase()),
+        "expected the 300 KB body uppercased, got {} bytes",
+        response.len()
+    );
+}
+
 fn send_verb(addr: &str, verb: &str) -> std::io::Result<String> {
     send_line(addr, &format!("{verb} /"))
 }
@@ -510,7 +583,7 @@ fn send_body(addr: &str, body: &str) -> std::io::Result<String> {
     )?;
     let mut response = String::new();
     stream.read_to_string(&mut response)?;
-    Ok(response)
+    Ok(common::unchunked(response))
 }
 
 fn send_header(addr: &str, header: &str) -> std::io::Result<String> {
@@ -522,7 +595,7 @@ fn send_header(addr: &str, header: &str) -> std::io::Result<String> {
     )?;
     let mut response = String::new();
     stream.read_to_string(&mut response)?;
-    Ok(response)
+    Ok(common::unchunked(response))
 }
 
 fn send_line(addr: &str, request_line: &str) -> std::io::Result<String> {
@@ -534,5 +607,5 @@ fn send_line(addr: &str, request_line: &str) -> std::io::Result<String> {
     )?;
     let mut response = String::new();
     stream.read_to_string(&mut response)?;
-    Ok(response)
+    Ok(common::unchunked(response))
 }
