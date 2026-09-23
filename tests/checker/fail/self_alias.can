@@ -1,9 +1,7 @@
-Acc = Left
-
-Left = Int
+Bag<T> = Bag<T>
 
 Unit => Program {
-    Acc("")
+    Bag(1)
         -> String
         -> Print
 }

@@ -1,1 +1,1 @@
-error[tests/checker/fail/scalar_newtype_wrong_primitive.can:4:5]: `Greeting` expects a `String`, found `Int`
+error[tests/checker/fail/scalar_newtype_wrong_primitive.can:6:5]: `Acc` expects a `Int`, found `String`

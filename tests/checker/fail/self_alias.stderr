@@ -1,0 +1,1 @@
+error[tests/checker/fail/self_alias.can:1:1]: `Bag` is defined through itself: a type must reach a primitive, a product or a union

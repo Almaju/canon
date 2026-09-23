@@ -1,0 +1,1 @@
+error[tests/checker/fail/scalar_into_union.can:4:5]: `Color` is a union: a `String` can't become one
