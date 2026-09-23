@@ -1333,13 +1333,11 @@ fn substitute(ty: &TypeExpr, binding: &HashMap<String, TypeExpr>) -> TypeExpr {
 }
 
 fn sort_canonical(ty: &mut TypeExpr) {
+    // A package-qualified name sorts as its plain name would.
+    let key = |t: &TypeExpr| crate::ast::plain_name(&type_expr_canonical(t)).to_string();
     match ty {
-        TypeExpr::Union { variants, .. } => {
-            variants.sort_by_cached_key(type_expr_canonical);
-        }
-        TypeExpr::Product { fields, .. } => {
-            fields.sort_by_cached_key(type_expr_canonical);
-        }
+        TypeExpr::Union { variants, .. } => variants.sort_by_cached_key(key),
+        TypeExpr::Product { fields, .. } => fields.sort_by_cached_key(key),
         _ => {}
     }
 }

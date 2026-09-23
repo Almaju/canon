@@ -4676,7 +4676,8 @@ pub(crate) fn expr_type_name_in_scope(expr: &Expr, symbols: &SymbolTable) -> Str
             if let Some(parent) = symbols.variant_of.get(&method.name) {
                 return parent.clone();
             }
-            let is_shape = symbols.methods.keys().any(|(_, m)| m == &method.name);
+            let is_shape = symbols.methods.keys().any(|(_, m)| m == &method.name)
+                || crate::ast::is_builtin_pipe_vocabulary(&method.name);
             if !is_shape
                 && (symbols.standalone_types.contains(&method.name)
                     || matches!(method.name.as_str(), "Int" | "Float" | "String" | "Bool"))

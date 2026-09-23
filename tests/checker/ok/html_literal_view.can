@@ -1,8 +1,10 @@
+Item = Html
+
 Model = String
 
 View = Html
 
-Item = (String) => Html {
+String => Item {
     <li>{String -> Escaped}</li>
 }
 

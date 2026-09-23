@@ -28,17 +28,17 @@ Set<T> = Absent + Entry<T>
     )
 }
 
-<T>(Set<T>) => Length {
-    Set -> (
-        * Absent { 0 }
-        * Entry { Entry.Remaining -> Length -> Sum(1) }
-    )
-}
-
 <T>(Set<T>) => Items<T> {
     Set -> (
         * Absent { List() }
         * Entry { List(Entry.Item) -> Joined(Entry.Remaining -> Items) }
+    )
+}
+
+<T>(Set<T>) => Length {
+    Set -> (
+        * Absent { 0 }
+        * Entry { Entry.Remaining -> Length -> Sum(1) }
     )
 }
 

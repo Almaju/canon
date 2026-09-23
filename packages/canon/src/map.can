@@ -20,7 +20,7 @@ Value<V> = V
 
 Values<V> = List<Value<V>>
 
-<K, V>(Key<K> * Map<K, V>) => Contains {
+<K, V>(Map<K, V> * Key<K>) => Contains {
     Map -> Value(Key) -> (
         * None { False() }
         * Some<Value> { True() }
@@ -70,7 +70,7 @@ Values<V> = List<Value<V>>
     Empty()
 }
 
-<K, V>(Key<K> * Map<K, V>) => Option<Value<V>> {
+<K, V>(Map<K, V> * Key<K>) => Option<Value<V>> {
     Map -> (
         * Empty { None() }
         * Node {

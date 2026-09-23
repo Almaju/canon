@@ -47,6 +47,8 @@ struct TypeDoc {
     /// Canonical rendering of the body, or `None` for a definition-less
     /// type.
     body: Option<TypeExpr>,
+    /// The type's parameters, rendered in its head (`Map<K, V> = …`).
+    params: Vec<String>,
     /// Every module declaring this name. Usually one; a structurally
     /// identical duplicate across files is one type, not a clash
     /// (`Length = Int` in both map.can and set.can), so it can be more.
@@ -345,8 +347,16 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
                     }
                     let entry = types.entry(td.name.name.clone()).or_insert(TypeDoc {
                         body: None,
+                        params: Vec::new(),
                         modules: BTreeSet::new(),
                     });
+                    if entry.body.is_none() {
+                        entry.params = td
+                            .generic_params
+                            .iter()
+                            .map(|g| g.name.name.clone())
+                            .collect();
+                    }
                     entry.body.get_or_insert(td.body);
                     entry.modules.insert(module.clone());
                     module_types
@@ -357,6 +367,7 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
                 Item::Function(f) if is_type_name(&f.name.name) => {
                     types.entry(f.name.name.clone()).or_insert(TypeDoc {
                         body: None,
+                        params: Vec::new(),
                         modules: BTreeSet::new(),
                     });
                     decls.push(DeclDoc {
@@ -377,6 +388,7 @@ pub fn build(package: &str, root: &Path) -> Result<Api, (PathBuf, CanonError)> {
                 name.clone(),
                 TypeDoc {
                     body: None,
+                    params: Vec::new(),
                     modules: BTreeSet::from([module.clone()]),
                 },
             );
@@ -481,6 +493,24 @@ fn declaration_form(decl: &DeclDoc) -> String {
     format!("{} => {}", inputs, emit_type_expr(&decl.return_ty))
 }
 
+/// A type's name with its parameters (`Map<K, V>`).
+fn type_head(name: &str, params: &[String]) -> String {
+    if params.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name}<{}>", params.join(", "))
+    }
+}
+
+/// A type expression's head name, its arguments aside (`Map` of
+/// `Map<K, V>`).
+fn head(ty: &TypeExpr) -> Option<&str> {
+    match ty {
+        TypeExpr::Named { name, .. } => Some(name),
+        _ => None,
+    }
+}
+
 /// A command's message: the one input beside the type the declaration
 /// gives back (`Map * Insert => Map` → `Insert`). The language spec,
 /// § Functions: a command is applied by piping the value into it.
@@ -488,10 +518,7 @@ fn command_message(decl: &DeclDoc) -> Option<&TypeExpr> {
     let [a, b] = decl.inputs.as_slice() else {
         return None;
     };
-    match (
-        a.simple_name() == Some(&decl.name),
-        b.simple_name() == Some(&decl.name),
-    ) {
+    match (head(a) == Some(&decl.name), head(b) == Some(&decl.name)) {
         (true, false) => Some(b),
         (false, true) => Some(a),
         _ => None,
@@ -687,7 +714,7 @@ fn type_page(api: &Api, site: Option<&str>, name: &str, doc: &TypeDoc) -> String
     if let Some(ty) = &doc.body {
         body.push_str(&format!(
             "<pre class=\"def\"><code>{} = {}</code></pre>\n",
-            escape(name),
+            escape(&type_head(name, &doc.params)),
             linkify(&emit_type_expr(ty), api, root)
         ));
         let parts = match ty {
@@ -711,7 +738,7 @@ fn type_page(api: &Api, site: Option<&str>, name: &str, doc: &TypeDoc) -> String
     // second is the list with no hand-written equivalent.
     // A command constructs its own receiver, so it belongs to the pipe
     // menu, not the constructor list.
-    let pipes_in = |d: &DeclDoc| d.inputs.first().and_then(TypeExpr::simple_name) == Some(name);
+    let pipes_in = |d: &DeclDoc| d.inputs.first().and_then(head) == Some(name);
     let is_command = |d: &DeclDoc| d.name == name && command_message(d).is_some();
     let constructors: Vec<&DeclDoc> = api
         .decls
@@ -785,7 +812,10 @@ fn module_page(api: &Api, site: Option<&str>, module: &ModuleDoc) -> String {
                 "<li><a href=\"{}type/{}.html\">{}</a>{}</li>",
                 root,
                 name,
-                escape(name),
+                escape(&type_head(
+                    name,
+                    api.types.get(name).map_or(&[][..], |t| &t.params)
+                )),
                 api.types
                     .get(name)
                     .and_then(|t| t.body.as_ref())
