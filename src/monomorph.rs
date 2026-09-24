@@ -372,6 +372,29 @@ fn mentioned_names(ty: &TypeExpr, out: &mut HashSet<String>) {
     }
 }
 
+/// How deep type arguments may nest before an instantiation counts as
+/// unbounded.
+const MAX_NESTING: usize = 8;
+
+/// How deeply an instantiation's spelling nests its arguments
+/// (`Box<Int>` 1, `Box<List<Int>>` 2) — read off the spelling, since an
+/// argument may already be a minted flat name.
+fn nesting(spelling: &str) -> usize {
+    let mut depth: usize = 0;
+    let mut max = 0;
+    for c in spelling.chars() {
+        match c {
+            '<' => {
+                depth += 1;
+                max = max.max(depth);
+            }
+            '>' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    max
+}
+
 fn named(name: &str, generics: Vec<TypeExpr>) -> TypeExpr {
     TypeExpr::Named {
         name: name.to_string(),
@@ -405,6 +428,24 @@ impl Expander {
 
     fn enqueue(&mut self, head: &str, args: &[TypeExpr]) -> String {
         let key = mangle(head, args);
+        // A declaration that instantiates itself with a larger argument
+        // (`Store<K, V> = Absent + Entry<Entry, V>`) would expand forever.
+        if nesting(&key) > MAX_NESTING {
+            if self.done.insert(format!("{head}#too-deep")) {
+                self.errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{head}` instantiates itself with ever-larger type arguments: a \
+                         generic must reach a fixed set of instantiations"
+                    ),
+                    span: args
+                        .iter()
+                        .map(TypeExpr::span)
+                        .find(|s| s.end > 0)
+                        .unwrap_or_default(),
+                });
+            }
+            return key;
+        }
         self.applications
             .insert(key.clone(), (head.to_string(), args.to_vec()));
         if self.done.insert(key.clone()) {

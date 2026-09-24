@@ -98,6 +98,12 @@ pub struct SymbolTable {
     /// `Rgb = Channel^3` records `Rgb -> (Channel, 3)`: a fixed-size
     /// positional product, built from N values and read as `.1` … `.N`.
     pub repetitions: HashMap<String, (String, u64)>,
+    /// Members with a repetition among their inputs, keyed like
+    /// `methods`, to their slots with the repetition spelled out:
+    /// `Steps * Limbs^2 => Halves` records `["Steps", "Limbs", "Limbs"]`.
+    /// A repetition binds positionally, so the by-type construction check
+    /// skips it; these slots are what the handed values must fill.
+    pub repeated_inputs: HashMap<(String, String), Vec<String>>,
     /// Commands, keyed `(receiver, message)`: `Map * Insert => Map`
     /// registers `("Map", "Insert")`. A value pipes into its message
     /// (`map -> Insert(…)`) to apply it.
@@ -1302,6 +1308,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     //     reads more clearly.
     let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
     let mut repetitions: HashMap<String, (String, u64)> = HashMap::new();
+    let mut repeated_inputs: HashMap<(String, String), Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             // A parameterized typedef's fields only mean something per
@@ -1445,6 +1452,35 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 // whether the components were declared as one product
                 // param or (post-flatten, for constructors) as N params.
                 let ctor_arity = components.len().saturating_sub(1);
+                if func
+                    .params
+                    .iter()
+                    .any(|p| matches!(p.ty, TypeExpr::Repeat { .. }))
+                {
+                    let name = if func.name.name == "Self" {
+                        &recv.name
+                    } else {
+                        &func.name.name
+                    };
+                    let mut slots: Vec<String> = Vec::new();
+                    for param in &func.params {
+                        match &param.ty {
+                            TypeExpr::Repeat { ty, count, .. } => {
+                                if let Some(elem) = ty.simple_name() {
+                                    slots.extend((0..*count).map(|_| elem.to_string()));
+                                }
+                            }
+                            other => slots.extend(other.simple_name().map(str::to_string)),
+                        }
+                    }
+                    let mut firsts: Vec<&String> = slots.iter().collect();
+                    firsts.dedup();
+                    for first in firsts {
+                        repeated_inputs
+                            .entry((first.clone(), name.clone()))
+                            .or_insert_with(|| slots.clone());
+                    }
+                }
                 for param_name in &components {
                     methods
                         .entry((param_name.clone(), func.name.name.clone()))
@@ -1634,6 +1670,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         elem_of,
         payload_of,
         repetitions,
+        repeated_inputs,
         messages,
         type_parts,
     }
@@ -3152,6 +3189,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             let known = is_concurrent_combinator
                 || (is_piped_construction && construction_takes_args)
                 || has_alias_method;
+            check_repeated_inputs(&recv_ty, &method.name, args, symbols, *span, errors);
             if !(known || (recv_ty == "<unknown>" && receiver_reported)) {
                 errors.push(CanonError::CheckError {
                     message: if recv_ty == "<unknown>" {
@@ -4147,8 +4185,74 @@ fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
         Some("a container")
     } else if root == "Unit" {
         Some("`Unit`")
+    } else if symbols.variant_of.contains_key(root) && !symbols.standalone_types.contains(root) {
+        Some("a payload-less variant")
     } else {
         None
+    }
+}
+
+/// A member with a repetition among its inputs (`String^2 => Gt`,
+/// `Steps * Limbs^2 => Halves`) binds the repetition positionally, so the
+/// by-type construction check skips it. What it can still hold to: the
+/// handed values — the receiver, then the arguments — have the slots'
+/// representations, one for one. `"b" -> Gt(1)` hands an `Int` where a
+/// `String` is read.
+fn check_repeated_inputs(
+    recv_ty: &str,
+    method: &str,
+    args: &[Expr],
+    symbols: &SymbolTable,
+    span: crate::error::Span,
+    errors: &mut Vec<CanonError>,
+) {
+    let mut current = recv_ty;
+    let mut found = None;
+    for _ in 0..20 {
+        if let Some(slots) = symbols
+            .repeated_inputs
+            .get(&(current.to_string(), method.to_string()))
+        {
+            found = Some(slots);
+            break;
+        }
+        match symbols.aliases.get(current) {
+            Some(next) => current = next,
+            None => break,
+        }
+    }
+    let Some(slots) = found else {
+        return;
+    };
+    let root = |ty: &str| {
+        scalar_primitive_root(symbols, ty)
+            .unwrap_or_else(|| symbols.resolve_alias(ty))
+            .to_string()
+    };
+    let mut handed: Vec<String> = std::iter::once(recv_ty.to_string())
+        .chain(
+            flatten_product_args(args)
+                .iter()
+                .map(|a| expr_type_name_in_scope(a, symbols)),
+        )
+        .collect();
+    if handed.len() != slots.len() || handed.iter().any(|t| t == "<unknown>") {
+        return;
+    }
+    let mut want: Vec<String> = slots.iter().map(|t| root(t)).collect();
+    let mut got: Vec<String> = handed.iter().map(|t| root(t)).collect();
+    want.sort();
+    got.sort();
+    if want != got {
+        handed.remove(0);
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{method}` takes `{}`, handed `{recv_ty}` then `{}`",
+                slots.join(" * "),
+                handed.join(" * ")
+            ),
+            span,
+        });
     }
 }
 
