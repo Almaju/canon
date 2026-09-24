@@ -258,14 +258,38 @@ impl<'m> WasmGen<'m> {
                         args.to_vec()
                     };
                     if let Some(first_ty) = self.infer_ctor_arg_type_name(&flat[0]) {
-                        for cand in self.dispatch_candidates(&first_ty) {
-                            let key = (Some(cand), name.to_string());
-                            if let Some(info) = self.func_table.get(&key).cloned() {
-                                // Compile the first arg (this becomes the
-                                // receiver) and dispatch with the rest.
-                                let _ = self.compile_expr(&flat[0], scope, f);
-                                return self.emit_func_table_call(&info, &flat[1..], scope, f);
+                        let mut info =
+                            self.dispatch_candidates(&first_ty)
+                                .into_iter()
+                                .find_map(|cand| {
+                                    self.func_table
+                                        .get(&(Some(cand), name.to_string()))
+                                        .cloned()
+                                });
+                        // An untagged base value fills a member whose input
+                        // is a newtype of it (`Now(951826154)` reaching
+                        // `Unix => Now`, `Unix = Int`), when exactly one does.
+                        if info.is_none() {
+                            let bases: Vec<FuncInfo> = self
+                                .func_table
+                                .iter()
+                                .filter(|((p, m), _)| {
+                                    m == name
+                                        && p.as_ref().is_some_and(|p| {
+                                            self.collect_alias_chain(p).contains(&first_ty)
+                                        })
+                                })
+                                .map(|(_, info)| info.clone())
+                                .collect();
+                            if let [only] = bases.as_slice() {
+                                info = Some(only.clone());
                             }
+                        }
+                        if let Some(info) = info {
+                            // Compile the first arg (this becomes the
+                            // receiver) and dispatch with the rest.
+                            let _ = self.compile_expr(&flat[0], scope, f);
+                            return self.emit_func_table_call(&info, &flat[1..], scope, f);
                         }
                     }
                 }

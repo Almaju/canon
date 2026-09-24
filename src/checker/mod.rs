@@ -3158,12 +3158,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // `B(A * rest)`, so a method whose name is a type constructor
             // (a typedef, a union variant, or a primitive) is really
             // building a `B` — the receiver fills the first input slot.
-            let is_piped_construction = symbols.standalone_types.contains(&method.name)
-                || symbols.variant_of.contains_key(&method.name)
-                || matches!(
-                    method.name.as_str(),
-                    "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
-                );
+            // A builtin's name is its operation even where it also names a
+            // type (`Length = Int`), unless a declared family owns it —
+            // codegen's `is_builtin_op` routing, mirrored.
+            let builtin_op = crate::ast::is_builtin_pipe_vocabulary(&method.name)
+                && !symbols.methods.keys().any(|(_, m)| m == &method.name);
+            let is_piped_construction = !builtin_op
+                && (symbols.standalone_types.contains(&method.name)
+                    || symbols.variant_of.contains_key(&method.name)
+                    || matches!(
+                        method.name.as_str(),
+                        "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
+                    ));
             // Construction alone only accounts for the arguments when the
             // name takes them: a multi-field product takes the rest of its
             // fields, and the wrappers take their payload. Anything else
