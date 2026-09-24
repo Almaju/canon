@@ -2955,11 +2955,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             if let [arg] = args.as_slice() {
                 let arg_ty = expr_type_name_in_scope(arg, symbols);
                 let target = symbols.resolve_alias(&name.name);
-                // A name with a body is a call whose inputs are checked as
-                // such; only a bodiless name relabels its argument.
-                let converted = method_known_via_aliases(&arg_ty, &name.name, 0, symbols)
-                    || symbols.methods.keys().any(|(_, m)| m == &name.name)
-                    || symbols.free_funcs.contains_key(&name.name);
+                let converted = member_takes(&arg_ty, &name.name, symbols);
                 if let Some(arg_scalar) = scalar_primitive_root(symbols, &arg_ty) {
                     // A scalar newtype built from a different primitive
                     // (`Acc("")` with `Acc = Int`) has no conversion to
@@ -2991,6 +2987,13 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         }
                     }
                 }
+            }
+            if !args.is_empty() {
+                let handed: Vec<String> = flatten_product_args(args)
+                    .iter()
+                    .map(|a| expr_type_name_in_scope(a, symbols))
+                    .collect();
+                check_repetition_values(&name.name, &handed, symbols, name.span, errors);
             }
             if name.name == "Unit" && !args.is_empty() {
                 errors.push(CanonError::CheckError {
@@ -3370,16 +3373,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             });
                         }
                     }
-                } else if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty) {
+                } else if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty)
+                    .or_else(|| (symbols.resolve_alias(&recv_ty) == "Unit").then_some("Unit"))
+                {
                     // The other direction: a scalar piped into a union
                     // has no variant to become — the erasure fallback
                     // would hand the union a string or number where its
                     // tagged pointer belongs.
                     let target = symbols.resolve_alias(&method.name);
                     if let Some(kind) = non_scalar_kind(symbols, &method.name) {
-                        let has_body = symbols.methods.keys().any(|(_, m)| m == &method.name)
-                            || symbols.free_funcs.contains_key(&method.name);
-                        if args.is_empty() && !has_body && !injects_into(&recv_ty, target, symbols)
+                        if args.is_empty()
+                            && !member_takes(&recv_ty, &method.name, symbols)
+                            && !injects_into(&recv_ty, target, symbols)
                         {
                             errors.push(CanonError::CheckError {
                                 message: format!(
@@ -3391,6 +3396,16 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         }
                     }
                 }
+            }
+            if is_piped_construction && !has_alias_method {
+                let handed: Vec<String> = std::iter::once(recv_ty.clone())
+                    .chain(
+                        flatten_product_args(args)
+                            .iter()
+                            .map(|a| expr_type_name_in_scope(a, symbols)),
+                    )
+                    .collect();
+                check_repetition_values(&method.name, &handed, symbols, *span, errors);
             }
             if is_piped_construction {
                 // The canonical call form pipes the first arg (`A -> B(rest)`
@@ -3583,6 +3598,19 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *vspan,
                             });
+                        } else {
+                            // `Unit` and a product have no variants either.
+                            let root = symbols.resolve_alias(&scrutinee_ty);
+                            if root == "Unit" || symbols.product_fields.contains_key(root) {
+                                errors.push(CanonError::CheckError {
+                                    message: format!(
+                                        "dispatching on `{}`, which is not a union: it has no \
+                                         variants to match",
+                                        scrutinee_ty
+                                    ),
+                                    span: *vspan,
+                                });
+                            }
                         }
                     }
                 }
@@ -4136,6 +4164,49 @@ fn check_builtin_args(
 
 /// The element type and count behind a repetition type, through the
 /// receiver's alias chain (`Pixel = Rgb`, `Rgb = Channel^3`).
+/// Building a repetition type (`Rgb = Channel^3`) takes exactly its
+/// count of values, each of the element's representation: `2 ->
+/// Rgb(5 * 8)` fills three `Channel`s, an `Rgb` piped into it fills none.
+fn check_repetition_values(
+    name: &str,
+    handed: &[String],
+    symbols: &SymbolTable,
+    span: crate::error::Span,
+    errors: &mut Vec<CanonError>,
+) {
+    let Some((elem, count)) = repetition_of(name, symbols) else {
+        return;
+    };
+    if handed.len() as u64 == 1
+        && handed[0] != "<unknown>"
+        && repetition_of(&handed[0], symbols).is_some()
+    {
+        return; // a relabel of a repetition value
+    }
+    let root = |ty: &str| repr_root(ty, symbols);
+    let want = root(&elem);
+    let wrong = handed
+        .iter()
+        .find(|t| t.as_str() != "<unknown>" && root(t) != want);
+    if handed.len() as u64 != count || wrong.is_some() {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{name}` is `{elem}^{count}`: it takes {count} `{elem}` values, handed `{}`",
+                handed.join(" * ")
+            ),
+            span,
+        });
+    }
+}
+
+/// The representation a value of `ty` has: its primitive, or the type its
+/// aliases end at.
+fn repr_root(ty: &str, symbols: &SymbolTable) -> String {
+    scalar_primitive_root(symbols, ty)
+        .unwrap_or_else(|| symbols.resolve_alias(ty))
+        .to_string()
+}
+
 fn repetition_of(name: &str, symbols: &SymbolTable) -> Option<(String, u64)> {
     let mut current = name;
     for _ in 0..20 {
@@ -4177,7 +4248,8 @@ fn product_fields_of(name: &str, symbols: &SymbolTable) -> Option<(String, Vec<S
 /// (`Outer = Tables` makes an `Outer` a `Tables`, and a `Tables` an
 /// `Outer`'s payload either way round).
 /// What a non-scalar type holds, for a scalar that cannot be relabelled
-/// into it: a union's tagged pointer, a container, or `Unit`'s nothing.
+/// into it: a union's tagged pointer or a container. (A relabel into a
+/// `Unit`-rooted type drops the value, which codegen does.)
 fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
     // The builtin containers and their variants build from anything
     // (`List(1)`, `Some(x)`); only a declared name relabels.
@@ -4189,8 +4261,6 @@ fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
         Some("a union")
     } else if matches!(root, "List" | "Option" | "Result" | "Stream") {
         Some("a container")
-    } else if root == "Unit" {
-        Some("`Unit`")
     } else if symbols.variant_of.contains_key(root) && !symbols.standalone_types.contains(root) {
         Some("a payload-less variant")
     } else {
@@ -4230,11 +4300,7 @@ fn check_repeated_inputs(
     let Some(slots) = found else {
         return;
     };
-    let root = |ty: &str| {
-        scalar_primitive_root(symbols, ty)
-            .unwrap_or_else(|| symbols.resolve_alias(ty))
-            .to_string()
-    };
+    let root = |ty: &str| repr_root(ty, symbols);
     let mut handed: Vec<String> = std::iter::once(recv_ty.to_string())
         .chain(
             flatten_product_args(args)
@@ -4260,6 +4326,14 @@ fn check_repeated_inputs(
             span,
         });
     }
+}
+
+/// Whether a member of `name`'s family takes a `ty` — as its own type or
+/// through `ty`'s aliases (a newtype is narrower than its base, so a base
+/// value does not select a newtype's member). Such a pipe is a call; one
+/// no member takes relabels its argument.
+fn member_takes(ty: &str, name: &str, symbols: &SymbolTable) -> bool {
+    method_known_via_aliases(ty, name, 0, symbols) || symbols.free_funcs.contains_key(name)
 }
 
 /// Whether a value of type `ty` is one of `union`'s variants (through
