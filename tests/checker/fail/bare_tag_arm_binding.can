@@ -1,0 +1,6 @@
+Unit => Program {
+    1 -> Lt(4) -> (
+        * False { "no" -> Print }
+        * True { True -> String -> Print }
+    )
+}

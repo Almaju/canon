@@ -98,6 +98,12 @@ pub struct SymbolTable {
     /// `Rgb = Channel^3` records `Rgb -> (Channel, 3)`: a fixed-size
     /// positional product, built from N values and read as `.1` … `.N`.
     pub repetitions: HashMap<String, (String, u64)>,
+    /// Members with a repetition among their inputs, keyed like
+    /// `methods`, to their slots with the repetition spelled out:
+    /// `Steps * Limbs^2 => Halves` records `["Steps", "Limbs", "Limbs"]`.
+    /// A repetition binds positionally, so the by-type construction check
+    /// skips it; these slots are what the handed values must fill.
+    pub repeated_inputs: HashMap<(String, String), Vec<String>>,
     /// Commands, keyed `(receiver, message)`: `Map * Insert => Map`
     /// registers `("Map", "Insert")`. A value pipes into its message
     /// (`map -> Insert(…)`) to apply it.
@@ -1302,6 +1308,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
     //     reads more clearly.
     let mut product_fields: HashMap<String, Vec<String>> = HashMap::new();
     let mut repetitions: HashMap<String, (String, u64)> = HashMap::new();
+    let mut repeated_inputs: HashMap<(String, String), Vec<String>> = HashMap::new();
     for item in &module.items {
         if let Item::TypeDef(td) = item {
             // A parameterized typedef's fields only mean something per
@@ -1445,6 +1452,35 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
                 // whether the components were declared as one product
                 // param or (post-flatten, for constructors) as N params.
                 let ctor_arity = components.len().saturating_sub(1);
+                if func
+                    .params
+                    .iter()
+                    .any(|p| matches!(p.ty, TypeExpr::Repeat { .. }))
+                {
+                    let name = if func.name.name == "Self" {
+                        &recv.name
+                    } else {
+                        &func.name.name
+                    };
+                    let mut slots: Vec<String> = Vec::new();
+                    for param in &func.params {
+                        match &param.ty {
+                            TypeExpr::Repeat { ty, count, .. } => {
+                                if let Some(elem) = ty.simple_name() {
+                                    slots.extend((0..*count).map(|_| elem.to_string()));
+                                }
+                            }
+                            other => slots.extend(other.simple_name().map(str::to_string)),
+                        }
+                    }
+                    let mut firsts: Vec<&String> = slots.iter().collect();
+                    firsts.dedup();
+                    for first in firsts {
+                        repeated_inputs
+                            .entry((first.clone(), name.clone()))
+                            .or_insert_with(|| slots.clone());
+                    }
+                }
                 for param_name in &components {
                     methods
                         .entry((param_name.clone(), func.name.name.clone()))
@@ -1634,6 +1670,7 @@ fn collect_symbols(module: &Module, errors: &mut Vec<CanonError>) -> SymbolTable
         elem_of,
         payload_of,
         repetitions,
+        repeated_inputs,
         messages,
         type_parts,
     }
@@ -2069,7 +2106,7 @@ fn check_function(
         return;
     }
 
-    let scope = ExprScope::from_function(func);
+    let scope = ExprScope::from_function(func, symbols);
     check_block(&func.body, &func.return_ty, &scope, symbols, errors);
     check_contextual_arm_annotations(&func.body, Some(&func.return_ty), symbols, errors);
 }
@@ -2333,7 +2370,7 @@ struct ExprScope {
 }
 
 impl ExprScope {
-    fn from_function(func: &FunctionDef) -> Self {
+    fn from_function(func: &FunctionDef, symbols: &SymbolTable) -> Self {
         let mut names: Vec<String> = Vec::new();
         let mut repeated: HashMap<String, u64> = HashMap::new();
         for p in &func.params {
@@ -2341,7 +2378,18 @@ impl ExprScope {
             push_repeated_params(&p.ty, &mut repeated);
         }
         if let Some(recv) = &func.receiver {
-            names.push(recv.name.clone());
+            // A constructor's own type names its first input (`Json` for
+            // the `String` a `String => Json` takes) only when the two
+            // share a representation: in `Age => Wrapped`, `Wrapped`
+            // would read an `Int` as a string.
+            let aliases_input = func.name.name != "Self"
+                || func.params.first().is_some_and(|p| {
+                    p.ty.simple_name()
+                        .is_some_and(|n| repr_root(n, symbols) == repr_root(&recv.name, symbols))
+                });
+            if aliases_input {
+                names.push(recv.name.clone());
+            }
         }
         Self { names, repeated }
     }
@@ -2815,6 +2863,22 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // receiver is spelled that way (`MonotonicClock -> Now`).
             let is_unit_valued = !symbols.variant_of.contains_key(&ident.name)
                 && symbols.resolve_alias(&ident.name) == "Unit";
+            // A bare tag's arm binds nothing: the arm is the whole of what
+            // the variant says, and the name would read an empty stack.
+            if symbols.variant_of.contains_key(&ident.name)
+                && !symbols.standalone_types.contains(&ident.name)
+                && scope.contains(&ident.name)
+            {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{0}` carries no payload, so its arm binds nothing: build the value \
+                         as `{0}()`",
+                        ident.name
+                    ),
+                    span: ident.span,
+                });
+                return;
+            }
             if !scope.contains(&ident.name) && ident.name != "Self" && !is_unit_valued {
                 let message = match symbols.variant_of.get(&ident.name) {
                     Some(union_name) => format!(
@@ -2918,11 +2982,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             if let [arg] = args.as_slice() {
                 let arg_ty = expr_type_name_in_scope(arg, symbols);
                 let target = symbols.resolve_alias(&name.name);
-                // A name with a body is a call whose inputs are checked as
-                // such; only a bodiless name relabels its argument.
-                let converted = method_known_via_aliases(&arg_ty, &name.name, 0, symbols)
-                    || symbols.methods.keys().any(|(_, m)| m == &name.name)
-                    || symbols.free_funcs.contains_key(&name.name);
+                let converted = member_takes(&arg_ty, &name.name, symbols);
                 if let Some(arg_scalar) = scalar_primitive_root(symbols, &arg_ty) {
                     // A scalar newtype built from a different primitive
                     // (`Acc("")` with `Acc = Int`) has no conversion to
@@ -2953,7 +3013,39 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             });
                         }
                     }
+                } else if let Some(target_scalar) = scalar_primitive_root(symbols, &name.name) {
+                    // The other way round: a union or a container is one
+                    // pointer, and the erasure would hand it to the
+                    // scalar's slot (`Put(Sack)` with `Put = String`).
+                    let root = repr_root(&arg_ty, symbols);
+                    let pointer = symbols.variant_of.values().any(|p| *p == root)
+                        || matches!(root.as_str(), "List" | "Option" | "Result" | "Stream");
+                    if pointer && !converted {
+                        errors.push(CanonError::CheckError {
+                            message: format!(
+                                "`{}` expects a `{}`, found `{}`",
+                                name.name, target_scalar, arg_ty
+                            ),
+                            span: name.span,
+                        });
+                    }
                 }
+            }
+            if !args.is_empty() {
+                let handed: Vec<String> = flatten_product_args(args)
+                    .iter()
+                    .map(|a| expr_type_name_in_scope(a, symbols))
+                    .collect();
+                check_repetition_values(&name.name, &handed, symbols, name.span, errors);
+            }
+            if matches!(name.name.as_str(), "Option" | "Result") && !args.is_empty() {
+                errors.push(CanonError::CheckError {
+                    message: format!(
+                        "`{}` is built by its variants: `Some(…)` / `None()`, `Ok(…)` / `Err(…)`",
+                        name.name
+                    ),
+                    span: name.span,
+                });
             }
             if name.name == "Unit" && !args.is_empty() {
                 errors.push(CanonError::CheckError {
@@ -3121,12 +3213,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             // `B(A * rest)`, so a method whose name is a type constructor
             // (a typedef, a union variant, or a primitive) is really
             // building a `B` — the receiver fills the first input slot.
-            let is_piped_construction = symbols.standalone_types.contains(&method.name)
-                || symbols.variant_of.contains_key(&method.name)
-                || matches!(
-                    method.name.as_str(),
-                    "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
-                );
+            // A builtin's name is its operation even where it also names a
+            // type (`Length = Int`), unless a declared family owns it —
+            // codegen's `is_builtin_op` routing, mirrored.
+            let builtin_op = crate::ast::is_builtin_pipe_vocabulary(&method.name)
+                && !symbols.methods.keys().any(|(_, m)| m == &method.name);
+            let is_piped_construction = !builtin_op
+                && (symbols.standalone_types.contains(&method.name)
+                    || symbols.variant_of.contains_key(&method.name)
+                    || matches!(
+                        method.name.as_str(),
+                        "Int" | "Float" | "String" | "Bool" | "Some" | "None" | "Ok" | "Err"
+                    ));
             // Construction alone only accounts for the arguments when the
             // name takes them: a multi-field product takes the rest of its
             // fields, and the wrappers take their payload. Anything else
@@ -3152,6 +3250,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
             let known = is_concurrent_combinator
                 || (is_piped_construction && construction_takes_args)
                 || has_alias_method;
+            check_repeated_inputs(&recv_ty, &method.name, args, symbols, *span, errors);
             if !(known || (recv_ty == "<unknown>" && receiver_reported)) {
                 errors.push(CanonError::CheckError {
                     message: if recv_ty == "<unknown>" {
@@ -3280,7 +3379,7 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 message,
                                 span: *span,
                             });
-                        } else if matches!(recv_terminal, "Option" | "Result") {
+                        } else if matches!(recv_terminal, "List" | "Option" | "Result") {
                             // Same hole again: a container is one pointer
                             // at the value level, so the erasure fallback
                             // would hand the constructed type the
@@ -3306,6 +3405,15 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *span,
                             });
+                        } else if recv_terminal == "Unit" {
+                            // `Unit` carries no value for the scalar to hold.
+                            errors.push(CanonError::CheckError {
+                                message: format!(
+                                    "`{}` expects a `{}`, found `{}`, which carries nothing",
+                                    method.name, target_scalar, recv_ty
+                                ),
+                                span: *span,
+                            });
                         } else if symbols.variant_of.values().any(|p| p == recv_terminal) {
                             // And again for a user union: one pointer at
                             // the value level, with no rendering of it.
@@ -3326,16 +3434,18 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                             });
                         }
                     }
-                } else if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty) {
+                } else if let Some(recv_scalar) = scalar_primitive_root(symbols, &recv_ty)
+                    .or_else(|| (symbols.resolve_alias(&recv_ty) == "Unit").then_some("Unit"))
+                {
                     // The other direction: a scalar piped into a union
                     // has no variant to become — the erasure fallback
                     // would hand the union a string or number where its
                     // tagged pointer belongs.
                     let target = symbols.resolve_alias(&method.name);
                     if let Some(kind) = non_scalar_kind(symbols, &method.name) {
-                        let has_body = symbols.methods.keys().any(|(_, m)| m == &method.name)
-                            || symbols.free_funcs.contains_key(&method.name);
-                        if args.is_empty() && !has_body && !injects_into(&recv_ty, target, symbols)
+                        if args.is_empty()
+                            && !member_takes(&recv_ty, &method.name, symbols)
+                            && !injects_into(&recv_ty, target, symbols)
                         {
                             errors.push(CanonError::CheckError {
                                 message: format!(
@@ -3347,6 +3457,16 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                         }
                     }
                 }
+            }
+            if is_piped_construction && !has_alias_method {
+                let handed: Vec<String> = std::iter::once(recv_ty.clone())
+                    .chain(
+                        flatten_product_args(args)
+                            .iter()
+                            .map(|a| expr_type_name_in_scope(a, symbols)),
+                    )
+                    .collect();
+                check_repetition_values(&method.name, &handed, symbols, *span, errors);
             }
             if is_piped_construction {
                 // The canonical call form pipes the first arg (`A -> B(rest)`
@@ -3539,6 +3659,19 @@ fn check_expr(expr: &Expr, scope: &ExprScope, symbols: &SymbolTable, errors: &mu
                                 ),
                                 span: *vspan,
                             });
+                        } else {
+                            // `Unit` and a product have no variants either.
+                            let root = symbols.resolve_alias(&scrutinee_ty);
+                            if root == "Unit" || symbols.product_fields.contains_key(root) {
+                                errors.push(CanonError::CheckError {
+                                    message: format!(
+                                        "dispatching on `{}`, which is not a union: it has no \
+                                         variants to match",
+                                        scrutinee_ty
+                                    ),
+                                    span: *vspan,
+                                });
+                            }
                         }
                     }
                 }
@@ -4092,6 +4225,49 @@ fn check_builtin_args(
 
 /// The element type and count behind a repetition type, through the
 /// receiver's alias chain (`Pixel = Rgb`, `Rgb = Channel^3`).
+/// Building a repetition type (`Rgb = Channel^3`) takes exactly its
+/// count of values, each of the element's representation: `2 ->
+/// Rgb(5 * 8)` fills three `Channel`s, an `Rgb` piped into it fills none.
+fn check_repetition_values(
+    name: &str,
+    handed: &[String],
+    symbols: &SymbolTable,
+    span: crate::error::Span,
+    errors: &mut Vec<CanonError>,
+) {
+    let Some((elem, count)) = repetition_of(name, symbols) else {
+        return;
+    };
+    if handed.len() as u64 == 1
+        && handed[0] != "<unknown>"
+        && repetition_of(&handed[0], symbols).is_some()
+    {
+        return; // a relabel of a repetition value
+    }
+    let root = |ty: &str| repr_root(ty, symbols);
+    let want = root(&elem);
+    let wrong = handed
+        .iter()
+        .find(|t| t.as_str() != "<unknown>" && root(t) != want);
+    if handed.len() as u64 != count || wrong.is_some() {
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{name}` is `{elem}^{count}`: it takes {count} `{elem}` values, handed `{}`",
+                handed.join(" * ")
+            ),
+            span,
+        });
+    }
+}
+
+/// The representation a value of `ty` has: its primitive, or the type its
+/// aliases end at.
+fn repr_root(ty: &str, symbols: &SymbolTable) -> String {
+    scalar_primitive_root(symbols, ty)
+        .unwrap_or_else(|| symbols.resolve_alias(ty))
+        .to_string()
+}
+
 fn repetition_of(name: &str, symbols: &SymbolTable) -> Option<(String, u64)> {
     let mut current = name;
     for _ in 0..20 {
@@ -4129,11 +4305,9 @@ fn product_fields_of(name: &str, symbols: &SymbolTable) -> Option<(String, Vec<S
     None
 }
 
-/// Whether a value of type `ty` is a `target` through its newtype chain
-/// (`Outer = Tables` makes an `Outer` a `Tables`, and a `Tables` an
-/// `Outer`'s payload either way round).
 /// What a non-scalar type holds, for a scalar that cannot be relabelled
-/// into it: a union's tagged pointer, a container, or `Unit`'s nothing.
+/// into it: a union's tagged pointer or a container. (A relabel into a
+/// `Unit`-rooted type drops the value, which codegen does.)
 fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
     // The builtin containers and their variants build from anything
     // (`List(1)`, `Some(x)`); only a declared name relabels.
@@ -4145,11 +4319,79 @@ fn non_scalar_kind(symbols: &SymbolTable, name: &str) -> Option<&'static str> {
         Some("a union")
     } else if matches!(root, "List" | "Option" | "Result" | "Stream") {
         Some("a container")
-    } else if root == "Unit" {
-        Some("`Unit`")
+    } else if symbols.variant_of.contains_key(root) && !symbols.standalone_types.contains(root) {
+        Some("a payload-less variant")
     } else {
         None
     }
+}
+
+/// A member with a repetition among its inputs (`String^2 => Gt`,
+/// `Steps * Limbs^2 => Halves`) binds the repetition positionally, so the
+/// by-type construction check skips it. What it can still hold to: the
+/// handed values — the receiver, then the arguments — have the slots'
+/// representations, one for one. `"b" -> Gt(1)` hands an `Int` where a
+/// `String` is read.
+fn check_repeated_inputs(
+    recv_ty: &str,
+    method: &str,
+    args: &[Expr],
+    symbols: &SymbolTable,
+    span: crate::error::Span,
+    errors: &mut Vec<CanonError>,
+) {
+    let mut current = recv_ty;
+    let mut found = None;
+    for _ in 0..20 {
+        if let Some(slots) = symbols
+            .repeated_inputs
+            .get(&(current.to_string(), method.to_string()))
+        {
+            found = Some(slots);
+            break;
+        }
+        match symbols.aliases.get(current) {
+            Some(next) => current = next,
+            None => break,
+        }
+    }
+    let Some(slots) = found else {
+        return;
+    };
+    let root = |ty: &str| repr_root(ty, symbols);
+    let mut handed: Vec<String> = std::iter::once(recv_ty.to_string())
+        .chain(
+            flatten_product_args(args)
+                .iter()
+                .map(|a| expr_type_name_in_scope(a, symbols)),
+        )
+        .collect();
+    if handed.len() != slots.len() || handed.iter().any(|t| t == "<unknown>") {
+        return;
+    }
+    let mut want: Vec<String> = slots.iter().map(|t| root(t)).collect();
+    let mut got: Vec<String> = handed.iter().map(|t| root(t)).collect();
+    want.sort();
+    got.sort();
+    if want != got {
+        handed.remove(0);
+        errors.push(CanonError::CheckError {
+            message: format!(
+                "`{method}` takes `{}`, handed `{recv_ty}` then `{}`",
+                slots.join(" * "),
+                handed.join(" * ")
+            ),
+            span,
+        });
+    }
+}
+
+/// Whether a member of `name`'s family takes a `ty` — as its own type or
+/// through `ty`'s aliases (a newtype is narrower than its base, so a base
+/// value does not select a newtype's member). Such a pipe is a call; one
+/// no member takes relabels its argument.
+fn member_takes(ty: &str, name: &str, symbols: &SymbolTable) -> bool {
+    method_known_via_aliases(ty, name, 0, symbols) || symbols.free_funcs.contains_key(name)
 }
 
 /// Whether a value of type `ty` is one of `union`'s variants (through
@@ -4172,6 +4414,9 @@ fn injects_into(ty: &str, union: &str, symbols: &SymbolTable) -> bool {
     false
 }
 
+/// Whether a value of type `ty` is a `target` through its newtype chain
+/// (`Outer = Tables` makes an `Outer` a `Tables`, and a `Tables` an
+/// `Outer`'s payload either way round).
 fn widens_to(ty: &str, target: &str, symbols: &SymbolTable) -> bool {
     let chain = |from: &str| {
         let mut out = vec![from.to_string()];
@@ -4511,6 +4756,22 @@ fn check_product_construction_types(
     // would silently carry the meaning, which construction-by-type
     // forbids. (Codegen's positional floor survives only for values the
     // checker can't type at all; those returned `<unknown>` above.)
+    // A product's fields take a sibling newtype of their base; a
+    // constructor's components bind as codegen's `assign_inputs` does,
+    // along one alias chain or the other, so a sibling (`Wrapped` for
+    // `Attr`, both `String`) fills nothing there.
+    let score = |value_ty: &str, field_ty: &str| -> u8 {
+        let s = product_field_match_score(symbols, value_ty, field_ty);
+        let along = || {
+            symbols.alias_chain(value_ty).iter().any(|n| n == field_ty)
+                || symbols.alias_chain(field_ty).iter().any(|n| n == value_ty)
+        };
+        if s == 1 && noun == "component" && !along() {
+            0
+        } else {
+            s
+        }
+    };
     let assign = |order: &[usize]| -> Vec<Option<usize>> {
         let mut used = vec![false; arg_types.len()];
         let mut slot_val: Vec<Option<usize>> = vec![None; field_types.len()];
@@ -4519,10 +4780,10 @@ fn check_product_construction_types(
                 if slot_val[si].is_some() {
                     continue;
                 }
-                if let Some(&vi) = order.iter().find(|&&vi| {
-                    !used[vi]
-                        && product_field_match_score(symbols, &arg_types[vi], field_ty) == threshold
-                }) {
+                if let Some(&vi) = order
+                    .iter()
+                    .find(|&&vi| !used[vi] && score(&arg_types[vi], field_ty) == threshold)
+                {
                     slot_val[si] = Some(vi);
                     used[vi] = true;
                 }
@@ -4562,7 +4823,7 @@ fn check_product_construction_types(
         if slot_val[si].is_none() {
             errors.push(CanonError::CheckError {
                 message: format!(
-                    "cannot construct `{type_name}`: no argument's type is compatible with field `{field_ty}`"
+                    "cannot construct `{type_name}`: no argument's type is compatible with {noun} `{field_ty}`"
                 ),
                 span,
             });

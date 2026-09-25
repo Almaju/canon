@@ -1,3 +1,3 @@
 error[tests/checker/fail/bare_generic_type_argument.can:2:9]: generic type `Key` needs its type arguments here
 error[tests/checker/fail/bare_generic_type_argument.can:2:9]: `Map` does not take type arguments
-error[tests/checker/fail/bare_generic_type_argument.can:2:5]: `Length` expects a `Int`, found the union `Map`: dispatch on it before constructing
+error[tests/checker/fail/bare_generic_type_argument.can:2:5]: no method `Length` on type `Map` with 0 argument(s)

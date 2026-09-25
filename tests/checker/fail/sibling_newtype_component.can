@@ -1,0 +1,15 @@
+Attr = String
+
+Tag = String
+
+Wrapped = String
+
+Attr * String * Tag => Wrapped {
+    `<{Tag} {Attr}>{String}</{Tag}>`
+}
+
+Unit => Program {
+    Wrapped("class")
+        -> Wrapped("inner" * Tag("div"))
+        -> Print
+}

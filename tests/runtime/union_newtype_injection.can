@@ -1,0 +1,27 @@
+Fail = String
+
+Pass = Unit
+
+Reported = Verdict
+
+Shown = String
+
+Verdict = Fail + Pass
+
+Verdict => Shown {
+    Verdict -> (
+        * Fail { Fail }
+        * Pass { "pass" }
+    )
+}
+
+Unit => Program {
+    Fail("broken") -> Verdict -> (
+        * Fail => Unit { Fail -> Reported -> Shown -> Print }
+        * Pass => Unit { "unreachable" -> Print }
+    )
+    Map<String, String>()
+        -> Length
+        -> Length
+        -> Print
+}

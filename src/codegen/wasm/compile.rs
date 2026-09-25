@@ -1542,14 +1542,17 @@ impl<'m> WasmGen<'m> {
         // nothing for a payload receiver and drops it. Both were silent —
         // dispatch then read whatever memory happened to hold.
         if args.is_empty() && matches!(receiver, Expr::Ident(_) | Expr::FieldAccess { .. }) {
+            // A newtype of the union (`MakeFail = TestResult`) injects the
+            // same way, unless a member of its family takes the payload.
             if let Some(variant) = syntactic_type_name(receiver) {
-                if self
-                    .variant_parent
-                    .get(variant)
-                    .is_some_and(|p| p == method)
-                {
+                let union = resolve_alias_terminal_name(method, &self.type_defs);
+                let owned = self
+                    .dispatch_candidates(variant)
+                    .into_iter()
+                    .any(|c| self.func_table.contains_key(&(Some(c), method.to_string())));
+                if !owned && self.variant_parent.get(variant) == Some(&union) {
                     let variant = variant.to_string();
-                    return self.inject_union_variant(method, &variant, receiver, scope, f);
+                    return self.inject_union_variant(&union, &variant, receiver, scope, f);
                 }
             }
         }
@@ -1784,6 +1787,15 @@ impl<'m> WasmGen<'m> {
         // No user/stdlib function matched — normalize the types-only
         // vocabulary (`Print`/`Sum`/`Joined`/…) to its canonical builtin
         // name so the `print`/`String`/builtin paths below recognize it.
+        // A newtype named like a builtin (`Length = Int`) relabels a value
+        // that already is one: `-> Length` on a map's `Length` is not the
+        // builtin's string or list length.
+        if args.is_empty()
+            && static_recv_type.as_deref() == Some(method)
+            && crate::ast::builtin_method_alias(method).is_some()
+        {
+            return recv_ty;
+        }
         let method = crate::ast::builtin_method_alias(method).unwrap_or(method);
 
         // Conversion is construction (the language spec, docs/src/spec/):
