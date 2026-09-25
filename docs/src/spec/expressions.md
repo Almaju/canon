@@ -198,6 +198,8 @@ Rules:
 
 - Each arm is a lambda whose single parameter is one variant type; arms
   are separated by `*`. The leading `*` on the first arm is optional.
+  `Unit` and a product have no variants to branch on; only a
+  [binding dispatch](#binding-dispatch) takes them.
 - Arms must appear in the union's **variant order** (alphabetical), and
   every variant must be handled; there is no wildcard arm.
 - Dispatch is an expression; all arms must produce the same type.
@@ -256,6 +258,9 @@ Outcome => Message {
 - **User-defined variants** with their own definition (`Branch = Left *
   Right * Value`): write just the variant name; the matched value is in
   scope under that name, fields accessible through it.
+
+A variant with no payload (`True`, `None`) binds nothing: its arm is
+the whole of what it says, and a value of it is built as `True()`.
 
 Dispatch also follows newtype alias chains: given
 `MessageContent = Option<Content>`, a `MessageContent` value dispatches

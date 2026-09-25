@@ -131,7 +131,7 @@ as evidence — so a write chains straight into a re-open, as above.
 
 Sorted, immutable collections in **pure Canon** — recursive unions
 walked by dispatch and recursion, generic over their keys and values
-(`Map<K: Ord, V>`, `Set<T: Ord>`). Every query is a constructor named after what it
+(`Map<K, V>`, `Set<T>`; inserting takes an `Ord` key). Every query is a constructor named after what it
 produces and every command a message (`Insert`, `Remove`, `Add`);
 iteration order is alphabetical by key, whatever the insertion order
 (of course it is).
