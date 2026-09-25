@@ -248,6 +248,40 @@ number. The request goes out through `wasi:http/client` — the
 component imports the standard interface and any WASI HTTP host can
 serve it — and the chain waits for the response.
 
+## HTTP Server: `Request`, `Response`
+
+```canon
+Request => Response {
+    Request.header("authorization") -> (
+        * None { Body("who?") -> Response(Headers() * Status(401)) }
+        * Some<String> {
+            Body(`hello {String}`)
+                -> Response(Headers().set("content-type" * "text/plain") * Status(200))
+        }
+    )
+}
+```
+
+A `Request => Response` entry is the HTTP handler. The request is read
+through its bindings: `Request.method()` is the method (`"GET"`, …),
+`Request.path()` the path with its query (`None` when the request
+carries none), `Request.header(name)` the first value of that header (`None`
+when absent), and `Request.body()` the body as a `Stream<String>`. A
+response is `Response(Body * Headers * Status)`; `Headers()` starts
+empty and `.set(name * value)` adds a header. A `Chunks` body
+(`Chunks = Stream<String>`) in place of the `Body` streams the response
+chunk by chunk as the handler produces it:
+
+```canon
+Request => Response {
+    Request
+        .body()
+        -> Mapped((String) => String { String -> Uppercased })
+        -> Chunks
+        -> Response(Headers() * Status(200))
+}
+```
+
 ## `Json`
 
 `Json = String`: JSON-encoded text. Object and array **literals are
