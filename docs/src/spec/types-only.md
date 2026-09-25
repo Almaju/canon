@@ -41,7 +41,7 @@ is the **anonymous arrow**:
 
 ```
 String => Result<Url, InvalidUrl> { ... }        # the Url constructor
-Unit => Map { ... }                              # the empty-map constructor
+<K, V>(Unit) => Map<K, V> { ... }                # the empty-map constructor
 Request => Response { ... }                      # an entire HTTP service
 ```
 
@@ -90,7 +90,7 @@ string -> Substring(From(1) * To(4))           # execute
   reads "the Value in this Map at this key, which might not exist."
 - **Commands** (output type = an input type, the one place types
   underdetermine the operation) take a **message**: `Insert<K, V> =
-  Key<K> * Value<V>`, `Insert<K, V> * Map<K, V> => Map<K, V>`. Checked, not conventional: an arrow
+  Key<K> * Value<V>`, `<K: Ord, V>(Insert<K, V> * Map<K, V>) => Map<K, V>`. Checked, not conventional: an arrow
   constructing one of its inputs must take exactly one other input, a
   declared, non-primitive type that is not a part of the value it
   applies to. A command is reached only by piping the value into its

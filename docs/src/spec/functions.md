@@ -117,7 +117,10 @@ ambiguity. Arguments (including the receiver) bind to components by:
    only the `OtherUser` component.
 2. **Substitutability resolves what remains.** A bare `User` flows into
    an alias-compatible slot (`OtherUser`) only when exactly one
-   unfilled component accepts it.
+   unfilled component accepts it. Compatibility runs along one alias
+   chain: a newtype fills a slot of a type it wraps, and a base value a
+   slot of its newtype, but a sibling (`Tag` for `Attr`, both `String`)
+   fills neither.
 3. **Anything else is a compile error.** If two same-typed bare values
    could each fill two alias-related slots, the call is ambiguous and
    the caller must wrap one explicitly. For

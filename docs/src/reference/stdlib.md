@@ -131,7 +131,7 @@ as evidence — so a write chains straight into a re-open, as above.
 
 Sorted, immutable collections in **pure Canon** — recursive unions
 walked by dispatch and recursion, generic over their keys and values
-(`Map<K: Ord, V>`, `Set<T: Ord>`). Every query is a constructor named after what it
+(`Map<K, V>`, `Set<T>`; inserting takes an `Ord` key). Every query is a constructor named after what it
 produces and every command a message (`Insert`, `Remove`, `Add`);
 iteration order is alphabetical by key, whatever the insertion order
 (of course it is).
@@ -247,6 +247,40 @@ answers with the response body; any other status is the `HttpError`
 number. The request goes out through `wasi:http/client` — the
 component imports the standard interface and any WASI HTTP host can
 serve it — and the chain waits for the response.
+
+## HTTP Server: `Request`, `Response`
+
+```canon
+Request => Response {
+    Request.header("authorization") -> (
+        * None { Body("who?") -> Response(Headers() * Status(401)) }
+        * Some<String> {
+            Body(`hello {String}`)
+                -> Response(Headers().set("content-type" * "text/plain") * Status(200))
+        }
+    )
+}
+```
+
+A `Request => Response` entry is the HTTP handler. The request is read
+through its bindings: `Request.method()` is the method (`"GET"`, …),
+`Request.path()` the path with its query (`None` when the request
+carries none), `Request.header(name)` the first value of that header (`None`
+when absent), and `Request.body()` the body as a `Stream<String>`. A
+response is `Response(Body * Headers * Status)`; `Headers()` starts
+empty and `.set(name * value)` adds a header. A `Chunks` body
+(`Chunks = Stream<String>`) in place of the `Body` streams the response
+chunk by chunk as the handler produces it:
+
+```canon
+Request => Response {
+    Request
+        .body()
+        -> Mapped((String) => String { String -> Uppercased })
+        -> Chunks
+        -> Response(Headers() * Status(200))
+}
+```
 
 ## `Json`
 
