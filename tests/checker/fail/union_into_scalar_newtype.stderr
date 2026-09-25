@@ -1,0 +1,1 @@
+error[tests/checker/fail/union_into_scalar_newtype.can:14:13]: `Put` expects a `String`, found `Sack`

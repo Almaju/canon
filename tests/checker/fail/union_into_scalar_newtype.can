@@ -1,0 +1,24 @@
+Full = String
+
+Put = String
+
+Sack = Empty + Full
+
+Sack * Put => Sack {
+    Put
+        -> Full
+        -> Sack
+}
+
+Sack => Twice {
+    Sack -> Put(Sack)
+}
+
+Twice = Sack
+
+Unit => Program {
+    Empty()
+        -> Sack
+        -> Twice
+    "done" -> Print
+}

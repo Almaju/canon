@@ -1,0 +1,1 @@
+error[tests/checker/fail/sibling_newtype_component.can:12:5]: cannot construct `Wrapped`: no argument's type is compatible with component `Attr`
