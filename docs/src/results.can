@@ -192,6 +192,10 @@ Query => Hits {
             -> String
     }{
         Query
+            -> Hit(Slug("stability") * Label("Stability") * Stability() -> String -> Text)
+            -> String
+    }{
+        Query
             -> Hit(
                 Slug("overview")
                 * Label("Specification Overview")

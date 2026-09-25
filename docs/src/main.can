@@ -97,6 +97,7 @@ Page => Content {
         * "pipes" { Page -> Tour(Pipes() -> Html -> Lesson) }
         * "play" { Play() }
         * "recursion" { Page -> Tour(Recursion() -> Html -> Lesson) }
+        * "stability" { Stability() -> Html }
         * "stdlib" { Stdlib() -> Html }
         * "testing" { Page -> Tour(Testing() -> Html -> Lesson) }
         * "types" { Types() -> Html }
@@ -364,6 +365,7 @@ Model => Side {
                 {Model.Page -> NavItem(Slug("markdown-renderer") * Label("Markdown"))}
                 {Model.Page -> NavItem(Slug("deploying") * Label("Deploying"))}
                 {Model.Page -> NavItem(Slug("codegen-gaps") * Label("Known Codegen Gaps"))}
+                {Model.Page -> NavItem(Slug("stability") * Label("Stability"))}
                 {Model.Page -> NavItem(Slug("contributing") * Label("Contributing"))}
                 {Model.Page -> SpecGroup}
             </aside>
